@@ -385,6 +385,32 @@ def new_follower_email(*, to: str, actor: str) -> Email:
     )
 
 
+def x_handle_request_approved_email(*, to: str) -> Email:
+    return _notification_email(
+        to=to,
+        subject="Your X handle change was approved",
+        blocks=[
+            "An admin linked the X handle you requested to your Vidit account. "
+            "The Vidit bot and the archive import now credit posts from that handle to you."
+        ],
+        action=Action("Open your settings", settings_url()),
+        setting="X handle change approved by email",
+    )
+
+
+def x_handle_request_declined_email(*, to: str) -> Email:
+    return _notification_email(
+        to=to,
+        subject="Your X handle change was declined",
+        blocks=[
+            "An admin declined the X handle you requested. Your settings show the reason, "
+            "and you can send a new request from there."
+        ],
+        action=Action("Open your settings", settings_url()),
+        setting="X handle change declined by email",
+    )
+
+
 def product_update_email(
     *,
     to: str,

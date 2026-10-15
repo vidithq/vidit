@@ -503,6 +503,67 @@ export interface paths {
         patch: operations["set_user_x_handle_api_v1_admin_users__user_id__x_handle_patch"];
         trace?: never;
     };
+    "/api/v1/admin/x-handle-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List X Handle Requests
+         * @description Pending X handle change requests on live accounts, oldest first.
+         */
+        get: operations["list_x_handle_requests_api_v1_admin_x_handle_requests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/x-handle-requests/{request_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve X Handle Request
+         * @description Bind the requested handle through the X handle write path and notify
+         *     the analyst. 409 when another account holds the handle.
+         */
+        post: operations["approve_x_handle_request_api_v1_admin_x_handle_requests__request_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/x-handle-requests/{request_id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline X Handle Request
+         * @description Decline a request with a reason the analyst reads in Settings.
+         */
+        post: operations["decline_x_handle_request_api_v1_admin_x_handle_requests__request_id__decline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/change-password": {
         parameters: {
             query?: never;
@@ -1715,6 +1776,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/me/x-handle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get My X Handle
+         * @description The X handle bound to your account, and your change request if any.
+         */
+        get: operations["get_my_x_handle_api_v1_users_me_x_handle_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/me/x-handle-request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put My X Handle Request
+         * @description Ask an admin to bind a new X handle; replaces your earlier request.
+         */
+        put: operations["put_my_x_handle_request_api_v1_users_me_x_handle_request_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/{username}": {
         parameters: {
             query?: never;
@@ -2211,6 +2312,28 @@ export interface components {
             username: string;
             /** X Handle */
             x_handle: string | null;
+        };
+        /**
+         * AdminXHandleRequestRead
+         * @description One pending request as the admin queue lists it, beside the account
+         *     whose bound handle it would replace.
+         */
+        AdminXHandleRequestRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Reason */
+            reason: string | null;
+            user: components["schemas"]["AdminUserRead"];
+            /** X Handle */
+            x_handle: string;
         };
         /**
          * ArchiveImportEnqueue
@@ -3210,7 +3333,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "request_fulfilled" | "new_follower";
+            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined";
         };
         /**
          * NotificationRead
@@ -3234,7 +3357,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "request_fulfilled" | "new_follower";
+            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined";
             /** Read At */
             read_at: string | null;
         };
@@ -3907,6 +4030,65 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /**
+         * XHandleRead
+         * @description Body of ``GET /users/me/x-handle``: the bound handle and the request
+         *     waiting on it, if any.
+         */
+        XHandleRead: {
+            request: components["schemas"]["XHandleRequestRead"] | null;
+            /** X Handle */
+            x_handle: string | null;
+        };
+        /**
+         * XHandleRequestCreate
+         * @description Body for ``PUT /users/me/x-handle-request``.
+         */
+        XHandleRequestCreate: {
+            /** Reason */
+            reason?: string | null;
+            /** X Handle */
+            x_handle: string;
+        };
+        /**
+         * XHandleRequestDecline
+         * @description Body for ``POST /admin/x-handle-requests/{id}/decline``. The reason
+         *     reaches the requester in Settings.
+         */
+        XHandleRequestDecline: {
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * XHandleRequestRead
+         * @description The requester's view of their request. ``decline_reason`` and
+         *     ``decided_at`` are set exactly when ``status`` is ``declined``.
+         */
+        XHandleRequestRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decided At */
+            decided_at: string | null;
+            /** Decline Reason */
+            decline_reason: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "declined";
+            /** X Handle */
+            x_handle: string;
         };
     };
     responses: never;
@@ -4713,6 +4895,105 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AdminUserRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_x_handle_requests_api_v1_admin_x_handle_requests_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminXHandleRequestRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_x_handle_request_api_v1_admin_x_handle_requests__request_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decline_x_handle_request_api_v1_admin_x_handle_requests__request_id__decline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["XHandleRequestDecline"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -6584,6 +6865,72 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_my_x_handle_api_v1_users_me_x_handle_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["XHandleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_my_x_handle_request_api_v1_users_me_x_handle_request_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["XHandleRequestCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["XHandleRead"];
+                };
             };
             /** @description Validation Error */
             422: {

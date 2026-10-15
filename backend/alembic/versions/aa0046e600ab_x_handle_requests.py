@@ -1,7 +1,7 @@
 """add x_handle_requests and the two request outcome notification kinds
 
 Revision ID: aa0046e600ab
-Revises: w1y3a5c7e9g1
+Revises: 027b3a9b1ae9
 Create Date: 2026-10-15 10:00:00.000000
 
 ``x_handle_requests`` holds at most one row per analyst (``user_id`` UNIQUE):
@@ -21,7 +21,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "aa0046e600ab"
-down_revision: Union[str, None] = "w1y3a5c7e9g1"
+down_revision: Union[str, None] = "027b3a9b1ae9"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

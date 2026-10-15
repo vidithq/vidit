@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from app.database import SessionLocal
 from app.main import app
 from app.models.admin_event import AdminEvent
-from app.models.notification import Notification
+from app.models.notification import Notification, NotificationDelivery
 from app.models.user import User
 from app.models.x_handle_request import XHandleRequest
 from app.services.auth import hash_password
@@ -330,3 +330,20 @@ def test_outcome_notifications_reach_the_feed_without_an_actor(analyst, admin):
         ("x_handle_request_approved", None, None),
         ("x_handle_request_declined", None, None),
     ]
+
+
+def test_a_decision_queues_an_email_to_a_verified_address(db, analyst, admin):
+    analyst.email_verified_at = datetime.now(UTC)
+    db.commit()
+    request_id = _submit(analyst, _handle()).json()["request"]["id"]
+    login_as(client, admin)
+    client.post(f"{_QUEUE}/{request_id}/decline", json={"reason": "no"})
+
+    db.expire_all()
+    channels = [
+        d.channel
+        for d in db.query(NotificationDelivery)
+        .join(Notification, NotificationDelivery.notification_id == Notification.id)
+        .filter(Notification.user_id == analyst.id)
+    ]
+    assert channels == ["email"]
