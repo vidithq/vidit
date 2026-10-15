@@ -2326,7 +2326,7 @@ Register this browser for push notifications. The body is the browser's `PushSub
 - `endpoint` is an https URL on a browser push service: `fcm.googleapis.com`, `updates.push.services.mozilla.com`, `web.push.apple.com`, or a host under `.push.apple.com` or `.notify.windows.com`.
 - `keys.p256dh` is a base64url uncompressed P-256 public key (65 bytes) and `keys.auth` a base64url 16-byte secret.
 
-Registering an endpoint again refreshes its keys and returns the same `id`. An endpoint registered by another account moves to yours, since one browser holds one subscription. An account holds at most 10 devices: registering one more deletes the oldest.
+`resync: true` marks a registration the page makes by itself: it answers 409 `device_revoked` for a device you revoked, which only an explicit registration (`resync` omitted or false) brings back. Registering an endpoint again refreshes its keys and returns the same `id`. An endpoint registered by another account moves to yours, since one browser holds one subscription. An account holds at most 10 devices: registering one more deletes the oldest.
 
 **Response 201:**
 ```json
@@ -2343,13 +2343,14 @@ The response never carries the endpoint: anyone who holds it can push to the dev
 **Errors:**
 | Code | Case |
 |------|------|
+| 409 | `device_revoked`: a `resync` of a device you revoked |
 | 422 | An endpoint off the push services, or malformed keys |
 
 ---
 
 ### `DELETE /users/me/push-subscriptions/{id}` 🔒
 
-Stop push notifications to one of your devices.
+Stop push notifications to one of your devices. The device stays revoked: this browser's own `resync` registration of it answers 409 until you enable push on it again.
 
 **Response 204:** no body.
 

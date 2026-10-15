@@ -390,6 +390,12 @@ erDiagram
         INT refusals "refusals since the last accepted push"
     }
 
+    revoked_push_endpoints {
+        UUID user_id FK
+        VARCHAR endpoint_sha256 "hash of a revoked endpoint"
+        TIMESTAMPTZ revoked_at
+    }
+
     product_update_consents {
         UUID id PK
         UUID user_id FK
@@ -529,6 +535,7 @@ erDiagram
     notifications ||--o{ notification_deliveries : "notification_id"
     users ||--o| user_preferences : "user_id"
     users ||--o{ push_subscriptions : "user_id"
+    users ||--o{ revoked_push_endpoints : "user_id"
     users ||--o{ product_update_consents : "user_id"
     users |o--o{ product_updates : "sent_by"
     product_updates ||--o{ product_update_deliveries : "product_update_id"
@@ -1050,6 +1057,20 @@ One browser or installed app an analyst registered for Web Push, through [`POST 
 | `refusals` | `INTEGER` | NOT NULL, default `0`. Rejections (a 400 or 403 answer) since the last accepted push or registration. |
 
 The worker deletes a row when its push service answers 404 or 410, the answer for a subscription that is gone for good, and at its third rejection in a row (`MAX_REFUSALS` in [`services/push.py`](../backend/app/services/push.py)). An analyst holds at most 10 rows (`MAX_DEVICES_PER_USER`): registering one more deletes the oldest by `created_at`.
+
+---
+
+### `revoked_push_endpoints`
+
+A push device its analyst revoked, kept by the SHA-256 of its endpoint so the browser cannot register it again by itself. A registration with `resync` refuses a recorded endpoint; an explicit registration, which enabling push sends, deletes the row ([`services/push.py`](../backend/app/services/push.py)).
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE |
+| `endpoint_sha256` | `VARCHAR(64)` | The hex SHA-256 of the endpoint. The endpoint itself is a bearer URL and is not kept. |
+| `revoked_at` | `TIMESTAMPTZ` | NOT NULL |
+
+Composite PK: `(user_id, endpoint_sha256)`.
 
 ---
 

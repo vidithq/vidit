@@ -43,10 +43,13 @@ class PushSubscriptionKeys(BaseModel):
 
 class PushSubscriptionCreate(BaseModel):
     """Body for ``POST /users/me/push-subscriptions``: the browser's
-    ``PushSubscription.toJSON()``. Its ``expirationTime`` is ignored."""
+    ``PushSubscription.toJSON()``. Its ``expirationTime`` is ignored. ``resync``
+    marks a registration the page makes by itself, which a revoked device
+    cannot pass; enabling push leaves it false."""
 
     endpoint: str = Field(max_length=2048)
     keys: PushSubscriptionKeys
+    resync: bool = False
 
     @field_validator("endpoint")
     @classmethod

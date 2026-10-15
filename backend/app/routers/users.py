@@ -160,9 +160,12 @@ def register_push_subscription(
     current_user: User = Depends(get_current_user),
 ) -> PushSubscription:
     """Register this browser for push notifications; registering again refreshes it."""
-    row = push_service.register(
-        db, user=current_user, body=body, user_agent=request.headers.get("user-agent")
-    )
+    try:
+        row = push_service.register(
+            db, user=current_user, body=body, user_agent=request.headers.get("user-agent")
+        )
+    except push_service.DeviceRevokedError as exc:
+        raise_typed_error(exc, {exc.code: 409})
     db.commit()
     return row
 

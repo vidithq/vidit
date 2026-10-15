@@ -4438,12 +4438,19 @@ export interface components {
         /**
          * PushSubscriptionCreate
          * @description Body for ``POST /users/me/push-subscriptions``: the browser's
-         *     ``PushSubscription.toJSON()``. Its ``expirationTime`` is ignored.
+         *     ``PushSubscription.toJSON()``. Its ``expirationTime`` is ignored. ``resync``
+         *     marks a registration the page makes by itself, which a revoked device
+         *     cannot pass; enabling push leaves it false.
          */
         PushSubscriptionCreate: {
             /** Endpoint */
             endpoint: string;
             keys: components["schemas"]["PushSubscriptionKeys"];
+            /**
+             * Resync
+             * @default false
+             */
+            resync: boolean;
         };
         /** PushSubscriptionKeys */
         PushSubscriptionKeys: {

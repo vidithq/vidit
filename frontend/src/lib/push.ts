@@ -3,7 +3,7 @@
  * and the subscription the backend stores (`/users/me/push-subscriptions`).
  */
 
-import { apiFetch } from "./api";
+import { ApiError, apiFetch } from "./api";
 import type { components } from "./api-types";
 
 export type PushConfig = components["schemas"]["PushConfigRead"];
@@ -54,10 +54,12 @@ function keyBytes(base64url: string): Uint8Array<ArrayBuffer> {
   return Uint8Array.from(binary, (c) => c.charCodeAt(0));
 }
 
-function register(subscription: PushSubscription): Promise<PushDevice> {
+/** `resync`: a registration the page makes by itself, which the server refuses (409
+ *  `device_revoked`) for a device the analyst revoked. Enabling push leaves it off. */
+function register(subscription: PushSubscription, resync = false): Promise<PushDevice> {
   return apiFetch<PushDevice>(PUSH_DEVICES_PATH, {
     method: "POST",
-    body: JSON.stringify(subscription.toJSON()),
+    body: JSON.stringify({ ...subscription.toJSON(), resync }),
   });
 }
 
@@ -83,20 +85,35 @@ export function revokePushDevice(id: string): Promise<void> {
 }
 
 /** This browser's device id, or null when it holds no subscription. Registering again returns
- *  the id, since the API never echoes the endpoint. */
+ *  the id, since the API never echoes the endpoint, and restores the row after a password
+ *  change. A device the analyst revoked stays revoked: the browser drops its subscription and
+ *  the answer is null, so the page reads push as off. */
 export async function thisPushDeviceId(): Promise<string | null> {
   if (!isSupported()) return null;
   const subscription = await currentSubscription();
-  return subscription ? (await register(subscription)).id : null;
+  if (!subscription) return null;
+  try {
+    return (await register(subscription, true)).id;
+  } catch (err) {
+    if (err instanceof ApiError && err.code === "device_revoked") {
+      await subscription.unsubscribe();
+      return null;
+    }
+    throw err;
+  }
 }
 
-/** Forget this device on the server, then drop the browser subscription. */
+/** Forget this device on the server, then drop the browser subscription, which goes even when
+ *  the server call fails: this browser stops showing pushes either way. */
 export async function disablePush(): Promise<PushDeviceState> {
   const subscription = await currentSubscription();
   if (subscription) {
-    const { id } = await register(subscription);
-    await revokePushDevice(id);
-    await subscription.unsubscribe();
+    try {
+      const { id } = await register(subscription);
+      await revokePushDevice(id);
+    } finally {
+      await subscription.unsubscribe();
+    }
   }
   return "off";
 }

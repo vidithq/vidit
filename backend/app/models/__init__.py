@@ -26,7 +26,7 @@ from app.models.product_update import (
     ProductUpdateConsent,
     ProductUpdateDelivery,
 )
-from app.models.push_subscription import PushSubscription
+from app.models.push_subscription import PushSubscription, RevokedPushEndpoint
 from app.models.review_request import ReviewRequest
 from app.models.source_archive import SourceArchive
 from app.models.tag import Tag, event_tags
@@ -61,6 +61,7 @@ __all__ = [
     "OrganizationMember",
     "PendingRegistration",
     "PushSubscription",
+    "RevokedPushEndpoint",
     "ProductUpdate",
     "ProductUpdateConsent",
     "ProductUpdateDelivery",

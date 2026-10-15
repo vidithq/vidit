@@ -169,6 +169,24 @@ describe("SettingsPage", () => {
     );
   });
 
+  it("reloads the device list after a password change, which forgot every device", async () => {
+    render(<SettingsPage />);
+    const listed = () =>
+      api.apiFetch.mock.calls.filter(
+        ([path, init]) => path === "/users/me/push-subscriptions" && !init?.method,
+      ).length;
+    await waitFor(() => expect(listed()).toBe(1));
+
+    fireEvent.change(screen.getByLabelText("Current password"), { target: { value: "old-password-1" } });
+    fireEvent.change(screen.getByLabelText("New password"), { target: { value: "new-password-12" } });
+    fireEvent.change(screen.getByLabelText("Confirm new password"), {
+      target: { value: "new-password-12" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Update password" }));
+
+    await waitFor(() => expect(listed()).toBe(2));
+  });
+
   it("keeps the major release email switch off until the analyst turns it on", async () => {
     render(<SettingsPage />);
 
