@@ -10,6 +10,7 @@ X-Forwarded-For IP, so buckets don't bleed between tests.
 
 from __future__ import annotations
 
+import base64
 import uuid
 from typing import Any, NamedTuple
 
@@ -355,13 +356,23 @@ def test_read_quota_key_rejects_a_forged_token(user):
 # Some groups still write, each reaped by a fixture:
 # * `/auth/login` writes an `auth_events` row per attempt;
 # * `PATCH /users/me`, `PATCH /users/me/preferences`, `POST /notifications/read` and
-#   `DELETE /users/me/avatar` touch the throwaway `user` row;
+#   `DELETE /users/me/avatar` touch the throwaway `user` row, and
+#   `POST /users/me/push-subscriptions` stores one device it cascades to;
 # * admin actions write `admin_events` rows and `POST /admin/invite-codes`
 #   mints 30 codes;
 # * `POST /collections` opens 30 collections (dropped by the owner cascade);
 # * the `reap-*` cases delete expired `auth_tokens` / `pending_registrations`.
 
 _MISSING_ID = uuid.UUID(int=0)
+
+# A well-formed browser subscription; every probe upserts the one row.
+_PUSH_SUBSCRIPTION = {
+    "endpoint": "https://fcm.googleapis.com/fcm/send/rate-limit-probe",
+    "keys": {
+        "p256dh": base64.urlsafe_b64encode(b"\x04" + b"\x01" * 64).decode().rstrip("="),
+        "auth": base64.urlsafe_b64encode(b"\x02" * 16).decode().rstrip("="),
+    },
+}
 
 # An HTML description, enough to pass body validation.
 _PROBE_DESCRIPTION = html_from_text("A probe shelf.")
@@ -532,6 +543,9 @@ _DOCUMENTED_LIMITS = [
     _Case("delete", "/api/v1/users/no-such-user/follow", 60),
     _Case("get", f"{ME}/preferences", 120),
     _Case("patch", f"{ME}/preferences", 60, "user", {"json": {"display": {"theme": "dark"}}}),
+    _Case("get", f"{ME}/push-config", 60),
+    _Case("post", f"{ME}/push-subscriptions", 30, "user", {"json": _PUSH_SUBSCRIPTION}),
+    _Case("delete", f"{ME}/push-subscriptions/{_MISSING_ID}", 30),
     _Case("get", "/api/v1/notifications", 120),
     _Case("get", "/api/v1/notifications/unread-count", 120),
     _Case(

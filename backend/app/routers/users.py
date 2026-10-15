@@ -1,4 +1,5 @@
 import asyncio
+import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from geoalchemy2.functions import ST_X, ST_Y
@@ -7,6 +8,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from app.dependencies import get_current_user, get_current_user_optional, get_db
 from app.models.event import Event
 from app.models.follow import Follow
+from app.models.push_subscription import PushSubscription
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
 from app.routers._errors import raise_typed_error
@@ -14,9 +16,11 @@ from app.routers.events._common import build_event_list
 from app.schemas.collection import CollectionList
 from app.schemas.event import PaginatedEvents
 from app.schemas.preferences import UserPreferencesRead, UserPreferencesUpdate
+from app.schemas.push import PushConfigRead, PushSubscriptionCreate, PushSubscriptionRead
 from app.schemas.user import UserProfile, UserRead, UserStatsRead, UserUpdate
 from app.services import collections as collections_service
 from app.services import preferences as preferences_service
+from app.services import push as push_service
 from app.services import social, user_stats
 from app.services import users as users_service
 from app.services.event_filters import published_events, visible_events
@@ -123,6 +127,50 @@ def update_my_preferences(
     result = preferences_service.update_preferences(db, user=current_user, body=body)
     db.commit()
     return result
+
+
+@router.get("/me/push-config", response_model=PushConfigRead)
+@limiter.limit("60/minute")
+def get_push_config(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+) -> PushConfigRead:
+    """The key a browser subscribes to push with; null when push is off here."""
+    return PushConfigRead(public_key=push_service.public_key())
+
+
+@router.post(
+    "/me/push-subscriptions",
+    response_model=PushSubscriptionRead,
+    status_code=status.HTTP_201_CREATED,
+)
+@limiter.limit("30/minute")
+def register_push_subscription(
+    request: Request,
+    body: PushSubscriptionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> PushSubscription:
+    """Register this browser for push notifications; registering again refreshes it."""
+    row = push_service.register(
+        db, user=current_user, body=body, user_agent=request.headers.get("user-agent")
+    )
+    db.commit()
+    return row
+
+
+@router.delete("/me/push-subscriptions/{subscription_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("30/minute")
+def delete_push_subscription(
+    request: Request,
+    subscription_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    """Stop push notifications to one of your devices."""
+    if not push_service.unregister(db, user=current_user, subscription_id=subscription_id):
+        raise HTTPException(status_code=404, detail="Push subscription not found")
+    db.commit()
 
 
 @router.get("/{username}", response_model=UserProfile)

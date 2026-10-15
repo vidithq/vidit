@@ -61,8 +61,16 @@ def test_get_without_a_row_returns_the_defaults(db, user):
     assert body["display_defaults"] == _DEFAULT_DISPLAY
     assert body["display_stored"] == _NOTHING_STORED
     assert body["notifications"] == [
-        {"kind": "request_fulfilled", "channels": {"email": True}, "defaults": {"email": True}},
-        {"kind": "new_follower", "channels": {"email": False}, "defaults": {"email": False}},
+        {
+            "kind": "request_fulfilled",
+            "channels": {"email": True, "push": True},
+            "defaults": {"email": True, "push": True},
+        },
+        {
+            "kind": "new_follower",
+            "channels": {"email": False, "push": False},
+            "defaults": {"email": False, "push": False},
+        },
     ]
     assert _stored(db, user) is None
 
@@ -75,7 +83,7 @@ def test_patch_creates_the_row_and_stores_only_overrides(db, user):
         json={
             "notifications": {
                 "request_fulfilled": {"email": False},
-                "new_follower": {"email": False},
+                "new_follower": {"email": False, "push": True},
             },
             "display": {"theme": "light"},
         },
@@ -84,18 +92,27 @@ def test_patch_creates_the_row_and_stores_only_overrides(db, user):
     body = response.json()
     assert body["display"] == {**_DEFAULT_DISPLAY, "theme": "light"}
     assert body["display_stored"] == {**_NOTHING_STORED, "theme": "light"}
-    assert body["notifications"][0]["channels"] == {"email": False}
+    assert body["notifications"][0]["channels"] == {"email": False, "push": True}
+    assert body["notifications"][1]["channels"] == {"email": False, "push": True}
 
     row = _stored(db, user)
     assert row is not None
-    assert row.notification_overrides == {"request_fulfilled": {"email": False}}
+    assert row.notification_overrides == {
+        "request_fulfilled": {"email": False},
+        "new_follower": {"push": True},
+    }
     assert row.display == {"theme": "light"}
 
     # Back to the default drops the override; an omitted display field stays.
     response = client.patch(
         _PATH,
         headers=headers,
-        json={"notifications": {"request_fulfilled": {"email": True}}},
+        json={
+            "notifications": {
+                "request_fulfilled": {"email": True},
+                "new_follower": {"push": False},
+            }
+        },
     )
     assert response.status_code == 200
     row = _stored(db, user)
@@ -115,7 +132,7 @@ def test_patch_null_clears_a_display_value(db, user):
     "body",
     [
         {"notifications": {"co_geolocator_invite": {"email": True}}},
-        {"notifications": {"request_fulfilled": {"push": True}}},
+        {"notifications": {"request_fulfilled": {"sms": True}}},
         {"notifications": {"request_fulfilled": {"email": "yes please"}}},
         {"display": {"palette": "chartreuse"}},
         {"display": {"theme": "sepia"}},
@@ -144,7 +161,7 @@ def test_stale_stored_values_read_as_defaults(db, user):
     assert body["display"] == {**_DEFAULT_DISPLAY, "theme": "light"}
     assert body["display_stored"] == {**_NOTHING_STORED, "theme": "light"}
     assert [n["kind"] for n in body["notifications"]] == ["request_fulfilled", "new_follower"]
-    assert body["notifications"][1]["channels"] == {"email": False}
+    assert body["notifications"][1]["channels"] == {"email": False, "push": False}
 
 
 def test_preferences_require_a_session():
