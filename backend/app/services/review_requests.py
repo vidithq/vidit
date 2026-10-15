@@ -430,6 +430,11 @@ def eligible_targets(
 
 
 def _check_daily_cap(db: Session, *, requester: User) -> None:
+    # Two requests on different events lock different event rows; this per-requester lock,
+    # held to the commit, keeps them from both counting under the cap.
+    db.execute(
+        select(func.pg_advisory_xact_lock(func.hashtext(f"review-request-cap:{requester.id}")))
+    )
     sent_today = db.scalar(
         select(func.count())
         .select_from(ReviewRequest)

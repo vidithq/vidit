@@ -7,8 +7,10 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import event
 
 from app.config import settings
+from app.database import engine
 from app.models.event import STATUS_CLOSED, Event, EventGeolocator, EventGeolocatorInvite
 from app.models.follow import Follow
 from app.models.notification import Notification
@@ -322,6 +324,24 @@ def test_a_decline_stops_the_same_request_for_seven_days(db, author, make_user):
 
     _age_declines(db, geo)
     assert _request(geo, author, target).status_code == 201
+
+
+def test_the_daily_cap_count_runs_under_a_per_requester_lock(db, author, make_user):
+    geo = _published(db, author)
+    target = make_user(audience="everyone")
+    statements: list[str] = []
+
+    def record(_conn, _cursor, statement, _params, _context, _many):
+        statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        assert _request(geo, author, target).status_code == 201
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+    lock = next(i for i, s in enumerate(statements) if "pg_advisory_xact_lock" in s)
+    count = next(i for i, s in enumerate(statements) if "count(" in s and "review_requests" in s)
+    assert lock < count
 
 
 def test_the_daily_cap_counts_resolved_requests_too(db, author, make_user, monkeypatch):
