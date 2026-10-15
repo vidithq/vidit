@@ -15,12 +15,18 @@ export function notificationsPath(cursor: string | null): string {
     : NOTIFICATIONS_PATH;
 }
 
-/** Mark the rows the feed displayed read (one page of ids at most, as the backend caps it). */
-export function markNotificationsRead(ids: string[]): Promise<void> {
-  return apiFetch<void>(`${NOTIFICATIONS_PATH}/read`, {
-    method: "POST",
-    body: JSON.stringify({ ids }),
-  });
+/** The most ids one `POST /notifications/read` takes.
+ *  Mirrors backend `schemas/notification` `MAX_PAGE_SIZE`; change both. */
+const MAX_READ_IDS = 100;
+
+/** Mark the rows the feed displayed read, in requests of at most `MAX_READ_IDS` ids. */
+export async function markNotificationsRead(ids: string[]): Promise<void> {
+  for (let i = 0; i < ids.length; i += MAX_READ_IDS) {
+    await apiFetch<void>(`${NOTIFICATIONS_PATH}/read`, {
+      method: "POST",
+      body: JSON.stringify({ ids: ids.slice(i, i + MAX_READ_IDS) }),
+    });
+  }
 }
 
 /** Per-kind copy for the feed and the settings rows. Keyed by the generated kind, so a kind

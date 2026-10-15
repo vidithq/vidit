@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import {
   ArrowRightLeft,
   AtSign,
@@ -113,14 +113,18 @@ export default function NotificationsPage() {
   const { items, error, loading, loadingMore, hasMore, loadMore, reload } =
     useCursorList<Notification>(notificationsPath);
 
-  // The unread rows loaded so far, as one key, so a later page marks its own rows.
+  // The unread rows loaded so far, as one key, so a later page marks its own rows. Each id is
+  // sent once: a second page posts only its own rows.
   const shownUnread = items
     .filter((n) => n.read_at === null)
     .map((n) => n.id)
     .join(",");
+  const marked = useRef(new Set<string>());
   useEffect(() => {
-    if (!shownUnread) return;
-    markNotificationsRead(shownUnread.split(","))
+    const fresh = shownUnread ? shownUnread.split(",").filter((id) => !marked.current.has(id)) : [];
+    if (fresh.length === 0) return;
+    fresh.forEach((id) => marked.current.add(id));
+    markNotificationsRead(fresh)
       .then(refresh)
       .catch(() => {});
   }, [shownUnread, refresh]);

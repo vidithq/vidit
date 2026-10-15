@@ -116,6 +116,24 @@ describe("NotificationsPage", () => {
     });
   });
 
+  it("marks a long unread feed in requests of at most 100 ids, each id once", async () => {
+    const unread = Array.from({ length: 150 }, (_, i) => ({ ...fulfilled, id: `u${i}` }));
+    api.apiFetchPage
+      .mockResolvedValueOnce({ items: unread.slice(0, 100), nextCursor: "c1" })
+      .mockResolvedValueOnce({ items: unread.slice(100), nextCursor: null });
+    render(<NotificationsPage />);
+
+    await waitFor(() => expect(api.refresh).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
+    await waitFor(() => expect(api.refresh).toHaveBeenCalledTimes(2));
+
+    const posted = api.apiFetch.mock.calls
+      .filter(([path]) => path === "/notifications/read")
+      .map(([, init]) => JSON.parse(init.body).ids as string[]);
+    expect(posted.map((ids) => ids.length)).toEqual([100, 50]);
+    expect(new Set(posted.flat()).size).toBe(150);
+  });
+
   it("marks nothing when every row is already read", async () => {
     serve([follower]);
     render(<NotificationsPage />);
