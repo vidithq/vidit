@@ -478,6 +478,7 @@ Every other frontend copy of a backend rule or of the GitHub Project is hand-kep
 | `types/index.ts::MapPoint` 6-tuple | `routers/events/read.py::list_points` tuple order `[id, lat, lng, event_date, added_date, detected]` | every map point mis-decodes |
 | expiry copy on `app/(auth)/forgot-password`, `registration-pending` and `resend-confirmation` (15 minutes, 24 hours) | `config.password_reset_token_minutes`, `registration.CONFIRMATION_TOKEN_MINUTES` | page states the wrong expiry |
 | `@viditbot` in `app/import/page.tsx` and `components/ui/MockPost.tsx` | `config.x_bot_handle` | guide names the wrong handle |
+| `lib/notifications.ts::MAX_READ_IDS` | `schemas/notification.NotificationReadUpdate.ids` (`MAX_PAGE_SIZE`) | marking a long feed read is refused with 422 and its rows stay unread |
 | the last org-admin rule in `components/organizations/OrganizationMembers.tsx` | `organizations._guard_last_admin` | the members list offers Leave or Make member that the server refuses, or hides one it accepts |
 
 ### Migration house style
