@@ -691,6 +691,7 @@ _DOCUMENTED_LIMITS = [
     _Case("post", "/api/v1/admin/maintenance/reap-auth-tokens", 30, "admin"),
     _Case("post", "/api/v1/admin/maintenance/reap-pending-registrations", 30, "admin"),
     _Case("post", "/api/v1/product-updates/unsubscribe?token=not-a-token", 30, "anon"),
+    _Case("post", "/api/v1/notifications/unsubscribe?token=not-a-token", 30, "anon"),
     _Case("get", "/api/v1/admin/product-updates", 120, "admin"),
     _Case("post", "/api/v1/admin/product-updates/preview", 60, "admin", _ANNOUNCEMENT),
     # The probe admin's address is unverified, so every test send is refused.

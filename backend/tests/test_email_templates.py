@@ -178,10 +178,16 @@ def test_password_changed_links_to_the_configured_frontend():
     assert "https://vidit.app" not in message.text
 
 
+_ONE_CLICK = "https://api.example.com/api/v1/notifications/unsubscribe?token=tok"
+
+
 @pytest.mark.parametrize("name", ["request_fulfilled", "new_follower"])
-def test_notification_email_names_the_switch_and_carries_list_unsubscribe(name):
-    message = BUILDERS[name]()
-    assert message.headers == {"List-Unsubscribe": f"<{BASE}/settings>"}
+def test_notification_email_names_the_switch_and_takes_a_one_click_unsubscribe(name):
+    message = email.one_click_unsubscribe(BUILDERS[name](), _ONE_CLICK)
+    assert message.headers == {
+        "List-Unsubscribe": f"<{_ONE_CLICK}>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    }
     assert "notification settings" in message.text
     assert "bo" in message.subject
 
@@ -203,7 +209,7 @@ def test_auth_email_carries_no_list_unsubscribe():
 
 def test_console_provider_prints_both_parts(monkeypatch, capsys):
     monkeypatch.setattr(settings, "email_provider", "console")
-    email.send(BUILDERS["request_fulfilled"]())
+    email.send(email.one_click_unsubscribe(BUILDERS["request_fulfilled"](), _ONE_CLICK))
     out = capsys.readouterr().out
     assert "View the geolocation:" in out
     assert "List-Unsubscribe:" in out
@@ -232,13 +238,13 @@ def test_resend_payload_carries_html_and_headers(monkeypatch):
         return httpx.Response(200, json={"id": "x"})
 
     _resend(monkeypatch, handler)
-    message = BUILDERS["new_follower"]()
+    message = email.one_click_unsubscribe(BUILDERS["new_follower"](), _ONE_CLICK)
     email.send(message)
 
     payload = json.loads(seen[0].content)
     assert payload["html"] == message.html
     assert payload["text"] == message.text
-    assert payload["headers"] == {"List-Unsubscribe": f"<{BASE}/settings>"}
+    assert payload["headers"] == dict(message.headers)
 
 
 def test_resend_refusal_is_a_rejection_and_transport_error_is_not(monkeypatch):

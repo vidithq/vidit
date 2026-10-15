@@ -27,7 +27,10 @@ from app.schemas.preferences import (
     UserPreferencesRead,
     UserPreferencesUpdate,
 )
-from app.services import product_update_consent
+from app.services import product_update_consent, unsubscribe_tokens
+from app.services.unsubscribe_tokens import InvalidUnsubscribeTokenError
+
+_EMAIL_UNSUBSCRIBE_PURPOSE = b"vidit:notification-email-unsubscribe:"
 
 
 def _valid_stored_display(stored: dict[str, Any]) -> dict[str, Any]:
@@ -145,3 +148,25 @@ def update_preferences(
         product_update_consent.withdraw(db, user_id=user.id)
 
     return _build_read(row, product_updates=product_update_consent.has_consent(db, user.id))
+
+
+def email_unsubscribe_token(user_id: uuid.UUID, kind: NotificationKind) -> str:
+    """A token that turns off ``kind`` by email for ``user_id``: the one-click
+    ``List-Unsubscribe`` of a notification email."""
+    return unsubscribe_tokens.sign(_EMAIL_UNSUBSCRIBE_PURPOSE, user_id, kind)
+
+
+def unsubscribe_email(db: Session, token: str) -> None:
+    """Turn off the email switch the token names. Idempotent, and silent for an account that is
+    gone. The caller commits."""
+    user_id, kind = unsubscribe_tokens.verify(_EMAIL_UNSUBSCRIBE_PURPOSE, token)
+    if kind not in NOTIFICATION_KINDS:
+        raise InvalidUnsubscribeTokenError("This unsubscribe link is not valid.")
+    user = db.get(User, user_id)
+    if user is None:
+        return
+    update_preferences(
+        db,
+        user=user,
+        body=UserPreferencesUpdate.model_validate({"notifications": {kind: {"email": False}}}),
+    )

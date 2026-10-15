@@ -33,7 +33,7 @@ from app.models.notification import (
 from app.models.user import User
 from app.services import email, push
 from app.services.notifications import has_verified_email, is_visible
-from app.services.preferences import channel_enabled
+from app.services.preferences import channel_enabled, email_unsubscribe_token
 
 logger = logging.getLogger(__name__)
 
@@ -210,7 +210,12 @@ def _send_email(db: Session, row: NotificationDelivery, recipient: User) -> Deli
     if builder is None:
         logger.warning("notification email %s skipped: no builder for kind %r", row.id, n.kind)
         return "skipped"
-    return send_email(builder(n, recipient.email), what=f"notification email {row.id}")
+    token = email_unsubscribe_token(recipient.id, n.kind)
+    message = email.one_click_unsubscribe(
+        builder(n, recipient.email),
+        f"{settings.api_url.rstrip('/')}/notifications/unsubscribe?token={token}",
+    )
+    return send_email(message, what=f"notification email {row.id}")
 
 
 def send_email(message: email.Email, *, what: str) -> DeliveryOutcome:

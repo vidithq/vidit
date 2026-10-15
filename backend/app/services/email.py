@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Literal
 
@@ -350,7 +350,8 @@ def registration_confirmation_email(*, to: str, link: str) -> Email:
 def _notification_email(
     *, to: str, subject: str, blocks: list[Block], action: Action, setting: str
 ) -> Email:
-    """A notification: what happened, a link to it, and the switch that sent it."""
+    """A notification: what happened, a link to it, and the switch that sent it. The sender adds
+    the one-click unsubscribe of the switch (:func:`one_click_unsubscribe`)."""
     return _compose(
         to=to,
         subject=subject,
@@ -361,7 +362,18 @@ def _notification_email(
             note=f"You get this email because “{setting}” is on. Change it in your "
             f"notification settings: {settings_url()}",
         ),
-        headers={"List-Unsubscribe": f"<{settings_url()}>"},
+    )
+
+
+def one_click_unsubscribe(message: Email, url: str) -> Email:
+    """``message`` with the RFC 8058 headers: a mail client posts ``url`` to unsubscribe."""
+    return replace(
+        message,
+        headers={
+            **message.headers,
+            "List-Unsubscribe": f"<{url}>",
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
     )
 
 
@@ -562,7 +574,7 @@ def product_update_email(
     """A major release announcement. The visible link opens the unsubscribe
     page; the header URL takes the one-click POST of RFC 8058. ``blocks`` are an
     admin's words, so a URL in them is a link."""
-    return _compose(
+    message = _compose(
         to=to,
         subject=f"Vidit {label}: {title}",
         content=Content(
@@ -573,8 +585,5 @@ def product_update_email(
             f"Unsubscribe: {unsubscribe_url}",
             link_blocks=True,
         ),
-        headers={
-            "List-Unsubscribe": f"<{one_click_url}>",
-            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-        },
     )
+    return one_click_unsubscribe(message, one_click_url)
