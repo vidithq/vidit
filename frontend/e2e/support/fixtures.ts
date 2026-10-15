@@ -11,6 +11,7 @@ import type { Collection } from "@/lib/collections";
 import type { UnreadCount } from "@/lib/notifications";
 import type { UserPreferences } from "@/lib/preferences";
 import type { PushConfig } from "@/lib/push";
+import type { XHandleState } from "@/lib/xHandle";
 import type {
   Conflict,
   EventDetail,
@@ -274,6 +275,22 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
 
 /** A deployment that sends no push, so the settings page offers no enable button. */
 export const PUSH_OFF: PushConfig = { public_key: null };
+
+/** A bound handle and a declined change request: the Account card's longest state, with
+ *  the admin's reason printed in full. */
+export const X_HANDLE_WITH_DECLINED_REQUEST: XHandleState = {
+  x_handle: "osint_hawk_2024",
+  request: {
+    id: "7f6d1a52-0000-4000-8000-000000000001",
+    x_handle: "osint_hawk_2025",
+    reason: null,
+    status: "declined",
+    decline_reason:
+      "Post a reply from the new handle that mentions your Vidit username, then send the request again.",
+    created_at: "2026-10-01T10:00:00Z",
+    decided_at: "2026-10-02T09:00:00Z",
+  },
+};
 
 /** Nothing unread, as the sidebar's notification row reads it. */
 export const NO_UNREAD: UnreadCount = { count: 0 };

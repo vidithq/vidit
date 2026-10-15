@@ -278,7 +278,7 @@ erDiagram
     notifications {
         UUID id PK
         UUID user_id FK "the recipient"
-        VARCHAR kind "request_fulfilled | new_follower"
+        VARCHAR kind "one value of NOTIFICATION_KINDS"
         UUID actor_id FK "nullable, who acted"
         UUID event_id FK "nullable, what it concerns"
         TIMESTAMPTZ created_at
@@ -335,6 +335,17 @@ erDiagram
         TIMESTAMPTZ created_at
         TIMESTAMPTZ claimed_at "nullable"
         TIMESTAMPTZ sent_at "nullable"
+    }
+
+    x_handle_requests {
+        UUID id PK
+        UUID user_id FK "UNIQUE, the requester"
+        VARCHAR x_handle "the handle asked for"
+        TEXT reason "nullable"
+        VARCHAR status "pending | declined"
+        TEXT decline_reason "nullable"
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ decided_at "nullable"
     }
 
     user_preferences {
@@ -428,6 +439,7 @@ erDiagram
     users |o--o{ product_updates : "sent_by"
     product_updates ||--o{ product_update_deliveries : "product_update_id"
     users ||--o{ product_update_deliveries : "user_id"
+    users ||--o| x_handle_requests : "user_id"
     users ||--o{ archive_import_jobs : "owner_id"
     events ||--o{ source_archives : "event_id"
 ```
@@ -444,7 +456,7 @@ erDiagram
 | `username` | `VARCHAR(50)` | UNIQUE, NOT NULL |
 | `email` | `VARCHAR(255)` | UNIQUE, nullable. NULL only on legacy credential-less rows; every path that creates an account sets it. |
 | `password_hash` | `VARCHAR(255)` | nullable, on the same legacy rows as `email`. |
-| `x_handle` | `VARCHAR(50)` | UNIQUE, nullable. The X handle the bot attributes mentions to (lowercase, no `@`). The system sets it at registration from an invite-bound handle, or an admin links it through `PATCH /admin/users/{id}/x-handle`. Analysts cannot self-serve this field, and the bot never creates rows for it. It differs from `external_links["x"]`, a display handle the owner sets and nobody verifies. |
+| `x_handle` | `VARCHAR(50)` | UNIQUE, nullable. The X handle the bot attributes mentions to (lowercase, no `@`). The system sets it at registration from an invite-bound handle, or an admin links it through `PATCH /admin/users/{id}/x-handle` or by approving an [`x_handle_requests`](#x_handle_requests) row. Analysts cannot self-serve this field, and the bot never creates rows for it. It differs from `external_links["x"]`, a display handle the owner sets and nobody verifies. |
 | `is_active` | `BOOLEAN` | NOT NULL, default `true` |
 | `is_admin` | `BOOLEAN` | NOT NULL, default `false`. The system flips this to `true` automatically on login or registration if the email matches `ADMIN_EMAILS`. |
 | `email_verified_at` | `TIMESTAMPTZ` | nullable. Written once by the registration confirmation (to `created_at`). Every account the registration flow creates carries it. [Notification email](#notification_deliveries) goes only to an account that carries it, so an older account with NULL here receives none. |
@@ -780,9 +792,9 @@ One thing that happened to an analyst, shown in their feed at [`GET /notificatio
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The recipient. |
-| `kind` | `VARCHAR(40)` | NOT NULL, CHECK in `('request_fulfilled', 'new_follower')` (constraint `ck_notifications_kind_valid`). The kind registry `NOTIFICATION_KINDS` in [`models/notification.py`](../backend/app/models/notification.py) lists the same values with their per-channel defaults. |
-| `actor_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, nullable. Who acted: the fulfiller or the follower. |
-| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, nullable. The event the row concerns; NULL for `new_follower`. |
+| `kind` | `VARCHAR(40)` | NOT NULL, CHECK in `('request_fulfilled', 'new_follower', 'x_handle_request_approved', 'x_handle_request_declined')` (constraint `ck_notifications_kind_valid`). The kind registry `NOTIFICATION_KINDS` in [`models/notification.py`](../backend/app/models/notification.py) lists the same values with their per-channel defaults. |
+| `actor_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, nullable. Who acted: the fulfiller or the follower. NULL on the X handle request outcomes, which name no admin. |
+| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, nullable. The event the row concerns; NULL for every kind except `request_fulfilled`. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()`. Orders the feed. |
 | `read_at` | `TIMESTAMPTZ` | nullable. Set by `POST /notifications/read` on the rows the feed showed; NULL is unread. Read state is per row because `created_at` is stamped at flush: an action that flushes its row and commits after a slow upload would land behind a single read marker already moved past it. |
 
@@ -913,6 +925,25 @@ One analyst's stored preferences, read and written through [`/users/me/preferenc
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, stamped on every write |
 
 A stored value the API no longer accepts, such as a retired kind or palette, reads as its default.
+
+---
+
+### `x_handle_requests`
+
+An analyst's request that an admin bind a new X handle to their account, filed through [`PUT /users/me/x-handle-request`](api.md#put-usersmex-handle-request). An analyst holds at most one row.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `UUID` | PK, default `uuid4()`. A new request replaces the row under a new `id`, so an admin decision names the request the admin read. |
+| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, UNIQUE, NOT NULL. The requester. |
+| `x_handle` | `VARCHAR(50)` | NOT NULL. The handle asked for, normalized like `users.x_handle`. |
+| `reason` | `TEXT` | nullable. The requester's note to the admin. The API caps it at 500 characters. |
+| `status` | `VARCHAR(20)` | NOT NULL, CHECK in `('pending', 'declined')` (constraint `ck_x_handle_requests_status_valid`). |
+| `decline_reason` | `TEXT` | nullable. The admin's reason, shown to the requester in Settings. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
+| `decided_at` | `TIMESTAMPTZ` | nullable. When an admin declined the request. |
+
+`ck_x_handle_requests_decision_stamp` holds `decline_reason` and `decided_at` set exactly when `status` is `declined`. An approval writes `users.x_handle` through `admin.set_user_x_handle` and deletes the row in the same transaction, so no row records an approval; the `x_handle_linked` audit row does.
 
 ---
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { CircleCheck, UserPlus, type LucideIcon } from "lucide-react";
+import { AtSign, CircleCheck, UserPlus, type LucideIcon } from "lucide-react";
 
 import { useUnreadNotifications } from "@/contexts/NotificationsContext";
 import { useCursorList } from "@/hooks/useCursorList";
@@ -25,6 +25,8 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 const KIND_ICON: Record<NotificationKind, LucideIcon> = {
   request_fulfilled: CircleCheck,
   new_follower: UserPlus,
+  x_handle_request_approved: AtSign,
+  x_handle_request_declined: AtSign,
 };
 
 function NotificationRows({ title, rows }: { title: string; rows: Notification[] }) {

@@ -99,6 +99,20 @@ def notify_new_follower(db: Session, *, follower_id: uuid.UUID, followed_id: uui
         _emit(db, recipient_id=followed_id, kind="new_follower", actor_id=follower_id)
 
 
+def notify_x_handle_request_outcome(
+    db: Session, *, recipient_id: uuid.UUID, approved: bool
+) -> None:
+    """Tell ``recipient_id`` that an admin decided their X handle request.
+
+    The row names no actor: the decision is the admins', not one admin's.
+    """
+    _emit(
+        db,
+        recipient_id=recipient_id,
+        kind="x_handle_request_approved" if approved else "x_handle_request_declined",
+    )
+
+
 def _visible_rows(db: Session, user: User) -> Query[Notification]:
     """``user``'s rows whose event and actor a reader may still see."""
     return (

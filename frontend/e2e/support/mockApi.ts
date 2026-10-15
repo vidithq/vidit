@@ -27,6 +27,7 @@ import {
   SECOND_COLLECTED_EVENT_DETAIL,
   SECOND_COLLECTED_EVENT_ID,
   SIGNED_IN_USER,
+  X_HANDLE_WITH_DECLINED_REQUEST,
 } from "./fixtures";
 
 /**
@@ -50,6 +51,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/^\/events\/detections$/, EMPTY_DETECTIONS],
   [/^\/users\/me\/preferences$/, DEFAULT_PREFERENCES],
   [/^\/users\/me\/push-config$/, PUSH_OFF],
+  [/^\/users\/me\/x-handle$/, X_HANDLE_WITH_DECLINED_REQUEST],
   [/^\/notifications\/unread-count$/, NO_UNREAD],
   // The request board's first page. Every pattern here anchors on the whole
   // path, so the bare list, the detection queue above and the event by id

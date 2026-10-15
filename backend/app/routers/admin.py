@@ -28,10 +28,12 @@ from app.schemas.admin import (
 )
 from app.schemas.event import EventVersionRead
 from app.schemas.report import ContentReportList, ContentReportRead, ContentReportUpdate
+from app.schemas.x_handle_request import AdminXHandleRequestRead, XHandleRequestDecline
 from app.services import admin as admin_service
 from app.services import maintenance as maintenance_service
 from app.services import registration as registration_service
 from app.services import reports as reports_service
+from app.services import x_handle_requests
 from app.services.pagination import (
     MAX_PAGE_SIZE,
     decode_cursor,
@@ -48,6 +50,7 @@ _ADMIN_ERROR_STATUS: dict[str, int] = {
     "version_not_found": 404,
     "collection_not_found": 404,
     "x_handle_conflict": 409,
+    "x_handle_request_not_found": 404,
     "invite_code_used": 409,
 }
 
@@ -192,6 +195,55 @@ def set_user_x_handle(
         )
     except admin_service.AdminError as exc:
         _raise_admin_error(exc)
+
+
+@router.get("/x-handle-requests", response_model=list[AdminXHandleRequestRead])
+def list_x_handle_requests(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> list[AdminXHandleRequestRead]:
+    """Pending X handle change requests on live accounts, oldest first."""
+    return [
+        AdminXHandleRequestRead.model_validate(row) for row in x_handle_requests.list_pending(db)
+    ]
+
+
+@router.post("/x-handle-requests/{request_id}/approve", response_model=AdminUserRead)
+@limiter.limit("60/hour")
+def approve_x_handle_request(
+    request: Request,
+    request_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> User:
+    """Bind the requested handle through the X handle write path and notify
+    the analyst. 409 when another account holds the handle."""
+    try:
+        return x_handle_requests.approve(db, actor_id=current_user.id, request_id=request_id)
+    except admin_service.AdminError as exc:
+        _raise_admin_error(exc)
+
+
+@router.post(
+    "/x-handle-requests/{request_id}/decline",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+@limiter.limit("60/hour")
+def decline_x_handle_request(
+    request: Request,
+    request_id: uuid.UUID,
+    body: XHandleRequestDecline,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> Response:
+    """Decline a request with a reason the analyst reads in Settings."""
+    try:
+        x_handle_requests.decline(
+            db, actor_id=current_user.id, request_id=request_id, reason=body.reason
+        )
+    except admin_service.AdminError as exc:
+        _raise_admin_error(exc)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.delete(

@@ -14,6 +14,7 @@ import { OnboardingPanel } from "@/components/admin/OnboardingPanel";
 import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
 import { ManageAnalystsPanel } from "@/components/admin/ManageAnalystsPanel";
 import { ProductUpdatesPanel } from "@/components/admin/ProductUpdatesPanel";
+import { XHandleRequestsPanel } from "@/components/admin/XHandleRequestsPanel";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 
 export default function AdminPage() {
@@ -44,6 +45,7 @@ export default function AdminPage() {
       <DetectionStatsPanel />
       <CatalogueFeedPanel />
       <ManageAnalystsPanel />
+      <XHandleRequestsPanel />
       <ReportsPanel />
       <EventModerationPanel />
       <EventDeletePanel />
