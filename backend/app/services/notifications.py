@@ -267,6 +267,20 @@ def notify_approval_received(
         )
 
 
+def _ever_credited_ids(db: Session, event: Event) -> set[uuid.UUID]:
+    """The analysts who hold or held credit on ``event``: none of them approves it, so none is
+    asked to on an organization's behalf."""
+    current = db.scalars(
+        select(EventGeolocator.user_id).where(EventGeolocator.event_id == event.id)
+    )
+    former = db.scalars(
+        select(EventGeolocatorDeparture.user_id).where(
+            EventGeolocatorDeparture.event_id == event.id
+        )
+    )
+    return {event.owner_id, *current, *former}
+
+
 def notify_review_request_received(
     db: Session,
     *,
@@ -276,8 +290,9 @@ def notify_review_request_received(
     organization_id: uuid.UUID | None = None,
 ) -> None:
     """Tell the target that ``requester_id`` asks them to review ``event``: one analyst, or the
-    org-admins of ``organization_id``."""
-    for recipient_id in recipient_ids:
+    org-admins of ``organization_id`` who never held credit on it."""
+    credited = _ever_credited_ids(db, event) if organization_id is not None else set()
+    for recipient_id in set(recipient_ids) - credited:
         _emit(
             db,
             recipient_id=recipient_id,
@@ -312,7 +327,8 @@ def notify_re_approve_requested(
     db: Session, *, event: Event, editor_id: uuid.UUID, superseded_version: int
 ) -> None:
     """Ask every analyst whose own approval of ``superseded_version`` stood to review the new
-    one, and every live org-admin of an organization whose approval of it stood.
+    one, and every live org-admin outside the event's current and former geolocators of an
+    organization whose approval of it stood.
 
     A revoked approval asks nothing.
     """
@@ -335,6 +351,8 @@ def notify_re_approve_requested(
                 (admin_id, organization_id)
                 for admin_id in db.scalars(live_admin_ids(organization_id))
             )
+    credited = _ever_credited_ids(db, event)
+    recipients = [(r, org) for r, org in recipients if org is None or r not in credited]
     for recipient_id, organization_id in recipients:
         _emit(
             db,

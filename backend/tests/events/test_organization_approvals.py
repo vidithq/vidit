@@ -202,6 +202,38 @@ def test_an_organization_approval_stays_listed_when_its_member_is_banned(
     assert [item["approval"]["reviewer"] for item in listed] == [None]
 
 
+def test_a_new_version_asks_no_org_admin_who_holds_credit(
+    db, author, make_user, make_org, conflict, capture_source_tag
+):
+    acting, co = make_user(), make_user()
+    org = make_org(admins=[acting, co])
+    geo = _published_with_floor(db, author, conflict, capture_source_tag)
+    assert _approve(geo, acting, org).status_code == 201
+    db.add(EventGeolocator(event_id=geo.id, user_id=co.id))
+    db.commit()
+
+    saved = _save_version(geo.id, author, data=_form(conflict, capture_source_tag))
+    assert saved.status_code == 200, saved.text
+    assert len(_rows(db, acting, "re_approve_requested")) == 1
+    assert _rows(db, co, "re_approve_requested") == []
+
+
+def test_org_admins_who_hold_credit_are_not_asked(db, author, make_user, make_org):
+    outsider, co = make_user(), make_user()
+    org = make_org(admins=[outsider, co], audience="everyone")
+    geo = _published(db, author)
+    db.add(EventGeolocator(event_id=geo.id, user_id=co.id))
+    db.commit()
+
+    assert _ask(geo, author, org).status_code == 201
+    asked = (
+        db.query(Notification.user_id)
+        .filter(Notification.kind == "review_request_received", Notification.event_id == geo.id)
+        .all()
+    )
+    assert [user_id for (user_id,) in asked] == [outsider.id]
+
+
 def test_only_an_org_admin_approves_in_its_name(db, author, make_user, make_org):
     admin, member = make_user(), make_user()
     org = make_org(admins=[admin], members=[member])
