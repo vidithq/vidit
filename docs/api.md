@@ -1511,7 +1511,7 @@ Every write locks the event row first, so an approval, a revocation and a new ve
 | `reviewer` | The analyst who approved; for an organization's approval, the org-admin who placed it, or `null` once that account is erased, since the approval stays the organization's |
 | `organization` | The organization the approval speaks for, `null` for an analyst's own approval |
 | `note` | The reviewer's optional note, at most 280 characters; `null` when none was left |
-| `current` | `true` while `version_no` is the live version and the approval is not revoked |
+| `current` | `true` while `version_no` is the live version of a `geolocated` event and the approval is not revoked; a closed event keeps its approvals, none current |
 | `revoked_at`, `revoke_reason` | Both `null` until the approval is revoked, both set after |
 | `revoked_as` | `null` until revoked, then the role that revoked it: `reviewer`, `organization_admin` or `site_admin` |
 

@@ -124,6 +124,8 @@ def ever_credited(db: Session, *, geo: Event, user_id: uuid.UUID) -> bool:
 
 
 def build_read(row: EventApproval, *, live_version: int) -> ApprovalRead:
+    """``current`` holds while the approval covers the live version of a published event: a
+    closed event keeps its approvals readable, none of them current."""
     return ApprovalRead(
         id=row.id,
         version_no=row.version_no,
@@ -136,7 +138,9 @@ def build_read(row: EventApproval, *, live_version: int) -> ApprovalRead:
         ),
         note=row.note,
         created_at=row.created_at,
-        current=row.version_no == live_version and row.revoked_at is None,
+        current=row.version_no == live_version
+        and row.revoked_at is None
+        and row.event.status == STATUS_GEOLOCATED,
         revoked_at=row.revoked_at,
         revoke_reason=row.revoke_reason,
         revoked_as=row.revoked_as,
