@@ -104,6 +104,8 @@ period  # schemas/user.py ActivityBucket (wire field)
 progress_done  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
 progress_total  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
 redacted  # schemas/event.py EventVersionRead (wire field, built in routers/events/_common.py)
+decline_reason  # models/x_handle_request.py + schemas/x_handle_request.py: decline-stamped, wire-read only
+decided_at  # models/x_handle_request.py + schemas/x_handle_request.py: decline-stamped, wire-read only
 # Written by ``services/versions.redact_version``, read by nothing in ``app/``;
 # the readable trail is the ``admin_events`` row the same write files.
 redacted_by_id  # models/event.py EventVersion

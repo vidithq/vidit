@@ -452,6 +452,7 @@ Every other frontend copy of a backend rule or of the GitHub Project is hand-kep
 | `lib/events.ts::snapshotToEventView`, `changedFields`, `hasVersionChanges` | `versions.build_snapshot` fields, `versions.COMPARED_FIELDS` (the snapshot is untyped JSON, so neither codegen nor `tsc` catches a renamed key) | version pages silently blank a field |
 | `lib/events.ts::REPORT_DETAILS_MAX_LEN`, `VERSION_NOTE_MAX_LEN` | `schemas/report.DETAILS_MAX_LENGTH`, `schemas/event.VERSION_NOTE_MAX_LENGTH` | server refuses typed text |
 | `components/profile/useProfileEdit.ts::BIO_MAX_LEN` | `schemas/user.BIO_MAX_LEN` | server refuses typed text |
+| `lib/xHandle.ts::X_HANDLE_REASON_MAX_LEN` | `schemas/x_handle_request.REASON_MAX_LENGTH` | server refuses typed text |
 | `components/ui/TagPicker.tsx::TAG_NAME_MAX_LEN` | `schemas/tag.py` name `max_length` | server refuses typed text |
 | `lib/collections.ts::COLLECTION_TITLE_MAX_LEN`, `COLLECTION_DESCRIPTION_MAX_LEN` | `models/event.TITLE_MAX_LENGTH`, `schemas/collection.DESCRIPTION_MAX_LENGTH` | server refuses typed text |
 | `lib/proof.tsx::htmlText` | `sanitize.html_text` | description counter disagrees with the server cap |

@@ -359,7 +359,8 @@ def test_read_quota_key_rejects_a_forged_token(user):
 # * `/auth/login` writes an `auth_events` row per attempt;
 # * `PATCH /users/me`, `PATCH /users/me/preferences`, `POST /notifications/read` and
 #   `DELETE /users/me/avatar` touch the throwaway `user` row, and
-#   `POST /users/me/push-subscriptions` stores one device it cascades to;
+#   `POST /users/me/push-subscriptions` stores one device it cascades to, and
+#   `PUT /users/me/x-handle-request` files a request that goes with it;
 # * admin actions write `admin_events` rows, `POST /admin/invite-codes`
 #   mints 30 codes and `POST /admin/product-updates` records one announcement;
 # * `POST /collections` opens 30 collections (dropped by the owner cascade);
@@ -551,6 +552,8 @@ _DOCUMENTED_LIMITS = [
     _Case("get", f"{ME}/push-config", 60),
     _Case("post", f"{ME}/push-subscriptions", 30, "user", {"json": _PUSH_SUBSCRIPTION}),
     _Case("delete", f"{ME}/push-subscriptions/{_MISSING_ID}", 30),
+    _Case("get", f"{ME}/x-handle", 120),
+    _Case("put", f"{ME}/x-handle-request", 10, "user", {"json": {"x_handle": "rl_probe"}}),
     _Case("get", "/api/v1/notifications", 120),
     _Case("get", "/api/v1/notifications/unread-count", 120),
     _Case(
@@ -588,6 +591,14 @@ _DOCUMENTED_LIMITS = [
         60,
         "admin",
         {"json": {"x_handle": "someone"}},
+    ),
+    _Case("post", f"/api/v1/admin/x-handle-requests/{_MISSING_ID}/approve", 60, "admin"),
+    _Case(
+        "post",
+        f"/api/v1/admin/x-handle-requests/{_MISSING_ID}/decline",
+        60,
+        "admin",
+        {"json": {"reason": "probe"}},
     ),
     _Case("delete", f"/api/v1/admin/users/{_MISSING_ID}", 30, "admin"),
     _Case("delete", f"/api/v1/admin/users/{_MISSING_ID}/detected-events", 30, "admin"),

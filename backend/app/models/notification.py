@@ -19,7 +19,12 @@ from app.database import Base
 # What happened, one value per emitter. Value-domain source of truth: the ORM
 # column, the Read schemas and the generated frontend type derive from it, and
 # ``ck_notifications_kind_valid`` pins it at the DB (keep the two in step).
-NotificationKind = Literal["request_fulfilled", "new_follower"]
+NotificationKind = Literal[
+    "request_fulfilled",
+    "new_follower",
+    "x_handle_request_approved",
+    "x_handle_request_declined",
+]
 
 # A delivery channel besides the in-app feed, which is always on.
 # ``ck_notification_deliveries_channel_valid`` pins it at the DB.
@@ -32,6 +37,8 @@ NotificationChannel = Literal["email", "push"]
 NOTIFICATION_KINDS: dict[NotificationKind, dict[NotificationChannel, bool]] = {
     "request_fulfilled": {"email": True, "push": True},
     "new_follower": {"email": False, "push": False},
+    "x_handle_request_approved": {"email": True, "push": True},
+    "x_handle_request_declined": {"email": True, "push": True},
 }
 assert set(NOTIFICATION_KINDS) == set(get_args(NotificationKind))
 
@@ -75,7 +82,8 @@ class Notification(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('request_fulfilled', 'new_follower')",
+            "kind IN ('request_fulfilled', 'new_follower', "
+            "'x_handle_request_approved', 'x_handle_request_declined')",
             name="ck_notifications_kind_valid",
         ),
         # The feed walk, newest first per recipient.

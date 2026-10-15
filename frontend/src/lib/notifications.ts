@@ -36,6 +36,14 @@ export const NOTIFICATION_KIND_COPY: Record<
     label: "New follower",
     setting: "Someone follows you.",
   },
+  x_handle_request_approved: {
+    label: "X handle change approved",
+    setting: "An admin links the X handle you requested to your account.",
+  },
+  x_handle_request_declined: {
+    label: "X handle change declined",
+    setting: "An admin declines the X handle you requested.",
+  },
 };
 
 /** The feed row's sentence and destination. */
@@ -51,6 +59,13 @@ export function describeNotification(n: Notification): { text: string; href: str
       return {
         text: `${actor} followed you`,
         href: n.actor ? `/profile/${n.actor.username}` : "/notifications",
+      };
+    case "x_handle_request_approved":
+      return { text: "An admin linked the X handle you requested", href: "/settings" };
+    case "x_handle_request_declined":
+      return {
+        text: "An admin declined your X handle request. Settings shows why.",
+        href: "/settings",
       };
   }
 }

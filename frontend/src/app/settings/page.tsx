@@ -5,6 +5,7 @@ import { apiFetch } from "@/lib/api";
 import { PASSWORD_MAX_BYTES, PASSWORD_MIN_LENGTH, validatePasswordChange } from "@/lib/auth";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { AccountXHandle } from "@/components/settings/AccountXHandle";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -236,6 +237,7 @@ export default function SettingsPage() {
               </p>
             </div>
           </div>
+          <AccountXHandle />
         </Card>
 
         <Card>
