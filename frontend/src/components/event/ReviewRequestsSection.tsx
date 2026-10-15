@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import type { EventDetail } from "@/types";
 import { useAuth } from "@/contexts/AuthContext";
-import { useAdministeredOrganizations } from "@/hooks/useAdministeredOrganizations";
+import { useManagedOrganizations } from "@/hooks/useManagedOrganizations";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import { useMutation } from "@/hooks/useMutation";
@@ -104,7 +104,7 @@ function targetOptions(targets: ReviewRequestTargets | null): TargetOption[] {
   ];
 }
 
-/** The geolocator's picker: analysts who follow the reader, organizations an org-admin of which
+/** The geolocator's picker: analysts who follow the reader, organizations an org manager of which
  *  follows them, and an exact username or slug, whose request may still be refused. */
 function RequestReviewForm({ eventId, onSent }: { eventId: string; onSent: () => void }) {
   const [query, setQuery] = useState("");
@@ -156,7 +156,7 @@ function RequestReviewForm({ eventId, onSent }: { eventId: string; onSent: () =>
         targets.data && (
           <p className="text-xs text-neutral-500">
             No analyst or organization to suggest. Suggestions are analysts who follow you and
-            organizations whose org-admins follow you. Type an exact username or slug to ask
+            organizations whose org managers follow you. Type an exact username or slug to ask
             someone else.
           </p>
         )
@@ -178,7 +178,7 @@ function RequestReviewForm({ eventId, onSent }: { eventId: string; onSent: () =>
 
 /**
  * Review requests on a published event. A geolocator sees the open requests and asks an analyst
- * or an organization to review the live version; an analyst asked, or an org-admin of an
+ * or an organization to review the live version; an analyst asked, or an org manager of an
  * organization asked, sees the request and can decline it, or approve from the Approvals card.
  * `refreshKey` changes when an approval elsewhere on the page may have resolved a request.
  */
@@ -190,7 +190,7 @@ export function ReviewRequestsSection({
   refreshKey: number;
 }) {
   const { user } = useAuth();
-  const administered = useAdministeredOrganizations();
+  const managed = useManagedOrganizations();
   const geolocator = canRequestReview(event, user?.id);
   const requests = useApiResource<ReviewRequest[]>(
     user && event.status === "geolocated" ? reviewRequestsPath(event.id) : null,
@@ -204,7 +204,7 @@ export function ReviewRequestsSection({
   const rows = requests.data ?? [];
   const mine = rows.filter((r) =>
     r.target_organization
-      ? administered.some((o) => o.slug === r.target_organization?.slug)
+      ? managed.some((o) => o.slug === r.target_organization?.slug)
       : r.target?.id === user?.id,
   );
   if (!geolocator && mine.length === 0) return null;

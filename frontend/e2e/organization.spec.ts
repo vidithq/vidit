@@ -5,7 +5,7 @@ import { grantSession, mockApi } from "./support/mockApi";
 import { expectNarrowViewportLayout } from "./support/narrowLayout";
 
 /**
- * The organization page as its org-admin reads it: the header, the member rows
+ * The organization page as its org manager reads it: the header, the member rows
  * with their role controls, the approvals in its name, its review requests
  * with the audience control, and the invite picker. A long name, a long
  * username and a bio carrying a URL are the content that would push a phone
@@ -19,8 +19,8 @@ test.describe("organization", () => {
 
     const invite = page.getByRole("button", { name: "Invite" });
     await expectNarrowViewportLayout(page, invite);
-    await expect(page.getByRole("button", { name: "Make org-admin" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Make org manager" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Decline" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "People our org-admins follow" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "People our org managers follow" })).toBeVisible();
   });
 });

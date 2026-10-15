@@ -20,7 +20,7 @@ export type OrganizationRef = components["schemas"]["OrganizationRef"];
 export const ADMIN_ORGANIZATIONS_PATH = "/admin/organizations";
 
 export const ROLE_LABEL: Record<OrganizationRole, string> = {
-  admin: "Org-admin",
+  manager: "Org manager",
   member: "Member",
 };
 
@@ -118,11 +118,11 @@ export function removeOrganizationMember(slug: string, username: string): Promis
   );
 }
 
-/** A site admin makes the live analyst `username` an org-admin of the organization, joining it
+/** A site admin makes the live analyst `username` an org manager of the organization, joining it
  *  if needed: the way back for an organization left without one. */
-export function appointOrganizationAdmin(slug: string, username: string): Promise<OrganizationMember> {
+export function appointOrganizationManager(slug: string, username: string): Promise<OrganizationMember> {
   return apiFetch<OrganizationMember>(
-    `${ADMIN_ORGANIZATIONS_PATH}/${encodeURIComponent(slug)}/admins`,
+    `${ADMIN_ORGANIZATIONS_PATH}/${encodeURIComponent(slug)}/managers`,
     { method: "POST", body: JSON.stringify({ username }) },
   );
 }

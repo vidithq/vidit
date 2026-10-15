@@ -114,7 +114,7 @@ const COLLECTIONS: CollectionPage = {
 const MEMBERSHIPS: OrganizationMembership[] = [
   {
     organization: { slug: "osw", name: "Open Source Watch", avatar_url: null },
-    role: "admin",
+    role: "manager",
     joined_at: "2026-06-03T09:00:00Z",
   },
 ];

@@ -10,28 +10,28 @@ vi.mock("@/lib/api", () => ({
 
 import { OrganizationsPanel } from "./OrganizationsPanel";
 
-const row = (slug: string, admins: number) => ({
+const row = (slug: string, managers: number) => ({
   slug,
   name: slug.toUpperCase(),
-  member_count: admins,
-  admin_count: admins,
+  member_count: managers,
+  manager_count: managers,
   created_at: "2026-10-01T00:00:00Z",
 });
 
 describe("<OrganizationsPanel>", () => {
-  it("offers to name an org-admin on an organization flagged without one only", async () => {
+  it("offers to name an org manager on an organization flagged without one only", async () => {
     api.apiFetch.mockImplementation((path: string) =>
       Promise.resolve(path === "/admin/organizations" ? [row("orphan", 0), row("osw", 1)] : {}),
     );
     render(<OrganizationsPanel />);
 
-    const field = await screen.findByLabelText("New org-admin of orphan (username)");
-    expect(screen.queryByLabelText("New org-admin of osw (username)")).toBeNull();
+    const field = await screen.findByLabelText("New org manager of orphan (username)");
+    expect(screen.queryByLabelText("New org manager of osw (username)")).toBeNull();
     fireEvent.change(field, { target: { value: "ana" } });
-    fireEvent.click(screen.getByRole("button", { name: "Name org-admin" }));
+    fireEvent.click(screen.getByRole("button", { name: "Name org manager" }));
 
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/admin/organizations/orphan/admins", {
+      expect(api.apiFetch).toHaveBeenCalledWith("/admin/organizations/orphan/managers", {
         method: "POST",
         body: JSON.stringify({ username: "ana" }),
       }),

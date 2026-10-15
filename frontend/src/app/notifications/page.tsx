@@ -49,7 +49,7 @@ const KIND_ICON: Record<NotificationKind, LucideIcon> = {
   ownership_transferred: ArrowRightLeft,
   organization_invite: Building2,
   organization_invite_accepted: UserCheck,
-  organization_admin_inherited: ShieldCheck,
+  organization_manager_inherited: ShieldCheck,
   re_approve_requested: RefreshCw,
   approval_received: BadgeCheck,
   review_request_received: ClipboardCheck,

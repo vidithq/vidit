@@ -76,19 +76,19 @@ export const NOTIFICATION_KIND_COPY: Record<
   },
   organization_invite: {
     label: "Organization invite",
-    setting: "An org-admin invites you to join an organization.",
+    setting: "An org manager invites you to join an organization.",
   },
   organization_invite_accepted: {
     label: "Invite accepted",
     setting: "Someone accepts your invite to an organization.",
   },
-  organization_admin_inherited: {
-    label: "Now org-admin",
-    setting: "You become an org-admin because the last one left Vidit.",
+  organization_manager_inherited: {
+    label: "Now org manager",
+    setting: "You become an org manager because the last one left Vidit.",
   },
   re_approve_requested: {
     label: "New version to approve",
-    setting: "A geolocation you, or an organization you administer, approved gets a new version.",
+    setting: "A geolocation you, or an organization you manage, approved gets a new version.",
   },
   approval_received: {
     label: "Approval received",
@@ -96,7 +96,7 @@ export const NOTIFICATION_KIND_COPY: Record<
   },
   review_request_received: {
     label: "Review request",
-    setting: "Someone asks you, or an organization you administer, to review their geolocation.",
+    setting: "Someone asks you, or an organization you manage, to review their geolocation.",
   },
   review_request_declined: {
     label: "Review request declined",
@@ -153,9 +153,9 @@ export function describeNotification(n: Notification): { text: string; href: str
         text: `${actor} joined ${organization}`,
         href: n.organization ? organizationPath(n.organization.slug) : "/notifications",
       };
-    case "organization_admin_inherited":
+    case "organization_manager_inherited":
       return {
-        text: `You are now an org-admin of ${organization}`,
+        text: `You are now an org manager of ${organization}`,
         href: n.organization ? organizationPath(n.organization.slug) : "/notifications",
       };
     // The four kinds below name an organization when the approval or the request is one.
