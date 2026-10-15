@@ -88,12 +88,12 @@ const OPEN_REQUEST = {
   },
 };
 
-function serve(org: Organization) {
+function serve(org: Organization, members: OrganizationMember[] = MEMBERS) {
   const refetch = vi.fn();
   useApiResource.mockImplementation((path: string | null) => {
     if (path === "/organizations/osw") return { data: org, error: null, loading: false, refetch };
     if (path === "/organizations/osw/members") {
-      return { data: MEMBERS, error: null, loading: false, refetch };
+      return { data: members, error: null, loading: false, refetch };
     }
     if (path === "/organizations/osw/review-requests") {
       return { data: [OPEN_REQUEST], error: null, loading: false, refetch };
@@ -179,11 +179,33 @@ describe("OrganizationPage", () => {
     render(<OrganizationPage />);
 
     expect(screen.getByRole("button", { name: "Make org-admin" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Make member" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remove" })).toBeInTheDocument();
     expect(screen.getByText("Invites")).toBeInTheDocument();
     expect(screen.getByLabelText("Analyst")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Edit profile" })).toBeInTheDocument();
+  });
+
+  it("offers the last org-admin neither leave nor demotion, and says why", () => {
+    signIn("lead");
+    serve({ ...ORG, viewer_role: "admin", viewer_can_manage: true });
+    render(<OrganizationPage />);
+
+    expect(screen.queryByRole("button", { name: "Make member" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Leave" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Why can the last org-admin not leave?" }),
+    ).toBeInTheDocument();
+  });
+
+  it("lets one of two org-admins leave or be demoted", () => {
+    signIn("lead");
+    const second = { ...MEMBERS[1], role: "admin" as const };
+    serve({ ...ORG, viewer_role: "admin", viewer_can_manage: true }, [MEMBERS[0], second]);
+    render(<OrganizationPage />);
+
+    expect(screen.getAllByRole("button", { name: "Make member" })).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Leave" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Why can the last org-admin not leave?" })).toBeNull();
   });
 
   it("gives an org-admin the open review requests and the audience control", async () => {
