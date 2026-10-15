@@ -110,10 +110,14 @@ _BUILDERS: dict[NotificationKind, Callable[[Notification, str], email.Email]] = 
 
 
 def _message(db: Session, row: NotificationDelivery) -> email.Email | None:
-    """The email to send, or None when the row must be skipped: the switch is
-    off, the address is gone or unverified, the recipient is soft-deleted, or
-    the feed would hide the notification."""
+    """The email to send, or None when the row must be skipped: the kind has no
+    email builder, the switch is off, the address is gone or unverified, the
+    recipient is soft-deleted, or the feed would hide the notification."""
     n = row.notification
+    builder = _BUILDERS.get(n.kind)
+    if builder is None:
+        logger.warning("notification email %s skipped: no builder for kind %r", row.id, n.kind)
+        return None
     recipient = db.get(User, n.user_id)
     if (
         recipient is None
@@ -125,10 +129,15 @@ def _message(db: Session, row: NotificationDelivery) -> email.Email | None:
     ):
         return None
     assert recipient.email is not None
-    return _BUILDERS[n.kind](n, recipient.email)
+    return builder(n, recipient.email)
 
 
-def _deliver(db: Session, row: NotificationDelivery) -> None:
+def _count_failure(row: NotificationDelivery) -> None:
+    row.attempts += 1
+    row.status = "failed" if row.attempts >= MAX_ATTEMPTS else "queued"
+
+
+def _attempt(db: Session, row: NotificationDelivery) -> None:
     message = _message(db, row)
     if message is None:
         row.status = "skipped"
@@ -137,8 +146,7 @@ def _deliver(db: Session, row: NotificationDelivery) -> None:
     try:
         email.send(message)
     except email.EmailRejectedError as exc:
-        row.attempts += 1
-        row.status = "failed" if row.attempts >= MAX_ATTEMPTS else "queued"
+        _count_failure(row)
         db.commit()
         logger.warning("notification email %s refused: %s", row.id, exc)
         return
@@ -149,6 +157,21 @@ def _deliver(db: Session, row: NotificationDelivery) -> None:
     row.status = "sent"
     row.sent_at = datetime.now(UTC)
     db.commit()
+
+
+def _deliver(db: Session, row: NotificationDelivery) -> None:
+    """Attempt one row. Any other error counts as a refusal, so one bad row
+    never stops the drain."""
+    row_id = row.id
+    try:
+        _attempt(db, row)
+    except Exception:  # noqa: BLE001
+        logger.exception("notification email %s raised", row_id)
+        db.rollback()
+        fresh = db.get(NotificationDelivery, row_id)
+        if fresh is not None:
+            _count_failure(fresh)
+            db.commit()
 
 
 def drain(db: Session) -> int:

@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.config import settings
-from app.models.notification import Notification, NotificationDelivery
+from app.models.notification import NOTIFICATION_KINDS, Notification, NotificationDelivery
 from app.models.user import User
 from app.models.user_preferences import UserPreferences
 from app.services import email, notification_delivery
@@ -251,3 +251,60 @@ def test_a_row_queued_too_long_is_skipped(
 
     assert _deliveries(db, author)[0].status == "skipped"
     assert [m for m in outbox if m.to == author.email] == []
+
+
+def test_every_kind_that_can_email_has_a_builder():
+    """A kind an analyst can switch on for email needs an email to send."""
+    emailable = {kind for kind, channels in NOTIFICATION_KINDS.items() if "email" in channels}
+    assert emailable - set(notification_delivery._BUILDERS) == set()
+
+
+def _two_queued_rows(db, author, second_user, admin_user, conflict, tag) -> None:
+    """A request_fulfilled row for ``author``, then a new_follower row for ``second_user``."""
+    _verify(db, author, second_user)
+    _fulfil(db, author, second_user, conflict, tag)
+    db.add(
+        UserPreferences(
+            user_id=second_user.id, notification_overrides={"new_follower": {"email": True}}
+        )
+    )
+    db.commit()
+    headers = login_as(client, admin_user)
+    response = client.post(f"/api/v1/users/{second_user.username}/follow", headers=headers)
+    assert response.status_code == 204, response.text
+
+
+def test_a_kind_without_a_builder_is_skipped_and_the_drain_goes_on(
+    db, author, second_user, admin_user, conflict, capture_source_tag, outbox, monkeypatch
+):
+    _two_queued_rows(db, author, second_user, admin_user, conflict, capture_source_tag)
+    builders = dict(notification_delivery._BUILDERS)
+    del builders["request_fulfilled"]
+    monkeypatch.setattr(notification_delivery, "_BUILDERS", builders)
+
+    notification_delivery.drain(db)
+
+    assert [r.status for r in _deliveries(db, author)] == ["skipped"]
+    assert [r.status for r in _deliveries(db, second_user)] == ["sent"]
+    assert [m.to for m in outbox] == [second_user.email]
+
+
+def test_a_row_that_raises_is_retried_and_the_drain_goes_on(
+    db, author, second_user, admin_user, conflict, capture_source_tag, outbox, monkeypatch
+):
+    _two_queued_rows(db, author, second_user, admin_user, conflict, capture_source_tag)
+
+    def _broken(_n: Notification, _to: str) -> email.Email:
+        raise RuntimeError("builder bug")
+
+    monkeypatch.setattr(
+        notification_delivery,
+        "_BUILDERS",
+        {**notification_delivery._BUILDERS, "request_fulfilled": _broken},
+    )
+
+    notification_delivery.drain(db)
+
+    [row] = _deliveries(db, author)
+    assert (row.status, row.attempts) == ("queued", 1)
+    assert [r.status for r in _deliveries(db, second_user)] == ["sent"]
