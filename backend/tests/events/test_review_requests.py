@@ -435,6 +435,25 @@ def outbox(monkeypatch) -> list[email.Email]:
     return sent
 
 
+@pytest.mark.parametrize("departure", ["left", "removed"])
+def test_losing_credit_drops_the_requests_the_analyst_sent(db, author, make_user, departure):
+    geo = _published(db, author)
+    co = make_user()
+    db.add(EventGeolocator(event_id=geo.id, user_id=co.id))
+    db.commit()
+    target = make_user(audience="everyone")
+    assert _request(geo, co, target).status_code == 201
+    assert _request(geo, author, target).status_code == 201
+
+    leaver = co if departure == "left" else author
+    response = client.delete(
+        f"{_EVENTS}/{geo.id}/geolocators/{co.username}", headers=login_as(client, leaver)
+    )
+    assert response.status_code == 204, response.text
+
+    assert [r["requester"]["username"] for r in _open(geo, target)] == [author.username]
+
+
 def test_a_request_emails_the_target_and_a_decline_emails_only_on_opt_in(
     db, author, make_user, outbox
 ):
