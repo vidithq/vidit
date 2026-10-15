@@ -161,6 +161,16 @@ def test_cors_origin_regex_custom_localhost_substring_kept_on_remote_db(monkeypa
     assert settings.effective_cors_origin_regex == r"^https://localhost-preview\.vidit\.app$"
 
 
+@pytest.mark.parametrize("present", ["VAPID_PRIVATE_KEY", "VAPID_SUBJECT"])
+def test_half_configured_vapid_fails(monkeypatch, present):
+    _clear_storage_env(monkeypatch)
+    for var in ("VAPID_PRIVATE_KEY", "VAPID_SUBJECT"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv(present, "set")
+    with pytest.raises(ValidationError, match="VAPID_PRIVATE_KEY and VAPID_SUBJECT"):
+        Settings()
+
+
 def _clear_storage_env(monkeypatch):
     for var in ("STORAGE_BACKEND", "AWS_REGION", "S3_BUCKET", "CLOUDFRONT_DOMAIN"):
         monkeypatch.delenv(var, raising=False)

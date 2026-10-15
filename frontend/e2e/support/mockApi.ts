@@ -20,6 +20,7 @@ import {
   EVENT,
   EVENT_ID,
   NO_UNREAD,
+  PUSH_OFF,
   ONE_PIXEL_PNG,
   REQUESTED_EVENT,
   SECOND_COLLECTED_EVENT,
@@ -48,6 +49,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/^\/admin\/me$/, { is_admin: false }],
   [/^\/events\/detections$/, EMPTY_DETECTIONS],
   [/^\/users\/me\/preferences$/, DEFAULT_PREFERENCES],
+  [/^\/users\/me\/push-config$/, PUSH_OFF],
   [/^\/notifications\/unread-count$/, NO_UNREAD],
   // The request board's first page. Every pattern here anchors on the whole
   // path, so the bare list, the detection queue above and the event by id

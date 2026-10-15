@@ -98,7 +98,9 @@ export const config = {
   // Every request except Next.js internals and well-known static assets. Icon, apple-icon and
   // manifest stay public (an auth redirect on a favicon makes the tab fall back to a stub
   // icon). `maplibre-gl/` is the map's web worker: behind the wall it would get the login page
-  // and the map renders blank. `opengraph-image` / `twitter-image` metadata routes are fetched
+  // and the map renders blank. `sw.js` is the push service worker: a redirect on its script
+  // fails the registration and every later update check.
+  // `opengraph-image` / `twitter-image` metadata routes are fetched
   // unauthenticated by social crawlers, so they bypass the wall too.
   //
   // The lookahead is anchored at the path start, so it only excludes root-level cards.
@@ -106,6 +108,6 @@ export const config = {
   // `/about`); moving one of those behind auth breaks its social card, so widen the matcher
   // (e.g. `.*opengraph-image`) then.
   matcher: [
-    "/((?!_next|favicon.ico|icon|apple-icon|manifest.webmanifest|maplibre-gl/|robots.txt|sitemap.xml|opengraph-image|twitter-image).*)",
+    "/((?!_next|favicon.ico|icon|apple-icon|manifest.webmanifest|maplibre-gl/|sw.js|robots.txt|sitemap.xml|opengraph-image|twitter-image).*)",
   ],
 };

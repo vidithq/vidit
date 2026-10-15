@@ -34,7 +34,7 @@ flowchart TB
   subgraph sched [Scheduler services, same image, no port]
     direction TB
     worker["`**backend-import-worker**
-    always-on: notification emails, archive_import_jobs, then bot_webhook_events`"]:::shared
+    always-on: notification deliveries, archive_import_jobs, then bot_webhook_events`"]:::shared
     bot["`**backend-x-bot**
     hourly: run_bot.py reconciles the mentions timeline`"]:::shared
     conf["`**backend-conflicts**
@@ -294,7 +294,7 @@ flowchart LR
 
 **The sender.** `EMAIL_PROVIDER=console` prints the headers, the text part and then the HTML part to stdout, so local development needs no provider. `EMAIL_PROVIDER=resend` posts both parts and any headers to Resend. `send` raises `EmailRejectedError` when the provider answers with a refusal, and its parent `EmailSendError` when the outcome is unknown, such as a timeout. Every caller catches the error, so a provider outage never fails the action that sent the email.
 
-**The notification queue.** The transaction that writes a [notification](api.md#notifications) also writes one [`notification_deliveries`](data-model.md#notification_deliveries) row when the recipient's email switch for that kind is on and their address carries `email_verified_at`. The worker's [`drain`](../backend/app/services/notification_delivery.py) runs at the start of each pass:
+**The notification queue.** The transaction that writes a [notification](api.md#notifications) also writes one [`notification_deliveries`](data-model.md#notification_deliveries) row per channel: an `email` row when the recipient's email switch for that kind is on and their address carries `email_verified_at`, and a `push` row as [Web Push](#web-push) describes. The worker's [`drain`](../backend/app/services/notification_delivery.py) runs at the start of each pass, one channel after the other, and hands each row to its channel's sender. For email:
 
 1. It marks a row `failed` after an hour in `sending`, and `skipped` after 48 hours in `queued`, so a crash never sends one message twice and a backlog never sends old news.
 2. It stops when the notification emails sent in the trailing 24 hours reach `NOTIFICATION_EMAIL_DAILY_CAP` (default 50). It passes over a recipient who reached `NOTIFICATION_EMAIL_DAILY_CAP_PER_USER` (default 10). Rows over a cap stay queued.
@@ -303,6 +303,65 @@ flowchart LR
 5. It sets the row `sent` on success. A refusal puts the row back in `queued` for another try after 5 minutes, and the third refusal sets it `failed`. An unknown outcome leaves it `sending` until it goes stale.
 
 The caps keep notification email inside the provider's daily quota, 100 emails on the Resend free tier, with room for the auth emails, which are sent inline and never counted. Each notification email links to the item, names the switch that sent it, links to Settings, and carries a `List-Unsubscribe` header pointing at Settings.
+
+### Web Push
+
+A notification reaches a browser or an installed app through Web Push. Push rows share the notification queue with email and the same claim, retry and stale rules. A push has no daily cap, and one row fans out to every device of the recipient.
+
+```mermaid
+flowchart LR
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`the browser`"]:::spec
+    l2["`an API or worker step`"]:::shared
+    l3["`the push sender`"]:::core
+    l4[("`a store`")]:::store
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
+  end
+
+  settings["`**Settings: Enable on this device**
+  permission, registers sw.js, subscribes with the VAPID public key`"]:::spec
+  register["`**POST /users/me/push-subscriptions**
+  endpoint allowlist, upsert on endpoint`"]:::shared
+  subs[("`**push_subscriptions**
+  one row per device`")]:::store
+  emit["`**notifications._emit**
+  a push row when the switch is on and a device exists`"]:::shared
+  queue[("`**notification_deliveries**
+  channel push`")]:::store
+  drain["`**notification_delivery.drain**
+  re-checks the switch and the filter`"]:::shared
+  send["`**push.send**
+  encrypts and signs per device, deletes a device on 404 or 410`"]:::core
+  service["`**browser push service**
+  relays the encrypted payload`"]:::spec
+  sw["`**public/sw.js**
+  shows the notification, opens the path on click`"]:::spec
+
+  settings --> register --> subs
+  emit --> queue --> drain --> send
+  subs --> send --> service --> sw
+```
+
+**Registering a device.** The Notifications card in Settings asks the browser for the notification permission, registers [`public/sw.js`](../frontend/public/sw.js), subscribes with the key from `GET /users/me/push-config`, and posts the subscription ([`lib/push.ts`](../frontend/src/lib/push.ts)). The API accepts an endpoint only on a browser push service host, so the worker never posts to an address an analyst picked. On iPhone and iPad, a browser tab has no Push API: push works only for the site added to the Home Screen, and the card says so.
+
+**The service worker.** `sw.js` handles `push` and `notificationclick` only. It registers no `fetch` handler and opens no cache, so it never serves a page or intercepts a request, and it leaves the Next.js dev server untouched. A click focuses an open Vidit window and navigates it to the payload's path, or opens one. A path that is not an app path opens the feed instead. The `proxy.ts` matcher skips `/sw.js`, so the browser gets the script and not the login page.
+
+**Sending.** For a `push` row, the drain calls [`services/push.send`](../backend/app/services/push.py), which posts to every device of the recipient through `pywebpush`. The library encrypts the payload for the device's keys and signs the request with the VAPID private key. The payload carries a title, a short body and an app path. The push service holds it for 24 hours at most. A 404 or 410 answer deletes that device. The row outcome follows the devices:
+
+1. `sent` when any device's push service accepted the push.
+2. Left `sending` when no device accepted it and a request to one of them failed in transit, since that push may have gone out.
+3. Back to `queued` for a retry when the push services refused it, so a retry never repeats a push a device already shows.
+4. `skipped` when no device is left, or when push is off on the deployment.
+
+A device endpoint is a bearer URL. A failure is logged by device id, status and exception class only, never with the endpoint or the exception message.
+
+**Configuration.** `VAPID_PRIVATE_KEY` is the base64url raw P-256 private key, and `VAPID_SUBJECT` a `mailto:` or `https:` contact for the push services. The public key derives from the private key. Set both or neither, on the API (it serves the public key) and on the import worker (it sends): neither turns push off, and `config.py` refuses to start with one alone. Generate a key pair for local development with `npx -y web-push generate-vapid-keys` and put its private key in `backend/.env`. Never commit a key.
 
 ### Hand-kept mirrors
 
@@ -340,6 +399,7 @@ Every other frontend copy of a backend rule or of the GitHub Project is hand-kep
 | `lib/palette.ts::DEFAULT_PALETTE`, `lib/theme.ts::DEFAULT_THEME`, `lib/helpPreference.ts` (help shown when unset) | `schemas/preferences.DISPLAY_DEFAULTS` | first paint on a new device differs from the account's default until the preferences load |
 | `lib/palette.ts::PALETTES`, `lib/theme.ts::isThemeId` and the `data-palette` / `data-theme` blocks in `app/globals.css` | `schemas/preferences.PaletteId`, `ThemeId` (the id types are generated; the lists and CSS are not) | Settings offers no control for a value the API accepts, or the value repaints nothing |
 | the default `orange-*` scale in `app/globals.css`, the `/icon/android-192` route of `app/icon.tsx` | `services/email_layout.py` accent hex and `_LOGO_PATH` | emails wear another accent than the site, or show a broken header image |
+| `public/sw.js` payload fields `title`, `body`, `path` | `push.PushMessage` | push notifications show the fallback title or open the feed |
 | `lib/users.ts::SOCIAL_HOSTS`, `SOCIAL_HANDLE_PATTERN` | `schemas/user.SOCIAL_PROFILE_HOSTS`, `SOCIAL_HANDLE_PATTERNS` | profile links the wrong host or hides an accepted handle |
 | `lib/snapshots.ts::SNAPSHOT_HOSTS` | keys of `source_archive.PROVIDER_HOSTS` | pre-submit check disagrees with the server, and a snapshot host asks before it opens |
 | `lib/snapshots.ts` hosts and capture-path patterns | `source_archive._WAYBACK_REPLAY_RE`, `_ARCHIVE_TODAY_CAPTURE_RE`, `PROVIDER_HOSTS` | mis-paste check silently matches nothing |
@@ -399,6 +459,8 @@ Each service has its own `.env` (not committed):
 
 - `backend/.env`: `DATABASE_URL`, `JWT_SECRET`, `STORAGE_BACKEND` (`local` or `s3`), `S3_BUCKET`, `AWS_REGION`, `CLOUDFRONT_DOMAIN`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `CORS_ORIGINS`. Full list in `backend/.env.example`.
 - `frontend/.env.local`: `NEXT_PUBLIC_API_URL`. Full list in `frontend/.env.local.example`.
+
+Set `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` in `backend/.env` to send push notifications locally ([Web Push](#web-push) has the key generation step). Leave both unset to run without push.
 
 Set `REPORT_NOTIFY_EMAIL` in `backend/.env` to receive one email per content report a viewer files. The message names the reason and links to both the admin console and the reported event. Leave it unset to record reports without sending mail. The admin report queue holds every report either way.
 
@@ -555,7 +617,7 @@ The three services in the table above are built from the backend image with Root
 
 All three take `DATABASE_URL=${{backend.DATABASE_URL}}` and `JWT_SECRET=${{backend.JWT_SECRET}}`, because [`config.py`](../backend/app/config.py)'s boot check refuses the placeholder secret against a non-local database. Set `SENTRY_DSN` on each so a failure pages instead of sitting in the logs.
 
-**`backend-import-worker`**, always-on, no exposed port. Start command `uv run python scripts/run_import_worker.py`. It also takes the storage variables (`STORAGE_BACKEND`, `S3_BUCKET`, `AWS_*`) and email variables (`EMAIL_*`, `RESEND_API_KEY`, `FRONTEND_URL`) the API takes, plus the six `X_*` credentials and the two reply caps, `BOT_MAX_REPLIES_PER_HOUR` and `BOT_MAX_REPLIES_PER_AUTHOR_PER_HOUR`, since it posts the webhook path's bot replies, and the two notification email caps, `NOTIFICATION_EMAIL_DAILY_CAP` and `NOTIFICATION_EMAIL_DAILY_CAP_PER_USER`. What it drains: the [notification email queue](#email) first, then the jobs and mentions in [`ingestion.md`](ingestion.md#archive-import-worker).
+**`backend-import-worker`**, always-on, no exposed port. Start command `uv run python scripts/run_import_worker.py`. It also takes the storage variables (`STORAGE_BACKEND`, `S3_BUCKET`, `AWS_*`) and email variables (`EMAIL_*`, `RESEND_API_KEY`, `FRONTEND_URL`) the API takes, plus the six `X_*` credentials and the two reply caps, `BOT_MAX_REPLIES_PER_HOUR` and `BOT_MAX_REPLIES_PER_AUTHOR_PER_HOUR`, since it posts the webhook path's bot replies, the two notification email caps, `NOTIFICATION_EMAIL_DAILY_CAP` and `NOTIFICATION_EMAIL_DAILY_CAP_PER_USER`, and the push key pair, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT`. What it drains: the [notification queue](#email) first, then the jobs and mentions in [`ingestion.md`](ingestion.md#archive-import-worker).
 
 **`backend-x-bot`**, cron `0 * * * *`, since the webhook owns latency and the cron only reconciles. Start command `uv run python scripts/run_bot.py`. It also takes the six `X_*` credentials, the two `BOT_MAX_REPLIES_*` caps, and `X_WEBHOOK_ENABLED` (see `backend/.env.example`): a bearer token and bot user ID to read, and the four OAuth 1.0a values to post. Without the OAuth values, the bot processes mentions but posts nothing. The process makes one pass, then exits; a failed mentions pull exits non-zero. A missed run is harmless, because the next pass resumes from the ledger. What it runs: [`ingestion.md`](ingestion.md#the-bot).
 

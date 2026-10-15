@@ -35,10 +35,14 @@ function preferences(requestFulfilledEmail = true): UserPreferences {
     notifications: [
       {
         kind: "request_fulfilled",
-        channels: { email: requestFulfilledEmail },
-        defaults: { email: true },
+        channels: { email: requestFulfilledEmail, push: true },
+        defaults: { email: true, push: true },
       },
-      { kind: "new_follower", channels: { email: false }, defaults: { email: false } },
+      {
+        kind: "new_follower",
+        channels: { email: false, push: false },
+        defaults: { email: false, push: false },
+      },
     ],
   };
 }
@@ -112,6 +116,27 @@ describe("SettingsPage", () => {
     expect(patchBodies()).toEqual([
       { notifications: { request_fulfilled: { email: false } } },
     ]);
+  });
+
+  it("lists one push switch per kind and says what this device can do", async () => {
+    render(<SettingsPage />);
+
+    const follower = await screen.findByRole("switch", { name: "New follower by push" });
+    expect(follower).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("switch", { name: "Request fulfilled by push" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    // jsdom has no Push API.
+    expect(
+      await screen.findByText(/This browser cannot receive push notifications\./),
+    ).toHaveTextContent("add Vidit to the Home Screen");
+    expect(screen.queryByRole("button", { name: "Enable on this device" })).toBeNull();
+
+    fireEvent.click(follower);
+    await waitFor(() =>
+      expect(patchBodies()).toEqual([{ notifications: { new_follower: { push: true } } }]),
+    );
   });
 
   it.each([[[]], [{}], [{ notifications: [{ kind: "retired_kind" }] }]])(

@@ -22,14 +22,16 @@ from app.database import Base
 NotificationKind = Literal["request_fulfilled", "new_follower"]
 
 # A delivery channel besides the in-app feed, which is always on.
-NotificationChannel = Literal["email"]
+# ``ck_notification_deliveries_channel_valid`` pins it at the DB.
+NotificationChannel = Literal["email", "push"]
 
 # The kind registry: every kind with its per-channel default. Analysts store
 # only overrides (``user_preferences.notification_overrides``), so changing a
-# default here moves everyone who never touched that switch.
+# default here moves everyone who never touched that switch. Push mirrors the
+# email default and reaches only an analyst with a registered device.
 NOTIFICATION_KINDS: dict[NotificationKind, dict[NotificationChannel, bool]] = {
-    "request_fulfilled": {"email": True},
-    "new_follower": {"email": False},
+    "request_fulfilled": {"email": True, "push": True},
+    "new_follower": {"email": False, "push": False},
 }
 assert set(NOTIFICATION_KINDS) == set(get_args(NotificationKind))
 
@@ -99,6 +101,13 @@ class Notification(Base):
 NotificationDeliveryStatus = Literal["queued", "sending", "sent", "failed", "skipped"]
 
 
+# What a channel sender reports for one row. ``sent``: the provider took it.
+# ``skipped``: nothing to send it to. ``refused``: a definite refusal, retried.
+# ``unknown``: it may have gone out, so the row stays ``sending`` and is never
+# retried.
+DeliveryOutcome = Literal["sent", "skipped", "refused", "unknown"]
+
+
 class NotificationDelivery(Base):
     """One notification to deliver on one channel, written beside the
     ``Notification`` row when the recipient's switch for that kind is on.
@@ -132,7 +141,9 @@ class NotificationDelivery(Base):
     notification = relationship("Notification")
 
     __table_args__ = (
-        CheckConstraint("channel IN ('email')", name="ck_notification_deliveries_channel_valid"),
+        CheckConstraint(
+            "channel IN ('email', 'push')", name="ck_notification_deliveries_channel_valid"
+        ),
         CheckConstraint(
             "status IN ('queued', 'sending', 'sent', 'failed', 'skipped')",
             name="ck_notification_deliveries_status_valid",

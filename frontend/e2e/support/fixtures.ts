@@ -10,6 +10,7 @@
 import type { Collection } from "@/lib/collections";
 import type { UnreadCount } from "@/lib/notifications";
 import type { UserPreferences } from "@/lib/preferences";
+import type { PushConfig } from "@/lib/push";
 import type {
   Conflict,
   EventDetail,
@@ -259,16 +260,19 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   notifications: [
     {
       kind: "request_fulfilled",
-      channels: { email: true },
-      defaults: { email: true },
+      channels: { email: true, push: true },
+      defaults: { email: true, push: true },
     },
     {
       kind: "new_follower",
-      channels: { email: false },
-      defaults: { email: false },
+      channels: { email: false, push: false },
+      defaults: { email: false, push: false },
     },
   ],
 };
+
+/** A deployment that sends no push, so the settings page offers no enable button. */
+export const PUSH_OFF: PushConfig = { public_key: null };
 
 /** Nothing unread, as the sidebar's notification row reads it. */
 export const NO_UNREAD: UnreadCount = { count: 0 };

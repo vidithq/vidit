@@ -288,12 +288,23 @@ erDiagram
     notification_deliveries {
         UUID id PK
         UUID notification_id FK
-        VARCHAR channel "email"
+        VARCHAR channel "email | push"
         VARCHAR status "queued | sending | sent | failed | skipped"
         INTEGER attempts "provider refusals"
         TIMESTAMPTZ created_at
         TIMESTAMPTZ claimed_at "nullable"
         TIMESTAMPTZ sent_at "nullable"
+    }
+
+    push_subscriptions {
+        UUID id PK
+        UUID user_id FK
+        TEXT endpoint "UNIQUE, bearer URL"
+        VARCHAR p256dh
+        VARCHAR auth
+        VARCHAR user_agent "nullable"
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ last_success_at "nullable"
     }
 
     user_preferences {
@@ -382,6 +393,7 @@ erDiagram
     events |o--o{ notifications : "event_id"
     notifications ||--o{ notification_deliveries : "notification_id"
     users ||--o| user_preferences : "user_id"
+    users ||--o{ push_subscriptions : "user_id"
     users ||--o{ archive_import_jobs : "owner_id"
     events ||--o{ source_archives : "event_id"
 ```
@@ -753,18 +765,18 @@ Every foreign key cascades, so a hard-deleted recipient, actor or event takes it
 
 ### `notification_deliveries`
 
-The email queue for notifications: one row per notification and channel, drained by the always-on worker ([`engineering.md`](engineering.md#email)). The transaction that writes the notification writes this row too, when the recipient's switch for the kind and channel is on and their address carries `email_verified_at`.
+The delivery queue for notifications: one row per notification and channel, drained by the always-on worker ([`engineering.md`](engineering.md#email)). The transaction that writes the notification writes this row too, when the recipient's switch for the kind and channel is on and the recipient can receive on the channel: an address that carries `email_verified_at` for `email`, at least one [`push_subscriptions`](#push_subscriptions) row for `push`.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `notification_id` | `UUID` | FK → `notifications.id` ON DELETE CASCADE, NOT NULL |
-| `channel` | `VARCHAR(20)` | NOT NULL, CHECK in `('email')` (constraint `ck_notification_deliveries_channel_valid`). UNIQUE with `notification_id` (constraint `uq_notification_deliveries_channel`). |
+| `channel` | `VARCHAR(20)` | NOT NULL, CHECK in `('email', 'push')` (constraint `ck_notification_deliveries_channel_valid`). UNIQUE with `notification_id` (constraint `uq_notification_deliveries_channel`). |
 | `status` | `VARCHAR(10)` | NOT NULL, default `queued`, CHECK in `('queued', 'sending', 'sent', 'failed', 'skipped')` (constraint `ck_notification_deliveries_status_valid`). See the lifecycle below. |
 | `attempts` | `INTEGER` | NOT NULL, default `0`. Provider refusals so far. The third sets `failed`. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()`. The claim order, oldest first. A row still `queued` 48 hours after it becomes `skipped`. |
 | `claimed_at` | `TIMESTAMPTZ` | nullable. The latest claim. A row `sending` for an hour past it becomes `failed`. A refused row waits 5 minutes past it before the next claim. |
-| `sent_at` | `TIMESTAMPTZ` | nullable. When the provider accepted the message. The daily caps count `sent` rows by this column. |
+| `sent_at` | `TIMESTAMPTZ` | nullable. When the provider accepted the message. For `push`, when at least one device's push service accepted it. The email daily caps count `sent` email rows by this column. |
 
 Indexes:
 
@@ -777,7 +789,26 @@ Indexes:
 | `sending` | Claimed and committed before the provider call. Never retried: the provider may have accepted it. |
 | `sent` | The provider accepted it |
 | `failed` | Refused three times, or stale in `sending` |
-| `skipped` | Dropped unsent: the switch is off, the address is gone or unverified, the recipient is soft-deleted or inactive, the feed hides the notification, or the row aged out in the queue |
+| `skipped` | Dropped unsent: the switch is off, the address is gone or unverified, no push device is left or push is off on the deployment, the recipient is soft-deleted or inactive, the feed hides the notification, or the row aged out in the queue |
+
+---
+
+### `push_subscriptions`
+
+One browser or installed app an analyst registered for Web Push, through [`POST /users/me/push-subscriptions`](api.md#post-usersmepush-subscriptions). The worker sends each `push` delivery to every row of the recipient ([`engineering.md`](engineering.md#web-push)).
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `UUID` | PK, default `uuid4()` |
+| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. Indexed (`ix_push_subscriptions_user_id`). |
+| `endpoint` | `TEXT` | NOT NULL, UNIQUE (constraint `uq_push_subscriptions_endpoint`). The push service URL. It is a bearer URL: no log line, error report or API response carries it. A browser that registers again under another account moves the row to that account. |
+| `p256dh` | `VARCHAR(128)` | NOT NULL. The browser's base64url P-256 public key, which the payload is encrypted for. |
+| `auth` | `VARCHAR(64)` | NOT NULL. The browser's base64url 16-byte authentication secret. |
+| `user_agent` | `VARCHAR(512)` | nullable. The `User-Agent` of the registering request. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
+| `last_success_at` | `TIMESTAMPTZ` | nullable. The last push the push service accepted. |
+
+The worker deletes a row when its push service answers 404 or 410, the answer for a subscription that is gone for good.
 
 ---
 
