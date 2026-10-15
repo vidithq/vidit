@@ -22,6 +22,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
+- Notification emails get a per-actor cap and a one-click unsubscribe per kind, push devices can be revoked, former geolocators cannot approve, review request refusals reveal no setting, and approving happens only on the event page.
 - When X fails to serve part of a thread, or the coordinate sits above the posts the bot reads, the bot and the post import say the thread was only partly read instead of reporting no coordinate ([#555](https://github.com/vidithq/vidit/pull/555)).
 - Vidit usernames show without `@` everywhere, including bylines, admin panels, page titles and share cards; `@` now marks only X and GitHub handles ([#557](https://github.com/vidithq/vidit/pull/557)).
 
