@@ -26,6 +26,7 @@ from app.main import (
 )
 from app.models.admin_event import AdminEvent
 from app.models.invite_code import InviteCode
+from app.models.product_update import ProductUpdate
 from app.models.tag import Tag
 from app.models.user import User
 from app.ratelimit import (
@@ -92,6 +93,7 @@ def admin_user(db):
     # without FK violations.
     db.expire_all()
     db.query(AdminEvent).filter(AdminEvent.actor_id == user_id).delete()
+    db.query(ProductUpdate).filter(ProductUpdate.sent_by == user_id).delete()
     db.query(InviteCode).filter(InviteCode.used_by == user_id).delete()
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
@@ -358,8 +360,8 @@ def test_read_quota_key_rejects_a_forged_token(user):
 # * `PATCH /users/me`, `PATCH /users/me/preferences`, `POST /notifications/read` and
 #   `DELETE /users/me/avatar` touch the throwaway `user` row, and
 #   `POST /users/me/push-subscriptions` stores one device it cascades to;
-# * admin actions write `admin_events` rows and `POST /admin/invite-codes`
-#   mints 30 codes;
+# * admin actions write `admin_events` rows, `POST /admin/invite-codes`
+#   mints 30 codes and `POST /admin/product-updates` records one announcement;
 # * `POST /collections` opens 30 collections (dropped by the owner cascade);
 # * the `reap-*` cases delete expired `auth_tokens` / `pending_registrations`.
 
@@ -389,6 +391,9 @@ _SUBMIT_FORM = {
 }
 _SUBMIT_FILE = {"files": {"file": ("probe.txt", b"probe", "text/plain")}}
 _GEOLOCATE_FILE = {"files": {"files": ("probe.txt", b"probe", "text/plain")}}
+
+
+_ANNOUNCEMENT = {"json": {"label": "999.0.0", "title": "Probe", "body": "Probe."}}
 
 
 class _Case(NamedTuple):
@@ -604,6 +609,13 @@ _DOCUMENTED_LIMITS = [
     ),
     _Case("post", "/api/v1/admin/maintenance/reap-auth-tokens", 30, "admin"),
     _Case("post", "/api/v1/admin/maintenance/reap-pending-registrations", 30, "admin"),
+    _Case("post", "/api/v1/product-updates/unsubscribe?token=not-a-token", 30, "anon"),
+    _Case("get", "/api/v1/admin/product-updates", 120, "admin"),
+    _Case("post", "/api/v1/admin/product-updates/preview", 60, "admin", _ANNOUNCEMENT),
+    # The probe admin's address is unverified, so every test send is refused.
+    _Case("post", "/api/v1/admin/product-updates/test", 10, "admin", _ANNOUNCEMENT),
+    # The first send records the label; the rest are refused as already sent.
+    _Case("post", "/api/v1/admin/product-updates", 10, "admin", _ANNOUNCEMENT),
 ]
 
 

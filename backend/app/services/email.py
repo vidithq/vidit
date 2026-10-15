@@ -18,7 +18,7 @@ during a Resend outage.
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal
@@ -382,4 +382,33 @@ def new_follower_email(*, to: str, actor: str) -> Email:
         blocks=[f"{actor} now follows your work on Vidit."],
         action=Action("View their profile", app_url(f"/profile/{actor}")),
         setting="New follower by email",
+    )
+
+
+def product_update_email(
+    *,
+    to: str,
+    label: str,
+    title: str,
+    blocks: Sequence[Block],
+    link_url: str | None,
+    unsubscribe_url: str,
+    one_click_url: str,
+) -> Email:
+    """A major release announcement. The visible link opens the unsubscribe
+    page; the header URL takes the one-click POST of RFC 8058."""
+    return _compose(
+        to=to,
+        subject=f"Vidit {label}: {title}",
+        content=Content(
+            heading=title,
+            blocks=blocks,
+            action=Action("See what is new", link_url) if link_url else None,
+            note="You get this email because you asked for news about major Vidit releases. "
+            f"Unsubscribe: {unsubscribe_url}",
+        ),
+        headers={
+            "List-Unsubscribe": f"<{one_click_url}>",
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
     )

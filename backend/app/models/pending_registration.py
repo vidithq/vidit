@@ -32,6 +32,11 @@ class PendingRegistration(Base):
     )
     token_hash: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # When the sign-up form asked for product update emails; NULL when it did
+    # not. Confirmation copies it into ``product_update_consents``.
+    product_updates_consented_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),

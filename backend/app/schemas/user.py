@@ -25,7 +25,7 @@ def _normalise_optional(value: str | None, *, max_len: int, field: str) -> str |
     return cleaned
 
 
-def _normalise_url(value: str | None, *, field: str) -> str | None:
+def normalise_url(value: str | None, *, field: str) -> str | None:
     cleaned = _normalise_optional(value, max_len=URL_MAX_LEN, field=field)
     if cleaned is None:
         return None
@@ -129,7 +129,7 @@ class ExternalLinks(BaseModel):
     @field_validator("website")
     @classmethod
     def _website(cls, v: str | None) -> str | None:
-        return _normalise_url(v, field="website")
+        return normalise_url(v, field="website")
 
 
 class AuthorRef(BaseModel):

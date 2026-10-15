@@ -171,6 +171,16 @@ def test_half_configured_vapid_fails(monkeypatch, present):
         Settings()
 
 
+def test_email_caps_must_leave_room_for_auth_email(monkeypatch):
+    _clear_storage_env(monkeypatch)
+    monkeypatch.setenv("NOTIFICATION_EMAIL_DAILY_CAP", "50")
+    monkeypatch.setenv("PRODUCT_UPDATE_EMAIL_DAILY_CAP", "50")
+    with pytest.raises(ValidationError, match="EMAIL_PROVIDER_DAILY_QUOTA"):
+        Settings()
+    monkeypatch.setenv("EMAIL_PROVIDER_DAILY_QUOTA", "3000")
+    assert Settings().product_update_email_daily_cap == 50
+
+
 def _clear_storage_env(monkeypatch):
     for var in ("STORAGE_BACKEND", "AWS_REGION", "S3_BUCKET", "CLOUDFRONT_DOMAIN"):
         monkeypatch.delenv(var, raising=False)

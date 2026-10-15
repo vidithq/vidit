@@ -24,7 +24,8 @@ interface AuthContextType {
     username: string,
     email: string,
     password: string,
-    invite_code: string
+    invite_code: string,
+    product_updates: boolean
   ) => Promise<{ status: string; email: string }>;
   logout: () => Promise<void>;
   /** Re-pull the user from /auth/me (used by /confirm-registration after the session cookie is set). */
@@ -97,11 +98,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     username: string,
     email: string,
     password: string,
-    invite_code: string
+    invite_code: string,
+    product_updates: boolean
   ) => {
     return apiFetch<{ status: string; email: string }>("/auth/register", {
       method: "POST",
-      body: JSON.stringify({ username, email, password, invite_code }),
+      body: JSON.stringify({ username, email, password, invite_code, product_updates }),
     });
   };
 

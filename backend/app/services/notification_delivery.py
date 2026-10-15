@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from functools import partial
 
 from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.orm import Session
@@ -22,6 +23,7 @@ from app.config import settings
 from app.models.event import Event
 from app.models.notification import (
     DeliveryOutcome,
+    DeliveryState,
     Notification,
     NotificationChannel,
     NotificationDelivery,
@@ -135,13 +137,19 @@ def _send_email(db: Session, row: NotificationDelivery, recipient: User) -> Deli
     if builder is None:
         logger.warning("notification email %s skipped: no builder for kind %r", row.id, n.kind)
         return "skipped"
+    return send_email(builder(n, recipient.email), what=f"notification email {row.id}")
+
+
+def send_email(message: email.Email, *, what: str) -> DeliveryOutcome:
+    """Hand ``message`` to the provider and report the outcome. Shared by
+    every email queue."""
     try:
-        email.send(builder(n, recipient.email))
+        email.send(message)
     except email.EmailRejectedError as exc:
-        logger.warning("notification email %s refused: %s", row.id, exc)
+        logger.warning("%s refused: %s", what, exc)
         return "refused"
     except email.EmailSendError as exc:
-        logger.warning("notification email %s outcome unknown: %s", row.id, exc)
+        logger.warning("%s outcome unknown: %s", what, exc)
         return "unknown"
     return "sent"
 
@@ -202,14 +210,12 @@ def _recipient(db: Session, row: NotificationDelivery) -> User | None:
     return recipient
 
 
-def _count_failure(row: NotificationDelivery) -> None:
+def _count_failure(row: DeliveryState) -> None:
     row.attempts += 1
     row.status = "failed" if row.attempts >= MAX_ATTEMPTS else "queued"
 
 
-def _attempt(db: Session, row: NotificationDelivery) -> None:
-    recipient = _recipient(db, row)
-    outcome = _SENDERS[row.channel](db, row, recipient) if recipient is not None else "skipped"
+def _land(row: DeliveryState, outcome: DeliveryOutcome) -> None:
     if outcome == "sent":
         row.status = "sent"
         row.sent_at = datetime.now(UTC)
@@ -217,22 +223,34 @@ def _attempt(db: Session, row: NotificationDelivery) -> None:
         row.status = "skipped"
     elif outcome == "refused":
         _count_failure(row)
-    db.commit()
 
 
-def _deliver(db: Session, row: NotificationDelivery) -> None:
-    """Attempt one row. Any other error counts as a refusal, so one bad row
-    never stops the drain."""
-    row_id, channel = row.id, row.channel
+def deliver(
+    db: Session,
+    row: DeliveryState,
+    attempt: Callable[[], DeliveryOutcome],
+    *,
+    what: str,
+) -> None:
+    """Run ``attempt`` for a row claimed ``sending`` and land its outcome. Any
+    other error counts as a refusal, so one bad row never stops a drain.
+    Shared by every queue the worker drains."""
+    model, row_id = type(row), row.id
     try:
-        _attempt(db, row)
+        _land(row, attempt())
+        db.commit()
     except Exception:  # noqa: BLE001
-        logger.exception("notification %s %s raised", channel, row_id)
+        logger.exception("%s %s raised", what, row_id)
         db.rollback()
-        fresh = db.get(NotificationDelivery, row_id)
+        fresh = db.get(model, row_id)
         if fresh is not None:
             _count_failure(fresh)
             db.commit()
+
+
+def _attempt(db: Session, row: NotificationDelivery) -> DeliveryOutcome:
+    recipient = _recipient(db, row)
+    return _SENDERS[row.channel](db, row, recipient) if recipient is not None else "skipped"
 
 
 def drain(db: Session) -> int:
@@ -241,6 +259,6 @@ def drain(db: Session) -> int:
     handled = 0
     for channel in _SENDERS:
         while (row := _claim_next(db, now=datetime.now(UTC), channel=channel)) is not None:
-            _deliver(db, row)
+            deliver(db, row, partial(_attempt, db, row), what=f"notification {channel}")
             handled += 1
     return handled
