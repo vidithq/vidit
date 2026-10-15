@@ -237,7 +237,7 @@ erDiagram
         UUID id PK
         UUID event_id FK
         INT version_no "the version attested"
-        UUID reviewer_id FK "the analyst, or the acting org-admin"
+        UUID reviewer_id FK "the analyst, or the acting org-admin; nullable"
         UUID organization_id FK "nullable, the organization approving"
         VARCHAR verdict "approve"
         TEXT note "nullable"
@@ -825,7 +825,7 @@ An analyst's attestation, or an organization's through one of its org-admins, th
 | `id` | `UUID` | PK, default `uuid4()` |
 | `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, NOT NULL |
 | `version_no` | `INTEGER` | NOT NULL. The live `events.version_no` when the approval was placed. |
-| `reviewer_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The analyst who approved: for an organization's approval, the org-admin who placed it. |
+| `reviewer_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The analyst who approved: for an organization's approval, the org-admin who placed it. An erasure deletes the analyst's own approvals first ([`admin.hard_delete_user`](../backend/app/services/admin.py)), so only an organization's approval loses its reviewer; `ck_event_approvals_reviewer` refuses a NULL reviewer on a row without an organization. |
 | `organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, nullable. The organization the approval speaks for; NULL for an analyst's own approval. |
 | `verdict` | `VARCHAR(20)` | NOT NULL, default `'approve'`, CHECK in `('approve')` (constraint `ck_event_approvals_verdict_valid`). `ApprovalVerdict` in [`models/approval.py`](../backend/app/models/approval.py) lists the same values. |
 | `note` | `TEXT` | nullable. The reviewer's note; the API caps it at 280 characters. |
@@ -840,7 +840,7 @@ An analyst's attestation, or an organization's through one of its org-admins, th
 `uq_event_approvals_organization`: unique partial index on `(event_id, version_no, organization_id) WHERE organization_id IS NOT NULL AND revoked_at IS NULL`. One standing approval per organization and version; after a revocation another org-admin can approve the version again. An analyst's own approval and the approval they place for an organization are separate rows.
 
 **Indexes:**
-- `ix_event_approvals_reviewer_id` on `(reviewer_id)`. Backs the cascade when a reviewer's account is erased.
+- `ix_event_approvals_reviewer_id` on `(reviewer_id)`. Backs the delete and the SET NULL when a reviewer's account is erased.
 - `ix_event_approvals_revoked_by_id`: partial index on `(revoked_by_id) WHERE revoked_by_id IS NOT NULL`. Backs the SET NULL when a revoker's account is erased.
 - `ix_event_approvals_organization_created_at`: partial index on `(organization_id, created_at) WHERE organization_id IS NOT NULL`. Serves the organization page's approvals, newest first, and backs the cascade when an organization is deleted.
 

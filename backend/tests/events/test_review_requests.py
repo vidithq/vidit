@@ -19,7 +19,7 @@ from app.services import email, notification_delivery
 from app.services.auth import hash_password
 from app.services.review_requests import REFUSAL_MESSAGE
 from tests.conftest import login_as
-from tests.events._helpers import _make_geo, client
+from tests.events._helpers import _make_geo, client, delete_user
 
 _EVENTS = "/api/v1/events"
 
@@ -48,7 +48,7 @@ def make_user(db):
     db.expire_all()
     for user_id in made:
         db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
-        db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
+        delete_user(db, user_id)
     db.commit()
 
 

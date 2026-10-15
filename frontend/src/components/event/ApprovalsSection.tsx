@@ -41,7 +41,8 @@ export function ApprovalState({ approval }: { approval: Approval }) {
 }
 
 /** One review: who placed it (an organization signs with its name, its acting org-admin
- *  beside it) and when, its note, and, once revoked, the public reason. */
+ *  beside it, or "on behalf of" it once that account is erased) and when, its note, and, once
+ *  revoked, the public reason. */
 export function ApprovalRow({
   approval,
   onRevoke,
@@ -62,11 +63,17 @@ export function ApprovalRow({
                 className="text-sm"
               />
               <span className="text-[11px] text-neutral-500">
-                <AuthorByline author={approval.reviewer} />
+                {approval.reviewer ? (
+                  <AuthorByline author={approval.reviewer} />
+                ) : (
+                  `on behalf of ${approval.organization.name}`
+                )}
               </span>
             </>
           ) : (
-            <AuthorByline author={approval.reviewer} prefix={false} avatar className="text-sm" />
+            approval.reviewer && (
+              <AuthorByline author={approval.reviewer} prefix={false} avatar className="text-sm" />
+            )
           )}
           <ApprovalState approval={approval} />
           <span className="text-[11px] text-neutral-500">{formatDate(approval.created_at)}</span>
@@ -245,7 +252,7 @@ export function ApprovalsSection({
                   (isAdmin ||
                     (approval.organization
                       ? administeredSlugs.has(approval.organization.slug)
-                      : approval.reviewer.id === user?.id))
+                      : approval.reviewer?.id === user?.id))
                     ? () => {
                         write.reset();
                         setRevoking(approval.id);

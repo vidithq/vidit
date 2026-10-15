@@ -1506,7 +1506,7 @@ Every write locks the event row first, so an approval, a revocation and a new ve
 | Field | Meaning |
 |---|---|
 | `verdict` | Always `approve` |
-| `reviewer` | The analyst who approved; for an organization's approval, the org-admin who placed it |
+| `reviewer` | The analyst who approved; for an organization's approval, the org-admin who placed it, or `null` once that account is erased, since the approval stays the organization's |
 | `organization` | The organization the approval speaks for, `null` for an analyst's own approval |
 | `note` | The reviewer's optional note, at most 280 characters; `null` when none was left |
 | `current` | `true` while `version_no` is the live version and the approval is not revoked |
@@ -1515,7 +1515,7 @@ Every write locks the event row first, so an approval, a revocation and a new ve
 
 ### `GET /events/{id}/approvals`
 
-The approvals of the event, revoked ones included, ordered by version and then oldest first. An approval whose reviewer is soft-deleted is left out. Visibility as [`GET /events/{id}`](#get-eventsid).
+The approvals of the event, revoked ones included, ordered by version and then oldest first. An approval whose reviewer is soft-deleted is left out. An organization's approval whose reviewer's account was erased stays, with `reviewer` set to `null`. Visibility as [`GET /events/{id}`](#get-eventsid).
 
 **Query params:**
 
@@ -3052,7 +3052,7 @@ Case-insensitive substring match on username or email. Empty `q` returns `[]`. C
 Remove a user. Both modes invalidate the points cache. Audited as `user_soft_deleted` or `user_hard_deleted`.
 
 - **Soft delete** (default) sets `users.deleted_at` and soft-deletes every live event the user owns. The user can no longer log in (an opaque 401, like wrong credentials), and their profile answers 404. Idempotent: a repeat keeps the original timestamp.
-- **Hard delete** (`?hard=true`, GDPR erasure) drops the user row, every event and [collection](#collections) they owned, then sweeps their storage objects (event media of both roles and the profile picture). An owned event that credits another live analyst is kept instead: it passes to the earliest of them by credit time, with its media, versions and files, and that analyst receives an `ownership_transferred` notification that does not name the erased user. A soft-deleted co-geolocator is skipped, and a soft-deleted event is never handed over: it is deleted and swept like an uncredited one. Invite codes they issued or used survive with the reference set to NULL. The DB commits before the storage sweep.
+- **Hard delete** (`?hard=true`, GDPR erasure) drops the user row, every event and [collection](#collections) they owned, then sweeps their storage objects (event media of both roles and the profile picture). An owned event that credits another live analyst is kept instead: it passes to the earliest of them by credit time, with its media, versions and files, and that analyst receives an `ownership_transferred` notification that does not name the erased user. A soft-deleted co-geolocator is skipped, and a soft-deleted event is never handed over: it is deleted and swept like an uncredited one. Their own approvals go; an approval they placed for an organization stays the organization's, with `reviewer` set to `null`. Invite codes they issued or used survive with the reference set to NULL. The DB commits before the storage sweep.
 - **Both modes** hand an organization's org-admin role to its earliest-joined live member when the user was its last live org-admin (see [Organizations](#organizations)). On a hard delete, this and the event hand-over commit in one transaction.
 
 **Response 200:**
