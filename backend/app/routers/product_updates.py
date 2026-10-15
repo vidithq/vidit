@@ -12,6 +12,7 @@ from app.schemas.product_update import (
     ProductUpdateRead,
 )
 from app.services import product_update_consent, product_updates
+from app.services.unsubscribe_tokens import InvalidUnsubscribeTokenError
 
 router = APIRouter()
 
@@ -31,7 +32,7 @@ def unsubscribe(
     """
     try:
         product_update_consent.unsubscribe(db, token)
-    except product_update_consent.InvalidUnsubscribeTokenError as exc:
+    except InvalidUnsubscribeTokenError as exc:
         raise_typed_error(exc, {exc.code: 400})
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

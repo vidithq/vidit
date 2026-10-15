@@ -161,6 +161,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/notifications` | 🔒 | Your notifications, newest first (cursor-paged) |
 | GET | `/notifications/unread-count` | 🔒 | How many notifications you have not been shown |
 | POST | `/notifications/read` | 🔒 | Mark the notifications the feed showed you read |
+| POST | `/notifications/unsubscribe` | 🌐 | Turn off one kind of notification email, named by a signed token |
 | **Organizations** | | | |
 | GET | `/organizations/{slug}` | 🌐 | An organization's public profile |
 | GET | `/organizations/{slug}/members` | 🌐 | Its members, org-admins first |
@@ -273,6 +274,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | **Notifications** | |
 | `GET /notifications`, `GET /notifications/unread-count` | 120/min |
 | `POST /notifications/read` | 60/min |
+| `POST /notifications/unsubscribe` | 30/min (anonymous allowed) |
 | **Organizations** | |
 | `GET /organizations/{slug}`, `GET /organizations/{slug}/members`, `GET /organizations/{slug}/approvals` | 120/min |
 | `PATCH /organizations/{slug}` | 30/min |
@@ -2577,7 +2579,7 @@ flowchart LR
 
 An action that concerns another analyst writes a [`notifications`](data-model.md#notifications) row in its own transaction, so a rolled-back action leaves no row. Nobody is notified of their own action. Every read passes the same filter: a row whose event is soft-deleted or taken down, or whose actor is soft-deleted, is hidden from the feed and the count, including when that happens after the row was written. Read state is per row: `read_at` is NULL until `POST /notifications/read` names the row, which the feed page does for the unread rows it shows. A row whose action commits after the feed was read stays unread, whatever its `created_at`.
 
-When your email switch for the kind is on and your address is verified, the same transaction queues an email. The worker sends it after the action commits, so a provider failure never fails the action. At send time the worker skips the email if the switch is now off or the feed would hide the row. Notification email has a daily cap, in total and per recipient, and a queued email older than 48 hours is dropped. The emails one actor's actions queue in a trailing 24 hours are capped too: past the cap, the row still reaches the feed and push, but queues no email. The email links to the item and to Settings. The queue and the caps are in [`engineering.md`](engineering.md#email).
+When your email switch for the kind is on and your address is verified, the same transaction queues an email. The worker sends it after the action commits, so a provider failure never fails the action. At send time the worker skips the email if the switch is now off or the feed would hide the row. Notification email has a daily cap, in total and per recipient, and a queued email older than 48 hours is dropped. The emails one actor's actions queue in a trailing 24 hours are capped too: past the cap, the row still reaches the feed and push, but queues no email. The email links to the item and to Settings, and its `List-Unsubscribe` header turns that kind off by email in one click ([`POST /notifications/unsubscribe`](#post-notificationsunsubscribe)). The queue and the caps are in [`engineering.md`](engineering.md#email).
 
 When your push switch for the kind is on and you registered at least one device, the same transaction queues a push. The worker sends it to each of your devices, with a title, a short body and the path a click opens. Push has no daily cap. The delivery path is in [`engineering.md`](engineering.md#web-push).
 
@@ -2655,6 +2657,21 @@ Mark the listed notifications read by setting their `read_at`. Only your own row
 | Code | Case |
 |------|------|
 | 422 | `ids` missing, empty, longer than 100, or holding a value that is not a UUID |
+
+---
+
+### `POST /notifications/unsubscribe`
+
+Turn off the email switch of one notification kind for the account a signed token names. Anonymous and exempt from the CSRF check: the token is the authorization. Every notification email carries its token in the `List-Unsubscribe` header, which a mail client posts one-click (`List-Unsubscribe-Post: List-Unsubscribe=One-Click`). The token names the account and the kind, carries no expiry, and is void once `JWT_SECRET` rotates. The other channels and kinds keep their switches. The request body is ignored.
+
+**Query params:** `token`, required, up to 200 characters.
+
+**Response 204:** no body. A repeated call answers the same.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 400 | `invalid_unsubscribe_token`: the token does not verify, or names no notification kind |
 
 ---
 
