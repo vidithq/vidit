@@ -1339,7 +1339,7 @@ An event's geolocators are the analysts it credits. The owner is always one of t
 
 - **Invitation.** The owner of a `geolocated` event invites an analyst by username. The invitation waits in `event_geolocator_invites`, and the invitee receives a `co_geolocator_invite` [notification](#notifications). An event holds at most 10 live geolocators and pending invitations together, a soft-deleted analyst not counted (`MAX_EVENT_GEOLOCATORS` in [`services/geolocator_credit.py`](../backend/app/services/geolocator_credit.py)).
 - **Answer.** Accepting deletes the invitation and credits the invitee in one transaction, which also revokes the invitee's own [approvals](#approvals) of the event (`revoke_approvals_on_join`) and deletes the open [review requests](#review-requests) addressed to them. Declining or a withdrawal deletes the invitation.
-- **Removal.** The owner removes a co-geolocator, who receives a `co_geolocator_removed` notification, or a co-geolocator leaves. The owner cannot leave. The removed analyst's collections drop the event in the same transaction, and an `event_geolocator_departures` row records the departure: a former geolocator never [approves](#approvals) the event or receives a [review request](#review-requests) for it. The open review requests the analyst sent about the event are deleted, since only a geolocator asks for one.
+- **Removal.** The owner removes a co-geolocator, who receives a `co_geolocator_removed` notification, or a co-geolocator leaves. The owner cannot leave. The removed analyst's collections drop the event in the same transaction, and an `event_geolocator_departures` row records the departure: a former geolocator never [approves](#approvals) the event or receives a [review request](#review-requests) for it. The open review requests the analyst sent about the event are withdrawn (`status` `withdrawn`), since only a geolocator asks for one; they keep counting toward the daily cap.
 - **Erasure.** A hard delete of the owner's account hands the event, unless it is soft-deleted, to the earliest live co-geolocator; see [`DELETE /admin/users/{id}`](#delete-adminusersid).
 
 Every write locks the event row first, so an invitation, its answer and an erasure on the same event serialize. A soft-deleted or withheld event answers 404 on every route below.
@@ -1608,7 +1608,7 @@ flowchart LR
   resolves the open requests`"]:::core
   decline["`**decline**`"]:::core
   rows[("`**review_requests**
-  open, approved or declined`")]:::store
+  open, approved, declined or withdrawn`")]:::store
   received["`**review_request_received**
   to the analyst asked, or every org-admin`"]:::shared
   approved["`**approval_received**

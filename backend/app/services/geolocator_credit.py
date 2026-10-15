@@ -262,7 +262,8 @@ def remove(db: Session, *, geo: Event, actor: User, username: str) -> None:
     403. A removed analyst's collections drop the event in the same transaction, since a
     collection holds only credited work, and an ``event_geolocator_departures`` row records the
     departure, so they never approve the event. The open review requests they sent about the
-    event go, since only a geolocator asks for one. The owner's removal notifies the analyst
+    event are withdrawn, since only a geolocator asks for one; they keep counting toward the
+    daily cap. The owner's removal notifies the analyst
     removed.
     """
     geo = _lock(db, geo.id)
@@ -285,11 +286,13 @@ def remove(db: Session, *, geo: Event, actor: User, username: str) -> None:
         .on_conflict_do_nothing(index_elements=["event_id", "user_id"])
     )
     db.execute(
-        delete(ReviewRequest).where(
+        update(ReviewRequest)
+        .where(
             ReviewRequest.event_id == geo.id,
             ReviewRequest.requester_id == target.id,
             ReviewRequest.status == "open",
         )
+        .values(status="withdrawn", resolved_at=datetime.now(UTC))
     )
     db.execute(
         delete(CollectionEvent).where(

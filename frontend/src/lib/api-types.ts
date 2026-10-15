@@ -4584,7 +4584,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "open" | "approved" | "declined";
+            status: "open" | "approved" | "declined" | "withdrawn";
             target: components["schemas"]["AuthorRef"] | null;
             target_organization: components["schemas"]["OrganizationRef"] | null;
             /** Version No */

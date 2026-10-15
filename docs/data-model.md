@@ -255,7 +255,7 @@ erDiagram
         UUID requester_id FK
         UUID target_user_id FK "nullable, the analyst asked"
         UUID target_organization_id FK "nullable, the organization asked"
-        VARCHAR status "open, approved, declined"
+        VARCHAR status "open, approved, declined, withdrawn"
         TIMESTAMPTZ created_at
         TIMESTAMPTZ resolved_at "nullable"
     }
@@ -858,7 +858,7 @@ A geolocator's request that an analyst or an organization review an event, writt
 | `requester_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The geolocator who asked. |
 | `target_user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, nullable. The analyst asked. |
 | `target_organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, nullable. The organization asked. `ck_review_requests_one_target` (`num_nonnulls(target_user_id, target_organization_id) = 1`) sets exactly one of the two targets. |
-| `status` | `VARCHAR(20)` | NOT NULL, default `'open'`, CHECK in `('open', 'approved', 'declined')` (constraint `ck_review_requests_status_valid`). `ReviewRequestStatus` in [`models/review_request.py`](../backend/app/models/review_request.py) lists the same values. |
+| `status` | `VARCHAR(20)` | NOT NULL, default `'open'`, CHECK in `('open', 'approved', 'declined', 'withdrawn')` (constraint `ck_review_requests_status_valid`). `withdrawn` marks a request whose requester lost their credit on the event. `ReviewRequestStatus` in [`models/review_request.py`](../backend/app/models/review_request.py) lists the same values. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 | `resolved_at` | `TIMESTAMPTZ` | nullable. `ck_review_requests_resolved` sets it exactly when `status` is not `open`. |
 
