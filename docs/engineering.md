@@ -416,7 +416,7 @@ flowchart LR
 
 **The service worker.** `sw.js` handles `push` and `notificationclick` only. It registers no `fetch` handler and opens no cache, so it never serves a page or intercepts a request, and it leaves the Next.js dev server untouched. A click focuses an open Vidit window and navigates it to the payload's path, or opens one. A path that is not an app path opens the feed instead. The `proxy.ts` matcher skips `/sw.js`, so the browser gets the script and not the login page.
 
-**Sending.** For a `push` row, the drain calls [`services/push.send`](../backend/app/services/push.py), which posts to every device of the recipient through `pywebpush`. The library encrypts the payload for the device's keys and signs the request with the VAPID private key. The payload carries a title, a short body and an app path. The push service holds it for 24 hours at most. A 404 or 410 answer deletes that device. The row outcome follows the devices:
+**Sending.** For a `push` row, the drain calls [`services/push.send`](../backend/app/services/push.py), which posts to every device of the recipient through `pywebpush`. The library encrypts the payload for the device's keys and signs the request with the VAPID private key. The payload carries a title, a short body and an app path. The push service holds it for 24 hours at most. A 404 or 410 answer deletes that device, and so does a third refusal in a row. An account holds at most 10 devices: registering one more deletes the oldest. The row outcome follows the devices:
 
 1. `sent` when any device's push service accepted the push.
 2. Left `sending` when no device accepted it and a request to one of them failed in transit, since that push may have gone out.

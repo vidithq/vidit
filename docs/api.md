@@ -2322,7 +2322,7 @@ Register this browser for push notifications. The body is the browser's `PushSub
 - `endpoint` is an https URL on a browser push service: `fcm.googleapis.com`, `updates.push.services.mozilla.com`, `web.push.apple.com`, or a host under `.push.apple.com` or `.notify.windows.com`.
 - `keys.p256dh` is a base64url uncompressed P-256 public key (65 bytes) and `keys.auth` a base64url 16-byte secret.
 
-Registering an endpoint again refreshes its keys and returns the same `id`. An endpoint registered by another account moves to yours, since one browser holds one subscription.
+Registering an endpoint again refreshes its keys and returns the same `id`. An endpoint registered by another account moves to yours, since one browser holds one subscription. An account holds at most 10 devices: registering one more deletes the oldest.
 
 **Response 201:**
 ```json
