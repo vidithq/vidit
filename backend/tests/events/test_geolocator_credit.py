@@ -198,6 +198,22 @@ def test_a_withdraw_and_invite_loop_notifies_once(db, author, second_user):
     assert [(n["kind"], n["invite_pending"]) for n in feed] == [("co_geolocator_invite", True)]
 
 
+def test_only_the_newest_invitation_row_offers_an_answer(db, author, second_user):
+    geo = _published(db, author)
+    path = f"{_EVENTS}/{geo.id}/geolocator-invites/{second_user.username}"
+    assert _invite(geo, author, second_user.username).status_code == 201
+    assert client.delete(path, headers=login_as(client, author)).status_code == 204
+    db.query(Notification).filter(Notification.user_id == second_user.id).update(
+        {"created_at": datetime.now(UTC) - timedelta(days=8)}
+    )
+    db.commit()
+    assert _invite(geo, author, second_user.username).status_code == 201
+
+    login_as(client, second_user)
+    feed = client.get("/api/v1/notifications").json()
+    assert [n["invite_pending"] for n in feed] == [True, False]
+
+
 def test_one_actor_queues_a_capped_number_of_emails(db, author, make_user, monkeypatch):
     monkeypatch.setattr(settings, "notification_email_daily_cap_per_actor", 2)
     geo = _published(db, author)

@@ -2627,13 +2627,13 @@ Your notifications, newest first. Cursor-paged; [Pagination](#pagination) gives 
 ]
 ```
 
-`invite_pending` is `true` on a `co_geolocator_invite` row whose invitation still waits for your answer, and `false` on every other row. The feed page shows the accept and decline controls on that row.
+`invite_pending` is `true` on the newest `co_geolocator_invite` row of an event whose invitation still waits for your answer, and `false` on every other row, an older invitation row of the same event included. The feed page shows the accept and decline controls on that row.
 
 `reapprove_version` is set on a `re_approve_requested` row, and on a `review_request_received` row whose request is open, when you can approve the event now: it is `geolocated`, you are not one of its geolocators, and you have not reviewed its live version. On a row that names an organization, the approval is the organization's: you must still be its org-admin, and its approval of the live version must not stand. It holds the live version number. The feed page offers no approve control: approving happens on the event page with [`POST /events/{id}/approvals`](#post-eventsidapprovals). It is `null` on every other row.
 
 `approved_version` is set beside `reapprove_version` on a `re_approve_requested` row: the latest earlier version your unrevoked approval stands on, or the organization's on a row that names one, or `null` when none does. The event page's Approvals card lists the fields that changed between that version and the live event.
 
-`review_request_id` is the open [review request](#review-requests) behind a `review_request_received` row, addressed to you or to the organization the row names, which the feed page's decline control posts to [`POST /events/{id}/review-requests/{request_id}/decline`](#post-eventsidreview-requestsrequest_iddecline). It is `null` once the request is resolved, and on every other row.
+`review_request_id` is the open [review request](#review-requests) behind the newest `review_request_received` row of its event, requester and organization, addressed to you or to the organization the row names, which the feed page's decline control posts to [`POST /events/{id}/review-requests/{request_id}/decline`](#post-eventsidreview-requestsrequest_iddecline). It is `null` once the request is resolved, and on every other row.
 
 ---
 

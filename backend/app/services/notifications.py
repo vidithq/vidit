@@ -392,19 +392,48 @@ def list_feed(
     )
 
 
-def pending_invites(db: Session, *, user: User, rows: list[Notification]) -> set[uuid.UUID]:
-    """The events among ``rows``' invitations that still wait for ``user``'s answer."""
-    event_ids = {r.event_id for r in rows if r.kind == "co_geolocator_invite" and r.event_id}
+def _newest_rows(
+    db: Session, *, user: User, kind: NotificationKind, rows: list[Notification], by: tuple
+) -> set[uuid.UUID]:
+    """The ids of ``user``'s newest ``kind`` row per key ``by``, over the whole feed, for the
+    events ``rows`` name. Only the newest row of a key answers: an older one stands for an
+    invitation or a request already answered."""
+    event_ids = {r.event_id for r in rows if r.kind == kind and r.event_id}
     if not event_ids:
         return set()
     return set(
         db.scalars(
+            select(Notification.id)
+            .where(
+                Notification.user_id == user.id,
+                Notification.kind == kind,
+                Notification.event_id.in_(event_ids),
+            )
+            .order_by(*by, Notification.created_at.desc(), Notification.id.desc())
+            .distinct(*by)
+        )
+    )
+
+
+def pending_invites(db: Session, *, user: User, rows: list[Notification]) -> set[uuid.UUID]:
+    """The ``co_geolocator_invite`` rows among ``rows`` that offer an answer: the newest row of
+    an event whose invitation still waits for ``user``."""
+    newest = _newest_rows(
+        db, user=user, kind="co_geolocator_invite", rows=rows, by=(Notification.event_id,)
+    )
+    if not newest:
+        return set()
+    waiting = set(
+        db.scalars(
             select(EventGeolocatorInvite.event_id).where(
                 EventGeolocatorInvite.user_id == user.id,
-                EventGeolocatorInvite.event_id.in_(event_ids),
+                EventGeolocatorInvite.event_id.in_(
+                    {r.event_id for r in rows if r.id in newest and r.event_id}
+                ),
             )
         )
     )
+    return {r.id for r in rows if r.id in newest and r.event_id in waiting}
 
 
 def _administered(db: Session, *, user: User, rows: list[Notification]) -> set[uuid.UUID]:
@@ -431,9 +460,11 @@ RequestKey = tuple[uuid.UUID, uuid.UUID, uuid.UUID | None]
 
 def open_review_requests(
     db: Session, *, user: User, rows: list[Notification]
-) -> dict[RequestKey, uuid.UUID]:
-    """The open review request behind each of ``rows``' ``review_request_received`` rows: one
-    addressed to ``user``, or to an organization ``user`` is an org-admin of now."""
+) -> dict[uuid.UUID, uuid.UUID]:
+    """The open review request behind each of ``rows``' ``review_request_received`` rows, by
+    notification id: one addressed to ``user``, or to an organization ``user`` is an org-admin
+    of now. Only the newest row of a key carries it; an older one stands for a request already
+    answered."""
     received = [r for r in rows if r.kind == "review_request_received" and r.event_id]
     if not received:
         return {}
@@ -454,9 +485,24 @@ def open_review_requests(
             ReviewRequest.event_id.in_(event_ids),
         )
     ).tuples()
-    return {
+    by_key: dict[RequestKey, uuid.UUID] = {
         (event_id, requester_id, org_id): request_id
         for event_id, requester_id, org_id, request_id in found
+    }
+    newest = _newest_rows(
+        db,
+        user=user,
+        kind="review_request_received",
+        rows=received,
+        by=(Notification.event_id, Notification.actor_id, Notification.organization_id),
+    )
+    return {
+        r.id: request_id
+        for r in received
+        if r.id in newest
+        and r.actor_id is not None
+        and r.event_id is not None
+        and (request_id := by_key.get((r.event_id, r.actor_id, r.organization_id))) is not None
     }
 
 
@@ -559,15 +605,9 @@ def build_read(
     *,
     pending: set[uuid.UUID],
     offers: dict[OfferKey, ReapprovalOffer],
-    review_requests: dict[RequestKey, uuid.UUID],
+    review_requests: dict[uuid.UUID, uuid.UUID],
 ) -> NotificationRead:
-    review_request_id = (
-        review_requests.get((row.event_id, row.actor_id, row.organization_id))
-        if row.kind == "review_request_received"
-        and row.event_id is not None
-        and row.actor_id is not None
-        else None
-    )
+    review_request_id = review_requests.get(row.id)
     # A resolved review request offers nothing, though the event may still be approvable.
     offers_approval = row.kind == "re_approve_requested" or review_request_id is not None
     offer = (
@@ -587,7 +627,7 @@ def build_read(
             else None
         ),
         read_at=row.read_at,
-        invite_pending=row.kind == "co_geolocator_invite" and row.event_id in pending,
+        invite_pending=row.id in pending,
         reapprove_version=offer.live_version if offer is not None else None,
         approved_version=(
             offer.approved_version
