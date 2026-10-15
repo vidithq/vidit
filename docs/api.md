@@ -2597,9 +2597,9 @@ When your push switch for the kind is on and you registered at least one device,
 | `organization_invite` | An org-admin invites you to an [organization](#organizations) | the org-admin | null | the organization |
 | `organization_invite_accepted` | An analyst accepts your organization invite | the new member | null | the organization |
 | `organization_admin_inherited` | You become org-admin because the last one's account was removed | null | null | the organization |
-| `re_approve_requested` | The owner saves a new version of an event whose superseded version you, or an organization you are an org-admin of, approved | the owner | the event | the organization, or null for your own approval |
+| `re_approve_requested` | The owner saves a new version of an event whose superseded version you, or an organization you are an org-admin of, approved; an org-admin who holds or held credit on the event is not asked | the owner | the event | the organization, or null for your own approval |
 | `approval_received` | An analyst approves your event, or an event whose review you requested, as themselves or for an organization | the reviewer | the event | the organization, or null |
-| `review_request_received` | A geolocator asks you, or an organization you are an org-admin of, to review their event | the requester | the event | the organization asked, or null |
+| `review_request_received` | A geolocator asks you, or an organization you are an org-admin of, to review their event; an org-admin who holds or held credit on the event is not asked | the requester | the event | the organization asked, or null |
 | `review_request_declined` | The analyst or the organization you asked declines to review your event | the analyst asked, or the org-admin who declined | the event | the organization asked, or null |
 
 A declined or withdrawn organization invite writes no row. `organization` is `{ "slug", "name", "avatar_url" }`.
