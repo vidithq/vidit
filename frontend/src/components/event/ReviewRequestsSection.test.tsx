@@ -32,16 +32,35 @@ const request = (over: Partial<ReviewRequest> = {}): ReviewRequest => ({
   version_no: 2,
   requester: ANA,
   target: BO,
+  target_organization: null,
   status: "open",
   created_at: "2026-10-15T09:00:00Z",
   resolved_at: null,
   ...over,
 });
 
-function serve(rows: ReviewRequest[], targets = [CY]) {
+const BELLINGCAT = { slug: "bellingcat", name: "Bellingcat", avatar_url: null };
+
+function serve(
+  rows: ReviewRequest[],
+  targets: { analysts: (typeof CY)[]; organizations: (typeof BELLINGCAT)[] } = {
+    analysts: [CY],
+    organizations: [BELLINGCAT],
+  },
+  administered: (typeof BELLINGCAT)[] = [],
+) {
   api.apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
     if (init?.method === "POST") return Promise.resolve(request({ status: "declined" }));
     if (path.includes("review-request-targets")) return Promise.resolve(targets);
+    if (path.endsWith("/organizations")) {
+      return Promise.resolve(
+        administered.map((organization) => ({
+          organization,
+          role: "admin",
+          joined_at: "2026-10-01T00:00:00Z",
+        })),
+      );
+    }
     return Promise.resolve(rows);
   });
 }
@@ -70,14 +89,35 @@ describe("<ReviewRequestsSection>", () => {
     );
   });
 
-  it("says so when no analyst would accept a request", async () => {
+  it("lets a geolocator ask an organization", async () => {
     api.viewer = ANA;
-    serve([], []);
+    serve([request({ target: null, target_organization: BELLINGCAT })]);
+    render(<ReviewRequestsSection event={event} refreshKey={0} />);
+
+    expect(await screen.findByRole("link", { name: "Bellingcat" })).toHaveAttribute(
+      "href",
+      "/organizations/bellingcat",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Request a review" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Bellingcat" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ask Bellingcat" }));
+
+    await waitFor(() =>
+      expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/review-requests", {
+        method: "POST",
+        body: JSON.stringify({ organization: "bellingcat" }),
+      }),
+    );
+  });
+
+  it("says so when no analyst or organization would accept a request", async () => {
+    api.viewer = ANA;
+    serve([], { analysts: [], organizations: [] });
     render(<ReviewRequestsSection event={event} refreshKey={0} />);
 
     expect(await screen.findByText("No open requests.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Request a review" }));
-    expect(await screen.findByText(/No analyst to suggest/)).toBeInTheDocument();
+    expect(await screen.findByText(/No analyst or organization to suggest/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ask for a review" })).toBeDisabled();
   });
 
@@ -90,6 +130,20 @@ describe("<ReviewRequestsSection>", () => {
     expect(screen.queryByRole("button", { name: "Request a review" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Decline" }));
 
+    await waitFor(() =>
+      expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/review-requests/r1/decline", {
+        method: "POST",
+      }),
+    );
+  });
+
+  it("lets an org-admin of the organization asked decline for it", async () => {
+    api.viewer = CY;
+    serve([request({ target: null, target_organization: BELLINGCAT })], undefined, [BELLINGCAT]);
+    render(<ReviewRequestsSection event={event} refreshKey={0} />);
+
+    expect(await screen.findByText(/asks Bellingcat to review this geolocation/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Decline" }));
     await waitFor(() =>
       expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/review-requests/r1/decline", {
         method: "POST",

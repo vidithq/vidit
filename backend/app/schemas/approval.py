@@ -3,7 +3,9 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.models.approval import ApprovalVerdict
+from app.models.approval import ApprovalRevoker, ApprovalVerdict
+from app.schemas.notification import NotificationEventRef
+from app.schemas.organization import OrganizationRef
 from app.schemas.user import AuthorRef
 
 # Mirrored by the frontend's lib/approvals.APPROVAL_NOTE_MAX_LEN; change both.
@@ -12,12 +14,14 @@ REVOKE_REASON_MAX_LENGTH = 2000
 
 
 class ApprovalCreate(BaseModel):
-    """Body of ``POST /events/{id}/approvals``: the version you read, and an optional note."""
+    """Body of ``POST /events/{id}/approvals``: the version you read, an optional note, and the
+    slug of the organization you approve for as its org-admin (your own approval without it)."""
 
     model_config = ConfigDict(extra="forbid")
 
     version_no: int = Field(ge=1)
     note: str | None = Field(default=None, max_length=APPROVAL_NOTE_MAX_LENGTH)
+    organization: str | None = Field(default=None, min_length=1, max_length=50)
 
     @field_validator("note")
     @classmethod
@@ -46,18 +50,29 @@ class ApprovalRevoke(BaseModel):
 class ApprovalRead(BaseModel):
     """One review of one version of an event.
 
+    ``organization`` is the organization the review was placed for, with
+    ``reviewer`` the org-admin who placed it; null for an analyst's own review.
     ``current`` is true while the review covers the live version and is not
-    revoked. ``revoked_by_admin`` is true when a site admin, not the reviewer,
-    revoked it.
+    revoked. ``revoked_as`` says who revoked it: the reviewer, an org-admin of
+    the organization, or a site admin.
     """
 
     id: uuid.UUID
     version_no: int
     verdict: ApprovalVerdict
     reviewer: AuthorRef
+    organization: OrganizationRef | None
     note: str | None
     created_at: datetime
     current: bool
     revoked_at: datetime | None
     revoke_reason: str | None
-    revoked_by_admin: bool
+    revoked_as: ApprovalRevoker | None
+
+
+class OrganizationApprovalRead(BaseModel):
+    """One approval an org-admin placed in an organization's name, with the event it covers,
+    for ``GET /organizations/{slug}/approvals``."""
+
+    event: NotificationEventRef
+    approval: ApprovalRead

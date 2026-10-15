@@ -59,11 +59,22 @@ def approve_event(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ApprovalRead:
-    """Approve the live version of a published geolocation you are not credited on."""
+    """Approve the live version of a published geolocation you are not credited on, as
+    yourself or, as its org-admin, for an organization."""
     geo = resolve_live_event(db, geolocation_id)
     try:
+        organization = (
+            approvals.resolve_organization(db, body.organization)
+            if body.organization is not None
+            else None
+        )
         row = approvals.approve(
-            db, geo=geo, reviewer=current_user, version_no=body.version_no, note=body.note
+            db,
+            geo=geo,
+            reviewer=current_user,
+            version_no=body.version_no,
+            note=body.note,
+            organization=organization,
         )
     except ApprovalError as exc:
         _raise(exc)
@@ -80,7 +91,8 @@ def revoke_approval(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ApprovalRead:
-    """Revoke an approval with a public reason: your own, or any as a site admin."""
+    """Revoke an approval with a public reason: your own, your organization's as its org-admin,
+    or any as a site admin."""
     geo = resolve_live_event(db, geolocation_id)
     try:
         row = approvals.revoke(

@@ -15,6 +15,7 @@ export type OrganizationRole = OrganizationMember["role"];
 export type OrganizationCreate = components["schemas"]["OrganizationCreate"];
 export type InviteCandidate = components["schemas"]["AuthorRef"];
 export type AdminOrganization = components["schemas"]["AdminOrganizationRead"];
+export type OrganizationRef = components["schemas"]["OrganizationRef"];
 
 export const ADMIN_ORGANIZATIONS_PATH = "/admin/organizations";
 
@@ -26,6 +27,11 @@ export const ROLE_LABEL: Record<OrganizationRole, string> = {
 /** One organization: the page route and the API path share this shape. */
 export function organizationPath(slug: string): string {
   return `/organizations/${encodeURIComponent(slug)}`;
+}
+
+/** An organization as an `AuthorByline` name: its picture, its name, and a link to its page. */
+export function organizationByline(org: OrganizationRef) {
+  return { username: org.name, avatar_url: org.avatar_url, href: organizationPath(org.slug) };
 }
 
 export function userOrganizationsPath(username: string): string {
@@ -46,6 +52,16 @@ export function updateOrganization(
   return apiFetch<Organization>(organizationPath(slug), {
     method: "PATCH",
     body: JSON.stringify(body),
+  });
+}
+
+export function setOrganizationReviewRequestAudience(
+  slug: string,
+  audience: Organization["review_request_audience"],
+): Promise<Organization> {
+  return apiFetch<Organization>(organizationPath(slug), {
+    method: "PATCH",
+    body: JSON.stringify({ review_request_audience: audience }),
   });
 }
 

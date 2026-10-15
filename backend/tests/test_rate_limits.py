@@ -195,6 +195,7 @@ _READ_LIMITS = [
     ("/api/v1/users/no-such-user/organizations", 120),
     (_ORG, 120),
     (f"{_ORG}/members", 120),
+    (f"{_ORG}/approvals", 120),
 ]
 
 
@@ -244,6 +245,7 @@ _QUOTA_ROUTES = [
     "/api/v1/users/{username}/organizations",
     "/api/v1/organizations/{slug}",
     "/api/v1/organizations/{slug}/members",
+    "/api/v1/organizations/{slug}/approvals",
     "/api/v1/collections/{collection_id}",
     "/api/v1/collections/{collection_id}/events",
     "/api/v1/timeline",
@@ -613,6 +615,7 @@ _DOCUMENTED_LIMITS = [
     _Case("delete", f"{_ORG}/avatar", 20),
     _Case("get", f"{_ORG}/invites", 60),
     _Case("get", f"{_ORG}/invite-candidates", 60),
+    _Case("get", f"{_ORG}/review-requests", 60),
     _Case("post", f"{_ORG}/invites", 30, "user", {"json": {"username": "nobody"}}),
     _Case("delete", f"{_ORG}/invites/{_MISSING_ID}", 60),
     _Case("post", f"{_ORG}/invite/accept", 30),

@@ -60,6 +60,7 @@ import { ToggleRow } from "@/components/ui/ToggleRow";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Avatar } from "@/components/ui/Avatar";
 import { AuthorByline } from "@/components/ui/AuthorByline";
+import { organizationByline } from "@/lib/organizations";
 import { Dot } from "@/components/ui/Dot";
 import { GraphicContentGate } from "@/components/ui/GraphicContentGate";
 import { MediaGallery } from "@/components/ui/MediaGallery";
@@ -817,7 +818,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<AuthorByline>" usage="The 'by user' assembly: detail-page subtitles, map panel header, detail body Author row. size=xs for the dense panel; prefix=false when the slot's label already says Author; avatar leads with the profile picture on the detail-page signature slots. coAuthors credits more analysts after the lead (the geolocators an event shares, from creditProps), joined by creditSeparator: ana, bo and cy. link=false drops the anchor for a slot that is already one click (a version-history row under its stretched link), where a nested link is a target the mouse and the keyboard disagree about.">
+          <Item name="<AuthorByline>" usage="The 'by user' assembly: detail-page subtitles, map panel header, detail body Author row. size=xs for the dense panel; prefix=false when the slot's label already says Author; avatar leads with the profile picture on the detail-page signature slots. coAuthors credits more analysts after the lead (the geolocators an event shares, from creditProps), joined by creditSeparator: ana, bo and cy. link=false drops the anchor for a slot that is already one click (a version-history row under its stretched link), where a nested link is a target the mouse and the keyboard disagree about. A name with its own href links there instead of a profile: organizationByline turns an organization into one (its picture, its name, its page), as on an organization's approval and a review request to it.">
             <Variant label="avatar (detail-page signature)">
               <span className="text-sm text-neutral-400">
                 <AuthorByline author={MOCK_DETAIL.owner} avatar />
@@ -845,6 +846,15 @@ export default function PalettePage() {
             <Variant label="link={false} (inside a row-wide link)">
               <span className="text-xs text-neutral-400">
                 <AuthorByline author={MOCK_DETAIL.owner} prefix={false} link={false} />
+              </span>
+            </Variant>
+            <Variant label="organizationByline (an organization's approval)">
+              <span className="text-sm text-neutral-400">
+                <AuthorByline
+                  author={organizationByline({ slug: "osw", name: "Open Source Watch" })}
+                  prefix={false}
+                  avatar
+                />
               </span>
             </Variant>
           </Item>

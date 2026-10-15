@@ -8,6 +8,8 @@ import { cn } from "@/lib/cn";
 type Author = {
   username: string;
   avatar_url?: string | null;
+  /** Where the name links; the analyst's profile by default. */
+  href?: string;
 };
 
 /** What goes before the name at `index` in a credit line of `count` names: nothing, a comma, or
@@ -29,6 +31,9 @@ export function creditSeparator(index: number, count: number): string {
  *
  * `link={false}` drops the anchor for a slot that is itself one click: a row
  * under a stretched link cannot hold a second link (a separate keyboard stop).
+ *
+ * A name with its own `href` links there instead of a profile: an organization
+ * signs with its name, picture and page (`organizationByline`).
  */
 export function AuthorByline({
   author,
@@ -72,7 +77,7 @@ export function AuthorByline({
                 />
               )}
               {link ? (
-                <Link href={`/profile/${person.username}`} className={TEXT_LINK}>
+                <Link href={person.href ?? `/profile/${person.username}`} className={TEXT_LINK}>
                   {person.username}
                 </Link>
               ) : (
