@@ -93,7 +93,7 @@ def revoke_approval(
 ) -> ApprovalRead:
     """Revoke an approval with a public reason: your own, your organization's as its org-admin,
     or any as a site admin."""
-    geo = resolve_live_event(db, geolocation_id)
+    geo = resolve_readable_event(db, geolocation_id, current_user)
     try:
         row = approvals.revoke(
             db, geo=geo, approval_id=approval_id, actor=current_user, reason=body.reason

@@ -1555,7 +1555,7 @@ Approve the live version of a published event, as yourself or for an organizatio
 
 ### `POST /events/{id}/approvals/{approval_id}/revoke` 🔒
 
-Revoke an approval of the event. The reviewer revokes their own; an org-admin revokes any approval placed for their organization; a site admin revokes any.
+Revoke an approval of the event. The reviewer revokes their own; an org-admin revokes any approval placed for their organization; a site admin revokes any, on a withheld event too, which answers 404 to everyone else.
 
 **Body:** `{ "reason": "The shadows point the other way." }`, 1 to 2000 characters after stripping surrounding whitespace. The reason is public.
 
