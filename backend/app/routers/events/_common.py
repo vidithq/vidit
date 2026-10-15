@@ -1,7 +1,8 @@
 """Shared helpers for the events sub-routers (``read`` / ``write`` / ``item``),
 kept here so none imports another: the typed-error to HTTP envelopes, the
 ``EventRead`` / ``EventList`` assemblers (also imported by the users and social
-routers), the projection helpers and :func:`resolve_live_event`.
+routers), the projection helpers, :func:`resolve_live_event` and
+:func:`resolve_readable_event`.
 """
 
 import uuid
@@ -12,6 +13,7 @@ from pydantic import StringConstraints
 from sqlalchemy.orm import Session
 
 from app.models.event import SOURCE_URL_MAX_LENGTH, Event, EventVersion
+from app.models.user import User
 from app.routers._errors import raise_typed_error
 from app.schemas.event import (
     ArchivedLinkRead,
@@ -91,6 +93,23 @@ def resolve_live_event(db: Session, event_id: uuid.UUID) -> Event:
     ownership; owner-only verbs call ``permissions.ensure_owner``).
     """
     geo = db.query(Event).filter(Event.id == event_id, *visible_events()).first()
+    if geo is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return geo
+
+
+def resolve_readable_event(
+    db: Session, geolocation_id: uuid.UUID, current_user: User | None
+) -> Event:
+    """The event a history or approvals read may serve, or a 404.
+
+    Same visibility as ``GET /{id}`` (soft-deleted hidden from all, withheld
+    visible to admins), shared so those reads cannot diverge.
+    """
+    query = db.query(Event).filter(Event.id == geolocation_id, Event.deleted_at.is_(None))
+    if current_user is None or not current_user.is_admin:
+        query = query.filter(Event.hidden_at.is_(None))
+    geo = query.first()
     if geo is None:
         raise HTTPException(status_code=404, detail="Event not found")
     return geo

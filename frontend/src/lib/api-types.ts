@@ -1260,6 +1260,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/events/{geolocation_id}/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Approvals
+         * @description The approvals of the event: one version's, or one analyst's across versions.
+         */
+        get: operations["list_approvals_api_v1_events__geolocation_id__approvals_get"];
+        put?: never;
+        /**
+         * Approve Event
+         * @description Approve the live version of a published geolocation you are not credited on.
+         */
+        post: operations["approve_event_api_v1_events__geolocation_id__approvals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{geolocation_id}/approvals/{approval_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke Approval
+         * @description Revoke an approval with a public reason: your own, or any as a site admin.
+         */
+        post: operations["revoke_approval_api_v1_events__geolocation_id__approvals__approval_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events/{geolocation_id}/close": {
         parameters: {
             query?: never;
@@ -2708,6 +2752,62 @@ export interface components {
             x_handle: string;
         };
         /**
+         * ApprovalCreate
+         * @description Body of ``POST /events/{id}/approvals``: the version you read, and an optional note.
+         */
+        ApprovalCreate: {
+            /** Note */
+            note?: string | null;
+            /** Version No */
+            version_no: number;
+        };
+        /**
+         * ApprovalRead
+         * @description One review of one version of an event.
+         *
+         *     ``current`` is true while the review covers the live version and is not
+         *     revoked. ``revoked_by_admin`` is true when a site admin, not the reviewer,
+         *     revoked it.
+         */
+        ApprovalRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Current */
+            current: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Note */
+            note: string | null;
+            reviewer: components["schemas"]["AuthorRef"];
+            /** Revoke Reason */
+            revoke_reason: string | null;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Revoked By Admin */
+            revoked_by_admin: boolean;
+            /**
+             * Verdict
+             * @constant
+             */
+            verdict: "approve";
+            /** Version No */
+            version_no: number;
+        };
+        /**
+         * ApprovalRevoke
+         * @description Body of ``POST /events/{id}/approvals/{approval_id}/revoke``. The reason is public.
+         */
+        ApprovalRevoke: {
+            /** Reason */
+            reason: string;
+        };
+        /**
          * ArchiveImportEnqueue
          * @description Body of the JSON enqueue. ``post_estimate`` is a cosmetic volume hint
          *     (the worker stamps the exact ``progress_total``).
@@ -3732,17 +3832,23 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_admin_inherited";
+            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_admin_inherited" | "re_approve_requested" | "approval_received";
         };
         /**
          * NotificationRead
          * @description One feed row. ``actor``, ``event`` and ``organization`` are null on a
          *     kind that names none; ``read_at`` is null until the feed has shown the row.
          *     ``invite_pending`` is true on a ``co_geolocator_invite`` row whose
-         *     invitation still waits for the reader's answer.
+         *     invitation still waits for the reader's answer. ``reapprove_version`` is
+         *     the live version a ``re_approve_requested`` row offers to approve, null
+         *     when the reader cannot approve it now. ``approved_version`` is then the
+         *     latest earlier version the reader's approval still stands on, the base of
+         *     the change list.
          */
         NotificationRead: {
             actor: components["schemas"]["AuthorRef"] | null;
+            /** Approved Version */
+            approved_version: number | null;
             /**
              * Created At
              * Format: date-time
@@ -3760,10 +3866,12 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_admin_inherited";
+            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_admin_inherited" | "re_approve_requested" | "approval_received";
             organization: components["schemas"]["OrganizationRef"] | null;
             /** Read At */
             read_at: string | null;
+            /** Reapprove Version */
+            reapprove_version: number | null;
         };
         /**
          * NotificationReadUpdate
@@ -6638,6 +6746,118 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_approvals_api_v1_events__geolocation_id__approvals_get: {
+        parameters: {
+            query?: {
+                /** @description Defaults to the live version unless reviewer is set */
+                version_no?: number | null;
+                reviewer?: string | null;
+            };
+            header?: never;
+            path: {
+                geolocation_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_event_api_v1_events__geolocation_id__approvals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApprovalCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_approval_api_v1_events__geolocation_id__approvals__approval_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+                approval_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApprovalRevoke"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalRead"];
                 };
             };
             /** @description Validation Error */

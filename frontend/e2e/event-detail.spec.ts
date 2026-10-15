@@ -16,6 +16,7 @@ test.describe("shared event link", () => {
     await page.goto(`/events/${EVENT_ID}`);
 
     await expect(page.getByRole("heading", { name: EVENT.title })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Approvals" })).toBeVisible();
 
     // The utilities cluster is what a reader who followed a link acts on: it
     // passes the record on again.

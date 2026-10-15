@@ -6,6 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- Analysts outside a geolocation's credit approve it one version at a time; any new version, an archive-only save included, asks reviewers to approve again, and a revoked approval keeps its public reason ([#572](https://github.com/vidithq/vidit/pull/572)).
 - The Requests board filters by conflict, capture source, tags, author and whether a request carries a location guess, sorts newest or oldest first, and shows how long each request has been open ([#560](https://github.com/vidithq/vidit/pull/560)).
 - A link to a site outside a short known list (archives, X, Telegram, YouTube and a few others) shows its full address and asks before you leave Vidit, and a URL in a profile bio is now a link ([#559](https://github.com/vidithq/vidit/pull/559)).
 - An event owner can invite another analyst to share a geolocation's credit; every credited geolocator shows on bylines, profiles, the author filter and search, can shelve the event, and inherits it if the owner's account is erased ([#568](https://github.com/vidithq/vidit/pull/568)).

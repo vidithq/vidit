@@ -1,4 +1,4 @@
-import type { EventDetail } from "@/types";
+import type { EventDetail, EventVersion } from "@/types";
 
 /** A geolocated event with every optional field empty, for detail-panel tests. */
 export const eventDetail = (id: string, title: string): EventDetail => ({
@@ -32,4 +32,36 @@ export const eventDetail = (id: string, title: string): EventDetail => ({
   thumbnail: null,
   requested_by: null,
   geolocators: [],
+});
+
+/** A filed version of `event` whose snapshot holds the event's own fields, changed by
+ *  `overrides` (snapshot keys as `services/versions.build_snapshot` files them). */
+export const filedVersion = (
+  event: EventDetail,
+  versionNo: number,
+  overrides: Record<string, unknown> = {},
+): EventVersion => ({
+  id: `v${versionNo}`,
+  version_no: versionNo,
+  edited_by: null,
+  note: null,
+  created_at: "2026-03-16T10:00:00Z",
+  redacted: false,
+  snapshot: {
+    title: event.title,
+    source_url: event.source_url,
+    source_media: event.media,
+    event_coords: event.event_coords,
+    capture_source_coords: event.capture_source_coords,
+    event_date: event.event_date,
+    event_time: event.event_time,
+    source_posted_at: event.source_posted_at,
+    is_graphic: event.is_graphic,
+    secondary_source_urls: event.secondary_source_urls,
+    tags: event.tags,
+    conflicts: event.conflicts,
+    proof: event.proof,
+    archives: [],
+    ...overrides,
+  },
 });

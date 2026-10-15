@@ -50,6 +50,7 @@ from app.routers.events._common import (
     raise_archive_error,
     raise_version_error,
     resolve_live_event,
+    resolve_readable_event,
 )
 from app.schemas.collection import CollectionMembershipList
 from app.schemas.event import (
@@ -516,21 +517,6 @@ def save_event_version(
     return _serialize_event(db, edited)
 
 
-def _readable_event(db: Session, geolocation_id: uuid.UUID, current_user: User | None) -> Event:
-    """The event a history read may serve, or a 404.
-
-    Same visibility as ``GET /{id}`` (soft-deleted hidden from all, withheld
-    visible to admins), shared so the two history reads cannot diverge.
-    """
-    query = db.query(Event).filter(Event.id == geolocation_id, Event.deleted_at.is_(None))
-    if current_user is None or not current_user.is_admin:
-        query = query.filter(Event.hidden_at.is_(None))
-    geo = query.first()
-    if geo is None:
-        raise HTTPException(status_code=404, detail="Event not found")
-    return geo
-
-
 @router.get("/{geolocation_id}/versions", response_model=EventVersionList)
 @authenticated_read_quota
 @limiter.limit("120/minute")
@@ -553,7 +539,7 @@ def list_event_versions(
     100, following the ``Link: rel="next"`` cursor. ``total`` is the whole
     history.
     """
-    geo = _readable_event(db, geolocation_id, current_user)
+    geo = resolve_readable_event(db, geolocation_id, current_user)
 
     size = page_size(limit)
     window = versions_service.list_versions(
@@ -589,7 +575,7 @@ def get_event_version(
     number the event never carried. A redacted version answers with its
     blanked shape.
     """
-    geo = _readable_event(db, geolocation_id, current_user)
+    geo = resolve_readable_event(db, geolocation_id, current_user)
     row = versions_service.get_version(db, event_id=geo.id, version_no=version_no)
     if row is None:
         raise HTTPException(status_code=404, detail="Version not found")

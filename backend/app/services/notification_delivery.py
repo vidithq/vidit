@@ -158,6 +158,18 @@ def _organization_admin_inherited(n: Notification, to: str) -> email.Email:
     )
 
 
+def _re_approve_requested(n: Notification, to: str) -> email.Email:
+    return email.re_approve_requested_email(
+        to=to, actor=n.actor.username, event_id=str(n.event.id), event_title=n.event.title
+    )
+
+
+def _approval_received(n: Notification, to: str) -> email.Email:
+    return email.approval_received_email(
+        to=to, actor=n.actor.username, event_id=str(n.event.id), event_title=n.event.title
+    )
+
+
 _EMAIL_BUILDERS: dict[NotificationKind, Callable[[Notification, str], email.Email]] = {
     "request_fulfilled": _request_fulfilled,
     "new_follower": _new_follower,
@@ -169,6 +181,8 @@ _EMAIL_BUILDERS: dict[NotificationKind, Callable[[Notification, str], email.Emai
     "organization_invite": _organization_invite,
     "organization_invite_accepted": _organization_invite_accepted,
     "organization_admin_inherited": _organization_admin_inherited,
+    "re_approve_requested": _re_approve_requested,
+    "approval_received": _approval_received,
 }
 
 
@@ -279,6 +293,22 @@ def _organization_admin_inherited_push(n: Notification) -> push.PushMessage:
     )
 
 
+def _re_approve_requested_push(n: Notification) -> push.PushMessage:
+    return push.PushMessage(
+        title=f"{n.actor.username} saved a new version of a geolocation you approved",
+        body=n.event.title,
+        path=f"/events/{n.event.id}",
+    )
+
+
+def _approval_received_push(n: Notification) -> push.PushMessage:
+    return push.PushMessage(
+        title=f"{n.actor.username} approved your geolocation",
+        body=n.event.title,
+        path=f"/events/{n.event.id}",
+    )
+
+
 _PUSH_BUILDERS: dict[NotificationKind, Callable[[Notification], push.PushMessage]] = {
     "request_fulfilled": _request_fulfilled_push,
     "new_follower": _new_follower_push,
@@ -290,6 +320,8 @@ _PUSH_BUILDERS: dict[NotificationKind, Callable[[Notification], push.PushMessage
     "organization_invite": _organization_invite_push,
     "organization_invite_accepted": _organization_invite_accepted_push,
     "organization_admin_inherited": _organization_admin_inherited_push,
+    "re_approve_requested": _re_approve_requested_push,
+    "approval_received": _approval_received_push,
 }
 
 
