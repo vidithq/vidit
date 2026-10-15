@@ -9,16 +9,17 @@ import {
   ADMIN_ORGANIZATIONS_PATH,
   appointOrganizationManager,
   createOrganization,
+  deleteOrganization,
   organizationPath,
   type AdminOrganization,
   type Organization,
 } from "@/lib/organizations";
-import { Button } from "@/components/ui/Button";
+import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Textarea } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { TEXT_LINK } from "@/components/ui/styles";
+import { TEXT_LINK, WARNING_CALLOUT } from "@/components/ui/styles";
 import {
   FORM_ERROR_BANNER,
   FORM_LABEL,
@@ -66,6 +67,60 @@ function AppointManager({ slug, onDone }: { slug: string; onDone: () => void }) 
       </Button>
       {appoint.error && <div className={`${FORM_ERROR_BANNER} w-full`}>{appoint.error}</div>}
     </form>
+  );
+}
+
+/** Delete an organization: the site admin types its slug to confirm, since the delete takes
+ *  its members, invites, review requests and every approval given in its name. */
+function DeleteOrganization({ slug, onDone }: { slug: string; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
+  const remove = useMutation(() => deleteOrganization(slug), {
+    fallback: "Could not delete the organization",
+    onSuccess: onDone,
+  });
+  if (!open) {
+    return (
+      <Button variant="dangerGhost" onClick={() => setOpen(true)}>
+        Delete
+      </Button>
+    );
+  }
+  return (
+    <div className={`${WARNING_CALLOUT} w-full space-y-2 rounded-md px-3 py-2 text-xs`}>
+      <p>
+        <strong>Deleting {slug} is irreversible.</strong> Its members, pending invites, review
+        requests and every approval given in its name go with it; the owners of the events it
+        approved are told. Type the slug to confirm.
+      </p>
+      <Input
+        variant="compact"
+        aria-label={`Type ${slug} to confirm`}
+        value={typed}
+        onChange={(e) => setTyped(e.target.value)}
+        placeholder={slug}
+      />
+      <div className="flex gap-2">
+        <Button
+          variant="danger"
+          className={typed === slug ? DANGER_CONFIRM : ""}
+          disabled={typed !== slug || remove.loading}
+          onClick={() => void remove.run()}
+        >
+          {remove.loading ? "Deleting…" : "Delete organization"}
+        </Button>
+        <Button
+          variant="ghost"
+          onClick={() => {
+            setOpen(false);
+            setTyped("");
+          }}
+        >
+          Cancel
+        </Button>
+      </div>
+      {remove.error && <div className={FORM_ERROR_BANNER}>{remove.error}</div>}
+    </div>
   );
 }
 
@@ -179,6 +234,7 @@ export function OrganizationsPanel() {
                   <AppointManager slug={org.slug} onDone={list.refetch} />
                 </>
               )}
+              <DeleteOrganization slug={org.slug} onDone={list.refetch} />
             </li>
           ))}
         </ul>

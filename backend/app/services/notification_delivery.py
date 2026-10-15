@@ -212,6 +212,12 @@ _EMAIL_BUILDERS: dict[NotificationKind, Callable[[Notification, str], email.Emai
     "review_request_declined": lambda n, to: email.review_request_declined_email(
         to=to, **_review_fields(n)
     ),
+    "organization_approval_removed": lambda n, to: email.organization_approval_removed_email(
+        to=to,
+        organization=n.organization_name or "An organization",
+        event_id=str(n.event.id),
+        event_title=n.event.title,
+    ),
 }
 
 
@@ -378,6 +384,11 @@ _PUSH_BUILDERS: dict[NotificationKind, Callable[[Notification], push.PushMessage
     "approval_received": _approval_received_push,
     "review_request_received": _review_request_received_push,
     "review_request_declined": _review_request_declined_push,
+    "organization_approval_removed": lambda n: push.PushMessage(
+        title=f"{n.organization_name or 'An organization'} was removed from Vidit",
+        body=f"Its approval of {n.event.title} is gone.",
+        path=f"/events/{n.event.id}",
+    ),
 }
 
 

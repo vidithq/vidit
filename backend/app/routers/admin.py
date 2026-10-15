@@ -215,6 +215,22 @@ def appoint_organization_manager(
         raise_typed_error(exc, organizations_service.ORGANIZATION_ERROR_STATUS)
 
 
+@router.delete("/organizations/{slug}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("30/hour")
+def delete_organization(
+    request: Request,
+    slug: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> Response:
+    """Delete an organization with its memberships, invites, review requests and approvals."""
+    try:
+        organizations_service.delete_organization(db, actor=current_user, slug=slug)
+    except organizations_service.OrganizationError as exc:
+        raise_typed_error(exc, organizations_service.ORGANIZATION_ERROR_STATUS)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/organizations", response_model=list[AdminOrganizationRead])
 def list_organizations(
     db: Session = Depends(get_db),

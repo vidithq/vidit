@@ -87,6 +87,7 @@ def _emit(
     actor_id: uuid.UUID | None = None,
     event_id: uuid.UUID | None = None,
     organization_id: uuid.UUID | None = None,
+    organization_name: str | None = None,
 ) -> None:
     if actor_id == recipient_id:
         return
@@ -96,6 +97,7 @@ def _emit(
         actor_id=actor_id,
         event_id=event_id,
         organization_id=organization_id,
+        organization_name=organization_name,
     )
     db.add(row)
     recipient = db.get(User, recipient_id)
@@ -257,6 +259,25 @@ def notify_organization_manager_inherited(
         kind="organization_manager_inherited",
         organization_id=organization_id,
     )
+
+
+def notify_organization_approval_removed(
+    db: Session, *, organization_name: str, events: Collection[tuple[uuid.UUID, uuid.UUID]]
+) -> None:
+    """Tell the owner of each event in ``events`` (``(event_id, owner_id)`` pairs, one per
+    event) that the approval ``organization_name`` gave it went with the organization.
+
+    Names no actor: a site admin deleted the organization, and the row keeps its name, since
+    the organization row is gone.
+    """
+    for event_id, owner_id in events:
+        _emit(
+            db,
+            recipient_id=owner_id,
+            kind="organization_approval_removed",
+            event_id=event_id,
+            organization_name=organization_name,
+        )
 
 
 def notify_approval_received(
@@ -658,6 +679,7 @@ def build_read(
             if row.organization is not None
             else None
         ),
+        organization_name=row.organization_name,
         read_at=row.read_at,
         invite_pending=row.id in pending,
         reapprove_version=offer.live_version if offer is not None else None,

@@ -54,6 +54,7 @@ const KIND_ICON: Record<NotificationKind, LucideIcon> = {
   approval_received: BadgeCheck,
   review_request_received: ClipboardCheck,
   review_request_declined: ClipboardX,
+  organization_approval_removed: Building2,
 };
 
 function NotificationRows({

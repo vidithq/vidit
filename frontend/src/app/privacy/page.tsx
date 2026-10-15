@@ -159,6 +159,12 @@ export default function PrivacyPage() {
               stored files, is carried out on request.
             </li>
             <li>
+              Deleting an organization, which only a site administrator does,
+              removes its profile, picture, memberships, invitations, review
+              requests and the approvals given in its name. The administration
+              log keeps its name and what was removed.
+            </li>
+            <li>
               A geolocation credited to several analysts belongs to the record
               of each. When its owner&apos;s account is deleted or permanently
               deleted, it passes to the analyst credited earliest and stays

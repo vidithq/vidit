@@ -335,6 +335,7 @@ erDiagram
         UUID actor_id FK "nullable, who acted"
         UUID event_id FK "nullable, what it concerns"
         UUID organization_id FK "nullable, the organization it concerns"
+        VARCHAR organization_name "nullable, a deleted organization's name"
         TIMESTAMPTZ created_at
         TIMESTAMPTZ read_at "nullable, NULL is unread"
     }
@@ -991,10 +992,11 @@ One thing that happened to an analyst, shown in their feed at [`GET /notificatio
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The recipient. |
-| `kind` | `VARCHAR(40)` | NOT NULL, CHECK in `('request_fulfilled', 'new_follower', 'x_handle_request_approved', 'x_handle_request_declined', 'co_geolocator_invite', 'co_geolocator_removed', 'ownership_transferred', 'organization_invite', 'organization_invite_accepted', 'organization_manager_inherited', 're_approve_requested', 'approval_received', 'review_request_received', 'review_request_declined')` (constraint `ck_notifications_kind_valid`). The kind registry `NOTIFICATION_KINDS` in [`models/notification.py`](../backend/app/models/notification.py) lists the same values with their per-channel defaults. |
-| `actor_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, nullable. Who acted: the fulfiller, the follower, the owner who invited or removed you or saved a new version, the reviewer who approved, the geolocator who requested a review, the analyst who declined one, the inviting org manager, or the analyst who accepted an organization invite. NULL on the X handle request outcomes, which name no admin, and on `ownership_transferred` and `organization_manager_inherited`, which must not name the erased analyst. |
+| `kind` | `VARCHAR(40)` | NOT NULL, CHECK in `('request_fulfilled', 'new_follower', 'x_handle_request_approved', 'x_handle_request_declined', 'co_geolocator_invite', 'co_geolocator_removed', 'ownership_transferred', 'organization_invite', 'organization_invite_accepted', 'organization_manager_inherited', 're_approve_requested', 'approval_received', 'review_request_received', 'review_request_declined', 'organization_approval_removed')` (constraint `ck_notifications_kind_valid`). The kind registry `NOTIFICATION_KINDS` in [`models/notification.py`](../backend/app/models/notification.py) lists the same values with their per-channel defaults. |
+| `actor_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, nullable. Who acted: the fulfiller, the follower, the owner who invited or removed you or saved a new version, the reviewer who approved, the geolocator who requested a review, the analyst who declined one, the inviting org manager, or the analyst who accepted an organization invite. NULL on the X handle request outcomes, which name no admin, on `ownership_transferred` and `organization_manager_inherited`, which must not name the erased analyst, and on `organization_approval_removed`, which a site admin's deletion sets off. |
 | `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, nullable. The event the row concerns; NULL for a kind that names none. |
 | `organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, nullable. The organization an `organization_*` row concerns. |
+| `organization_name` | `VARCHAR(100)` | nullable. The name of the deleted organization on an `organization_approval_removed` row, which outlives the organization it names; NULL on every other kind. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()`. Orders the feed. |
 | `read_at` | `TIMESTAMPTZ` | nullable. Set by `POST /notifications/read` on the rows the feed showed; NULL is unread. Read state is per row because `created_at` is stamped at flush: an action that flushes its row and commits after a slow upload would land behind a single read marker already moved past it. |
 

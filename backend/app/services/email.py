@@ -461,6 +461,21 @@ def ownership_transferred_email(*, to: str, event_id: str, event_title: str) -> 
     )
 
 
+def organization_approval_removed_email(
+    *, to: str, organization: str, event_id: str, event_title: str
+) -> Email:
+    return _notification_email(
+        to=to,
+        subject=f"{organization} was removed from Vidit",
+        blocks=[
+            f"{organization} was removed from Vidit, and its approval of “{event_title}” "
+            "went with it. The event and its other approvals are unchanged."
+        ],
+        action=Action("View the geolocation", event_link(event_id)),
+        setting="Organization approval removed",
+    )
+
+
 def organization_link(slug: str) -> str:
     """The absolute URL of one organization's page."""
     return app_url(f"/organizations/{slug}")

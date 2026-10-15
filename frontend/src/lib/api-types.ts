@@ -324,6 +324,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/organizations/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Organization
+         * @description Delete an organization with its memberships, invites, review requests and approvals.
+         */
+        delete: operations["delete_organization_api_v1_admin_organizations__slug__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/organizations/{slug}/managers": {
         parameters: {
             query?: never;
@@ -4011,7 +4031,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_manager_inherited" | "re_approve_requested" | "approval_received" | "review_request_received" | "review_request_declined";
+            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_manager_inherited" | "re_approve_requested" | "approval_received" | "review_request_received" | "review_request_declined" | "organization_approval_removed";
         };
         /**
          * NotificationRead
@@ -4025,6 +4045,8 @@ export interface components {
          *     on a ``re_approve_requested`` row, the latest earlier version the reader's
          *     approval still stands on, the base of the change list. ``review_request_id`` is the open request behind a
          *     ``review_request_received`` row, null once it is resolved.
+         *     ``organization_name`` names the deleted organization on an
+         *     ``organization_approval_removed`` row, and is null on every other kind.
          */
         NotificationRead: {
             actor: components["schemas"]["AuthorRef"] | null;
@@ -4047,8 +4069,10 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_manager_inherited" | "re_approve_requested" | "approval_received" | "review_request_received" | "review_request_declined";
+            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_manager_inherited" | "re_approve_requested" | "approval_received" | "review_request_received" | "review_request_declined" | "organization_approval_removed";
             organization: components["schemas"]["OrganizationRef"] | null;
+            /** Organization Name */
+            organization_name?: string | null;
             /** Read At */
             read_at: string | null;
             /** Reapprove Version */
@@ -5586,6 +5610,37 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["OrganizationRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_organization_api_v1_admin_organizations__slug__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
