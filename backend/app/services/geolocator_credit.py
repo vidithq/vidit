@@ -159,13 +159,18 @@ def invite(db: Session, *, geo: Event, owner: User, username: str) -> EventGeolo
         raise AlreadyGeolocatorError("This analyst is already a geolocator of this event")
     if db.get(EventGeolocatorInvite, (geo.id, invitee.id)) is not None:
         raise AlreadyInvitedError("This analyst already has a pending invitation")
+    # Live analysts only: a banned co-geolocator or invitee prints on no byline.
     credited = db.scalar(
-        select(func.count()).select_from(EventGeolocator).where(EventGeolocator.event_id == geo.id)
+        select(func.count())
+        .select_from(EventGeolocator)
+        .join(User, User.id == EventGeolocator.user_id)
+        .where(EventGeolocator.event_id == geo.id, User.deleted_at.is_(None))
     )
     pending = db.scalar(
         select(func.count())
         .select_from(EventGeolocatorInvite)
-        .where(EventGeolocatorInvite.event_id == geo.id)
+        .join(User, User.id == EventGeolocatorInvite.user_id)
+        .where(EventGeolocatorInvite.event_id == geo.id, User.deleted_at.is_(None))
     )
     if (credited or 0) + (pending or 0) >= MAX_EVENT_GEOLOCATORS:
         raise TooManyGeolocatorsError(

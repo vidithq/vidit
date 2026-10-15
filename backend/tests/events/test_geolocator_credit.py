@@ -125,6 +125,20 @@ def test_invitations_are_capped(db, author, make_user, monkeypatch):
     assert capped.json()["detail"]["code"] == "too_many_geolocators"
 
 
+def test_the_cap_counts_live_analysts_only(db, author, make_user, monkeypatch):
+    monkeypatch.setattr(geolocator_credit, "MAX_EVENT_GEOLOCATORS", 3)
+    geo = _published(db, author)
+    _credit(db, geo, make_user(deleted_at=datetime.now(UTC)))
+    banned_invitee = make_user()
+    assert _invite(geo, author, banned_invitee.username).status_code == 201
+    banned_invitee.deleted_at = datetime.now(UTC)
+    db.commit()
+
+    assert _invite(geo, author, make_user().username).status_code == 201
+    assert _invite(geo, author, make_user().username).status_code == 201
+    assert _invite(geo, author, make_user().username).status_code == 409
+
+
 def test_invite_list_shows_the_owner_all_and_others_their_own(db, author, second_user, make_user):
     geo = _published(db, author)
     third = make_user()
