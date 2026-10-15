@@ -213,6 +213,24 @@ describe("the filter panel on the Collections scope", () => {
   });
 });
 
+describe("the search page's Analysts group", () => {
+  it("prints the bare username, the highlight inline in it", async () => {
+    search.mockResolvedValue(
+      response({
+        users: [{ ...userHit(), username: "Geo_Lego", username_highlight: "\u0002Geo\u0003_Lego" }],
+        total: { ...NO_TOTALS, users: 1 },
+      }),
+    );
+
+    render(<SearchPage />);
+
+    const heading = (await screen.findByText("Geo")).closest("h3")!;
+    expect(heading.textContent).toBe("Geo_Lego");
+    // A flex heading would set the mark and the rest apart by its gap.
+    expect(heading.className).not.toMatch(/flex|gap-/);
+  });
+});
+
 describe("the search page's Organizations group", () => {
   it("renders a row tagged as an organization that links to its page", async () => {
     search.mockResolvedValue(

@@ -619,7 +619,7 @@ function ProfileResult({
     >
       <Avatar src={avatarUrl} username={avatarName} size="size-10" />
       <div className="flex-1 min-w-0 space-y-1">
-        <h3 className="text-sm font-medium text-neutral-100 inline-flex items-center gap-1.5">
+        <h3 className="text-sm font-medium text-neutral-100">
           {name}
         </h3>
         {meta}
@@ -639,7 +639,7 @@ function UserResult({ hit }: { hit: SearchUserHit }) {
       href={`/profile/${hit.username}`}
       avatarUrl={hit.avatar_url}
       avatarName={hit.username}
-      name={<>@<Highlighted value={hit.username_highlight} /></>}
+      name={<Highlighted value={hit.username_highlight} />}
       bioHighlight={hit.bio_highlight}
     />
   );
@@ -655,7 +655,7 @@ function OrganizationResult({ hit }: { hit: SearchOrganizationHit }) {
       meta={
         <p className="text-[11px] text-neutral-500 inline-flex items-center gap-1 w-full">
           <Building2 size={11} aria-hidden />
-          Organization · {memberCountLabel(hit.member_count)}
+          {`Organization · ${memberCountLabel(hit.member_count)}`}
         </p>
       }
       bioHighlight={hit.bio_highlight}
