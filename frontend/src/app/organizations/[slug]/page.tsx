@@ -40,7 +40,7 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 export default function OrganizationPage() {
   const params = useParams();
   const slug = typeof params.slug === "string" ? params.slug : "";
-  const { user, loading: authLoading, refresh } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
   const path = slug ? organizationPath(slug) : null;
   const { data: org, error, refetch } = useApiResource<Organization>(path);
@@ -51,7 +51,6 @@ export default function OrganizationPage() {
   const edit = useProfileEdit({
     username: slug,
     profile: org,
-    refreshAuth: refresh,
     refetchProfile: refetch,
     calls: {
       update: (body) => updateOrganization(slug, body),
