@@ -79,12 +79,12 @@ def site_admin(make_user):
 
 
 @pytest.fixture
-def org_admin(make_user):
+def org_manager(make_user):
     return make_user()
 
 
 @pytest.fixture
-def org(site_admin, org_admin):
+def org(site_admin, org_manager):
     slug = f"org-{uuid.uuid4().hex[:8]}"
     headers = login_as(client, site_admin)
     response = client.post(
@@ -96,7 +96,7 @@ def org(site_admin, org_admin):
             "x_handle": f"@OSW{uuid.uuid4().hex[:6]}",
             "bio": "We geolocate.",
             "external_links": {"website": "https://example.org"},
-            "admin_username": org_admin.username,
+            "manager_username": org_manager.username,
         },
     )
     assert response.status_code == 201, response.text
@@ -132,20 +132,22 @@ def _code(response) -> str:
 # Create
 
 
-def test_site_admin_creates_an_organization_with_its_first_admin(db, org, site_admin, org_admin):
+def test_site_admin_creates_an_organization_with_its_first_manager(
+    db, org, site_admin, org_manager
+):
     assert org["name"] == "Open Source Watch"
     assert org["x_handle"].startswith("osw")
     assert org["external_links"] == {"website": "https://example.org"}
     assert org["member_count"] == 1
     member = db.query(OrganizationMember).filter_by(organization_id=uuid.UUID(org["id"])).one()
-    assert (member.user_id, member.role) == (org_admin.id, "admin")
+    assert (member.user_id, member.role) == (org_manager.id, "manager")
     audit = db.query(AdminEvent).filter_by(actor_id=site_admin.id).one()
     assert audit.action == "organization_created"
     assert audit.target["slug"] == org["slug"]
 
 
 def test_analysts_and_organizations_share_one_x_handle_namespace(
-    db, org, site_admin, org_admin, make_user
+    db, org, site_admin, org_manager, make_user
 ):
     headers = login_as(client, site_admin)
     analyst = make_user()
@@ -166,46 +168,46 @@ def test_analysts_and_organizations_share_one_x_handle_namespace(
             "name": "Mirror",
             "slug": f"mirror-{uuid.uuid4().hex[:6]}",
             "x_handle": handle,
-            "admin_username": org_admin.username,
+            "manager_username": org_manager.username,
         },
     )
     assert (refused.status_code, _code(refused)) == (409, "x_handle_conflict")
 
 
-def test_create_is_site_admin_only(make_user, org_admin):
+def test_create_is_site_admin_only(make_user, org_manager):
     headers = login_as(client, make_user())
     response = client.post(
         _ADMIN_CREATE,
         headers=headers,
-        json={"name": "X", "slug": "nope", "admin_username": org_admin.username},
+        json={"name": "X", "slug": "nope", "manager_username": org_manager.username},
     )
     assert response.status_code == 403
 
 
 @pytest.mark.parametrize("slug", ["A", "-lead", "trail-", "has space", "x" * 51])
-def test_create_rejects_a_malformed_slug(site_admin, org_admin, slug):
+def test_create_rejects_a_malformed_slug(site_admin, org_manager, slug):
     headers = login_as(client, site_admin)
     response = client.post(
         _ADMIN_CREATE,
         headers=headers,
-        json={"name": "X", "slug": slug, "admin_username": org_admin.username},
+        json={"name": "X", "slug": slug, "manager_username": org_manager.username},
     )
     assert response.status_code == 422
 
 
-def test_create_refuses_a_taken_slug_and_an_unknown_admin(org, site_admin, org_admin):
+def test_create_refuses_a_taken_slug_and_an_unknown_admin(org, site_admin, org_manager):
     headers = login_as(client, site_admin)
     taken = client.post(
         _ADMIN_CREATE,
         headers=headers,
-        json={"name": "Copy", "slug": org["slug"], "admin_username": org_admin.username},
+        json={"name": "Copy", "slug": org["slug"], "manager_username": org_manager.username},
     )
     assert taken.status_code == 409
     assert _code(taken) == "slug_taken"
     unknown = client.post(
         _ADMIN_CREATE,
         headers=headers,
-        json={"name": "Copy", "slug": f"c-{uuid.uuid4().hex[:6]}", "admin_username": "nobody-x"},
+        json={"name": "Copy", "slug": f"c-{uuid.uuid4().hex[:6]}", "manager_username": "nobody-x"},
     )
     assert unknown.status_code == 404
 
@@ -213,27 +215,27 @@ def test_create_refuses_a_taken_slug_and_an_unknown_admin(org, site_admin, org_a
 # Public reads
 
 
-def test_public_page_and_viewer_fields(org, org_admin, make_user):
+def test_public_page_and_viewer_fields(org, org_manager, make_user):
     anonymous = client.get(_org(org["slug"])).json()
     assert anonymous["viewer_role"] is None
     assert anonymous["viewer_can_manage"] is False
 
-    login_as(client, org_admin)
+    login_as(client, org_manager)
     own = client.get(_org(org["slug"])).json()
-    assert own["viewer_role"] == "admin"
+    assert own["viewer_role"] == "manager"
     assert own["viewer_can_manage"] is True
 
     assert client.get(_org("no-such-org")).status_code == 404
 
 
-def test_members_list_and_profile_memberships(db, org, org_admin, make_user):
+def test_members_list_and_profile_memberships(db, org, org_manager, make_user):
     member = make_user()
-    _join(db, org_admin, org["slug"], member)
+    _join(db, org_manager, org["slug"], member)
     client.cookies.clear()
 
     members = client.get(f"{_org(org['slug'])}/members").json()
     assert [(m["user"]["username"], m["role"]) for m in members] == [
-        (org_admin.username, "admin"),
+        (org_manager.username, "manager"),
         (member.username, "member"),
     ]
 
@@ -243,9 +245,9 @@ def test_members_list_and_profile_memberships(db, org, org_admin, make_user):
     ]
 
 
-def test_soft_deleted_members_drop_out_of_the_reads(db, org, org_admin, make_user):
+def test_soft_deleted_members_drop_out_of_the_reads(db, org, org_manager, make_user):
     member = make_user()
-    _join(db, org_admin, org["slug"], member)
+    _join(db, org_manager, org["slug"], member)
     member.deleted_at = datetime.now(UTC)
     db.merge(member)
     db.commit()
@@ -257,43 +259,43 @@ def test_soft_deleted_members_drop_out_of_the_reads(db, org, org_admin, make_use
 # Invitations
 
 
-def test_invite_requires_mutual_follow(db, org, org_admin, make_user):
+def test_invite_requires_mutual_follow(db, org, org_manager, make_user):
     invitee = make_user()
-    refused = _invite(org_admin, org["slug"], invitee)
+    refused = _invite(org_manager, org["slug"], invitee)
     assert refused.status_code == 403
     assert _code(refused) == "not_mutual_follow"
 
-    db.add(Follow(follower_id=org_admin.id, followed_id=invitee.id))
+    db.add(Follow(follower_id=org_manager.id, followed_id=invitee.id))
     db.commit()
-    assert _code(_invite(org_admin, org["slug"], invitee)) == "not_mutual_follow"
+    assert _code(_invite(org_manager, org["slug"], invitee)) == "not_mutual_follow"
 
-    db.add(Follow(follower_id=invitee.id, followed_id=org_admin.id))
+    db.add(Follow(follower_id=invitee.id, followed_id=org_manager.id))
     db.commit()
-    assert _invite(org_admin, org["slug"], invitee).status_code == 201
-    again = _invite(org_admin, org["slug"], invitee)
+    assert _invite(org_manager, org["slug"], invitee).status_code == 201
+    again = _invite(org_manager, org["slug"], invitee)
     assert again.status_code == 409
     assert _code(again) == "already_invited"
 
 
-def test_only_an_org_admin_invites(db, org, org_admin, make_user):
+def test_only_an_org_manager_invites(db, org, org_manager, make_user):
     member, outsider = make_user(), make_user()
-    _join(db, org_admin, org["slug"], member)
+    _join(db, org_manager, org["slug"], member)
     _follow_both(db, member, outsider)
     refused = _invite(member, org["slug"], outsider)
     assert refused.status_code == 403
-    assert _code(refused) == "not_organization_admin"
+    assert _code(refused) == "not_organization_manager"
 
 
-def test_candidates_are_mutual_follows_not_yet_in_or_invited(db, org, org_admin, make_user):
+def test_candidates_are_mutual_follows_not_yet_in_or_invited(db, org, org_manager, make_user):
     mutual, one_way, invited, member = make_user(), make_user(), make_user(), make_user()
-    _follow_both(db, org_admin, mutual)
-    db.add(Follow(follower_id=org_admin.id, followed_id=one_way.id))
+    _follow_both(db, org_manager, mutual)
+    db.add(Follow(follower_id=org_manager.id, followed_id=one_way.id))
     db.commit()
-    _follow_both(db, org_admin, invited)
-    assert _invite(org_admin, org["slug"], invited).status_code == 201
-    _join(db, org_admin, org["slug"], member)
+    _follow_both(db, org_manager, invited)
+    assert _invite(org_manager, org["slug"], invited).status_code == 201
+    _join(db, org_manager, org["slug"], member)
 
-    login_as(client, org_admin)
+    login_as(client, org_manager)
     candidates = client.get(f"{_org(org['slug'])}/invite-candidates").json()
     assert [c["username"] for c in candidates] == [mutual.username]
 
@@ -301,10 +303,10 @@ def test_candidates_are_mutual_follows_not_yet_in_or_invited(db, org, org_admin,
     assert [p["user"]["username"] for p in pending] == [invited.username]
 
 
-def test_accept_joins_and_notifies_both_sides(db, org, org_admin, make_user):
+def test_accept_joins_and_notifies_both_sides(db, org, org_manager, make_user):
     invitee = make_user()
-    _follow_both(db, org_admin, invitee)
-    assert _invite(org_admin, org["slug"], invitee).status_code == 201
+    _follow_both(db, org_manager, invitee)
+    assert _invite(org_manager, org["slug"], invitee).status_code == 201
 
     login_as(client, invitee)
     page = client.get(_org(org["slug"])).json()
@@ -312,7 +314,7 @@ def test_accept_joins_and_notifies_both_sides(db, org, org_admin, make_user):
     feed = client.get("/api/v1/notifications").json()
     assert feed[0]["kind"] == "organization_invite"
     assert feed[0]["organization"]["slug"] == org["slug"]
-    assert feed[0]["actor"]["username"] == org_admin.username
+    assert feed[0]["actor"]["username"] == org_manager.username
 
     headers = login_as(client, invitee)
     assert client.post(f"{_org(org['slug'])}/invite/accept", headers=headers).status_code == 204
@@ -322,7 +324,7 @@ def test_accept_joins_and_notifies_both_sides(db, org, org_admin, make_user):
 
     accepted = (
         db.query(Notification)
-        .filter_by(user_id=org_admin.id, kind="organization_invite_accepted")
+        .filter_by(user_id=org_manager.id, kind="organization_invite_accepted")
         .one()
     )
     assert accepted.actor_id == invitee.id
@@ -331,28 +333,28 @@ def test_accept_joins_and_notifies_both_sides(db, org, org_admin, make_user):
     assert again.status_code == 404
 
 
-def test_decline_drops_the_invite_silently(db, org, org_admin, make_user):
+def test_decline_drops_the_invite_silently(db, org, org_manager, make_user):
     invitee = make_user()
-    _follow_both(db, org_admin, invitee)
-    assert _invite(org_admin, org["slug"], invitee).status_code == 201
+    _follow_both(db, org_manager, invitee)
+    assert _invite(org_manager, org["slug"], invitee).status_code == 201
     headers = login_as(client, invitee)
     assert client.post(f"{_org(org['slug'])}/invite/decline", headers=headers).status_code == 204
     assert db.query(OrganizationInvite).filter_by(user_id=invitee.id).count() == 0
     assert db.query(OrganizationMember).filter_by(user_id=invitee.id).count() == 0
-    assert db.query(Notification).filter_by(user_id=org_admin.id).count() == 0
+    assert db.query(Notification).filter_by(user_id=org_manager.id).count() == 0
 
 
-def test_org_admin_cancels_an_invite(db, org, org_admin, make_user):
+def test_org_manager_cancels_an_invite(db, org, org_manager, make_user):
     invitee = make_user()
-    _follow_both(db, org_admin, invitee)
-    invite_id = _invite(org_admin, org["slug"], invitee).json()["id"]
-    headers = login_as(client, org_admin)
+    _follow_both(db, org_manager, invitee)
+    invite_id = _invite(org_manager, org["slug"], invitee).json()["id"]
+    headers = login_as(client, org_manager)
     path = f"{_org(org['slug'])}/invites/{invite_id}"
     assert client.delete(path, headers=headers).status_code == 204
     assert client.delete(path, headers=headers).status_code == 404
 
 
-def test_an_analyst_joins_several_organizations(db, org, site_admin, org_admin, make_user):
+def test_an_analyst_joins_several_organizations(db, org, site_admin, org_manager, make_user):
     second_admin, analyst = make_user(), make_user()
     headers = login_as(client, site_admin)
     second = client.post(
@@ -361,10 +363,10 @@ def test_an_analyst_joins_several_organizations(db, org, site_admin, org_admin, 
         json={
             "name": "Another collective",
             "slug": f"two-{uuid.uuid4().hex[:6]}",
-            "admin_username": second_admin.username,
+            "manager_username": second_admin.username,
         },
     ).json()
-    _join(db, org_admin, org["slug"], analyst)
+    _join(db, org_manager, org["slug"], analyst)
     _join(db, second_admin, second["slug"], analyst)
     names = [
         m["organization"]["name"]
@@ -376,39 +378,39 @@ def test_an_analyst_joins_several_organizations(db, org, site_admin, org_admin, 
 # Roles, removal, leaving
 
 
-def test_last_admin_cannot_leave_or_be_demoted(org, org_admin):
-    headers = login_as(client, org_admin)
-    members = f"{_org(org['slug'])}/members/{org_admin.username}"
+def test_last_manager_cannot_leave_or_be_demoted(org, org_manager):
+    headers = login_as(client, org_manager)
+    members = f"{_org(org['slug'])}/members/{org_manager.username}"
     demote = client.patch(members, headers=headers, json={"role": "member"})
     assert demote.status_code == 409
-    assert _code(demote) == "last_admin"
+    assert _code(demote) == "last_manager"
     leave = client.delete(members, headers=headers)
     assert leave.status_code == 409
-    assert _code(leave) == "last_admin"
+    assert _code(leave) == "last_manager"
 
 
-def test_promote_then_the_former_admin_may_leave(db, org, org_admin, make_user):
+def test_promote_then_the_former_manager_may_leave(db, org, org_manager, make_user):
     member = make_user()
-    _join(db, org_admin, org["slug"], member)
-    headers = login_as(client, org_admin)
+    _join(db, org_manager, org["slug"], member)
+    headers = login_as(client, org_manager)
     promoted = client.patch(
-        f"{_org(org['slug'])}/members/{member.username}", headers=headers, json={"role": "admin"}
+        f"{_org(org['slug'])}/members/{member.username}", headers=headers, json={"role": "manager"}
     )
     assert promoted.status_code == 200
-    assert promoted.json()["role"] == "admin"
-    leave = client.delete(f"{_org(org['slug'])}/members/{org_admin.username}", headers=headers)
+    assert promoted.json()["role"] == "manager"
+    leave = client.delete(f"{_org(org['slug'])}/members/{org_manager.username}", headers=headers)
     assert leave.status_code == 204
 
 
-def test_member_leaves_but_cannot_remove_others(db, org, org_admin, make_user):
+def test_member_leaves_but_cannot_remove_others(db, org, org_manager, make_user):
     a, b = make_user(), make_user()
-    _join(db, org_admin, org["slug"], a)
-    _join(db, org_admin, org["slug"], b)
+    _join(db, org_manager, org["slug"], a)
+    _join(db, org_manager, org["slug"], b)
     headers = login_as(client, a)
     refused = client.delete(f"{_org(org['slug'])}/members/{b.username}", headers=headers)
     assert refused.status_code == 403
     role = client.patch(
-        f"{_org(org['slug'])}/members/{a.username}", headers=headers, json={"role": "admin"}
+        f"{_org(org['slug'])}/members/{a.username}", headers=headers, json={"role": "manager"}
     )
     assert role.status_code == 403
     assert (
@@ -417,22 +419,22 @@ def test_member_leaves_but_cannot_remove_others(db, org, org_admin, make_user):
     )
 
 
-def test_org_admin_removes_a_member(db, org, org_admin, make_user):
+def test_org_manager_removes_a_member(db, org, org_manager, make_user):
     member = make_user()
-    _join(db, org_admin, org["slug"], member)
-    headers = login_as(client, org_admin)
+    _join(db, org_manager, org["slug"], member)
+    headers = login_as(client, org_manager)
     path = f"{_org(org['slug'])}/members/{member.username}"
     assert client.delete(path, headers=headers).status_code == 204
     assert client.delete(path, headers=headers).status_code == 404
 
 
-def test_site_admin_manages_any_organization(db, org, site_admin, make_user, org_admin):
+def test_site_admin_manages_any_organization(db, org, site_admin, make_user, org_manager):
     member = make_user()
-    _join(db, org_admin, org["slug"], member)
+    _join(db, org_manager, org["slug"], member)
     headers = login_as(client, site_admin)
     assert client.get(_org(org["slug"])).json()["viewer_can_manage"] is True
     promoted = client.patch(
-        f"{_org(org['slug'])}/members/{member.username}", headers=headers, json={"role": "admin"}
+        f"{_org(org['slug'])}/members/{member.username}", headers=headers, json={"role": "manager"}
     )
     assert promoted.status_code == 200
 
@@ -440,8 +442,8 @@ def test_site_admin_manages_any_organization(db, org, site_admin, make_user, org
 # Profile edit
 
 
-def test_org_admin_edits_bio_links_and_picture(db, org, org_admin, make_user):
-    headers = login_as(client, org_admin)
+def test_org_manager_edits_bio_links_and_picture(db, org, org_manager, make_user):
+    headers = login_as(client, org_manager)
     response = client.patch(
         _org(org["slug"]),
         headers=headers,
@@ -472,20 +474,20 @@ def test_org_admin_edits_bio_links_and_picture(db, org, org_admin, make_user):
     )
 
 
-# Erasure of the last org-admin
+# Erasure of the last org manager
 
 
 @pytest.mark.parametrize("hard", [True, False])
-def test_erasing_the_last_admin_promotes_the_earliest_member(
-    db, org, site_admin, org_admin, make_user, hard
+def test_erasing_the_last_manager_promotes_the_earliest_member(
+    db, org, site_admin, org_manager, make_user, hard
 ):
     first, second = make_user(), make_user()
-    _join(db, org_admin, org["slug"], first)
-    _join(db, org_admin, org["slug"], second)
+    _join(db, org_manager, org["slug"], first)
+    _join(db, org_manager, org["slug"], second)
 
     headers = login_as(client, site_admin)
     suffix = "?hard=true" if hard else ""
-    response = client.delete(f"/api/v1/admin/users/{org_admin.id}{suffix}", headers=headers)
+    response = client.delete(f"/api/v1/admin/users/{org_manager.id}{suffix}", headers=headers)
     assert response.status_code == 200, response.text
 
     db.expire_all()
@@ -493,69 +495,71 @@ def test_erasing_the_last_admin_promotes_the_earliest_member(
         m.user_id: m.role
         for m in db.query(OrganizationMember).filter_by(organization_id=uuid.UUID(org["id"]))
     }
-    assert (roles[first.id], roles[second.id]) == ("admin", "member")
-    inherited = db.query(Notification).filter_by(kind="organization_admin_inherited").all()
+    assert (roles[first.id], roles[second.id]) == ("manager", "member")
+    inherited = db.query(Notification).filter_by(kind="organization_manager_inherited").all()
     assert [(n.user_id, n.actor_id, str(n.organization_id)) for n in inherited] == [
         (first.id, None, org["id"])
     ]
 
 
-def test_no_handover_while_another_admin_is_live(db, org, site_admin, org_admin, make_user):
-    co_admin, member = make_user(), make_user()
-    _join(db, org_admin, org["slug"], co_admin)
-    _join(db, org_admin, org["slug"], member)
-    headers = login_as(client, org_admin)
+def test_no_handover_while_another_manager_is_live(db, org, site_admin, org_manager, make_user):
+    co_manager, member = make_user(), make_user()
+    _join(db, org_manager, org["slug"], co_manager)
+    _join(db, org_manager, org["slug"], member)
+    headers = login_as(client, org_manager)
     client.patch(
-        f"{_org(org['slug'])}/members/{co_admin.username}", headers=headers, json={"role": "admin"}
+        f"{_org(org['slug'])}/members/{co_manager.username}",
+        headers=headers,
+        json={"role": "manager"},
     )
 
     headers = login_as(client, site_admin)
-    erased = client.delete(f"/api/v1/admin/users/{org_admin.id}?hard=true", headers=headers)
+    erased = client.delete(f"/api/v1/admin/users/{org_manager.id}?hard=true", headers=headers)
     assert erased.status_code == 200
     db.expire_all()
     assert db.query(OrganizationMember).filter_by(user_id=member.id).one().role == "member"
-    assert db.query(Notification).filter_by(kind="organization_admin_inherited").count() == 0
+    assert db.query(Notification).filter_by(kind="organization_manager_inherited").count() == 0
 
 
-def test_an_organization_left_without_admin_is_flagged(db, org, site_admin, org_admin):
+def test_an_organization_left_without_admin_is_flagged(db, org, site_admin, org_manager):
     headers = login_as(client, site_admin)
-    erased = client.delete(f"/api/v1/admin/users/{org_admin.id}?hard=true", headers=headers)
+    erased = client.delete(f"/api/v1/admin/users/{org_manager.id}?hard=true", headers=headers)
     assert erased.status_code == 200
 
     rows = client.get(_ADMIN_CREATE, headers=headers).json()
     flagged = next(r for r in rows if r["slug"] == org["slug"])
-    assert (flagged["member_count"], flagged["admin_count"]) == (0, 0)
-    assert rows[0]["admin_count"] == 0
+    assert (flagged["member_count"], flagged["manager_count"]) == (0, 0)
+    assert rows[0]["manager_count"] == 0
 
 
-def test_a_site_admin_names_an_org_admin_for_an_organization_left_without_one(
-    db, org, site_admin, org_admin, make_user
+def test_a_site_admin_names_an_org_manager_for_an_organization_left_without_one(
+    db, org, site_admin, org_manager, make_user
 ):
     headers = login_as(client, site_admin)
-    assert client.delete(f"/api/v1/admin/users/{org_admin.id}?hard=true", headers=headers)
+    assert client.delete(f"/api/v1/admin/users/{org_manager.id}?hard=true", headers=headers)
     heir = make_user()
-    path = f"{_ADMIN_CREATE}/{org['slug']}/admins"
+    path = f"{_ADMIN_CREATE}/{org['slug']}/managers"
 
     assert client.post(path, json={"username": "nobody-at-all"}, headers=headers).status_code == 404
     response = client.post(path, json={"username": heir.username}, headers=headers)
     assert response.status_code == 201, response.text
     assert (response.json()["user"]["username"], response.json()["role"]) == (
         heir.username,
-        "admin",
+        "manager",
     )
     rows = client.get(_ADMIN_CREATE, headers=headers).json()
-    assert next(r for r in rows if r["slug"] == org["slug"])["admin_count"] == 1
-    audit = db.query(AdminEvent).filter_by(action="organization_admin_appointed").all()
+    assert next(r for r in rows if r["slug"] == org["slug"])["manager_count"] == 1
+    audit = db.query(AdminEvent).filter_by(action="organization_manager_appointed").all()
     assert [a.target["user_id"] for a in audit] == [str(heir.id)]
 
     login_as(client, heir)
     assert client.post(path, json={"username": heir.username}).status_code == 403
 
 
-def test_the_review_request_audience_shows_to_managers_only(org, org_admin, make_user):
+def test_the_review_request_audience_shows_to_managers_only(org, org_manager, make_user):
     client.cookies.clear()
     assert client.get(_org(org["slug"])).json()["review_request_audience"] is None
     login_as(client, make_user())
     assert client.get(_org(org["slug"])).json()["review_request_audience"] is None
-    login_as(client, org_admin)
+    login_as(client, org_manager)
     assert client.get(_org(org["slug"])).json()["review_request_audience"] == "following"

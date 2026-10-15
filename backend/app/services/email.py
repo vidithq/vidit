@@ -471,7 +471,7 @@ def organization_invite_email(*, to: str, actor: str, slug: str, name: str) -> E
         to=to,
         subject=f"{actor} invites you to join {name}",
         blocks=[
-            f"{actor}, an org-admin of {name}, invites you to join the organization on Vidit. "
+            f"{actor}, an org manager of {name}, invites you to join the organization on Vidit. "
             "Accept or decline on its page."
         ],
         action=Action("View the invitation", organization_link(slug)),
@@ -489,17 +489,17 @@ def organization_invite_accepted_email(*, to: str, actor: str, slug: str, name: 
     )
 
 
-def organization_admin_inherited_email(*, to: str, slug: str, name: str) -> Email:
+def organization_manager_inherited_email(*, to: str, slug: str, name: str) -> Email:
     return _notification_email(
         to=to,
-        subject=f"You are now an org-admin of {name}",
+        subject=f"You are now an org manager of {name}",
         blocks=[
-            f"The account of the last org-admin of {name} was removed, and you were its "
-            "earliest member, so you are now its org-admin. You can invite analysts, "
+            f"The account of the last org manager of {name} was removed, and you were its "
+            "earliest member, so you are now its org manager. You can invite analysts, "
             "change roles and edit its profile."
         ],
         action=Action("View the organization", organization_link(slug)),
-        setting="Now org-admin",
+        setting="Now org manager",
     )
 
 

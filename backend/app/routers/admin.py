@@ -29,8 +29,8 @@ from app.schemas.admin import (
 from app.schemas.event import EventVersionRead
 from app.schemas.organization import (
     AdminOrganizationRead,
-    OrganizationAdminAppoint,
     OrganizationCreate,
+    OrganizationManagerAppoint,
     OrganizationMemberRead,
     OrganizationRead,
 )
@@ -184,7 +184,7 @@ def create_organization(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> OrganizationRead:
-    """Create an organization and name its first org-admin, who joins without an invite."""
+    """Create an organization and name its first org manager, who joins without an invite."""
     try:
         org = organizations_service.create_organization(db, actor=current_user, body=body)
     except organizations_service.OrganizationError as exc:
@@ -193,22 +193,22 @@ def create_organization(
 
 
 @router.post(
-    "/organizations/{slug}/admins",
+    "/organizations/{slug}/managers",
     response_model=OrganizationMemberRead,
     status_code=status.HTTP_201_CREATED,
 )
 @limiter.limit("30/hour")
-def appoint_organization_admin(
+def appoint_organization_manager(
     request: Request,
     slug: str,
-    body: OrganizationAdminAppoint,
+    body: OrganizationManagerAppoint,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> OrganizationMemberRead:
-    """Make a live analyst an org-admin of the organization, joining it if needed, with audit."""
+    """Make a live analyst an org manager of the organization, joining it if needed, with audit."""
     try:
         org = organizations_service.get_by_slug(db, slug, lock=True)
-        return organizations_service.appoint_admin(
+        return organizations_service.appoint_manager(
             db, actor=current_user, org=org, username=body.username
         )
     except organizations_service.OrganizationError as exc:
@@ -220,7 +220,7 @@ def list_organizations(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> list[AdminOrganizationRead]:
-    """Every organization with its live member and org-admin counts, those without an org-admin first."""
+    """Every organization with its live member and org manager counts, those without an org manager first."""
     return organizations_service.list_for_admin(db)
 
 

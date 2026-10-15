@@ -3,12 +3,12 @@ review it.
 
 The requester is one of the event's geolocators (its owner or an accepted co-geolocator). The
 target must be able to approve the event, so a current or former geolocator of it cannot be
-asked, and an organization needs a live org-admin outside the event's current and former
+asked, and an organization needs a live org manager outside the event's current and former
 geolocators. The target's
 ``review_request_audience`` decides who may ask: analysts they follow (the default), everyone,
-or nobody. An organization's org-admins set its audience, and ``following`` there admits an
-analyst whom any live org-admin follows. A request is open until the target approves the event,
-any version (``approvals.approve`` resolves it), or declines it. Any org-admin answers for an
+or nobody. An organization's org managers set its audience, and ``following`` there admits an
+analyst whom any live org manager follows. A request is open until the target approves the event,
+any version (``approvals.approve`` resolves it), or declines it. Any org manager answers for an
 organization.
 
 There is one open request per requester, target and event, a declined request is not sent
@@ -47,7 +47,7 @@ from app.schemas.user import AuthorRef
 from app.services import notifications
 from app.services.approvals import ever_credited, former_geolocator_ids, is_geolocator
 from app.services.event_filters import visible_events
-from app.services.organizations import is_organization_admin, live_admin_ids
+from app.services.organizations import is_organization_manager, live_manager_ids
 
 MAX_TARGET_SUGGESTIONS = 20
 # After a decline, the same requester waits this long before asking the same target about the
@@ -150,12 +150,12 @@ def _follows(requester_id: uuid.UUID) -> ColumnElement[bool]:
 
 
 def _followed_by_an_admin(requester_id: uuid.UUID) -> ColumnElement[bool]:
-    """A live org-admin of the organization in scope (``Organization``) follows
+    """A live org manager of the organization in scope (``Organization``) follows
     ``requester_id``."""
-    # Correlated by hand: two levels down, the admin subquery would otherwise list the admins of
+    # Correlated by hand: two levels down, the manager subquery would otherwise list the managers of
     # every organization.
     return exists().where(
-        Follow.follower_id.in_(live_admin_ids(Organization.id).correlate(Organization)),
+        Follow.follower_id.in_(live_manager_ids(Organization.id).correlate(Organization)),
         Follow.followed_id == requester_id,
     )
 
@@ -168,7 +168,7 @@ def accepts_requests_from(requester_id: uuid.UUID) -> ColumnElement[bool]:
 
 def organization_accepts_requests_from(requester_id: uuid.UUID) -> ColumnElement[bool]:
     """The predicate for an organization (``Organization``) whose audience admits
-    ``requester_id``: ``following`` admits an analyst whom any live org-admin follows."""
+    ``requester_id``: ``following`` admits an analyst whom any live org manager follows."""
     audience = Organization.review_request_audience
     return or_(
         audience == "everyone",
@@ -188,7 +188,7 @@ def _suggested_analyst(requester_id: uuid.UUID, q: str) -> ColumnElement[bool]:
 
 def _suggested_organization(requester_id: uuid.UUID, q: str) -> ColumnElement[bool]:
     """The organizations (``Organization``) the picker suggests, on the rule of
-    :func:`_suggested_analyst`: one an org-admin of follows the requester, or whose slug is
+    :func:`_suggested_analyst`: one an org manager of follows the requester, or whose slug is
     ``q``."""
     return or_(
         and_(
@@ -200,10 +200,10 @@ def _suggested_organization(requester_id: uuid.UUID, q: str) -> ColumnElement[bo
 
 
 def _can_act_for(geo: Event) -> ColumnElement[bool]:
-    """The predicate for an organization (``Organization``) with a live org-admin outside the
+    """The predicate for an organization (``Organization``) with a live org manager outside the
     current and former geolocators of ``geo``, who can approve it in the organization's name."""
     return (
-        live_admin_ids(Organization.id)
+        live_manager_ids(Organization.id)
         .where(
             OrganizationMember.user_id != geo.owner_id,
             OrganizationMember.user_id.not_in(
@@ -215,9 +215,9 @@ def _can_act_for(geo: Event) -> ColumnElement[bool]:
     )
 
 
-def _administered_by(user_id: uuid.UUID):
+def _managed_by(user_id: uuid.UUID):
     return select(OrganizationMember.organization_id).where(
-        OrganizationMember.user_id == user_id, OrganizationMember.role == "admin"
+        OrganizationMember.user_id == user_id, OrganizationMember.role == "manager"
     )
 
 
@@ -274,7 +274,7 @@ def list_open(db: Session, *, geo: Event, viewer: User) -> list[ReviewRequest]:
     """The open requests on ``geo`` that ``viewer`` may see, oldest first.
 
     A geolocator sees every one; anyone else sees those addressed to them or to an organization
-    they are an org-admin of. A request whose requester or analyst target is soft-deleted is
+    they are an org manager of. A request whose requester or analyst target is soft-deleted is
     left out.
     """
     query = _open_query(db).filter(ReviewRequest.event_id == geo.id)
@@ -282,7 +282,7 @@ def list_open(db: Session, *, geo: Event, viewer: User) -> list[ReviewRequest]:
         query = query.filter(
             or_(
                 ReviewRequest.target_user_id == viewer.id,
-                ReviewRequest.target_organization_id.in_(_administered_by(viewer.id)),
+                ReviewRequest.target_organization_id.in_(_managed_by(viewer.id)),
             )
         )
     return query.order_by(ReviewRequest.created_at, ReviewRequest.id).all()
@@ -408,8 +408,8 @@ def eligible_targets(
     the live version and hold no open request from ``requester`` on it, and who follow
     ``requester`` and take requests, or whose username is ``query``. ``query`` narrows by a
     case-insensitive substring of the username, prefix matches first. Organizations: with a
-    live org-admin outside the current and former geolocators, without a standing approval of
-    the live version or an open request from ``requester``, and an org-admin of which follows
+    live org manager outside the current and former geolocators, without a standing approval of
+    the live version or an open request from ``requester``, and an org manager of which follows
     ``requester`` while it takes requests, or whose slug is ``query``, by name; ``query``
     narrows by a substring of the name or the slug. An exact match may still refuse the
     request, so the list never reveals an ``everyone`` audience.
@@ -511,7 +511,7 @@ def _check_organization_target(
         select(_can_act_for(geo)).select_from(Organization).where(Organization.id == org.id)
     ):
         raise TargetIsGeolocatorError(
-            "No org-admin of this organization outside the current and former geolocators of this "
+            "No org manager of this organization outside the current and former geolocators of this "
             "event can review it"
         )
     admitted = db.scalar(
@@ -566,12 +566,12 @@ def request_review(
     organization: str | None = None,
 ) -> ReviewRequest:
     """Ask the analyst ``username``, or the organization with slug ``organization``, to review
-    the live version of ``geo``, and notify the analyst or every live org-admin.
+    the live version of ``geo``, and notify the analyst or every live org manager.
 
     409 ``invalid_state`` off ``geolocated``; 403 ``not_a_geolocator`` when ``requester`` is
     not credited on the event; 404 ``user_not_found`` or ``organization_not_found``; 403
     ``target_is_geolocator`` for a current or former geolocator target, or an organization whose
-    every live org-admin is one; 403 ``requests_not_accepted`` when the target's audience refuses
+    every live org manager is one; 403 ``requests_not_accepted`` when the target's audience refuses
     ``requester``; 409 ``already_approved`` when the target approved the live version; 409
     ``already_requested`` for a second open request; 409 ``recently_declined`` within
     :data:`DECLINE_COOLDOWN` of the target declining the same request; 429 ``daily_cap_reached`` past the daily
@@ -588,7 +588,7 @@ def request_review(
             requester_id=requester.id,
             target_organization_id=org.id,
         )
-        recipient_ids = list(db.scalars(live_admin_ids(org.id)))
+        recipient_ids = list(db.scalars(live_manager_ids(org.id)))
         organization_id: uuid.UUID | None = org.id
     else:
         assert username is not None
@@ -616,7 +616,7 @@ def request_review(
 
 
 def decline(db: Session, *, geo: Event, request_id: uuid.UUID, user: User) -> ReviewRequest:
-    """Decline a request addressed to ``user``, or to an organization ``user`` is an org-admin
+    """Decline a request addressed to ``user``, or to an organization ``user`` is an org manager
     of, and tell the requester.
 
     404 ``review_request_not_found`` for an id that is not such a request on ``geo``; 409
@@ -632,7 +632,7 @@ def decline(db: Session, *, geo: Event, request_id: uuid.UUID, user: User) -> Re
         row.target_user_id == user.id
         or (
             row.target_organization_id is not None
-            and is_organization_admin(db, org_id=row.target_organization_id, user_id=user.id)
+            and is_organization_manager(db, org_id=row.target_organization_id, user_id=user.id)
         )
     )
     if row is None or not answerable:

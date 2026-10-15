@@ -637,7 +637,7 @@ def soft_delete_user(
     # target records the freed value.
     freed_x_handle = user.x_handle
     user.x_handle = None
-    organizations.hand_over_admin_roles(db, leaving_user_id=user.id)
+    organizations.hand_over_manager_roles(db, leaving_user_id=user.id)
 
     # Cascade to every live event (located and requested). ``deleted_at IS NULL`` leaves earlier
     # timestamps untouched, so the count reflects only what this call flipped.
@@ -686,9 +686,9 @@ def hard_delete_user(
        cascade would drop those rows before we could read them.
     3. Delete each event left manually: ``owner_id`` carries no ``ON DELETE CASCADE``. Each
        ``db.delete`` cascades to that row's media, contributor rows and tags.
-    4. Hand the org-admin role of each organization they were the last live org-admin of
+    4. Hand the org manager role of each organization they were the last live org manager of
        to its earliest-joined live member
-       (:func:`services.organizations.hand_over_admin_roles`), in the same transaction as
+       (:func:`services.organizations.hand_over_manager_roles`), in the same transaction as
        step 1. Delete the analyst's own approvals; those they placed for an organization stay
        the organization's, with ``reviewer_id`` set to NULL. Delete the user. ``auth_tokens``, their collections (and memberships), their
        invitations and their contributor rows on other people's events cascade-drop;
@@ -728,9 +728,9 @@ def hard_delete_user(
     for geo in geolocations:
         db.delete(geo)
 
-    # 4. Hand any last org-admin role to the earliest member, drop the analyst's own
+    # 4. Hand any last org manager role to the earliest member, drop the analyst's own
     # approvals, then the user row; the approvals they placed for an organization stay.
-    organizations.hand_over_admin_roles(db, leaving_user_id=user.id)
+    organizations.hand_over_manager_roles(db, leaving_user_id=user.id)
     db.execute(
         delete(EventApproval).where(
             EventApproval.reviewer_id == user.id, EventApproval.organization_id.is_(None)

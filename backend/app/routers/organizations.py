@@ -70,7 +70,7 @@ def list_organization_members(
     slug: str,
     db: Session = Depends(get_db),
 ) -> list[OrganizationMemberRead]:
-    """An organization's members, org-admins first, then by join date."""
+    """An organization's members, org managers first, then by join date."""
     with _typed_errors():
         org = organizations_service.get_by_slug(db, slug)
     return organizations_service.list_members(db, org)
@@ -113,8 +113,8 @@ def list_organization_review_requests(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[OrganizationReviewRequestRead]:
-    """Open review requests addressed to the organization, oldest first. Org-admins and site
-    admins only."""
+    """Open review requests addressed to the organization, oldest first. Org managers and site
+    managers only."""
     with _typed_errors():
         org = organizations_service.get_by_slug(db, slug)
         organizations_service.require_manager(db, org, current_user)
@@ -131,8 +131,8 @@ def update_organization(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> OrganizationRead:
-    """Edit an organization's bio, links and review request audience. Org-admins and site
-    admins only."""
+    """Edit an organization's bio, links and review request audience. Org managers and site
+    managers only."""
     with _typed_errors():
         org = organizations_service.get_by_slug(db, slug)
         organizations_service.require_manager(db, org, current_user)
@@ -183,7 +183,7 @@ def list_organization_invites(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[OrganizationInviteRead]:
-    """Pending invites, newest first. Org-admins and site admins only."""
+    """Pending invites, newest first. Org managers and site admins only."""
     with _typed_errors():
         org = organizations_service.get_by_slug(db, slug)
         organizations_service.require_manager(db, org, current_user)
@@ -218,7 +218,7 @@ def create_organization_invite(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> OrganizationInviteRead:
-    """Invite an analyst in mutual follow with you. Org-admins only."""
+    """Invite an analyst in mutual follow with you. Org managers only."""
     with _typed_errors():
         org = organizations_service.get_by_slug(db, slug)
         row = organizations_service.invite(db, org, inviter=current_user, username=body.username)
@@ -236,7 +236,7 @@ def cancel_organization_invite(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
-    """Withdraw a pending invite. Org-admins and site admins only."""
+    """Withdraw a pending invite. Org managers and site admins only."""
     with _typed_errors():
         org = organizations_service.get_by_slug(db, slug)
         organizations_service.require_manager(db, org, current_user)
@@ -284,7 +284,7 @@ def update_organization_member(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> OrganizationMemberRead:
-    """Change a member's role. Org-admins and site admins only; the last org-admin keeps the role."""
+    """Change a member's role. Org managers and site admins only; the last org manager keeps the role."""
     with _typed_errors():
         org = organizations_service.get_by_slug(db, slug, lock=True)
         organizations_service.require_manager(db, org, current_user)
@@ -302,7 +302,7 @@ def remove_organization_member(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
-    """Remove a member, or leave with your own username. The last org-admin cannot leave."""
+    """Remove a member, or leave with your own username. The last org manager cannot leave."""
     with _typed_errors():
         org = organizations_service.get_by_slug(db, slug, lock=True)
         organizations_service.remove_member(db, org, actor=current_user, username=username)

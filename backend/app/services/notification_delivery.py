@@ -167,8 +167,8 @@ def _organization_invite_accepted(n: Notification, to: str) -> email.Email:
     )
 
 
-def _organization_admin_inherited(n: Notification, to: str) -> email.Email:
-    return email.organization_admin_inherited_email(
+def _organization_manager_inherited(n: Notification, to: str) -> email.Email:
+    return email.organization_manager_inherited_email(
         to=to, slug=n.organization.slug, name=n.organization.name
     )
 
@@ -201,7 +201,7 @@ _EMAIL_BUILDERS: dict[NotificationKind, Callable[[Notification, str], email.Emai
     "ownership_transferred": _ownership_transferred,
     "organization_invite": _organization_invite,
     "organization_invite_accepted": _organization_invite_accepted,
-    "organization_admin_inherited": _organization_admin_inherited,
+    "organization_manager_inherited": _organization_manager_inherited,
     "re_approve_requested": lambda n, to: email.re_approve_requested_email(
         to=to, **_review_fields(n)
     ),
@@ -319,10 +319,10 @@ def _organization_invite_accepted_push(n: Notification) -> push.PushMessage:
     )
 
 
-def _organization_admin_inherited_push(n: Notification) -> push.PushMessage:
+def _organization_manager_inherited_push(n: Notification) -> push.PushMessage:
     return push.PushMessage(
-        title=f"You are now an org-admin of {n.organization.name}",
-        body="The account of its last org-admin was removed.",
+        title=f"You are now an org manager of {n.organization.name}",
+        body="The account of its last org manager was removed.",
         path=_organization_path(n),
     )
 
@@ -373,7 +373,7 @@ _PUSH_BUILDERS: dict[NotificationKind, Callable[[Notification], push.PushMessage
     "ownership_transferred": _ownership_transferred_push,
     "organization_invite": _organization_invite_push,
     "organization_invite_accepted": _organization_invite_accepted_push,
-    "organization_admin_inherited": _organization_admin_inherited_push,
+    "organization_manager_inherited": _organization_manager_inherited_push,
     "re_approve_requested": _re_approve_requested_push,
     "approval_received": _approval_received_push,
     "review_request_received": _review_request_received_push,

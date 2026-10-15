@@ -29,7 +29,7 @@ NotificationKind = Literal[
     "ownership_transferred",
     "organization_invite",
     "organization_invite_accepted",
-    "organization_admin_inherited",
+    "organization_manager_inherited",
     "re_approve_requested",
     "approval_received",
     "review_request_received",
@@ -55,7 +55,7 @@ NOTIFICATION_KINDS: dict[NotificationKind, dict[NotificationChannel, bool]] = {
     "ownership_transferred": {"email": True, "push": True},
     "organization_invite": {"email": True, "push": True},
     "organization_invite_accepted": {"email": False, "push": False},
-    "organization_admin_inherited": {"email": True, "push": True},
+    "organization_manager_inherited": {"email": True, "push": True},
     "re_approve_requested": {"email": False, "push": False},
     "approval_received": {"email": False, "push": False},
     "review_request_received": {"email": True, "push": True},
@@ -111,7 +111,7 @@ class Notification(Base):
             "'x_handle_request_approved', 'x_handle_request_declined', "
             "'co_geolocator_invite', 'co_geolocator_removed', 'ownership_transferred', "
             "'organization_invite', 'organization_invite_accepted', "
-            "'organization_admin_inherited', 're_approve_requested', 'approval_received', "
+            "'organization_manager_inherited', 're_approve_requested', 'approval_received', "
             "'review_request_received', 'review_request_declined')",
             name="ck_notifications_kind_valid",
         ),

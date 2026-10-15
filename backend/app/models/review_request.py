@@ -21,7 +21,7 @@ class ReviewRequest(Base):
     request was sent.
 
     The target is one analyst (``target_user_id``) or one organization
-    (``target_organization_id``), never both: ``ck_review_requests_one_target``. Any org-admin of
+    (``target_organization_id``), never both: ``ck_review_requests_one_target``. Any org manager of
     the organization answers for it.
     """
 
