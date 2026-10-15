@@ -14,6 +14,7 @@ from app.models.approval import EventApproval
 from app.models.event import STATUS_CLOSED, Event, EventGeolocator
 from app.models.notification import Notification
 from app.models.user import User
+from app.services import approvals
 from app.services.auth import hash_password
 from app.services.geolocator_credit import JOINED_AS_GEOLOCATOR_REASON
 from tests.conftest import login_as
@@ -160,6 +161,14 @@ def test_a_closed_event_takes_no_approval_and_keeps_its_own(db, author, second_u
     assert [(a["reviewer"]["username"], a["current"]) for a in _listed(geo)] == [
         (second_user.username, False)
     ]
+
+
+def test_the_list_is_capped(db, author, make_user, monkeypatch):
+    monkeypatch.setattr(approvals, "MAX_APPROVALS_LISTED", 2)
+    geo = _published(db, author)
+    for _ in range(3):
+        assert _approve(geo, make_user()).status_code == 201
+    assert len(_listed(geo)) == 2
 
 
 def test_one_review_per_analyst_and_version(db, author, second_user):
