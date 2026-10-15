@@ -6,7 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
-- An org-admin approves and revokes approvals in an organization's name, a geolocator can ask an organization for a review that any org-admin answers, and the organization page lists its approvals and open requests ([#574](https://github.com/vidithq/vidit/pull/574)).
+- An org manager approves and revokes approvals in an organization's name, a geolocator can ask an organization for a review that any org manager answers, and the organization page lists its approvals and open requests ([#574](https://github.com/vidithq/vidit/pull/574)).
 - A geolocator can ask an analyst to review a geolocation; the analyst approves or declines from their notifications or the event page, and Settings chooses who may send you requests: people you follow, everyone or nobody ([#573](https://github.com/vidithq/vidit/pull/573)).
 - Analysts outside a geolocation's credit approve it one version at a time; any new version, an archive-only save included, asks reviewers to approve again, and a revoked approval keeps its public reason ([#572](https://github.com/vidithq/vidit/pull/572)).
 - The Requests board filters by conflict, capture source, tags, author and whether a request carries a location guess, sorts newest or oldest first, and shows how long each request has been open ([#560](https://github.com/vidithq/vidit/pull/560)).
@@ -17,7 +17,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - Notifications can reach your browser or installed app as push notifications: enable a device in Settings and pick the kinds per channel; on iPhone and iPad, add Vidit to the Home Screen first ([#570](https://github.com/vidithq/vidit/pull/570)).
 - Analysts who opt in, at sign-up or in Settings, get one email per major release with a one-click unsubscribe; admins compose, preview, test and send it from the console, paced under its own daily cap ([#571](https://github.com/vidithq/vidit/pull/571)).
 - Settings shows the X handle bound to your account and lets you ask an admin to change it; admins approve or decline pending requests from the admin page, and you get a notification either way ([#567](https://github.com/vidithq/vidit/pull/567)).
-- Organizations: a site admin creates one and names its first org-admin, who invites mutual follows; the earliest member inherits the role if the last org-admin is erased, profiles list their organizations, and links unfurl with a card ([#569](https://github.com/vidithq/vidit/pull/569)).
+- Organizations: a site admin creates one and names its first org manager, who invites mutual follows; the earliest member inherits the role if the last org manager is erased, profiles list their organizations, and links unfurl with a card ([#569](https://github.com/vidithq/vidit/pull/569)).
 
 ### Fixed
 
