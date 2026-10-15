@@ -146,12 +146,26 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | PUT | `/users/me/x-handle-request` | 🔒 | Ask an admin to bind a new X handle (replaces your earlier request) |
 | GET | `/users/{username}/events` | 🌐 | List an analyst's published geolocations |
 | GET | `/users/{username}/collections` | 🌐 | List an analyst's collections |
+| GET | `/users/{username}/organizations` | 🌐 | List the organizations an analyst belongs to |
 | POST | `/users/{username}/follow` | 🔒 | Follow (idempotent; self-follow → 400) |
 | DELETE | `/users/{username}/follow` | 🔒 | Unfollow (idempotent; unknown user → 404) |
 | **Notifications** | | | |
 | GET | `/notifications` | 🔒 | Your notifications, newest first (cursor-paged) |
 | GET | `/notifications/unread-count` | 🔒 | How many notifications you have not been shown |
 | POST | `/notifications/read` | 🔒 | Mark the notifications the feed showed you read |
+| **Organizations** | | | |
+| GET | `/organizations/{slug}` | 🌐 | An organization's public profile |
+| GET | `/organizations/{slug}/members` | 🌐 | Its members, org-admins first |
+| PATCH | `/organizations/{slug}` | 🔒 | Edit its bio and links (managers) |
+| PUT/DELETE | `/organizations/{slug}/avatar` | 🔒 | Replace or drop its picture (managers) |
+| GET | `/organizations/{slug}/invites` | 🔒 | Pending invites (managers) |
+| GET | `/organizations/{slug}/invite-candidates` | 🔒 | The mutual follows you can invite |
+| POST | `/organizations/{slug}/invites` | 🔒 | Invite an analyst in mutual follow (org-admins) |
+| DELETE | `/organizations/{slug}/invites/{invite_id}` | 🔒 | Withdraw a pending invite (managers) |
+| POST | `/organizations/{slug}/invite/accept` | 🔒 | Accept your invite |
+| POST | `/organizations/{slug}/invite/decline` | 🔒 | Decline your invite |
+| PATCH | `/organizations/{slug}/members/{username}` | 🔒 | Change a member's role (managers) |
+| DELETE | `/organizations/{slug}/members/{username}` | 🔒 | Remove a member, or leave |
 | **Timeline** | | | |
 | GET | `/timeline` | 🔒 | Activity feed from followed analysts |
 | **Webhooks** | | | |
@@ -164,6 +178,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/admin/invite-codes/{id}/revoke` | 🛡️ | Revoke an invite code, keeping its row |
 | DELETE | `/admin/invite-codes/{id}` | 🛡️ | Drop the row of an invite code no account was created from |
 | GET | `/admin/users` | 🛡️ | Substring search on username/email |
+| POST/GET | `/admin/organizations` | 🛡️ | Create an organization with its first org-admin / list organizations, flagging those without one |
 | DELETE | `/admin/users/{id}` | 🛡️ | Soft delete (default) or `?hard=true` GDPR erasure |
 | DELETE | `/admin/users/{id}/detected-events` | 🛡️ | Purge every detection the user owns, account untouched |
 | DELETE | `/admin/events/{id}` | 🛡️ | Soft delete or `?hard=true` GDPR erasure |
@@ -229,7 +244,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST /tags` | 30/min |
 | `GET /conflicts` | 60/min |
 | **Users / Timeline** | |
-| `GET /users/{username}`, `GET /users/{username}/stats`, `GET /users/{username}/events`, `GET /users/{username}/collections`, `GET /timeline` | 120/min |
+| `GET /users/{username}`, `GET /users/{username}/stats`, `GET /users/{username}/events`, `GET /users/{username}/collections`, `GET /users/{username}/organizations`, `GET /timeline` | 120/min |
 | `PATCH /users/me` | 30/min |
 | `PUT`/`DELETE /users/me/avatar` | 20/min |
 | `POST`/`DELETE /users/{username}/follow` | 60/min |
@@ -242,10 +257,19 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | **Notifications** | |
 | `GET /notifications`, `GET /notifications/unread-count` | 120/min |
 | `POST /notifications/read` | 60/min |
+| **Organizations** | |
+| `GET /organizations/{slug}`, `GET /organizations/{slug}/members` | 120/min |
+| `PATCH /organizations/{slug}` | 30/min |
+| `PUT`/`DELETE /organizations/{slug}/avatar` | 20/min |
+| `GET /organizations/{slug}/invites`, `GET /organizations/{slug}/invite-candidates` | 60/min |
+| `POST /organizations/{slug}/invites` | 30/hour |
+| `DELETE /organizations/{slug}/invites/{invite_id}` | 60/min |
+| `POST /organizations/{slug}/invite/accept`, `POST /organizations/{slug}/invite/decline` | 30/min |
+| `PATCH`/`DELETE /organizations/{slug}/members/{username}` | 60/min |
 | **Product updates** | |
 | `POST /product-updates/unsubscribe` | 30/min (anonymous allowed) |
 | **Admin** 🛡️ | |
-| `POST /admin/invite-codes` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
+| `POST /admin/invite-codes` · `POST /admin/organizations` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
 | `POST /admin/invite-codes/{id}/revoke` · `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `DELETE /admin/events/{id}` | 60/hour |
 | `POST /admin/reports/{id}/resolve` · `PATCH /admin/events/{id}/moderation` · `POST /admin/events/{id}/versions/{version_no}/redact` · `PATCH /admin/collections/{id}/moderation` · `DELETE /admin/collections/{id}` | 60/hour |
 | `POST /admin/x-handle-requests/{id}/approve` · `POST /admin/x-handle-requests/{id}/decline` | 60/hour |
@@ -254,17 +278,17 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST /admin/product-updates/preview` | 60/hour |
 | `POST /admin/product-updates/test` · `POST /admin/product-updates` | 10/hour |
 
-The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list, `/admin/reports` list, `/admin/x-handle-requests` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: both are HMAC-gated.
+The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list, `/admin/organizations` list, `/admin/reports` list, `/admin/x-handle-requests` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: both are HMAC-gated.
 
 ### Per-user read quota
 
-**1000/hour per account.** One bucket is shared across these 18 read paths, not one bucket per endpoint:
+**1000/hour per account.** One bucket is shared across these 21 read paths, not one bucket per endpoint:
 
-`GET /events` · `/events/{id}` · `/events/{id}/versions` · `/events/{id}/versions/{version_no}` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/users/{username}/collections` · `/collections/{id}` · `/collections/{id}/events` · `/timeline`
+`GET /events` · `/events/{id}` · `/events/{id}/versions` · `/events/{id}/versions/{version_no}` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/users/{username}/collections` · `/users/{username}/organizations` · `/organizations/{slug}` · `/organizations/{slug}/members` · `/collections/{id}` · `/collections/{id}/events` · `/timeline`
 
 - The key is `User.id`, read from the signature-verified session cookie.
 - The backend evaluates the per-IP table limit first, so a request the table rejects costs the account nothing.
-- Anonymous callers are exempt and keep the per-IP limits alone. Fifteen of the 18 paths answer anonymously.
+- Anonymous callers are exempt and keep the per-IP limits alone. Eighteen of the 21 paths answer anonymously.
 - Every authenticated read absent from the list is exempt, including `GET /auth/me` and the read-only admin probes.
 - `GET /events/import-archive/{job_id}` is exempt because an import polls it. It returns one job's progress counters and no catalog rows.
 
@@ -2124,6 +2148,19 @@ One analyst's collections, newest first. A reader gets the collections that show
 
 ---
 
+### `GET /users/{username}/organizations`
+
+The organizations an analyst belongs to, by name, with their role in each. Anonymous callers are allowed.
+
+**Response 200:** a list of `{ "organization": { "slug", "name", "avatar_url" }, "role": "admin" | "member", "joined_at": "…" }`.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | User not found or soft-deleted |
+
+---
+
 ### `POST /users/{username}/follow` 🔒
 
 Follow another analyst. Idempotent: re-following returns 204. The first follow writes a `new_follower` [notification](#notifications) for the followed analyst; an unfollow and re-follow does not write a second one.
@@ -2177,6 +2214,8 @@ flowchart LR
   x_handle_request_approved or _declined to the requester`"]:::spec
   credit["`**geolocator_credit**
   co_geolocator_invite, co_geolocator_removed, ownership_transferred`"]:::spec
+  orgs["`**organizations**
+  organization_invite, organization_invite_accepted, organization_admin_inherited`"]:::spec
   rows[("`**notifications**
   written in the action's transaction`")]:::store
   visible["`**_visible_rows**
@@ -2198,6 +2237,7 @@ flowchart LR
   follow --> rows
   xhandle --> rows
   credit --> rows
+  orgs --> rows
   rows --> visible
   visible --> feed
   visible --> count
@@ -2214,15 +2254,20 @@ When your email switch for the kind is on and your address is verified, the same
 
 When your push switch for the kind is on and you registered at least one device, the same transaction queues a push. The worker sends it to each of your devices, with a title, a short body and the path a click opens. Push has no daily cap. The delivery path is in [`engineering.md`](engineering.md#web-push).
 
-| Kind | Emitted when | `actor` | `event` |
-|------|--------------|---------|---------|
-| `request_fulfilled` | Another analyst geolocates a request you opened | the fulfiller | the request |
-| `new_follower` | An analyst follows you for the first time | the follower | null |
-| `x_handle_request_approved` | An admin approves your [X handle request](#put-usersmex-handle-request) | null | null |
-| `x_handle_request_declined` | An admin declines your X handle request | null | null |
-| `co_geolocator_invite` | The owner of a published event invites you to share its credit | the owner | the event |
-| `co_geolocator_removed` | The owner of an event removes you from its geolocators | the owner | the event |
-| `ownership_transferred` | An event you share passes to you because its owner's account was erased | null | the event |
+| Kind | Emitted when | `actor` | `event` | `organization` |
+|------|--------------|---------|---------|----------------|
+| `request_fulfilled` | Another analyst geolocates a request you opened | the fulfiller | the request | null |
+| `new_follower` | An analyst follows you for the first time | the follower | null | null |
+| `x_handle_request_approved` | An admin approves your [X handle request](#put-usersmex-handle-request) | null | null | null |
+| `x_handle_request_declined` | An admin declines your X handle request | null | null | null |
+| `co_geolocator_invite` | The owner of a published event invites you to share its credit | the owner | the event | null |
+| `co_geolocator_removed` | The owner of an event removes you from its geolocators | the owner | the event | null |
+| `ownership_transferred` | An event you share passes to you because its owner's account was erased | null | the event | null |
+| `organization_invite` | An org-admin invites you to an [organization](#organizations) | the org-admin | null | the organization |
+| `organization_invite_accepted` | An analyst accepts your organization invite | the new member | null | the organization |
+| `organization_admin_inherited` | You become org-admin because the last one's account was removed | null | null | the organization |
+
+A declined or withdrawn organization invite writes no row. `organization` is `{ "slug", "name", "avatar_url" }`.
 
 ### `GET /notifications` 🔒
 
@@ -2239,6 +2284,7 @@ Your notifications, newest first. Cursor-paged; [Pagination](#pagination) gives 
     "created_at": "2026-10-12T09:00:00Z",
     "actor": { "id": "a41e…", "username": "bo", "avatar_url": null },
     "event": { "id": "9b2d…", "title": "Strike on the depot" },
+    "organization": null,
     "read_at": null,
     "invite_pending": false
   }
@@ -2269,6 +2315,204 @@ Mark the listed notifications read by setting their `read_at`. Only your own row
 | Code | Case |
 |------|------|
 | 422 | `ids` missing, empty, longer than 100, or holding a value that is not a UUID |
+
+---
+
+## Organizations
+
+```mermaid
+flowchart LR
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`a site admin or org-admin action`"]:::spec
+    l2["`an invitee or member action`"]:::shared
+    l3["`a guard the service enforces`"]:::core
+    l4[("`a stored row`")]:::store
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
+  end
+
+  create["`**POST /admin/organizations**
+  names the first org-admin`"]:::spec
+  invite["`**POST /organizations/{slug}/invites**
+  org-admin only`"]:::spec
+  mutual["`**is_mutual_follow**
+  inviter and invitee follow each other`"]:::core
+  pending[("`**organization_invites**
+  one per analyst and organization`")]:::store
+  accept["`**POST .../invite/accept**`"]:::shared
+  decline["`**POST .../invite/decline**`"]:::shared
+  members[("`**organization_members**
+  role: admin or member`")]:::store
+  manage["`**PATCH** or **DELETE .../members/{username}**
+  role change, removal, leave`"]:::spec
+  last["`**_guard_last_admin**
+  one live org-admin stays`"]:::core
+
+  create --> members
+  invite --> mutual --> pending
+  pending --> accept --> members
+  pending --> decline
+  manage --> last --> members
+```
+
+An organization is a collective with its own public profile. [`data-model.md`](data-model.md#organizations) describes the storage. On the wire:
+
+- **Creation:** a site admin creates each organization and names its first org-admin, who joins without an invite.
+- **Roles:** `admin` (an org-admin) and `member`. The role gates acting in the organization's name.
+- **Managers:** an org-admin manages their organization: profile edit, pending invites, role changes and removals. A site admin manages any organization the same way. Only an org-admin invites.
+- **Entry:** by invitation only. An org-admin invites an analyst who follows them and whom they follow, and the invitee accepts or declines.
+- **Leaving:** a member leaves with `DELETE /organizations/{slug}/members/{their username}`. The last live org-admin can neither leave, be removed, nor be demoted: promote another member first.
+- **Soft-deleted accounts:** a soft-deleted member drops out of the member list, the member count, and the last-admin count.
+- **Erasure of the last org-admin:** when [`DELETE /admin/users/{id}`](#delete-adminusersid) removes, in either mode, the last live org-admin of an organization that keeps a live member, the earliest-joined live member becomes org-admin in the same transaction and receives an `organization_admin_inherited` notification, which names nobody. An organization with no live member left keeps no admin, and [`GET /admin/organizations`](#get-adminorganizations) flags it.
+
+Organization errors use the typed envelope:
+
+| Code | Status | Case |
+|------|--------|------|
+| `organization_not_found` | 404 | No organization has this slug |
+| `user_not_found` | 404 | The username is unknown or soft-deleted |
+| `member_not_found` | 404 | The analyst is not a member |
+| `invite_not_found` | 404 | No pending invite matches |
+| `not_organization_admin` | 403 | The caller is not an org-admin (or, where allowed, a site admin) |
+| `not_mutual_follow` | 403 | The invitee and the inviting org-admin do not follow each other |
+| `already_member` | 409 | The invitee already belongs to the organization |
+| `already_invited` | 409 | The invitee already holds a pending invite |
+| `last_admin` | 409 | The change would leave the organization without a live org-admin |
+
+### `GET /organizations/{slug}`
+
+An organization's public profile. Anonymous callers are allowed.
+
+**Response 200:**
+```json
+{
+  "id": "3c0e…",
+  "slug": "open-source-watch",
+  "name": "Open Source Watch",
+  "x_handle": "osw",
+  "bio": "We geolocate strike footage.",
+  "avatar_url": null,
+  "external_links": { "website": "https://example.org" },
+  "created_at": "2026-10-15T09:00:00Z",
+  "member_count": 4,
+  "viewer_role": "admin",
+  "viewer_invited": false,
+  "viewer_can_manage": true
+}
+```
+
+`viewer_role` is your role, null when you are not a member or not signed in. `viewer_invited` is true while you hold a pending invite. `viewer_can_manage` is true for an org-admin and for a site admin.
+
+---
+
+### `GET /organizations/{slug}/members`
+
+The members, org-admins first, then by join date. Anonymous callers are allowed.
+
+**Response 200:** a list of `{ "user": AuthorRef, "role": "admin" | "member", "joined_at": "…" }`.
+
+---
+
+### `PATCH /organizations/{slug}` 🔒
+
+Edit the organization's `bio` and `external_links`, under the rules of [`PATCH /users/me`](#patch-usersme). Managers only. `name`, `slug` and `x_handle` are not editable here; sending one is a 422.
+
+**Response 200:** the updated organization, as on `GET /organizations/{slug}`.
+
+---
+
+### `PUT /organizations/{slug}/avatar` 🔒
+
+Replace the organization's picture, under the rules of [`PUT /users/me/avatar`](#put-usersmeavatar). The object lives under `avatars/{organization_id}/`. Managers only.
+
+**Response 200:** the updated organization.
+
+---
+
+### `DELETE /organizations/{slug}/avatar` 🔒
+
+Remove the organization's picture and its stored object. Managers only.
+
+**Response 200:** the updated organization, with `avatar_url` null.
+
+---
+
+### `GET /organizations/{slug}/invites` 🔒
+
+Pending invites, newest first. Managers only.
+
+**Response 200:** a list of `{ "id", "user": AuthorRef, "invited_by": AuthorRef | null, "created_at" }`.
+
+---
+
+### `GET /organizations/{slug}/invite-candidates` 🔒
+
+The analysts you can invite: in mutual follow with you, live, and neither a member nor already invited. Ordered by username. Managers only.
+
+**Response 200:** a list of `AuthorRef`.
+
+---
+
+### `POST /organizations/{slug}/invites` 🔒
+
+Invite an analyst. Org-admins only. Writes an `organization_invite` [notification](#notifications) for the invitee.
+
+**Body:** `{ "username": "ana" }`
+
+**Response 201:** the pending invite, as on `GET /organizations/{slug}/invites`.
+
+**Errors:** `not_organization_admin`, `user_not_found`, `already_member`, `not_mutual_follow`, `already_invited`.
+
+---
+
+### `DELETE /organizations/{slug}/invites/{invite_id}` 🔒
+
+Withdraw a pending invite. Managers only. Nobody is notified.
+
+**Response 204:** no body.
+
+---
+
+### `POST /organizations/{slug}/invite/accept` 🔒
+
+Accept your pending invite and join as a `member`. Writes an `organization_invite_accepted` [notification](#notifications) for the org-admin who invited you.
+
+**Response 204:** no body. **Errors:** `invite_not_found`.
+
+---
+
+### `POST /organizations/{slug}/invite/decline` 🔒
+
+Decline your pending invite. Nobody is notified.
+
+**Response 204:** no body. **Errors:** `invite_not_found`.
+
+---
+
+### `PATCH /organizations/{slug}/members/{username}` 🔒
+
+Set a member's role. Managers only.
+
+**Body:** `{ "role": "admin" }` or `{ "role": "member" }`
+
+**Response 200:** the member, as on `GET /organizations/{slug}/members`.
+
+**Errors:** `member_not_found`, `last_admin` on demoting the last live org-admin.
+
+---
+
+### `DELETE /organizations/{slug}/members/{username}` 🔒
+
+Remove a member, or leave when `username` is your own. Removing someone else takes a manager.
+
+**Response 204:** no body.
+
+**Errors:** `member_not_found`, `not_organization_admin`, `last_admin`.
 
 ---
 
@@ -2432,6 +2676,7 @@ Remove a user. Both modes invalidate the points cache. Audited as `user_soft_del
 
 - **Soft delete** (default) sets `users.deleted_at` and soft-deletes every live event the user owns. The user can no longer log in (an opaque 401, like wrong credentials), and their profile answers 404. Idempotent: a repeat keeps the original timestamp.
 - **Hard delete** (`?hard=true`, GDPR erasure) drops the user row, every event and [collection](#collections) they owned, then sweeps their storage objects (event media of both roles and the profile picture). An owned event that credits another live analyst is kept instead: it passes to the earliest of them by credit time, with its media, versions and files, and that analyst receives an `ownership_transferred` notification that does not name the erased user. A soft-deleted co-geolocator is skipped. Invite codes they issued or used survive with the reference set to NULL. The DB commits before the storage sweep.
+- **Both modes** hand an organization's org-admin role to its earliest-joined live member when the user was its last live org-admin (see [Organizations](#organizations)). On a hard delete, this and the event hand-over commit in one transaction.
 
 **Response 200:**
 ```json
@@ -2584,6 +2829,34 @@ Decline a request. The requester reads the reason in Settings and gets an `x_han
 |------|------|
 | 404 `x_handle_request_not_found` | No pending request has that `id` |
 | 422 | A missing, blank, or over-long reason |
+
+### `POST /admin/organizations` 🛡️
+
+Create an organization and name its first org-admin, who joins at once without an invite. Audited as `organization_created`. Set the picture afterwards with [`PUT /organizations/{slug}/avatar`](#put-organizationsslugavatar).
+
+**Request body:**
+```json
+{
+  "name": "Open Source Watch",
+  "slug": "open-source-watch",
+  "x_handle": "@osw",
+  "bio": "We geolocate strike footage.",
+  "external_links": { "website": "https://example.org" },
+  "admin_username": "ana"
+}
+```
+
+`slug` is 2 to 50 lowercase letters, digits or inner hyphens, and never changes. `x_handle` is normalized like [`PATCH /admin/users/{id}/x-handle`](#patch-adminusersidx-handle). `bio` and `external_links` follow [`PATCH /users/me`](#patch-usersme). Only `name`, `slug` and `admin_username` are required.
+
+**Response 201:** the organization, as on [`GET /organizations/{slug}`](#get-organizationsslug).
+
+**Errors:** 409 `slug_taken` (the slug or the X handle belongs to another organization) or `x_handle_conflict`, 404 `user_not_found` (the first org-admin), 422 on a malformed field.
+
+### `GET /admin/organizations` 🛡️
+
+Every organization with its live member and org-admin counts, those without a live org-admin first, then by name.
+
+**Response 200:** a list of `{ "slug", "name", "member_count", "admin_count", "created_at" }`. `admin_count` 0 flags an organization left without an org-admin.
 
 ### `GET /admin/reports` 🛡️
 

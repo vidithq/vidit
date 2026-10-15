@@ -32,6 +32,7 @@ const fulfilled: Notification = {
   created_at: "2026-10-12T09:00:00Z",
   actor: { id: "u2", username: "bo", avatar_url: null },
   event: { id: "e1", title: "Strike on the depot" },
+  organization: null,
   read_at: null,
   invite_pending: false,
 };
@@ -41,7 +42,18 @@ const follower: Notification = {
   created_at: "2026-10-10T09:00:00Z",
   actor: { id: "u3", username: "cy", avatar_url: null },
   event: null,
+  organization: null,
   read_at: "2026-10-11T09:00:00Z",
+  invite_pending: false,
+};
+const orgInvite: Notification = {
+  id: "n3",
+  kind: "organization_invite",
+  created_at: "2026-10-13T09:00:00Z",
+  actor: { id: "u2", username: "bo", avatar_url: null },
+  event: null,
+  organization: { slug: "osw", name: "Open Source Watch", avatar_url: null },
+  read_at: null,
   invite_pending: false,
 };
 
@@ -72,6 +84,15 @@ describe("NotificationsPage", () => {
     const fresh = screen.getByRole("heading", { name: "New" }).parentElement!;
     expect(fresh).toContainElement(fulfilledRow);
     expect(screen.getByRole("heading", { name: "Earlier" })).toBeInTheDocument();
+  });
+
+  it("links an organization invite to the organization page", async () => {
+    serve([orgInvite]);
+    render(<NotificationsPage />);
+
+    expect(
+      await screen.findByRole("link", { name: /bo invited you to join Open Source Watch/ }),
+    ).toHaveAttribute("href", "/organizations/osw");
   });
 
   it("marks the unread rows it shows read, then refreshes the dot", async () => {

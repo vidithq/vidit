@@ -489,6 +489,7 @@ The page titles itself *Version history* and names the event under it as plain t
 |---|---|---|---|
 | Identity | `ProfileTitle`, `ProfileIdentity` ([`ProfileHeader.tsx`](../frontend/src/components/profile/ProfileHeader.tsx)), `LinkedAccountsLine` ([`LinkedAccounts.tsx`](../frontend/src/components/profile/LinkedAccounts.tsx)) | `GET /users/{username}` | Always |
 | Detections queue | `DetectionsEntry` | `useDetectionsCount` | Owner only, while the queue holds something |
+| Organizations | `ProfileOrganizations` | [`GET /users/{username}/organizations`](api.md#get-usersusernameorganizations) | When the analyst belongs to one |
 | Coverage | `ProfileMap` | `GET /events/points?author=…` | When the analyst has located events |
 | Insights | `ProfileInsights` | `GET /users/{username}/stats` | When the profile has events |
 | Collections | `CollectionsSection` | [`GET /users/{username}/collections`](api.md#get-usersusernamecollections) | Owner always; visitor when the list is not empty |
@@ -515,6 +516,7 @@ The page titles itself *Version history* and names the event under it as plain t
 #### Work blocks
 
 - **Detections queue** (`DetectionsEntry`): the count of `detected` geolocations awaiting your submission, linking to `/profile/{username}/detections`. It sits above the work because it is pending work.
+- **Organizations** (`ProfileOrganizations`): one `<LinkRow>` per organization, the role as the label and the name as the link to its page. It sits first among the blocks because affiliation is identity, not work.
 - **Coverage** (`ProfileMap`): the shared `<Map>` with an explicit world `bbox` (`WORLD_BOUNDS` through `toBboxParam`; the endpoint requires one), the camera fitted to the returned points. It maps `geolocated` and `detected` in the map's two point shades. The count beside the heading splits the same way ("N geolocated, N detected on the map"), so its `geolocated` leg equals the Insights `Geolocated` tile.
 - **Insights** (`ProfileInsights`): see [Insights](#insights).
 - **Collections** (`CollectionsSection`): a grid of mosaic cards, the turn from readings of the whole body of work to the work itself (see [Collections](#collections)).
@@ -550,6 +552,45 @@ The page titles itself *Version history* and names the event under it as plain t
 #### Edit mode
 
 While the owner edits, the page renders only the header fields, `BioField`, and `LinkedAccountsFields`, contiguous and in reading order between the header and the Save button in `actions`. Both fields are edit-mode only, since reading the bio and the links happens in the header. The metadata line, the linked-accounts marks, and the read-only sections drop out.
+
+### Organization page
+
+```mermaid
+flowchart TB
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`a block every reader sees`"]:::spec
+    l2["`a block one viewer sees`"]:::shared
+    l3["`a profile primitive shared with the analyst profile`"]:::core
+    l1 ~~~ l2 ~~~ l3
+  end
+
+  header["`**ProfileTitle**, **IdentityLines**, **ProfileActions**
+  name, picture, bio, members and since, links, Edit`"]:::core
+  edit["`**useProfileEdit** with organization calls
+  **ProfileHeaderEditFields**, **BioField**, **LinkedAccountsFields**`"]:::core
+  answer["`invite answer
+  Accept, Decline`"]:::shared
+  members["`**OrganizationMembers**
+  byline, role pill, role and removal controls`"]:::spec
+  invites["`**OrganizationInvites**
+  mutual-follow picker, pending invites`"]:::shared
+
+  header --> answer --> members --> invites
+  header -.->|Edit| edit
+```
+
+[`/organizations/{slug}`](../frontend/src/app/organizations/[slug]/page.tsx) is an organization's public page. It reads like the [public profile](#public-profile), so the header reuses the profile's primitives rather than a second set.
+
+- **Header.** `ProfileTitle` takes the organization's name and picture. `IdentityLines` carries the bio and the metadata line (`N members · @handle on X · Since <date>`), the same block `ProfileIdentity` renders for an analyst. `ProfileActions` carries `LinkedAccountsLine` and, for an org-admin or a site admin, Edit.
+- **Edit mode.** `useProfileEdit` takes the organization's three writes through `calls`, so the picture picker, the bio field and the linked-account fields are the profile's own.
+- **Invite answer.** An invited viewer sees a card naming the organization with **Accept** and **Decline**. The `organization_invite` notification links here.
+- **Members.** `OrganizationMembers` lists one row per member: the `<AuthorByline>` with the avatar, a `<Pill>` for the role (accent for an org-admin, neutral for a member), and the controls the viewer holds. A manager flips the role and removes; every member leaves from their own row. Removing and leaving take the two-click `DANGER_CONFIRM`. The server's `last_admin` refusal shows as the row's error banner.
+- **Invites.** `OrganizationInvites` shows to managers. An org-admin gets a `<Select>` of the analysts the server accepts, with one line saying the list holds mutual follows only; a site admin who is not an org-admin sees the pending invites without the picker. Each pending invite withdraws with one ghost button.
 
 ### Collections
 
@@ -707,12 +748,13 @@ Opening one is [`/collections/new`](../frontend/src/app/collections/new/page.tsx
 
 ### Share cards
 
-A pasted link is how most readers meet the platform, so the three pages an analyst shares generate their own preview image. Every card is a [`next/og`](https://nextjs.org/docs/app/api-reference/file-conventions/metadata/opengraph-image) (Satori) composition on one frame, [`_og/card.tsx`](../frontend/src/app/_og/card.tsx): a 1200×630 canvas, the bundled Montserrat 700 cut, the accent-`V` wordmark, the `vidit.app` footer, and the hex palette. Satori accepts no class names, which is why the cards compose that frame instead of the `components/ui/` primitives (see *Sanctioned one-offs*). The palette in `card.tsx` restates the same neutral / orange scale the classes resolve to, and is the one place a card reads colour from.
+A pasted link is how most readers meet the platform, so the four pages an analyst shares generate their own preview image. Every card is a [`next/og`](https://nextjs.org/docs/app/api-reference/file-conventions/metadata/opengraph-image) (Satori) composition on one frame, [`_og/card.tsx`](../frontend/src/app/_og/card.tsx): a 1200×630 canvas, the bundled Montserrat 700 cut, the accent-`V` wordmark, the `vidit.app` footer, and the hex palette. Satori accepts no class names, which is why the cards compose that frame instead of the `components/ui/` primitives (see *Sanctioned one-offs*). The palette in `card.tsx` restates the same neutral / orange scale the classes resolve to, and is the one place a card reads colour from.
 
 | Card | Content |
 |---|---|
 | Site default, [`app/opengraph-image.tsx`](../frontend/src/app/opengraph-image.tsx) | Headline and subhead. Inherited by every route that generates none of its own. |
 | Profile, [`profile/[username]/opengraph-image.tsx`](../frontend/src/app/profile/[username]/opengraph-image.tsx) | Avatar (or the handle monogram), handle, bio, and three counts: geolocated, followers, media, under the page's own labels. The page carries no counts strip, so `Geolocated` is the Insights vocabulary and `geolocations_count` is the figure behind it. Top conflicts sit in the footer. |
+| Organization, [`organizations/[slug]/opengraph-image.tsx`](../frontend/src/app/organizations/[slug]/opengraph-image.tsx) | The profile card's layout ([`_og/portfolio.tsx`](../frontend/src/app/_og/portfolio.tsx), shared by both) with an `Organization` badge: picture or name monogram, name, bio, the member count, and the X handle in the footer. |
 | Event, [`events/[id]/opengraph-image.tsx`](../frontend/src/app/events/[id]/opengraph-image.tsx) | Title, coordinates, the analyst's handle and the event date, the lifecycle badge, and the locator panel. |
 | Collection, [`collections/[id]/opengraph-image.tsx`](../frontend/src/app/collections/[id]/opengraph-image.tsx) | Title, the meta line's count and span, the owner's handle, a `Collection` badge, and the mosaic panel. |
 
@@ -724,21 +766,21 @@ The event card takes its lifecycle word and emphasis from `EVENT_STATUS_META` in
 
 The **mosaic panel** on the collection card is the picture the profile card wears, at card scale. `ogMosaicBoxes` in [`lib/og.ts`](../frontend/src/lib/og.ts) places each tile in [`<CollectionCover>`](../frontend/src/components/collections/CollectionCover.tsx)'s arrangement and gap, as absolute boxes since Satori lays out flex and not grid, and clamps a longer cover to four boxes. A tile's picture is read at the derivative its own size wants through [`displayUrlsFor`](../frontend/src/lib/mediaUrls.ts), the wide `_hero` for a lone tile and the 400px `_thumb` for one sharing the panel, and all of them are fetched at once. A tile off a proof image is fetched at its original, since that upload writes no derivative. A clip carries no poster derivative, so its tile draws the panel colour under a play triangle instead of a frame the server does not have; a picture whose fetch was refused draws the same tile without the triangle. A collection with nothing showable draws the panel under `no media`, the site's own placeholder wording.
 
-Each dynamic card reads the same anonymous public payloads its page renders from (`GET /users/{username}` plus `GET /users/{username}/stats`, `GET /events/{id}`, or `GET /collections/{id}`), issued together rather than chained, so a card can only ever show what a signed-out visitor already sees and an unfurl costs one round of requests. Soft-deleted rows 404 upstream.
+Each dynamic card reads the same anonymous public payloads its page renders from (`GET /users/{username}` plus `GET /users/{username}/stats`, `GET /organizations/{slug}`, `GET /events/{id}`, or `GET /collections/{id}`), issued together rather than chained, so a card can only ever show what a signed-out visitor already sees and an unfurl costs one round of requests. Soft-deleted rows 404 upstream.
 
 An upstream read answers one of three ways, and the difference is visible because a crawler caches what it is served:
 
 | Read | Card | Tags |
 |---|---|---|
 | Answered | The data card | Title, description, `og:*`, `twitter:*` from the payload |
-| Permanent miss (`404`, or the `422` a path parameter that names no row draws) | The branded *No analyst here* / *No event here* / *No collection here* card | The matching not-found title and description, in the same tag shape as a hit |
+| Permanent miss (`404`, or the `422` a path parameter that names no row draws) | The branded *No analyst here* / *No organization here* / *No event here* / *No collection here* card | The matching not-found title and description, in the same tag shape as a hit |
 | Failed (`429`, `5xx`, timeout, undecodable body) | The site-default composition | None: the page inherits the site-wide metadata |
 
 The failed path says nothing about the link because nothing is known about it, and its image response carries `Cache-Control: no-store` so the CDN and any crawler that honours it ask again rather than keep a card built from a bad second. A crawler that caches on its own policy regardless cannot be reached from here, which is the other half of why that path emits no not-found copy: whatever it keeps, it keeps a neutral preview.
 
-Card reads carry a 15 min revalidate. That window is also the rate-limit headroom: every card request egresses from the deployment's shared IP against the per-IP limit on `/users/{username}`, `/events/{id}` and `/collections/{id}`, so a link going wide is one cached read per window rather than one backend round trip per unfurl. A link wide enough to still trip the limit degrades to the site-default card, never to a broken image.
+Card reads carry a 15 min revalidate. That window is also the rate-limit headroom: every card request egresses from the deployment's shared IP against the per-IP limit on `/users/{username}`, `/organizations/{slug}`, `/events/{id}` and `/collections/{id}`, so a link going wide is one cached read per window rather than one backend round trip per unfurl. A link wide enough to still trip the limit degrades to the site-default card, never to a broken image.
 
-All three pages are client components, so their `generateMetadata` lives on the segment layout: title, description, the `og:*` set, and `twitter:card: summary_large_image`, which is what makes X and Discord render the image full-width instead of as a square thumbnail. `twitter-image.tsx` re-exports the Open Graph composition so the two stay byte-identical.
+All four pages are client components, so their `generateMetadata` lives on the segment layout (the profile and the organization build theirs through `portfolioMetadata` in [`_og/metadata.ts`](../frontend/src/app/_og/metadata.ts)): title, description, the `og:*` set, and `twitter:card: summary_large_image`, which is what makes X and Discord render the image full-width instead of as a square thumbnail. `twitter-image.tsx` re-exports the Open Graph composition so the two stay byte-identical.
 
 The renderer publishes what it fetches as a public image, so every picture a card draws goes through one guarded read, `ogImageDataUri` in [`_og/data.ts`](../frontend/src/app/_og/data.ts) (guards also in [`lib/og.ts`](../frontend/src/lib/og.ts)), which inlines the body as a data URI rather than handing Satori a remote `<img src>`. The read accepts only an https dotted hostname, refuses address literals and local suffixes, and refuses a host whose DNS answer holds any private, loopback, link-local, or multicast address, judged in the connector so the socket uses the address the guard checked. It follows no redirect, holds a 2 s budget and a 2 MB ceiling, and accepts only PNG, JPEG, and GIF. A refused read falls back to the drawing without a picture (the handle monogram, a blank mosaic tile) and logs one `og image skipped:` warning naming the reason and the picture's host and path. `users.avatar_url` and cover tile URLs are server-minted on the media host, so the guard is defense in depth.
 

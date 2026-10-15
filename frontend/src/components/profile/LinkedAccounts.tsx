@@ -3,7 +3,7 @@
 import type { ComponentType } from "react";
 import { Check, Globe } from "lucide-react";
 
-import { displayLinkValue, resolveLinkHref, type PublicProfile } from "@/lib/users";
+import { displayLinkValue, resolveLinkHref } from "@/lib/users";
 import type { ExternalLinks } from "@/types";
 import { DiscordGlyph, GitHubGlyph, XGlyph } from "@/components/ui/BrandGlyphs";
 import { Button, buttonClasses } from "@/components/ui/Button";
@@ -119,11 +119,11 @@ export function LinkedAccountsFields({ edit }: { edit: ProfileEditState }) {
  * A fragment, not a row: the header cluster owns the row, since the owner's Edit profile mark
  * belongs to it too.
  */
-export function LinkedAccountsLine({ profile }: { profile: PublicProfile }) {
+export function LinkedAccountsLine({ links }: { links: ExternalLinks }) {
   return (
     <>
       {LINK_PLATFORMS.flatMap(({ key, label, Icon, action }) => {
-        const value = profile.external_links[key]?.trim() ?? "";
+        const value = links[key]?.trim() ?? "";
         if (!value) return [];
         const shown = displayLinkValue(key, value);
         const name = `${label}: ${shown}`;

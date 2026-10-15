@@ -6,7 +6,7 @@ import {
   deleteMyAvatar,
   updateMyProfile,
   uploadMyAvatar,
-  type PublicProfile,
+  type UserProfileUpdate,
 } from "@/lib/users";
 import { fileToDataUrl } from "@/lib/files";
 import { useMutation } from "@/hooks/useMutation";
@@ -15,14 +15,36 @@ import type { ExternalLinks } from "@/types";
 // Bio ceiling, mirrors the backend BIO_MAX_LEN in schemas/user.py; change both.
 export const BIO_MAX_LEN = 500;
 
+/** The fields the edit mode reads: an analyst's profile or an organization's. */
+export interface EditableProfile {
+  bio: string | null;
+  avatar_url?: string | null;
+  external_links: ExternalLinks;
+}
+
+/** The three writes a save runs. The avatar calls resolve to the saved row. */
+export interface ProfileSaveCalls {
+  update: (body: UserProfileUpdate) => Promise<unknown>;
+  uploadAvatar: (file: File) => Promise<{ avatar_url?: string | null }>;
+  deleteAvatar: () => Promise<{ avatar_url?: string | null }>;
+}
+
+const OWN_PROFILE_CALLS: ProfileSaveCalls = {
+  update: updateMyProfile,
+  uploadAvatar: uploadMyAvatar,
+  deleteAvatar: deleteMyAvatar,
+};
+
 interface UseProfileEditArgs {
   /** Route param: leaving for another profile exits edit mode. */
   username: string;
-  profile: PublicProfile | null;
+  profile: EditableProfile | null;
   /** Refresh AuthContext so the sidebar and other surfaces pick up the new avatar and bio. */
   refreshAuth: () => Promise<void>;
   /** Re-fetch the profile so view mode reflects the saved values. */
   refetchProfile: () => void;
+  /** Where a save writes; your own account when omitted. */
+  calls?: ProfileSaveCalls;
 }
 
 /** What the profile-picture surfaces render now: one derivation for the header title and the
@@ -58,8 +80,8 @@ export interface ProfileEditState {
 }
 
 /**
- * Inline-edit state machine for the own-profile page. Drafts are seeded from the live profile on
- * entering edit mode and discarded on cancel; saving PATCHes /users/me and re-fetches rather than
+ * Inline-edit state machine for the own-profile page and the organization page. Drafts are seeded from the live profile on
+ * entering edit mode and discarded on cancel; saving PATCHes through `calls` and re-fetches rather than
  * treating drafts as canonical. The picture saves through its own endpoint after the PATCH. A pick
  * beats a removal, so the two never both fire.
  */
@@ -68,6 +90,7 @@ export function useProfileEdit({
   profile,
   refreshAuth,
   refetchProfile,
+  calls = OWN_PROFILE_CALLS,
 }: UseProfileEditArgs): ProfileEditState {
   const [editing, setEditing] = useState(false);
   const [draftBio, setDraftBio] = useState("");
@@ -116,7 +139,7 @@ export function useProfileEdit({
     async () => {
       // Backend wholesale-replaces `external_links`: send every platform (null for empty) so cleared
       // ones aren't left stale in JSONB.
-      await updateMyProfile({
+      await calls.update({
         bio: draftBio,
         external_links: {
           x: draftLinks.x ?? null,
@@ -128,10 +151,10 @@ export function useProfileEdit({
       // After the PATCH so a rejected bio doesn't leave a stored image the profile never adopted.
       // Removing is a call only when something is stored.
       if (draftAvatarFile) {
-        return (await uploadMyAvatar(draftAvatarFile)).avatar_url ?? null;
+        return (await calls.uploadAvatar(draftAvatarFile)).avatar_url ?? null;
       }
       if (removeAvatar && profile?.avatar_url) {
-        return (await deleteMyAvatar()).avatar_url ?? null;
+        return (await calls.deleteAvatar()).avatar_url ?? null;
       }
       return undefined;
     },

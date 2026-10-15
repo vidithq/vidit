@@ -12,6 +12,7 @@ from app.models.follow import Follow
 from app.models.invite_code import InviteCode
 from app.models.media import Media
 from app.models.notification import Notification, NotificationDelivery
+from app.models.organization import Organization, OrganizationInvite, OrganizationMember
 from app.models.pending_registration import PendingRegistration
 from app.models.product_update import (
     ProductUpdate,
@@ -45,6 +46,9 @@ __all__ = [
     "Media",
     "Notification",
     "NotificationDelivery",
+    "Organization",
+    "OrganizationInvite",
+    "OrganizationMember",
     "PendingRegistration",
     "PushSubscription",
     "ProductUpdate",

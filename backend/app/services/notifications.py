@@ -15,7 +15,7 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import and_, func, or_, select
-from sqlalchemy.orm import Query, Session, aliased, contains_eager
+from sqlalchemy.orm import Query, Session, aliased, contains_eager, joinedload
 
 from app.models.event import Event, EventGeolocatorInvite
 from app.models.notification import (
@@ -24,8 +24,10 @@ from app.models.notification import (
     NotificationDelivery,
     NotificationKind,
 )
+from app.models.organization import OrganizationInvite
 from app.models.user import User
 from app.schemas.notification import NotificationEventRef, NotificationRead
+from app.schemas.organization import OrganizationRef
 from app.schemas.user import AuthorRef
 from app.services import push
 from app.services.event_filters import visible_events
@@ -42,10 +44,17 @@ def _emit(
     kind: NotificationKind,
     actor_id: uuid.UUID | None = None,
     event_id: uuid.UUID | None = None,
+    organization_id: uuid.UUID | None = None,
 ) -> None:
     if actor_id == recipient_id:
         return
-    row = Notification(user_id=recipient_id, kind=kind, actor_id=actor_id, event_id=event_id)
+    row = Notification(
+        user_id=recipient_id,
+        kind=kind,
+        actor_id=actor_id,
+        event_id=event_id,
+        organization_id=organization_id,
+    )
     db.add(row)
     recipient = db.get(User, recipient_id)
     if recipient is None:
@@ -143,6 +152,50 @@ def notify_ownership_transferred(db: Session, *, event: Event, heir_id: uuid.UUI
     _emit(db, recipient_id=heir_id, kind="ownership_transferred", event_id=event.id)
 
 
+def notify_organization_invite(db: Session, *, invite: OrganizationInvite) -> None:
+    """Tell the invitee that an org-admin invited them to join."""
+    _emit(
+        db,
+        recipient_id=invite.user_id,
+        kind="organization_invite",
+        actor_id=invite.invited_by_id,
+        organization_id=invite.organization_id,
+    )
+
+
+def notify_organization_invite_accepted(
+    db: Session, *, invite: OrganizationInvite, member_id: uuid.UUID
+) -> None:
+    """Tell the org-admin who sent ``invite`` that it was accepted.
+
+    Silent when that org-admin's account is gone. A decline notifies nobody.
+    """
+    if invite.invited_by_id is None:
+        return
+    _emit(
+        db,
+        recipient_id=invite.invited_by_id,
+        kind="organization_invite_accepted",
+        actor_id=member_id,
+        organization_id=invite.organization_id,
+    )
+
+
+def notify_organization_admin_inherited(
+    db: Session, *, organization_id: uuid.UUID, heir_id: uuid.UUID
+) -> None:
+    """Tell ``heir_id`` they became an org-admin because the last one left Vidit.
+
+    Names no actor: the notification never says whose account was erased.
+    """
+    _emit(
+        db,
+        recipient_id=heir_id,
+        kind="organization_admin_inherited",
+        organization_id=organization_id,
+    )
+
+
 def _visible_rows(db: Session, user: User) -> Query[Notification]:
     """``user``'s rows whose event and actor a reader may still see."""
     return (
@@ -172,7 +225,9 @@ def list_feed(
     """One window of the feed, newest first, over-fetched by one row for
     ``take_page``."""
     query = _visible_rows(db, user).options(
-        contains_eager(Notification.event), contains_eager(Notification.actor.of_type(_Actor))
+        contains_eager(Notification.event),
+        contains_eager(Notification.actor.of_type(_Actor)),
+        joinedload(Notification.organization),
     )
     if cursor is not None:
         query = query.filter(keyset_before(Notification.created_at, Notification.id, cursor))
@@ -205,6 +260,11 @@ def build_read(row: Notification, *, pending: set[uuid.UUID]) -> NotificationRea
         created_at=row.created_at,
         actor=AuthorRef.model_validate(row.actor) if row.actor is not None else None,
         event=NotificationEventRef.model_validate(row.event) if row.event is not None else None,
+        organization=(
+            OrganizationRef.model_validate(row.organization)
+            if row.organization is not None
+            else None
+        ),
         read_at=row.read_at,
         invite_pending=row.kind == "co_geolocator_invite" and row.event_id in pending,
     )

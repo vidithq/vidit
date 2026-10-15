@@ -11,8 +11,10 @@ import pytest
 from app.models.collection import Collection, CollectionEvent
 from app.models.event import STATUS_CLOSED, Event, EventGeolocator, EventGeolocatorInvite
 from app.models.notification import Notification
+from app.models.organization import Organization, OrganizationMember
 from app.models.user import User
-from app.services import email, geolocator_credit, notification_delivery
+from app.services import admin as admin_service
+from app.services import email, geolocator_credit, notification_delivery, organizations
 from app.services.auth import hash_password
 from app.services.sanitize import html_from_text
 from tests.conftest import login_as
@@ -435,3 +437,69 @@ def test_erasure_deletes_an_event_with_no_live_co_geolocator(db, admin_user, aut
     assert (body["cascaded_geolocations"], body["transferred_events"]) == (2, 0)
     db.expire_all()
     assert db.query(Event).filter(Event.id.in_([alone, with_banned_id])).count() == 0
+
+
+@pytest.fixture
+def led_organization(db, author, make_user):
+    """An organization ``author`` is the only org-admin of, with one member."""
+    org = Organization(slug=f"cg-{uuid.uuid4().hex[:8]}", name="Credit collective")
+    db.add(org)
+    db.flush()
+    member = make_user()
+    db.add_all(
+        [
+            OrganizationMember(organization_id=org.id, user_id=author.id, role="admin"),
+            OrganizationMember(organization_id=org.id, user_id=member.id, role="member"),
+        ]
+    )
+    db.commit()
+    yield org, member
+    db.query(Organization).filter(Organization.id == org.id).delete(synchronize_session=False)
+    db.commit()
+
+
+def _role(db, org: Organization, user: User) -> str | None:
+    db.expire_all()
+    row = db.get(OrganizationMember, (org.id, user.id))
+    return row.role if row is not None else None
+
+
+def test_erasure_hands_over_events_and_the_org_admin_role_together(
+    db, admin_user, author, second_user, led_organization
+):
+    org, member = led_organization
+    geo = _published(db, author)
+    _credit(db, geo, second_user)
+
+    _erase(admin_user, author)
+
+    db.expire_all()
+    assert db.get(Event, geo.id).owner_id == second_user.id
+    assert _role(db, org, member) == "admin"
+    assert _notifications(db, second_user) == [("ownership_transferred", None, geo.id)]
+    inherited = db.query(Notification).filter(Notification.user_id == member.id).all()
+    assert [(n.kind, n.actor_id, n.organization_id) for n in inherited] == [
+        ("organization_admin_inherited", None, org.id)
+    ]
+
+
+def test_a_failed_org_hand_over_rolls_back_the_event_hand_over(
+    db, admin_user, author, second_user, led_organization, monkeypatch
+):
+    org, member = led_organization
+    geo = _published(db, author)
+    _credit(db, geo, second_user)
+
+    def _boom(*_a, **_kw):
+        raise RuntimeError("hand-over failed")
+
+    monkeypatch.setattr(organizations, "hand_over_admin_roles", _boom)
+    with pytest.raises(RuntimeError):
+        admin_service.hard_delete_user(db, actor_id=admin_user.id, user_id=author.id)
+    db.rollback()
+
+    db.expire_all()
+    assert db.get(User, author.id) is not None
+    assert db.get(Event, geo.id).owner_id == author.id
+    assert _role(db, org, member) == "member"
+    assert _notifications(db, second_user) == []

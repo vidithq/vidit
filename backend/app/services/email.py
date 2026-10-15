@@ -447,6 +447,48 @@ def ownership_transferred_email(*, to: str, event_id: str, event_title: str) -> 
     )
 
 
+def organization_link(slug: str) -> str:
+    """The absolute URL of one organization's page."""
+    return app_url(f"/organizations/{slug}")
+
+
+def organization_invite_email(*, to: str, actor: str, slug: str, name: str) -> Email:
+    return _notification_email(
+        to=to,
+        subject=f"{actor} invites you to join {name}",
+        blocks=[
+            f"{actor}, an org-admin of {name}, invites you to join the organization on Vidit. "
+            "Accept or decline on its page."
+        ],
+        action=Action("View the invitation", organization_link(slug)),
+        setting="Organization invite by email",
+    )
+
+
+def organization_invite_accepted_email(*, to: str, actor: str, slug: str, name: str) -> Email:
+    return _notification_email(
+        to=to,
+        subject=f"{actor} joined {name}",
+        blocks=[f"{actor} accepted your invitation and is now a member of {name}."],
+        action=Action("View the organization", organization_link(slug)),
+        setting="Invite accepted by email",
+    )
+
+
+def organization_admin_inherited_email(*, to: str, slug: str, name: str) -> Email:
+    return _notification_email(
+        to=to,
+        subject=f"You are now an org-admin of {name}",
+        blocks=[
+            f"The account of the last org-admin of {name} was removed, and you were its "
+            "earliest member, so you are now its org-admin. You can invite analysts, "
+            "change roles and edit its profile."
+        ],
+        action=Action("View the organization", organization_link(slug)),
+        setting="Now org-admin by email",
+    )
+
+
 def product_update_email(
     *,
     to: str,

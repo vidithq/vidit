@@ -15,6 +15,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - Analysts who opt in, at sign-up or in Settings, get one email per major release with a one-click unsubscribe; admins compose, preview, test and send it from the console, paced under its own daily cap.
 - Analysts who opt in, at sign-up or in Settings, get one email per major release with a one-click unsubscribe; admins compose, preview, test and send it from the console, paced under its own daily cap ([#571](https://github.com/vidithq/vidit/pull/571)).
 - Settings shows the X handle bound to your account and lets you ask an admin to change it; admins approve or decline pending requests from the admin page, and you get a notification either way ([#567](https://github.com/vidithq/vidit/pull/567)).
+- Organizations: a site admin creates one and names its first org-admin, who invites mutual follows; the earliest member inherits the role if the last org-admin is erased, profiles list their organizations, and links unfurl with a card ([#569](https://github.com/vidithq/vidit/pull/569)).
 
 ### Fixed
 

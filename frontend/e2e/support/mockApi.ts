@@ -19,7 +19,12 @@ import {
   EMPTY_DETECTIONS,
   EVENT,
   EVENT_ID,
+  INVITE_CANDIDATES,
   NO_UNREAD,
+  ORGANIZATION,
+  ORGANIZATION_INVITES,
+  ORGANIZATION_MEMBERS,
+  ORGANIZATION_SLUG,
   PUSH_OFF,
   ONE_PIXEL_PNG,
   REQUESTED_EVENT,
@@ -73,6 +78,14 @@ const ROUTES: [RegExp, unknown][] = [
   [
     new RegExp(`^/collections/${COLLECTION_ID}/events$`),
     [COLLECTED_EVENT, SECOND_COLLECTED_EVENT],
+  ],
+  // The organization page as its org-admin reads it.
+  [new RegExp(`^/organizations/${ORGANIZATION_SLUG}$`), ORGANIZATION],
+  [new RegExp(`^/organizations/${ORGANIZATION_SLUG}/members$`), ORGANIZATION_MEMBERS],
+  [new RegExp(`^/organizations/${ORGANIZATION_SLUG}/invites$`), ORGANIZATION_INVITES],
+  [
+    new RegExp(`^/organizations/${ORGANIZATION_SLUG}/invite-candidates$`),
+    INVITE_CANDIDATES,
   ],
   // The profile's Collections grid, which the signed-in analyst owns.
   [

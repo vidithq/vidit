@@ -601,9 +601,9 @@ def avatar_key_of(url: str | None) -> str | None:
     return key
 
 
-def avatar_key(user_id: UUID) -> str:
-    """Storage key for an analyst's next profile picture, always ``.jpg`` (see :func:`render_avatar_jpeg`)."""
-    return f"{AVATAR_KEY_PREFIX}{user_id}/{uuid4()}.jpg"
+def avatar_key(owner_id: UUID) -> str:
+    """Storage key for the next profile picture of an analyst or an organization, always ``.jpg`` (see :func:`render_avatar_jpeg`)."""
+    return f"{AVATAR_KEY_PREFIX}{owner_id}/{uuid4()}.jpg"
 
 
 def render_avatar_jpeg(data: bytes, content_type: str) -> bytes:
@@ -631,8 +631,8 @@ def render_avatar_jpeg(data: bytes, content_type: str) -> bytes:
     return make_jpeg_derivative(cleaned, content_type, THUMBNAIL_MAX_DIM)
 
 
-async def upload_avatar_image(file: UploadFile, user_id: UUID) -> UploadResult:
-    """Store one analyst's profile picture. Images only (nothing would resize a video).
+async def upload_avatar_image(file: UploadFile, owner_id: UUID) -> UploadResult:
+    """Store one profile picture for an analyst or an organization. Images only (nothing would resize a video).
 
     Raises ``ValueError``; the router maps it to a 422.
     """
@@ -646,7 +646,7 @@ async def upload_avatar_image(file: UploadFile, user_id: UUID) -> UploadResult:
         return render_avatar_jpeg(file.file.read(), content_type)
 
     data = await asyncio.to_thread(_render)
-    return await get_storage().upload_bytes(data, avatar_key(user_id), "image/jpeg")
+    return await get_storage().upload_bytes(data, avatar_key(owner_id), "image/jpeg")
 
 
 # 255: common filesystem-name max (NTFS / ext4), above any camera filename.

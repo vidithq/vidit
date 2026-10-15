@@ -1,5 +1,6 @@
 import { apiFetch } from "./api";
 import type { components } from "./api-types";
+import { organizationPath } from "./organizations";
 
 export type Notification = components["schemas"]["NotificationRead"];
 export type NotificationKind = Notification["kind"];
@@ -56,6 +57,18 @@ export const NOTIFICATION_KIND_COPY: Record<
     label: "Ownership transferred",
     setting: "A geolocation you share passes to you because its owner's account was removed.",
   },
+  organization_invite: {
+    label: "Organization invite",
+    setting: "An org-admin invites you to join an organization.",
+  },
+  organization_invite_accepted: {
+    label: "Invite accepted",
+    setting: "Someone accepts your invite to an organization.",
+  },
+  organization_admin_inherited: {
+    label: "Now org-admin",
+    setting: "You become an org-admin because the last one left Vidit.",
+  },
 };
 
 /** The feed row's sentence and destination. */
@@ -63,6 +76,7 @@ export function describeNotification(n: Notification): { text: string; href: str
   const actor = n.actor?.username ?? "Someone";
   const title = n.event?.title ?? "";
   const eventHref = n.event ? `/events/${n.event.id}` : "/notifications";
+  const organization = n.organization?.name ?? "an organization";
   switch (n.kind) {
     case "request_fulfilled":
       return {
@@ -95,6 +109,21 @@ export function describeNotification(n: Notification): { text: string; href: str
       return {
         text: `You now own: ${title}. Its previous owner's account was removed.`,
         href: eventHref,
+      };
+    case "organization_invite":
+      return {
+        text: `${actor} invited you to join ${organization}`,
+        href: n.organization ? organizationPath(n.organization.slug) : "/notifications",
+      };
+    case "organization_invite_accepted":
+      return {
+        text: `${actor} joined ${organization}`,
+        href: n.organization ? organizationPath(n.organization.slug) : "/notifications",
+      };
+    case "organization_admin_inherited":
+      return {
+        text: `You are now an org-admin of ${organization}`,
+        href: n.organization ? organizationPath(n.organization.slug) : "/notifications",
       };
   }
 }

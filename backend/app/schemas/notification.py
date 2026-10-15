@@ -4,6 +4,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.notification import NotificationKind
+from app.schemas.organization import OrganizationRef
 from app.schemas.user import AuthorRef
 from app.services.pagination import MAX_PAGE_SIZE
 
@@ -16,8 +17,8 @@ class NotificationEventRef(BaseModel):
 
 
 class NotificationRead(BaseModel):
-    """One feed row. ``actor`` and ``event`` are null on a kind that names
-    neither; ``read_at`` is null until the feed has shown the row.
+    """One feed row. ``actor``, ``event`` and ``organization`` are null on a
+    kind that names none; ``read_at`` is null until the feed has shown the row.
     ``invite_pending`` is true on a ``co_geolocator_invite`` row whose
     invitation still waits for the reader's answer."""
 
@@ -26,6 +27,7 @@ class NotificationRead(BaseModel):
     created_at: datetime
     actor: AuthorRef | None
     event: NotificationEventRef | None
+    organization: OrganizationRef | None
     read_at: datetime | None
     invite_pending: bool
 
