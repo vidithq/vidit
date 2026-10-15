@@ -560,6 +560,7 @@ _DOCUMENTED_LIMITS = [
     _Case("get", f"{ME}/preferences", 120),
     _Case("patch", f"{ME}/preferences", 60, "user", {"json": {"display": {"theme": "dark"}}}),
     _Case("get", f"{ME}/push-config", 60),
+    _Case("get", f"{ME}/push-subscriptions", 120),
     _Case("post", f"{ME}/push-subscriptions", 30, "user", {"json": _PUSH_SUBSCRIPTION}),
     _Case("delete", f"{ME}/push-subscriptions/{_MISSING_ID}", 30),
     _Case("get", f"{ME}/x-handle", 120),

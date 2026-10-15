@@ -23,12 +23,19 @@ import { PALETTES } from "@/lib/palette";
 import { useTheme } from "@/hooks/useTheme";
 import { useApiResource } from "@/hooks/useApiResource";
 import { NOTIFICATION_KIND_COPY } from "@/lib/notifications";
+import { Smartphone } from "lucide-react";
+import { LinkRow } from "@/components/ui/LinkRow";
+import { formatDate } from "@/lib/format";
 import {
   disablePush,
   enablePush,
   PUSH_CONFIG_PATH,
+  PUSH_DEVICES_PATH,
   readPushState,
+  revokePushDevice,
+  thisPushDeviceId,
   type PushConfig,
+  type PushDevice as RegisteredDevice,
   type PushDeviceState,
 } from "@/lib/push";
 import {
@@ -77,11 +84,42 @@ function PushDevice() {
       live = false;
     };
   }, [settled, config.data]);
+  const devices = useApiResource<RegisteredDevice[]>(PUSH_DEVICES_PATH);
+  const { refetch: refetchDevices } = devices;
+  const [thisId, setThisId] = useState<string | null>(null);
+  // Registering again names this browser's row in the list, and restores it after a password
+  // change made from this signed-in device.
+  useEffect(() => {
+    if (state !== "on") return;
+    let live = true;
+    thisPushDeviceId()
+      .then((id) => {
+        if (!live) return;
+        setThisId(id);
+        refetchDevices();
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [state, refetchDevices]);
   const change = useMutation(
     (enable: boolean) =>
       enable && config.data?.public_key ? enablePush(config.data.public_key) : disablePush(),
-    { fallback: "Could not change push on this device. Try again.", onSuccess: setState }
+    {
+      fallback: "Could not change push on this device. Try again.",
+      onSuccess: (next) => {
+        setState(next);
+        if (next !== "on") setThisId(null);
+        refetchDevices();
+      },
+    }
   );
+  const revoke = useMutation((id: string) => revokePushDevice(id), {
+    fallback: "Could not revoke the device. Try again.",
+    onSuccess: refetchDevices,
+  });
+  const rows = Array.isArray(devices.data) ? devices.data : [];
 
   return (
     <div className="space-y-2 border-t border-neutral-800 pt-4">
@@ -90,7 +128,9 @@ function PushDevice() {
         {state ? PUSH_STATE_LINE[state] : "Checking this device..."} On iPhone and iPad, push
         works only after you add Vidit to the Home Screen and open it from there.
       </p>
-      {change.error && <div className={FORM_ERROR_BANNER}>{change.error}</div>}
+      {(change.error || revoke.error) && (
+        <div className={FORM_ERROR_BANNER}>{change.error ?? revoke.error}</div>
+      )}
       {(state === "off" || state === "on") && (
         <Button
           variant={state === "off" ? "primary" : "secondary"}
@@ -100,6 +140,26 @@ function PushDevice() {
           {state === "off" ? "Enable on this device" : "Turn off on this device"}
         </Button>
       )}
+      {rows.map((device) => (
+        <div key={device.id} className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <LinkRow
+              icon={Smartphone}
+              label={`${device.id === thisId ? "This device, added" : "Added"} ${formatDate(device.created_at)}`}
+              value={device.user_agent ?? "Unknown browser"}
+            />
+          </div>
+          <Button
+            variant="ghost"
+            disabled={revoke.loading || change.loading}
+            onClick={() =>
+              device.id === thisId ? change.run(false) : revoke.run(device.id)
+            }
+          >
+            Revoke
+          </Button>
+        </div>
+      ))}
     </div>
   );
 }

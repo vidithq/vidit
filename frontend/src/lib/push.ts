@@ -7,10 +7,11 @@ import { apiFetch } from "./api";
 import type { components } from "./api-types";
 
 export type PushConfig = components["schemas"]["PushConfigRead"];
-type PushSubscriptionRead = components["schemas"]["PushSubscriptionRead"];
+export type PushDevice = components["schemas"]["PushSubscriptionRead"];
 
 export const PUSH_CONFIG_PATH = "/users/me/push-config";
-const SUBSCRIPTIONS_PATH = "/users/me/push-subscriptions";
+/** The account's registered devices, newest first. */
+export const PUSH_DEVICES_PATH = "/users/me/push-subscriptions";
 const SERVICE_WORKER_URL = "/sw.js";
 
 /** `needs-home-screen`: an iPhone or iPad browser tab, where push exists only for the site
@@ -53,8 +54,8 @@ function keyBytes(base64url: string): Uint8Array<ArrayBuffer> {
   return Uint8Array.from(binary, (c) => c.charCodeAt(0));
 }
 
-function register(subscription: PushSubscription): Promise<PushSubscriptionRead> {
-  return apiFetch<PushSubscriptionRead>(SUBSCRIPTIONS_PATH, {
+function register(subscription: PushSubscription): Promise<PushDevice> {
+  return apiFetch<PushDevice>(PUSH_DEVICES_PATH, {
     method: "POST",
     body: JSON.stringify(subscription.toJSON()),
   });
@@ -76,14 +77,36 @@ export async function enablePush(publicKey: string): Promise<PushDeviceState> {
   return "on";
 }
 
-/** Forget this device on the server, then drop the browser subscription. Registering again
- *  first returns this device's id, since the API never echoes the endpoint. */
+/** Stop pushes to one of the account's devices. */
+export function revokePushDevice(id: string): Promise<void> {
+  return apiFetch<void>(`${PUSH_DEVICES_PATH}/${id}`, { method: "DELETE" });
+}
+
+/** This browser's device id, or null when it holds no subscription. Registering again returns
+ *  the id, since the API never echoes the endpoint. */
+export async function thisPushDeviceId(): Promise<string | null> {
+  if (!isSupported()) return null;
+  const subscription = await currentSubscription();
+  return subscription ? (await register(subscription)).id : null;
+}
+
+/** Forget this device on the server, then drop the browser subscription. */
 export async function disablePush(): Promise<PushDeviceState> {
   const subscription = await currentSubscription();
   if (subscription) {
     const { id } = await register(subscription);
-    await apiFetch<void>(`${SUBSCRIPTIONS_PATH}/${id}`, { method: "DELETE" });
+    await revokePushDevice(id);
     await subscription.unsubscribe();
   }
   return "off";
+}
+
+/** At sign-out, while the session still holds: forget this device, so this browser receives
+ *  none of the leaving account's pushes. Never throws. */
+export async function forgetThisPushDevice(): Promise<void> {
+  try {
+    if (isSupported()) await disablePush();
+  } catch {
+    // Sign-out goes on; the device stays listed in Settings, where another session revokes it.
+  }
 }

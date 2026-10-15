@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const api = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("./api", () => ({ apiFetch: api.apiFetch }));
 
-import { disablePush, enablePush, readPushState } from "./push";
+import { disablePush, enablePush, forgetThisPushDevice, readPushState } from "./push";
 
 // An uncompressed P-256 point, base64url: 0x04 then 64 bytes.
 const KEY = btoa(String.fromCharCode(4, ...new Array(64).fill(1)))
@@ -118,5 +118,24 @@ describe("push", () => {
       method: "DELETE",
     });
     expect(subscription.unsubscribe).toHaveBeenCalled();
+  });
+
+  it("forgets this device at sign-out, and never throws", async () => {
+    const subscription = fakeSubscription();
+    installBrowser({ permission: "granted", subscription });
+    await forgetThisPushDevice();
+    expect(api.apiFetch).toHaveBeenLastCalledWith("/users/me/push-subscriptions/device-1", {
+      method: "DELETE",
+    });
+    expect(subscription.unsubscribe).toHaveBeenCalled();
+
+    api.apiFetch.mockRejectedValue(new Error("offline"));
+    await expect(forgetThisPushDevice()).resolves.toBeUndefined();
+  });
+
+  it("does nothing at sign-out in a browser without push", async () => {
+    setUserAgent("Mozilla/5.0 (X11; Linux x86_64)");
+    await forgetThisPushDevice();
+    expect(api.apiFetch).not.toHaveBeenCalled();
   });
 });

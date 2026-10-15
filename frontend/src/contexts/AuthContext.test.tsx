@@ -2,12 +2,14 @@ import { act, render, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({ apiFetch: vi.fn() }));
+const push = vi.hoisted(() => ({ forgetThisPushDevice: vi.fn() }));
 
 vi.mock("@/lib/api", () => ({
   apiFetch: api.apiFetch,
   ApiError: class extends Error {},
 }));
 vi.mock("@/lib/auth", () => ({ hasSessionCookie: () => true }));
+vi.mock("@/lib/push", () => push);
 
 import { AuthProvider, useAuth } from "./AuthContext";
 
@@ -44,5 +46,32 @@ describe("AuthProvider logout", () => {
       expect(window.localStorage.getItem(key)).toBeNull();
     }
     expect(assign).toHaveBeenCalledWith("/login");
+  });
+
+  it("forgets this push device while the session still holds", async () => {
+    const calls: string[] = [];
+    api.apiFetch.mockImplementation((path: string) => {
+      calls.push(path);
+      return Promise.resolve(path === "/auth/me" ? { id: "u1", username: "ana" } : undefined);
+    });
+    push.forgetThisPushDevice.mockImplementation(async () => {
+      calls.push("forget push device");
+    });
+    vi.spyOn(window, "location", "get").mockReturnValue({ ...window.location, assign: vi.fn() });
+
+    let logout: () => Promise<void> = async () => {};
+    function Probe() {
+      logout = useAuth().logout;
+      return null;
+    }
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect(calls).toContain("/auth/me"));
+    await act(() => logout());
+
+    expect(calls.slice(-2)).toEqual(["forget push device", "/auth/logout"]);
   });
 });
