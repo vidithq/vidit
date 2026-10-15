@@ -69,6 +69,13 @@ export default function PrivacyPage() {
               agent appears in it.
             </li>
             <li>
+              <span className="text-neutral-100">Release email consent</span>:
+              whether you asked for emails about major releases, when, where
+              (sign-up or settings), and when you withdrew it. Each grant and
+              withdrawal is kept as a record, and each email sent is logged
+              with its delivery status.
+            </li>
+            <li>
               <span className="text-neutral-100">Reports</span>: the reason,
               the optional report text and, if the report comes from an
               account, that account&apos;s identifier. An anonymous report is
@@ -102,6 +109,12 @@ export default function PrivacyPage() {
               emails (registration confirmation, password reset).
             </li>
             <li>
+              With your consent only, email you once per major release of
+              Vidit, never for a patch. Consent is off unless you turn it on.
+              Withdraw it at any time in Settings or with the unsubscribe link
+              in each of these emails, which works without signing in.
+            </li>
+            <li>
               Publish the content you submit and attribute it to its author.
             </li>
             <li>
@@ -130,6 +143,10 @@ export default function PrivacyPage() {
             <li>
               Expired confirmation and reset tokens are deleted as soon as they
               expire; used tokens are deleted after 30 days.
+            </li>
+            <li>
+              The release email consent record is kept for as long as the
+              account exists, so it can show when you gave and withdrew it.
             </li>
             <li>
               The authentication log and the reports are kept without a time

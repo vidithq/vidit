@@ -33,6 +33,8 @@ detected_at  # app/models/event.py, state-entry stamp
 geolocated_at  # app/models/event.py, state-entry stamp
 finished_at  # app/models/archive_import_job.py, stamped by services/archive_jobs
 added_at  # app/models/collection.py CollectionEvent, stamped when an event joins
+granted_at  # app/models/product_update.py ProductUpdateConsent, the consent record
+sent_by  # app/models/product_update.py ProductUpdate, who sent the announcement
 
 # ── ASGI middleware override ──────────────────────────────────────────────────
 # Starlette calls dispatch(); never referenced by name.
@@ -78,6 +80,12 @@ display_stored  # schemas/preferences.py UserPreferencesRead
 palette  # schemas/preferences.py, read through model_dump
 theme  # schemas/preferences.py, read through model_dump
 help_tooltips  # schemas/preferences.py, read through model_dump
+daily_cap  # schemas/product_update.py ProductUpdatePreview
+batch_size  # schemas/product_update.py ProductUpdatePreview
+days  # schemas/product_update.py ProductUpdatePreview
+queued  # schemas/product_update.py ProductUpdateProgress, filled by keyword
+sending  # schemas/product_update.py ProductUpdateProgress, filled by keyword
+sent  # schemas/product_update.py ProductUpdateProgress, filled by keyword
 start_year  # models/conflict.py + schemas/conflict.py ConflictRead (wire field)
 end_year  # models/conflict.py + schemas/conflict.py ConflictRead (wire field)
 geolocated_count  # schemas/user.py UserStatsRead (wire field)

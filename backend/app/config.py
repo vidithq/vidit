@@ -67,6 +67,13 @@ class Settings(BaseSettings):
     # tier) with the auth emails, which are sent inline and never counted.
     notification_email_daily_cap: int = 50
     notification_email_daily_cap_per_user: int = 10
+    # Product update emails sent in any trailing 24 hours, and the most one
+    # worker pass sends before it turns to its other queues. With the
+    # notification cap this must stay below ``email_provider_daily_quota``, so
+    # the remainder is left to the auth emails.
+    product_update_email_daily_cap: int = 30
+    product_update_email_batch_size: int = 10
+    email_provider_daily_quota: int = 100
 
     # Web Push (services/push.py). The private key is the base64url raw P-256
     # key; the public key browsers subscribe with derives from it. The subject
@@ -82,6 +89,9 @@ class Settings(BaseSettings):
 
     # Public frontend origin for links in emails: absolute URL, no trailing slash.
     frontend_url: str = "http://localhost:3000"
+    # Public API base, the value of the frontend's ``NEXT_PUBLIC_API_URL``: the
+    # one-click ``List-Unsubscribe`` URL of a product update email posts to it.
+    api_url: str = "http://localhost:8000/api/v1"
 
     # Reset token TTL (minutes). Short to bound the value of an intercepted
     # email. The registration confirmation TTL is in services/registration.py.
@@ -208,6 +218,17 @@ class Settings(BaseSettings):
             raise ValueError(
                 "VAPID_PRIVATE_KEY and VAPID_SUBJECT must be set together; "
                 "refusing a half-configured push sender."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_email_caps(self) -> "Settings":
+        capped = self.notification_email_daily_cap + self.product_update_email_daily_cap
+        if capped >= self.email_provider_daily_quota:
+            raise ValueError(
+                "NOTIFICATION_EMAIL_DAILY_CAP plus PRODUCT_UPDATE_EMAIL_DAILY_CAP must stay "
+                f"below EMAIL_PROVIDER_DAILY_QUOTA ({capped} >= "
+                f"{self.email_provider_daily_quota}); the remainder carries the auth emails."
             )
         return self
 

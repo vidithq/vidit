@@ -27,7 +27,7 @@ import SettingsPage from "./page";
 
 const DISPLAY = { palette: "orange", theme: "dark", help_tooltips: true } as const;
 
-function preferences(requestFulfilledEmail = true): UserPreferences {
+function preferences(requestFulfilledEmail = true, productUpdates = false): UserPreferences {
   return {
     display: DISPLAY,
     display_defaults: DISPLAY,
@@ -44,6 +44,7 @@ function preferences(requestFulfilledEmail = true): UserPreferences {
         defaults: { email: false, push: false },
       },
     ],
+    product_updates: productUpdates,
   };
 }
 
@@ -61,7 +62,7 @@ describe("SettingsPage", () => {
         init?.method === "PATCH" &&
           JSON.parse(String(init.body)).notifications?.request_fulfilled
           ? preferences(false)
-          : preferences(),
+          : preferences(true, init?.method === "PATCH" && JSON.parse(String(init.body)).product_updates === true),
       ),
     );
   });
@@ -137,6 +138,18 @@ describe("SettingsPage", () => {
     await waitFor(() =>
       expect(patchBodies()).toEqual([{ notifications: { new_follower: { push: true } } }]),
     );
+  });
+
+  it("keeps the major release email switch off until the analyst turns it on", async () => {
+    render(<SettingsPage />);
+
+    const releases = await screen.findByRole("switch", { name: "Major release emails" });
+    expect(releases).toHaveAttribute("aria-checked", "false");
+
+    fireEvent.click(releases);
+
+    await waitFor(() => expect(releases).toHaveAttribute("aria-checked", "true"));
+    expect(patchBodies()).toEqual([{ product_updates: true }]);
   });
 
   it.each([[[]], [{}], [{ notifications: [{ kind: "retired_kind" }] }]])(

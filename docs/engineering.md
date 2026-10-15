@@ -304,6 +304,68 @@ flowchart LR
 
 The caps keep notification email inside the provider's daily quota, 100 emails on the Resend free tier, with room for the auth emails, which are sent inline and never counted. Each notification email links to the item, names the switch that sent it, links to Settings, and carries a `List-Unsubscribe` header pointing at Settings.
 
+#### Product update emails
+
+A product update email announces one major release to the analysts who consented. It is not a notification kind: the consent alone governs it, and it has its own queue and its own daily cap.
+
+```mermaid
+flowchart LR
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`an analyst or admin action`"]:::spec
+    l2["`a service step`"]:::shared
+    l3["`the shared sender`"]:::core
+    l4[("`a store`")]:::store
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
+  end
+
+  signup["`**sign-up switch**
+  confirmation copies it`"]:::spec
+  settings["`**Settings switch**
+  PATCH /users/me/preferences`"]:::spec
+  unsub["`**unsubscribe link or one-click header**
+  signed token, no session`"]:::spec
+  consents[("`**product_update_consents**
+  granted_at, source, withdrawn_at`")]:::store
+  admin["`**admin console**
+  preview, test, send`"]:::spec
+  send["`**product_updates.send**
+  one transaction, label UNIQUE`"]:::shared
+  queue[("`**product_update_deliveries**
+  one row per recipient`")]:::store
+  drain["`**product_updates.drain**
+  in the worker: one batch per pass, daily cap, re-checks consent`"]:::shared
+  sender["`**notification_delivery.deliver**
+  sent, skipped, queued or failed; a raising row counts as a refusal`"]:::core
+
+  signup --> consents
+  settings --> consents
+  unsub --> consents
+  admin --> send
+  consents --> send --> queue --> drain --> sender
+```
+
+**Consent.** [`services/product_update_consent.py`](../backend/app/services/product_update_consent.py) owns the [`product_update_consents`](data-model.md#product_update_consents) record. The sign-up switch, the Settings switch and the unsubscribe link each grant or withdraw it. A grant adds a row only when none is current, and a withdrawal stamps `withdrawn_at`, so no change overwrites an earlier grant.
+
+**The unsubscribe token.** `unsubscribe_token` signs the account ID with an HMAC keyed on `JWT_SECRET` and a purpose prefix, so the token cannot stand in for any other credential. It carries no expiry: the link in an old email keeps working. Rotating `JWT_SECRET` voids every link. The email prints the link to the `/unsubscribe` page, which withdraws on a click, so a mail scanner that opens the link withdraws nothing. The `List-Unsubscribe` header names `POST {API_URL}/product-updates/unsubscribe?token=…`, which a mail client calls on its own (`List-Unsubscribe-Post: List-Unsubscribe=One-Click`).
+
+**The send.** [`services/product_updates.py`](../backend/app/services/product_updates.py) records the announcement and writes one [`product_update_deliveries`](data-model.md#product_update_deliveries) row per analyst with a current consent, a verified address and a live active account, all in one transaction. The insert of the announcement waits on the UNIQUE release label, so a second send of the same label finds it taken and queues nothing.
+
+**The drain.** Each worker pass runs `product_updates.drain` after the notification queue:
+
+1. It marks a row `failed` after an hour in `sending`. A queued row never expires, since a large audience takes several days.
+2. It claims at most `PRODUCT_UPDATE_EMAIL_BATCH_SIZE` rows (default 10), so a large send never holds the worker away from its other queues.
+3. It stops when the product update emails sent in the trailing 24 hours reach `PRODUCT_UPDATE_EMAIL_DAILY_CAP` (default 30).
+4. It skips a row whose recipient withdrew consent, lost the verified address or left since the send.
+5. It sends through the same `deliver` as the notification queue, with the same `sending`, retry and stale rules. A row that raises counts as a refusal and the batch goes on.
+
+**The quota.** The boot check in [`config.py`](../backend/app/config.py) refuses a `NOTIFICATION_EMAIL_DAILY_CAP` plus `PRODUCT_UPDATE_EMAIL_DAILY_CAP` at or above `EMAIL_PROVIDER_DAILY_QUOTA` (default 100, the Resend free tier). The remainder carries the auth emails and the admin's test sends, which leave inline and are never counted. The admin console shows the audience and the number of days the send takes at the current cap.
+
 ### Web Push
 
 A notification reaches a browser or an installed app through Web Push. Push rows share the notification queue with email and the same claim, retry and stale rules. A push has no daily cap, and one row fans out to every device of the recipient.
@@ -617,7 +679,7 @@ The three services in the table above are built from the backend image with Root
 
 All three take `DATABASE_URL=${{backend.DATABASE_URL}}` and `JWT_SECRET=${{backend.JWT_SECRET}}`, because [`config.py`](../backend/app/config.py)'s boot check refuses the placeholder secret against a non-local database. Set `SENTRY_DSN` on each so a failure pages instead of sitting in the logs.
 
-**`backend-import-worker`**, always-on, no exposed port. Start command `uv run python scripts/run_import_worker.py`. It also takes the storage variables (`STORAGE_BACKEND`, `S3_BUCKET`, `AWS_*`) and email variables (`EMAIL_*`, `RESEND_API_KEY`, `FRONTEND_URL`) the API takes, plus the six `X_*` credentials and the two reply caps, `BOT_MAX_REPLIES_PER_HOUR` and `BOT_MAX_REPLIES_PER_AUTHOR_PER_HOUR`, since it posts the webhook path's bot replies, the two notification email caps, `NOTIFICATION_EMAIL_DAILY_CAP` and `NOTIFICATION_EMAIL_DAILY_CAP_PER_USER`, and the push key pair, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT`. What it drains: the [notification queue](#email) first, then the jobs and mentions in [`ingestion.md`](ingestion.md#archive-import-worker).
+**`backend-import-worker`**, always-on, no exposed port. Start command `uv run python scripts/run_import_worker.py`. It also takes the storage variables (`STORAGE_BACKEND`, `S3_BUCKET`, `AWS_*`) and email variables (`EMAIL_*`, `RESEND_API_KEY`, `FRONTEND_URL`) the API takes, plus the six `X_*` credentials and the two reply caps, `BOT_MAX_REPLIES_PER_HOUR` and `BOT_MAX_REPLIES_PER_AUTHOR_PER_HOUR`, since it posts the webhook path's bot replies, the two notification email caps, `NOTIFICATION_EMAIL_DAILY_CAP` and `NOTIFICATION_EMAIL_DAILY_CAP_PER_USER`, the push key pair, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT`, and the product update settings `PRODUCT_UPDATE_EMAIL_DAILY_CAP`, `PRODUCT_UPDATE_EMAIL_BATCH_SIZE`, `EMAIL_PROVIDER_DAILY_QUOTA` and `API_URL`. What it drains: the [notification queue](#email) first, then one batch of [product update emails](#product-update-emails), then the jobs and mentions in [`ingestion.md`](ingestion.md#archive-import-worker).
 
 **`backend-x-bot`**, cron `0 * * * *`, since the webhook owns latency and the cron only reconciles. Start command `uv run python scripts/run_bot.py`. It also takes the six `X_*` credentials, the two `BOT_MAX_REPLIES_*` caps, and `X_WEBHOOK_ENABLED` (see `backend/.env.example`): a bearer token and bot user ID to read, and the four OAuth 1.0a values to post. Without the OAuth values, the bot processes mentions but posts nothing. The process makes one pass, then exits; a failed mentions pull exits non-zero. A missed run is harmless, because the next pass resumes from the ledger. What it runs: [`ingestion.md`](ingestion.md#the-bot).
 

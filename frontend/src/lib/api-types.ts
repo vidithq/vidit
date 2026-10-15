@@ -300,6 +300,73 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/product-updates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Product Updates
+         * @description Every announcement sent, newest first, with its delivery progress.
+         */
+        get: operations["list_product_updates_api_v1_admin_product_updates_get"];
+        put?: never;
+        /**
+         * Send Product Update
+         * @description Send the announcement: queue one email per consenting verified analyst.
+         *
+         *     The worker sends them under the product update daily cap. 409 when the
+         *     release label was already announced.
+         */
+        post: operations["send_product_update_api_v1_admin_product_updates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/product-updates/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Product Update
+         * @description Render the announcement as you would receive it and count its audience.
+         */
+        post: operations["preview_product_update_api_v1_admin_product_updates_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/product-updates/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Test Product Update
+         * @description Email the announcement to your own verified address only.
+         */
+        post: operations["send_test_product_update_api_v1_admin_product_updates_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/reports": {
         parameters: {
             query?: never;
@@ -1377,6 +1444,30 @@ export interface paths {
         get: operations["get_unread_count_api_v1_notifications_unread_count_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/product-updates/unsubscribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unsubscribe
+         * @description Withdraw the consent to product update emails named by a signed token.
+         *
+         *     Needs no session, so it answers the unsubscribe page and the one-click
+         *     ``List-Unsubscribe-Post`` of a mail client alike. Idempotent; 400 on a
+         *     token that does not verify.
+         */
+        post: operations["unsubscribe_api_v1_product_updates_unsubscribe_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3231,6 +3322,101 @@ export interface components {
             url: string;
         };
         /**
+         * ProductUpdateCreate
+         * @description An announcement as the admin composes it. ``body`` is plain text: a blank
+         *     line starts a paragraph, and a paragraph whose lines all start with ``- ``
+         *     is a list.
+         */
+        ProductUpdateCreate: {
+            /** Body */
+            body: string;
+            /** Label */
+            label: string;
+            /** Link Url */
+            link_url?: string | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * ProductUpdateList
+         * @description Every announcement sent, newest first.
+         */
+        ProductUpdateList: {
+            /** Items */
+            items: components["schemas"]["ProductUpdateRead"][];
+        };
+        /**
+         * ProductUpdatePreview
+         * @description The email as a recipient gets it, and the audience it would go to now.
+         *     ``days`` is how many trailing-24-hour windows the daily cap needs.
+         */
+        ProductUpdatePreview: {
+            /** Batch Size */
+            batch_size: number;
+            /** Daily Cap */
+            daily_cap: number;
+            /** Days */
+            days: number;
+            /** Html */
+            html: string;
+            /** Recipients */
+            recipients: number;
+            /** Subject */
+            subject: string;
+            /** Text */
+            text: string;
+        };
+        /** ProductUpdateProgress */
+        ProductUpdateProgress: {
+            /**
+             * Failed
+             * @default 0
+             */
+            failed: number;
+            /**
+             * Queued
+             * @default 0
+             */
+            queued: number;
+            /**
+             * Sending
+             * @default 0
+             */
+            sending: number;
+            /**
+             * Sent
+             * @default 0
+             */
+            sent: number;
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+        };
+        /** ProductUpdateRead */
+        ProductUpdateRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Label */
+            label: string;
+            /** Link Url */
+            link_url: string | null;
+            progress: components["schemas"]["ProductUpdateProgress"];
+            /** Recipient Count */
+            recipient_count: number;
+            /** Title */
+            title: string;
+        };
+        /**
          * PushConfigRead
          * @description ``public_key`` is the VAPID application server key, null when this
          *     deployment does not send push.
@@ -3288,6 +3474,11 @@ export interface components {
             invite_code: string;
             /** Password */
             password: string;
+            /**
+             * Product Updates
+             * @default false
+             */
+            product_updates: boolean;
             /** Username */
             username: string;
         };
@@ -3536,6 +3727,9 @@ export interface components {
          *     ``display_stored`` holds only the display values the account has saved
          *     (``null`` where it has none), so a client can tell a saved value from a
          *     default. ``notifications`` lists every registered kind in registry order.
+         *     ``product_updates`` is whether a consent to product update emails is
+         *     current; it has no default to fall back to, since consent is never
+         *     presumed.
          */
         UserPreferencesRead: {
             display: components["schemas"]["DisplayPreferences"];
@@ -3543,12 +3737,15 @@ export interface components {
             display_stored: components["schemas"]["DisplayPreferencesUpdate"];
             /** Notifications */
             notifications: components["schemas"]["NotificationPreferenceRead"][];
+            /** Product Updates */
+            product_updates: boolean;
         };
         /**
          * UserPreferencesUpdate
          * @description Body for ``PATCH /users/me/preferences``. Each ``notifications`` entry
          *     sets channels of one kind; a value equal to the default drops the
-         *     override.
+         *     override. ``product_updates`` grants or withdraws the consent to product
+         *     update emails from Settings.
          */
         UserPreferencesUpdate: {
             display?: components["schemas"]["DisplayPreferencesUpdate"] | null;
@@ -3558,6 +3755,8 @@ export interface components {
                     [key: string]: boolean;
                 };
             } | null;
+            /** Product Updates */
+            product_updates?: boolean | null;
         };
         /**
          * UserProfile
@@ -4171,6 +4370,140 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AdminMeResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_product_updates_api_v1_admin_product_updates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductUpdateList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_product_update_api_v1_admin_product_updates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductUpdateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductUpdateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_product_update_api_v1_admin_product_updates_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductUpdateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductUpdatePreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_test_product_update_api_v1_admin_product_updates_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductUpdateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -5778,6 +6111,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["NotificationUnreadCount"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unsubscribe_api_v1_product_updates_unsubscribe_post: {
+        parameters: {
+            query: {
+                token: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

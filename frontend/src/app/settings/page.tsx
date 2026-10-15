@@ -108,6 +108,11 @@ function NotificationsCard() {
       updatePreferences({ notifications: { [kind]: { [channel]: on } } }),
     { fallback: SAVE_FAILED, onSuccess: (prefs) => setSaved(prefs) }
   );
+  const consent = useMutation(
+    (on: boolean) => updatePreferences({ product_updates: on }),
+    { fallback: SAVE_FAILED, onSuccess: (prefs) => setSaved(prefs) }
+  );
+  const productUpdates = (saved ?? data)?.product_updates === true;
   // Tolerates a missing or partial payload, and a kind this build has no wording for.
   const notifications = (saved ?? data)?.notifications;
   const rows = (Array.isArray(notifications) ? notifications : []).filter(
@@ -139,11 +144,18 @@ function NotificationsCard() {
           notifications to the devices you enable.
         </p>
       </div>
-      {(error || toggle.error) && (
-        <div className={FORM_ERROR_BANNER}>{toggle.error ?? error}</div>
+      {(error || toggle.error || consent.error) && (
+        <div className={FORM_ERROR_BANNER}>{toggle.error ?? consent.error ?? error}</div>
       )}
       <SectionEyebrow title="Email" as="h3" margin="none" />
       {switches("email")}
+      <ToggleRow
+        label="Major release emails"
+        description="One email per major Vidit release, never a patch, to your verified address. Off unless you turn it on."
+        on={productUpdates}
+        onToggle={() => consent.run(!productUpdates)}
+        className="border-t border-neutral-800 pt-4"
+      />
       <PushDevice />
       {switches("push")}
     </Card>

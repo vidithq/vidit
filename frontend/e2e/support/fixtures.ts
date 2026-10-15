@@ -269,6 +269,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
       defaults: { email: false, push: false },
     },
   ],
+  product_updates: false,
 };
 
 /** A deployment that sends no push, so the settings page offers no enable button. */

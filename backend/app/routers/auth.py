@@ -150,6 +150,7 @@ def register(
             username=body.username,
             password=body.password,
             invite_code=body.invite_code,
+            product_updates=body.product_updates,
         )
     except registration.RegistrationError as exc:
         _raise_registration_error(exc)
