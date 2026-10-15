@@ -2979,7 +2979,7 @@ Every code is single-use. `expires_in_days` is optional (omit or `null` for no e
 
 **Response 201:** an `AdminInviteCodeRead`, as in the list below.
 
-**Response 409:** `x_handle_conflict`, the handle is already linked to a user.
+**Response 409:** `x_handle_conflict`, the handle is already linked to a user or an organization.
 
 **Response 422:** `x_handle` outside the handle alphabet.
 
@@ -3152,7 +3152,7 @@ Link or clear the X handle the bot attributes mentions to. Registration also cop
 
 **Response 200:** the updated `AdminUserRead`.
 
-**Response 409:** `x_handle_conflict`, the handle is linked to another account.
+**Response 409:** `x_handle_conflict`, the handle is linked to another account or an organization.
 
 **Response 422:** value outside the handle alphabet.
 
@@ -3188,7 +3188,7 @@ Bind the requested handle to the requester through the write path of [`PATCH /ad
 |------|------|
 | 404 `x_handle_request_not_found` | No pending request has that `id`: unknown, replaced by a newer request, or already decided |
 | 404 `user_not_found` | The requester is soft-deleted |
-| 409 `x_handle_conflict` | Another account holds the handle |
+| 409 `x_handle_conflict` | Another account or an organization holds the handle |
 
 ### `POST /admin/x-handle-requests/{id}/decline` 🛡️
 
@@ -3229,7 +3229,7 @@ Create an organization and name its first org-admin, who joins at once without a
 
 **Response 201:** the organization, as on [`GET /organizations/{slug}`](#get-organizationsslug).
 
-**Errors:** 409 `slug_taken` (the slug or the X handle belongs to another organization) or `x_handle_conflict`, 404 `user_not_found` (the first org-admin), 422 on a malformed field.
+**Errors:** 409 `slug_taken` (the slug or the X handle belongs to another organization) or `x_handle_conflict` (an analyst or another organization holds the X handle: analysts and organizations share one namespace), 404 `user_not_found` (the first org-admin), 422 on a malformed field.
 
 ### `GET /admin/organizations` 🛡️
 
