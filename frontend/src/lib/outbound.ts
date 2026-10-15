@@ -64,6 +64,14 @@ export function linkKind(href: string): LinkKind | null {
   return KNOWN_HOSTS.some((entry) => isKnown(url, entry)) ? "known" : "unknown";
 }
 
+/** Where an unknown link leads: a Vidit URL whose path starts `//` resolves to the host in that
+ *  path, the way the router would read it. Any other link leads to itself. */
+export function linkTarget(href: string): string {
+  const url = parseHttp(href);
+  if (!url || !onHost(url.hostname, VIDIT_HOST) || !url.pathname.startsWith("//")) return href;
+  return new URL(`${url.pathname}${url.search}${url.hash}`, url.origin).href;
+}
+
 const URL_IN_TEXT = /https?:\/\/[^\s<>"]+/gi;
 // Sentence punctuation that follows a URL in prose rather than ending it.
 const TRAILING_PUNCTUATION = /[.,;:!?'")\]]+$/;

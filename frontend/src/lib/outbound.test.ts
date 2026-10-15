@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { linkKind, splitLinks } from "./outbound";
+import { linkKind, linkTarget, splitLinks } from "./outbound";
 
 describe("linkKind", () => {
   it.each([
@@ -49,6 +49,19 @@ describe("linkKind", () => {
     ["a mailto: URL", "mailto:a@example.com"],
   ])("refuses %s", (_, href) => {
     expect(linkKind(href)).toBeNull();
+  });
+});
+
+describe("linkTarget", () => {
+  it("resolves a Vidit path starting // to the host it names", () => {
+    expect(linkTarget("https://vidit.app//evil.example/x?a=1#b")).toBe(
+      "https://evil.example/x?a=1#b",
+    );
+  });
+
+  it("leaves every other link as written", () => {
+    expect(linkTarget("https://vidit.app/events/1")).toBe("https://vidit.app/events/1");
+    expect(linkTarget("https://example.org//x")).toBe("https://example.org//x");
   });
 });
 
