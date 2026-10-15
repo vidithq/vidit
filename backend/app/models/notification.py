@@ -38,6 +38,7 @@ NotificationKind = Literal[
 
 # A delivery channel besides the in-app feed, which is always on.
 # ``ck_notification_deliveries_channel_valid`` pins it at the DB.
+# Mirrored by the frontend's lib/notifications NotificationChannel; change both.
 NotificationChannel = Literal["email", "push"]
 
 # The kind registry: every kind with its per-channel default. Analysts store
