@@ -208,6 +208,19 @@ describe("OrganizationPage", () => {
     expect(screen.queryByRole("button", { name: "Why can the last org-admin not leave?" })).toBeNull();
   });
 
+  it("saves the organization's profile without refreshing the reader's own account", async () => {
+    const refreshAuth = vi.fn();
+    useAuth.mockReturnValue({ user: { id: "x", username: "lead" }, loading: false, refresh: refreshAuth });
+    const refetch = serve({ ...ORG, viewer_role: "admin", viewer_can_manage: true });
+    render(<OrganizationPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit profile" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(refetch).toHaveBeenCalled());
+    expect(refreshAuth).not.toHaveBeenCalled();
+  });
+
   it("gives an org-admin the open review requests and the audience control", async () => {
     signIn("lead");
     const refetch = serve({ ...ORG, viewer_role: "admin", viewer_can_manage: true });
