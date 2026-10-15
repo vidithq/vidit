@@ -14,8 +14,10 @@ from app.models.event import STATUS_CLOSED, Event, EventGeolocator, EventGeoloca
 from app.models.notification import Notification, NotificationDelivery
 from app.models.organization import Organization, OrganizationMember
 from app.models.user import User
+from app.models.user_preferences import UserPreferences
 from app.services import admin as admin_service
 from app.services import email, geolocator_credit, notification_delivery, organizations
+from app.services import notifications as notifications_service
 from app.services.auth import hash_password
 from app.services.event_filters import published_credited_to
 from app.services.sanitize import html_from_text
@@ -260,6 +262,43 @@ def test_one_actor_queues_a_capped_number_of_emails(db, author, make_user, monke
     ]
     assert channels == [["email"], ["email"], []]
     assert all(_notifications(db, invitee) for invitee in invitees)
+
+
+def test_the_per_actor_cap_spares_fan_out_and_is_not_spent_by_it(
+    db, author, second_user, make_user, monkeypatch
+):
+    monkeypatch.setattr(settings, "notification_email_daily_cap_per_actor", 1)
+    second_user.email_verified_at = datetime.now(UTC)
+    db.add(
+        UserPreferences(
+            user_id=second_user.id,
+            notification_overrides={"re_approve_requested": {"email": True}},
+        )
+    )
+    db.commit()
+    geo = _published(db, author)
+    for _ in range(2):
+        notifications_service._emit(
+            db,
+            recipient_id=second_user.id,
+            kind="re_approve_requested",
+            actor_id=author.id,
+            event_id=geo.id,
+        )
+    db.commit()
+    invitee = make_user(email_verified_at=datetime.now(UTC))
+    assert _invite(geo, author, invitee.username).status_code == 201
+
+    def emails(user: User) -> int:
+        db.expire_all()
+        return (
+            db.query(NotificationDelivery)
+            .join(Notification)
+            .filter(Notification.user_id == user.id, NotificationDelivery.channel == "email")
+            .count()
+        )
+
+    assert (emails(second_user), emails(invitee)) == (2, 1)
 
 
 def test_credit_grants_no_edit_right(db, author, second_user):
