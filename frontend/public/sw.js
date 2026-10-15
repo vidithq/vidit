@@ -22,6 +22,7 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.registration.showNotification(message.title || "Vidit", {
       body: message.body || "",
+      // Mirrors app/icon.tsx; change both.
       icon: "/icon/android-192",
       data: { path: appPath(message.path) },
     }),
