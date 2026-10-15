@@ -23,6 +23,7 @@ from app.services.auth import hash_password
 from app.services.review_requests import REFUSAL_MESSAGE
 from tests.conftest import login_as
 from tests.events._helpers import _make_geo, client
+from tests.events.test_review_requests import _age_declines
 from tests.events.test_versions import _form, _save_version
 from tests.events.test_versions import _published as _published_with_floor
 
@@ -517,6 +518,7 @@ def test_organization_rows_name_the_organization_in_email_and_push(
     assert asked.subject == f"{author.username} asks {org.name} to review a geolocation"
 
     assert _decline(geo, request_id, admin).status_code == 200
+    _age_declines(db, geo)
     assert _ask(geo, author, org).status_code == 201
     assert _approve(geo, admin, org).status_code == 201
     db.expire_all()

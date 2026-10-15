@@ -103,6 +103,14 @@ def _kinds(db, user: User) -> list[tuple[str, uuid.UUID | None, uuid.UUID | None
     return [(r.kind, r.actor_id, r.event_id) for r in rows]
 
 
+def _age_declines(db, geo: Event) -> None:
+    """Move every decline on ``geo`` past the cooldown, so the same request can go again."""
+    db.query(ReviewRequest).filter(
+        ReviewRequest.event_id == geo.id, ReviewRequest.status == "declined"
+    ).update({"resolved_at": datetime.now(UTC) - timedelta(days=8)})
+    db.commit()
+
+
 def _feed(user: User) -> list[dict]:
     login_as(client, user)
     return client.get("/api/v1/notifications").json()
@@ -282,6 +290,21 @@ def test_one_open_request_per_requester_target_and_event(db, author, make_user):
     assert _code(again) == "already_requested"
 
     assert _decline(geo, first.json()["id"], target).status_code == 200
+    _age_declines(db, geo)
+    assert _request(geo, author, target).status_code == 201
+
+
+def test_a_decline_stops_the_same_request_for_seven_days(db, author, make_user):
+    geo = _published(db, author)
+    target = make_user(follows=author)
+    first = _request(geo, author, target).json()
+    assert _decline(geo, first["id"], target).status_code == 200
+
+    again = _request(geo, author, target)
+    assert (again.status_code, _code(again)) == (409, "recently_declined")
+    assert target.username not in _targets(geo, author, q=target.username)
+
+    _age_declines(db, geo)
     assert _request(geo, author, target).status_code == 201
 
 
@@ -438,6 +461,7 @@ def test_a_request_emails_the_target_and_a_decline_emails_only_on_opt_in(
         )
     )
     db.commit()
+    _age_declines(db, geo)
     assert _request(geo, author, target).status_code == 201
     [again] = _open(geo, author)
     assert _decline(geo, again["id"], target).status_code == 200

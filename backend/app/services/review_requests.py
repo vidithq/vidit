@@ -11,7 +11,8 @@ analyst whom any live org-admin follows. A request is open until the target appr
 any version (``approvals.approve`` resolves it), or declines it. Any org-admin answers for an
 organization.
 
-There is one open request per requester, target and event, and a requester sends at most
+There is one open request per requester, target and event, a declined request is not sent
+again for :data:`DECLINE_COOLDOWN`, and a requester sends at most
 ``settings.review_request_daily_cap`` requests in a trailing 24 hours. Every write locks the event
 row first, as approvals do, so a request, its decline and an approval serialize.
 """
@@ -49,6 +50,9 @@ from app.services.event_filters import visible_events
 from app.services.organizations import is_organization_admin, live_admin_ids
 
 MAX_TARGET_SUGGESTIONS = 20
+# After a decline, the same requester waits this long before asking the same target about the
+# same event again.
+DECLINE_COOLDOWN = timedelta(days=7)
 
 
 class ReviewRequestError(Exception):
@@ -89,6 +93,10 @@ class AlreadyRequestedError(ReviewRequestError):
     code = "already_requested"
 
 
+class RecentlyDeclinedError(ReviewRequestError):
+    code = "recently_declined"
+
+
 class DailyCapReachedError(ReviewRequestError):
     code = "daily_cap_reached"
 
@@ -110,6 +118,7 @@ REVIEW_REQUEST_ERROR_STATUS: dict[str, int] = {
     "requests_not_accepted": 403,
     "already_approved": 409,
     "already_requested": 409,
+    "recently_declined": 409,
     "daily_cap_reached": 429,
     "review_request_not_found": 404,
     "already_resolved": 409,
@@ -118,6 +127,7 @@ REVIEW_REQUEST_ERROR_STATUS: dict[str, int] = {
 # One answer for every audience that refuses, so a refusal never tells the requester which rule
 # the target chose.
 REFUSAL_MESSAGE = "This analyst or organization does not take review requests from you"
+_DECLINED_MESSAGE = "They declined your request for this event less than 7 days ago"
 
 _Requester = aliased(User)
 _Target = aliased(User)
@@ -296,6 +306,17 @@ def build_organization_read(row: ReviewRequest) -> OrganizationReviewRequestRead
     )
 
 
+def _declined_recently(geo: Event, requester: User) -> ColumnElement[bool]:
+    """The requests ``requester`` sent about ``geo`` that were declined within
+    :data:`DECLINE_COOLDOWN`."""
+    return and_(
+        ReviewRequest.event_id == geo.id,
+        ReviewRequest.requester_id == requester.id,
+        ReviewRequest.status == "declined",
+        ReviewRequest.resolved_at >= datetime.now(UTC) - DECLINE_COOLDOWN,
+    )
+
+
 def _substring(query: str) -> str:
     return query.strip().replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
 
@@ -322,6 +343,11 @@ def _eligible_analysts(
                 ReviewRequest.requester_id == requester.id,
                 ReviewRequest.status == "open",
                 ReviewRequest.target_user_id.is_not(None),
+            )
+        ),
+        User.id.not_in(
+            select(ReviewRequest.target_user_id).where(
+                _declined_recently(geo, requester), ReviewRequest.target_user_id.is_not(None)
             )
         ),
         _suggested_analyst(requester.id, exact),
@@ -351,6 +377,12 @@ def _eligible_organizations(
                 ReviewRequest.event_id == geo.id,
                 ReviewRequest.requester_id == requester.id,
                 ReviewRequest.status == "open",
+                ReviewRequest.target_organization_id.is_not(None),
+            )
+        ),
+        Organization.id.not_in(
+            select(ReviewRequest.target_organization_id).where(
+                _declined_recently(geo, requester),
                 ReviewRequest.target_organization_id.is_not(None),
             )
         ),
@@ -453,6 +485,14 @@ def _check_analyst_target(db: Session, *, geo: Event, requester: User, username:
     )
     if pending:
         raise AlreadyRequestedError("You already asked this analyst to review this event")
+    if db.scalar(
+        select(
+            exists().where(
+                _declined_recently(geo, requester), ReviewRequest.target_user_id == target.id
+            )
+        )
+    ):
+        raise RecentlyDeclinedError(_DECLINED_MESSAGE)
     return target
 
 
@@ -500,6 +540,15 @@ def _check_organization_target(
     )
     if pending:
         raise AlreadyRequestedError("You already asked this organization to review this event")
+    if db.scalar(
+        select(
+            exists().where(
+                _declined_recently(geo, requester),
+                ReviewRequest.target_organization_id == org.id,
+            )
+        )
+    ):
+        raise RecentlyDeclinedError(_DECLINED_MESSAGE)
     return org
 
 
@@ -519,7 +568,8 @@ def request_review(
     ``target_is_geolocator`` for a current or former geolocator target, or an organization whose
     every live org-admin is one; 403 ``requests_not_accepted`` when the target's audience refuses
     ``requester``; 409 ``already_approved`` when the target approved the live version; 409
-    ``already_requested`` for a second open request; 429 ``daily_cap_reached`` past the daily
+    ``already_requested`` for a second open request; 409 ``recently_declined`` within
+    :data:`DECLINE_COOLDOWN` of the target declining the same request; 429 ``daily_cap_reached`` past the daily
     cap.
     """
     geo = _lock(db, geo.id)
