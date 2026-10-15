@@ -2,14 +2,21 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { UserPreferences } from "@/lib/preferences";
+import type { PushDeviceState } from "@/lib/push";
 
 const api = vi.hoisted(() => ({ apiFetch: vi.fn() }));
+const push = vi.hoisted(() => ({ readPushState: vi.fn() }));
 
 vi.mock("@/lib/api", () => ({
   apiFetch: api.apiFetch,
   ApiError: class extends Error {},
   errorMessage: (err: unknown, fallback = "Something went wrong.") =>
     err instanceof Error ? err.message : fallback,
+}));
+
+vi.mock("@/lib/push", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/push")>()),
+  readPushState: push.readPushState,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -58,6 +65,7 @@ function patchBodies(): unknown[] {
 describe("SettingsPage", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    push.readPushState.mockReset().mockResolvedValue("unsupported" satisfies PushDeviceState);
     api.apiFetch.mockReset().mockImplementation((_path: string, init?: RequestInit) =>
       Promise.resolve(
         init?.method === "PATCH" &&
@@ -103,14 +111,12 @@ describe("SettingsPage", () => {
   it("lists one email switch per notification kind with its default", async () => {
     render(<SettingsPage />);
 
-    const fulfilled = await screen.findByRole("switch", {
-      name: "Request fulfilled by email",
-    });
+    const fulfilled = await screen.findByRole("switch", { name: "Request fulfilled, Email" });
     expect(fulfilled).toHaveAttribute("aria-checked", "true");
-    expect(fulfilled).toHaveTextContent("Default: on.");
-    const follower = screen.getByRole("switch", { name: "New follower by email" });
+    expect(fulfilled).toHaveAccessibleDescription(/Default: on\./);
+    const follower = screen.getByRole("switch", { name: "New follower, Email" });
     expect(follower).toHaveAttribute("aria-checked", "false");
-    expect(follower).toHaveTextContent("Default: off.");
+    expect(follower).toHaveAccessibleDescription(/Default: off\./);
 
     fireEvent.click(fulfilled);
 
@@ -120,20 +126,35 @@ describe("SettingsPage", () => {
     ]);
   });
 
-  it("lists one push switch per kind and says what this device can do", async () => {
+  it("disables the push column once with the reason when this device has no push", async () => {
     render(<SettingsPage />);
 
-    const follower = await screen.findByRole("switch", { name: "New follower by push" });
+    const reason = "This browser cannot receive push notifications.";
+    await waitFor(() =>
+      expect(screen.getByRole("switch", { name: "New follower, Push" })).toBeDisabled(),
+    );
+    expect(screen.getByRole("switch", { name: "Request fulfilled, Push" })).toBeDisabled();
+    expect(screen.getByRole("switch", { name: "New follower, Push" })).toHaveAccessibleDescription(
+      new RegExp(reason),
+    );
+    expect(screen.getAllByText(reason)).toHaveLength(1);
+    expect(screen.getByRole("switch", { name: "New follower, Email" })).toBeEnabled();
+    expect(screen.getByText(/add Vidit to the Home Screen/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Enable on this device" })).toBeNull();
+  });
+
+  it("saves a push switch when this device can receive push", async () => {
+    push.readPushState.mockResolvedValue("off" satisfies PushDeviceState);
+    render(<SettingsPage />);
+
+    expect(await screen.findByRole("button", { name: "Enable on this device" })).toBeInTheDocument();
+    const follower = screen.getByRole("switch", { name: "New follower, Push" });
+    expect(follower).toBeEnabled();
     expect(follower).toHaveAttribute("aria-checked", "false");
-    expect(screen.getByRole("switch", { name: "Request fulfilled by push" })).toHaveAttribute(
+    expect(screen.getByRole("switch", { name: "Request fulfilled, Push" })).toHaveAttribute(
       "aria-checked",
       "true",
     );
-    // jsdom has no Push API.
-    expect(
-      await screen.findByText(/This browser cannot receive push notifications\./),
-    ).toHaveTextContent("add Vidit to the Home Screen");
-    expect(screen.queryByRole("button", { name: "Enable on this device" })).toBeNull();
 
     fireEvent.click(follower);
     await waitFor(() =>
@@ -230,7 +251,7 @@ describe("SettingsPage", () => {
 
       await waitFor(() => expect(api.apiFetch).toHaveBeenCalled());
       expect(screen.getByRole("heading", { name: "Notifications" })).toBeInTheDocument();
-      expect(screen.queryByRole("switch", { name: /by email/ })).toBeNull();
+      expect(screen.queryByRole("switch", { name: /, Email$/ })).toBeNull();
       expect(screen.getByRole("button", { name: "Update password" })).toBeInTheDocument();
     },
   );

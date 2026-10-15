@@ -16,6 +16,7 @@ import {
   FORM_SUCCESS_BANNER,
 } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
+import { ToggleMatrix } from "@/components/ui/ToggleMatrix";
 import { ToggleRow } from "@/components/ui/ToggleRow";
 import { useHelpHidden } from "@/hooks/useHelpHidden";
 import { usePalette } from "@/hooks/usePalette";
@@ -57,7 +58,17 @@ import {
 
 const SAVE_FAILED = "Could not save to your account. Try again.";
 
+const CHANNELS = (Object.keys(CHANNEL_LABEL) as NotificationChannel[]).map((id) => ({
+  id,
+  label: CHANNEL_LABEL[id],
+}));
 
+/** The states where this device or this server cannot deliver push at all. */
+const PUSH_UNAVAILABLE: ReadonlySet<PushDeviceState> = new Set([
+  "unsupported",
+  "needs-home-screen",
+  "unavailable",
+]);
 
 const PUSH_STATE_LINE: Record<PushDeviceState, string> = {
   unsupported: "This browser cannot receive push notifications.",
@@ -69,11 +80,16 @@ const PUSH_STATE_LINE: Record<PushDeviceState, string> = {
   on: "Push notifications are on for this device.",
 };
 
-/** This device's push state and the control that turns it on or off. The kind switches below
- *  it apply to every device of the account. */
-/** `resyncKey` changes after a password change, which deleted every device on the server:
- *  this browser registers again and the list reloads. */
-function PushDevice({ resyncKey }: { resyncKey: number }) {
+/** This device's push state and the control that turns it on or off. The kind switches above
+ *  it apply to every device of the account. `resyncKey` changes after a password change, which
+ *  deleted every device on the server: this browser registers again and the list reloads. */
+function PushDevice({
+  resyncKey,
+  onState,
+}: {
+  resyncKey: number;
+  onState: (state: PushDeviceState) => void;
+}) {
   const config = useApiResource<PushConfig>(PUSH_CONFIG_PATH);
   const [state, setState] = useState<PushDeviceState | null>(null);
   const settled = config.data !== null || config.error !== null;
@@ -89,6 +105,9 @@ function PushDevice({ resyncKey }: { resyncKey: number }) {
       live = false;
     };
   }, [settled, config.data]);
+  useEffect(() => {
+    if (state) onState(state);
+  }, [state, onState]);
   const devices = useApiResource<RegisteredDevice[]>(PUSH_DEVICES_PATH);
   const { refetch: refetchDevices } = devices;
   const [thisId, setThisId] = useState<string | null>(null);
@@ -174,11 +193,12 @@ function PushDevice({ resyncKey }: { resyncKey: number }) {
   );
 }
 
-/** One row per registered kind and channel, email first, then push. The backend drops an
- *  override equal to the default, so a switch moved back stores nothing. */
+/** One matrix row per registered kind, a switch per channel. The backend drops an override
+ *  equal to the default, so a switch moved back stores nothing. */
 function NotificationsCard({ pushResyncKey }: { pushResyncKey: number }) {
   const { data, error } = useApiResource<UserPreferences>(PREFERENCES_PATH);
   const [saved, setSaved] = useState<UserPreferences | null>(null);
+  const [pushState, setPushState] = useState<PushDeviceState | null>(null);
   const toggle = useMutation(
     (kind: keyof typeof NOTIFICATION_KIND_COPY, channel: NotificationChannel, on: boolean) =>
       updatePreferences({ notifications: { [kind]: { [channel]: on } } }),
@@ -197,23 +217,24 @@ function NotificationsCard({ pushResyncKey }: { pushResyncKey: number }) {
     (saved ?? data)?.review_request_audience ?? REVIEW_REQUEST_AUDIENCE_DEFAULT;
   // Tolerates a missing or partial payload, and a kind this build has no wording for.
   const notifications = (saved ?? data)?.notifications;
-  const rows = (Array.isArray(notifications) ? notifications : []).filter(
-    (row) => row.kind in NOTIFICATION_KIND_COPY
-  );
-  const switches = (channel: NotificationChannel) =>
-    rows.map((row, i) => {
+  const pushDisabled =
+    pushState && PUSH_UNAVAILABLE.has(pushState) ? { push: PUSH_STATE_LINE[pushState] } : undefined;
+  const rows = (Array.isArray(notifications) ? notifications : [])
+    .filter((row) => row.kind in NOTIFICATION_KIND_COPY)
+    .map((row) => {
       const copy = NOTIFICATION_KIND_COPY[row.kind];
-      const on = row.channels?.[channel] ?? false;
-      return (
-        <ToggleRow
-          key={`${channel}-${row.kind}`}
-          label={`${copy.label} ${CHANNEL_LABEL[channel]}`}
-          description={`${copy.setting} Default: ${row.defaults?.[channel] ? "on" : "off"}.`}
-          on={on}
-          onToggle={() => toggle.run(row.kind, channel, !on)}
-          className={i > 0 ? "border-t border-neutral-800 pt-4" : ""}
-        />
-      );
+      const defaults = CHANNELS.map((c) => (row.defaults?.[c.id] ? "on" : "off"));
+      const defaultLine =
+        new Set(defaults).size === 1
+          ? defaults[0]
+          : CHANNELS.map((c, i) => `${c.label} ${defaults[i]}`).join(", ");
+      return {
+        id: row.kind,
+        label: copy.label,
+        description: `${copy.setting} Default: ${defaultLine}.`,
+        on: row.channels ?? {},
+        disabled: pushDisabled,
+      };
     });
 
   return (
@@ -244,8 +265,11 @@ function NotificationsCard({ pushResyncKey }: { pushResyncKey: number }) {
           onChange={(value) => void audience.run(value)}
         />
       </div>
-      <SectionEyebrow title="Email" as="h3" margin="none" />
-      {switches("email")}
+      <ToggleMatrix
+        columns={CHANNELS}
+        rows={rows}
+        onToggle={(kind, channel, on) => void toggle.run(kind, channel, on)}
+      />
       <ToggleRow
         label="Major release emails"
         description="One email per major Vidit release, never a patch, to your verified address. Off unless you turn it on."
@@ -253,8 +277,7 @@ function NotificationsCard({ pushResyncKey }: { pushResyncKey: number }) {
         onToggle={() => consent.run(!productUpdates)}
         className="border-t border-neutral-800 pt-4"
       />
-      <PushDevice resyncKey={pushResyncKey} />
-      {switches("push")}
+      <PushDevice resyncKey={pushResyncKey} onState={setPushState} />
     </Card>
   );
 }
