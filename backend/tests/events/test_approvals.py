@@ -156,7 +156,10 @@ def test_a_closed_event_takes_no_approval_and_keeps_its_own(db, author, second_u
     response = _approve(geo, make_user())
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "invalid_state"
-    assert [a["reviewer"]["username"] for a in _listed(geo)] == [second_user.username]
+    # Readable, but no longer current: the claim it attests was closed.
+    assert [(a["reviewer"]["username"], a["current"]) for a in _listed(geo)] == [
+        (second_user.username, False)
+    ]
 
 
 def test_one_review_per_analyst_and_version(db, author, second_user):
