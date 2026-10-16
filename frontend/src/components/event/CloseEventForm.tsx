@@ -6,6 +6,8 @@ import { closeEvent } from "@/lib/events";
 import { useMutation } from "@/hooks/useMutation";
 import type { EventDetail, EventStatus } from "@/types";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { Textarea } from "@/components/ui/Input";
 import { FORM_LABEL, FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
@@ -119,5 +121,43 @@ export function CloseEventForm({
         </Button>
       </div>
     </div>
+  );
+}
+
+/**
+ * The close at the foot of an owner's edit page: what closing does, then **Close this …**, which
+ * opens `CloseEventForm` in place. Closing takes the row back; it stays readable with its reason.
+ */
+export function CloseSection({
+  eventId,
+  status,
+  onClosed,
+  disabled = false,
+}: Omit<CloseEventFormProps, "onCancel">) {
+  const [open, setOpen] = useState(false);
+  const label = closeActionLabel(status);
+  return (
+    <Card as="section">
+      <SectionEyebrow title={label} margin="none" />
+      {open ? (
+        <CloseEventForm
+          eventId={eventId}
+          status={status}
+          onClosed={onClosed}
+          onCancel={() => setOpen(false)}
+          disabled={disabled}
+        />
+      ) : (
+        <>
+          <p className="text-sm text-neutral-400">
+            Closing takes this {closeNoun(status)} back. It stays readable, with your reason
+            beside it.
+          </p>
+          <Button variant="danger" onClick={() => setOpen(true)} disabled={disabled}>
+            {label}
+          </Button>
+        </>
+      )}
+    </Card>
   );
 }

@@ -114,21 +114,6 @@ function renderAs(viewer: Viewer, props: Parameters<typeof Harness>[0]) {
 
 const header = () => screen.getByTestId("header");
 
-/** The More menu's items, by name, after opening it; empty when the header has no menu. */
-function moreItems(): string[] {
-  const trigger = within(header()).queryByRole("button", { name: "More actions" });
-  if (!trigger) return [];
-  fireEvent.click(trigger);
-  const names = screen.getAllByRole("menuitem").map((item) => item.textContent ?? "");
-  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
-  return names;
-}
-
-function chooseMore(name: string) {
-  fireEvent.click(within(header()).getByRole("button", { name: "More actions" }));
-  fireEvent.click(screen.getByRole("menuitem", { name }));
-}
-
 const stamp = (id: string, username: string, over: Partial<Approval> = {}): Approval => ({
   id,
   version_no: 1,
@@ -144,119 +129,98 @@ const stamp = (id: string, username: string, over: Partial<Approval> = {}): Appr
   ...over,
 });
 
-/** The header's buttons, left to right, by accessible name. */
-const headerButtons = () =>
-  within(header())
-    .getAllByRole("button")
-    .map((b) => b.getAttribute("aria-label") ?? b.textContent);
+/** The header's controls, buttons and links, left to right, by accessible name. */
+const headerControls = () =>
+  [...header().querySelectorAll<HTMLElement>("button, a")].map(
+    (el) => el.getAttribute("aria-label") ?? el.textContent,
+  );
 
 describe("the event header per reader", () => {
-  it("gives the owner the version, the Edit icon, Share, and their verbs under More", async () => {
+  it("gives the owner the version, Edit, Share and Add to collection, and no report", async () => {
     renderAs(OWNER, { status: "geolocated", surface: "event" });
-    const edit = within(header()).getByRole("link", { name: "Edit" });
-    expect(edit).toHaveAttribute("href", "/events/e1/edit");
-    expect(edit).toHaveAttribute("title", "Edit (saves a new version)");
-    expect(headerButtons()).toEqual(["v1: choose a version", "Share", "More actions"]);
-    expect(moreItems()).toEqual([
-      "Geolocators",
+    expect(headerControls()).toEqual([
+      "v1: choose a version",
+      "Edit",
+      "Share",
       "Add to collection",
-      "Close this geolocation",
-      "Report",
     ]);
+    expect(within(header()).getByRole("link", { name: "Edit" })).toHaveAttribute(
+      "href",
+      "/events/e1/edit",
+    );
     await screen.findByText("Not approved yet");
   });
 
   // Approving starts from the Approvals card, after reading the record.
-  it("gives an analyst who may approve no primary action; Approve waits in the card", async () => {
+  it("gives an analyst who may approve the version, Share and Report; Approve waits in the card", async () => {
     renderAs(ANALYST, { status: "geolocated", surface: "event" });
     const card = await screen.findByRole("region", { name: "Approvals" });
     expect(await within(card).findByRole("button", { name: "Approve" })).toBeInTheDocument();
-    expect(within(card).queryByLabelText("Note (optional)")).toBeNull();
-    expect(within(header()).queryByRole("link", { name: /^Edit/ })).toBeNull();
-    // A menu of one item is that item: the report flag sits beside Share.
-    expect(headerButtons()).toEqual(["v1: choose a version", "Share", "Report"]);
-    expect(moreItems()).toEqual([]);
+    expect(headerControls()).toEqual(["v1: choose a version", "Share", "Report"]);
   });
 
-  // Credit only: a co-geolocator shelves the row and sees its geolocators, and never edits,
-  // closes or approves it.
-  it("gives a co-geolocator no primary action and the two credit controls under More", async () => {
+  // Credit only: a co-geolocator shelves the row and reads its geolocators (where they leave),
+  // and never edits, closes or approves it.
+  it("gives a co-geolocator Add to collection and Geolocators beside Share and Report", async () => {
     renderAs(CO_GEOLOCATOR, { status: "geolocated", surface: "event" });
     await screen.findByText("Not approved yet");
-    expect(within(header()).queryByRole("link", { name: /^Edit/ })).toBeNull();
+    expect(headerControls()).toEqual([
+      "v1: choose a version",
+      "Share",
+      "Add to collection",
+      "Geolocators",
+      "Report",
+    ]);
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
-    expect(moreItems()).toEqual(["Geolocators", "Add to collection", "Report"]);
   });
 
-  it("gives a signed-out reader the version, Share, and the report as its own button", async () => {
+  it("gives a signed-out reader the version, Share and Report", async () => {
     renderAs(null, { status: "geolocated", surface: "event" });
     await screen.findByText("Not approved yet");
-    expect(headerButtons()).toEqual(["v1: choose a version", "Share", "Report"]);
-    expect(moreItems()).toEqual([]);
+    expect(headerControls()).toEqual(["v1: choose a version", "Share", "Report"]);
   });
 
-  it("carries no approval stamps and no approve control in the header", async () => {
+  it("carries no menu, no close, no stamps and no approve control in the header", async () => {
     api.approvals = [stamp("a1", "maya")];
-    renderAs(ANALYST, { status: "geolocated", surface: "event" });
+    renderAs(OWNER, { status: "geolocated", surface: "event" });
     await screen.findByText("Approved · 1 · version 1");
+    expect(within(header()).queryByRole("button", { name: "More actions" })).toBeNull();
+    expect(within(header()).queryByRole("button", { name: /^Close/ })).toBeNull();
     expect(within(header()).queryByRole("list", { name: "Approved by" })).toBeNull();
-    expect(within(header()).queryByRole("button", { name: /^Approve/ })).toBeNull();
+    expect(within(header()).queryByRole("button", { name: /^Approve\b/ })).toBeNull();
   });
 });
 
-describe("owner management: correcting, taking back, and never destroying", () => {
-  it.each<EventStatus>(["closed", "detected"])(
-    "shows no edit on the event surface for a %s row",
+describe("the owner's edit", () => {
+  it.each<EventStatus>(["requested", "detected", "geolocated"])(
+    "leads the owner of a %s row to the edit page, where they also close it",
     (status) => {
       renderAs(OWNER, { status, surface: "event" });
-      expect(screen.queryByRole("link", { name: "Edit" })).toBeNull();
+      expect(within(header()).getByRole("link", { name: "Edit" })).toHaveAttribute(
+        "href",
+        "/events/e1/edit",
+      );
     },
   );
 
-  // Overwritten rather than versioned, so the tooltip promises no version.
-  it("gives the owner the request edit icon on the event surface", () => {
-    renderAs(OWNER, { status: "requested", surface: "event" });
-    const edit = within(header()).getByRole("link", { name: "Edit" });
-    expect(edit).toHaveAttribute("href", "/events/e1/edit");
-    expect(edit).toHaveAttribute("title", "Edit this request");
-    expect(moreItems()).toEqual(["Close this request", "Report"]);
+  it("offers no edit on a closed row", () => {
+    renderAs(OWNER, { status: "closed", surface: "event", beforeClosedStatus: "geolocated" });
+    expect(within(header()).queryByRole("link", { name: "Edit" })).toBeNull();
   });
 
-  // Geolocate is the request page's primary action for everyone, so the asker's edit moves to More.
-  it("keeps Geolocate primary on the request page and moves the asker's edit to More", () => {
+  it("keeps Geolocate filled on the request page, beside the asker's Edit", () => {
     renderAs(OWNER, { status: "requested", surface: "request" });
+    expect(headerControls()).toEqual(["Geolocate", "Edit", "Share"]);
     expect(within(header()).getByRole("link", { name: "Geolocate" })).toHaveAttribute(
       "href",
       "/submit?request_id=e1",
     );
-    expect(moreItems()).toEqual(["Edit this request", "Close this request", "Report"]);
   });
 
-  it("shows a visitor Geolocate and no owner verb on the request page", () => {
+  it("shows a visitor Geolocate, Share and Report on the request page", () => {
     renderAs(ANALYST, { status: "requested", surface: "request" });
-    expect(within(header()).getByRole("link", { name: "Geolocate" })).toBeInTheDocument();
-    expect(moreItems()).toEqual([]);
-    expect(within(header()).getByRole("button", { name: "Report" })).toBeInTheDocument();
+    expect(headerControls()).toEqual(["Geolocate", "Share", "Report"]);
   });
-
-  // One verb closes all three live states; the noun names the row.
-  it.each<[EventStatus, string]>([
-    ["requested", "Close this request"],
-    ["detected", "Close this detection"],
-    ["geolocated", "Close this geolocation"],
-  ])("names the row a %s close applies to", (status, label) => {
-    renderAs(OWNER, { status, surface: "event" });
-    expect(moreItems()).toContain(label);
-  });
-
-  // Closing is terminal with no owner un-close, so the verb goes once taken.
-  it.each<ActionSurface>(["event", "request"])(
-    "offers nothing to close on a closed row (%s surface)",
-    (surface) => {
-      renderAs(OWNER, { status: "closed", surface, beforeClosedStatus: "requested" });
-      expect(moreItems().some((name) => name.startsWith("Close"))).toBe(false);
-    },
-  );
 
   // Destruction is admin-only, so no surface and no status shows a delete.
   it.each<EventStatus>(["requested", "detected", "geolocated", "closed"])(
@@ -264,22 +228,11 @@ describe("owner management: correcting, taking back, and never destroying", () =
     (status) => {
       for (const surface of ["event", "request"] as const) {
         const { unmount } = renderAs(OWNER, { status, surface });
-        expect(moreItems().some((name) => /delete/i.test(name))).toBe(false);
         expect(screen.queryByRole("button", { name: /delete/i })).toBeNull();
         unmount();
       }
     },
   );
-
-  // The reason makes a closed row a decision, not a disappearance, so its panel opens named for
-  // the row, and focus moves to it.
-  it("opens the close panel named for the row it closes and focuses it", async () => {
-    renderAs(OWNER, { status: "geolocated", surface: "event" });
-    chooseMore("Close this geolocation");
-    expect(screen.getByLabelText("Close reason")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Close this geolocation" })).toBeInTheDocument();
-    await waitFor(() => expect(document.getElementById("close-request-form")).toHaveFocus());
-  });
 
   it.each<ActionSurface>(["edit", "panel"])("gives the %s surface no header at all", (surface) => {
     const { container } = renderAs(OWNER, { status: "geolocated", surface });
@@ -287,28 +240,31 @@ describe("owner management: correcting, taking back, and never destroying", () =
   });
 });
 
-describe("panels the More menu opens", () => {
-  it("opens and closes the geolocators panel, marking its item while open", async () => {
+describe("panels the header opens", () => {
+  it("opens and closes the collection picker, marking its toggle while open", async () => {
     renderAs(OWNER, { status: "geolocated", surface: "event" });
-    chooseMore("Geolocators");
-    expect(screen.getByRole("heading", { name: "Geolocators" })).toBeInTheDocument();
-    await waitFor(() => expect(document.getElementById("geolocators-panel")).toHaveFocus());
+    const toggle = within(header()).getByRole("button", { name: "Add to collection" });
+    fireEvent.click(toggle);
+    expect(screen.getByRole("heading", { name: "Add to collection" })).toBeInTheDocument();
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await waitFor(() => expect(document.getElementById("add-to-collection-panel")).toHaveFocus());
 
-    fireEvent.click(within(header()).getByRole("button", { name: "More actions" }));
-    expect(screen.getByRole("menuitem", { name: "Geolocators" })).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
-    fireEvent.click(screen.getByRole("menuitem", { name: "Geolocators" }));
-    expect(screen.queryByRole("heading", { name: "Geolocators" })).toBeNull();
+    fireEvent.click(toggle);
+    expect(screen.queryByRole("heading", { name: "Add to collection" })).toBeNull();
+  });
+
+  it("opens the geolocators panel for a co-geolocator, where they leave", () => {
+    renderAs(CO_GEOLOCATOR, { status: "geolocated", surface: "event" });
+    fireEvent.click(within(header()).getByRole("button", { name: "Geolocators" }));
+    expect(screen.getByRole("heading", { name: "Geolocators" })).toBeInTheDocument();
   });
 
   it.each<EventStatus>(["requested", "detected"])("offers no geolocators panel on a %s row", (status) => {
-    renderAs(OWNER, { status, surface: "event" });
-    expect(moreItems()).not.toContain("Geolocators");
+    renderAs(CO_GEOLOCATOR, { status, surface: "event" });
+    expect(within(header()).queryByRole("button", { name: "Geolocators" })).toBeNull();
   });
 
-  it("opens the report form from the lone report button, signed out", () => {
+  it("opens the report form, signed out", () => {
     renderAs(null, { status: "geolocated", surface: "event" });
     fireEvent.click(within(header()).getByRole("button", { name: "Report" }));
     expect(screen.getByRole("heading", { name: "Report this event" })).toBeInTheDocument();

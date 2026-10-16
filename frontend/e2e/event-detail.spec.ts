@@ -11,7 +11,7 @@ import { expectControlInsideViewport, expectNarrowViewportLayout } from "./suppo
  * `proxy.ts`, so no session cookie is granted here.
  */
 
-/** Hides the Web Share API, so Share opens its own menu whatever the runner's Chrome offers. */
+/** Hides the Web Share API, so Share copies the link whatever the runner's Chrome offers. */
 async function withoutWebShare(page: Page): Promise<void> {
   await page.addInitScript(() => {
     Object.defineProperty(Navigator.prototype, "share", { value: undefined, configurable: true });
@@ -19,7 +19,11 @@ async function withoutWebShare(page: Page): Promise<void> {
 }
 
 test.describe("shared event link", () => {
-  test("holds the version, Share and More in the header on a narrow column", async ({ page }) => {
+  test("holds the version, Share and Report in the header on a narrow column", async ({
+    page,
+    context,
+  }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
     await withoutWebShare(page);
     await mockApi(page);
     await page.goto(`/events/${EVENT_ID}`);
@@ -40,13 +44,15 @@ test.describe("shared event link", () => {
     await expectControlInsideViewport(page, page.getByRole("menuitem", { name: "Full history" }));
     await page.keyboard.press("Escape");
 
+    // One click copies the link: no menu, the confirmation only for screen readers.
     await share.click();
-    await expectControlInsideViewport(page, page.getByRole("menuitem", { name: "Share on X" }));
-    await expectControlInsideViewport(page, page.getByRole("menuitem", { name: "Copy link" }));
-    await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(page.getByRole("status").filter({ hasText: "Link copied" })).toHaveCount(1);
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+      `${new URL(page.url()).origin}/events/${EVENT_ID}`,
+    );
 
-    // A reader's More would hold the report alone, so the flag sits beside Share instead.
+    // No menu remains in the header: a reader's report flag sits beside Share.
     await expect(page.getByRole("button", { name: "More actions" })).toHaveCount(0);
     const report = page.getByRole("button", { name: "Report" });
     await expectNarrowViewportLayout(page, report);

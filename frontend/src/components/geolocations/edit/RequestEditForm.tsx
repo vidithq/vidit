@@ -11,6 +11,7 @@ import { isSnapshotUrl, SNAPSHOT_HINT } from "@/components/ui/ArchivedCopies";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { Button } from "@/components/ui/Button";
+import { CloseSection } from "@/components/event/CloseEventForm";
 import { useEventActions } from "@/components/event/useEventActions";
 import { useMutation } from "@/hooks/useMutation";
 import {
@@ -140,6 +141,13 @@ export function RequestEditForm({
           {busy ? "Saving…" : "Save request"}
         </Button>
       </form>
+
+      <CloseSection
+        eventId={geo.id}
+        status={geo.status}
+        disabled={busy}
+        onClosed={() => router.push(redirectTo)}
+      />
     </PageShell>
   );
 }

@@ -14,9 +14,7 @@ import {
   Circle,
   Copy,
   Download,
-  Ellipsis,
   ExternalLink,
-  Flag,
   History,
   Mail,
   MapPin,
@@ -30,6 +28,9 @@ import {
 import type { Conflict, EventDetail, EventStatus, Media, Tag } from "@/types";
 import { PageShell } from "@/components/ui/PageShell";
 import { ActionMenu } from "@/components/ui/ActionMenu";
+import { CopyButton } from "@/components/ui/CopyButton";
+import { Tooltip } from "@/components/ui/Tooltip";
+import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { Card } from "@/components/ui/Card";
 import { CharCounter } from "@/components/ui/CharCounter";
 import { Pill } from "@/components/ui/Pill";
@@ -446,7 +447,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="TOOLTIP_SURFACE" usage="The bubble of an anchored popover (usePinnedPopover): the FieldHelp explanation and the AvatarStack card, and the ActionMenu list. Colour only; callers add rounded-md, padding and text size.">
+          <Item name="TOOLTIP_SURFACE" usage="The bubble of an anchored popover (usePinnedPopover): the FieldHelp explanation, the AvatarStack card, the ActionMenu list and the Tooltip bubble. Colour only; callers add rounded-md, padding and text size.">
             <span className={`inline-block rounded-md px-2 py-1 text-xs ${TOOLTIP_SURFACE}`}>
               maya
             </span>
@@ -513,18 +514,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<ActionMenu>" usage="A trigger that opens a short list of actions (role=menu): the event header's version selector (v2 with a chevron: every version newest first, then Full history), its Share fallback (Copy link, Share on X) where the browser has no share sheet, and its More menu (Geolocators, Add to collection, Close, Report). The trigger is the ghost button, label as its aria-label and title: icon-only by default, or `text` printed before the icon, in which case label starts with that text. menuLabel names the list when it differs from the trigger. Items are buttons (onSelect) or links (href), with an icon, the accent tone or tone=danger for the report, a muted `meta` word after the label (Current), `active` for an item whose panel is open (the active-row paint plus aria-expanded), and `current` for the link to the page on screen (the same paint plus aria-current, focused when the menu opens). A click or Enter opens on the first item (or the current one), ArrowUp on the trigger opens on the last; arrows, Home and End move, Space or Enter activates, Escape closes and returns focus to the trigger, Tab or an outside click closes. `note` prints a line above the items (a detected row's share caveat). The list opens under the trigger aligned to its right edge, shifts sideways to stay 8px inside the viewport, and scrolls past 20rem. A menu of one item renders that item as its own icon control (the event header's report flag for a reader who is not the owner).">
-            <Variant label="icon trigger">
-              <ActionMenu
-                label="More actions"
-                icon={<Ellipsis size={14} />}
-                items={[
-                  { key: "copy", label: "Copy link", icon: <Copy size={14} />, active: true },
-                  { key: "report", label: "Report", icon: <Flag size={14} />, tone: "danger" },
-                ]}
-                note="Detected and may still change."
-              />
-            </Variant>
+          <Item name="<ActionMenu>" usage="A trigger that opens a short list of links (role=menu): the event header's version selector (v2 with a chevron: every version newest first, then Full history). The trigger is the ghost button, label as its aria-label and tooltip: icon-only by default, or `text` printed before the icon, in which case label starts with that text. menuLabel names the list when it differs from the trigger. Each item is a link with an optional icon, a muted `meta` word after the label (Current), and `current` for the link to the page on screen (the active-row paint plus aria-current, focused when the menu opens). A click or Enter opens on the current item (or the first), ArrowUp on the trigger opens on the last; arrows, Home and End move, Space or Enter follows a link, Escape closes and returns focus to the trigger, Tab or an outside click closes. The list opens under the trigger aligned to its right edge, shifts sideways to stay 8px inside the viewport, and scrolls past 20rem.">
             <Variant label="printed text (the version selector)">
               <ActionMenu
                 label="v2: choose a version"
@@ -539,6 +529,29 @@ export default function PalettePage() {
                 ]}
               />
             </Variant>
+          </Item>
+
+          <Item name="<Tooltip>" usage="The label of an icon-only control in a TOOLTIP_SURFACE bubble, while a mouse rests on it or the keyboard focuses it; a touch never opens it, so a tap leaves nothing standing. Placement and dismissal (Escape, scroll, resize, an outside click) are usePinnedPopover's, and it never pins. <Button icon> renders its button through TooltipButton, so every icon button gets it with no call-site change: the tip is `title` when it differs from the name (a longer hint) and the aria-label otherwise, and the native title is dropped so no second tooltip appears. An icon link (buttonClasses on a Link or an a) wraps itself in <Tooltip label>, a display: contents span that leaves the layout alone. The bubble is aria-hidden, since the control's accessible name already says it.">
+            <Variant label="icon button (hover or tab to it)">
+              <Button icon variant="ghost" aria-label="Copy coordinates">
+                <Copy size={14} />
+              </Button>
+            </Variant>
+            <Variant label="icon link">
+              <Tooltip label="Wayback Machine copy of the source">
+                <a
+                  href="#"
+                  aria-label="Wayback Machine copy of the source"
+                  className={buttonClasses("ghost", { icon: true })}
+                >
+                  <Archive size={14} />
+                </a>
+              </Tooltip>
+            </Variant>
+          </Item>
+
+          <Item name="<CopyButton>" usage="The one copy confirmation: an icon button whose mark turns into a check while `copied` holds (useCopyToClipboard times it, 1.5 s) and fades back after, with no fade under prefers-reduced-motion. The accessible name never changes, since a changing name is re-announced as a new control; `announce` reaches screen readers through a sibling aria-live region, with no visible text. Worn by Copy coordinates, a profile's copied handle, and Share where the browser has no share sheet (Link copied).">
+            <PaletteCopyButton />
           </Item>
 
           <Item name="<ActiveFilterPills>" usage="The one rendering of active filters: a row of removable accent chips (label + ×), shared by the map's filter overlay and the search page so active filter state reads identically everywhere. Entries are {key, label, icon?, onRemove}; `onClearAll` adds a quiet clear-everything affordance once two or more filters are on. Renders nothing when the list is empty.">
@@ -1665,6 +1678,19 @@ const PALETTE_MEDIA: Media = {
 // here (only here, since a real Media row is named by `original_filename`).
 const PALETTE_VIDEO_SRC =
   process.env.NEXT_PUBLIC_DEMO_VIDEO_URL ?? "/palette-demo-placeholder.mp4";
+
+function PaletteCopyButton() {
+  const { copied, copy } = useCopyToClipboard();
+  return (
+    <CopyButton
+      label="Copy coordinates"
+      announce="Coordinates copied"
+      icon={<Copy size={14} />}
+      copied={copied}
+      onClick={() => void copy("48.500000, 37.800000")}
+    />
+  );
+}
 
 function PaletteMediaLightbox() {
   const [open, setOpen] = useState(false);

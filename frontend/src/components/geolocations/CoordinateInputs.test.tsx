@@ -74,7 +74,8 @@ describe("CoordinateInputs", () => {
     render(<CoordinateInputs {...baseProps} lat="48.015883" lng="37.802411" />);
     const link = screen.getByRole("link", { name: "View on Maps" });
     expect(link).toHaveTextContent("");
-    expect(link).toHaveAttribute("title", "View on Maps");
+    // The shared tooltip carries the name, so no native title shows a second one.
+    expect(link).not.toHaveAttribute("title");
   });
 
   // Greyed, not gone: the cell keeps one width.

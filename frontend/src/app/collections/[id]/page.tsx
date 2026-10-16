@@ -13,6 +13,7 @@ import {
 import { CollectionReader } from "@/components/collections/CollectionReader";
 import { useReportContent } from "@/components/report/useReportContent";
 import ShareOnX from "@/components/share/ShareOnX";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button, buttonClasses, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -154,14 +155,15 @@ function CollectionPageBody() {
           {isOwner && (
             <>
               {/* Navigation: `buttonClasses` on the link, not a button nested in an anchor. */}
-              <Link
-                href={collectionEditHref(collection.id)}
-                className={buttonClasses("ghost", { icon: true })}
-                aria-label="Edit this collection"
-                title="Edit this collection"
-              >
-                <Pencil size={14} />
-              </Link>
+              <Tooltip label="Edit this collection">
+                <Link
+                  href={collectionEditHref(collection.id)}
+                  className={buttonClasses("ghost", { icon: true })}
+                  aria-label="Edit this collection"
+                >
+                  <Pencil size={14} />
+                </Link>
+              </Tooltip>
               <Button
                 ref={dropButtonRef}
                 icon

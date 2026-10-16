@@ -1,6 +1,7 @@
 import type { ComponentPropsWithRef } from "react";
 
 import { cn } from "@/lib/cn";
+import { TooltipButton } from "./Tooltip";
 
 // The one button primitive: shape and colour in one unit. `variant` picks the
 // colour; the shape is uniform. `fullWidth` stretches it; pass other extras via
@@ -97,13 +98,24 @@ export function Button({
   icon = false,
   type = "button",
   className = "",
+  title,
   ...props
 }: ButtonProps) {
-  return (
-    <button
-      type={type}
-      className={buttonClasses(variant, { fullWidth, icon, className })}
-      {...props}
-    />
-  );
+  const classes = buttonClasses(variant, { fullWidth, icon, className });
+  // An icon button's name is its only text, so it shows as a tooltip: `title` when it differs
+  // from the name (a longer hint), else the `aria-label`. The native `title` would be a second one.
+  const tip = icon ? (title ?? props["aria-label"]) : undefined;
+  if (tip) {
+    return (
+      <TooltipButton
+        type={type}
+        className={classes}
+        tip={tip}
+        hidden={props["aria-expanded"] === true}
+        {...props}
+      />
+    );
+  }
+  return <button type={type} className={classes} title={title} {...props} />;
 }
+

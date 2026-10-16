@@ -1,30 +1,12 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { eventDetail } from "@/test/eventDetail";
 import type { EventDetail } from "@/types";
 import { EventShare } from "./EventShare";
 
-const geolocated: EventDetail = {
-  ...eventDetail("e1", "Strike near Bakhmut"),
-  event_date: "2026-06-01",
-  event_coords: { lat: 48.5, lng: 37.8 },
-};
-
-/** The intent URL a share opened, decoded into `text` and `url` so a spec reads the post body and link. */
-function openedIntent(openMock: ReturnType<typeof vi.fn>) {
-  expect(openMock).toHaveBeenCalledTimes(1);
-  const [href, target, features] = openMock.mock.calls[0];
-  const url = new URL(href as string);
-  return {
-    origin: url.origin,
-    pathname: url.pathname,
-    text: url.searchParams.get("text"),
-    sharedUrl: url.searchParams.get("url"),
-    target,
-    features,
-  };
-}
+const geolocated: EventDetail = eventDetail("e1", "Strike near Bakhmut");
+const URL_OF_E1 = `${window.location.origin}/events/e1`;
 
 function withWebShare() {
   const share = vi.fn(() => Promise.resolve());
@@ -32,85 +14,92 @@ function withWebShare() {
   return share;
 }
 
+function withClipboard() {
+  const writeText = vi.fn(() => Promise.resolve());
+  Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  return writeText;
+}
+
+/** Which mark the button shows: the check while the copy flash holds, the share mark otherwise. */
+function visibleMark(button: HTMLElement): "check" | "share" {
+  const [rest, check] = button.querySelectorAll(":scope > span > span");
+  expect(rest.className.includes("opacity-0")).not.toBe(check.className.includes("opacity-0"));
+  return check.className.includes("opacity-100") ? "check" : "share";
+}
+
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   delete (navigator as { share?: unknown }).share;
 });
 
 describe("EventShare without the Web Share API", () => {
-  it("opens a menu with Copy link and Share on X", () => {
+  it("copies the event's address in one click, with no menu", async () => {
+    const writeText = withClipboard();
     render(<EventShare event={geolocated} />);
-    const trigger = screen.getByRole("button", { name: "Share" });
-    expect(trigger).toHaveAttribute("aria-haspopup", "menu");
-    fireEvent.click(trigger);
+    const share = screen.getByRole("button", { name: "Share" });
+    expect(share).not.toHaveAttribute("aria-haspopup");
 
-    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
-      "Copy link",
-      "Share on X",
-    ]);
-  });
-
-  it("opens the X composer with the title, the byline and the coordinates, plus the event's url", () => {
-    const openMock = vi.spyOn(window, "open").mockImplementation(() => null);
-    render(<EventShare event={geolocated} />);
-    fireEvent.click(screen.getByRole("button", { name: "Share" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Share on X" }));
-
-    const intent = openedIntent(openMock);
-    expect(intent.origin).toBe("https://twitter.com");
-    expect(intent.pathname).toBe("/intent/tweet");
-    expect(intent.text).toBe("Strike near Bakhmut\nby ana · 1 Jun 2026\n48.500000, 37.800000");
-    expect(intent.sharedUrl).toBe(`${window.location.origin}/events/e1`);
-    expect(intent.target).toBe("_blank");
-    expect(intent.features).toBe("noopener,noreferrer");
-  });
-
-  it("drops the date line and the coordinate line when the event carries neither", () => {
-    const openMock = vi.spyOn(window, "open").mockImplementation(() => null);
-    render(
-      <EventShare
-        event={{ ...geolocated, status: "requested", event_date: null, event_coords: null }}
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Share" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Share on X" }));
-
-    expect(openedIntent(openMock).text).toBe("Strike near Bakhmut\nby ana");
-  });
-
-  it("copies the event's address and says so", async () => {
-    const writeText = vi.fn(() => Promise.resolve());
-    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
-    render(<EventShare event={geolocated} />);
-    fireEvent.click(screen.getByRole("button", { name: "Share" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Copy link" }));
-
-    expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/events/e1`);
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Link copied"));
+    await act(async () => {
+      fireEvent.click(share);
+    });
+    expect(writeText).toHaveBeenCalledWith(URL_OF_E1);
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
-  it("prints a detected row's caveat above the items", () => {
-    render(<EventShare event={{ ...geolocated, status: "detected" }} />);
-    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+  it("turns the mark into a check, announces the copy without visible text, then turns back", async () => {
+    withClipboard();
+    render(<EventShare event={geolocated} />);
+    const share = screen.getByRole("button", { name: "Share" });
+    expect(visibleMark(share)).toBe("share");
 
-    expect(screen.getByRole("menu")).toHaveTextContent("Detected and may still change.");
+    await act(async () => {
+      fireEvent.click(share);
+    });
+    expect(visibleMark(share)).toBe("check");
+    // The name holds still; the confirmation is a screen-reader-only live region.
+    expect(screen.getByRole("button", { name: "Share" })).toBe(share);
+    const status = screen.getByText("Link copied");
+    expect(status).toHaveClass("sr-only");
+    expect(status).toHaveAttribute("aria-live", "polite");
+
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(visibleMark(share)).toBe("share");
+    expect(screen.queryByText("Link copied")).toBeNull();
+  });
+
+  it("arms a detected row's share on the first click rather than copying", async () => {
+    const writeText = withClipboard();
+    render(<EventShare event={{ ...geolocated, status: "detected" }} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    });
+    expect(writeText).not.toHaveBeenCalled();
+    expect(screen.getByText("Detected and may still change. Click again to share.")).toBeVisible();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    });
+    expect(writeText).toHaveBeenCalledWith(URL_OF_E1);
   });
 });
 
 describe("EventShare with the Web Share API", () => {
-  it("opens the share sheet with the event's address and title", () => {
+  it("opens the share sheet with the event's address and title, and copies nothing", () => {
     const share = withWebShare();
+    const writeText = withClipboard();
     render(<EventShare event={geolocated} />);
-    const trigger = screen.getByRole("button", { name: "Share" });
-    expect(trigger).not.toHaveAttribute("aria-haspopup");
-    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
 
-    expect(share).toHaveBeenCalledWith({
-      title: "Strike near Bakhmut",
-      url: `${window.location.origin}/events/e1`,
-    });
-    expect(screen.queryByRole("menu")).toBeNull();
+    expect(share).toHaveBeenCalledWith({ title: "Strike near Bakhmut", url: URL_OF_E1 });
+    expect(writeText).not.toHaveBeenCalled();
   });
 
   it("arms a detected row's share on the first click rather than opening it", () => {
@@ -119,10 +108,6 @@ describe("EventShare with the Web Share API", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
     expect(share).not.toHaveBeenCalled();
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Detected and may still change. Click again to share.",
-    );
-
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
     expect(share).toHaveBeenCalledTimes(1);
   });

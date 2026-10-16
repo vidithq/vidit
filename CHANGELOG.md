@@ -24,7 +24,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
-- An event page's header holds a version selector, Edit for the owner, a Share button (your device's share sheet, or Copy link and Share on X) and a More menu, and an Approvals card beside the record shows its approvals ([#583](https://github.com/vidithq/vidit/pull/583)).
+- An event page's header holds a version selector, Edit for the owner, a one-click Share and Report; an Approvals card beside the record shows the live approvals, close and credit move to the edit page, and icon buttons show their label on hover ([#583](https://github.com/vidithq/vidit/pull/583)).
 - Settings lists each notification kind once, with an Email and a Push switch side by side, and closes the Push column with one reason when the server sends no push or your account has no push device ([#575](https://github.com/vidithq/vidit/pull/575)).
 
 ### Changed
