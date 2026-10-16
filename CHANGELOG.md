@@ -6,6 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- Feed, Requests and search filters sit in a sticky right rail, or a Filters button on a phone; the feed filters by kind, conflict, capture source and tags, with its Following / All control under the title.
 - A site admin can delete an organization from the admin panel after typing its slug; its memberships, invites, review requests and approvals go with it, and each event owner who loses its approval is notified ([#576](https://github.com/vidithq/vidit/pull/576)).
 - An org manager approves and revokes approvals in an organization's name, a geolocator can ask an organization for a review that any org manager answers, and the organization page lists its approvals and open requests ([#574](https://github.com/vidithq/vidit/pull/574)).
 - An event's current approvals show as "Approved by" profile stamps in its header, each opening a card with the version, date, note and a link to the reviewer or organization, and approving and the approval history move into an Approvals panel ([#578](https://github.com/vidithq/vidit/pull/578)).

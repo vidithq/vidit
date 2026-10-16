@@ -17,6 +17,7 @@ export function PageShell({
   back = false,
   backFallback,
   actions,
+  controls,
   children,
 }: {
   title: ReactNode;
@@ -26,6 +27,9 @@ export function PageShell({
    *  `smartBack`'s `fallback` (`/` when unset). */
   backFallback?: string;
   actions?: ReactNode;
+  /** The view controls under the title, left-aligned (a scope or sort `SegmentedControl`, a
+   *  mode picker), with any companion control pushed to the row's right end. */
+  controls?: ReactNode;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -85,6 +89,9 @@ export function PageShell({
           {actions && <div className="shrink-0 max-w-full">{actions}</div>}
         </div>
       </header>
+      {controls && (
+        <div className="flex flex-wrap items-center justify-between gap-2">{controls}</div>
+      )}
       {children}
     </PageFrame>
   );

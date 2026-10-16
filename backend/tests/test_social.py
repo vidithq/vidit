@@ -2,7 +2,7 @@
 
 Covers follow and unfollow (idempotent, 404 on an unknown or soft-deleted
 target, auth required), ``GET /feed`` (published geolocations and open
-requests, scope, credit, exclusions, cursor walk), the profile follow counters
+requests, scope, filters, credit, exclusions, cursor walk), the profile follow counters
 and ``is_following``, and the DB-level ``ck_follows_no_self_follow``.
 """
 
@@ -20,6 +20,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal, engine
 from app.main import app
+from app.models.conflict import Conflict
 from app.models.event import (
     STATUS_CLOSED,
     STATUS_DETECTED,
@@ -29,6 +30,7 @@ from app.models.event import (
 )
 from app.models.follow import Follow
 from app.models.media import Media
+from app.models.tag import Tag
 from app.models.user import User
 from app.services import social as social_service
 from app.services.auth import hash_password
@@ -541,6 +543,80 @@ def test_feed_caps_limit_and_rejects_garbage(db, cleanup):
     for query in ("limit=0", "limit=abc", "scope=everyone", "cursor=garbage"):
         response = client.get(f"/api/v1/feed?{query}", headers=headers)
         assert response.status_code == 422, f"expected 422 for {query!r}"
+
+
+@pytest.fixture
+def conflict(db):
+    row = Conflict(name=f"conflict-{uuid.uuid4().hex[:8]}", ongoing=True, source="manual")
+    db.add(row)
+    db.commit()
+    yield row
+    db.execute(Conflict.__table__.delete().where(Conflict.id == row.id))
+    db.commit()
+
+
+@pytest.fixture
+def tags(db):
+    rows = [
+        Tag(name=f"capture-{uuid.uuid4().hex[:8]}", category="capture_source"),
+        Tag(name=f"tag-{uuid.uuid4().hex[:8]}", category="free"),
+    ]
+    db.add_all(rows)
+    db.commit()
+    ids = [row.id for row in rows]
+    yield rows
+    db.execute(Tag.__table__.delete().where(Tag.id.in_(ids)))
+    db.commit()
+
+
+def test_feed_filters_by_kind_conflict_capture_source_and_tag(db, conflict, tags, cleanup):
+    """``kind`` keeps one kind of row; the taxonomy filters match as on ``GET /events``, in both
+    scopes, and the next-page link carries them."""
+    record_user, record_geo = cleanup
+    capture, free = tags
+    viewer = _make_user(db, suffix="viewer")
+    analyst = _make_user(db, suffix="analyst")
+    record_user(viewer)
+    record_user(analyst)
+
+    tagged_geo = _make_geo(db, author=analyst, title="Tagged geo")
+    tagged_geo.conflicts = [conflict]
+    tagged_geo.tags = [capture, free]
+    plain_geo = _make_geo(db, author=analyst, title="Plain geo")
+    tagged_ask = _make_request(db, requester=analyst, title="Tagged ask")
+    tagged_ask.conflicts = [conflict]
+    tagged_ask.tags = [free]
+    plain_ask = _make_request(db, requester=analyst, title="Plain ask")
+    db.add(Follow(follower_id=viewer.id, followed_id=analyst.id))
+    db.commit()
+    for row in (tagged_geo, plain_geo, tagged_ask, plain_ask):
+        record_geo(row)
+    headers = login_as(client, viewer)
+
+    def titles(query: str) -> set[str]:
+        return {item["title"] for item in _walk(headers, f"/api/v1/feed?limit=1&{query}")}
+
+    assert titles("kind=geolocation") == {"Tagged geo", "Plain geo"}
+    assert titles("kind=request") == {"Tagged ask", "Plain ask"}
+    assert titles("kind=geolocation&kind=request") == {
+        "Tagged geo",
+        "Plain geo",
+        "Tagged ask",
+        "Plain ask",
+    }
+    assert titles(f"conflict={conflict.name}") == {"Tagged geo", "Tagged ask"}
+    assert titles(f"capture_source={capture.name}") == {"Tagged geo"}
+    # A capture-source filter names a capture-source tag: a free tag of the same list misses.
+    assert titles(f"capture_source={free.name}") == set()
+    assert titles(f"tag={free.name}&kind=request") == {"Tagged ask"}
+
+    all_scope = client.get(
+        f"/api/v1/feed?scope=all&limit=100&kind=request&conflict={conflict.name}",
+        headers=headers,
+    )
+    assert [item["title"] for item in all_scope.json()] == ["Tagged ask"]
+
+    assert client.get("/api/v1/feed?kind=detection", headers=headers).status_code == 422
 
 
 # ── GET /users/{username} — follower counters + is_following ─────────────

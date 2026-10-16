@@ -402,11 +402,12 @@ function SubmitForm() {
   ];
 
   return (
-    <PageShell title={pageTitle}>
-      {/* Entry paths (fresh create only). Single and From an X post share the one-event form;
-          bulk swaps in the archive on-ramp. */}
-      {canImport && (
-        <div className="mt-4">
+    <PageShell
+      title={pageTitle}
+      controls={
+        // Entry paths (fresh create only). Single and From an X post share the one-event form;
+        // bulk swaps in the archive on-ramp.
+        canImport && (
           <SegmentedControl
             aria-label="Submission mode"
             options={[
@@ -441,9 +442,9 @@ function SubmitForm() {
             value={mode}
             onChange={setMode}
           />
-        </div>
-      )}
-
+        )
+      }
+    >
       {/* On-ramps swap in for the form; it stays mounted (hidden) so its draft survives switching
           back. */}
       {showXPost && (

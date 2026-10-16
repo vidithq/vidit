@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 let searchParams = new URLSearchParams();
@@ -270,5 +270,42 @@ describe("the search page's Organizations group", () => {
     );
     expect(screen.queryByText("kakhovka_watch")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Toggle Author" })).not.toBeInTheDocument();
+  });
+});
+
+describe("the search page's filter rail", () => {
+  it("puts the event panel in the rail and applies the dialog's dates on Apply", async () => {
+    searchParams = new URLSearchParams("q=kakhovka&type=event");
+    search.mockResolvedValue(response({ type: "event", geolocations: [eventHit()] }));
+
+    render(<SearchPage />);
+    expect(await screen.findByText("Kakhovka spillway")).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Filters" })).toContainElement(
+      screen.getByRole("button", { name: "Toggle Event date" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    const dialog = screen.getByRole("dialog", { name: "Filters" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Toggle Event date" }));
+    fireEvent.change(within(dialog).getByLabelText("Event date from"), {
+      target: { value: "2026-06-01" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply" }));
+
+    await waitFor(() =>
+      expect(search).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "event", eventDateFrom: "2026-06-01" }),
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Filters (1)" })).toBeInTheDocument();
+  });
+
+  it("leaves the rail out on a scope no filter narrows", async () => {
+    search.mockResolvedValue(response({ users: [userHit()] }));
+
+    render(<SearchPage />);
+    expect(await screen.findByText("kakhovka_watch")).toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "Filters" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Filters" })).not.toBeInTheDocument();
   });
 });
