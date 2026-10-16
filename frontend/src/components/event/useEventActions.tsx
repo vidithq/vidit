@@ -1,128 +1,116 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { CircleX, History, MapPin, Pencil, Stamp, Users } from "lucide-react";
+import { MapPin, SquarePen, Users } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import { allApprovalsPath, type ApprovalList } from "@/lib/approvals";
 import { COLLECTABLE_STATUSES, CollectionIcon } from "@/lib/collections";
-import { eventHistoryHref, hasPublishedRecord } from "@/lib/events";
+import { hasPublishedRecord } from "@/lib/events";
 import { AddToCollectionPanel } from "@/components/collections/AddToCollectionPanel";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { ACCENT_SURFACE } from "@/components/ui/styles";
-import { ApprovalStamps, ApprovalsPanel } from "@/components/event/Approvals";
-import { closeActionLabel, CloseEventForm } from "@/components/event/CloseEventForm";
+import { EventShare } from "@/components/event/EventShare";
 import { GeolocatorInviteCard, GeolocatorsPanel } from "@/components/event/GeolocatorCredit";
-import ShareButtons from "@/components/event/ShareButtons";
+import { ApprovalsCard } from "@/components/event/ApprovalsCard";
+import { VersionSelector } from "@/components/event/VersionSelector";
 import { useReportContent } from "@/components/report/useReportContent";
 import type { EventDetail } from "@/types";
 
 /**
- * The action grammar for one event: every detail surface calls this and renders what it gets back,
- * so no surface hand-assembles a row and controls can't drift between them.
+ * The header of one event, assembled once so no surface hand-assembles a row and controls can't
+ * drift between them. Left to right, in the surface's top-right slot (`docs/design.md`, Event
+ * header and Approvals card):
  *
- * Three tiers, in this order, in the surface's top-right slot (`docs/design.md`, Page chrome):
+ * 1. **The version selector**, on the event page of a published row.
+ * 2. **Geolocate**, filled, on the request page.
+ * 3. **Edit**, an icon, for the owner. Closing and the geolocators live on the edit page.
+ * 4. **Share**.
+ * 5. **Add to collection** for the owner and every co-geolocator, and **Geolocators** for a
+ *    co-geolocator (where they leave). Each opens a panel under the header.
+ * 6. **Report** for every reader but the owner.
  *
- * 1. **Utilities**, far right, icon-compact: the share pair plus the report flag on the detail
- *    pages. The event page opens the row with the version history and the approvals. The edit
- *    form carries none (they would act on a record other than the one on screen), nor does the
- *    map panel (actions belong to the page its title links to).
- * 2. **The flow action**, at most one, filled. Only an open request carries one (geolocate it).
- * 3. **Owner management**, icon buttons only the author holds: editing an open request
- *    (overwrites it) on both detail pages; on the event page also shelving the row on one of the
- *    author's collections (writes no version) and editing a published geolocation (files a
- *    version); on both pages closing the row, which is how an author takes work back. Nothing here
- *    destroys a row: closing keeps it readable with its reason, and removal is an admin act. A
- *    co-geolocator shares two of these on a published row: shelving it on their own collections
- *    and the geolocators panel (the owner invites and removes there, a co-geolocator leaves).
- *    An analyst the owner invited gets the invitation card among the panels instead.
+ * On the event page of a published row the hook also returns the Approvals card (status,
+ * approvals, Approve, approval requests), which the page renders beside the body.
  *
- * Under the row, on the event page of a published row, the current approvals sit as stamps; the
- * Approvals trigger beside History opens the panel that approves, lists and revokes them.
- *
- * The hook returns nodes rather than rendering them (like `useReportContent`) because the row and
- * the panels its triggers open land in different slots: `actions` goes in `PageShell`'s `actions`
- * (or the map panel's byline row), `panels` directly under the header. Called before a surface's
- * early returns, with `event` null while the row loads, so hook order is stable.
+ * The hook returns nodes rather than rendering them because the header, the panels and the card
+ * land in different slots. Called before a surface's early returns, with `event` null while the
+ * row loads, so hook order is stable.
  */
 
-/** Which surface is asking, which is what selects the tiers. */
+/** Which surface is asking, which is what selects the controls. */
 export type ActionSurface = "event" | "request" | "panel" | "edit";
 
-// The grammar: one flag per tier per surface. The map panel and edit form render nothing here (the
-// panel previews a row whose page is one click away; the form's flow action is its submit and its
-// utilities would act on a record being rewritten). The event page has no flow action but carries
-// the correction its author makes.
+// One flag per control family per surface. The map panel and edit form render nothing (the panel
+// previews a row whose page is one click away; a form's own submit is its action, and sharing a
+// record mid-rewrite acts on something other than what is on screen).
 //
-// Owner management is four entries because surfaces claim different parts: `collect` (shelve on
-// one of the author's collections, event page only), `editRequest` (correct an open request, both
-// detail pages), `saveVersion` (correct a published geolocation, event page only), `close` (take
-// a row back, both detail pages). The two edits never appear together (no row is both requested
-// and published) and lead to one edit address. Per-status offers are decided below, so a surface
-// never offers a close to a row that cannot take one. `history` is the public read into a
-// published record's versions, first in the utilities row, event page only. `approvals` is the
-// stamps under the row and the Approvals trigger after History, event page only.
+// `utilities` is Share and Report, which any reader of the record may use. `flow` is geolocating
+// an open request. `edit` is the owner's way to the edit page. `collect` shelves the row on one
+// of the reader's collections. `history` (the version selector), `credit` and `approvals` (the
+// Approvals card) belong to the event page, the one surface serving the published record.
 const TIERS: Record<
   ActionSurface,
   {
     flow: boolean;
+    edit: boolean;
     collect: boolean;
-    editRequest: boolean;
-    saveVersion: boolean;
-    close: boolean;
     history: boolean;
     utilities: boolean;
     credit: boolean;
     approvals: boolean;
   }
 > = {
-  event:   { flow: false, collect: true,  editRequest: true,  saveVersion: true,  close: true,  history: true,  utilities: true,  credit: true,  approvals: true },
-  request: { flow: true,  collect: false, editRequest: true,  saveVersion: false, close: true,  history: false, utilities: true,  credit: false, approvals: false },
-  panel:   { flow: false, collect: false, editRequest: false, saveVersion: false, close: false, history: false, utilities: false, credit: false, approvals: false },
-  edit:    { flow: false, collect: false, editRequest: false, saveVersion: false, close: false, history: false, utilities: false, credit: false, approvals: false },
+  event:   { flow: false, edit: true,  collect: true,  history: true,  utilities: true,  credit: true,  approvals: true },
+  request: { flow: true,  edit: true,  collect: false, history: false, utilities: true,  credit: false, approvals: false },
+  panel:   { flow: false, edit: false, collect: false, history: false, utilities: false, credit: false, approvals: false },
+  edit:    { flow: false, edit: false, collect: false, history: false, utilities: false, credit: false, approvals: false },
 };
 
-// Ties the menu entry to the panel it opens (`aria-controls`; they are not DOM siblings).
-const CLOSE_FORM_ID = "close-request-form";
 const COLLECT_PANEL_ID = "add-to-collection-panel";
 const CREDIT_PANEL_ID = "geolocators-panel";
-const APPROVALS_PANEL_ID = "approvals-panel";
+const REPORT_PANEL_ID = "report-panel";
 
 export interface EventActionsOptions {
-  /** The row to act on. Null while it loads: both nodes come back null. */
+  /** The row to act on. Null while it loads: every node comes back null. */
   event: EventDetail | null;
   surface: ActionSurface;
-  /** Runs after a write that changes the row (close). */
+  /** Runs after a write that changes the row (a credit change, an answered invitation). */
   onChanged?: () => void;
-  /** Runs after an approval lands, which resolves review requests. */
-  onApproved?: () => void;
 }
 
 export interface EventActions {
-  /** The three-tier row, for the surface's top-right slot. */
+  /** The header controls, for the surface's top-right slot. */
   actions: ReactNode;
-  /** The panels the row's triggers open, for the body under the header. */
+  /** The panels the header's toggles open, for the body under the header. */
   panels: ReactNode;
+  /** The Approvals card, on the event page of a published row only. */
+  approvalsCard: ReactNode;
 }
 
-export function useEventActions({
-  event,
-  surface,
-  onChanged,
-  onApproved,
-}: EventActionsOptions): EventActions {
+/** A panel a header toggle opens. It mounts when opened and takes focus then, so a keyboard or
+ *  screen reader user lands in it rather than back on the toggle. */
+function HeaderPanel({ id, children }: { id: string; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => ref.current?.focus(), []);
+  return (
+    <div ref={ref} id={id} tabIndex={-1} className="outline-none">
+      {children}
+    </div>
+  );
+}
+
+export function useEventActions({ event, surface, onChanged }: EventActionsOptions): EventActions {
   const { user } = useAuth();
-  // The report control is its own state machine (works signed out, outlives other actions),
-  // consumed here so the utilities tier is assembled once.
+  // The report control is its own state machine (works signed out, outlives other actions).
   const report = useReportContent("event", event?.id ?? "");
-  const [closing, setClosing] = useState(false);
   const [collecting, setCollecting] = useState(false);
   const [crediting, setCrediting] = useState(false);
-  const [approving, setApproving] = useState(false);
 
   const tiers = event ? TIERS[surface] : null;
   const isAuthor = !!event && user?.id === event.owner.id;
@@ -132,197 +120,114 @@ export function useEventActions({
   // The event read says whether the reader holds an invitation; an answer hides the card at
   // once, before the caller's refetch lands.
   const [answeredFor, setAnsweredFor] = useState<string | null>(null);
+  const showsApprovals = !!event && !!tiers?.approvals && hasPublishedRecord(event);
   const approvals = useApiResource<ApprovalList>(
-    event && tiers?.approvals && hasPublishedRecord(event) ? allApprovalsPath(event.id) : null,
+    showsApprovals ? allApprovalsPath(event.id) : null,
   );
 
   // This hook survives a client navigation between rows, so per-event state follows the row, not
-  // the mount: otherwise the next row opens with the previous one's close panel open.
+  // the mount: otherwise the next row opens with the previous one's panel open.
   useEffect(() => {
-    setClosing(false);
     setCollecting(false);
     setCrediting(false);
-    setApproving(false);
   }, [event?.id]);
 
-  if (!event || !tiers) return { actions: null, panels: null };
+  if (!event || !tiers) return { actions: null, panels: null, approvalsCard: null };
 
   const isOpenRequest = event.status === "requested";
-
-  // Tier 3. Every owner verb is an icon button in the row, like the flow action and utilities beside
-  // it: a disclosure for two entries would cost a click on every use.
-  // The owner's edit of an open request. Owner-only, unlike geolocate: anyone may answer a request,
-  // only the asker rewrites the question. It overwrites the row rather than filing a version, so
-  // the label promises none.
-  const canEditRequest = isAuthor && tiers.editRequest && isOpenRequest;
-  const canSaveVersion = isAuthor && tiers.saveVersion && event.status === "geolocated";
-  // Every live state closes, `geolocated` included: a claim its author no longer stands behind is
-  // retracted, not left standing or destroyed. `closed` is terminal, so the verb disappears.
-  const canClose = isAuthor && tiers.close && event.status !== "closed";
-  const closeLabel = closeActionLabel(event.status);
-  // Shelving the row on one of the owner's collections. The two worked statuses only, the set a
-  // collection may hold (`services/event_filters.collectable_events`): a request is an ask and a
-  // closed row was taken back, so the control is absent rather than offered and refused.
+  // The owner edits an open request (overwriting it), a detection, or a published geolocation
+  // (adding a version). A closed row has no owner edit.
+  const canEdit = isAuthor && tiers.edit && event.status !== "closed";
+  // The two worked statuses only, the set a collection may hold
+  // (`services/event_filters.collectable_events`).
   const canCollect =
     (isAuthor || isGeolocator) && tiers.collect && COLLECTABLE_STATUSES.includes(event.status);
-  const canManageCredit = (isAuthor || isGeolocator) && sharesCredit;
+  // The owner manages credit on the edit page; a co-geolocator reads it and leaves here.
+  const canSeeCredit = !isAuthor && isGeolocator && sharesCredit;
   const invited =
     sharesCredit && !isAuthor && !isGeolocator && event.viewer_invite_pending === true &&
     answeredFor !== event.id;
-  const showsApprovals = tiers.approvals && hasPublishedRecord(event);
+  // Reporting your own event says nothing an edit or a close could not.
+  const canReport = tiers.utilities && !isAuthor;
 
-  // A surface whose tiers are all off, or off for this row, gets nothing rather than an empty row:
-  // the wrapper is an item in the host's cluster, so an empty one prints a gap beside the host's
-  // own controls.
-  const rowIsEmpty =
-    !tiers.utilities &&
-    !(tiers.flow && isOpenRequest) &&
-    !canCollect &&
-    !canManageCredit &&
-    !canEditRequest &&
-    !canSaveVersion &&
-    !canClose;
-
-  // `flex-wrap` plus `justify-end`: the row is wider than a phone, so it breaks into right-aligned
-  // lines instead of pushing the header sideways (PageShell caps the cluster at the header width).
-  const row = rowIsEmpty ? null : (
-      <div className="flex flex-wrap items-center justify-end gap-1.5">
-        {tiers.flow && isOpenRequest && (
-          <Link
-            href={`/submit?request_id=${event.id}`}
-            className={buttonClasses("primary")}
-          >
-            <MapPin size={14} />
-            Geolocate
-          </Link>
-        )}
-        {canCollect && (
-          <Button
-            icon
-            variant="ghost"
-            onClick={() => setCollecting((open) => !open)}
-            aria-controls={COLLECT_PANEL_ID}
-            aria-expanded={collecting}
-            aria-label="Add to collection"
-            title="Add to collection"
-            // The open trigger wears the active-row paint so the reader sees which control the panel belongs
-            // to. A toggle, since the panel writes on every click inside it and there is nothing to cancel.
-            className={collecting ? ACCENT_SURFACE : ""}
-          >
-            <CollectionIcon size={14} />
-          </Button>
-        )}
-        {canManageCredit && (
-          <Button
-            icon
-            variant="ghost"
-            onClick={() => setCrediting((open) => !open)}
-            aria-controls={CREDIT_PANEL_ID}
-            aria-expanded={crediting}
-            aria-label="Geolocators"
-            title="Geolocators"
-            className={crediting ? ACCENT_SURFACE : ""}
-          >
-            <Users size={14} />
-          </Button>
-        )}
-        {canEditRequest && (
-          <Link
-            href={`/events/${event.id}/edit`}
-            className={buttonClasses("ghost", { icon: true })}
-            // The same address the published correction uses; the label names the row, not the write: editing
-            // a request overwrites it, so no version is promised.
-            aria-label="Edit this request"
-            title="Edit this request"
-          >
-            <Pencil size={14} />
-          </Link>
-        )}
-        {canSaveVersion && (
-          <Link
-            href={`/events/${event.id}/edit`}
-            className={buttonClasses("ghost", { icon: true })}
-            // "Edit" alone would read as an in-place rewrite; the record is corrected by adding a version.
-            aria-label="Edit this geolocation"
-            title="Edit this geolocation (saves a new version)"
-          >
-            <Pencil size={14} />
-          </Link>
-        )}
-        {canClose && (
-          <Button
-            icon
-            variant="ghost"
-            onClick={() => setClosing(true)}
-            aria-controls={CLOSE_FORM_ID}
-            // The row is taken back, not deleted: it stays readable with its reason, so this verb is not
-            // destructive and doesn't wear the destructive colour. One verb closes every shape.
-            aria-label={closeLabel}
-            title={closeLabel}
-          >
-            <CircleX size={14} />
-          </Button>
-        )}
-        {/* The utilities tier, one unit so it stays together when the row wraps: history and approvals
-            (event page only), the share pair, then the report flag. Reading surfaces only: a form carries the controls
-            that finish the edit. */}
-        {tiers.utilities && (
-          <div className="flex items-center gap-1.5">
-            {/* The way into the record's history, first in the row. Public, since a corrected record is only
-                auditable if any reader can walk the corrections. Only a published row has versions (other
-                states are edited in place). */}
-            {tiers.history && hasPublishedRecord(event) && (
-              <Link
-                href={eventHistoryHref(event.id)}
-                className={buttonClasses("ghost", { icon: true })}
-                aria-label="Version history"
-                title="Version history"
-              >
-                <History size={14} />
-              </Link>
-            )}
-            {showsApprovals && (
-              <Button
-                icon
-                variant="ghost"
-                onClick={() => setApproving((open) => !open)}
-                aria-controls={APPROVALS_PANEL_ID}
-                aria-expanded={approving}
-                aria-label="Approvals"
-                title="Approvals"
-                className={approving ? ACCENT_SURFACE : ""}
-              >
-                <Stamp size={14} />
-              </Button>
-            )}
-            <ShareButtons
-              id={event.id}
-              title={event.title}
-              author={event.owner.username}
-              eventDate={event.event_date}
-              lat={event.event_coords?.lat ?? null}
-              lng={event.event_coords?.lng ?? null}
-              status={event.status}
-            />
-            {report.trigger}
-          </div>
-        )}
-      </div>
+  const toggle = (open: boolean, setOpen: (open: boolean) => void, label: string, id: string, icon: ReactNode) => (
+    <Button
+      icon
+      variant="ghost"
+      onClick={() => setOpen(!open)}
+      aria-controls={open ? id : undefined}
+      aria-expanded={open}
+      aria-label={label}
+      // The open toggle wears the active-row paint, so the reader sees which control the panel
+      // belongs to.
+      className={open ? ACCENT_SURFACE : ""}
+    >
+      {icon}
+    </Button>
   );
 
-  return {
-    actions: showsApprovals ? (
-      <div className="flex flex-col items-end gap-2">
-        {row}
-        {approvals.data && (
-          <ApprovalStamps approvals={approvals.data.items} onOverflow={() => setApproving(true)} />
-        )}
-      </div>
-    ) : (
-      row
+  const controls = [
+    tiers.history && hasPublishedRecord(event) && (
+      <VersionSelector
+        key="versions"
+        eventId={event.id}
+        liveVersion={event.version_no}
+        selected={event.version_no}
+      />
     ),
-    // The panels open directly under the header, where their triggers are. They stack rather than
-    // replace each other: each is its own titled card.
+    tiers.flow && isOpenRequest && (
+      <Link
+        key="geolocate"
+        href={`/submit?request_id=${event.id}`}
+        className={buttonClasses("primary")}
+      >
+        <MapPin size={14} />
+        Geolocate
+      </Link>
+    ),
+    canEdit && (
+      // A published record is corrected by adding a version, a request is overwritten: the
+      // tooltip says which, so "Edit" never reads as an in-place rewrite of a published record.
+      <Tooltip
+        key="edit"
+        label={event.status === "geolocated" ? "Edit (saves a new version)" : "Edit"}
+      >
+        <Link
+          href={`/events/${event.id}/edit`}
+          className={buttonClasses("ghost", { icon: true })}
+          aria-label="Edit"
+        >
+          <SquarePen size={14} />
+        </Link>
+      </Tooltip>
+    ),
+    tiers.utilities && <EventShare key="share" event={event} />,
+    canCollect && (
+      <Fragment key="collect">
+        {toggle(collecting, setCollecting, "Add to collection", COLLECT_PANEL_ID, <CollectionIcon size={14} />)}
+      </Fragment>
+    ),
+    canSeeCredit && (
+      <Fragment key="credit">
+        {toggle(crediting, setCrediting, "Geolocators", CREDIT_PANEL_ID, <Users size={14} />)}
+      </Fragment>
+    ),
+    canReport && <Fragment key="report">{report.trigger}</Fragment>,
+  ].filter(Boolean);
+
+  // A surface with nothing to offer gets nothing rather than an empty row: the wrapper is an item
+  // in the host's cluster, so an empty one prints a gap beside the host's own controls.
+  // `flex-wrap` plus `justify-end`: the row breaks into right-aligned lines instead of pushing the
+  // header sideways (PageShell caps the cluster at the header width).
+  const actions =
+    controls.length === 0 ? null : (
+      <div className="flex flex-wrap items-center justify-end gap-1.5">{controls}</div>
+    );
+
+  return {
+    actions,
+    // The panels open directly under the header. They stack rather than replace each other: each
+    // is its own titled card.
     panels: (
       <>
         {invited && (
@@ -334,54 +239,25 @@ export function useEventActions({
             }}
           />
         )}
-        {canManageCredit && crediting && (
-          <div id={CREDIT_PANEL_ID}>
+        {canSeeCredit && crediting && (
+          <HeaderPanel id={CREDIT_PANEL_ID}>
             <Card as="section">
               <SectionEyebrow title="Geolocators" margin="none" />
               <GeolocatorsPanel event={event} onChanged={() => onChanged?.()} />
             </Card>
-          </div>
-        )}
-        {showsApprovals && approving && (
-          <div id={APPROVALS_PANEL_ID}>
-            <Card as="section">
-              <SectionEyebrow title="Approvals" margin="none" />
-              <ApprovalsPanel
-                event={event}
-                approvals={approvals}
-                onApproved={() => onApproved?.()}
-              />
-            </Card>
-          </div>
+          </HeaderPanel>
         )}
         {canCollect && collecting && (
-          <div id={COLLECT_PANEL_ID}>
+          <HeaderPanel id={COLLECT_PANEL_ID}>
             <Card as="section">
               <SectionEyebrow title="Add to collection" margin="none" />
               <AddToCollectionPanel eventId={event.id} />
             </Card>
-          </div>
+          </HeaderPanel>
         )}
-        {closing && (
-          // The `id` sits on a wrapper, not the Card, so `aria-controls` on a non-sibling trigger still
-          // resolves (same shape as the report form).
-          <div id={CLOSE_FORM_ID}>
-            <Card as="section">
-              <SectionEyebrow title={closeLabel} margin="none" />
-              <CloseEventForm
-                eventId={event.id}
-                status={event.status}
-                onClosed={() => {
-                  setClosing(false);
-                  onChanged?.();
-                }}
-                onCancel={() => setClosing(false)}
-              />
-            </Card>
-          </div>
-        )}
-        {report.panel}
+        {canReport && report.panel && <HeaderPanel id={REPORT_PANEL_ID}>{report.panel}</HeaderPanel>}
       </>
     ),
+    approvalsCard: showsApprovals ? <ApprovalsCard event={event} approvals={approvals} /> : null,
   };
 }

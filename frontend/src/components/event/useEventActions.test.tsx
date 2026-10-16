@@ -1,42 +1,53 @@
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useEventActions, type ActionSurface } from "./useEventActions";
 import type { Approval } from "@/lib/approvals";
 import type { BeforeClosedStatus, EventDetail, EventStatus } from "@/types";
 
-const api = vi.hoisted(() => ({ approvals: [] as unknown[], apiFetch: vi.fn() }));
+type Viewer = { id: string; username: string } | null;
+
+const api = vi.hoisted(() => ({
+  approvals: [] as unknown[],
+  apiFetch: vi.fn(),
+  viewer: null as { id: string; username: string } | null,
+}));
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
   apiFetch: api.apiFetch,
 }));
+vi.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => ({ user: api.viewer }),
+}));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+}));
+
+const OWNER = { id: "u1", username: "ana" };
+const CO_GEOLOCATOR = { id: "u2", username: "bo" };
+const ANALYST = { id: "u3", username: "cy" };
+
 beforeEach(() => {
   api.approvals = [];
+  api.viewer = OWNER;
+  api.apiFetch.mockReset();
   api.apiFetch.mockImplementation((path: string) =>
     Promise.resolve(
       path === "/events/e1/approvals?all_versions=true"
-        ? { items: api.approvals, viewer_can_approve: true }
+        ? {
+            items: api.approvals,
+            // What the server says: signed in and outside the credit.
+            viewer_can_approve: api.viewer !== null && ![OWNER.id, CO_GEOLOCATOR.id].includes(api.viewer.id),
+          }
         : [],
     ),
   );
 });
 
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
-}));
-
-// The signed-in reader, fixed. `viewer="visitor"` hands them a row somebody else owns (what an open
-// request looks like to the analyst who might answer it).
-const AUTHOR = { id: "u1", username: "ana" };
-const SOMEONE_ELSE = { id: "u2", username: "bo" };
-vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ user: { id: "u1", username: "ana" } }),
-}));
-
 function eventFixture(
   status: EventStatus,
   beforeClosedStatus: BeforeClosedStatus | null = null,
-  owner: { id: string; username: string } = AUTHOR
+  versionNo = 1,
 ): EventDetail {
   return {
     id: "e1",
@@ -49,13 +60,13 @@ function eventFixture(
     event_time: null,
     source_posted_at: "2026-05-30T14:32:00Z",
     status,
-    version_no: 1,
+    version_no: versionNo,
     is_graphic: false,
     close_reason: null,
     before_closed_status: beforeClosedStatus,
     detected_from_url: null,
     detected_via: null,
-    owner,
+    owner: OWNER,
     tags: [],
     conflicts: [],
     source_url: "https://t.me/channel/12345",
@@ -68,7 +79,7 @@ function eventFixture(
     media: [],
     thumbnail: null,
     requested_by: null,
-    geolocators: [],
+    geolocators: status === "geolocated" ? [OWNER, CO_GEOLOCATOR] : [],
   };
 }
 
@@ -76,258 +87,32 @@ function Harness({
   status,
   surface,
   beforeClosedStatus = null,
-  viewer = "author",
+  versionNo = 1,
 }: {
   status: EventStatus;
   surface: ActionSurface;
   beforeClosedStatus?: BeforeClosedStatus | null;
-  viewer?: "author" | "visitor";
+  versionNo?: number;
 }) {
-  const { actions, panels } = useEventActions({
-    event: eventFixture(
-      status,
-      beforeClosedStatus,
-      viewer === "author" ? AUTHOR : SOMEONE_ELSE
-    ),
+  const { actions, panels, approvalsCard } = useEventActions({
+    event: eventFixture(status, beforeClosedStatus, versionNo),
     surface,
   });
   return (
     <>
-      {actions}
+      {actions && <header data-testid="header">{actions}</header>}
       {panels}
+      {approvalsCard}
     </>
   );
 }
 
-/** The close control the row is showing, as its accessible name, or `null`. */
-function closeControl(): string | null {
-  for (const name of [
-    "Close this request",
-    "Close this detection",
-    "Close this geolocation",
-    "Close this event",
-  ]) {
-    if (screen.queryByRole("button", { name }) !== null) return name;
-  }
-  return null;
+function renderAs(viewer: Viewer, props: Parameters<typeof Harness>[0]) {
+  api.viewer = viewer;
+  return render(<Harness {...props} />);
 }
 
-/** No surface offers a destructive verb (an owner takes a row back, an admin removes it). Matched
- * loosely so a delete control under any wording fails. */
-function hasDeleteControl(): boolean {
-  return screen.queryByRole("button", { name: /delete/i }) !== null;
-}
-
-describe("owner management: correcting, taking back, and never destroying", () => {
-  // Every owner verb is a control in the row, with no disclosure to open first.
-  it("offers the published correction on the event surface as a visible icon", () => {
-    render(<Harness status="geolocated" surface="event" />);
-    expect(screen.getByRole("link", { name: "Edit this geolocation" })).toHaveAttribute(
-      "href",
-      "/events/e1/edit"
-    );
-  });
-
-  it.each<EventStatus>(["requested", "closed", "detected"])(
-    "shows no edit icon on the event surface for a %s row",
-    (status) => {
-      render(<Harness status={status} surface="event" />);
-      expect(screen.queryByRole("link", { name: "Edit this geolocation" })).toBeNull();
-    }
-  );
-
-  // The owner's other edit, on a request: overwritten rather than versioned, so the label promises
-  // no version; both detail surfaces carry it.
-  it.each<ActionSurface>(["event", "request"])(
-    "offers the request edit on the %s surface as a visible icon",
-    (surface) => {
-      render(<Harness status="requested" surface={surface} />);
-      expect(screen.getByRole("link", { name: "Edit this request" })).toHaveAttribute(
-        "href",
-        "/events/e1/edit"
-      );
-      // The two edits never stand together: no row is both requested and published.
-      expect(screen.queryByRole("link", { name: "Edit this geolocation" })).toBeNull();
-    }
-  );
-
-  it.each<EventStatus>(["geolocated", "detected", "closed"])(
-    "shows no request edit for a %s row",
-    (status) => {
-      render(<Harness status={status} surface="request" />);
-      expect(screen.queryByRole("link", { name: "Edit this request" })).toBeNull();
-    }
-  );
-
-  // Anyone may answer an open request; only the asker rewrites it. A visitor gets geolocate and no owner tier.
-  it.each<ActionSurface>(["event", "request"])(
-    "shows a visitor no request edit on the %s surface",
-    (surface) => {
-      render(<Harness status="requested" surface={surface} viewer="visitor" />);
-      expect(screen.queryByRole("link", { name: "Edit this request" })).toBeNull();
-      expect(closeControl()).toBeNull();
-    }
-  );
-
-  // One verb closes all three live states; the noun names the row.
-  it.each<[EventStatus, string]>([
-    ["requested", "Close this request"],
-    ["detected", "Close this detection"],
-    ["geolocated", "Close this geolocation"],
-  ])("names the row a %s close applies to", (status, label) => {
-    render(<Harness status={status} surface="event" />);
-    expect(closeControl()).toBe(label);
-  });
-
-  it.each<ActionSurface>(["event", "request"])(
-    "carries the close verb on the %s surface",
-    (surface) => {
-      render(<Harness status="requested" surface={surface} />);
-      expect(closeControl()).toBe("Close this request");
-    }
-  );
-
-  // Closing is terminal with no owner un-close, so the verb goes once taken.
-  it.each<ActionSurface>(["event", "request"])(
-    "offers nothing to close on a closed row (%s surface)",
-    (surface) => {
-      render(<Harness status="closed" surface={surface} beforeClosedStatus="requested" />);
-      expect(closeControl()).toBeNull();
-    }
-  );
-
-  // Destruction is admin-only, so no surface and no status shows a delete.
-  it.each<EventStatus>(["requested", "detected", "geolocated", "closed"])(
-    "offers no delete for a %s row on either detail surface",
-    (status) => {
-      for (const surface of ["event", "request"] as const) {
-        const { unmount } = render(<Harness status={status} surface={surface} />);
-        expect(hasDeleteControl()).toBe(false);
-        unmount();
-      }
-    }
-  );
-
-  // The reason makes a closed row a decision, not a disappearance, so its panel opens named for the row.
-  it("opens the close panel named for the row it closes", () => {
-    render(<Harness status="geolocated" surface="event" />);
-    fireEvent.click(screen.getByRole("button", { name: "Close this geolocation" }));
-    expect(screen.getByLabelText("Close reason")).toBeInTheDocument();
-    // The panel's submit repeats the label, so the reader confirms the row they picked.
-    expect(screen.getAllByRole("button", { name: "Close this geolocation" })).toHaveLength(2);
-  });
-
-  it("gives the map panel no action row at all", () => {
-    const { container } = render(<Harness status="geolocated" surface="panel" />);
-    expect(container).toBeEmptyDOMElement();
-  });
-});
-
-function CreditHarness({ status }: { status: EventStatus }) {
-  const event = {
-    ...eventFixture(status, null, SOMEONE_ELSE),
-    geolocators: [SOMEONE_ELSE, AUTHOR],
-  };
-  const { actions } = useEventActions({ event, surface: "event" });
-  return <>{actions}</>;
-}
-
-describe("shared credit", () => {
-  it("opens the geolocators panel for the owner of a published row", () => {
-    render(<Harness status="geolocated" surface="event" />);
-    fireEvent.click(screen.getByRole("button", { name: "Geolocators" }));
-    expect(screen.getByRole("heading", { name: "Geolocators" })).toBeInTheDocument();
-  });
-
-  it.each<EventStatus>(["requested", "detected"])("offers no geolocators panel on a %s row", (status) => {
-    render(<Harness status={status} surface="event" />);
-    expect(screen.queryByRole("button", { name: "Geolocators" })).toBeNull();
-  });
-
-  // Credit only: a co-geolocator shelves the row and sees its geolocators, and never edits or closes it.
-  it("gives a co-geolocator the panel and the collection control, not the owner's verbs", () => {
-    render(<CreditHarness status="geolocated" />);
-    expect(screen.getByRole("button", { name: "Geolocators" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add to collection" })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Edit this geolocation" })).toBeNull();
-    expect(closeControl()).toBeNull();
-  });
-});
-
-describe("utilities are the detail pages' tier", () => {
-  // Sharing and flagging are reads, so the pages that show a record carry them.
-  it.each<ActionSurface>(["event", "request"])(
-    "carries the X share and the report flag on the %s surface",
-    (surface) => {
-      render(<Harness status="geolocated" surface={surface} />);
-      expect(screen.getByRole("button", { name: "Share on X" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Report" })).toBeInTheDocument();
-    }
-  );
-
-  // The form rewrites a record, so sharing or reporting there would act on something other than what
-  // is on screen; the map panel previews a page whose actions live there.
-  it.each<ActionSurface>(["edit", "panel"])(
-    "carries none on the %s surface, and no row at all",
-    (surface) => {
-      const { container } = render(<Harness status="geolocated" surface={surface} />);
-      expect(screen.queryByRole("button", { name: "Share on X" })).toBeNull();
-      expect(screen.queryByRole("button", { name: "Report" })).toBeNull();
-      expect(closeControl()).toBeNull();
-      // Not merely empty: an empty wrapper is still a flex item, and a host adds its own controls to that cluster.
-      expect(container).toBeEmptyDOMElement();
-    }
-  );
-
-  // The history is a public read, like the record: a corrected record is auditable only where any
-  // reader can walk the corrections. Event page only, the one surface serving the record whose
-  // versions it lists.
-  it("opens the version history from the event surface of a published row", () => {
-    render(<Harness status="geolocated" surface="event" />);
-    expect(screen.getByRole("link", { name: "Version history" })).toHaveAttribute(
-      "href",
-      "/events/e1/history"
-    );
-  });
-
-  // A retraction keeps the record it took back, so the history is what a reader most needs after one.
-  it("keeps the version history on a retracted row", () => {
-    render(<Harness status="closed" surface="event" beforeClosedStatus="geolocated" />);
-    expect(screen.getByRole("link", { name: "Version history" })).toHaveAttribute(
-      "href",
-      "/events/e1/history"
-    );
-  });
-
-  it.each<[EventStatus, BeforeClosedStatus | null]>([
-    ["requested", null],
-    ["detected", null],
-    ["closed", "requested"],
-    ["closed", "detected"],
-  ])("offers no version history for a %s row, which never published", (status, before) => {
-    render(<Harness status={status} surface="event" beforeClosedStatus={before} />);
-    expect(screen.queryByRole("link", { name: "Version history" })).toBeNull();
-  });
-
-  it.each<ActionSurface>(["request", "edit", "panel"])(
-    "carries no version history on the %s surface",
-    (surface) => {
-      render(<Harness status="geolocated" surface={surface} />);
-      expect(screen.queryByRole("link", { name: "Version history" })).toBeNull();
-    }
-  );
-
-  // The link is in the address bar already; the coordinates, which aren't, keep their copy control.
-  it("offers no copy-link control anywhere", () => {
-    for (const surface of ["event", "request"] as const) {
-      const { unmount } = render(
-        <Harness status="geolocated" surface={surface} />
-      );
-      expect(screen.queryByRole("button", { name: "Copy link" })).toBeNull();
-      unmount();
-    }
-  });
-});
+const header = () => screen.getByTestId("header");
 
 const stamp = (id: string, username: string, over: Partial<Approval> = {}): Approval => ({
   id,
@@ -344,54 +129,201 @@ const stamp = (id: string, username: string, over: Partial<Approval> = {}): Appr
   ...over,
 });
 
-describe("approvals", () => {
-  // The stamps sit at the top right, under the row; the panel stays shut until asked for.
-  it("stamps the current approvals under the row and keeps the panel closed", async () => {
-    api.approvals = [
-      stamp("a1", "maya"),
-      stamp("a2", "bo", {
-        organization: { slug: "geo-collective", name: "Geo Collective", avatar_url: null },
-      }),
-      stamp("a3", "cy", { current: false, revoked_at: "2026-10-16T09:00:00Z" }),
-    ];
-    render(<Harness status="geolocated" surface="event" viewer="visitor" />);
+/** The header's controls, buttons and links, left to right, by accessible name. */
+const headerControls = () =>
+  [...header().querySelectorAll<HTMLElement>("button, a")].map(
+    (el) => el.getAttribute("aria-label") ?? el.textContent,
+  );
 
-    const stamps = await screen.findByRole("list", { name: "Approved by" });
-    expect(within(stamps).getByRole("button", { name: "Approved by maya" })).toBeInTheDocument();
-    expect(
-      within(stamps).getByRole("button", { name: "Approved by Geo Collective" }),
-    ).toBeInTheDocument();
-    expect(within(stamps).queryByRole("button", { name: "Approved by cy" })).toBeNull();
-    expect(screen.queryByRole("heading", { name: "Approvals" })).toBeNull();
+describe("the event header per reader", () => {
+  it("gives the owner the version, Edit, Share and Add to collection, and no report", async () => {
+    renderAs(OWNER, { status: "geolocated", surface: "event" });
+    expect(headerControls()).toEqual([
+      "v1: choose a version",
+      "Edit",
+      "Share",
+      "Add to collection",
+    ]);
+    expect(within(header()).getByRole("link", { name: "Edit" })).toHaveAttribute(
+      "href",
+      "/events/e1/edit",
+    );
+    await screen.findByText("No approvals yet");
   });
 
-  it("opens the Approvals panel from the header trigger and from the overflow bubble", async () => {
-    api.approvals = Array.from({ length: 7 }, (_, i) => stamp(`a${i}`, `r${i}`));
-    render(<Harness status="geolocated" surface="event" viewer="visitor" />);
+  // Approving starts from the Approvals card, after reading the record.
+  it("gives an analyst who may approve the version, Share and Report; Approve waits in the card", async () => {
+    renderAs(ANALYST, { status: "geolocated", surface: "event" });
+    const card = await screen.findByRole("region", { name: "Approvals" });
+    expect(await within(card).findByRole("button", { name: "Approve" })).toBeInTheDocument();
+    expect(headerControls()).toEqual(["v1: choose a version", "Share", "Report"]);
+  });
 
-    fireEvent.click(await screen.findByRole("button", { name: "Show 2 more approvals" }));
-    expect(screen.getByRole("heading", { name: "Approvals" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Version 1, current" })).toBeInTheDocument();
+  // Credit only: a co-geolocator shelves the row and reads its geolocators (where they leave),
+  // and never edits, closes or approves it.
+  it("gives a co-geolocator Add to collection and Geolocators beside Share and Report", async () => {
+    renderAs(CO_GEOLOCATOR, { status: "geolocated", surface: "event" });
+    await screen.findByText("No approvals yet");
+    expect(headerControls()).toEqual([
+      "v1: choose a version",
+      "Share",
+      "Add to collection",
+      "Geolocators",
+      "Report",
+    ]);
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+  });
 
-    const trigger = screen.getByRole("button", { name: "Approvals" });
-    expect(trigger).toHaveAttribute("aria-expanded", "true");
+  it("gives a signed-out reader the version, Share and Report", async () => {
+    renderAs(null, { status: "geolocated", surface: "event" });
+    await screen.findByText("No approvals yet");
+    expect(headerControls()).toEqual(["v1: choose a version", "Share", "Report"]);
+  });
+
+  it("carries no menu, no close, no stamps and no approve control in the header", async () => {
+    api.approvals = [stamp("a1", "maya")];
+    renderAs(OWNER, { status: "geolocated", surface: "event" });
+    await screen.findByRole("button", { name: "Approved by maya" });
+    expect(within(header()).queryByRole("button", { name: "More actions" })).toBeNull();
+    expect(within(header()).queryByRole("button", { name: /^Close/ })).toBeNull();
+    expect(within(header()).queryByRole("list", { name: "Approved by" })).toBeNull();
+    expect(within(header()).queryByRole("button", { name: /^Approve\b/ })).toBeNull();
+  });
+});
+
+describe("the owner's edit", () => {
+  it.each<EventStatus>(["requested", "detected", "geolocated"])(
+    "leads the owner of a %s row to the edit page, where they also close it",
+    (status) => {
+      renderAs(OWNER, { status, surface: "event" });
+      expect(within(header()).getByRole("link", { name: "Edit" })).toHaveAttribute(
+        "href",
+        "/events/e1/edit",
+      );
+    },
+  );
+
+  it("offers no edit on a closed row", () => {
+    renderAs(OWNER, { status: "closed", surface: "event", beforeClosedStatus: "geolocated" });
+    expect(within(header()).queryByRole("link", { name: "Edit" })).toBeNull();
+  });
+
+  it("keeps Geolocate filled on the request page, beside the asker's Edit", () => {
+    renderAs(OWNER, { status: "requested", surface: "request" });
+    expect(headerControls()).toEqual(["Geolocate", "Edit", "Share"]);
+    expect(within(header()).getByRole("link", { name: "Geolocate" })).toHaveAttribute(
+      "href",
+      "/submit?request_id=e1",
+    );
+  });
+
+  it("shows a visitor Geolocate, Share and Report on the request page", () => {
+    renderAs(ANALYST, { status: "requested", surface: "request" });
+    expect(headerControls()).toEqual(["Geolocate", "Share", "Report"]);
+  });
+
+  // Destruction is admin-only, so no surface and no status shows a delete.
+  it.each<EventStatus>(["requested", "detected", "geolocated", "closed"])(
+    "offers no delete for a %s row on either detail surface",
+    (status) => {
+      for (const surface of ["event", "request"] as const) {
+        const { unmount } = renderAs(OWNER, { status, surface });
+        expect(screen.queryByRole("button", { name: /delete/i })).toBeNull();
+        unmount();
+      }
+    },
+  );
+
+  it.each<ActionSurface>(["edit", "panel"])("gives the %s surface no header at all", (surface) => {
+    const { container } = renderAs(OWNER, { status: "geolocated", surface });
+    expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe("panels the header opens", () => {
+  it("opens and closes the collection picker, marking its toggle while open", async () => {
+    renderAs(OWNER, { status: "geolocated", surface: "event" });
+    const toggle = within(header()).getByRole("button", { name: "Add to collection" });
+    fireEvent.click(toggle);
+    expect(screen.getByRole("heading", { name: "Add to collection" })).toBeInTheDocument();
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await waitFor(() => expect(document.getElementById("add-to-collection-panel")).toHaveFocus());
+
+    fireEvent.click(toggle);
+    expect(screen.queryByRole("heading", { name: "Add to collection" })).toBeNull();
+  });
+
+  it("opens the geolocators panel for a co-geolocator, where they leave", () => {
+    renderAs(CO_GEOLOCATOR, { status: "geolocated", surface: "event" });
+    fireEvent.click(within(header()).getByRole("button", { name: "Geolocators" }));
+    expect(screen.getByRole("heading", { name: "Geolocators" })).toBeInTheDocument();
+  });
+
+  it.each<EventStatus>(["requested", "detected"])("offers no geolocators panel on a %s row", (status) => {
+    renderAs(CO_GEOLOCATOR, { status, surface: "event" });
+    expect(within(header()).queryByRole("button", { name: "Geolocators" })).toBeNull();
+  });
+
+  it("opens the report form, signed out", () => {
+    renderAs(null, { status: "geolocated", surface: "event" });
+    fireEvent.click(within(header()).getByRole("button", { name: "Report" }));
+    expect(screen.getByRole("heading", { name: "Report this event" })).toBeInTheDocument();
+  });
+});
+
+describe("the version selector", () => {
+  it("names the version on screen and lists every version newest first, then the full history", () => {
+    renderAs(null, { status: "geolocated", surface: "event", versionNo: 3 });
+    const trigger = within(header()).getByRole("button", { name: "v3: choose a version" });
+    expect(trigger).toHaveTextContent("v3");
     fireEvent.click(trigger);
-    expect(screen.queryByRole("heading", { name: "Approvals" })).toBeNull();
+
+    const items = within(screen.getByRole("menu", { name: "Versions" })).getAllByRole("menuitem");
+    expect(items.map((item) => [item.textContent, item.getAttribute("href")])).toEqual([
+      ["Version 3 Current", "/events/e1"],
+      ["Version 2", "/events/e1/v2"],
+      ["Version 1", "/events/e1/v1"],
+      ["Full history", "/events/e1/history"],
+    ]);
+    expect(items[0]).toHaveAttribute("aria-current", "page");
+    expect(items[0]).toHaveFocus();
   });
 
-  it("stamps nothing while no approval stands", async () => {
-    render(<Harness status="geolocated" surface="event" viewer="visitor" />);
-    expect(await screen.findByRole("button", { name: "Approvals" })).toBeInTheDocument();
-    expect(screen.queryByRole("list", { name: "Approved by" })).toBeNull();
+  // A retraction keeps the record it took back, so its versions are what a reader most needs after one.
+  it("stays on a retracted row", () => {
+    renderAs(null, { status: "closed", surface: "event", beforeClosedStatus: "geolocated" });
+    expect(within(header()).getByRole("button", { name: "v1: choose a version" })).toBeInTheDocument();
+  });
+
+  it.each<[EventStatus, BeforeClosedStatus | null]>([
+    ["requested", null],
+    ["detected", null],
+    ["closed", "requested"],
+    ["closed", "detected"],
+  ])("is absent from a %s row, which never published", (status, before) => {
+    renderAs(OWNER, { status, surface: "event", beforeClosedStatus: before });
+    expect(within(header()).queryByRole("button", { name: /choose a version/ })).toBeNull();
+  });
+
+  it("is absent from the request page", () => {
+    renderAs(null, { status: "geolocated", surface: "request" });
+    expect(within(header()).queryByRole("button", { name: /choose a version/ })).toBeNull();
+  });
+});
+
+describe("the Approvals card", () => {
+  it("comes with the event page of a published row", async () => {
+    renderAs(null, { status: "geolocated", surface: "event" });
+    expect(await screen.findByRole("region", { name: "Approvals" })).toBeInTheDocument();
   });
 
   it.each<[ActionSurface, EventStatus]>([
     ["request", "geolocated"],
     ["panel", "geolocated"],
     ["event", "requested"],
-  ])("carries no approvals on the %s surface of a %s row", (surface, status) => {
-    render(<Harness status={status} surface={surface} viewer="visitor" />);
-    expect(screen.queryByRole("button", { name: "Approvals" })).toBeNull();
+  ])("is absent from the %s surface of a %s row, which reads no approvals", (surface, status) => {
+    renderAs(null, { status, surface });
+    expect(screen.queryByRole("region", { name: "Approvals" })).toBeNull();
     expect(api.apiFetch).not.toHaveBeenCalledWith(
       "/events/e1/approvals?all_versions=true",
       expect.anything(),

@@ -123,7 +123,7 @@ decided_at  # models/x_handle_request.py + schemas/x_handle_request.py: decline-
 redacted_by_id  # models/event.py EventVersion
 # Written by ``services/approvals.revoke``; the public read is ``revoked_as``, the role.
 revoked_by_id  # models/approval.py EventApproval
-analysts  # schemas/review_request.py ReviewRequestTargetList (wire field)
+analysts  # schemas/approval_request.py ApprovalRequestTargetList (wire field)
 approval  # schemas/approval.py OrganizationApprovalRead (wire field)
 last_success_at  # models/push_subscription.py + schemas/push.py: worker-stamped, wire-read only
 viewer_invite_pending  # schemas/event.py EventRead: set by GET /events/{id}, read on the wire

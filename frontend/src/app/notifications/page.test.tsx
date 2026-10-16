@@ -38,7 +38,7 @@ const fulfilled: Notification = {
   invite_pending: false,
   reapprove_version: null,
   approved_version: null,
-  review_request_id: null,
+  approval_request_id: null,
 };
 const follower: Notification = {
   id: "n1",
@@ -51,7 +51,7 @@ const follower: Notification = {
   invite_pending: false,
   reapprove_version: null,
   approved_version: null,
-  review_request_id: null,
+  approval_request_id: null,
 };
 const orgInvite: Notification = {
   id: "n3",
@@ -64,7 +64,7 @@ const orgInvite: Notification = {
   invite_pending: false,
   reapprove_version: null,
   approved_version: null,
-  review_request_id: null,
+  approval_request_id: null,
 };
 
 function serve(items: Notification[]) {
@@ -184,11 +184,11 @@ describe("NotificationsPage", () => {
     const asked: Notification = {
       ...follower,
       id: "n6",
-      kind: "review_request_received",
+      kind: "approval_request_received",
       event: { id: "e8", title: "Bridge strike" },
       organization,
       reapprove_version: 2,
-      review_request_id: "r1",
+      approval_request_id: "r1",
     };
     serve([reapprove, asked]);
     render(<NotificationsPage />);
@@ -199,25 +199,25 @@ describe("NotificationsPage", () => {
       }),
     ).toHaveAttribute("href", "/events/e7");
     expect(
-      screen.getByRole("link", { name: /cy asked Open Source Watch to review: Bridge strike/ }),
+      screen.getByRole("link", { name: /cy asked Open Source Watch to approve: Bridge strike/ }),
     ).toHaveAttribute("href", "/events/e8");
     expect(screen.queryByRole("button", { name: /Approve/ })).toBeNull();
   });
 
-  it("declines an open review request from its row, and offers nothing once it is resolved", async () => {
+  it("declines an open approval request from its row, and offers nothing once it is resolved", async () => {
     const asked: Notification = {
       ...follower,
       id: "n7",
-      kind: "review_request_received",
+      kind: "approval_request_received",
       event: { id: "e8", title: "Bridge strike" },
       reapprove_version: 2,
-      review_request_id: "r1",
+      approval_request_id: "r1",
     };
-    serve([asked, { ...asked, id: "n8", reapprove_version: null, review_request_id: null }]);
+    serve([asked, { ...asked, id: "n8", reapprove_version: null, approval_request_id: null }]);
     render(<NotificationsPage />);
 
     const links = await screen.findAllByRole("link", {
-      name: /cy asked you to review: Bridge strike/,
+      name: /cy asked you to approve: Bridge strike/,
     });
     expect(links).toHaveLength(2);
     const decline = screen.getByRole("button", { name: "Decline" });
@@ -227,7 +227,7 @@ describe("NotificationsPage", () => {
     fireEvent.click(decline);
 
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/events/e8/review-requests/r1/decline", {
+      expect(api.apiFetch).toHaveBeenCalledWith("/events/e8/approval-requests/r1/decline", {
         method: "POST",
       }),
     );

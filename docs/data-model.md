@@ -53,9 +53,9 @@ flowchart LR
   an analyst outside the credit attests one version`"]:::spec
   approvals[("`**event_approvals**
   current only on the live version`")]:::store
-  ask_review["`**POST /events/{id}/review-requests**
-  a geolocator asks an analyst to review the row`"]:::spec
-  review_requests[("`**review_requests**
+  ask_review["`**POST /events/{id}/approval-requests**
+  a geolocator asks an analyst to approve the row`"]:::spec
+  approval_requests[("`**approval_requests**
   open until approved or declined`")]:::store
   reports[("`**content_reports**
   any viewer, signed in or not; a row names an event or a collection`")]:::store
@@ -75,8 +75,8 @@ flowchart LR
   geolocated --> invite --> credit
   version --> versions
   geolocated --> approve --> approvals
-  geolocated --> ask_review --> review_requests
-  approve --> review_requests
+  geolocated --> ask_review --> approval_requests
+  approve --> approval_requests
   requested --> close
   detected --> close
   geolocated --> close
@@ -87,7 +87,7 @@ flowchart LR
   shelve --> shelves
 ```
 
-The three entries on the left are the three ways a row is born: a request and a direct submit come from [`POST /events/requests` and `POST /events`](api.md#post-events), and a machine detection comes from the [ingest engine](ingestion.md). The four statuses and the constraints that pin them are [`events`](#events). The four writes are `update_request`, `geolocate`, `save_version` and `close`, all in [`api.md`](api.md). Two of them correct a row rather than move it, and they differ on what the row is: `update_request` overwrites an open question, while `save_version` files what it supersedes, because a published row is a vouched claim. The tables on the right exist because a write happened: [`event_geolocators`](#event_geolocators) records who vouched, the owner and every analyst who accepted an invitation ([`event_geolocator_invites`](#event_geolocator_invites)), [`event_versions`](#event_versions) holds what a correction superseded, [`event_approvals`](#event_approvals) holds who attested which version, [`review_requests`](#review_requests) holds who was asked to, [`content_reports`](#content_reports) holds what a viewer flagged, and [`collections`](#collections) with [`collection_events`](#collection_events) holds the curated sets a credited analyst puts the row on.
+The three entries on the left are the three ways a row is born: a request and a direct submit come from [`POST /events/requests` and `POST /events`](api.md#post-events), and a machine detection comes from the [ingest engine](ingestion.md). The four statuses and the constraints that pin them are [`events`](#events). The four writes are `update_request`, `geolocate`, `save_version` and `close`, all in [`api.md`](api.md). Two of them correct a row rather than move it, and they differ on what the row is: `update_request` overwrites an open question, while `save_version` files what it supersedes, because a published row is a vouched claim. The tables on the right exist because a write happened: [`event_geolocators`](#event_geolocators) records who vouched, the owner and every analyst who accepted an invitation ([`event_geolocator_invites`](#event_geolocator_invites)), [`event_versions`](#event_versions) holds what a correction superseded, [`event_approvals`](#event_approvals) holds who attested which version, [`approval_requests`](#approval_requests) holds who was asked to, [`content_reports`](#content_reports) holds what a viewer flagged, and [`collections`](#collections) with [`collection_events`](#collection_events) holds the curated sets a credited analyst puts the row on.
 
 ## Schema overview
 
@@ -248,7 +248,7 @@ erDiagram
         VARCHAR revoked_as "nullable: reviewer, organization_manager, site_admin"
     }
 
-    review_requests {
+    approval_requests {
         UUID id PK
         UUID event_id FK
         INT version_no "live when sent"
@@ -348,7 +348,7 @@ erDiagram
         TEXT bio "nullable"
         TEXT avatar_url "nullable"
         JSONB external_links "default {}"
-        VARCHAR review_request_audience "following, everyone, nobody"
+        VARCHAR approval_request_audience "following, everyone, nobody"
         UUID created_by_id FK "nullable, the site admin"
         TIMESTAMPTZ created_at
     }
@@ -442,7 +442,7 @@ erDiagram
         UUID user_id PK
         JSONB notification_overrides "per-kind, per-channel overrides only"
         JSONB display "palette, theme, help_tooltips"
-        VARCHAR review_request_audience "following, everyone, nobody"
+        VARCHAR approval_request_audience "following, everyone, nobody"
         TIMESTAMPTZ updated_at
     }
 
@@ -514,9 +514,9 @@ erDiagram
     events ||--o{ event_approvals : "event_id"
     users ||--o{ event_approvals : "reviewer_id"
     users |o--o{ event_approvals : "revoked_by_id"
-    events ||--o{ review_requests : "event_id"
-    users ||--o{ review_requests : "requester_id"
-    users |o--o{ review_requests : "target_user_id"
+    events ||--o{ approval_requests : "event_id"
+    users ||--o{ approval_requests : "requester_id"
+    users |o--o{ approval_requests : "target_user_id"
     events ||--o{ event_source_links : "event_id"
     events ||--o{ event_versions : "event_id"
     users ||--o{ event_versions : "edited_by_id"
@@ -547,7 +547,7 @@ erDiagram
     users ||--o{ organization_members : "user_id"
     organizations ||--o{ organization_invites : "organization_id"
     organizations |o--o{ event_approvals : "organization_id"
-    organizations |o--o{ review_requests : "target_organization_id"
+    organizations |o--o{ approval_requests : "target_organization_id"
     users ||--o{ organization_invites : "user_id"
     users |o--o{ organization_invites : "invited_by_id"
     users |o--o{ organizations : "created_by_id"
@@ -810,7 +810,7 @@ The service caps geolocators plus pending invitations at 10 per event (`MAX_EVEN
 
 ### `event_geolocator_departures`
 
-An analyst who held an event's credit and lost it: the owner removed them, or they left. [`services/geolocator_credit.remove`](../backend/app/services/geolocator_credit.py) writes the row in the transaction that deletes the `event_geolocators` row. A former geolocator neither approves the event nor receives a review request for it, as a current one.
+An analyst who held an event's credit and lost it: the owner removed them, or they left. [`services/geolocator_credit.remove`](../backend/app/services/geolocator_credit.py) writes the row in the transaction that deletes the `event_geolocators` row. A former geolocator neither approves the event nor receives an approval request for it, as a current one.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -855,9 +855,9 @@ An analyst's attestation, or an organization's through one of its org managers, 
 
 ---
 
-### `review_requests`
+### `approval_requests`
 
-A geolocator's request that an analyst or an organization review an event, written through [`/events/{id}/review-requests`](api.md#review-requests). A row is open until the target approves the event, on any version, or declines it, and stays once resolved. Accepting a co-geolocator invitation deletes the open rows addressed to the new geolocator.
+A geolocator's request that an analyst or an organization review an event, written through [`/events/{id}/approval-requests`](api.md#approval-requests). A row is open until the target approves the event, on any version, or declines it, and stays once resolved. Accepting a co-geolocator invitation deletes the open rows addressed to the new geolocator.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -866,17 +866,17 @@ A geolocator's request that an analyst or an organization review an event, writt
 | `version_no` | `INTEGER` | NOT NULL. The live `events.version_no` when the request was sent. |
 | `requester_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The geolocator who asked. |
 | `target_user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, nullable. The analyst asked. |
-| `target_organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, nullable. The organization asked. `ck_review_requests_one_target` (`num_nonnulls(target_user_id, target_organization_id) = 1`) sets exactly one of the two targets. |
-| `status` | `VARCHAR(20)` | NOT NULL, default `'open'`, CHECK in `('open', 'approved', 'declined', 'withdrawn')` (constraint `ck_review_requests_status_valid`). `withdrawn` marks a request whose requester lost their credit on the event. `ReviewRequestStatus` in [`models/review_request.py`](../backend/app/models/review_request.py) lists the same values. |
+| `target_organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, nullable. The organization asked. `ck_approval_requests_one_target` (`num_nonnulls(target_user_id, target_organization_id) = 1`) sets exactly one of the two targets. |
+| `status` | `VARCHAR(20)` | NOT NULL, default `'open'`, CHECK in `('open', 'approved', 'declined', 'withdrawn')` (constraint `ck_approval_requests_status_valid`). `withdrawn` marks a request whose requester lost their credit on the event. `ApprovalRequestStatus` in [`models/approval_request.py`](../backend/app/models/approval_request.py) lists the same values. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
-| `resolved_at` | `TIMESTAMPTZ` | nullable. `ck_review_requests_resolved` sets it exactly when `status` is not `open`. |
+| `resolved_at` | `TIMESTAMPTZ` | nullable. `ck_approval_requests_resolved` sets it exactly when `status` is not `open`. |
 
-`uq_review_requests_open`: unique partial index on `(event_id, target_user_id, requester_id) WHERE status = 'open'`. One open request per requester, analyst and event; a resolved row does not block a new request. `uq_review_requests_open_organization` on `(event_id, target_organization_id, requester_id) WHERE status = 'open' AND target_organization_id IS NOT NULL` holds the same rule for an organization.
+`uq_approval_requests_open`: unique partial index on `(event_id, target_user_id, requester_id) WHERE status = 'open'`. One open request per requester, analyst and event; a resolved row does not block a new request. `uq_approval_requests_open_organization` on `(event_id, target_organization_id, requester_id) WHERE status = 'open' AND target_organization_id IS NOT NULL` holds the same rule for an organization.
 
 **Indexes:**
-- `ix_review_requests_target_user_id` on `(target_user_id, status)`. Serves the analyst's open requests and backs the cascade when their account is erased.
-- `ix_review_requests_requester_created_at` on `(requester_id, created_at)`. Serves the daily cap and backs the cascade when a requester's account is erased.
-- `ix_review_requests_target_organization_id`: partial index on `(target_organization_id, status) WHERE target_organization_id IS NOT NULL`. Serves the organization's open requests and backs the cascade when an organization is deleted.
+- `ix_approval_requests_target_user_id` on `(target_user_id, status)`. Serves the analyst's open requests and backs the cascade when their account is erased.
+- `ix_approval_requests_requester_created_at` on `(requester_id, created_at)`. Serves the daily cap and backs the cascade when a requester's account is erased.
+- `ix_approval_requests_target_organization_id`: partial index on `(target_organization_id, status) WHERE target_organization_id IS NOT NULL`. Serves the organization's open requests and backs the cascade when an organization is deleted.
 
 ---
 
@@ -993,7 +993,7 @@ One thing that happened to an analyst, shown in their feed at [`GET /notificatio
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The recipient. |
-| `kind` | `VARCHAR(40)` | NOT NULL, CHECK in `('request_fulfilled', 'new_follower', 'x_handle_request_approved', 'x_handle_request_declined', 'co_geolocator_invite', 'co_geolocator_removed', 'ownership_transferred', 'organization_invite', 'organization_invite_accepted', 'organization_manager_inherited', 're_approve_requested', 'approval_received', 'review_request_received', 'review_request_declined', 'organization_approval_removed')` (constraint `ck_notifications_kind_valid`). The kind registry `NOTIFICATION_KINDS` in [`models/notification.py`](../backend/app/models/notification.py) lists the same values with their per-channel defaults. |
+| `kind` | `VARCHAR(40)` | NOT NULL, CHECK in `('request_fulfilled', 'new_follower', 'x_handle_request_approved', 'x_handle_request_declined', 'co_geolocator_invite', 'co_geolocator_removed', 'ownership_transferred', 'organization_invite', 'organization_invite_accepted', 'organization_manager_inherited', 're_approve_requested', 'approval_received', 'approval_request_received', 'approval_request_declined', 'organization_approval_removed')` (constraint `ck_notifications_kind_valid`). The kind registry `NOTIFICATION_KINDS` in [`models/notification.py`](../backend/app/models/notification.py) lists the same values with their per-channel defaults. |
 | `actor_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, nullable. Who acted: the fulfiller, the follower, the owner who invited or removed you or saved a new version, the reviewer who approved, the geolocator who requested a review, the analyst who declined one, the inviting org manager, or the analyst who accepted an organization invite. NULL on the X handle request outcomes, which name no admin, on `ownership_transferred` and `organization_manager_inherited`, which must not name the erased analyst, and on `organization_approval_removed`, which a site admin's deletion sets off. |
 | `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, nullable. The event the row concerns; NULL for a kind that names none. |
 | `organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, nullable. The organization an `organization_*` row concerns. |
@@ -1144,7 +1144,7 @@ A collective with its own public profile at `/organizations/{slug}`. Only a site
 | `bio` | `TEXT` | nullable. Same rules as `users.bio`. |
 | `avatar_url` | `TEXT` | nullable. Server-minted under `avatars/{organization_id}/`, like `users.avatar_url`. |
 | `external_links` | `JSONB` | NOT NULL, default `'{}'::jsonb`. Same keys and rules as `users.external_links`. |
-| `review_request_audience` | `VARCHAR(20)` | NOT NULL, default `'following'`, CHECK in `('following', 'everyone', 'nobody')` (constraint `ck_organizations_review_request_audience`). Who may send the organization a [review request](#review_requests), set by its org managers: `following` admits an analyst whom any live org manager follows. Same values as `user_preferences.review_request_audience`. |
+| `approval_request_audience` | `VARCHAR(20)` | NOT NULL, default `'following'`, CHECK in `('following', 'everyone', 'nobody')` (constraint `ck_organizations_approval_request_audience`). Who may send the organization a [approval request](#approval_requests), set by its org managers: `following` admits an analyst whom any live org manager follows. Same values as `user_preferences.approval_request_audience`. |
 | `created_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The site admin who created it. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL |
 
@@ -1194,7 +1194,7 @@ One analyst's stored preferences, read and written through [`/users/me/preferenc
 | `user_id` | `UUID` | PK, FK → `users.id` ON DELETE CASCADE |
 | `notification_overrides` | `JSONB` | NOT NULL, default `'{}'::jsonb`. `{kind: {channel: bool}}`, holding only the values that differ from the kind's default in `NOTIFICATION_KINDS`. A write equal to the default removes the key, so a changed default reaches every analyst who never moved that switch. |
 | `display` | `JSONB` | NOT NULL, default `'{}'::jsonb`. `palette`, `theme` and `help_tooltips`, each present once written. A missing key reads as the default in `schemas/preferences.DISPLAY_DEFAULTS`. |
-| `review_request_audience` | `VARCHAR(20)` | NOT NULL, default `'following'`, CHECK in `('following', 'everyone', 'nobody')` (constraint `ck_user_preferences_review_request_audience`). Who may send the analyst a [review request](#review_requests). `ReviewRequestAudience` in [`models/user_preferences.py`](../backend/app/models/user_preferences.py) lists the same values. |
+| `approval_request_audience` | `VARCHAR(20)` | NOT NULL, default `'following'`, CHECK in `('following', 'everyone', 'nobody')` (constraint `ck_user_preferences_approval_request_audience`). Who may send the analyst a [approval request](#approval_requests). `ApprovalRequestAudience` in [`models/user_preferences.py`](../backend/app/models/user_preferences.py) lists the same values. |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, stamped on every write |
 
 A stored value the API no longer accepts, such as a retired kind or palette, reads as its default.

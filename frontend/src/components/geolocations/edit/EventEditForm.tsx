@@ -19,7 +19,8 @@ import { FORM_ERROR_BANNER, LABEL_TEXT } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Button } from "@/components/ui/Button";
-import { closeActionLabel, CloseEventForm } from "@/components/event/CloseEventForm";
+import { closeActionLabel, CloseEventForm, CloseSection } from "@/components/event/CloseEventForm";
+import { GeolocatorsPanel } from "@/components/event/GeolocatorCredit";
 import { useEventActions } from "@/components/event/useEventActions";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
@@ -65,9 +66,12 @@ export function EventEditForm({
   geo,
   redirectTo,
   queue,
+  onCreditChanged,
 }: {
   geo: EventDetail;
   redirectTo: string;
+  /** Runs after the owner changes the geolocators, so the page rereads the row. */
+  onCreditChanged?: () => void;
   /** Set when this detection is one step of a review pass over the queue. */
   queue?: {
     /** `Detection n of m`. */
@@ -391,6 +395,18 @@ export function EventEditForm({
           </span>
         </div>
       </form>
+
+      {/* Owner management of a published geolocation, after the fields and outside the form,
+          since the geolocators panel holds a form of its own. A detection closes from the header. */}
+      {editingPublished && (
+        <>
+          <Card as="section">
+            <SectionEyebrow title="Geolocators" margin="none" />
+            <GeolocatorsPanel event={geo} onChanged={() => onCreditChanged?.()} />
+          </Card>
+          <CloseSection eventId={geo.id} status={geo.status} disabled={busy} onClosed={finish} />
+        </>
+      )}
     </PageShell>
   );
 }

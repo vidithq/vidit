@@ -65,7 +65,7 @@ def test_get_without_a_row_returns_the_defaults(db, user):
         {"kind": kind, "channels": defaults, "defaults": defaults}
         for kind, defaults in NOTIFICATION_KINDS.items()
     ]
-    assert body["review_request_audience"] == "following"
+    assert body["approval_request_audience"] == "following"
     assert _stored(db, user) is None
 
 

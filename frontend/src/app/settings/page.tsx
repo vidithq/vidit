@@ -44,10 +44,10 @@ import {
   type PushDeviceState,
 } from "@/lib/push";
 import {
-  REVIEW_REQUEST_AUDIENCE_DEFAULT,
-  REVIEW_REQUEST_AUDIENCE_OPTIONS,
-  type ReviewRequestAudience,
-} from "@/lib/reviewRequests";
+  APPROVAL_REQUEST_AUDIENCE_DEFAULT,
+  APPROVAL_REQUEST_AUDIENCE_OPTIONS,
+  type ApprovalRequestAudience,
+} from "@/lib/approvalRequests";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import {
   PREFERENCES_PATH,
@@ -215,11 +215,11 @@ function NotificationsCard({ pushResyncKey }: { pushResyncKey: number }) {
   );
   const productUpdates = (saved ?? data)?.product_updates === true;
   const audience = useMutation(
-    (value: ReviewRequestAudience) => updatePreferences({ review_request_audience: value }),
+    (value: ApprovalRequestAudience) => updatePreferences({ approval_request_audience: value }),
     { fallback: SAVE_FAILED, onSuccess: (prefs) => setSaved(prefs) }
   );
   const currentAudience =
-    (saved ?? data)?.review_request_audience ?? REVIEW_REQUEST_AUDIENCE_DEFAULT;
+    (saved ?? data)?.approval_request_audience ?? APPROVAL_REQUEST_AUDIENCE_DEFAULT;
   // Tolerates a missing or partial payload, and a kind this build has no wording for.
   const notifications = (saved ?? data)?.notifications;
   const pushDisabled = pushReason ? { push: pushReason } : undefined;
@@ -259,12 +259,12 @@ function NotificationsCard({ pushResyncKey }: { pushResyncKey: number }) {
       {/* Stacks below `sm`, where the three choices take the full column. */}
       <div className="flex max-sm:flex-col max-sm:items-stretch items-center justify-between gap-4">
         <div>
-          <p className="text-sm text-neutral-200">Accept review requests from</p>
-          <p className="text-xs text-neutral-500">Who can ask you to review their geolocation.</p>
+          <p className="text-sm text-neutral-200">Accept approval requests from</p>
+          <p className="text-xs text-neutral-500">Who can ask you to approve their geolocation.</p>
         </div>
         <SegmentedControl
-          aria-label="Accept review requests from"
-          options={REVIEW_REQUEST_AUDIENCE_OPTIONS}
+          aria-label="Accept approval requests from"
+          options={APPROVAL_REQUEST_AUDIENCE_OPTIONS}
           value={currentAudience}
           onChange={(value) => void audience.run(value)}
         />

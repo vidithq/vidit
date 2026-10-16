@@ -548,33 +548,33 @@ def approval_received_email(
     )
 
 
-def review_request_received_email(
+def approval_request_received_email(
     *, to: str, actor: str, event_id: str, event_title: str, organization: str | None = None
 ) -> Email:
     target = organization or "you"
     as_target = f" as {organization}" if organization else ""
     return _notification_email(
         to=to,
-        subject=f"{actor} asks {target} to review a geolocation",
+        subject=f"{actor} asks {target} to approve a geolocation",
         blocks=[
-            f"{actor} asks {target} to review “{event_title}”. Approve its current "
+            f"{actor} asks {target} to approve “{event_title}”. Approve its current "
             f"version{as_target}, or decline the request, from the geolocation's page."
         ],
         action=Action("Review the geolocation", event_link(event_id)),
-        setting="Review request",
+        setting="Approval request",
     )
 
 
-def review_request_declined_email(
+def approval_request_declined_email(
     *, to: str, actor: str, event_id: str, event_title: str, organization: str | None = None
 ) -> Email:
     on_behalf = f" for {organization}" if organization else ""
     return _notification_email(
         to=to,
-        subject=f"{organization or actor} declined to review your geolocation",
-        blocks=[f"{actor} declined{on_behalf} your request to review “{event_title}”."],
+        subject=f"{organization or actor} declined to approve your geolocation",
+        blocks=[f"{actor} declined{on_behalf} your request to approve “{event_title}”."],
         action=Action("View the geolocation", event_link(event_id)),
-        setting="Review request declined",
+        setting="Approval request declined",
     )
 
 

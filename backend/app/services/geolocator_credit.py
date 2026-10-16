@@ -20,6 +20,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models.approval import EventApproval
+from app.models.approval_request import ApprovalRequest
 from app.models.collection import Collection, CollectionEvent
 from app.models.event import (
     STATUS_GEOLOCATED,
@@ -28,7 +29,6 @@ from app.models.event import (
     EventGeolocatorDeparture,
     EventGeolocatorInvite,
 )
-from app.models.review_request import ReviewRequest
 from app.models.user import User
 from app.schemas.user import AuthorRef
 from app.services import notifications
@@ -201,7 +201,7 @@ def withdraw(db: Session, *, geo: Event, owner: User, username: str) -> None:
 
 def accept(db: Session, *, geo: Event, user: User) -> Event:
     """Turn ``user``'s pending invitation into geolocator credit, in one transaction. The open
-    review requests asking ``user`` to review the event go, since a geolocator cannot approve it.
+    approval requests asking ``user`` to approve the event go, since a geolocator cannot approve it.
 
     404 ``invite_not_found`` without one; 409 ``invalid_state`` once the event left
     ``geolocated`` (the invitation stays, and declining it still works).
@@ -213,10 +213,10 @@ def accept(db: Session, *, geo: Event, user: User) -> Event:
     db.add(EventGeolocator(event_id=geo.id, user_id=user.id))
     revoke_approvals_on_join(db, geo=geo, user=user)
     db.execute(
-        delete(ReviewRequest).where(
-            ReviewRequest.event_id == geo.id,
-            ReviewRequest.target_user_id == user.id,
-            ReviewRequest.status == "open",
+        delete(ApprovalRequest).where(
+            ApprovalRequest.event_id == geo.id,
+            ApprovalRequest.target_user_id == user.id,
+            ApprovalRequest.status == "open",
         )
     )
     db.commit()
@@ -261,7 +261,7 @@ def remove(db: Session, *, geo: Event, actor: User, username: str) -> None:
     The owner cannot leave (409 ``owner_cannot_leave``); anyone else removing someone else is
     403. A removed analyst's collections drop the event in the same transaction, since a
     collection holds only credited work, and an ``event_geolocator_departures`` row records the
-    departure, so they never approve the event. The open review requests they sent about the
+    departure, so they never approve the event. The open approval requests they sent about the
     event are withdrawn, since only a geolocator asks for one; they keep counting toward the
     daily cap. The owner's removal notifies the analyst
     removed.
@@ -286,11 +286,11 @@ def remove(db: Session, *, geo: Event, actor: User, username: str) -> None:
         .on_conflict_do_nothing(index_elements=["event_id", "user_id"])
     )
     db.execute(
-        update(ReviewRequest)
+        update(ApprovalRequest)
         .where(
-            ReviewRequest.event_id == geo.id,
-            ReviewRequest.requester_id == target.id,
-            ReviewRequest.status == "open",
+            ApprovalRequest.event_id == geo.id,
+            ApprovalRequest.requester_id == target.id,
+            ApprovalRequest.status == "open",
         )
         .values(status="withdrawn", resolved_at=datetime.now(UTC))
     )

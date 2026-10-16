@@ -31,7 +31,7 @@ import {
   type NotificationKind,
 } from "@/lib/notifications";
 import { InviteAnswerButtons } from "@/components/event/GeolocatorCredit";
-import { ReviewRequestDecline } from "@/components/event/ReviewRequestsSection";
+import { ApprovalRequestDecline } from "@/components/event/ApprovalRequestsSection";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LinkRow } from "@/components/ui/LinkRow";
@@ -52,8 +52,8 @@ const KIND_ICON: Record<NotificationKind, LucideIcon> = {
   organization_manager_inherited: ShieldCheck,
   re_approve_requested: RefreshCw,
   approval_received: BadgeCheck,
-  review_request_received: ClipboardCheck,
-  review_request_declined: ClipboardX,
+  approval_request_received: ClipboardCheck,
+  approval_request_declined: ClipboardX,
   organization_approval_removed: Building2,
 };
 
@@ -87,10 +87,10 @@ function NotificationRows({
                     external={false}
                   />
                 </div>
-                {n.review_request_id !== null && n.event && (
-                  <ReviewRequestDecline
+                {n.approval_request_id !== null && n.event && (
+                  <ApprovalRequestDecline
                     eventId={n.event.id}
-                    requestId={n.review_request_id}
+                    requestId={n.approval_request_id}
                     onAnswered={onChanged}
                   />
                 )}

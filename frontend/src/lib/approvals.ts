@@ -114,3 +114,20 @@ export function canApprove(
   }
   return !liveApprovals.some((a) => !a.organization && a.reviewer?.id === userId);
 }
+
+/** What the reader may approve on the live version: as themselves (`eligible`), and for which of
+ *  the organizations they manage. Nothing when the server says the reader cannot approve, since
+ *  it knows departed geolocators the event's credit no longer lists. */
+export function approveOptions(
+  event: { status: string; version_no: number; owner: Author; geolocators: Author[] },
+  approvals: ApprovalList,
+  managed: OrganizationRef[],
+  userId: string | undefined,
+): { eligible: boolean; organizations: OrganizationRef[] } {
+  if (!approvals.viewer_can_approve) return { eligible: false, organizations: [] };
+  const live = approvals.items.filter((a) => a.version_no === event.version_no);
+  return {
+    eligible: canApprove(event, userId, live),
+    organizations: managed.filter((o) => canApprove(event, userId, live, o.slug)),
+  };
+}

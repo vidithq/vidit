@@ -6,6 +6,7 @@ import type { ArchivedLink } from "@/types";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { OutboundLink } from "@/components/ui/OutboundLink";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { WARNING_CALLOUT } from "@/components/ui/styles";
 import { SNAPSHOT_HOSTS, snapshotArchivesAnotherLink, WAYBACK_HOST } from "@/lib/snapshots";
 
@@ -121,14 +122,15 @@ function ArchivedCopyLink({ copy, describes }: { copy: ArchivedLink; describes: 
   const provider: string | undefined = PROVIDER_LABELS[copy.provider];
   const label = provider ? `${provider} copy of ${describes}` : `Archived copy of ${describes}`;
   return (
-    <OutboundLink
-      href={copy.url}
-      aria-label={label}
-      title={label}
-      className={buttonClasses("ghost", { icon: true })}
-    >
-      <ArchiveMark size={14} />
-    </OutboundLink>
+    <Tooltip label={label}>
+      <OutboundLink
+        href={copy.url}
+        aria-label={label}
+        className={buttonClasses("ghost", { icon: true })}
+      >
+        <ArchiveMark size={14} />
+      </OutboundLink>
+    </Tooltip>
   );
 }
 
@@ -255,14 +257,15 @@ function SavePageDoor({
   }
   const label = `Open the ${SAVE_PAGE_LABEL} for ${describes}`;
   return (
-    <OutboundLink
-      href={savePageUrl(target)}
-      aria-label={label}
-      title={label}
-      className={buttonClasses("ghost", { icon: true })}
-    >
-      <ExternalLink size={14} />
-    </OutboundLink>
+    <Tooltip label={label}>
+      <OutboundLink
+        href={savePageUrl(target)}
+        aria-label={label}
+        className={buttonClasses("ghost", { icon: true })}
+      >
+        <ExternalLink size={14} />
+      </OutboundLink>
+    </Tooltip>
   );
 }
 

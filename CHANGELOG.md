@@ -6,12 +6,14 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- A site admin can delete an organization from the admin panel after typing its slug; its memberships, invites, approval requests and approvals go with it, and each event owner who loses its approval is notified ([#576](https://github.com/vidithq/vidit/pull/576)).
+- An org manager approves and revokes approvals in an organization's name, a geolocator can ask an organization for approval, which any org manager answers, and the organization page lists its approvals and open requests ([#574](https://github.com/vidithq/vidit/pull/574)).
 - Feed, Requests and search filters sit in a sticky right rail, or a Filters button on a phone; the feed filters by kind, conflict, capture source and tags, with its Following / All control under the title ([#588](https://github.com/vidithq/vidit/pull/588)).
 - A site admin can delete an organization from the admin panel after typing its slug; its memberships, invites, review requests and approvals go with it, and each event owner who loses its approval is notified ([#576](https://github.com/vidithq/vidit/pull/576)).
 - An org manager approves and revokes approvals in an organization's name, a geolocator can ask an organization for a review that any org manager answers, and the organization page lists its approvals and open requests ([#574](https://github.com/vidithq/vidit/pull/574)).
 - An event's current approvals show as "Approved by" profile stamps in its header, each opening a card with the version, date, note and a link to the reviewer or organization, and approving and the approval history move into an Approvals panel ([#578](https://github.com/vidithq/vidit/pull/578)).
 - Search finds organizations by name, slug or bio: an Organizations scope on the search page lists each match with its picture, member count and bio, beside the analysts ([#577](https://github.com/vidithq/vidit/pull/577)).
-- A geolocator can ask an analyst to review a geolocation; the analyst approves or declines from their notifications or the event page, and Settings chooses who may send you requests: people you follow, everyone or nobody ([#573](https://github.com/vidithq/vidit/pull/573)).
+- A geolocator can ask an analyst to approve a geolocation; the analyst approves or declines from their notifications or the event page, and Settings chooses who may send you requests: people you follow, everyone or nobody ([#573](https://github.com/vidithq/vidit/pull/573)).
 - Analysts outside a geolocation's credit approve it one version at a time; any new version, an archive-only save included, asks reviewers to approve again, and a revoked approval keeps its public reason ([#572](https://github.com/vidithq/vidit/pull/572)).
 - The Requests board filters by conflict, capture source, tags, author and whether a request carries a location guess, sorts newest or oldest first, and shows how long each request has been open ([#560](https://github.com/vidithq/vidit/pull/560)).
 - A link to a site outside a short known list (archives, X, Telegram, YouTube and a few others) shows its full address and asks before you leave Vidit, and a URL in a profile bio is now a link ([#559](https://github.com/vidithq/vidit/pull/559)).
@@ -25,6 +27,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- An event page's header holds a version selector, Edit for the owner, a one-click Share and Report; an Approvals card beside the record shows the live approvals, close and credit move to the edit page, and icon buttons show their label on hover ([#583](https://github.com/vidithq/vidit/pull/583)).
 - A profile shows the analyst's organizations as logos on the follower line, each linking to the organization and naming it with the analyst's role on hover or focus, so the coverage map opens the page ([#586](https://github.com/vidithq/vidit/pull/586)).
 - App pages share one container, left-aligned after the sidebar: a page keeps its reading width, and a page with a right rail widens to hold it beside the same main column ([#588](https://github.com/vidithq/vidit/pull/588)).
 - The timeline is now the feed: the page moves from `/timeline` to `/feed` (the old address redirects), the sidebar entry is "Feed", and `GET /timeline` becomes `GET /feed` with `feed_at` in place of `timeline_at` ([#585](https://github.com/vidithq/vidit/pull/585)).
@@ -39,7 +42,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - The filter panel on the map, search and Requests board opens with every section collapsed, except a section that holds an active filter, which opens expanded ([#584](https://github.com/vidithq/vidit/pull/584)).
 - A shared profile link previews the analyst's detected count beside geolocated, followers and media, credited as on the profile, and shows a GIF, WebP or AVIF profile picture instead of a blank or the initial ([#581](https://github.com/vidithq/vidit/pull/581)).
 - A Vidit link whose path starts with two slashes or a backslash, and a Google link other than the map check, now ask before you leave Vidit instead of opening another site in one click ([#565](https://github.com/vidithq/vidit/pull/565)).
-- Notification emails get a per-actor cap and a one-click unsubscribe per kind, push devices can be revoked, former geolocators cannot approve, review request refusals reveal no setting, and approving happens only on the event page ([#576](https://github.com/vidithq/vidit/pull/576)).
+- Notification emails get a per-actor cap and a one-click unsubscribe per kind, push devices can be revoked, former geolocators cannot approve, approval request refusals reveal no setting, and approving happens only on the event page ([#576](https://github.com/vidithq/vidit/pull/576)).
 - Analyst rows in search show the bare username, without an `@`, and the matched part no longer stands apart from the rest of the name ([#577](https://github.com/vidithq/vidit/pull/577)).
 - Paged lists (requests, feed, version history, invite codes) show a spinner while the next page loads and keep their rows with a Try again when it fails, and switching filters quickly no longer appends a page from the previous list ([#561](https://github.com/vidithq/vidit/pull/561)).
 - When X fails to serve part of a thread, or the coordinate sits above the posts the bot reads, the bot and the post import say the thread was only partly read instead of reporting no coordinate ([#555](https://github.com/vidithq/vidit/pull/555)).

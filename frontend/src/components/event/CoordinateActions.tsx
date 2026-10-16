@@ -1,9 +1,11 @@
 "use client";
 
-import { Check, Copy, ExternalLink } from "lucide-react";
+import { Copy, ExternalLink } from "lucide-react";
 
 import { Button, buttonClasses } from "@/components/ui/Button";
+import { CopyButton } from "@/components/ui/CopyButton";
 import { OutboundLink } from "@/components/ui/OutboundLink";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { formatCoordinates, mapsUrl } from "@/lib/coordinates";
 
@@ -37,14 +39,15 @@ export function CoordinateActions({
   return (
     <span className="inline-flex items-center gap-0.5">
       {point ? (
-        <OutboundLink
-          href={mapsUrl(point.lat, point.lng)}
-          aria-label={MAP_LINK}
-          title={MAP_LINK}
-          className={buttonClasses("ghost", { icon: true })}
-        >
-          <ExternalLink size={14} />
-        </OutboundLink>
+        <Tooltip label={MAP_LINK}>
+          <OutboundLink
+            href={mapsUrl(point.lat, point.lng)}
+            aria-label={MAP_LINK}
+            className={buttonClasses("ghost", { icon: true })}
+          >
+            <ExternalLink size={14} />
+          </OutboundLink>
+        </Tooltip>
       ) : (
         <Button icon variant="ghost" disabled aria-label={NO_MAP_LINK} title={NO_MAP_LINK}>
           <ExternalLink size={14} />
@@ -55,37 +58,20 @@ export function CoordinateActions({
   );
 }
 
-/**
- * The pair on the clipboard, in the one icon-control shape. `useCopyToClipboard` owns the write
- * and flash timer, worn in whatever shape the surroundings need (the profile's Discord account,
- * the admin invite row). No shape may differ on accessibility: the name is static (a name that
- * changes on click is re-announced as a new control) and the confirmation lands in a sibling live
- * region. Only the tooltip and mark flip.
- */
+/** The pair on the clipboard, confirmed by `CopyButton`, the app's one copy confirmation. */
 function CopyCoordinates({ point }: { point: { lat: number; lng: number } | null }) {
   const { copied, copy } = useCopyToClipboard();
-  const label = "Copy coordinates";
-  const copiedLabel = "Coordinates copied";
-
   return (
-    <>
-      <Button
-        icon
-        variant="ghost"
-        // Nothing to write while the pair is incomplete: the control is grey and inert.
-        disabled={point === null}
-        aria-label={label}
-        title={copied ? copiedLabel : label}
-        onClick={() => {
-          if (point) void copy(formatCoordinates(point.lat, point.lng));
-        }}
-      >
-        {copied ? <Check size={14} /> : <Copy size={14} />}
-      </Button>
-      {/* Sibling, not the button's name: as the name it would re-announce the control on every flip. */}
-      <span className="sr-only" role="status" aria-live="polite">
-        {copied ? copiedLabel : ""}
-      </span>
-    </>
+    <CopyButton
+      label="Copy coordinates"
+      announce="Coordinates copied"
+      icon={<Copy size={14} />}
+      copied={copied}
+      // Nothing to write while the pair is incomplete: the control is grey and inert.
+      disabled={point === null}
+      onClick={() => {
+        if (point) void copy(formatCoordinates(point.lat, point.lng));
+      }}
+    />
   );
 }

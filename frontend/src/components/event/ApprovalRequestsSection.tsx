@@ -11,29 +11,28 @@ import { useMutation } from "@/hooks/useMutation";
 import { formatDate } from "@/lib/format";
 import { organizationByline, type OrganizationRef } from "@/lib/organizations";
 import {
-  canRequestReview,
-  declineReviewRequest,
-  requestReview,
-  reviewRequestTargetsPath,
-  reviewRequestsPath,
-  type ReviewRequest,
-  type ReviewRequestTarget,
-  type ReviewRequestTargets,
-} from "@/lib/reviewRequests";
+  canRequestApproval,
+  declineApprovalRequest,
+  requestApproval,
+  approvalRequestTargetsPath,
+  approvalRequestsPath,
+  type ApprovalRequest,
+  type ApprovalRequestTarget,
+  type ApprovalRequestTargets,
+} from "@/lib/approvalRequests";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 
 /**
- * The target's answer to an open review request outside the Approvals panel: Decline. The
+ * The target's answer to an open approval request outside the approve form: Decline. The
  * notification row, the event page and the organization page render it; approving happens in
- * the event page's Approvals panel, after reading the event.
+ * the event page's Approvals card, after reading the event.
  */
-export function ReviewRequestDecline({
+export function ApprovalRequestDecline({
   eventId,
   requestId,
   onAnswered,
@@ -42,8 +41,8 @@ export function ReviewRequestDecline({
   requestId: string;
   onAnswered: () => void;
 }) {
-  const decline = useMutation(() => declineReviewRequest(eventId, requestId), {
-    fallback: "Failed to decline the review request",
+  const decline = useMutation(() => declineApprovalRequest(eventId, requestId), {
+    fallback: "Failed to decline the approval request",
     onSuccess: onAnswered,
   });
   return (
@@ -61,7 +60,7 @@ export function ReviewRequestDecline({
 }
 
 /** Who a request asks, as a byline: the analyst, or the organization with its picture and page. */
-function TargetByline({ request }: { request: ReviewRequest }) {
+function TargetByline({ request }: { request: ApprovalRequest }) {
   const target = request.target_organization
     ? organizationByline(request.target_organization)
     : request.target;
@@ -70,7 +69,7 @@ function TargetByline({ request }: { request: ReviewRequest }) {
 }
 
 /** One open request: who is asked, by whom, and since when. */
-function RequestRow({ request }: { request: ReviewRequest }) {
+function RequestRow({ request }: { request: ApprovalRequest }) {
   return (
     <div className="flex flex-wrap items-center gap-2 py-2 text-sm">
       <TargetByline request={request} />
@@ -81,14 +80,14 @@ function RequestRow({ request }: { request: ReviewRequest }) {
   );
 }
 
-const TARGET_FIELD_ID = "review-request-target";
+const TARGET_FIELD_ID = "approval-request-target";
 // Not a fetch per keystroke, but up by the time typing stops.
 const TARGET_QUERY_DEBOUNCE_MS = 250;
 
 /** One suggestion of the picker: what the request posts, and the name its Pill shows. */
-type TargetOption = { key: string; label: string; target: ReviewRequestTarget };
+type TargetOption = { key: string; label: string; target: ApprovalRequestTarget };
 
-function targetOptions(targets: ReviewRequestTargets | null): TargetOption[] {
+function targetOptions(targets: ApprovalRequestTargets | null): TargetOption[] {
   if (!targets) return [];
   return [
     ...targets.analysts.map((a) => ({
@@ -106,16 +105,24 @@ function targetOptions(targets: ReviewRequestTargets | null): TargetOption[] {
 
 /** The geolocator's picker: analysts who follow the reader, organizations an org manager of which
  *  follows them, and an exact username or slug, whose request may still be refused. */
-function RequestReviewForm({ eventId, onSent }: { eventId: string; onSent: () => void }) {
+function RequestApprovalForm({
+  eventId,
+  onSent,
+  onCancel,
+}: {
+  eventId: string;
+  onSent: () => void;
+  onCancel: () => void;
+}) {
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [selected, setSelected] = useState<TargetOption | null>(null);
   useDebouncedEffect(() => setDebounced(query.trim()), [query], TARGET_QUERY_DEBOUNCE_MS);
-  const targets = useApiResource<ReviewRequestTargets>(
-    reviewRequestTargetsPath(eventId, debounced),
+  const targets = useApiResource<ApprovalRequestTargets>(
+    approvalRequestTargetsPath(eventId, debounced),
   );
-  const send = useMutation((target: ReviewRequestTarget) => requestReview(eventId, target), {
-    fallback: "Failed to send the review request",
+  const send = useMutation((target: ApprovalRequestTarget) => requestApproval(eventId, target), {
+    fallback: "Failed to send the approval request",
     onSuccess: () => {
       setQuery("");
       setSelected(null);
@@ -128,7 +135,7 @@ function RequestReviewForm({ eventId, onSent }: { eventId: string; onSent: () =>
   return (
     <div className="space-y-2">
       <label htmlFor={TARGET_FIELD_ID} className={FORM_LABEL}>
-        Ask an analyst or an organization to review this version
+        Ask an analyst or an organization to approve this version
       </label>
       <Input
         id={TARGET_FIELD_ID}
@@ -139,6 +146,7 @@ function RequestReviewForm({ eventId, onSent }: { eventId: string; onSent: () =>
         }}
         placeholder="Search analysts and organizations"
         autoComplete="off"
+        autoFocus
       />
       {options.length > 0 ? (
         <div className="flex flex-wrap gap-1.5">
@@ -161,12 +169,17 @@ function RequestReviewForm({ eventId, onSent }: { eventId: string; onSent: () =>
           </p>
         )
       )}
-      <Button
-        onClick={() => selected && void send.run(selected.target)}
-        disabled={send.loading || !selected}
-      >
-        {selected ? `Ask ${selected.label}` : "Ask for a review"}
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          onClick={() => selected && void send.run(selected.target)}
+          disabled={send.loading || !selected}
+        >
+          {selected ? `Ask ${selected.label}` : "Ask for approval"}
+        </Button>
+        <Button variant="ghost" onClick={onCancel} disabled={send.loading}>
+          Cancel
+        </Button>
+      </div>
       {(send.error || targets.error) && (
         <div className={FORM_ERROR_BANNER} role="alert">
           {send.error ?? targets.error}
@@ -177,12 +190,13 @@ function RequestReviewForm({ eventId, onSent }: { eventId: string; onSent: () =>
 }
 
 /**
- * Review requests on a published event. A geolocator sees the open requests and asks an analyst
- * or an organization to review the live version; an analyst asked, or an org manager of an
- * organization asked, sees the request and can decline it, or approve from the Approvals panel.
- * `refreshKey` changes when an approval elsewhere on the page may have resolved a request.
+ * Approval requests on a published event, the last section of its Approvals card. A geolocator
+ * sees the open requests and asks an analyst or an organization to approve the live version; an
+ * analyst asked, or an org manager of an organization asked, sees the request and can decline it,
+ * or approve with **Approve** above it. `refreshKey` changes when an approval may have resolved a
+ * request.
  */
-export function ReviewRequestsSection({
+export function ApprovalRequestsSection({
   event,
   refreshKey,
 }: {
@@ -191,9 +205,9 @@ export function ReviewRequestsSection({
 }) {
   const { user } = useAuth();
   const managed = useManagedOrganizations();
-  const geolocator = canRequestReview(event, user?.id);
-  const requests = useApiResource<ReviewRequest[]>(
-    user && event.status === "geolocated" ? reviewRequestsPath(event.id) : null,
+  const geolocator = canRequestApproval(event, user?.id);
+  const requests = useApiResource<ApprovalRequest[]>(
+    user && event.status === "geolocated" ? approvalRequestsPath(event.id) : null,
   );
   const [asking, setAsking] = useState(false);
   const { refetch } = requests;
@@ -210,18 +224,18 @@ export function ReviewRequestsSection({
   if (!geolocator && mine.length === 0) return null;
 
   return (
-    <Card as="section">
-      <SectionEyebrow title="Review requests" margin="none" />
+    <section className="space-y-3 border-t border-neutral-800 pt-4">
+      <SectionEyebrow as="h3" title="Approval requests" margin="none" />
       {mine.map((request) => (
         <div key={request.id} className="space-y-2">
           <p className="text-sm text-neutral-300">
             <AuthorByline author={request.requester} prefix={false} /> asks{" "}
-            {request.target_organization ? request.target_organization.name : "you"} to review
+            {request.target_organization ? request.target_organization.name : "you"} to approve
             this geolocation. Approve it
-            {request.target_organization ? ` as ${request.target_organization.name}` : ""} in the
-            Approvals panel, or decline.
+            {request.target_organization ? ` as ${request.target_organization.name}` : ""} above,
+            or decline.
           </p>
-          <ReviewRequestDecline eventId={event.id} requestId={request.id} onAnswered={refetch} />
+          <ApprovalRequestDecline eventId={event.id} requestId={request.id} onAnswered={refetch} />
         </div>
       ))}
       {geolocator && (
@@ -236,11 +250,20 @@ export function ReviewRequestsSection({
             requests.data && <p className="text-sm text-neutral-500">No open requests.</p>
           )}
           {asking ? (
-            <RequestReviewForm eventId={event.id} onSent={refetch} />
+            <RequestApprovalForm
+              eventId={event.id}
+              onSent={() => {
+                setAsking(false);
+                refetch();
+              }}
+              onCancel={() => setAsking(false)}
+            />
           ) : (
-            <Button variant="secondary" onClick={() => setAsking(true)}>
-              Request a review
-            </Button>
+            <div>
+              <Button variant="secondary" onClick={() => setAsking(true)}>
+                Request approval
+              </Button>
+            </div>
           )}
         </>
       )}
@@ -249,6 +272,6 @@ export function ReviewRequestsSection({
           {requests.error}
         </div>
       )}
-    </Card>
+    </section>
   );
 }

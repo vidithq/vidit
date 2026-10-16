@@ -28,9 +28,9 @@ class Settings(BaseSettings):
     # Per-event cap on inline proof images. Lives here (not the events router)
     # so the body-size middleware reads it without a ``main → routers`` import.
     max_proof_images_per_event: int = 10
-    # Review requests one analyst may send in a trailing 24 hours, resolved ones included, so
+    # Approval requests one analyst may send in a trailing 24 hours, resolved ones included, so
     # declining and asking again does not lift the cap.
-    review_request_daily_cap: int = 20
+    approval_request_daily_cap: int = 20
     cors_origins: str = "http://localhost:3000,http://localhost:3001,http://localhost:3002"
     # Extra origin regex OR'd with `cors_origins`. The default allows every
     # `localhost:<port>` for concurrent dev frontends and is dropped on a

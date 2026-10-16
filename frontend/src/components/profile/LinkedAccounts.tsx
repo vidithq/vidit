@@ -1,14 +1,16 @@
 "use client";
 
 import type { ComponentType } from "react";
-import { Check, Globe } from "lucide-react";
+import { Globe } from "lucide-react";
 
 import { displayLinkValue, resolveLinkHref } from "@/lib/users";
 import type { ExternalLinks } from "@/types";
 import { DiscordGlyph, GitHubGlyph, XGlyph } from "@/components/ui/BrandGlyphs";
-import { Button, buttonClasses } from "@/components/ui/Button";
+import { buttonClasses } from "@/components/ui/Button";
+import { CopyButton } from "@/components/ui/CopyButton";
 import { FIELD_TEXT } from "@/components/ui/Input";
 import { OutboundLink } from "@/components/ui/OutboundLink";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_LABEL } from "@/components/ui/form-styles";
@@ -137,28 +139,23 @@ export function LinkedAccountsLine({ links }: { links: ExternalLinks }) {
         const href = resolveLinkHref(key, value);
         if (!href) return [];
         return [
-          <OutboundLink
-            key={key}
-            href={href}
-            aria-label={name}
-            title={name}
-            className={buttonClasses("ghost", { icon: true })}
-          >
-            <Icon size={14} />
-          </OutboundLink>,
+          <Tooltip key={key} label={name}>
+            <OutboundLink
+              href={href}
+              aria-label={name}
+              className={buttonClasses("ghost", { icon: true })}
+            >
+              <Icon size={14} />
+            </OutboundLink>
+          </Tooltip>,
         ];
       })}
     </>
   );
 }
 
-/**
- * The account a reader can only take away: the brand mark, flipping to a check for the flash
- * window. The gesture and feedback are `useCopyToClipboard`, worn as `<CoordinateActions>` wears
- * it. The accessible name is static and names the handle, with the confirmation in a sibling live
- * region: a name that changes on click is re-announced as a new control. Only the tooltip and the
- * mark flip.
- */
+/** The account a reader can only take away: the brand mark on `CopyButton`, the app's one copy
+ *  confirmation. The accessible name names the handle. */
 function CopyHandle({
   Icon,
   label,
@@ -174,23 +171,13 @@ function CopyHandle({
   value: string;
 }) {
   const { copied, copy } = useCopyToClipboard();
-  const name = `Copy ${label} username: ${shown}`;
-  const copiedLabel = `${label} username copied`;
-
   return (
-    <>
-      <Button
-        icon
-        variant="ghost"
-        onClick={() => void copy(value)}
-        aria-label={name}
-        title={copied ? copiedLabel : name}
-      >
-        {copied ? <Check size={14} /> : <Icon size={14} />}
-      </Button>
-      <span className="sr-only" role="status" aria-live="polite">
-        {copied ? copiedLabel : ""}
-      </span>
-    </>
+    <CopyButton
+      label={`Copy ${label} username: ${shown}`}
+      announce={`${label} username copied`}
+      icon={<Icon size={14} />}
+      copied={copied}
+      onClick={() => void copy(value)}
+    />
   );
 }

@@ -26,7 +26,8 @@ vi.mock("@/hooks/useAdmin", () => ({
   useAdmin: () => ({ isAdmin: api.isAdmin, loading: false }),
 }));
 
-import { ApprovalStamps, ApprovalsPanel, VersionApprovals } from "./Approvals";
+import { ApprovalStamps, VersionApprovals } from "./Approvals";
+import { ApprovalsCard } from "./ApprovalsCard";
 
 const ANA = { id: "u1", username: "ana" };
 const BO = { id: "u2", username: "bo" };
@@ -65,47 +66,45 @@ function serve(rows: Approval[], extra: Record<string, unknown> = {}) {
   });
 }
 
-const onApproved = vi.fn();
-
 function Panel({ geo = event }: { geo?: EventDetail }) {
   const approvals = useApiResource<ApprovalList>(allApprovalsPath(geo.id));
-  return <ApprovalsPanel event={geo} approvals={approvals} onApproved={onApproved} />;
+  return <ApprovalsCard event={geo} approvals={approvals} />;
 }
+
+/** Opens a stamp's card by its signer's name and returns it. */
+async function openStamp(name: string) {
+  fireEvent.click(await screen.findByRole("button", { name: `Approved by ${name}` }));
+  return screen.getByRole("dialog", { name });
+}
+
+/** Expands the approve form from the card's compact **Approve**. */
+async function openApproveForm() {
+  fireEvent.click(await screen.findByRole("button", { name: "Approve" }));
+}
+
+/** How many times the card read the approval list. */
+const listReads = () => api.apiFetch.mock.calls.filter(([path]) => path === ALL).length;
 
 beforeEach(() => {
   api.apiFetch.mockReset();
-  onApproved.mockReset();
   api.viewer = null;
   api.isAdmin = false;
   api.mayApprove = null;
 });
 
 describe("<ApprovalStamps>", () => {
-  it("renders nothing without a current approval", () => {
-    const { container } = render(
-      <ApprovalStamps
-        approvals={[
-          approval({ current: false, version_no: 1 }),
-          approval({ id: "a2", current: false, revoked_at: "2026-10-16T09:00:00Z" }),
-        ]}
-        onOverflow={vi.fn()}
-      />,
-    );
+  it("renders nothing for an empty list", () => {
+    const { container } = render(<ApprovalStamps approvals={[]} onOverflow={vi.fn()} />);
     expect(container).toBeEmptyDOMElement();
   });
 
   it("labels the row and names each current approval, oldest first, organizations as squares", () => {
     render(
       <ApprovalStamps
-        approvals={[
-          approval({ id: "old", version_no: 1, current: false, reviewer: CY }),
-          approval(),
-          approval({ id: "a2", reviewer: CY, organization: BELLINGCAT }),
-        ]}
+        approvals={[approval(), approval({ id: "a2", reviewer: CY, organization: BELLINGCAT })]}
         onOverflow={vi.fn()}
       />,
     );
-    expect(screen.getByText("Approved by")).toBeInTheDocument();
     const stamps = within(screen.getByRole("list", { name: "Approved by" })).getAllByRole("button");
     expect(stamps.map((s) => s.getAttribute("aria-label"))).toEqual([
       "Approved by bo",
@@ -176,7 +175,7 @@ describe("<ApprovalStamps>", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("shows five and folds the rest into a bubble that opens the panel", () => {
+  it("shows five and folds the rest into a bubble", () => {
     const onOverflow = vi.fn();
     const rows = Array.from({ length: 7 }, (_, i) =>
       approval({ id: `a${i}`, reviewer: { id: `r${i}`, username: `r${i}` } }),
@@ -190,13 +189,38 @@ describe("<ApprovalStamps>", () => {
   });
 });
 
-describe("<ApprovalsPanel>", () => {
+describe("<ApprovalsCard>", () => {
+  it("stamps the live version's standing approvals, with no status line and no quote", async () => {
+    serve([approval({ note: "Skyline matches" }), approval({ id: "a2", reviewer: CY })]);
+    render(<Panel />);
+
+    const stamps = within(await screen.findByRole("list", { name: "Approved by" })).getAllByRole("button");
+    expect(stamps).toHaveLength(2);
+    expect(screen.queryByText(/^Approved ·/)).toBeNull();
+    expect(screen.queryByText("No approvals yet")).toBeNull();
+    // The note is read in the stamp's card, not quoted in the panel.
+    expect(screen.queryByText("Skyline matches")).toBeNull();
+    const card = await openStamp("bo");
+    expect(within(card).getByText("Skyline matches")).toBeInTheDocument();
+  });
+
+  it("says when no approval stands yet, in place of the stamps", async () => {
+    serve([approval({ id: "v1", version_no: 1, current: false })]);
+    render(<Panel />);
+
+    expect(await screen.findByText("No approvals yet")).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Approved by" })).toBeNull();
+  });
+
   it("lets an analyst outside the geolocators approve the version on screen", async () => {
     api.viewer = CY;
     serve([]);
     render(<Panel />);
 
-    expect(await screen.findByText("No current approval yet.")).toBeInTheDocument();
+    expect(await screen.findByText("No approvals yet")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Note (optional)")).toBeNull();
+    await openApproveForm();
+    expect(screen.getByLabelText("Note (optional)")).toHaveFocus();
     fireEvent.change(screen.getByLabelText("Note (optional)"), {
       target: { value: "Skyline matches" },
     });
@@ -207,7 +231,7 @@ describe("<ApprovalsPanel>", () => {
         body: JSON.stringify({ version_no: 2, note: "Skyline matches" }),
       }),
     );
-    await waitFor(() => expect(onApproved).toHaveBeenCalledOnce());
+    await waitFor(() => expect(listReads()).toBe(2));
   });
 
   it("holds the approve buttons until the list reloads after an approval", async () => {
@@ -220,23 +244,45 @@ describe("<ApprovalsPanel>", () => {
       return reads === 1 ? Promise.resolve(listOf([])) : new Promise(() => {});
     });
     render(<Panel />);
+    await openApproveForm();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Approve version 2" }));
-    await waitFor(() => expect(onApproved).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole("button", { name: "Approve version 2" }));
+    await waitFor(() => expect(reads).toBe(2));
     expect(screen.getByRole("button", { name: "Approve version 2" })).toBeDisabled();
   });
 
-  it("tells a reviewer of an earlier version what changed since", async () => {
+  it("keeps the approve form collapsed until asked, and Cancel collapses it again", async () => {
+    api.viewer = CY;
+    serve([]);
+    render(<Panel />);
+
+    await openApproveForm();
+    expect(screen.getByRole("button", { name: "Approve version 2" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByLabelText("Note (optional)")).toBeNull();
+    expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
+  });
+
+  it("tells the reader what changed since the earlier version they approved", async () => {
     api.viewer = CY;
     serve([approval({ id: "a0", version_no: 1, current: false, reviewer: CY })], {
       "/events/e1/versions/1": filedVersion(event, 1, { title: "Bridge strike, first read" }),
     });
     render(<Panel />);
 
-    expect(
-      await screen.findByText(/Changed since version 1, which you approved: Title\./),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Approve version 2" })).toBeInTheDocument();
+    const line = await screen.findByText(/Changed since: Title\./);
+    expect(line).toHaveTextContent("You approved v1. Changed since: Title.");
+    expect(within(line).getByRole("link", { name: "v1" })).toHaveAttribute("href", "/events/e1/v1");
+    expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
+  });
+
+  it("says nothing of an earlier approval the reader does not hold", async () => {
+    api.viewer = CY;
+    serve([approval({ id: "a0", version_no: 1, current: false })]);
+    render(<Panel />);
+
+    expect(await screen.findByText("No approvals yet")).toBeInTheDocument();
+    expect(screen.queryByText(/You approved/)).toBeNull();
   });
 
   it("offers no approval to an analyst the server refuses, such as a former geolocator", async () => {
@@ -245,17 +291,17 @@ describe("<ApprovalsPanel>", () => {
     serve([approval()]);
     render(<Panel />);
 
-    expect(await screen.findByRole("link", { name: "bo" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Approve/ })).toBeNull();
+    expect(await screen.findByRole("button", { name: "Approved by bo" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Approve\b/ })).toBeNull();
     expect(screen.queryByLabelText("Note (optional)")).toBeNull();
   });
 
-  it("keeps an organization approval whose acting org manager was erased", async () => {
+  it("stamps an organization approval whose acting org manager was erased", async () => {
     serve([approval({ organization: BELLINGCAT, reviewer: null })]);
     render(<Panel />);
 
-    expect(await screen.findByText("on behalf of Bellingcat")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Bellingcat" })).toBeInTheDocument();
+    const card = await openStamp("Bellingcat");
+    expect(within(card).getByText("on behalf of Bellingcat")).toBeInTheDocument();
   });
 
   it("offers a geolocator no approval", async () => {
@@ -263,71 +309,65 @@ describe("<ApprovalsPanel>", () => {
     serve([approval()]);
     render(<Panel />);
 
-    expect(await screen.findByRole("link", { name: "bo" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Approve/ })).toBeNull();
+    expect(await screen.findByRole("button", { name: "Approved by bo" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Approve\b/ })).toBeNull();
   });
 
-  it("groups current, outdated by version, and revoked approvals with their reasons", async () => {
-    serve(
-      [
-        approval({ id: "v1", version_no: 1, current: false, reviewer: CY, note: "Roof vents" }),
-        approval({
-          id: "gone",
-          version_no: 1,
-          current: false,
-          reviewer: ANA,
-          revoked_at: "2026-10-16T09:00:00Z",
-          revoke_reason: "Joined the geolocators of this event",
-          revoked_as: "reviewer",
-        }),
-        approval({ note: "Skyline matches" }),
-      ],
-      { "/events/e1/versions/1": filedVersion(event, 1, { title: "Bridge strike, first read" }) },
-    );
+  // Outdated and revoked approvals are read on each version's page.
+  it("shows only the live version's standing approvals", async () => {
+    serve([
+      approval({ id: "v1", version_no: 1, current: false, reviewer: CY, note: "Roof vents" }),
+      approval({
+        id: "gone",
+        reviewer: ANA,
+        current: false,
+        revoked_at: "2026-10-16T09:00:00Z",
+        revoke_reason: "Wrong bridge",
+        revoked_as: "reviewer",
+      }),
+      approval({ note: "Skyline matches" }),
+    ]);
     render(<Panel />);
 
-    expect(await screen.findByText("Skyline matches")).toBeInTheDocument();
-    const headings = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
-    expect(headings).toEqual(["Version 2, current", "Version 1, outdated", "Revoked"]);
-    expect(screen.getByText("Roof vents")).toBeInTheDocument();
-    expect(
-      await screen.findByText(/Changed since version 1, which they approved: Title\./),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "See version 1" })).toHaveAttribute(
-      "href",
-      "/events/e1/v1",
-    );
-    expect(screen.getAllByText(/^Version 1, (?!outdated)/)).toHaveLength(1);
-    expect(
-      screen.getByText(/Revoked on .*: Joined the geolocators of this event/),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Approved by bo" })).toBeInTheDocument();
+    const stamps = within(screen.getByRole("list", { name: "Approved by" })).getAllByRole("button");
+    expect(stamps.map((b) => b.getAttribute("aria-label"))).toEqual(["Approved by bo"]);
+    expect(screen.queryByText("Roof vents")).toBeNull();
+    expect(screen.queryByText(/Wrong bridge/)).toBeNull();
+    expect(screen.queryByText(/outdated|revoked/i)).toBeNull();
   });
 
-  it("shows a closed event's standing approvals as neither current nor outdated", async () => {
+  it("shows every stamp from the overflow bubble", async () => {
+    serve(Array.from({ length: 7 }, (_, i) => approval({ id: `a${i}`, reviewer: { id: `r${i}`, username: `r${i}` } })));
+    render(<Panel />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Show 2 more approvals" }));
+    expect(screen.getAllByRole("button", { name: /^Approved by/ })).toHaveLength(7);
+  });
+
+  it("stamps a closed event's approvals that stood when it closed", async () => {
     const closedEvent = { ...event, status: "closed" as const, before_closed_status: "geolocated" as const };
     serve([approval({ current: false, note: "Skyline matches" })]);
     render(<Panel geo={closedEvent} />);
 
-    expect(await screen.findByText("Skyline matches")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Version 2, event closed" })).toBeInTheDocument();
-    expect(screen.getByText("Event closed")).toBeInTheDocument();
-    expect(screen.queryByText("Current")).toBeNull();
-    expect(screen.queryByText("Outdated")).toBeNull();
+    expect(await screen.findByRole("button", { name: "Approved by bo" })).toBeInTheDocument();
+    expect(screen.queryByText("No approvals yet")).toBeNull();
   });
 
-  it("lets the reviewer revoke with a reason and no one else", async () => {
+  it("lets the reviewer revoke from their stamp's card, and no one else's", async () => {
     api.viewer = BO;
     serve([approval(), approval({ id: "a2", reviewer: CY })]);
     render(<Panel />);
 
-    const revoke = await screen.findAllByRole("button", { name: "Revoke" });
-    expect(revoke).toHaveLength(1);
-    expect(screen.queryByRole("button", { name: "Approve version 2" })).toBeNull();
-    fireEvent.click(revoke[0]);
+    const other = await openStamp("cy");
+    expect(within(other).queryByRole("button", { name: "Revoke" })).toBeNull();
+    fireEvent.keyDown(document, { key: "Escape" });
 
+    const own = await openStamp("bo");
+    fireEvent.click(within(own).getByRole("button", { name: "Revoke" }));
     const confirm = screen.getByRole("button", { name: "Revoke approval" });
     expect(confirm).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("Reason, shown publicly on the approval"), {
+    fireEvent.change(screen.getByLabelText(/shown publicly on the approval/), {
       target: { value: "Wrong bridge" },
     });
     fireEvent.click(confirm);
@@ -345,7 +385,9 @@ describe("<ApprovalsPanel>", () => {
     serve([approval(), approval({ id: "a2", reviewer: CY })]);
     render(<Panel />);
 
-    expect(await screen.findAllByRole("button", { name: "Revoke" })).toHaveLength(2);
+    expect(within(await openStamp("bo")).getByRole("button", { name: "Revoke" })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(within(await openStamp("cy")).getByRole("button", { name: "Revoke" })).toBeInTheDocument();
   });
 
   it("lets an org manager approve as each organization they manage", async () => {
@@ -358,6 +400,7 @@ describe("<ApprovalsPanel>", () => {
       ],
     });
     render(<Panel />);
+    await openApproveForm();
 
     fireEvent.click(await screen.findByRole("button", { name: "Approve as Bellingcat" }));
     expect(screen.queryByRole("button", { name: "Approve as OSINT Lab" })).toBeNull();
@@ -370,7 +413,7 @@ describe("<ApprovalsPanel>", () => {
     );
   });
 
-  it("signs an organization approval with its name and gives its org managers revoke", async () => {
+  it("gives an org manager revoke on their organization's approval, not on others'", async () => {
     api.viewer = CY;
     serve([approval({ organization: BELLINGCAT }), approval({ id: "a2", reviewer: ANA })], {
       "/users/cy/organizations": [
@@ -379,13 +422,25 @@ describe("<ApprovalsPanel>", () => {
     });
     render(<Panel />);
 
-    expect(await screen.findByRole("link", { name: "Bellingcat" })).toHaveAttribute(
+    const org = await openStamp("Bellingcat");
+    expect(within(org).getByRole("link", { name: "View organization" })).toHaveAttribute(
       "href",
       "/organizations/bellingcat",
     );
-    expect(screen.getByRole("link", { name: "bo" })).toHaveAttribute("href", "/profile/bo");
-    expect(await screen.findAllByRole("button", { name: "Revoke" })).toHaveLength(1);
+    expect(await within(org).findByRole("button", { name: "Revoke" })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(within(await openStamp("ana")).queryByRole("button", { name: "Revoke" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Approve as Bellingcat" })).toBeNull();
+  });
+
+  it("holds the approval requests of a published event", async () => {
+    api.viewer = ANA;
+    serve([]);
+    render(<Panel />);
+
+    expect(await screen.findByRole("heading", { name: "Approval requests" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Request approval" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
   });
 });
 
@@ -409,6 +464,28 @@ describe("<VersionApprovals>", () => {
     expect(screen.getByText(/Revoked by a site admin on .*: Sockpuppet account/)).toBeInTheDocument();
     expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/approvals?version_no=1", expect.anything());
     expect(screen.queryByRole("button", { name: /Approve/ })).toBeNull();
+  });
+
+  it("lists an outdated approval and gives its reviewer revoke on a filed version", async () => {
+    api.viewer = BO;
+    api.apiFetch.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === "/events/e1/approvals?version_no=1"
+          ? {
+              viewer_can_approve: false,
+              items: [
+                approval({ version_no: 1, current: false }),
+                approval({ id: "a2", version_no: 1, current: false, reviewer: CY }),
+              ],
+            }
+          : [],
+      ),
+    );
+    render(<VersionApprovals event={event} versionNo={1} />);
+
+    expect(await screen.findAllByText("Outdated")).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
+    expect(screen.getByRole("button", { name: "Revoke approval" })).toBeDisabled();
   });
 
   it("stays hidden when the version held no approval", async () => {

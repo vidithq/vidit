@@ -10,10 +10,12 @@ import {
   Bot,
   Camera,
   Check,
+  ChevronDown,
   Circle,
   Copy,
   Download,
   ExternalLink,
+  History,
   Mail,
   MapPin,
   MessageCircle,
@@ -25,6 +27,10 @@ import {
 
 import type { Conflict, EventDetail, EventStatus, Media, Tag } from "@/types";
 import { PageShell } from "@/components/ui/PageShell";
+import { ActionMenu } from "@/components/ui/ActionMenu";
+import { CopyButton } from "@/components/ui/CopyButton";
+import { Tooltip } from "@/components/ui/Tooltip";
+import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { PageWithRail } from "@/components/ui/PageWithRail";
 import { Card } from "@/components/ui/Card";
 import { CharCounter } from "@/components/ui/CharCounter";
@@ -442,7 +448,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="TOOLTIP_SURFACE" usage="The bubble of an anchored popover (usePinnedPopover): the FieldHelp explanation and the AvatarStack card. Colour only; callers add rounded-md, padding and text size.">
+          <Item name="TOOLTIP_SURFACE" usage="The bubble of an anchored popover (usePinnedPopover): the FieldHelp explanation, the AvatarStack card, the ActionMenu list and the Tooltip bubble. Colour only; callers add rounded-md, padding and text size.">
             <span className={`inline-block rounded-md px-2 py-1 text-xs ${TOOLTIP_SURFACE}`}>
               maya
             </span>
@@ -507,6 +513,46 @@ export default function PalettePage() {
                 </Variant>
               </div>
             </div>
+          </Item>
+
+          <Item name="<ActionMenu>" usage="A trigger that opens a short list of links (role=menu): the event header's version selector (v2 with a chevron: every version newest first, then Full history). The trigger is the ghost button, label as its aria-label and tooltip: icon-only by default, or `text` printed before the icon, in which case label starts with that text. menuLabel names the list when it differs from the trigger. Each item is a link with an optional icon, a muted `meta` word after the label (Current), and `current` for the link to the page on screen (the active-row paint plus aria-current, focused when the menu opens). A click or Enter opens on the current item (or the first), ArrowUp on the trigger opens on the last; arrows, Home and End move, Space or Enter follows a link, Escape closes and returns focus to the trigger, Tab or an outside click closes. The list opens under the trigger aligned to its right edge, shifts sideways to stay 8px inside the viewport, and scrolls past 20rem.">
+            <Variant label="printed text (the version selector)">
+              <ActionMenu
+                label="v2: choose a version"
+                text="v2"
+                icon={<ChevronDown size={14} />}
+                menuLabel="Versions"
+                items={[
+                  { key: "v3", label: "Version 3", meta: "Current", href: "/palette" },
+                  { key: "v2", label: "Version 2", href: "/palette", current: true },
+                  { key: "v1", label: "Version 1", href: "/palette" },
+                  { key: "history", label: "Full history", icon: <History size={14} />, href: "/palette" },
+                ]}
+              />
+            </Variant>
+          </Item>
+
+          <Item name="<Tooltip>" usage="The label of an icon-only control in a TOOLTIP_SURFACE bubble, while a mouse rests on it or the keyboard focuses it; a touch never opens it, so a tap leaves nothing standing. Placement and dismissal (Escape, scroll, resize, an outside click) are usePinnedPopover's, and it never pins. <Button icon> renders its button through TooltipButton, so every icon button gets it with no call-site change: the tip is `title` when it differs from the name (a longer hint) and the aria-label otherwise, and the native title is dropped so no second tooltip appears. An icon link (buttonClasses on a Link or an a) wraps itself in <Tooltip label>, a display: contents span that leaves the layout alone. The bubble is aria-hidden, since the control's accessible name already says it.">
+            <Variant label="icon button (hover or tab to it)">
+              <Button icon variant="ghost" aria-label="Copy coordinates">
+                <Copy size={14} />
+              </Button>
+            </Variant>
+            <Variant label="icon link">
+              <Tooltip label="Wayback Machine copy of the source">
+                <a
+                  href="#"
+                  aria-label="Wayback Machine copy of the source"
+                  className={buttonClasses("ghost", { icon: true })}
+                >
+                  <Archive size={14} />
+                </a>
+              </Tooltip>
+            </Variant>
+          </Item>
+
+          <Item name="<CopyButton>" usage="The one copy confirmation: an icon button whose mark turns into a check while `copied` holds (useCopyToClipboard times it, 1.5 s) and fades back after, with no fade under prefers-reduced-motion. The accessible name never changes, since a changing name is re-announced as a new control; `announce` reaches screen readers through a sibling aria-live region, with no visible text. Worn by Copy coordinates, a profile's copied handle, and Share where the browser has no share sheet (Link copied).">
+            <PaletteCopyButton />
           </Item>
 
           <Item name="<ActiveFilterPills>" usage="The one rendering of active filters: a row of removable accent chips (label + ×), shared by the map's filter overlay and the search page so active filter state reads identically everywhere. Entries are {key, label, icon?, onRemove}; `onClearAll` adds a quiet clear-everything affordance once two or more filters are on. Renders nothing when the list is empty.">
@@ -860,7 +906,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<AvatarStack>" usage="The approval stamps under the event page's action row: an overlapping row of 28px pictures, oldest first. An organization (variant=organization) takes the rounded square, an analyst the circle; each picture is a button with its own accessible name (label, such as Approved by maya). Hover or focus opens the item's renderCard in a TOOLTIP_SURFACE card (usePinnedPopover); a click or a tap pins it and moves focus to its first link. Escape, or tabbing past either end of the card, closes it and returns focus to the row; the card holds while focus is inside it. The card carries the way on (the event page's card: picture, name, Version N · date, the note, on behalf of an organization, View profile or View organization). At most max (5 by default) show; the rest fold into a +N bubble, a button when onOverflow is set (the event page opens its Approvals panel) and plain text otherwise. Renders nothing for an empty list.">
+          <Item name="<AvatarStack>" usage="The approval stamps in the event page's Approvals card: an overlapping row of 28px pictures, oldest first. An organization (variant=organization) takes the rounded square, an analyst the circle; each picture is a button with its own accessible name (label, such as Approved by maya). Hover or focus opens the item's renderCard in a TOOLTIP_SURFACE card (usePinnedPopover); a click or a tap pins it and moves focus to its first link. Escape, or tabbing past either end of the card, closes it and returns focus to the row; the card holds while focus is inside it. The card carries the way on (the event page's card: picture, name, Version N · date, the note, on behalf of an organization, View profile or View organization). At most max (5 by default) show; the rest fold into a +N bubble, a button when onOverflow is set (the Approvals card expands its full approval list) and plain text otherwise. Renders nothing for an empty list.">
             <Variant label="analysts and an organization, max=3 with onOverflow (+N opens the panel)">
               <AvatarStack
                 label="Approved by"
@@ -913,7 +959,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<AuthorByline>" usage="The 'by user' assembly: detail-page subtitles, map panel header, detail body Author row. size=xs for the dense panel; prefix=false when the slot's label already says Author; avatar leads with the profile picture on the detail-page signature slots. coAuthors credits more analysts after the lead (the geolocators an event shares, from creditProps), joined by creditSeparator: ana, bo and cy. link=false drops the anchor for a slot that is already one click (a version-history row under its stretched link), where a nested link is a target the mouse and the keyboard disagree about. A name with its own href links there instead of a profile: organizationByline turns an organization into one (its picture, its name, its page), as on an organization's approval and a review request to it.">
+          <Item name="<AuthorByline>" usage="The 'by user' assembly: detail-page subtitles, map panel header, detail body Author row. size=xs for the dense panel; prefix=false when the slot's label already says Author; avatar leads with the profile picture on the detail-page signature slots. coAuthors credits more analysts after the lead (the geolocators an event shares, from creditProps), joined by creditSeparator: ana, bo and cy. link=false drops the anchor for a slot that is already one click (a version-history row under its stretched link), where a nested link is a target the mouse and the keyboard disagree about. A name with its own href links there instead of a profile: organizationByline turns an organization into one (its picture, its name, its page), as on an organization's approval and an approval request to it.">
             <Variant label="avatar (detail-page signature)">
               <span className="text-sm text-neutral-400">
                 <AuthorByline author={MOCK_DETAIL.owner} avatar />
@@ -1672,6 +1718,19 @@ const PALETTE_MEDIA: Media = {
 // here (only here, since a real Media row is named by `original_filename`).
 const PALETTE_VIDEO_SRC =
   process.env.NEXT_PUBLIC_DEMO_VIDEO_URL ?? "/palette-demo-placeholder.mp4";
+
+function PaletteCopyButton() {
+  const { copied, copy } = useCopyToClipboard();
+  return (
+    <CopyButton
+      label="Copy coordinates"
+      announce="Coordinates copied"
+      icon={<Copy size={14} />}
+      copied={copied}
+      onClick={() => void copy("48.500000, 37.800000")}
+    />
+  );
+}
 
 function PaletteMediaLightbox() {
   const [open, setOpen] = useState(false);

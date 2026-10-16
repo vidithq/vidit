@@ -11,6 +11,7 @@ from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
 from app.routers._errors import raise_typed_error
 from app.schemas.approval import OrganizationApprovalRead
+from app.schemas.approval_request import OrganizationApprovalRequestRead
 from app.schemas.organization import (
     OrganizationInviteCreate,
     OrganizationInviteRead,
@@ -19,11 +20,10 @@ from app.schemas.organization import (
     OrganizationRead,
     OrganizationUpdate,
 )
-from app.schemas.review_request import OrganizationReviewRequestRead
 from app.schemas.user import AuthorRef
+from app.services import approval_requests as approval_requests_service
 from app.services import approvals as approvals_service
 from app.services import organizations as organizations_service
-from app.services import review_requests as review_requests_service
 from app.services import users as users_service
 from app.services.pagination import (
     MAX_PAGE_SIZE,
@@ -105,21 +105,21 @@ def list_organization_approvals(
     return [approvals_service.build_organization_read(row) for row in rows]
 
 
-@router.get("/{slug}/review-requests", response_model=list[OrganizationReviewRequestRead])
+@router.get("/{slug}/approval-requests", response_model=list[OrganizationApprovalRequestRead])
 @limiter.limit("60/minute")
-def list_organization_review_requests(
+def list_organization_approval_requests(
     request: Request,
     slug: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> list[OrganizationReviewRequestRead]:
-    """Open review requests addressed to the organization, oldest first. Org managers and site
+) -> list[OrganizationApprovalRequestRead]:
+    """Open approval requests addressed to the organization, oldest first. Org managers and site
     managers only."""
     with _typed_errors():
         org = organizations_service.get_by_slug(db, slug)
         organizations_service.require_manager(db, org, current_user)
-    rows = review_requests_service.list_open_for_organization(db, org=org)
-    return [review_requests_service.build_organization_read(row) for row in rows]
+    rows = approval_requests_service.list_open_for_organization(db, org=org)
+    return [approval_requests_service.build_organization_read(row) for row in rows]
 
 
 @router.patch("/{slug}", response_model=OrganizationRead)
@@ -131,7 +131,7 @@ def update_organization(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> OrganizationRead:
-    """Edit an organization's bio, links and review request audience. Org managers and site
+    """Edit an organization's bio, links and approval request audience. Org managers and site
     managers only."""
     with _typed_errors():
         org = organizations_service.get_by_slug(db, slug)

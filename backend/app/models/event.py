@@ -126,7 +126,7 @@ class EventGeolocatorDeparture(_EventAnalystPair, Base):
     Written by ``services/geolocator_credit.remove`` in the transaction that deletes the
     ``event_geolocators`` row. ``created_at`` is the first departure; a later one leaves the row
     as it is. A former geolocator is no more independent of the work than a current one, so
-    neither approves the event nor is asked to review it.
+    neither approves the event nor is asked to approve it.
     """
 
     __tablename__ = "event_geolocator_departures"

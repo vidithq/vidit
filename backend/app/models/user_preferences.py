@@ -8,12 +8,12 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 
-# Who may send this analyst a review request: analysts they follow, any signed-in analyst, or
-# nobody. Value-domain source of truth; ``ck_user_preferences_review_request_audience`` pins it
+# Who may send this analyst an approval request: analysts they follow, any signed-in analyst, or
+# nobody. Value-domain source of truth; ``ck_user_preferences_approval_request_audience`` pins it
 # at the DB (keep the two in step).
-ReviewRequestAudience = Literal["following", "everyone", "nobody"]
-# Mirrored by the frontend's lib/reviewRequests REVIEW_REQUEST_AUDIENCE_DEFAULT; change both.
-REVIEW_REQUEST_AUDIENCE_DEFAULT: ReviewRequestAudience = "following"
+ApprovalRequestAudience = Literal["following", "everyone", "nobody"]
+# Mirrored by the frontend's lib/approvalRequests APPROVAL_REQUEST_AUDIENCE_DEFAULT; change both.
+APPROVAL_REQUEST_AUDIENCE_DEFAULT: ApprovalRequestAudience = "following"
 
 
 class UserPreferences(Base):
@@ -33,10 +33,10 @@ class UserPreferences(Base):
     display: Mapped[dict[str, Any]] = mapped_column(
         JSONB, default=dict, nullable=False, server_default="{}"
     )
-    review_request_audience: Mapped[ReviewRequestAudience] = mapped_column(
+    approval_request_audience: Mapped[ApprovalRequestAudience] = mapped_column(
         String(20),
-        default=REVIEW_REQUEST_AUDIENCE_DEFAULT,
-        server_default=text(f"'{REVIEW_REQUEST_AUDIENCE_DEFAULT}'"),
+        default=APPROVAL_REQUEST_AUDIENCE_DEFAULT,
+        server_default=text(f"'{APPROVAL_REQUEST_AUDIENCE_DEFAULT}'"),
         nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
@@ -48,7 +48,7 @@ class UserPreferences(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "review_request_audience IN ('following', 'everyone', 'nobody')",
-            name="ck_user_preferences_review_request_audience",
+            "approval_request_audience IN ('following', 'everyone', 'nobody')",
+            name="ck_user_preferences_approval_request_audience",
         ),
     )

@@ -1,11 +1,11 @@
-"""Review requests: a geolocator of a published event asks an analyst or an organization to
+"""Approval requests: a geolocator of a published event asks an analyst or an organization to
 review it.
 
 The requester is one of the event's geolocators (its owner or an accepted co-geolocator). The
 target must be able to approve the event, so a current or former geolocator of it cannot be
 asked, and an organization needs a live org manager outside the event's current and former
 geolocators. The target's
-``review_request_audience`` decides who may ask: analysts they follow (the default), everyone,
+``approval_request_audience`` decides who may ask: analysts they follow (the default), everyone,
 or nobody. An organization's org managers set its audience, and ``following`` there admits an
 analyst whom any live org manager follows. A request is open until the target approves the event,
 any version (``approvals.approve`` resolves it), or declines it. Any org manager answers for an
@@ -13,7 +13,7 @@ organization.
 
 There is one open request per requester, target and event, a declined request is not sent
 again for :data:`DECLINE_COOLDOWN`, and a requester sends at most
-``settings.review_request_daily_cap`` requests in a trailing 24 hours. Every write locks the event
+``settings.approval_request_daily_cap`` requests in a trailing 24 hours. Every write locks the event
 row first, as approvals do, so a request, its decline and an approval serialize.
 """
 
@@ -27,22 +27,22 @@ from sqlalchemy.orm import Session, aliased, joinedload
 
 from app.config import settings
 from app.models.approval import EventApproval
+from app.models.approval_request import ApprovalRequest
 from app.models.event import STATUS_GEOLOCATED, Event, EventGeolocator
 from app.models.follow import Follow
 from app.models.organization import Organization, OrganizationMember
-from app.models.review_request import ReviewRequest
 from app.models.user import User
 from app.models.user_preferences import (
-    REVIEW_REQUEST_AUDIENCE_DEFAULT,
+    APPROVAL_REQUEST_AUDIENCE_DEFAULT,
     UserPreferences,
+)
+from app.schemas.approval_request import (
+    ApprovalRequestRead,
+    ApprovalRequestTargetList,
+    OrganizationApprovalRequestRead,
 )
 from app.schemas.notification import NotificationEventRef
 from app.schemas.organization import OrganizationRef
-from app.schemas.review_request import (
-    OrganizationReviewRequestRead,
-    ReviewRequestRead,
-    ReviewRequestTargetList,
-)
 from app.schemas.user import AuthorRef
 from app.services import notifications
 from app.services.approvals import ever_credited, former_geolocator_ids, is_geolocator
@@ -55,61 +55,61 @@ MAX_TARGET_SUGGESTIONS = 20
 DECLINE_COOLDOWN = timedelta(days=7)
 
 
-class ReviewRequestError(Exception):
-    """A review request write the rules refuse, with a stable ``code``."""
+class ApprovalRequestError(Exception):
+    """An approval request write the rules refuse, with a stable ``code``."""
 
     code: str
 
 
-class EventNotReviewableError(ReviewRequestError):
+class EventNotReviewableError(ApprovalRequestError):
     code = "invalid_state"
 
 
-class NotAGeolocatorError(ReviewRequestError):
+class NotAGeolocatorError(ApprovalRequestError):
     code = "not_a_geolocator"
 
 
-class TargetNotFoundError(ReviewRequestError):
+class TargetNotFoundError(ApprovalRequestError):
     code = "user_not_found"
 
 
-class OrganizationNotFoundError(ReviewRequestError):
+class OrganizationNotFoundError(ApprovalRequestError):
     code = "organization_not_found"
 
 
-class TargetIsGeolocatorError(ReviewRequestError):
+class TargetIsGeolocatorError(ApprovalRequestError):
     code = "target_is_geolocator"
 
 
-class RequestsNotAcceptedError(ReviewRequestError):
+class RequestsNotAcceptedError(ApprovalRequestError):
     code = "requests_not_accepted"
 
 
-class TargetAlreadyReviewedError(ReviewRequestError):
+class TargetAlreadyReviewedError(ApprovalRequestError):
     code = "already_approved"
 
 
-class AlreadyRequestedError(ReviewRequestError):
+class AlreadyRequestedError(ApprovalRequestError):
     code = "already_requested"
 
 
-class RecentlyDeclinedError(ReviewRequestError):
+class RecentlyDeclinedError(ApprovalRequestError):
     code = "recently_declined"
 
 
-class DailyCapReachedError(ReviewRequestError):
+class DailyCapReachedError(ApprovalRequestError):
     code = "daily_cap_reached"
 
 
-class ReviewRequestNotFoundError(ReviewRequestError):
-    code = "review_request_not_found"
+class ApprovalRequestNotFoundError(ApprovalRequestError):
+    code = "approval_request_not_found"
 
 
-class AlreadyResolvedError(ReviewRequestError):
+class AlreadyResolvedError(ApprovalRequestError):
     code = "already_resolved"
 
 
-REVIEW_REQUEST_ERROR_STATUS: dict[str, int] = {
+APPROVAL_REQUEST_ERROR_STATUS: dict[str, int] = {
     "invalid_state": 409,
     "not_a_geolocator": 403,
     "user_not_found": 404,
@@ -120,13 +120,13 @@ REVIEW_REQUEST_ERROR_STATUS: dict[str, int] = {
     "already_requested": 409,
     "recently_declined": 409,
     "daily_cap_reached": 429,
-    "review_request_not_found": 404,
+    "approval_request_not_found": 404,
     "already_resolved": 409,
 }
 
 # One answer for every audience that refuses, so a refusal never tells the requester which rule
 # the target chose.
-REFUSAL_MESSAGE = "This analyst or organization does not take review requests from you"
+REFUSAL_MESSAGE = "This analyst or organization does not take approval requests from you"
 _DECLINED_MESSAGE = "They declined your request for this event less than 7 days ago"
 
 _Requester = aliased(User)
@@ -134,14 +134,14 @@ _Target = aliased(User)
 
 
 def _audience() -> ColumnElement[str]:
-    """The ``review_request_audience`` of the analyst in scope (``User``), its default when the
+    """The ``approval_request_audience`` of the analyst in scope (``User``), its default when the
     analyst has no preferences row."""
     stored = (
-        select(UserPreferences.review_request_audience)
+        select(UserPreferences.approval_request_audience)
         .where(UserPreferences.user_id == User.id)
         .scalar_subquery()
     )
-    return func.coalesce(stored, REVIEW_REQUEST_AUDIENCE_DEFAULT)
+    return func.coalesce(stored, APPROVAL_REQUEST_AUDIENCE_DEFAULT)
 
 
 def _follows(requester_id: uuid.UUID) -> ColumnElement[bool]:
@@ -169,7 +169,7 @@ def accepts_requests_from(requester_id: uuid.UUID) -> ColumnElement[bool]:
 def organization_accepts_requests_from(requester_id: uuid.UUID) -> ColumnElement[bool]:
     """The predicate for an organization (``Organization``) whose audience admits
     ``requester_id``: ``following`` admits an analyst whom any live org manager follows."""
-    audience = Organization.review_request_audience
+    audience = Organization.approval_request_audience
     return or_(
         audience == "everyone",
         and_(audience == "following", _followed_by_an_admin(requester_id)),
@@ -192,7 +192,7 @@ def _suggested_organization(requester_id: uuid.UUID, q: str) -> ColumnElement[bo
     ``q``."""
     return or_(
         and_(
-            Organization.review_request_audience != "nobody",
+            Organization.approval_request_audience != "nobody",
             _followed_by_an_admin(requester_id),
         ),
         func.lower(Organization.slug) == q.lower(),
@@ -226,15 +226,15 @@ def _lock(db: Session, event_id: uuid.UUID) -> Event:
 
 
 def _require_requester(db: Session, *, geo: Event, requester: User) -> None:
-    # Mirrored by the frontend's lib/reviewRequests.canRequestReview; change both.
+    # Mirrored by the frontend's lib/approvalRequests.canRequestApproval; change both.
     if geo.status != STATUS_GEOLOCATED:
         raise EventNotReviewableError("Only a published geolocation can be reviewed")
     if not is_geolocator(db, geo=geo, user_id=requester.id):
-        raise NotAGeolocatorError("Only a geolocator of this event can request a review")
+        raise NotAGeolocatorError("Only a geolocator of this event can request approval")
 
 
-def build_read(row: ReviewRequest) -> ReviewRequestRead:
-    return ReviewRequestRead(
+def build_read(row: ApprovalRequest) -> ApprovalRequestRead:
+    return ApprovalRequestRead(
         id=row.id,
         event_id=row.event_id,
         version_no=row.version_no,
@@ -254,54 +254,54 @@ def build_read(row: ReviewRequest) -> ReviewRequestRead:
 def _open_query(db: Session):
     """Open requests whose requester and analyst target are live."""
     return (
-        db.query(ReviewRequest)
-        .join(_Requester, _Requester.id == ReviewRequest.requester_id)
-        .outerjoin(_Target, _Target.id == ReviewRequest.target_user_id)
+        db.query(ApprovalRequest)
+        .join(_Requester, _Requester.id == ApprovalRequest.requester_id)
+        .outerjoin(_Target, _Target.id == ApprovalRequest.target_user_id)
         .options(
-            joinedload(ReviewRequest.requester),
-            joinedload(ReviewRequest.target_user),
-            joinedload(ReviewRequest.target_organization),
+            joinedload(ApprovalRequest.requester),
+            joinedload(ApprovalRequest.target_user),
+            joinedload(ApprovalRequest.target_organization),
         )
         .filter(
-            ReviewRequest.status == "open",
+            ApprovalRequest.status == "open",
             _Requester.deleted_at.is_(None),
-            or_(ReviewRequest.target_user_id.is_(None), _Target.deleted_at.is_(None)),
+            or_(ApprovalRequest.target_user_id.is_(None), _Target.deleted_at.is_(None)),
         )
     )
 
 
-def list_open(db: Session, *, geo: Event, viewer: User) -> list[ReviewRequest]:
+def list_open(db: Session, *, geo: Event, viewer: User) -> list[ApprovalRequest]:
     """The open requests on ``geo`` that ``viewer`` may see, oldest first.
 
     A geolocator sees every one; anyone else sees those addressed to them or to an organization
     they are an org manager of. A request whose requester or analyst target is soft-deleted is
     left out.
     """
-    query = _open_query(db).filter(ReviewRequest.event_id == geo.id)
+    query = _open_query(db).filter(ApprovalRequest.event_id == geo.id)
     if not is_geolocator(db, geo=geo, user_id=viewer.id):
         query = query.filter(
             or_(
-                ReviewRequest.target_user_id == viewer.id,
-                ReviewRequest.target_organization_id.in_(_managed_by(viewer.id)),
+                ApprovalRequest.target_user_id == viewer.id,
+                ApprovalRequest.target_organization_id.in_(_managed_by(viewer.id)),
             )
         )
-    return query.order_by(ReviewRequest.created_at, ReviewRequest.id).all()
+    return query.order_by(ApprovalRequest.created_at, ApprovalRequest.id).all()
 
 
-def list_open_for_organization(db: Session, *, org: Organization) -> list[ReviewRequest]:
+def list_open_for_organization(db: Session, *, org: Organization) -> list[ApprovalRequest]:
     """The open requests addressed to ``org`` on events a public reader can see, oldest first."""
     return (
         _open_query(db)
-        .join(Event, and_(Event.id == ReviewRequest.event_id, *visible_events()))
-        .options(joinedload(ReviewRequest.event))
-        .filter(ReviewRequest.target_organization_id == org.id)
-        .order_by(ReviewRequest.created_at, ReviewRequest.id)
+        .join(Event, and_(Event.id == ApprovalRequest.event_id, *visible_events()))
+        .options(joinedload(ApprovalRequest.event))
+        .filter(ApprovalRequest.target_organization_id == org.id)
+        .order_by(ApprovalRequest.created_at, ApprovalRequest.id)
         .all()
     )
 
 
-def build_organization_read(row: ReviewRequest) -> OrganizationReviewRequestRead:
-    return OrganizationReviewRequestRead(
+def build_organization_read(row: ApprovalRequest) -> OrganizationApprovalRequestRead:
+    return OrganizationApprovalRequestRead(
         event=NotificationEventRef.model_validate(row.event), request=build_read(row)
     )
 
@@ -310,10 +310,10 @@ def _declined_recently(geo: Event, requester: User) -> ColumnElement[bool]:
     """The requests ``requester`` sent about ``geo`` that were declined within
     :data:`DECLINE_COOLDOWN`."""
     return and_(
-        ReviewRequest.event_id == geo.id,
-        ReviewRequest.requester_id == requester.id,
-        ReviewRequest.status == "declined",
-        ReviewRequest.resolved_at >= datetime.now(UTC) - DECLINE_COOLDOWN,
+        ApprovalRequest.event_id == geo.id,
+        ApprovalRequest.requester_id == requester.id,
+        ApprovalRequest.status == "declined",
+        ApprovalRequest.resolved_at >= datetime.now(UTC) - DECLINE_COOLDOWN,
     )
 
 
@@ -338,16 +338,16 @@ def _eligible_analysts(
             )
         ),
         User.id.not_in(
-            select(ReviewRequest.target_user_id).where(
-                ReviewRequest.event_id == geo.id,
-                ReviewRequest.requester_id == requester.id,
-                ReviewRequest.status == "open",
-                ReviewRequest.target_user_id.is_not(None),
+            select(ApprovalRequest.target_user_id).where(
+                ApprovalRequest.event_id == geo.id,
+                ApprovalRequest.requester_id == requester.id,
+                ApprovalRequest.status == "open",
+                ApprovalRequest.target_user_id.is_not(None),
             )
         ),
         User.id.not_in(
-            select(ReviewRequest.target_user_id).where(
-                _declined_recently(geo, requester), ReviewRequest.target_user_id.is_not(None)
+            select(ApprovalRequest.target_user_id).where(
+                _declined_recently(geo, requester), ApprovalRequest.target_user_id.is_not(None)
             )
         ),
         _suggested_analyst(requester.id, exact),
@@ -373,17 +373,17 @@ def _eligible_organizations(
             )
         ),
         Organization.id.not_in(
-            select(ReviewRequest.target_organization_id).where(
-                ReviewRequest.event_id == geo.id,
-                ReviewRequest.requester_id == requester.id,
-                ReviewRequest.status == "open",
-                ReviewRequest.target_organization_id.is_not(None),
+            select(ApprovalRequest.target_organization_id).where(
+                ApprovalRequest.event_id == geo.id,
+                ApprovalRequest.requester_id == requester.id,
+                ApprovalRequest.status == "open",
+                ApprovalRequest.target_organization_id.is_not(None),
             )
         ),
         Organization.id.not_in(
-            select(ReviewRequest.target_organization_id).where(
+            select(ApprovalRequest.target_organization_id).where(
                 _declined_recently(geo, requester),
-                ReviewRequest.target_organization_id.is_not(None),
+                ApprovalRequest.target_organization_id.is_not(None),
             )
         ),
         _suggested_organization(requester.id, exact),
@@ -401,8 +401,8 @@ def _eligible_organizations(
 
 def eligible_targets(
     db: Session, *, geo: Event, requester: User, query: str
-) -> ReviewRequestTargetList:
-    """The analysts and organizations to suggest to ``requester`` for a review of ``geo``.
+) -> ApprovalRequestTargetList:
+    """The analysts and organizations to suggest to ``requester`` for approval of ``geo``.
 
     Analysts: live, outside the event's current and former geolocators, who have not reviewed
     the live version and hold no open request from ``requester`` on it, and who follow
@@ -417,7 +417,7 @@ def eligible_targets(
     _require_requester(db, geo=geo, requester=requester)
     q = _substring(query)
     exact = query.strip()
-    return ReviewRequestTargetList(
+    return ApprovalRequestTargetList(
         analysts=[
             AuthorRef.model_validate(u)
             for u in _eligible_analysts(db, geo=geo, requester=requester, q=q, exact=exact)
@@ -433,19 +433,19 @@ def _check_daily_cap(db: Session, *, requester: User) -> None:
     # Two requests on different events lock different event rows; this per-requester lock,
     # held to the commit, keeps them from both counting under the cap.
     db.execute(
-        select(func.pg_advisory_xact_lock(func.hashtext(f"review-request-cap:{requester.id}")))
+        select(func.pg_advisory_xact_lock(func.hashtext(f"approval-request-cap:{requester.id}")))
     )
     sent_today = db.scalar(
         select(func.count())
-        .select_from(ReviewRequest)
+        .select_from(ApprovalRequest)
         .where(
-            ReviewRequest.requester_id == requester.id,
-            ReviewRequest.created_at >= datetime.now(UTC) - timedelta(days=1),
+            ApprovalRequest.requester_id == requester.id,
+            ApprovalRequest.created_at >= datetime.now(UTC) - timedelta(days=1),
         )
     )
-    if (sent_today or 0) >= settings.review_request_daily_cap:
+    if (sent_today or 0) >= settings.approval_request_daily_cap:
         raise DailyCapReachedError(
-            f"You can send {settings.review_request_daily_cap} review requests a day"
+            f"You can send {settings.approval_request_daily_cap} approval requests a day"
         )
 
 
@@ -481,19 +481,19 @@ def _check_analyst_target(db: Session, *, geo: Event, requester: User, username:
     pending = db.scalar(
         select(
             exists().where(
-                ReviewRequest.event_id == geo.id,
-                ReviewRequest.requester_id == requester.id,
-                ReviewRequest.target_user_id == target.id,
-                ReviewRequest.status == "open",
+                ApprovalRequest.event_id == geo.id,
+                ApprovalRequest.requester_id == requester.id,
+                ApprovalRequest.target_user_id == target.id,
+                ApprovalRequest.status == "open",
             )
         )
     )
     if pending:
-        raise AlreadyRequestedError("You already asked this analyst to review this event")
+        raise AlreadyRequestedError("You already asked this analyst to approve this event")
     if db.scalar(
         select(
             exists().where(
-                _declined_recently(geo, requester), ReviewRequest.target_user_id == target.id
+                _declined_recently(geo, requester), ApprovalRequest.target_user_id == target.id
             )
         )
     ):
@@ -536,20 +536,20 @@ def _check_organization_target(
     pending = db.scalar(
         select(
             exists().where(
-                ReviewRequest.event_id == geo.id,
-                ReviewRequest.requester_id == requester.id,
-                ReviewRequest.target_organization_id == org.id,
-                ReviewRequest.status == "open",
+                ApprovalRequest.event_id == geo.id,
+                ApprovalRequest.requester_id == requester.id,
+                ApprovalRequest.target_organization_id == org.id,
+                ApprovalRequest.status == "open",
             )
         )
     )
     if pending:
-        raise AlreadyRequestedError("You already asked this organization to review this event")
+        raise AlreadyRequestedError("You already asked this organization to approve this event")
     if db.scalar(
         select(
             exists().where(
                 _declined_recently(geo, requester),
-                ReviewRequest.target_organization_id == org.id,
+                ApprovalRequest.target_organization_id == org.id,
             )
         )
     ):
@@ -557,15 +557,15 @@ def _check_organization_target(
     return org
 
 
-def request_review(
+def request_approval(
     db: Session,
     *,
     geo: Event,
     requester: User,
     username: str | None = None,
     organization: str | None = None,
-) -> ReviewRequest:
-    """Ask the analyst ``username``, or the organization with slug ``organization``, to review
+) -> ApprovalRequest:
+    """Ask the analyst ``username``, or the organization with slug ``organization``, to approve
     the live version of ``geo``, and notify the analyst or every live org manager.
 
     409 ``invalid_state`` off ``geolocated``; 403 ``not_a_geolocator`` when ``requester`` is
@@ -582,7 +582,7 @@ def request_review(
     if organization is not None:
         org = _check_organization_target(db, geo=geo, requester=requester, slug=organization)
         _check_daily_cap(db, requester=requester)
-        row = ReviewRequest(
+        row = ApprovalRequest(
             event_id=geo.id,
             version_no=geo.version_no,
             requester_id=requester.id,
@@ -594,7 +594,7 @@ def request_review(
         assert username is not None
         target = _check_analyst_target(db, geo=geo, requester=requester, username=username)
         _check_daily_cap(db, requester=requester)
-        row = ReviewRequest(
+        row = ApprovalRequest(
             event_id=geo.id,
             version_no=geo.version_no,
             requester_id=requester.id,
@@ -603,7 +603,7 @@ def request_review(
         recipient_ids = [target.id]
         organization_id = None
     db.add(row)
-    notifications.notify_review_request_received(
+    notifications.notify_approval_request_received(
         db,
         event=geo,
         requester_id=requester.id,
@@ -615,17 +615,17 @@ def request_review(
     return row
 
 
-def decline(db: Session, *, geo: Event, request_id: uuid.UUID, user: User) -> ReviewRequest:
+def decline(db: Session, *, geo: Event, request_id: uuid.UUID, user: User) -> ApprovalRequest:
     """Decline a request addressed to ``user``, or to an organization ``user`` is an org manager
     of, and tell the requester.
 
-    404 ``review_request_not_found`` for an id that is not such a request on ``geo``; 409
+    404 ``approval_request_not_found`` for an id that is not such a request on ``geo``; 409
     ``already_resolved`` once it is approved or declined.
     """
     geo = _lock(db, geo.id)
     row = (
-        db.query(ReviewRequest)
-        .filter(ReviewRequest.id == request_id, ReviewRequest.event_id == geo.id)
+        db.query(ApprovalRequest)
+        .filter(ApprovalRequest.id == request_id, ApprovalRequest.event_id == geo.id)
         .first()
     )
     answerable = row is not None and (
@@ -636,12 +636,12 @@ def decline(db: Session, *, geo: Event, request_id: uuid.UUID, user: User) -> Re
         )
     )
     if row is None or not answerable:
-        raise ReviewRequestNotFoundError("No such review request for you on this event")
+        raise ApprovalRequestNotFoundError("No such approval request for you on this event")
     if row.status != "open":
-        raise AlreadyResolvedError("This review request is already resolved")
+        raise AlreadyResolvedError("This approval request is already resolved")
     row.status = "declined"
     row.resolved_at = datetime.now(UTC)
-    notifications.notify_review_request_declined(
+    notifications.notify_approval_request_declined(
         db,
         event=geo,
         requester_id=row.requester_id,

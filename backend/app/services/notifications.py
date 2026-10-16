@@ -24,6 +24,7 @@ from sqlalchemy.orm import Query, Session, aliased, contains_eager, joinedload
 
 from app.config import settings
 from app.models.approval import EventApproval
+from app.models.approval_request import ApprovalRequest
 from app.models.event import (
     STATUS_GEOLOCATED,
     Event,
@@ -38,7 +39,6 @@ from app.models.notification import (
     NotificationKind,
 )
 from app.models.organization import OrganizationInvite, OrganizationMember
-from app.models.review_request import ReviewRequest
 from app.models.user import User
 from app.schemas.notification import NotificationEventRef, NotificationRead
 from app.schemas.organization import OrganizationRef
@@ -60,7 +60,7 @@ REINVITE_QUIET_PERIOD = timedelta(days=7)
 # and limits. Fan-out an action sets off for everyone concerned (a new version's re-approval
 # requests, an approval's notices) is neither counted nor capped.
 ACTOR_CAPPED_KINDS: frozenset[NotificationKind] = frozenset(
-    {"co_geolocator_invite", "organization_invite", "review_request_received"}
+    {"co_geolocator_invite", "organization_invite", "approval_request_received"}
 )
 
 
@@ -288,7 +288,7 @@ def notify_approval_received(
     organization_id: uuid.UUID | None = None,
     requester_ids: Collection[uuid.UUID] = (),
 ) -> None:
-    """Tell the owner of ``event``, and every geolocator whose review request the approval
+    """Tell the owner of ``event``, and every geolocator whose approval request the approval
     resolved (``requester_ids``), that ``reviewer_id`` approved its live version, for
     ``organization_id`` when set."""
     for recipient_id in {event.owner_id, *requester_ids}:
@@ -316,7 +316,7 @@ def _ever_credited_ids(db: Session, event: Event) -> set[uuid.UUID]:
     return {event.owner_id, *current, *former}
 
 
-def notify_review_request_received(
+def notify_approval_request_received(
     db: Session,
     *,
     event: Event,
@@ -324,21 +324,21 @@ def notify_review_request_received(
     recipient_ids: Collection[uuid.UUID],
     organization_id: uuid.UUID | None = None,
 ) -> None:
-    """Tell the target that ``requester_id`` asks them to review ``event``: one analyst, or the
+    """Tell the target that ``requester_id`` asks them to approve ``event``: one analyst, or the
     org managers of ``organization_id`` who never held credit on it."""
     credited = _ever_credited_ids(db, event) if organization_id is not None else set()
     for recipient_id in set(recipient_ids) - credited:
         _emit(
             db,
             recipient_id=recipient_id,
-            kind="review_request_received",
+            kind="approval_request_received",
             actor_id=requester_id,
             event_id=event.id,
             organization_id=organization_id,
         )
 
 
-def notify_review_request_declined(
+def notify_approval_request_declined(
     db: Session,
     *,
     event: Event,
@@ -346,12 +346,12 @@ def notify_review_request_declined(
     target_id: uuid.UUID,
     organization_id: uuid.UUID | None = None,
 ) -> None:
-    """Tell ``requester_id`` that ``target_id`` declined to review ``event``, for
+    """Tell ``requester_id`` that ``target_id`` declined to approve ``event``, for
     ``organization_id`` when set."""
     _emit(
         db,
         recipient_id=requester_id,
-        kind="review_request_declined",
+        kind="approval_request_declined",
         actor_id=target_id,
         event_id=event.id,
         organization_id=organization_id,
@@ -505,37 +505,37 @@ def _managed(db: Session, *, user: User, rows: list[Notification]) -> set[uuid.U
     )
 
 
-# A review request's key in the feed: the event, the requester, and the organization it targets
+# An approval request's key in the feed: the event, the requester, and the organization it targets
 # (None for one addressed to the reader). There is one open request per requester, target and
 # event.
 RequestKey = tuple[uuid.UUID, uuid.UUID, uuid.UUID | None]
 
 
-def open_review_requests(
+def open_approval_requests(
     db: Session, *, user: User, rows: list[Notification]
 ) -> dict[uuid.UUID, uuid.UUID]:
-    """The open review request behind each of ``rows``' ``review_request_received`` rows, by
+    """The open approval request behind each of ``rows``' ``approval_request_received`` rows, by
     notification id: one addressed to ``user``, or to an organization ``user`` is an org manager
     of now. Only the newest row of a key carries it; an older one stands for a request already
     answered."""
-    received = [r for r in rows if r.kind == "review_request_received" and r.event_id]
+    received = [r for r in rows if r.kind == "approval_request_received" and r.event_id]
     if not received:
         return {}
     event_ids = {r.event_id for r in received}
     org_ids = _managed(db, user=user, rows=received)
     found = db.execute(
         select(
-            ReviewRequest.event_id,
-            ReviewRequest.requester_id,
-            ReviewRequest.target_organization_id,
-            ReviewRequest.id,
+            ApprovalRequest.event_id,
+            ApprovalRequest.requester_id,
+            ApprovalRequest.target_organization_id,
+            ApprovalRequest.id,
         ).where(
             or_(
-                ReviewRequest.target_user_id == user.id,
-                ReviewRequest.target_organization_id.in_(org_ids),
+                ApprovalRequest.target_user_id == user.id,
+                ApprovalRequest.target_organization_id.in_(org_ids),
             ),
-            ReviewRequest.status == "open",
-            ReviewRequest.event_id.in_(event_ids),
+            ApprovalRequest.status == "open",
+            ApprovalRequest.event_id.in_(event_ids),
         )
     ).tuples()
     by_key: dict[RequestKey, uuid.UUID] = {
@@ -545,7 +545,7 @@ def open_review_requests(
     newest = _newest_rows(
         db,
         user=user,
-        kind="review_request_received",
+        kind="approval_request_received",
         rows=received,
         by=(Notification.event_id, Notification.actor_id, Notification.organization_id),
     )
@@ -561,7 +561,7 @@ def open_review_requests(
 
 # The kinds whose feed row offers to approve the event's live version.
 _APPROVE_OFFER_KINDS: frozenset[NotificationKind] = frozenset(
-    {"re_approve_requested", "review_request_received"}
+    {"re_approve_requested", "approval_request_received"}
 )
 
 # An approval offer's key: the event, and the organization the reader would approve for (None
@@ -581,7 +581,7 @@ class ReapprovalOffer(NamedTuple):
 def reapproval_offers(
     db: Session, *, user: User, rows: list[Notification]
 ) -> dict[OfferKey, ReapprovalOffer]:
-    """The offer of each event among ``rows``' re-approval and review requests that ``user``
+    """The offer of each event among ``rows``' re-approval and approval requests that ``user``
     can approve now, as themselves or for the organization the row names: published, never
     credited to them, and not yet approved at the live version (by them, or by the organization,
     which they must still manage).
@@ -658,11 +658,11 @@ def build_read(
     *,
     pending: set[uuid.UUID],
     offers: dict[OfferKey, ReapprovalOffer],
-    review_requests: dict[uuid.UUID, uuid.UUID],
+    approval_requests: dict[uuid.UUID, uuid.UUID],
 ) -> NotificationRead:
-    review_request_id = review_requests.get(row.id)
-    # A resolved review request offers nothing, though the event may still be approvable.
-    offers_approval = row.kind == "re_approve_requested" or review_request_id is not None
+    approval_request_id = approval_requests.get(row.id)
+    # A resolved approval request offers nothing, though the event may still be approvable.
+    offers_approval = row.kind == "re_approve_requested" or approval_request_id is not None
     offer = (
         offers.get((row.event_id, row.organization_id))
         if offers_approval and row.event_id is not None
@@ -688,7 +688,7 @@ def build_read(
             if offer is not None and row.kind == "re_approve_requested"
             else None
         ),
-        review_request_id=review_request_id,
+        approval_request_id=approval_request_id,
     )
 
 

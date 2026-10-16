@@ -1,17 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import { useParams } from "next/navigation";
 
 import type { EventDetail } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { EventPageBody } from "@/components/event/EventPageBody";
-import { ReviewRequestsSection } from "@/components/event/ReviewRequestsSection";
 import { useEventActions } from "@/components/event/useEventActions";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
-import { Pill } from "@/components/ui/Pill";
-import { hasPublishedRecord } from "@/lib/events";
 import { creditProps } from "@/lib/geolocatorCredit";
 
 export default function EventPage() {
@@ -22,13 +18,11 @@ export default function EventPage() {
     error,
     refetch,
   } = useApiResource<EventDetail>(eventId ? `/events/${eventId}` : null);
-  // Geolocated events carry only the utilities tier plus, for the author, edit and close (which refetch). Called before early returns.
-  const [approvedCount, setApprovedCount] = useState(0);
-  const { actions, panels } = useEventActions({
+  // Called before the early returns.
+  const { actions, panels, approvalsCard } = useEventActions({
     event: geo,
     surface: "event",
     onChanged: refetch,
-    onApproved: () => setApprovedCount((n) => n + 1),
   });
 
   if (error)
@@ -41,27 +35,15 @@ export default function EventPage() {
     <PageShell
       back
       title={geo.title}
-      subtitle={
-        <span className="flex flex-wrap items-center gap-2">
-          <AuthorByline {...creditProps(geo)} avatar />
-          {/* Version 1 says nothing. */}
-          {geo.version_no > 1 && (
-            <Pill tone="neutral" title={`Version ${geo.version_no}`}>
-              v{geo.version_no}
-            </Pill>
-          )}
-        </span>
-      }
+      subtitle={<AuthorByline {...creditProps(geo)} avatar />}
       actions={actions}
+      rail={approvalsCard}
+      railLabel="Approvals"
     >
-        {/* Directly under the header, where the trigger that opened it is. */}
-        {panels}
-
-        <EventPageBody geo={geo} />
-
-        {hasPublishedRecord(geo) && (
-          <ReviewRequestsSection event={geo} refreshKey={approvedCount} />
-        )}
+      {/* Directly under the header, where the menu that opened them is. Below `lg` the
+          Approvals card stacks above them, under the title. */}
+      {panels}
+      <EventPageBody geo={geo} />
     </PageShell>
   );
 }

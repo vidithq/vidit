@@ -336,7 +336,7 @@ export interface paths {
         post?: never;
         /**
          * Delete Organization
-         * @description Delete an organization with its memberships, invites, review requests and approvals.
+         * @description Delete an organization with its memberships, invites, approval requests and approvals.
          */
         delete: operations["delete_organization_api_v1_admin_organizations__slug__delete"];
         options?: never;
@@ -1300,6 +1300,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/events/{geolocation_id}/approval-request-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Approval Request Targets
+         * @description Analysts and organizations you can ask to approve this event now (geolocators only).
+         */
+        get: operations["list_approval_request_targets_api_v1_events__geolocation_id__approval_request_targets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{geolocation_id}/approval-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Approval Requests
+         * @description Open approval requests on this event: all of them for its geolocators, those addressed to
+         *     you or to an organization you manage otherwise.
+         */
+        get: operations["list_approval_requests_api_v1_events__geolocation_id__approval_requests_get"];
+        put?: never;
+        /**
+         * Create Approval Request
+         * @description Ask an analyst or an organization to approve the live version of a published event you
+         *     geolocated.
+         */
+        post: operations["create_approval_request_api_v1_events__geolocation_id__approval_requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{geolocation_id}/approval-requests/{request_id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline Approval Request
+         * @description Decline an approval request addressed to you, or to an organization you manage.
+         */
+        post: operations["decline_approval_request_api_v1_events__geolocation_id__approval_requests__request_id__decline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events/{geolocation_id}/approvals": {
         parameters: {
             query?: never;
@@ -1596,72 +1662,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/review-request-targets": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Review Request Targets
-         * @description Analysts and organizations you can ask to review this event now (geolocators only).
-         */
-        get: operations["list_review_request_targets_api_v1_events__geolocation_id__review_request_targets_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/events/{geolocation_id}/review-requests": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Review Requests
-         * @description Open review requests on this event: all of them for its geolocators, those addressed to
-         *     you or to an organization you manage otherwise.
-         */
-        get: operations["list_review_requests_api_v1_events__geolocation_id__review_requests_get"];
-        put?: never;
-        /**
-         * Create Review Request
-         * @description Ask an analyst or an organization to review the live version of a published event you
-         *     geolocated.
-         */
-        post: operations["create_review_request_api_v1_events__geolocation_id__review_requests_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/events/{geolocation_id}/review-requests/{request_id}/decline": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Decline Review Request
-         * @description Decline a review request addressed to you, or to an organization you manage.
-         */
-        post: operations["decline_review_request_api_v1_events__geolocation_id__review_requests__request_id__decline_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/events/{geolocation_id}/versions": {
         parameters: {
             query?: never;
@@ -1871,10 +1871,31 @@ export interface paths {
         head?: never;
         /**
          * Update Organization
-         * @description Edit an organization's bio, links and review request audience. Org managers and site
+         * @description Edit an organization's bio, links and approval request audience. Org managers and site
          *     managers only.
          */
         patch: operations["update_organization_api_v1_organizations__slug__patch"];
+        trace?: never;
+    };
+    "/api/v1/organizations/{slug}/approval-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Organization Approval Requests
+         * @description Open approval requests addressed to the organization, oldest first. Org managers and site
+         *     managers only.
+         */
+        get: operations["list_organization_approval_requests_api_v1_organizations__slug__approval_requests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/organizations/{slug}/approvals": {
@@ -2068,27 +2089,6 @@ export interface paths {
          * @description Change a member's role. Org managers and site admins only; the last org manager keeps the role.
          */
         patch: operations["update_organization_member_api_v1_organizations__slug__members__username__patch"];
-        trace?: never;
-    };
-    "/api/v1/organizations/{slug}/review-requests": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Organization Review Requests
-         * @description Open review requests addressed to the organization, oldest first. Org managers and site
-         *     managers only.
-         */
-        get: operations["list_organization_review_requests_api_v1_organizations__slug__review_requests_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/api/v1/product-updates/unsubscribe": {
@@ -3010,6 +3010,63 @@ export interface components {
             verdict: "approve";
             /** Version No */
             version_no: number;
+        };
+        /**
+         * ApprovalRequestCreate
+         * @description Body of ``POST /events/{id}/approval-requests``: the analyst (``username``) or the
+         *     organization (``organization``, its slug) you ask to approve the event. Exactly one.
+         */
+        ApprovalRequestCreate: {
+            /** Organization */
+            organization?: string | null;
+            /** Username */
+            username?: string | null;
+        };
+        /**
+         * ApprovalRequestRead
+         * @description One request that ``target`` (an analyst) or ``target_organization`` review an event;
+         *     exactly one of the two is set. ``version_no`` is the live version when it was sent;
+         *     approving any version resolves it.
+         */
+        ApprovalRequestRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            requester: components["schemas"]["AuthorRef"];
+            /** Resolved At */
+            resolved_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "approved" | "declined" | "withdrawn";
+            target: components["schemas"]["AuthorRef"] | null;
+            target_organization: components["schemas"]["OrganizationRef"] | null;
+            /** Version No */
+            version_no: number;
+        };
+        /**
+         * ApprovalRequestTargetList
+         * @description ``GET /events/{id}/approval-request-targets``: the analysts and the organizations you can
+         *     ask to approve the event now.
+         */
+        ApprovalRequestTargetList: {
+            /** Analysts */
+            analysts: components["schemas"]["AuthorRef"][];
+            /** Organizations */
+            organizations: components["schemas"]["OrganizationRef"][];
         };
         /**
          * ApprovalRevoke
@@ -4092,7 +4149,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_manager_inherited" | "re_approve_requested" | "approval_received" | "review_request_received" | "review_request_declined" | "organization_approval_removed";
+            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_manager_inherited" | "re_approve_requested" | "approval_received" | "approval_request_received" | "approval_request_declined" | "organization_approval_removed";
         };
         /**
          * NotificationRead
@@ -4101,16 +4158,18 @@ export interface components {
          *     ``invite_pending`` is true on a ``co_geolocator_invite`` row whose
          *     invitation still waits for the reader's answer. ``reapprove_version`` is
          *     the live version a ``re_approve_requested`` row, or a
-         *     ``review_request_received`` row whose request is open, offers to approve,
+         *     ``approval_request_received`` row whose request is open, offers to approve,
          *     null when the reader cannot approve it now. ``approved_version`` is then,
          *     on a ``re_approve_requested`` row, the latest earlier version the reader's
-         *     approval still stands on, the base of the change list. ``review_request_id`` is the open request behind a
-         *     ``review_request_received`` row, null once it is resolved.
+         *     approval still stands on, the base of the change list. ``approval_request_id`` is the open request behind a
+         *     ``approval_request_received`` row, null once it is resolved.
          *     ``organization_name`` names the deleted organization on an
          *     ``organization_approval_removed`` row, and is null on every other kind.
          */
         NotificationRead: {
             actor: components["schemas"]["AuthorRef"] | null;
+            /** Approval Request Id */
+            approval_request_id: string | null;
             /** Approved Version */
             approved_version: number | null;
             /**
@@ -4130,7 +4189,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_manager_inherited" | "re_approve_requested" | "approval_received" | "review_request_received" | "review_request_declined" | "organization_approval_removed";
+            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_manager_inherited" | "re_approve_requested" | "approval_received" | "approval_request_received" | "approval_request_declined" | "organization_approval_removed";
             organization: components["schemas"]["OrganizationRef"] | null;
             /** Organization Name */
             organization_name?: string | null;
@@ -4138,8 +4197,6 @@ export interface components {
             read_at: string | null;
             /** Reapprove Version */
             reapprove_version: number | null;
-            /** Review Request Id */
-            review_request_id: string | null;
         };
         /**
          * NotificationReadUpdate
@@ -4165,6 +4222,15 @@ export interface components {
             event: components["schemas"]["NotificationEventRef"];
         };
         /**
+         * OrganizationApprovalRequestRead
+         * @description One open request addressed to an organization, with the event it names, for
+         *     ``GET /organizations/{slug}/approval-requests``.
+         */
+        OrganizationApprovalRequestRead: {
+            event: components["schemas"]["NotificationEventRef"];
+            request: components["schemas"]["ApprovalRequestRead"];
+        };
+        /**
          * OrganizationCreate
          * @description Body for ``POST /admin/organizations``.
          *
@@ -4172,6 +4238,8 @@ export interface components {
          *     invite.
          */
         OrganizationCreate: {
+            /** Approval Request Audience */
+            approval_request_audience?: ("following" | "everyone" | "nobody") | null;
             /** Bio */
             bio?: string | null;
             external_links?: components["schemas"]["ExternalLinks"] | null;
@@ -4179,8 +4247,6 @@ export interface components {
             manager_username: string;
             /** Name */
             name: string;
-            /** Review Request Audience */
-            review_request_audience?: ("following" | "everyone" | "nobody") | null;
             /** Slug */
             slug: string;
             /** X Handle */
@@ -4273,11 +4339,13 @@ export interface components {
          *     caller. ``viewer_invited`` is true while the caller holds a pending invite.
          *     ``viewer_can_manage`` is true for an org manager or a site admin: it gates
          *     the profile edit and the member management on the page.
-         *     ``review_request_audience`` is who may send the organization a review
+         *     ``approval_request_audience`` is who may send the organization an approval
          *     request, set by its org managers: shown to them and to site admins only, null
          *     for anyone else, so the setting is not read off the page.
          */
         OrganizationRead: {
+            /** Approval Request Audience */
+            approval_request_audience: ("following" | "everyone" | "nobody") | null;
             /** Avatar Url */
             avatar_url: string | null;
             /** Bio */
@@ -4300,8 +4368,6 @@ export interface components {
             member_count: number;
             /** Name */
             name: string;
-            /** Review Request Audience */
-            review_request_audience: ("following" | "everyone" | "nobody") | null;
             /** Slug */
             slug: string;
             /**
@@ -4332,27 +4398,18 @@ export interface components {
             slug: string;
         };
         /**
-         * OrganizationReviewRequestRead
-         * @description One open request addressed to an organization, with the event it names, for
-         *     ``GET /organizations/{slug}/review-requests``.
-         */
-        OrganizationReviewRequestRead: {
-            event: components["schemas"]["NotificationEventRef"];
-            request: components["schemas"]["ReviewRequestRead"];
-        };
-        /**
          * OrganizationUpdate
          * @description Body for ``PATCH /organizations/{slug}``: the fields an org manager edits,
          *     under the rules of ``PATCH /users/me``, and who may send the organization a
-         *     review request. ``name``, ``slug`` and ``x_handle`` stay with the site
+         *     approval request. ``name``, ``slug`` and ``x_handle`` stay with the site
          *     admin.
          */
         OrganizationUpdate: {
+            /** Approval Request Audience */
+            approval_request_audience?: ("following" | "everyone" | "nobody") | null;
             /** Bio */
             bio?: string | null;
             external_links?: components["schemas"]["ExternalLinks"] | null;
-            /** Review Request Audience */
-            review_request_audience?: ("following" | "everyone" | "nobody") | null;
         };
         /**
          * PaginatedEventDetails
@@ -4643,63 +4700,6 @@ export interface components {
             /** Token */
             token: string;
         };
-        /**
-         * ReviewRequestCreate
-         * @description Body of ``POST /events/{id}/review-requests``: the analyst (``username``) or the
-         *     organization (``organization``, its slug) you ask to review the event. Exactly one.
-         */
-        ReviewRequestCreate: {
-            /** Organization */
-            organization?: string | null;
-            /** Username */
-            username?: string | null;
-        };
-        /**
-         * ReviewRequestRead
-         * @description One request that ``target`` (an analyst) or ``target_organization`` review an event;
-         *     exactly one of the two is set. ``version_no`` is the live version when it was sent;
-         *     approving any version resolves it.
-         */
-        ReviewRequestRead: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Event Id
-             * Format: uuid
-             */
-            event_id: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            requester: components["schemas"]["AuthorRef"];
-            /** Resolved At */
-            resolved_at: string | null;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "open" | "approved" | "declined" | "withdrawn";
-            target: components["schemas"]["AuthorRef"] | null;
-            target_organization: components["schemas"]["OrganizationRef"] | null;
-            /** Version No */
-            version_no: number;
-        };
-        /**
-         * ReviewRequestTargetList
-         * @description ``GET /events/{id}/review-request-targets``: the analysts and the organizations you can
-         *     ask to review the event now.
-         */
-        ReviewRequestTargetList: {
-            /** Analysts */
-            analysts: components["schemas"]["AuthorRef"][];
-            /** Organizations */
-            organizations: components["schemas"]["OrganizationRef"][];
-        };
         /** SearchEventHit */
         SearchEventHit: {
             /** Event Date */
@@ -4734,7 +4734,7 @@ export interface components {
         };
         /**
          * SearchOrganizationHit
-         * @description Public fields only, the organization page's header: no review request
+         * @description Public fields only, the organization page's header: no approval request
          *     audience, no creator.
          */
         SearchOrganizationHit: {
@@ -4927,10 +4927,15 @@ export interface components {
          *     default. ``notifications`` lists every registered kind in registry order.
          *     ``product_updates`` is whether a consent to product update emails is
          *     current; it has no default to fall back to, since consent is never
-         *     presumed. ``review_request_audience`` is who may send you a review
+         *     presumed. ``approval_request_audience`` is who may send you an approval
          *     request.
          */
         UserPreferencesRead: {
+            /**
+             * Approval Request Audience
+             * @enum {string}
+             */
+            approval_request_audience: "following" | "everyone" | "nobody";
             display: components["schemas"]["DisplayPreferences"];
             display_defaults: components["schemas"]["DisplayPreferences"];
             display_stored: components["schemas"]["DisplayPreferencesUpdate"];
@@ -4938,11 +4943,6 @@ export interface components {
             notifications: components["schemas"]["NotificationPreferenceRead"][];
             /** Product Updates */
             product_updates: boolean;
-            /**
-             * Review Request Audience
-             * @enum {string}
-             */
-            review_request_audience: "following" | "everyone" | "nobody";
         };
         /**
          * UserPreferencesUpdate
@@ -4952,6 +4952,8 @@ export interface components {
          *     update emails from Settings.
          */
         UserPreferencesUpdate: {
+            /** Approval Request Audience */
+            approval_request_audience?: ("following" | "everyone" | "nobody") | null;
             display?: components["schemas"]["DisplayPreferencesUpdate"] | null;
             /** Notifications */
             notifications?: {
@@ -4961,8 +4963,6 @@ export interface components {
             } | null;
             /** Product Updates */
             product_updates?: boolean | null;
-            /** Review Request Audience */
-            review_request_audience?: ("following" | "everyone" | "nobody") | null;
         };
         /**
          * UserProfile
@@ -7233,6 +7233,146 @@ export interface operations {
             };
         };
     };
+    list_approval_request_targets_api_v1_events__geolocation_id__approval_request_targets_get: {
+        parameters: {
+            query?: {
+                /** @description Narrows by a substring of the username or organization */
+                q?: string;
+            };
+            header?: never;
+            path: {
+                geolocation_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalRequestTargetList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_approval_requests_api_v1_events__geolocation_id__approval_requests_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalRequestRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_approval_request_api_v1_events__geolocation_id__approval_requests_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApprovalRequestCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalRequestRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decline_approval_request_api_v1_events__geolocation_id__approval_requests__request_id__decline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+                request_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalRequestRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_approvals_api_v1_events__geolocation_id__approvals_get: {
         parameters: {
             query?: {
@@ -7724,146 +7864,6 @@ export interface operations {
             };
         };
     };
-    list_review_request_targets_api_v1_events__geolocation_id__review_request_targets_get: {
-        parameters: {
-            query?: {
-                /** @description Narrows by a substring of the username or organization */
-                q?: string;
-            };
-            header?: never;
-            path: {
-                geolocation_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReviewRequestTargetList"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_review_requests_api_v1_events__geolocation_id__review_requests_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                geolocation_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReviewRequestRead"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_review_request_api_v1_events__geolocation_id__review_requests_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                geolocation_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ReviewRequestCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReviewRequestRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    decline_review_request_api_v1_events__geolocation_id__review_requests__request_id__decline_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                geolocation_id: string;
-                request_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReviewRequestRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_event_versions_api_v1_events__geolocation_id__versions_get: {
         parameters: {
             query?: {
@@ -8228,6 +8228,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrganizationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_organization_approval_requests_api_v1_organizations__slug__approval_requests_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationApprovalRequestRead"][];
                 };
             };
             /** @description Validation Error */
@@ -8631,39 +8664,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrganizationMemberRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_organization_review_requests_api_v1_organizations__slug__review_requests_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                slug: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OrganizationReviewRequestRead"][];
                 };
             };
             /** @description Validation Error */

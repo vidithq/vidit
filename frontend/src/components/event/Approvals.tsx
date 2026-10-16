@@ -1,24 +1,22 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { Check } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdmin } from "@/hooks/useAdmin";
 import { useManagedOrganizations } from "@/hooks/useManagedOrganizations";
-import { useApiResource, type ApiResource } from "@/hooks/useApiResource";
+import { useApiResource } from "@/hooks/useApiResource";
 import { useMutation } from "@/hooks/useMutation";
 import {
   APPROVAL_NOTE_MAX_LEN,
   approvalsPath,
   approveLabel,
   approveEvent,
-  canApprove,
+  approveOptions,
   changesSince,
   revokeApproval,
   revokedByLabel,
-  standingApprovalBefore,
   type Approval,
   type ApprovalList,
 } from "@/lib/approvals";
@@ -34,15 +32,12 @@ import { Card } from "@/components/ui/Card";
 import { Textarea } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { FORM_ERROR_BANNER, FORM_LABEL, LABEL_TEXT } from "@/components/ui/form-styles";
+import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 
-/** `closed` marks a standing approval of a closed event's last version: not current, since the
- *  claim it attests was taken back, and not outdated by a newer version either. */
-export function ApprovalState({ approval, closed = false }: { approval: Approval; closed?: boolean }) {
+export function ApprovalState({ approval }: { approval: Approval }) {
   if (approval.revoked_at) return <Pill tone="danger">Revoked</Pill>;
   if (approval.current) return <Pill tone="accent">Current</Pill>;
-  if (closed) return <Pill tone="neutral">Event closed</Pill>;
   return <Pill tone="neutral">Outdated</Pill>;
 }
 
@@ -52,15 +47,9 @@ export function ApprovalState({ approval, closed = false }: { approval: Approval
 export function ApprovalRow({
   approval,
   onRevoke,
-  showVersion = false,
-  closed = false,
 }: {
   approval: Approval;
   onRevoke?: () => void;
-  /** Print the version it covers, for a list that mixes versions. */
-  showVersion?: boolean;
-  /** See `ApprovalState`. */
-  closed?: boolean;
 }) {
   return (
     <div className="space-y-1 py-2">
@@ -87,11 +76,8 @@ export function ApprovalRow({
               <AuthorByline author={approval.reviewer} prefix={false} avatar className="text-sm" />
             )
           )}
-          <ApprovalState approval={approval} closed={closed} />
-          <span className="text-[11px] text-neutral-500">
-            {showVersion && `Version ${approval.version_no}, `}
-            {formatDate(approval.created_at)}
-          </span>
+          <ApprovalState approval={approval} />
+          <span className="text-[11px] text-neutral-500">{formatDate(approval.created_at)}</span>
         </span>
         {onRevoke && (
           <Button variant="ghost" onClick={onRevoke}>
@@ -113,50 +99,47 @@ export function ApprovalRow({
 }
 
 /**
- * What changed between the version the reader approved and the live event, as the version history
- * names the fields, with a link to the approved version's page. Reads the live event itself when
- * the caller has none (the notification feed).
+ * The reader's own approval of an earlier version, now outdated: *You approved v2. Changed since:
+ * Title, Proof.*, the fields named as the version history names them, with the version linking to
+ * its page.
  */
-export function ChangesSinceApproval({
-  eventId,
+export function YourOutdatedApproval({
   event,
   approvedVersion,
-  approver = "you",
 }: {
-  eventId: string;
-  event?: EventDetail;
+  event: EventDetail;
   approvedVersion: number;
-  /** Who approved `approvedVersion`: the reader, or an organization they manage. */
-  approver?: string;
 }) {
-  const live = useApiResource<EventDetail>(event ? null : `/events/${eventId}`);
-  const filed = useApiResource<EventVersion>(eventVersionPath(eventId, approvedVersion));
-  const current = event ?? live.data;
-  if (!current || !filed.data) return null;
-  const changed = changesSince(current, filed.data);
+  const filed = useApiResource<EventVersion>(eventVersionPath(event.id, approvedVersion));
+  if (!filed.data) return null;
+  const changed = changesSince(event, filed.data);
   return (
     <p className="text-xs text-neutral-400 [overflow-wrap:anywhere]">
-      {changed === null
-        ? `Version ${approvedVersion}, which ${approver} approved, was redacted, so its changes cannot be listed.`
-        : changed.length === 0
-          ? `No versioned field changed since version ${approvedVersion}, which ${approver} approved.`
-          : `Changed since version ${approvedVersion}, which ${approver} approved: ${changed.join(", ")}.`}{" "}
-      <Link href={eventVersionHref(eventId, approvedVersion)} className={TEXT_LINK}>
-        See version {approvedVersion}
+      You approved{" "}
+      <Link href={eventVersionHref(event.id, approvedVersion)} className={TEXT_LINK}>
+        v{approvedVersion}
       </Link>
+      .{" "}
+      {changed === null
+        ? "That version was redacted, so its changes cannot be listed."
+        : changed.length === 0
+          ? "No versioned field changed since."
+          : `Changed since: ${changed.join(", ")}.`}
     </p>
   );
 }
 
-
 /** What a stamp opens: the signer's picture and name, the version and date, the note, who acted
- *  for an organization, and the way to the profile or the organization's page. */
+ *  for an organization, the way to the profile or the organization's page, and **Revoke** for
+ *  whoever may revoke it. */
 function StampCard({
   approval,
   signer,
+  onRevoke,
 }: {
   approval: Approval;
   signer: { username: string; avatar_url?: string | null; href: string };
+  onRevoke?: () => void;
 }) {
   return (
     <div className="space-y-2">
@@ -186,196 +169,158 @@ function StampCard({
       {approval.note && (
         <p className="line-clamp-4 text-neutral-300 [overflow-wrap:anywhere]">{approval.note}</p>
       )}
-      <Link href={signer.href} className={TEXT_LINK}>
-        {approval.organization ? "View organization" : "View profile"}
-      </Link>
+      <div className="flex items-center justify-between gap-2">
+        <Link href={signer.href} className={TEXT_LINK}>
+          {approval.organization ? "View organization" : "View profile"}
+        </Link>
+        {onRevoke && (
+          <Button variant="dangerGhost" onClick={onRevoke}>
+            Revoke
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
 
-/** One current approval as a stamp: the organization's square or the analyst's circle, opening
- *  its card. */
-function approvalStamp(approval: Approval): AvatarStackItem | null {
-  const signer = approval.organization
-    ? organizationByline(approval.organization)
-    : approval.reviewer && { ...approval.reviewer, href: `/profile/${approval.reviewer.username}` };
-  if (!signer) return null;
-  return {
-    key: approval.id,
-    name: signer.username,
-    avatarUrl: signer.avatar_url,
-    variant: approval.organization ? "organization" : "analyst",
-    label: `Approved by ${signer.username}`,
-    renderCard: () => <StampCard approval={approval} signer={signer} />,
-  };
+/** Who signs an approval: the organization it speaks for, or the reviewer; null for an analyst's
+ *  approval whose account was erased. */
+export function approvalSigner(
+  approval: Approval,
+): { username: string; avatar_url?: string | null; href: string } | null {
+  if (approval.organization) return organizationByline(approval.organization);
+  return approval.reviewer && { ...approval.reviewer, href: `/profile/${approval.reviewer.username}` };
 }
 
-/** The current approvals of the event, oldest first, as stamps under the event page's action
- *  row, after an "Approved by" label that narrows to its check below `sm`. Renders nothing while
- *  none stands. */
+/** Whether the reader may revoke an approval: the reviewer, an org manager of the organization
+ *  it speaks for, or a site admin. Mirrors backend approvals._revoker_role; change both. */
+function useMayRevoke(managed: OrganizationRef[]): (approval: Approval) => boolean {
+  const { user } = useAuth();
+  const { isAdmin } = useAdmin();
+  const managedSlugs = new Set(managed.map((o) => o.slug));
+  return (approval) =>
+    !approval.revoked_at &&
+    (isAdmin ||
+      (approval.organization
+        ? managedSlugs.has(approval.organization.slug)
+        : approval.reviewer?.id === user?.id));
+}
+
+/**
+ * The given approvals, oldest first, as stamps. Renders nothing for an empty list. With
+ * `managed`, a stamp's card offers **Revoke** to whoever may revoke that approval.
+ */
 export function ApprovalStamps({
   approvals,
+  max,
   onOverflow,
+  managed,
+  onRevoke,
 }: {
-  /** Every version's approvals, by version then oldest first. */
   approvals: Approval[];
-  onOverflow: () => void;
+  max?: number;
+  onOverflow?: () => void;
+  managed?: OrganizationRef[];
+  onRevoke?: (approval: Approval) => void;
 }) {
-  const items = approvals.flatMap((a) => (a.current ? (approvalStamp(a) ?? []) : []));
-  if (items.length === 0) return null;
+  const mayRevoke = useMayRevoke(managed ?? []);
+  const stamp = (approval: Approval): AvatarStackItem | null => {
+    const signer = approvalSigner(approval);
+    if (!signer) return null;
+    const revoke = onRevoke && mayRevoke(approval) ? () => onRevoke(approval) : undefined;
+    return {
+      key: approval.id,
+      name: signer.username,
+      avatarUrl: signer.avatar_url,
+      variant: approval.organization ? "organization" : "analyst",
+      label: `Approved by ${signer.username}`,
+      renderCard: () => <StampCard approval={approval} signer={signer} onRevoke={revoke} />,
+    };
+  };
   return (
-    <div className="flex items-center gap-2">
-      <span aria-hidden className={`inline-flex items-center gap-1 ${LABEL_TEXT}`}>
-        <Check size={12} />
-        <span className="max-sm:hidden">Approved by</span>
-      </span>
-      <AvatarStack
-        items={items}
-        label="Approved by"
-        onOverflow={onOverflow}
-        overflowLabel={(hidden) => `Show ${hidden} more approvals`}
-      />
-    </div>
+    <AvatarStack
+      items={approvals.flatMap((a) => stamp(a) ?? [])}
+      label="Approved by"
+      max={max}
+      onOverflow={onOverflow}
+      overflowLabel={(hidden) => `Show ${hidden} more approvals`}
+    />
   );
 }
 
 const REVOKE_FIELD_ID = "approval-revoke-reason";
 const NOTE_FIELD_ID = "approval-note";
 
-interface ApprovalGroup {
-  key: string;
-  title?: string;
-  rows: Approval[];
-  /** Said in place of the rows when there are none. */
-  empty?: string;
-  footer?: ReactNode;
-  showVersion?: boolean;
-  closed?: boolean;
-}
-
-/**
- * Lists of reviews under optional headings, each review with its own **Revoke** for the reviewer,
- * an org manager of the organization it speaks for, or a site admin. Revoking opens an inline
- * reason field; the reason is public.
- */
-function ApprovalGroups({
+/** The reason field that revokes one approval. The reason is public. */
+export function RevokeForm({
   eventId,
-  groups,
-  managed,
+  approval,
   onRevoked,
+  onCancel,
 }: {
   eventId: string;
-  groups: ApprovalGroup[];
-  managed: OrganizationRef[];
+  approval: Approval;
   onRevoked: () => void;
+  onCancel: () => void;
 }) {
-  const { user } = useAuth();
-  const { isAdmin } = useAdmin();
-  const [revoking, setRevoking] = useState<string | null>(null);
   const [reason, setReason] = useState("");
-  const revoke = useMutation(() => revokeApproval(eventId, revoking!, reason.trim()), {
+  const revoke = useMutation(() => revokeApproval(eventId, approval.id, reason.trim()), {
     fallback: "Failed to revoke the approval",
-    onSuccess: () => {
-      setRevoking(null);
-      setReason("");
-      onRevoked();
-    },
+    onSuccess: onRevoked,
   });
-
-  const managedSlugs = new Set(managed.map((o) => o.slug));
-  // Mirrors backend approvals._revoker_role; change both.
-  const mayRevoke = (approval: Approval) =>
-    !approval.revoked_at &&
-    (isAdmin ||
-      (approval.organization
-        ? managedSlugs.has(approval.organization.slug)
-        : approval.reviewer?.id === user?.id));
-
+  const signer = approvalSigner(approval);
   return (
-    <>
-      {groups.map((group) => (
-        <div key={group.key} className="space-y-1">
-          {group.title && <SectionEyebrow as="h3" title={group.title} margin="none" />}
-          {group.rows.length > 0 ? (
-            <div className="divide-y divide-neutral-800">
-              {group.rows.map((approval) => (
-                <div key={approval.id}>
-                  <ApprovalRow
-                    approval={approval}
-                    showVersion={group.showVersion}
-                    closed={group.closed}
-                    onRevoke={
-                      mayRevoke(approval) && revoking !== approval.id
-                        ? () => {
-                            revoke.reset();
-                            setRevoking(approval.id);
-                          }
-                        : undefined
-                    }
-                  />
-                  {revoking === approval.id && (
-                    <div className="space-y-2 pb-2">
-                      <label htmlFor={REVOKE_FIELD_ID} className={FORM_LABEL}>
-                        Reason, shown publicly on the approval
-                      </label>
-                      <Textarea
-                        id={REVOKE_FIELD_ID}
-                        rows={2}
-                        value={reason}
-                        onChange={(e) => setReason(e.target.value)}
-                      />
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="danger"
-                          onClick={() => void revoke.run()}
-                          disabled={revoke.loading || !reason.trim()}
-                        >
-                          Revoke approval
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          onClick={() => setRevoking(null)}
-                          disabled={revoke.loading}
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            group.empty && <p className="text-sm text-neutral-500">{group.empty}</p>
-          )}
-          {group.footer}
-        </div>
-      ))}
+    <div className="space-y-2">
+      <label htmlFor={REVOKE_FIELD_ID} className={FORM_LABEL}>
+        {signer ? `Revoke the approval by ${signer.username}: reason` : "Reason"}, shown publicly
+        on the approval
+      </label>
+      <Textarea
+        id={REVOKE_FIELD_ID}
+        autoFocus
+        rows={2}
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+      />
+      <div className="flex items-center gap-2">
+        <Button
+          variant="danger"
+          onClick={() => void revoke.run()}
+          disabled={revoke.loading || !reason.trim()}
+        >
+          Revoke approval
+        </Button>
+        <Button variant="ghost" onClick={onCancel} disabled={revoke.loading}>
+          Cancel
+        </Button>
+      </div>
       {revoke.error && (
         <div className={FORM_ERROR_BANNER} role="alert">
           {revoke.error}
         </div>
       )}
-    </>
+    </div>
   );
 }
 
 /**
  * The approve control of the live version: an optional note, **Approve version N** for an analyst
  * outside the event's geolocators who has not reviewed it, and one **Approve as <organization>**
- * per organization the reader manages whose approval of it does not stand. Above it, what
- * changed since the latest earlier version the reader approved.
+ * per organization the reader manages whose approval of it does not stand. It opens from
+ * **Approve** and takes focus on its note; **Cancel** closes it.
  */
-function ApproveForm({
+export function ApproveForm({
   event,
   approvals,
   managed,
   onApproved,
+  onCancel,
 }: {
   event: EventDetail;
   approvals: ApprovalList;
   managed: OrganizationRef[];
   onApproved: () => void;
+  onCancel: () => void;
 }) {
   const { user } = useAuth();
   const [note, setNote] = useState("");
@@ -396,29 +341,22 @@ function ApproveForm({
     },
   );
 
-  // The server knows departed geolocators, which the event's credit no longer lists.
-  if (!approvals.viewer_can_approve) return null;
-  const live = approvals.items.filter((a) => a.version_no === event.version_no);
-  const eligible = canApprove(event, user?.id, live);
-  const forOrganizations = managed.filter((o) => canApprove(event, user?.id, live, o.slug));
+  const { eligible, organizations: forOrganizations } = approveOptions(
+    event,
+    approvals,
+    managed,
+    user?.id,
+  );
   if (!eligible && forOrganizations.length === 0) return null;
-  const approvedVersion = eligible
-    ? standingApprovalBefore(
-        approvals.items.filter((a) => !a.organization && a.reviewer?.id === user?.id),
-        event.version_no,
-      )
-    : null;
 
   return (
     <div className="space-y-2">
-      {approvedVersion !== null && (
-        <ChangesSinceApproval eventId={event.id} event={event} approvedVersion={approvedVersion} />
-      )}
       <label htmlFor={NOTE_FIELD_ID} className={FORM_LABEL}>
         Note (optional)
       </label>
       <Textarea
         id={NOTE_FIELD_ID}
+        autoFocus
         rows={2}
         maxLength={APPROVAL_NOTE_MAX_LEN}
         value={note}
@@ -440,6 +378,9 @@ function ApproveForm({
             Approve as {organization.name}
           </Button>
         ))}
+        <Button variant="ghost" onClick={onCancel} disabled={approve.loading}>
+          Cancel
+        </Button>
       </div>
       <p className="text-xs text-neutral-500">
         An approval covers this version only. A new version asks you, or the
@@ -454,115 +395,45 @@ function ApproveForm({
   );
 }
 
-/**
- * The event page's Approvals panel, opened from the header: the approve control, then the
- * current approvals of the live version, the outdated ones by version (newest first, each with
- * what changed since), and the revoked ones with their public reason. `approvals` is every
- * version's list, shared with the header stamps; `onApproved` runs after an approval lands,
- * which resolves review requests.
- */
-export function ApprovalsPanel({
-  event,
-  approvals,
-  onApproved,
-}: {
-  event: EventDetail;
-  approvals: ApiResource<ApprovalList>;
-  onApproved: () => void;
-}) {
-  const managed = useManagedOrganizations();
-  const rows = approvals.data?.items ?? [];
-  // A closed event keeps its approvals readable, none of them current (the server's `current`).
-  const closed = event.status !== "geolocated";
-  const outdatedVersions = [
-    ...new Set(
-      rows
-        .filter((a) => !a.current && !a.revoked_at && a.version_no < event.version_no)
-        .map((a) => a.version_no),
-    ),
-  ].sort((a, b) => b - a);
-  const live = rows.filter((a) => a.version_no === event.version_no && !a.revoked_at);
-  const revoked = rows
-    .filter((a) => a.revoked_at)
-    .sort((a, b) => b.version_no - a.version_no);
-
-  const groups: ApprovalGroup[] = [
-    closed
-      ? {
-          key: "closed",
-          title: `Version ${event.version_no}, event closed`,
-          rows: live,
-          empty: approvals.data ? "No approval stood when the event closed." : undefined,
-          closed: true,
-        }
-      : {
-          key: "current",
-          title: `Version ${event.version_no}, current`,
-          rows: live,
-          empty: approvals.data ? "No current approval yet." : undefined,
-        },
-    ...outdatedVersions.map((version) => ({
-      key: `v${version}`,
-      title: `Version ${version}, outdated`,
-      rows: rows.filter((a) => a.version_no === version && !a.revoked_at),
-      footer: (
-        <ChangesSinceApproval
-          eventId={event.id}
-          event={event}
-          approvedVersion={version}
-          approver="they"
-        />
-      ),
-    })),
-    ...(revoked.length > 0
-      ? [{ key: "revoked", title: "Revoked", rows: revoked, showVersion: true }]
-      : []),
-  ];
-
-  return (
-    <>
-      {approvals.data && (
-        <ApproveForm
-          event={event}
-          approvals={approvals.data}
-          managed={managed}
-          onApproved={() => {
-            approvals.refetch();
-            onApproved();
-          }}
-        />
-      )}
-      <ApprovalGroups
-        eventId={event.id}
-        groups={groups}
-        managed={managed}
-        onRevoked={approvals.refetch}
-      />
-      {approvals.error && (
-        <div className={FORM_ERROR_BANNER} role="alert">
-          {approvals.error}
-        </div>
-      )}
-    </>
-  );
-}
-
-/** The reviews a filed version (`/events/{id}/vN`) held, read-only but for **Revoke**. Absent
- *  when the version held none. */
+/** The reviews a filed version (`/events/{id}/vN`) held, outdated and revoked alike, each revoked
+ *  one with its public reason, read-only but for **Revoke**. Absent when the version held none. */
 export function VersionApprovals({ event, versionNo }: { event: EventDetail; versionNo: number }) {
   const managed = useManagedOrganizations();
+  const mayRevoke = useMayRevoke(managed);
   const approvals = useApiResource<ApprovalList>(approvalsPath(event.id, versionNo));
+  const [revoking, setRevoking] = useState<string | null>(null);
   const rows = approvals.data?.items ?? [];
   if (rows.length === 0 && !approvals.error) return null;
   return (
     <Card as="section">
       <SectionEyebrow title="Approvals" margin="none" />
-      <ApprovalGroups
-        eventId={event.id}
-        groups={[{ key: "version", rows }]}
-        managed={managed}
-        onRevoked={approvals.refetch}
-      />
+      <div className="divide-y divide-neutral-800">
+        {rows.map((approval) => (
+          <div key={approval.id}>
+            <ApprovalRow
+              approval={approval}
+              onRevoke={
+                mayRevoke(approval) && revoking !== approval.id
+                  ? () => setRevoking(approval.id)
+                  : undefined
+              }
+            />
+            {revoking === approval.id && (
+              <div className="pb-2">
+                <RevokeForm
+                  eventId={event.id}
+                  approval={approval}
+                  onRevoked={() => {
+                    setRevoking(null);
+                    approvals.refetch();
+                  }}
+                  onCancel={() => setRevoking(null)}
+                />
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
       {approvals.error && (
         <div className={FORM_ERROR_BANNER} role="alert">
           {approvals.error}

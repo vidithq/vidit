@@ -16,7 +16,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
-from app.models.user_preferences import REVIEW_REQUEST_AUDIENCE_DEFAULT, ReviewRequestAudience
+from app.models.user_preferences import APPROVAL_REQUEST_AUDIENCE_DEFAULT, ApprovalRequestAudience
 
 # Value-domain source of truth for a member's role: the ORM column, the Read
 # schemas and the generated frontend type derive from it, and
@@ -46,12 +46,12 @@ class Organization(Base):
     external_links: Mapped[dict[str, Any]] = mapped_column(
         JSONB, default=dict, nullable=False, server_default="{}"
     )
-    # Who may send the organization a review request, set by its org managers. ``following``
+    # Who may send the organization an approval request, set by its org managers. ``following``
     # admits an analyst whom at least one live org manager follows.
-    review_request_audience: Mapped[ReviewRequestAudience] = mapped_column(
+    approval_request_audience: Mapped[ApprovalRequestAudience] = mapped_column(
         String(20),
-        default=REVIEW_REQUEST_AUDIENCE_DEFAULT,
-        server_default=text(f"'{REVIEW_REQUEST_AUDIENCE_DEFAULT}'"),
+        default=APPROVAL_REQUEST_AUDIENCE_DEFAULT,
+        server_default=text(f"'{APPROVAL_REQUEST_AUDIENCE_DEFAULT}'"),
         nullable=False,
     )
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -65,8 +65,8 @@ class Organization(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "review_request_audience IN ('following', 'everyone', 'nobody')",
-            name="ck_organizations_review_request_audience",
+            "approval_request_audience IN ('following', 'everyone', 'nobody')",
+            name="ck_organizations_approval_request_audience",
         ),
     )
 

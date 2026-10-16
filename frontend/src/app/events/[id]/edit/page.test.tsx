@@ -167,6 +167,7 @@ let row: EventDetail;
 let queueItems: EventDetail[] = [];
 
 function resource(path: string) {
+  if (path.endsWith("/geolocator-invites")) return [];
   if (path.startsWith("/events/d1")) return row;
   if (path.startsWith("/events/detections"))
     return { items: queueItems, total: queueItems.length, page: 1, per_page: 100 };
@@ -432,9 +433,28 @@ describe("editing a published geolocation", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText(/no longer be edited/)).toBeNull();
     expect(screen.getByRole("button", { name: "Save version 2" })).toBeInTheDocument();
-    // Neither verb belongs here: the row is not skippable and its close is on the detail page.
+    // Neither header verb belongs here: the row is not skippable, and its close sits at the foot.
     expect(screen.queryByRole("button", { name: "Submit" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
+  });
+
+  it("holds the geolocators, then the close at the foot of the page", () => {
+    render(<EditEventPage />);
+
+    const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    expect(headings.slice(-2)).toEqual(["Geolocators", "Close this geolocation"]);
+    expect(screen.getByLabelText("Invite a geolocator")).toBeInTheDocument();
+  });
+
+  it("closes the geolocation behind its reason, then lands on the event", async () => {
+    closeMock.mockResolvedValue(publishedFixture({ status: "closed" }));
+    render(<EditEventPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Close this geolocation" }));
+    fireEvent.change(screen.getByLabelText(/Close reason/), { target: { value: "Wrong town." } });
+    fireEvent.click(screen.getByRole("button", { name: "Close this geolocation" }));
+    await waitFor(() => expect(closeMock).toHaveBeenCalledWith("d1", "Wrong town."));
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/events/d1"));
   });
 
   it("offers the evidence anchor for correction, seeded from the row", () => {
@@ -586,6 +606,17 @@ describe("editing an open request", () => {
     // A request files no version and is answered through the submit form, so neither published verb applies.
     expect(screen.queryByRole("button", { name: /Save version/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Submit" })).toBeNull();
+  });
+
+  it("closes the request from the foot of the page, then lands on the request", async () => {
+    closeMock.mockResolvedValue(requestFixture({ status: "closed" }));
+    render(<EditEventPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Close this request" }));
+    fireEvent.change(screen.getByLabelText(/Close reason/), { target: { value: "Found it." } });
+    fireEvent.click(screen.getByRole("button", { name: "Close this request" }));
+    await waitFor(() => expect(closeMock).toHaveBeenCalledWith("d1", "Found it."));
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/requests/d1"));
   });
 
   it("offers the fields the request was opened with, seeded from the row", () => {

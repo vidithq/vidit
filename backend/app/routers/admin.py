@@ -223,7 +223,7 @@ def delete_organization(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> Response:
-    """Delete an organization with its memberships, invites, review requests and approvals."""
+    """Delete an organization with its memberships, invites, approval requests and approvals."""
     try:
         organizations_service.delete_organization(db, actor=current_user, slug=slug)
     except organizations_service.OrganizationError as exc:

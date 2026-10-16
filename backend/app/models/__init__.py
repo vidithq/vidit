@@ -1,5 +1,6 @@
 from app.models.admin_event import AdminEvent
 from app.models.approval import EventApproval
+from app.models.approval_request import ApprovalRequest
 from app.models.archive_import_job import ArchiveImportJob
 from app.models.auth_event import AuthEvent
 from app.models.auth_token import AuthToken
@@ -27,7 +28,6 @@ from app.models.product_update import (
     ProductUpdateDelivery,
 )
 from app.models.push_subscription import PushSubscription, RevokedPushEndpoint
-from app.models.review_request import ReviewRequest
 from app.models.source_archive import SourceArchive
 from app.models.tag import Tag, event_tags
 from app.models.user import User
@@ -65,7 +65,7 @@ __all__ = [
     "ProductUpdate",
     "ProductUpdateConsent",
     "ProductUpdateDelivery",
-    "ReviewRequest",
+    "ApprovalRequest",
     "SourceArchive",
     "Tag",
     "User",

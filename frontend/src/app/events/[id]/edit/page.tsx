@@ -33,7 +33,7 @@ export default function EditEventPage() {
   const { user, loading: authLoading } = useRequireAuth();
   const id = typeof params.id === "string" ? params.id : "";
 
-  const { data: geo, error } = useApiResource<EventDetail>(
+  const { data: geo, error, refetch } = useApiResource<EventDetail>(
     user && id ? `/events/${id}` : null
   );
 
@@ -120,6 +120,6 @@ export default function EditEventPage() {
       : undefined;
 
   return (
-    <EventEditForm geo={geo} redirectTo={doneHref} queue={queue} />
+    <EventEditForm geo={geo} redirectTo={doneHref} queue={queue} onCreditChanged={refetch} />
   );
 }
