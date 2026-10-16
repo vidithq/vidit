@@ -11,6 +11,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
+- A Vidit link whose path starts with two slashes or a backslash, and a Google link other than the map check, now ask before you leave Vidit instead of opening another site in one click ([#565](https://github.com/vidithq/vidit/pull/565)).
 - When X fails to serve part of a thread, or the coordinate sits above the posts the bot reads, the bot and the post import say the thread was only partly read instead of reporting no coordinate ([#555](https://github.com/vidithq/vidit/pull/555)).
 - Vidit usernames show without `@` everywhere, including bylines, admin panels, page titles and share cards; `@` now marks only X and GitHub handles ([#557](https://github.com/vidithq/vidit/pull/557)).
 

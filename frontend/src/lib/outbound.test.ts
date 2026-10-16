@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { linkKind, splitLinks } from "./outbound";
+import { linkKind, linkTarget, splitLinks } from "./outbound";
 
 describe("linkKind", () => {
   it.each([
@@ -9,6 +9,7 @@ describe("linkKind", () => {
     ["an archive host", "https://archive.ph/abcde"],
     ["a known host in another case", "HTTPS://T.ME/channel/4"],
     ["a known host over http", "http://youtube.com/watch?v=1"],
+    ["the map check", "https://www.google.com/maps?q=48.85,2.35"],
   ])("opens %s directly", (_, href) => {
     expect(linkKind(href)).toBe("known");
   });
@@ -19,6 +20,10 @@ describe("linkKind", () => {
     ["a known host in the path", "https://evil.example/x.com"],
     ["a known host in the userinfo", "https://x.com@evil.example/"],
     ["a sibling of a narrow entry", "https://sites.google.com/view/a"],
+    ["a redirector beside a path entry", "https://www.google.com/url?q=https://evil.example"],
+    ["a path below a path entry", "https://www.google.com/maps/url?q=https://evil.example"],
+    ["a dot segment out of a path entry", "https://www.google.com/maps/../url?q=https://evil.example"],
+    ["a subdomain of a path entry", "https://evil.www.google.com/maps"],
   ])("asks before %s", (_, href) => {
     expect(linkKind(href)).toBe("unknown");
   });
@@ -30,6 +35,13 @@ describe("linkKind", () => {
   });
 
   it.each([
+    ["a doubled slash", "https://vidit.app//evil.example/x"],
+    ["a backslash", "https://vidit.app/\\evil.example"],
+  ])("asks before a Vidit URL whose path starts with %s", (_, href) => {
+    expect(linkKind(href)).toBe("unknown");
+  });
+
+  it.each([
     ["a malformed URL", "https://"],
     ["plain text", "not a url"],
     ["a relative path", "/events/1"],
@@ -37,6 +49,19 @@ describe("linkKind", () => {
     ["a mailto: URL", "mailto:a@example.com"],
   ])("refuses %s", (_, href) => {
     expect(linkKind(href)).toBeNull();
+  });
+});
+
+describe("linkTarget", () => {
+  it("resolves a Vidit path starting // to the host it names", () => {
+    expect(linkTarget("https://vidit.app//evil.example/x?a=1#b")).toBe(
+      "https://evil.example/x?a=1#b",
+    );
+  });
+
+  it("leaves every other link as written", () => {
+    expect(linkTarget("https://vidit.app/events/1")).toBe("https://vidit.app/events/1");
+    expect(linkTarget("https://example.org//x")).toBe("https://example.org//x");
   });
 });
 
