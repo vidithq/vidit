@@ -2,14 +2,21 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { UserPreferences } from "@/lib/preferences";
+import type { PushDeviceState } from "@/lib/push";
 
 const api = vi.hoisted(() => ({ apiFetch: vi.fn() }));
+const push = vi.hoisted(() => ({ readPushState: vi.fn() }));
 
 vi.mock("@/lib/api", () => ({
   apiFetch: api.apiFetch,
   ApiError: class extends Error {},
   errorMessage: (err: unknown, fallback = "Something went wrong.") =>
     err instanceof Error ? err.message : fallback,
+}));
+
+vi.mock("@/lib/push", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/push")>()),
+  readPushState: push.readPushState,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -55,9 +62,24 @@ function patchBodies(): unknown[] {
     .map(([, init]) => JSON.parse(init.body));
 }
 
+const PHONE = {
+  id: "d1",
+  user_agent: "Mozilla/5.0 (Pixel 8)",
+  created_at: "2026-10-01T09:00:00Z",
+  last_success_at: null,
+};
+
+function serveDevices(devices: unknown[]) {
+  const base = api.apiFetch.getMockImplementation()!;
+  api.apiFetch.mockImplementation((path: string, init?: RequestInit) =>
+    path === "/users/me/push-subscriptions" ? Promise.resolve(devices) : base(path, init),
+  );
+}
+
 describe("SettingsPage", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    push.readPushState.mockReset().mockResolvedValue("unsupported" satisfies PushDeviceState);
     api.apiFetch.mockReset().mockImplementation((_path: string, init?: RequestInit) =>
       Promise.resolve(
         init?.method === "PATCH" &&
@@ -103,14 +125,12 @@ describe("SettingsPage", () => {
   it("lists one email switch per notification kind with its default", async () => {
     render(<SettingsPage />);
 
-    const fulfilled = await screen.findByRole("switch", {
-      name: "Request fulfilled by email",
-    });
+    const fulfilled = await screen.findByRole("switch", { name: "Request fulfilled, Email" });
     expect(fulfilled).toHaveAttribute("aria-checked", "true");
-    expect(fulfilled).toHaveTextContent("Default: on.");
-    const follower = screen.getByRole("switch", { name: "New follower by email" });
+    expect(fulfilled).toHaveAccessibleDescription(/Default: on\./);
+    const follower = screen.getByRole("switch", { name: "New follower, Email" });
     expect(follower).toHaveAttribute("aria-checked", "false");
-    expect(follower).toHaveTextContent("Default: off.");
+    expect(follower).toHaveAccessibleDescription(/Default: off\./);
 
     fireEvent.click(fulfilled);
 
@@ -120,25 +140,53 @@ describe("SettingsPage", () => {
     ]);
   });
 
-  it("lists one push switch per kind and says what this device can do", async () => {
+  it("keeps the push column open when only this browser lacks push", async () => {
+    serveDevices([PHONE]);
     render(<SettingsPage />);
 
-    const follower = await screen.findByRole("switch", { name: "New follower by push" });
+    expect(await screen.findByText(/This browser cannot receive push notifications\./)).toBeInTheDocument();
+    const follower = screen.getByRole("switch", { name: "New follower, Push" });
+    expect(follower).toBeEnabled();
     expect(follower).toHaveAttribute("aria-checked", "false");
-    expect(screen.getByRole("switch", { name: "Request fulfilled by push" })).toHaveAttribute(
+    expect(screen.getByRole("switch", { name: "Request fulfilled, Push" })).toHaveAttribute(
       "aria-checked",
       "true",
     );
-    // jsdom has no Push API.
-    expect(
-      await screen.findByText(/This browser cannot receive push notifications\./),
-    ).toHaveTextContent("add Vidit to the Home Screen");
-    expect(screen.queryByRole("button", { name: "Enable on this device" })).toBeNull();
 
     fireEvent.click(follower);
     await waitFor(() =>
       expect(patchBodies()).toEqual([{ notifications: { new_follower: { push: true } } }]),
     );
+  });
+
+  it("closes the push column with one reason when the server sends no push", async () => {
+    push.readPushState.mockResolvedValue("unavailable" satisfies PushDeviceState);
+    serveDevices([PHONE]);
+    render(<SettingsPage />);
+
+    const reason = "This Vidit server does not send push notifications.";
+    await waitFor(() =>
+      expect(screen.getByRole("switch", { name: "New follower, Push" })).toBeDisabled(),
+    );
+    expect(screen.getByRole("switch", { name: "Request fulfilled, Push" })).toBeDisabled();
+    expect(screen.getByRole("switch", { name: "New follower, Push" })).toHaveAccessibleDescription(
+      new RegExp(reason),
+    );
+    expect(screen.getAllByText(new RegExp(reason))).toHaveLength(1);
+    expect(screen.getByRole("switch", { name: "New follower, Email" })).toBeEnabled();
+    expect(screen.getByText(/add Vidit to the Home Screen/)).toBeInTheDocument();
+  });
+
+  it("closes the push column when the account has no push device", async () => {
+    push.readPushState.mockResolvedValue("off" satisfies PushDeviceState);
+    serveDevices([]);
+    render(<SettingsPage />);
+
+    expect(await screen.findByRole("button", { name: "Enable on this device" })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("switch", { name: "New follower, Push" })).toBeDisabled(),
+    );
+    expect(screen.getAllByText(/No device of yours receives push yet\./)).toHaveLength(1);
   });
 
   it("lists the account's push devices and revokes one", async () => {
@@ -230,7 +278,7 @@ describe("SettingsPage", () => {
 
       await waitFor(() => expect(api.apiFetch).toHaveBeenCalled());
       expect(screen.getByRole("heading", { name: "Notifications" })).toBeInTheDocument();
-      expect(screen.queryByRole("switch", { name: /by email/ })).toBeNull();
+      expect(screen.queryByRole("switch", { name: /, Email$/ })).toBeNull();
       expect(screen.getByRole("button", { name: "Update password" })).toBeInTheDocument();
     },
   );

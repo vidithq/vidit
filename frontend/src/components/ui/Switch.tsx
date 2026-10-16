@@ -19,8 +19,8 @@ export function Switch({
   /** `md`: settings rows; `sm`: dense filter rows. */
   size?: "sm" | "md";
   as?: "button" | "span";
-  /** Reads its state but refuses the toggle (button mode only). Dimmed, and out
-   *  of the tab order. */
+  /** Reads its state but refuses the toggle. Dimmed in both modes; in button mode
+   *  also out of the tab order. */
   disabled?: boolean;
   "aria-label"?: string;
 }) {

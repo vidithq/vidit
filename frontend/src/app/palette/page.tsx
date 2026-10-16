@@ -56,6 +56,7 @@ import { ProgressSteps } from "@/components/ui/ProgressSteps";
 import { ActiveFilterPills } from "@/components/ui/ActiveFilterPills";
 import { ChipBucket } from "@/components/ui/ChipBucket";
 import { FilterSection, chipSummary } from "@/components/ui/FilterSection";
+import { ToggleMatrix } from "@/components/ui/ToggleMatrix";
 import { ToggleRow } from "@/components/ui/ToggleRow";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Avatar } from "@/components/ui/Avatar";
@@ -502,6 +503,10 @@ export default function PalettePage() {
 
           <Item name="<ToggleRow>" usage="An on/off row: the whole row is the switch (role + click), the <Switch> rendering as its visual span, and it takes the phone tap step. `description` picks the shape: without one the row is the filter toggle, a micro uppercase label on a divided list; with one it is a settings preference, the label at reading size over a line saying what the preference does. The accessible name is the label alone (aria-labelledby on it), never the paragraph under it. `className` carries the caller's own divider and spacing.">
             <PaletteToggleRow />
+          </Item>
+
+          <Item name="<ToggleMatrix>" usage="Several booleans per row, one per column: the column headers once at the top, each row's label and description on the left and one switch per column on the right. Each switch is its own 36px button, the <Switch> as its visual span, named '<row label>, <column label>'. A cell in `disabled` keeps its state, leaves the tab order and is described by its reason, printed once under the rows however many cells share it. Columns hold a one-word header, so two switches stay on the row at 320px.">
+            <PaletteToggleMatrix />
           </Item>
 
           <Item name="<Pill>" usage="One pill for the whole family (status, tag, filter, badge) at one size. `tone` = accent | secondary | neutral | danger, mirroring the <Button> tones (secondary is the accent outline, no fill). A static <span> by default; pass `onClick` and it becomes an interactive chip (a <button> that brightens on hover), the caller driving the tone off its active state. className merges via cn (caller wins on a conflicting utility); keep it to orthogonal extras, the size stays one.">
@@ -1621,6 +1626,40 @@ function PaletteChipBucket() {
         setSelected((prev) => (prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n]))
       }
     />
+  );
+}
+
+const PALETTE_MATRIX_COLUMNS = [
+  { id: "email", label: "Email" },
+  { id: "push", label: "Push" },
+];
+
+function PaletteToggleMatrix() {
+  const [on, setOn] = useState<Record<string, Record<string, boolean>>>({
+    follower: { email: true, push: false },
+    invite: { email: true, push: true },
+    credit: { email: false, push: false },
+  });
+  return (
+    <div className="w-full max-w-80 bg-neutral-900 rounded-lg border border-neutral-700 p-3">
+      <ToggleMatrix
+        columns={PALETTE_MATRIX_COLUMNS}
+        rows={[
+          { id: "follower", label: "New follower", description: "Someone follows you.", on: on.follower },
+          {
+            id: "invite",
+            label: "Geolocator invitation",
+            description: "Someone invites you to share the credit.",
+            on: on.invite,
+            disabled: { push: "This Vidit server does not send push notifications." },
+          },
+          { id: "credit", label: "Credit removed", description: "An owner removes you.", on: on.credit },
+        ]}
+        onToggle={(row, column, next) =>
+          setOn((prev) => ({ ...prev, [row]: { ...prev[row], [column]: next } }))
+        }
+      />
+    </div>
   );
 }
 
