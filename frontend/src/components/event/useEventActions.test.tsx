@@ -148,7 +148,7 @@ describe("the event header per reader", () => {
       "href",
       "/events/e1/edit",
     );
-    await screen.findByText("Not approved yet");
+    await screen.findByText("No approvals yet");
   });
 
   // Approving starts from the Approvals card, after reading the record.
@@ -163,7 +163,7 @@ describe("the event header per reader", () => {
   // and never edits, closes or approves it.
   it("gives a co-geolocator Add to collection and Geolocators beside Share and Report", async () => {
     renderAs(CO_GEOLOCATOR, { status: "geolocated", surface: "event" });
-    await screen.findByText("Not approved yet");
+    await screen.findByText("No approvals yet");
     expect(headerControls()).toEqual([
       "v1: choose a version",
       "Share",
@@ -176,14 +176,14 @@ describe("the event header per reader", () => {
 
   it("gives a signed-out reader the version, Share and Report", async () => {
     renderAs(null, { status: "geolocated", surface: "event" });
-    await screen.findByText("Not approved yet");
+    await screen.findByText("No approvals yet");
     expect(headerControls()).toEqual(["v1: choose a version", "Share", "Report"]);
   });
 
   it("carries no menu, no close, no stamps and no approve control in the header", async () => {
     api.approvals = [stamp("a1", "maya")];
     renderAs(OWNER, { status: "geolocated", surface: "event" });
-    await screen.findByText("Approved · 1 · version 1");
+    await screen.findByRole("button", { name: "Approved by maya" });
     expect(within(header()).queryByRole("button", { name: "More actions" })).toBeNull();
     expect(within(header()).queryByRole("button", { name: /^Close/ })).toBeNull();
     expect(within(header()).queryByRole("list", { name: "Approved by" })).toBeNull();

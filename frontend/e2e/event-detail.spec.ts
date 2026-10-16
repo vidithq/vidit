@@ -65,7 +65,7 @@ test.describe("shared event link", () => {
     await page.goto(`/events/${EVENT_ID}`);
 
     const card = page.getByRole("region", { name: "Approvals" });
-    await expect(card.getByText(`Approved · ${EVENT_APPROVALS.length} · version 1`)).toBeVisible();
+    await expect(card.getByRole("list", { name: "Approved by" })).toBeVisible();
     const cardBox = await card.boundingBox();
     const mediaBox = await page.getByRole("heading", { name: "Source media" }).boundingBox();
     expect(cardBox!.y + cardBox!.height).toBeLessThanOrEqual(mediaBox!.y);
@@ -79,11 +79,10 @@ test.describe("shared event link", () => {
     expect((await first.boundingBox())?.width).toBe(28);
     await expectNarrowViewportLayout(page, stamps.getByRole("button", { name: "Show 2 more approvals" }));
 
-    // The latest note, quoted with its author, wraps inside the card.
-    await expect(card.locator("blockquote")).toHaveText(EVENT_APPROVALS[0].note!);
 
-    // A tap opens the stamp's card, which holds the way to the profile.
+    // A tap opens the stamp's card, which holds the note and the way to the profile.
     await first.click();
+    await expect(page.getByRole("dialog").getByText(EVENT_APPROVALS[0].note!)).toBeVisible();
     await expectNarrowViewportLayout(page, page.getByRole("link", { name: "View profile" }));
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toHaveCount(0);

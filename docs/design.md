@@ -551,16 +551,12 @@ flowchart LR
   fetches once`"]:::shared
   card["`**ApprovalsCard**
   the live version only`"]:::shared
-  status["`**Status**
-  Approved · N · version V, or Not approved yet`"]:::spec
   stamps["`**ApprovalStamps** through **AvatarStack**
-  the standing approvals, at most 5 then +N`"]:::spec
+  the standing approvals, at most 5 then +N, or No approvals yet`"]:::spec
   stampcard["`**Stamp card**
   version, date, note, profile, Revoke`"]:::spec
   revoke["`**RevokeForm**
   public reason`"]:::spec
-  note["`**Latest note**
-  quoted with its author`"]:::spec
   own["`**YourOutdatedApproval**
   You approved v1. Changed since: Title`"]:::spec
   approve["`**Approve**
@@ -573,9 +569,7 @@ flowchart LR
   outdated and revoked, with reasons and Revoke`"]:::spec
 
   read --> hook --> card
-  card --> status
   card --> stamps
-  card --> note
   card --> own
   card --> approve
   card --> requests
@@ -586,9 +580,7 @@ flowchart LR
 ```
 
 - **Layout.** From `lg` up the page has two columns: the record (source media, location, details, proof) on the left and the card in an `18rem` column on the right. The card sticks to the top of the viewport while the record scrolls. Once the card is taller than the viewport it scrolls on its own, and the page takes the scroll back at either end of it, so the foot of the card stays reachable. Below `lg` the card sits under the title block, before the media.
-- **Status.** An accent [`<Pill>`](../frontend/src/components/ui/Pill.tsx) with a check reads **Approved · N · version V** while N approvals of the live version stand. A neutral pill reads **Not approved yet** otherwise. On a closed event it reads **Closed · N stood at closing**, or **Closed, no current approval**.
-- **Stamps.** [`ApprovalStamps`](../frontend/src/components/event/Approvals.tsx) renders the live version's standing approvals (those that stood at closing, on a closed event) as an [`<AvatarStack>`](../frontend/src/components/ui/AvatarStack.tsx) named *Approved by*: an overlapping row of 28px pictures, oldest first. An analyst's approval is a circle and an organization's is a rounded square. Each stamp is a button named "Approved by maya". Hovering, focusing or tapping it opens a card: the picture, the name, **Version N · date**, the note clamped to four lines, "on behalf of <organization>" for an organization's approval, a **View profile** or **View organization** link, and **Revoke** for whoever may revoke that approval: the reviewer, an org manager of the organization it speaks for, or a site admin. **Revoke** opens [`RevokeForm`](../frontend/src/components/event/Approvals.tsx) in the card, with focus on its reason; the reason is public. A click on a stamp opens its card rather than navigating, and moves focus to the link; Escape, or Tab past either end of the card, closes it and returns focus to the stamps. Past five, the rest fold into a **+N** bubble that shows every stamp.
-- **Latest note.** The most recent standing approval that carries a note is quoted under the stamps, clamped to four lines, with its author's byline.
+- **Stamps.** The card carries no status line and quotes no note: the stamps are the status, and each note is read in its stamp's card. While no approval stands, a muted *No approvals yet* takes their place. [`ApprovalStamps`](../frontend/src/components/event/Approvals.tsx) renders the live version's standing approvals (those that stood at closing, on a closed event) as an [`<AvatarStack>`](../frontend/src/components/ui/AvatarStack.tsx) named *Approved by*: an overlapping row of 28px pictures, oldest first. An analyst's approval is a circle and an organization's is a rounded square. Each stamp is a button named "Approved by maya". Hovering, focusing or tapping it opens a card: the picture, the name, **Version N · date**, the note clamped to four lines, "on behalf of <organization>" for an organization's approval, a **View profile** or **View organization** link, and **Revoke** for whoever may revoke that approval: the reviewer, an org manager of the organization it speaks for, or a site admin. **Revoke** opens [`RevokeForm`](../frontend/src/components/event/Approvals.tsx) in the card, with focus on its reason; the reason is public. A click on a stamp opens its card rather than navigating, and moves focus to the link; Escape, or Tab past either end of the card, closes it and returns focus to the stamps. Past five, the rest fold into a **+N** bubble that shows every stamp.
 - **Your outdated approval.** A reader whose own approval stands on an earlier version reads one line above **Approve**: *You approved v1. Changed since: Title, Proof.* ([`YourOutdatedApproval`](../frontend/src/components/event/Approvals.tsx), the version history's own `changedFields` through `changesSince`). The version links to its page.
 - **Approve.** A secondary **Approve** button shows only to a reader who may approve: the API's `viewer_can_approve` is true, so a former geolocator never sees a button the API refuses, and `canApprove` finds no earlier review of the live version, as the reader or for an organization they manage (`approveOptions` in [`lib/approvals.ts`](../frontend/src/lib/approvals.ts)). It expands [`ApproveForm`](../frontend/src/components/event/Approvals.tsx) in place, with focus on its note: an optional note, **Approve version N**, one **Approve as <organization>** per organization the reader manages whose approval of the version does not stand, and **Cancel**, which collapses it.
 - **Approval requests.** [`ApprovalRequestsSection`](../frontend/src/components/event/ApprovalRequestsSection.tsx) closes the card. A geolocator sees the open requests and a secondary **Request approval**, which expands the picker in place with focus on its field; **Cancel** collapses it, and sending a request collapses it too. An analyst asked, or an org manager of an organization asked, reads the request with **Decline**, and approves with **Approve** above it. An approval refetches the requests, since it resolves the reader's own.

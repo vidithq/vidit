@@ -190,34 +190,26 @@ describe("<ApprovalStamps>", () => {
 });
 
 describe("<ApprovalsCard>", () => {
-  it("says the live version stands approved, with the count and the version", async () => {
-    serve([approval(), approval({ id: "a2", reviewer: CY })]);
+  it("stamps the live version's standing approvals, with no status line and no quote", async () => {
+    serve([approval({ note: "Skyline matches" }), approval({ id: "a2", reviewer: CY })]);
     render(<Panel />);
 
-    expect(await screen.findByText("Approved · 2 · version 2")).toBeInTheDocument();
-    expect(
-      within(screen.getByRole("list", { name: "Approved by" })).getAllByRole("button"),
-    ).toHaveLength(2);
+    const stamps = within(await screen.findByRole("list", { name: "Approved by" })).getAllByRole("button");
+    expect(stamps).toHaveLength(2);
+    expect(screen.queryByText(/^Approved ·/)).toBeNull();
+    expect(screen.queryByText("No approvals yet")).toBeNull();
+    // The note is read in the stamp's card, not quoted in the panel.
+    expect(screen.queryByText("Skyline matches")).toBeNull();
+    const card = await openStamp("bo");
+    expect(within(card).getByText("Skyline matches")).toBeInTheDocument();
   });
 
-  it("says when no approval stands yet", async () => {
+  it("says when no approval stands yet, in place of the stamps", async () => {
     serve([approval({ id: "v1", version_no: 1, current: false })]);
     render(<Panel />);
 
-    expect(await screen.findByText("Not approved yet")).toBeInTheDocument();
+    expect(await screen.findByText("No approvals yet")).toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "Approved by" })).toBeNull();
-  });
-
-  it("quotes the latest note among the current approvals, with its author", async () => {
-    serve([
-      approval({ note: "Skyline matches", created_at: "2026-10-15T09:00:00Z" }),
-      approval({ id: "a2", reviewer: CY, note: "Roof vents too", created_at: "2026-10-16T09:00:00Z" }),
-    ]);
-    render(<Panel />);
-
-    const quote = (await screen.findByText("Roof vents too")).closest("figure")!;
-    expect(within(quote).getByRole("link", { name: "cy" })).toHaveAttribute("href", "/profile/cy");
-    expect(screen.queryByText("Skyline matches")).toBeNull();
   });
 
   it("lets an analyst outside the geolocators approve the version on screen", async () => {
@@ -225,7 +217,7 @@ describe("<ApprovalsCard>", () => {
     serve([]);
     render(<Panel />);
 
-    expect(await screen.findByText("Not approved yet")).toBeInTheDocument();
+    expect(await screen.findByText("No approvals yet")).toBeInTheDocument();
     expect(screen.queryByLabelText("Note (optional)")).toBeNull();
     await openApproveForm();
     expect(screen.getByLabelText("Note (optional)")).toHaveFocus();
@@ -289,7 +281,7 @@ describe("<ApprovalsCard>", () => {
     serve([approval({ id: "a0", version_no: 1, current: false })]);
     render(<Panel />);
 
-    expect(await screen.findByText("Not approved yet")).toBeInTheDocument();
+    expect(await screen.findByText("No approvals yet")).toBeInTheDocument();
     expect(screen.queryByText(/You approved/)).toBeNull();
   });
 
@@ -299,7 +291,7 @@ describe("<ApprovalsCard>", () => {
     serve([approval()]);
     render(<Panel />);
 
-    expect(await screen.findByText("Approved · 1 · version 2")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Approved by bo" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Approve\b/ })).toBeNull();
     expect(screen.queryByLabelText("Note (optional)")).toBeNull();
   });
@@ -317,7 +309,7 @@ describe("<ApprovalsCard>", () => {
     serve([approval()]);
     render(<Panel />);
 
-    expect(await screen.findByText("Approved · 1 · version 2")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Approved by bo" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Approve\b/ })).toBeNull();
   });
 
@@ -337,7 +329,7 @@ describe("<ApprovalsCard>", () => {
     ]);
     render(<Panel />);
 
-    expect(await screen.findByText("Approved · 1 · version 2")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Approved by bo" })).toBeInTheDocument();
     const stamps = within(screen.getByRole("list", { name: "Approved by" })).getAllByRole("button");
     expect(stamps.map((b) => b.getAttribute("aria-label"))).toEqual(["Approved by bo"]);
     expect(screen.queryByText("Roof vents")).toBeNull();
@@ -358,8 +350,8 @@ describe("<ApprovalsCard>", () => {
     serve([approval({ current: false, note: "Skyline matches" })]);
     render(<Panel geo={closedEvent} />);
 
-    expect(await screen.findByText("Closed · 1 stood at closing")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Approved by bo" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Approved by bo" })).toBeInTheDocument();
+    expect(screen.queryByText("No approvals yet")).toBeNull();
   });
 
   it("lets the reviewer revoke from their stamp's card, and no one else's", async () => {
