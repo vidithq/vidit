@@ -15,11 +15,13 @@ from app.routers._errors import raise_typed_error
 from app.routers.events._common import build_event_list
 from app.schemas.collection import CollectionList
 from app.schemas.event import PaginatedEvents
+from app.schemas.organization import OrganizationMembershipRead
 from app.schemas.preferences import UserPreferencesRead, UserPreferencesUpdate
 from app.schemas.push import PushConfigRead, PushSubscriptionCreate, PushSubscriptionRead
 from app.schemas.user import UserProfile, UserRead, UserStatsRead, UserUpdate
 from app.schemas.x_handle_request import XHandleRead, XHandleRequestCreate
 from app.services import collections as collections_service
+from app.services import organizations as organizations_service
 from app.services import preferences as preferences_service
 from app.services import push as push_service
 from app.services import social, user_stats, x_handle_requests
@@ -55,17 +57,7 @@ def update_my_profile(
     it; empty string normalises to ``None``). ``external_links`` replaces the
     whole JSONB blob, since the form submits the entire panel.
     """
-    update_data = body.model_dump(exclude_unset=True)
-    if "bio" in update_data:
-        current_user.bio = update_data["bio"]
-    if "external_links" in update_data:
-        links = update_data["external_links"]
-        # ``None`` or a partial dict replaces wholesale; per-platform ``None``
-        # values are stripped so the JSONB stays sparse.
-        if links is None:
-            current_user.external_links = {}
-        else:
-            current_user.external_links = {k: v for k, v in links.items() if v is not None}
+    users_service.apply_profile_update(current_user, body)
     db.commit()
     db.refresh(current_user)
     return current_user
@@ -90,7 +82,7 @@ def set_my_avatar(
     picture it replaced.
     """
     try:
-        return asyncio.run(users_service.set_avatar(db, user=current_user, file=file))
+        return asyncio.run(users_service.set_avatar(db, owner=current_user, file=file))
     except users_service.AvatarError as exc:
         raise_typed_error(exc, users_service.AVATAR_ERROR_STATUS)
 
@@ -103,7 +95,7 @@ def delete_my_avatar(
     current_user: User = Depends(get_current_user),
 ) -> User:
     """Drop your profile picture (surfaces fall back to the monogram)."""
-    return users_service.clear_avatar(db, user=current_user)
+    return users_service.clear_avatar(db, owner=current_user)
 
 
 @router.get("/me/preferences", response_model=UserPreferencesRead)
@@ -292,6 +284,19 @@ def get_user_collections(
         page=page,
         per_page=per_page,
     )
+
+
+@router.get("/{username}/organizations", response_model=list[OrganizationMembershipRead])
+@authenticated_read_quota
+@limiter.limit("120/minute")
+def get_user_organizations(
+    request: Request,
+    username: str,
+    db: Session = Depends(get_db),
+) -> list[OrganizationMembershipRead]:
+    """The organizations an analyst belongs to, by name, with their role in each."""
+    user = _get_live_user_or_404(db, username)
+    return organizations_service.list_memberships(db, user)
 
 
 @router.post("/{username}/follow", status_code=status.HTTP_204_NO_CONTENT)

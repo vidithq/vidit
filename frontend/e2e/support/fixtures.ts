@@ -9,6 +9,12 @@
  */
 import type { Collection } from "@/lib/collections";
 import type { UnreadCount } from "@/lib/notifications";
+import type {
+  InviteCandidate,
+  Organization,
+  OrganizationInvite,
+  OrganizationMember,
+} from "@/lib/organizations";
 import type { UserPreferences } from "@/lib/preferences";
 import type { PushConfig } from "@/lib/push";
 import type { XHandleState } from "@/lib/xHandle";
@@ -271,6 +277,21 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
       channels: { email: false, push: false },
       defaults: { email: false, push: false },
     },
+    {
+      kind: "organization_invite",
+      channels: { email: true, push: true },
+      defaults: { email: true, push: true },
+    },
+    {
+      kind: "organization_invite_accepted",
+      channels: { email: false, push: false },
+      defaults: { email: false, push: false },
+    },
+    {
+      kind: "organization_admin_inherited",
+      channels: { email: true, push: true },
+      defaults: { email: true, push: true },
+    },
   ],
   product_updates: false,
 };
@@ -293,6 +314,54 @@ export const X_HANDLE_WITH_DECLINED_REQUEST: XHandleState = {
     decided_at: "2026-10-02T09:00:00Z",
   },
 };
+
+/** Slug of the organization the signed-in analyst administers. */
+export const ORGANIZATION_SLUG = "open-source-watch";
+
+export const ORGANIZATION: Organization = {
+  id: "88888888-8888-4888-8888-888888888881",
+  slug: ORGANIZATION_SLUG,
+  name: "Open Source Watch, a collective of strike footage geolocators",
+  x_handle: "osw",
+  bio: "We geolocate strike footage and publish the proof. https://example.org/a-long-path-that-must-wrap",
+  avatar_url: null,
+  external_links: { x: "osw", website: "https://example.org" },
+  created_at: "2025-03-01T09:00:00Z",
+  member_count: 2,
+  viewer_role: "admin",
+  viewer_invited: false,
+  viewer_can_manage: true,
+};
+
+export const ORGANIZATION_MEMBERS: OrganizationMember[] = [
+  {
+    user: { id: SIGNED_IN_USER.id, username: SIGNED_IN_USER.username, avatar_url: null },
+    role: "admin",
+    joined_at: "2025-03-01T09:00:00Z",
+  },
+  {
+    user: {
+      id: "99999999-9999-4999-8999-999999999991",
+      username: "a_member_with_a_rather_long_username",
+      avatar_url: null,
+    },
+    role: "member",
+    joined_at: "2025-04-01T09:00:00Z",
+  },
+];
+
+export const INVITE_CANDIDATES: InviteCandidate[] = [
+  { id: "99999999-9999-4999-8999-999999999992", username: "mutual", avatar_url: null },
+];
+
+export const ORGANIZATION_INVITES: OrganizationInvite[] = [
+  {
+    id: "99999999-9999-4999-8999-999999999993",
+    user: { id: "99999999-9999-4999-8999-999999999994", username: "invitee", avatar_url: null },
+    invited_by: { id: SIGNED_IN_USER.id, username: SIGNED_IN_USER.username, avatar_url: null },
+    created_at: "2025-05-01T09:00:00Z",
+  },
+];
 
 /** Nothing unread, as the sidebar's notification row reads it. */
 export const NO_UNREAD: UnreadCount = { count: 0 };

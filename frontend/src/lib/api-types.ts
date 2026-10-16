@@ -300,6 +300,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/organizations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Organizations
+         * @description Every organization with its live member and org-admin counts, those without an org-admin first.
+         */
+        get: operations["list_organizations_api_v1_admin_organizations_get"];
+        put?: never;
+        /**
+         * Create Organization
+         * @description Create an organization and name its first org-admin, who joins without an invite.
+         */
+        post: operations["create_organization_api_v1_admin_organizations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/product-updates": {
         parameters: {
             query?: never;
@@ -1618,6 +1642,202 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Organization
+         * @description An organization's public profile, with the caller's role and pending invite.
+         */
+        get: operations["get_organization_api_v1_organizations__slug__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Organization
+         * @description Edit an organization's bio and links. Org-admins and site admins only.
+         */
+        patch: operations["update_organization_api_v1_organizations__slug__patch"];
+        trace?: never;
+    };
+    "/api/v1/organizations/{slug}/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Organization Avatar
+         * @description Replace an organization's picture, under the rules of ``PUT /users/me/avatar``.
+         */
+        put: operations["set_organization_avatar_api_v1_organizations__slug__avatar_put"];
+        post?: never;
+        /**
+         * Delete Organization Avatar
+         * @description Drop an organization's picture.
+         */
+        delete: operations["delete_organization_avatar_api_v1_organizations__slug__avatar_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{slug}/invite-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Invite Candidates
+         * @description The analysts you may invite: in mutual follow with you, neither member nor invited.
+         */
+        get: operations["list_invite_candidates_api_v1_organizations__slug__invite_candidates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{slug}/invite/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Organization Invite
+         * @description Accept your pending invite and join as a member.
+         */
+        post: operations["accept_organization_invite_api_v1_organizations__slug__invite_accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{slug}/invite/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline Organization Invite
+         * @description Decline your pending invite.
+         */
+        post: operations["decline_organization_invite_api_v1_organizations__slug__invite_decline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{slug}/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Organization Invites
+         * @description Pending invites, newest first. Org-admins and site admins only.
+         */
+        get: operations["list_organization_invites_api_v1_organizations__slug__invites_get"];
+        put?: never;
+        /**
+         * Create Organization Invite
+         * @description Invite an analyst in mutual follow with you. Org-admins only.
+         */
+        post: operations["create_organization_invite_api_v1_organizations__slug__invites_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{slug}/invites/{invite_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Cancel Organization Invite
+         * @description Withdraw a pending invite. Org-admins and site admins only.
+         */
+        delete: operations["cancel_organization_invite_api_v1_organizations__slug__invites__invite_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{slug}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Organization Members
+         * @description An organization's members, org-admins first, then by join date.
+         */
+        get: operations["list_organization_members_api_v1_organizations__slug__members_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{slug}/members/{username}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Organization Member
+         * @description Remove a member, or leave with your own username. The last org-admin cannot leave.
+         */
+        delete: operations["remove_organization_member_api_v1_organizations__slug__members__username__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Organization Member
+         * @description Change a member's role. Org-admins and site admins only; the last org-admin keeps the role.
+         */
+        patch: operations["update_organization_member_api_v1_organizations__slug__members__username__patch"];
+        trace?: never;
+    };
     "/api/v1/product-updates/unsubscribe": {
         parameters: {
             query?: never;
@@ -2020,6 +2240,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/{username}/organizations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get User Organizations
+         * @description The organizations an analyst belongs to, by name, with their role in each.
+         */
+        get: operations["get_user_organizations_api_v1_users__username__organizations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/{username}/stats": {
         parameters: {
             query?: never;
@@ -2338,6 +2578,26 @@ export interface components {
         AdminMeResponse: {
             /** Is Admin */
             is_admin: boolean;
+        };
+        /**
+         * AdminOrganizationRead
+         * @description One row of ``GET /admin/organizations``. ``admin_count`` 0 flags an
+         *     organization left without a live org-admin.
+         */
+        AdminOrganizationRead: {
+            /** Admin Count */
+            admin_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Member Count */
+            member_count: number;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
         };
         /**
          * AdminPurgeDetectedResponse
@@ -2814,6 +3074,11 @@ export interface components {
         };
         /** Body_set_my_avatar_api_v1_users_me_avatar_put */
         Body_set_my_avatar_api_v1_users_me_avatar_put: {
+            /** File */
+            file: string;
+        };
+        /** Body_set_organization_avatar_api_v1_organizations__slug__avatar_put */
+        Body_set_organization_avatar_api_v1_organizations__slug__avatar_put: {
             /** File */
             file: string;
         };
@@ -3467,12 +3732,12 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred";
+            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_admin_inherited";
         };
         /**
          * NotificationRead
-         * @description One feed row. ``actor`` and ``event`` are null on a kind that names
-         *     neither; ``read_at`` is null until the feed has shown the row.
+         * @description One feed row. ``actor``, ``event`` and ``organization`` are null on a
+         *     kind that names none; ``read_at`` is null until the feed has shown the row.
          *     ``invite_pending`` is true on a ``co_geolocator_invite`` row whose
          *     invitation still waits for the reader's answer.
          */
@@ -3495,7 +3760,8 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred";
+            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_admin_inherited";
+            organization: components["schemas"]["OrganizationRef"] | null;
             /** Read At */
             read_at: string | null;
         };
@@ -3512,6 +3778,169 @@ export interface components {
         NotificationUnreadCount: {
             /** Count */
             count: number;
+        };
+        /**
+         * OrganizationCreate
+         * @description Body for ``POST /admin/organizations``.
+         *
+         *     ``admin_username`` names the first org-admin, who joins at once without an
+         *     invite.
+         */
+        OrganizationCreate: {
+            /** Admin Username */
+            admin_username: string;
+            /** Bio */
+            bio?: string | null;
+            external_links?: components["schemas"]["ExternalLinks"] | null;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** X Handle */
+            x_handle?: string | null;
+        };
+        /**
+         * OrganizationInviteCreate
+         * @description Body for ``POST /organizations/{slug}/invites``.
+         */
+        OrganizationInviteCreate: {
+            /** Username */
+            username: string;
+        };
+        /**
+         * OrganizationInviteRead
+         * @description One pending invite, for the org-admin's list.
+         */
+        OrganizationInviteRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            invited_by: components["schemas"]["AuthorRef"] | null;
+            user: components["schemas"]["AuthorRef"];
+        };
+        /**
+         * OrganizationMemberRead
+         * @description One member on the organization page, admins first.
+         */
+        OrganizationMemberRead: {
+            /**
+             * Joined At
+             * Format: date-time
+             */
+            joined_at: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "admin" | "member";
+            user: components["schemas"]["AuthorRef"];
+        };
+        /**
+         * OrganizationMemberUpdate
+         * @description Body for ``PATCH /organizations/{slug}/members/{username}``.
+         */
+        OrganizationMemberUpdate: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "admin" | "member";
+        };
+        /**
+         * OrganizationMembershipRead
+         * @description One organization an analyst belongs to, for ``GET /users/{username}/organizations``.
+         */
+        OrganizationMembershipRead: {
+            /**
+             * Joined At
+             * Format: date-time
+             */
+            joined_at: string;
+            organization: components["schemas"]["OrganizationRef"];
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "admin" | "member";
+        };
+        /**
+         * OrganizationRead
+         * @description Public profile for ``GET /organizations/{slug}``.
+         *
+         *     ``viewer_role`` is the caller's role, null for a non-member or an anonymous
+         *     caller. ``viewer_invited`` is true while the caller holds a pending invite.
+         *     ``viewer_can_manage`` is true for an org-admin or a site admin: it gates
+         *     the profile edit and the member management on the page.
+         */
+        OrganizationRead: {
+            /** Avatar Url */
+            avatar_url: string | null;
+            /** Bio */
+            bio: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** External Links */
+            external_links: {
+                [key: string]: string | null;
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Member Count */
+            member_count: number;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /**
+             * Viewer Can Manage
+             * @default false
+             */
+            viewer_can_manage: boolean;
+            /**
+             * Viewer Invited
+             * @default false
+             */
+            viewer_invited: boolean;
+            /** Viewer Role */
+            viewer_role?: ("admin" | "member") | null;
+            /** X Handle */
+            x_handle: string | null;
+        };
+        /**
+         * OrganizationRef
+         * @description Compact organization handle for a notification row.
+         */
+        OrganizationRef: {
+            /** Avatar Url */
+            avatar_url?: string | null;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+        };
+        /**
+         * OrganizationUpdate
+         * @description Body for ``PATCH /organizations/{slug}``: the fields an org-admin edits,
+         *     under the rules of ``PATCH /users/me``. ``name``, ``slug`` and ``x_handle``
+         *     stay with the site admin.
+         */
+        OrganizationUpdate: {
+            /** Bio */
+            bio?: string | null;
+            external_links?: components["schemas"]["ExternalLinks"] | null;
         };
         /**
          * PaginatedEventDetails
@@ -4691,6 +5120,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminMeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_organizations_api_v1_admin_organizations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminOrganizationRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_organization_api_v1_admin_organizations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationRead"];
                 };
             };
             /** @description Validation Error */
@@ -6740,6 +7235,444 @@ export interface operations {
             };
         };
     };
+    get_organization_api_v1_organizations__slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_organization_api_v1_organizations__slug__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_organization_avatar_api_v1_organizations__slug__avatar_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_set_organization_avatar_api_v1_organizations__slug__avatar_put"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_organization_avatar_api_v1_organizations__slug__avatar_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_invite_candidates_api_v1_organizations__slug__invite_candidates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthorRef"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_organization_invite_api_v1_organizations__slug__invite_accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decline_organization_invite_api_v1_organizations__slug__invite_decline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_organization_invites_api_v1_organizations__slug__invites_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationInviteRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_organization_invite_api_v1_organizations__slug__invites_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizationInviteCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationInviteRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_organization_invite_api_v1_organizations__slug__invites__invite_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                invite_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_organization_members_api_v1_organizations__slug__members_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationMemberRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_organization_member_api_v1_organizations__slug__members__username__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                username: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_organization_member_api_v1_organizations__slug__members__username__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                username: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizationMemberUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationMemberRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     unsubscribe_api_v1_product_updates_unsubscribe_post: {
         parameters: {
             query: {
@@ -7432,6 +8365,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_organizations_api_v1_users__username__organizations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                username: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationMembershipRead"][];
+                };
             };
             /** @description Validation Error */
             422: {

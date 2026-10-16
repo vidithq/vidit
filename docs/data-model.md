@@ -290,8 +290,36 @@ erDiagram
         VARCHAR kind "one value of NOTIFICATION_KINDS"
         UUID actor_id FK "nullable, who acted"
         UUID event_id FK "nullable, what it concerns"
+        UUID organization_id FK "nullable, the organization it concerns"
         TIMESTAMPTZ created_at
         TIMESTAMPTZ read_at "nullable, NULL is unread"
+    }
+
+    organizations {
+        UUID id PK
+        VARCHAR slug UK "the URL key, fixed once set"
+        VARCHAR name
+        VARCHAR x_handle "nullable, UNIQUE, verified by a site admin"
+        TEXT bio "nullable"
+        TEXT avatar_url "nullable"
+        JSONB external_links "default {}"
+        UUID created_by_id FK "nullable, the site admin"
+        TIMESTAMPTZ created_at
+    }
+
+    organization_members {
+        UUID organization_id PK "FK"
+        UUID user_id PK "FK"
+        VARCHAR role "admin | member"
+        TIMESTAMPTZ joined_at
+    }
+
+    organization_invites {
+        UUID id PK
+        UUID organization_id FK
+        UUID user_id FK "the invitee"
+        UUID invited_by_id FK "nullable"
+        TIMESTAMPTZ created_at
     }
 
     notification_deliveries {
@@ -451,6 +479,13 @@ erDiagram
     product_updates ||--o{ product_update_deliveries : "product_update_id"
     users ||--o{ product_update_deliveries : "user_id"
     users ||--o| x_handle_requests : "user_id"
+    organizations |o--o{ notifications : "organization_id"
+    organizations ||--o{ organization_members : "organization_id"
+    users ||--o{ organization_members : "user_id"
+    organizations ||--o{ organization_invites : "organization_id"
+    users ||--o{ organization_invites : "user_id"
+    users |o--o{ organization_invites : "invited_by_id"
+    users |o--o{ organizations : "created_by_id"
     users ||--o{ archive_import_jobs : "owner_id"
     events ||--o{ source_archives : "event_id"
 ```
@@ -822,9 +857,10 @@ One thing that happened to an analyst, shown in their feed at [`GET /notificatio
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The recipient. |
-| `kind` | `VARCHAR(40)` | NOT NULL, CHECK in `('request_fulfilled', 'new_follower', 'x_handle_request_approved', 'x_handle_request_declined', 'co_geolocator_invite', 'co_geolocator_removed', 'ownership_transferred')` (constraint `ck_notifications_kind_valid`). The kind registry `NOTIFICATION_KINDS` in [`models/notification.py`](../backend/app/models/notification.py) lists the same values with their per-channel defaults. |
-| `actor_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, nullable. Who acted: the fulfiller, the follower, or the owner who invited or removed you. NULL on the X handle request outcomes, which name no admin, and on `ownership_transferred`, which must not name the erased owner. |
-| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, nullable. The event the row concerns; NULL for `new_follower` and the X handle request outcomes. |
+| `kind` | `VARCHAR(40)` | NOT NULL, CHECK in `('request_fulfilled', 'new_follower', 'x_handle_request_approved', 'x_handle_request_declined', 'co_geolocator_invite', 'co_geolocator_removed', 'ownership_transferred', 'organization_invite', 'organization_invite_accepted', 'organization_admin_inherited')` (constraint `ck_notifications_kind_valid`). The kind registry `NOTIFICATION_KINDS` in [`models/notification.py`](../backend/app/models/notification.py) lists the same values with their per-channel defaults. |
+| `actor_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, nullable. Who acted: the fulfiller, the follower, the owner who invited or removed you, the inviting org-admin, or the analyst who accepted an organization invite. NULL on the X handle request outcomes, which name no admin, and on `ownership_transferred` and `organization_admin_inherited`, which must not name the erased analyst. |
+| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, nullable. The event the row concerns; NULL for a kind that names none. |
+| `organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, nullable. The organization an `organization_*` row concerns. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()`. Orders the feed. |
 | `read_at` | `TIMESTAMPTZ` | nullable. Set by `POST /notifications/read` on the rows the feed showed; NULL is unread. Read state is per row because `created_at` is stamped at flush: an action that flushes its row and commits after a slow upload would land behind a single read marker already moved past it. |
 
@@ -832,9 +868,9 @@ Indexes:
 
 - `ix_notifications_user_created_at` on `(user_id, created_at, id)`. Backs the feed's keyset walk.
 - `ix_notifications_user_unread`: partial index on `(user_id) WHERE read_at IS NULL`. Backs the unread count.
-- `ix_notifications_actor_id` on `(actor_id)` and `ix_notifications_event_id` on `(event_id)`. Back the cascades when an actor or an event is hard-deleted.
+- `ix_notifications_actor_id` on `(actor_id)`, `ix_notifications_event_id` on `(event_id)` and `ix_notifications_organization_id` on `(organization_id)`. Back the cascades when an actor, an event or an organization is hard-deleted.
 
-Every foreign key cascades, so a hard-deleted recipient, actor or event takes its rows with it. A soft delete or a takedown keeps the row and hides it at read time: the feed and the count skip a row whose event has `deleted_at` or `hidden_at` set, or whose actor has `deleted_at` set. Undoing the takedown shows the row again.
+Every foreign key cascades, so a hard-deleted recipient, actor, event or organization takes its rows with it. A soft delete or a takedown keeps the row and hides it at read time: the feed and the count skip a row whose event has `deleted_at` or `hidden_at` set, or whose actor has `deleted_at` set. Undoing the takedown shows the row again.
 
 `new_follower` is written once per follower: an unfollow and re-follow finds the earlier row and writes none.
 
@@ -940,6 +976,57 @@ Indexes:
 - `ix_product_update_deliveries_user_id` on `(user_id)`. Backs the cascade of a hard-deleted recipient.
 - `ix_product_update_deliveries_queued` on `(created_at)` where `status = 'queued'`. Backs the claim.
 - `ix_product_update_deliveries_sent_at` on `(sent_at)` where `status = 'sent'`. Backs the daily cap count.
+
+---
+
+### `organizations`
+
+A collective with its own public profile at `/organizations/{slug}`. Only a site admin creates a row ([`POST /admin/organizations`](api.md#post-adminorganizations)), which keeps a name from being squatted and verifies `x_handle` by hand.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `UUID` | PK, default `uuid4()` |
+| `slug` | `VARCHAR(50)` | NOT NULL, UNIQUE. Lowercase letters, digits and inner hyphens, 2 to 50 characters. No endpoint changes it, so a shared link keeps resolving. |
+| `name` | `VARCHAR(100)` | NOT NULL |
+| `x_handle` | `VARCHAR(50)` | nullable, UNIQUE. Lowercased without `@`, the same normalization as `users.x_handle`. |
+| `bio` | `TEXT` | nullable. Same rules as `users.bio`. |
+| `avatar_url` | `TEXT` | nullable. Server-minted under `avatars/{organization_id}/`, like `users.avatar_url`. |
+| `external_links` | `JSONB` | NOT NULL, default `'{}'::jsonb`. Same keys and rules as `users.external_links`. |
+| `created_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The site admin who created it. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL |
+
+---
+
+### `organization_members`
+
+One analyst's membership in one organization. An analyst can belong to several organizations.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, NOT NULL |
+| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL |
+| `role` | `VARCHAR(20)` | NOT NULL, CHECK in `('admin', 'member')` (constraint `ck_organization_members_role_valid`). `admin` is an org-admin. |
+| `joined_at` | `TIMESTAMPTZ` | NOT NULL |
+
+Composite PK: `(organization_id, user_id)`, so an analyst holds one role per organization. `ix_organization_members_user_id` on `(user_id)` backs the list of an analyst's organizations.
+
+Every organization keeps at least one live org-admin. The service enforces it rather than a constraint: a demotion, a removal or a leave locks the `organizations` row, then refuses to take away the last org-admin whose account is not soft-deleted. An admin soft delete or erasure of that last org-admin promotes the earliest-joined live member instead (`services/organizations.hand_over_admin_roles`), in the transaction that also hands the erased analyst's events to their co-geolocators; with no live member left, the organization keeps no admin.
+
+---
+
+### `organization_invites`
+
+A pending invitation. Accepting turns the row into an `organization_members` row with the `member` role, and declining or withdrawing deletes it, so a row exists only while the invitee has not answered.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `UUID` | PK, default `uuid4()` |
+| `organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, NOT NULL |
+| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The invitee. |
+| `invited_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The org-admin who invited. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL |
+
+`uq_organization_invites_pair` on `(organization_id, user_id)` keeps one pending invite per analyst and organization. `ix_organization_invites_user_id` on `(user_id)` backs the invitee's lookups.
 
 ---
 

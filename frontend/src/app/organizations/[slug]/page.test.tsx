@@ -1,0 +1,130 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { Organization, OrganizationMember } from "@/lib/organizations";
+
+vi.mock("next/navigation", () => ({
+  useParams: () => ({ slug: "osw" }),
+  usePathname: () => "/organizations/osw",
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
+}));
+
+const useAuth = vi.fn();
+vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => useAuth() }));
+
+const useApiResource = vi.fn();
+vi.mock("@/hooks/useApiResource", () => ({
+  useApiResource: (path: string | null) => useApiResource(path),
+}));
+
+const apiFetch = vi.fn();
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
+  apiFetch: (...args: unknown[]) => apiFetch(...args),
+}));
+
+import OrganizationPage from "./page";
+
+const ORG: Organization = {
+  id: "o1",
+  slug: "osw",
+  name: "Open Source Watch",
+  x_handle: "osw",
+  bio: "We geolocate.",
+  avatar_url: null,
+  external_links: { website: "https://example.org" },
+  created_at: "2026-01-01T00:00:00Z",
+  member_count: 2,
+  viewer_role: null,
+  viewer_invited: false,
+  viewer_can_manage: false,
+};
+
+const MEMBERS: OrganizationMember[] = [
+  {
+    user: { id: "u1", username: "lead", avatar_url: null },
+    role: "admin",
+    joined_at: "2026-01-01T00:00:00Z",
+  },
+  {
+    user: { id: "u2", username: "ana", avatar_url: null },
+    role: "member",
+    joined_at: "2026-02-01T00:00:00Z",
+  },
+];
+
+function serve(org: Organization) {
+  const refetch = vi.fn();
+  useApiResource.mockImplementation((path: string | null) => {
+    if (path === "/organizations/osw") return { data: org, error: null, loading: false, refetch };
+    if (path === "/organizations/osw/members") {
+      return { data: MEMBERS, error: null, loading: false, refetch };
+    }
+    return { data: [], error: null, loading: false, refetch };
+  });
+  return refetch;
+}
+
+function signIn(username: string | null) {
+  useAuth.mockReturnValue({
+    user: username ? { id: "x", username } : null,
+    loading: false,
+    refresh: vi.fn(),
+  });
+}
+
+describe("OrganizationPage", () => {
+  beforeEach(() => {
+    apiFetch.mockReset().mockResolvedValue(undefined);
+  });
+
+  it("shows a visitor the profile and the members, with no controls", () => {
+    signIn(null);
+    serve(ORG);
+    render(<OrganizationPage />);
+
+    expect(screen.getByRole("heading", { name: "Open Source Watch" })).toBeInTheDocument();
+    expect(screen.getByText("2 members")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "lead" })).toHaveAttribute("href", "/profile/lead");
+    expect(screen.getByText("Org-admin")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Remove|Leave|Make/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit profile" })).toBeNull();
+    expect(screen.queryByText("Invites")).toBeNull();
+  });
+
+  it("lets an invited analyst accept", async () => {
+    signIn("bo");
+    const refetch = serve({ ...ORG, viewer_invited: true });
+    render(<OrganizationPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith("/organizations/osw/invite/accept", {
+        method: "POST",
+      }),
+    );
+    await waitFor(() => expect(refetch).toHaveBeenCalled());
+  });
+
+  it("gives a member Leave on their own row only", () => {
+    signIn("ana");
+    serve({ ...ORG, viewer_role: "member" });
+    render(<OrganizationPage />);
+
+    expect(screen.getAllByRole("button", { name: "Leave" })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
+  });
+
+  it("gives an org-admin the role controls, the invites and the edit", () => {
+    signIn("lead");
+    serve({ ...ORG, viewer_role: "admin", viewer_can_manage: true });
+    render(<OrganizationPage />);
+
+    expect(screen.getByRole("button", { name: "Make org-admin" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Make member" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove" })).toBeInTheDocument();
+    expect(screen.getByText("Invites")).toBeInTheDocument();
+    expect(screen.getByLabelText("Analyst")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Edit profile" })).toBeInTheDocument();
+  });
+});

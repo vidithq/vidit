@@ -4,7 +4,10 @@ import { useEffect } from "react";
 import {
   ArrowRightLeft,
   AtSign,
+  Building2,
   CircleCheck,
+  ShieldCheck,
+  UserCheck,
   UserMinus,
   UserPlus,
   Users,
@@ -39,6 +42,9 @@ const KIND_ICON: Record<NotificationKind, LucideIcon> = {
   co_geolocator_invite: Users,
   co_geolocator_removed: UserMinus,
   ownership_transferred: ArrowRightLeft,
+  organization_invite: Building2,
+  organization_invite_accepted: UserCheck,
+  organization_admin_inherited: ShieldCheck,
 };
 
 function NotificationRows({
@@ -108,7 +114,8 @@ export default function NotificationsPage() {
       ) : items.length === 0 ? (
         <EmptyState>
           Nothing yet. A notification appears here when someone geolocates a request you
-          opened, follows you, or invites you to share the credit of a geolocation.
+          opened, follows you, invites you to share the credit of a geolocation, or invites
+          you to an organization.
         </EmptyState>
       ) : (
         <>

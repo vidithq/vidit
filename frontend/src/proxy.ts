@@ -9,7 +9,7 @@ import { VIDIT_HOST as CANONICAL_HOST } from "@/lib/outbound";
 const CSRF_COOKIE = "vidit_csrf";
 
 // Paths reachable without a session; everything else is default-deny. Content routes (map,
-// events, requests, profiles, search) are public. Write and account surfaces (`/submit`,
+// events, requests, profiles, organizations, search) are public. Write and account surfaces (`/submit`,
 // `/settings`, `/admin`, `/timeline`) stay behind the wall; write sub-routes under a public
 // prefix (`/events/[id]/edit`, `/profile/[username]/detections`) bounce client side via
 // `useRequireAuth`. The invite code gates registration only (`POST /auth/register`).
@@ -37,6 +37,8 @@ const PUBLIC_PREFIXES = [
   "/events",
   "/requests",
   "/profile",
+  // An organization's page reads anonymously, like an analyst's profile.
+  "/organizations",
   "/search",
   "/login",
   "/register",
