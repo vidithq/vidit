@@ -15,6 +15,7 @@ import {
 import { useApiResource } from "@/hooks/useApiResource";
 import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
+import { pluralNoun } from "@/lib/format";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import {
   FORM_ERROR_BANNER,
@@ -30,7 +31,7 @@ import { Pill } from "@/components/ui/Pill";
 const EMPTY: ProductUpdateDraft = { label: "", title: "", body: "", link_url: "" };
 
 function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+  return `${count} ${pluralNoun(count, noun)}`;
 }
 
 function draftBody(draft: ProductUpdateDraft): ProductUpdateDraft {

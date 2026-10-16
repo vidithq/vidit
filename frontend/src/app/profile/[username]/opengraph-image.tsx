@@ -1,4 +1,4 @@
-import { ogCount, ogTruncate } from "@/lib/og";
+import { ogCount, ogProfileCounts, ogTruncate } from "@/lib/og";
 import type { PublicProfile, UserStats } from "@/lib/users";
 
 import {
@@ -21,7 +21,8 @@ import { PortfolioCard, PortfolioNotFoundCard } from "../../_og/portfolio";
 export const runtime = "nodejs";
 export const size = OG_SIZE;
 export const contentType = OG_CONTENT_TYPE;
-export const alt = "An analyst's portfolio on Vidit: handle, geolocation count, and followers.";
+export const alt =
+  "An analyst's portfolio on Vidit: handle, geolocated and detected counts, and followers.";
 
 export default async function ProfileOpenGraphImage({
   params,
@@ -52,11 +53,14 @@ export default async function ProfileOpenGraphImage({
   const profile = profileRead.data;
   const stats = statsRead.status === "ok" ? statsRead.data : null;
 
-  // The avatar URL arrives with the profile, so it is budgeted tighter; a miss costs the monogram, not the card.
+  // The avatar URL arrives with the profile, so its read waits on it; a miss costs the monogram, not the card.
   const avatar = await ogImageDataUri(profile.avatar_url);
 
-  // The headline reads off the profile payload (equals `stats.geolocated_count`), so it survives a failed stats read; stats fill the caption and media tile.
   const conflicts = (stats?.top_conflicts ?? []).map((c) => c.name).join(" · ");
+  const counts = [
+    ...ogProfileCounts(profile, stats),
+    ...(stats ? [{ label: "Media", value: stats.media_count }] : []),
+  ];
 
   return ogImageResponse(
     <PortfolioCard
@@ -65,11 +69,7 @@ export default async function ProfileOpenGraphImage({
       avatar={avatar}
       name={profile.username}
       bio={profile.bio}
-      stats={[
-        { value: ogCount(profile.geolocations_count), label: "Geolocated" },
-        { value: ogCount(profile.followers_count), label: "Followers" },
-        ...(stats ? [{ value: ogCount(stats.media_count), label: "Media" }] : []),
-      ]}
+      stats={counts.map(({ label, value }) => ({ label, value: ogCount(value) }))}
     />,
   );
 }

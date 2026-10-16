@@ -1,3 +1,4 @@
+import { pluralNoun } from "@/lib/format";
 import { ogCount, ogTruncate } from "@/lib/og";
 import { organizationPath, type Organization } from "@/lib/organizations";
 
@@ -48,7 +49,7 @@ export default async function OrganizationOpenGraphImage({
       avatar={avatar}
       name={org.name}
       bio={org.bio}
-      stats={[{ value: ogCount(org.member_count), label: "Members" }]}
+      stats={[{ value: ogCount(org.member_count), label: pluralNoun(org.member_count, "Member") }]}
     />,
   );
 }
