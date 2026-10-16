@@ -7,7 +7,7 @@ from sqlalchemy import Row, Select, and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased, joinedload, selectinload
 
-from app.models.event import Event, timeline_at
+from app.models.event import Event, feed_at
 from app.models.follow import Follow
 from app.models.user import User
 from app.services import notifications
@@ -21,7 +21,7 @@ from app.services.geolocator_credit import CREDIT_LOAD
 from app.services.pagination import keyset_before, take_page
 from app.services.thumbnails import thumbnail_media_criteria
 
-TimelineScope = Literal["following", "all"]
+FeedScope = Literal["following", "all"]
 
 
 def follow_user(db: Session, *, follower_id: uuid.UUID, followed_user: User) -> bool:
@@ -92,24 +92,24 @@ def mutual_follow_ids(user_id: uuid.UUID) -> Select[tuple[uuid.UUID]]:
     )
 
 
-def get_timeline(
+def get_feed(
     db: Session,
     *,
     user_id: uuid.UUID,
-    scope: TimelineScope,
+    scope: FeedScope,
     size: int,
     cursor: tuple[datetime, uuid.UUID] | None = None,
 ) -> tuple[list[Row[tuple[Event, float | None, float | None, datetime]]], bool]:
-    """One page of the timeline, newest first, and whether a next page holds a row.
+    """One page of the feed, newest first, and whether a next page holds a row.
 
-    The timeline carries two kinds of row, both credited to ``owner``: a geolocation an analyst
+    The feed carries two kinds of row, both credited to ``owner``: a geolocation an analyst
     published (:func:`services.event_filters.published_events`) and a request an analyst has
     open (:func:`services.event_filters.open_requests`). An open request's owner is its
     requester: ownership moves only when a request is geolocated. ``scope="following"`` keeps
     the rows owned by an analyst ``user_id`` follows; ``"all"`` keeps every row.
 
-    Rows are ``(event, lat, lng, timeline_at)`` ordered by ``timeline_at DESC, id DESC``
-    (:func:`models.event.timeline_at`), a total order over both kinds, so a keyset walk
+    Rows are ``(event, lat, lng, feed_at)`` ordered by ``feed_at DESC, id DESC``
+    (:func:`models.event.feed_at`), a total order over both kinds, so a keyset walk
     neither repeats nor skips a row.
     """
     if scope == "following":
@@ -121,13 +121,13 @@ def get_timeline(
     else:
         rows = or_(published_events(), open_requests())
 
-    key = timeline_at()
+    key = feed_at()
     query = (
         db.query(
             Event,
             ST_Y(Event.event_coords).label("lat"),
             ST_X(Event.event_coords).label("lng"),
-            key.label("timeline_at"),
+            key.label("feed_at"),
         )
         # Loader choice: see ``list_detections`` in ``routers/events/read.py``.
         .options(

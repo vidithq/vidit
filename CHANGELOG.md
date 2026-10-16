@@ -24,11 +24,12 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- The timeline is now the feed: the page moves from `/timeline` to `/feed` (the old address redirects), the sidebar entry is "Feed", and `GET /timeline` becomes `GET /feed` with `feed_at` in place of `timeline_at` ([#584](https://github.com/vidithq/vidit/pull/584)).
 - Settings lists each notification kind once, with an Email and a Push switch side by side, and closes the Push column with one reason when the server sends no push or your account has no push device ([#575](https://github.com/vidithq/vidit/pull/575)).
 
 ### Changed
 
-- The timeline lists requests beside geolocations, switches between analysts you follow and everyone, loads more as you scroll, and is back in the sidebar; its cards show both dates and label conflict and capture source tags ([#561](https://github.com/vidithq/vidit/pull/561)).
+- The feed lists requests beside geolocations, switches between analysts you follow and everyone, loads more as you scroll, and is back in the sidebar; its cards show both dates and label conflict and capture source tags ([#561](https://github.com/vidithq/vidit/pull/561)).
 
 ### Fixed
 
@@ -36,7 +37,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - A Vidit link whose path starts with two slashes or a backslash, and a Google link other than the map check, now ask before you leave Vidit instead of opening another site in one click ([#565](https://github.com/vidithq/vidit/pull/565)).
 - Notification emails get a per-actor cap and a one-click unsubscribe per kind, push devices can be revoked, former geolocators cannot approve, review request refusals reveal no setting, and approving happens only on the event page ([#576](https://github.com/vidithq/vidit/pull/576)).
 - Analyst rows in search show the bare username, without an `@`, and the matched part no longer stands apart from the rest of the name ([#577](https://github.com/vidithq/vidit/pull/577)).
-- Paged lists (requests, timeline, version history, invite codes) show a spinner while the next page loads and keep their rows with a Try again when it fails, and switching filters quickly no longer appends a page from the previous list ([#561](https://github.com/vidithq/vidit/pull/561)).
+- Paged lists (requests, feed, version history, invite codes) show a spinner while the next page loads and keep their rows with a Try again when it fails, and switching filters quickly no longer appends a page from the previous list ([#561](https://github.com/vidithq/vidit/pull/561)).
 - When X fails to serve part of a thread, or the coordinate sits above the posts the bot reads, the bot and the post import say the thread was only partly read instead of reporting no coordinate ([#555](https://github.com/vidithq/vidit/pull/555)).
 - Vidit usernames show without `@` everywhere, including bylines, admin panels, page titles and share cards; `@` now marks only X and GitHub handles ([#557](https://github.com/vidithq/vidit/pull/557)).
 

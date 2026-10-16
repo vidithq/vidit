@@ -1,7 +1,7 @@
 """End-to-end tests for the social-graph endpoints.
 
 Covers follow and unfollow (idempotent, 404 on an unknown or soft-deleted
-target, auth required), ``GET /timeline`` (published geolocations and open
+target, auth required), ``GET /feed`` (published geolocations and open
 requests, scope, credit, exclusions, cursor walk), the profile follow counters
 and ``is_following``, and the DB-level ``ck_follows_no_self_follow``.
 """
@@ -253,7 +253,7 @@ def test_follow_swallows_integrity_error_from_concurrent_race(db, cleanup, monke
     assert result is False
 
 
-# ── GET /timeline ─────────────────────────────────────────────────────────
+# ── GET /feed ─────────────────────────────────────────────────────────
 
 
 def _make_request(db, *, requester: User, title: str = "Help", at: datetime | None = None) -> Event:
@@ -282,7 +282,7 @@ def _fulfil(event: Event, *, by: User, at: datetime | None = None) -> None:
 
 
 def _walk(headers: dict, url: str) -> list[dict]:
-    """Every row of a timeline walk, following ``Link: rel="next"`` to the end."""
+    """Every row of a feed walk, following ``Link: rel="next"`` to the end."""
     rows: list[dict] = []
     next_url: str | None = url
     while next_url is not None:
@@ -294,23 +294,23 @@ def _walk(headers: dict, url: str) -> list[dict]:
     return rows
 
 
-def test_timeline_requires_auth():
-    response = client.get("/api/v1/timeline")
+def test_feed_requires_auth():
+    response = client.get("/api/v1/feed")
     assert response.status_code == 401
 
 
-def test_timeline_empty_when_no_follows(db, cleanup):
+def test_feed_empty_when_no_follows(db, cleanup):
     record_user, _ = cleanup
     me = _make_user(db, suffix="me")
     record_user(me)
 
-    response = client.get("/api/v1/timeline", headers=login_as(client, me))
+    response = client.get("/api/v1/feed", headers=login_as(client, me))
     assert response.status_code == 200
     assert response.json() == []
     assert "Link" not in response.headers
 
 
-def test_timeline_following_carries_geolocations_and_requests_credited(db, cleanup):
+def test_feed_following_carries_geolocations_and_requests_credited(db, cleanup):
     """A geolocation counts for its owner and a request for its requester, so a request
     fulfilled by a stranger leaves the requester's followers and reaches the fulfiller's."""
     record_user, record_geo = cleanup
@@ -344,7 +344,7 @@ def test_timeline_following_carries_geolocations_and_requests_credited(db, clean
     for row in (geo, ask, fulfilled_by_stranger, answered_for_stranger, stranger_geo, stranger_ask):
         record_geo(row)
 
-    response = client.get("/api/v1/timeline", headers=login_as(client, viewer))
+    response = client.get("/api/v1/feed", headers=login_as(client, viewer))
     assert response.status_code == 200
     items = response.json()
     assert [item["title"] for item in items] == ["Ask", "Geo", "Answered by analyst"]
@@ -352,19 +352,19 @@ def test_timeline_following_carries_geolocations_and_requests_credited(db, clean
 
     assert by_title["Ask"]["status"] == STATUS_REQUESTED
     assert by_title["Ask"]["owner"]["username"] == analyst.username
-    assert by_title["Ask"]["timeline_at"].startswith("2026-05-20T10:00:00")
+    assert by_title["Ask"]["feed_at"].startswith("2026-05-20T10:00:00")
     assert by_title["Ask"]["event_coords"] is None
 
     assert by_title["Geo"]["status"] == STATUS_GEOLOCATED
     assert by_title["Geo"]["owner"]["username"] == analyst.username
-    assert by_title["Geo"]["timeline_at"].startswith("2026-05-20T09:00:00")
+    assert by_title["Geo"]["feed_at"].startswith("2026-05-20T09:00:00")
     assert isinstance(by_title["Geo"]["event_coords"]["lat"], (int, float))
     assert by_title["Geo"]["media"]["storage_url"].endswith("thumb.jpg")
 
     assert by_title["Answered by analyst"]["owner"]["username"] == analyst.username
 
 
-def test_timeline_all_scope_carries_rows_of_analysts_not_followed(db, cleanup):
+def test_feed_all_scope_carries_rows_of_analysts_not_followed(db, cleanup):
     record_user, record_geo = cleanup
     viewer = _make_user(db, suffix="viewer")
     stranger = _make_user(db, suffix="stranger")
@@ -382,15 +382,15 @@ def test_timeline_all_scope_carries_rows_of_analysts_not_followed(db, cleanup):
     record_geo(ask)
 
     headers = login_as(client, viewer)
-    assert client.get("/api/v1/timeline", headers=headers).json() == []
-    response = client.get("/api/v1/timeline?scope=all&limit=100", headers=headers)
+    assert client.get("/api/v1/feed", headers=headers).json() == []
+    response = client.get("/api/v1/feed?scope=all&limit=100", headers=headers)
     assert response.status_code == 200
     ids = [item["id"] for item in response.json()]
     assert str(ask.id) in ids and str(geo.id) in ids
     assert ids.index(str(ask.id)) < ids.index(str(geo.id))
 
 
-def test_timeline_excludes_unpublished_closed_deleted_and_hidden_rows(db, cleanup):
+def test_feed_excludes_unpublished_closed_deleted_and_hidden_rows(db, cleanup):
     """Each kind keeps its own predicate: a detection is unvouched, a retraction and a
     withdrawn request are closed, and a soft-deleted or withheld row is out of every read."""
     record_user, record_geo = cleanup
@@ -445,18 +445,18 @@ def test_timeline_excludes_unpublished_closed_deleted_and_hidden_rows(db, cleanu
     db.commit()
 
     headers = login_as(client, viewer)
-    following = client.get("/api/v1/timeline", headers=headers).json()
+    following = client.get("/api/v1/feed", headers=headers).json()
     assert {item["title"] for item in following} == {"Published", "Open ask"}
 
     above_band = encode_cursor(datetime(2998, 1, 1, 0, 1, tzinfo=UTC), uuid.UUID(int=2**128 - 1))
     page = client.get(
-        f"/api/v1/timeline?scope=all&limit={len(rows)}&cursor={above_band}", headers=headers
+        f"/api/v1/feed?scope=all&limit={len(rows)}&cursor={above_band}", headers=headers
     ).json()
-    band = {item["title"] for item in page if item["timeline_at"].startswith("2998-")}
+    band = {item["title"] for item in page if item["feed_at"].startswith("2998-")}
     assert band == {"Published", "Open ask"}
 
 
-def test_timeline_cursor_walks_mixed_kinds_without_gaps_or_repeats(db, cleanup):
+def test_feed_cursor_walks_mixed_kinds_without_gaps_or_repeats(db, cleanup):
     """Geolocations and requests interleave on one key, ties broken by id, so a walk
     two rows at a time serves every row once, in order."""
     record_user, record_geo = cleanup
@@ -482,18 +482,18 @@ def test_timeline_cursor_walks_mixed_kinds_without_gaps_or_repeats(db, cleanup):
     for row in rows:
         record_geo(row)
 
-    walked = _walk(login_as(client, viewer), "/api/v1/timeline?limit=2")
+    walked = _walk(login_as(client, viewer), "/api/v1/feed?limit=2")
     ids = [item["id"] for item in walked]
     assert len(ids) == len(set(ids)), "a row was served twice"
     assert set(ids) == {str(row.id) for row in rows}
-    keys = [(item["timeline_at"], item["id"]) for item in walked]
+    keys = [(item["feed_at"], item["id"]) for item in walked]
     assert keys == sorted(keys, reverse=True)
     assert {item["status"] for item in walked} == {STATUS_GEOLOCATED, STATUS_REQUESTED}
 
 
 @pytest.mark.parametrize("scope", ["following", "all"])
 @pytest.mark.parametrize("paged", [False, True], ids=["first page", "cursor page"])
-def test_timeline_page_query_reads_its_index(db, scope, paged):
+def test_feed_page_query_reads_its_index(db, scope, paged):
     """The page query's ORDER BY matches ``ix_events_timeline_at_id`` exactly. Sorting is
     priced out, so a drifted expression shows as a plan without the index."""
     captured: list[str] = []
@@ -505,7 +505,7 @@ def test_timeline_page_query_reads_its_index(db, scope, paged):
     cursor = (datetime(2026, 5, 20, tzinfo=UTC), uuid.uuid4()) if paged else None
     event.listen(engine, "before_cursor_execute", capture)
     try:
-        social_service.get_timeline(db, user_id=uuid.uuid4(), scope=scope, size=10, cursor=cursor)
+        social_service.get_feed(db, user_id=uuid.uuid4(), scope=scope, size=10, cursor=cursor)
     finally:
         event.remove(engine, "before_cursor_execute", capture)
 
@@ -515,7 +515,7 @@ def test_timeline_page_query_reads_its_index(db, scope, paged):
     assert "ix_events_timeline_at_id" in plan, plan
 
 
-def test_timeline_caps_limit_and_rejects_garbage(db, cleanup):
+def test_feed_caps_limit_and_rejects_garbage(db, cleanup):
     """The default page is 10 rows and over-asking is clamped to the 100-row cap; a bad
     limit, scope or cursor is a 422."""
     record_user, record_geo = cleanup
@@ -529,17 +529,17 @@ def test_timeline_caps_limit_and_rejects_garbage(db, cleanup):
     db.commit()
     headers = login_as(client, viewer)
 
-    default = client.get("/api/v1/timeline", headers=headers)
+    default = client.get("/api/v1/feed", headers=headers)
     assert len(default.json()) == 10
     assert "Link" in default.headers
 
-    capped = client.get("/api/v1/timeline?limit=500", headers=headers)
+    capped = client.get("/api/v1/feed?limit=500", headers=headers)
     assert capped.status_code == 200
     assert len(capped.json()) == MAX_PAGE_SIZE
     assert "Link" in capped.headers
 
     for query in ("limit=0", "limit=abc", "scope=everyone", "cursor=garbage"):
-        response = client.get(f"/api/v1/timeline?{query}", headers=headers)
+        response = client.get(f"/api/v1/feed?{query}", headers=headers)
         assert response.status_code == 422, f"expected 422 for {query!r}"
 
 

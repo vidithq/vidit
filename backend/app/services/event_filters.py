@@ -49,7 +49,7 @@ def published_events() -> ColumnElement[bool]:
 
     ``visible_events`` answers "may a reader see this row"; this answers "did this analyst
     stand behind it". The profile feed (:func:`routers.users.get_user_geolocations`), the
-    profile's ``geolocations_count`` and the timeline (:func:`services.social.get_timeline`)
+    profile's ``geolocations_count`` and the feed (:func:`services.social.get_feed`)
     all filter on it, so counts and rows agree.
 
     The other states are out:
@@ -105,8 +105,8 @@ def published_credited_to(user_ids: Iterable[Any] | Select[Any]) -> ColumnElemen
 def open_requests() -> ColumnElement[bool]:
     """The predicate for a request an analyst has open: ``requested``.
 
-    The request twin of :func:`published_events`, read by the timeline
-    (:func:`services.social.get_timeline`). A fulfilled request moves to
+    The request twin of :func:`published_events`, read by the feed
+    (:func:`services.social.get_feed`). A fulfilled request moves to
     :func:`published_events` and a withdrawn one (``closed`` off ``requested``) drops out.
     """
     return Event.status == STATUS_REQUESTED

@@ -45,9 +45,9 @@ describe("useApiResource", () => {
       { initialProps: { path: null as string | null } }
     );
     expect(calls).toHaveLength(0);
-    rerender({ path: "/timeline" });
+    rerender({ path: "/feed" });
     expect(calls).toHaveLength(1);
-    expect(calls[0].path).toBe("/timeline");
+    expect(calls[0].path).toBe("/feed");
     expect(result.current.loading).toBe(true);
   });
 
