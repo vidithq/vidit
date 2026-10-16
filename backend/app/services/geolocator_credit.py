@@ -220,7 +220,8 @@ def revoke_approvals_on_join(db: Session, *, geo: Event, user: User) -> None:
     :data:`JOINED_AS_GEOLOCATOR_REASON`: a geolocator cannot approve their own event.
 
     Every version, not only the live one, since the reviewer is no longer independent of the
-    work. Staged in the caller's transaction.
+    work, and the approvals they placed for an organization too. Staged in the caller's
+    transaction.
     """
     db.execute(
         update(EventApproval)
@@ -233,6 +234,7 @@ def revoke_approvals_on_join(db: Session, *, geo: Event, user: User) -> None:
             revoked_at=datetime.now(UTC),
             revoked_by_id=user.id,
             revoke_reason=JOINED_AS_GEOLOCATOR_REASON,
+            revoked_as="reviewer",
         )
     )
 

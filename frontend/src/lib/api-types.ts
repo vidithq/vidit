@@ -1275,7 +1275,8 @@ export interface paths {
         put?: never;
         /**
          * Approve Event
-         * @description Approve the live version of a published geolocation you are not credited on.
+         * @description Approve the live version of a published geolocation you are not credited on, as
+         *     yourself or, as its org-admin, for an organization.
          */
         post: operations["approve_event_api_v1_events__geolocation_id__approvals_post"];
         delete?: never;
@@ -1295,7 +1296,8 @@ export interface paths {
         put?: never;
         /**
          * Revoke Approval
-         * @description Revoke an approval with a public reason: your own, or any as a site admin.
+         * @description Revoke an approval with a public reason: your own, your organization's as its org-admin,
+         *     or any as a site admin.
          */
         post: operations["revoke_approval_api_v1_events__geolocation_id__approvals__approval_id__revoke_post"];
         delete?: never;
@@ -1562,7 +1564,7 @@ export interface paths {
         };
         /**
          * List Review Request Targets
-         * @description Analysts you can ask to review this event now (geolocators only).
+         * @description Analysts and organizations you can ask to review this event now (geolocators only).
          */
         get: operations["list_review_request_targets_api_v1_events__geolocation_id__review_request_targets_get"];
         put?: never;
@@ -1583,13 +1585,14 @@ export interface paths {
         /**
          * List Review Requests
          * @description Open review requests on this event: all of them for its geolocators, those addressed to
-         *     you otherwise.
+         *     you or to an organization you administer otherwise.
          */
         get: operations["list_review_requests_api_v1_events__geolocation_id__review_requests_get"];
         put?: never;
         /**
          * Create Review Request
-         * @description Ask an analyst to review the live version of a published event you geolocated.
+         * @description Ask an analyst or an organization to review the live version of a published event you
+         *     geolocated.
          */
         post: operations["create_review_request_api_v1_events__geolocation_id__review_requests_post"];
         delete?: never;
@@ -1609,7 +1612,7 @@ export interface paths {
         put?: never;
         /**
          * Decline Review Request
-         * @description Decline a review request addressed to you.
+         * @description Decline a review request addressed to you, or to an organization you administer.
          */
         post: operations["decline_review_request_api_v1_events__geolocation_id__review_requests__request_id__decline_post"];
         delete?: never;
@@ -1770,9 +1773,31 @@ export interface paths {
         head?: never;
         /**
          * Update Organization
-         * @description Edit an organization's bio and links. Org-admins and site admins only.
+         * @description Edit an organization's bio, links and review request audience. Org-admins and site
+         *     admins only.
          */
         patch: operations["update_organization_api_v1_organizations__slug__patch"];
+        trace?: never;
+    };
+    "/api/v1/organizations/{slug}/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Organization Approvals
+         * @description The approvals placed in the organization's name, newest first, revoked ones included,
+         *     capped at 100 per page (``Link: rel="next"`` cursor).
+         */
+        get: operations["list_organization_approvals_api_v1_organizations__slug__approvals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/organizations/{slug}/avatar": {
@@ -1945,6 +1970,27 @@ export interface paths {
          * @description Change a member's role. Org-admins and site admins only; the last org-admin keeps the role.
          */
         patch: operations["update_organization_member_api_v1_organizations__slug__members__username__patch"];
+        trace?: never;
+    };
+    "/api/v1/organizations/{slug}/review-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Organization Review Requests
+         * @description Open review requests addressed to the organization, oldest first. Org-admins and site
+         *     admins only.
+         */
+        get: operations["list_organization_review_requests_api_v1_organizations__slug__review_requests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/product-updates/unsubscribe": {
@@ -2818,11 +2864,14 @@ export interface components {
         };
         /**
          * ApprovalCreate
-         * @description Body of ``POST /events/{id}/approvals``: the version you read, and an optional note.
+         * @description Body of ``POST /events/{id}/approvals``: the version you read, an optional note, and the
+         *     slug of the organization you approve for as its org-admin (your own approval without it).
          */
         ApprovalCreate: {
             /** Note */
             note?: string | null;
+            /** Organization */
+            organization?: string | null;
             /** Version No */
             version_no: number;
         };
@@ -2830,9 +2879,11 @@ export interface components {
          * ApprovalRead
          * @description One review of one version of an event.
          *
+         *     ``organization`` is the organization the review was placed for, with
+         *     ``reviewer`` the org-admin who placed it; null for an analyst's own review.
          *     ``current`` is true while the review covers the live version and is not
-         *     revoked. ``revoked_by_admin`` is true when a site admin, not the reviewer,
-         *     revoked it.
+         *     revoked. ``revoked_as`` says who revoked it: the reviewer, an org-admin of
+         *     the organization, or a site admin.
          */
         ApprovalRead: {
             /**
@@ -2849,13 +2900,14 @@ export interface components {
             id: string;
             /** Note */
             note: string | null;
+            organization: components["schemas"]["OrganizationRef"] | null;
             reviewer: components["schemas"]["AuthorRef"];
             /** Revoke Reason */
             revoke_reason: string | null;
+            /** Revoked As */
+            revoked_as: ("reviewer" | "organization_admin" | "site_admin") | null;
             /** Revoked At */
             revoked_at: string | null;
-            /** Revoked By Admin */
-            revoked_by_admin: boolean;
             /**
              * Verdict
              * @constant
@@ -3957,6 +4009,15 @@ export interface components {
             count: number;
         };
         /**
+         * OrganizationApprovalRead
+         * @description One approval an org-admin placed in an organization's name, with the event it covers,
+         *     for ``GET /organizations/{slug}/approvals``.
+         */
+        OrganizationApprovalRead: {
+            approval: components["schemas"]["ApprovalRead"];
+            event: components["schemas"]["NotificationEventRef"];
+        };
+        /**
          * OrganizationCreate
          * @description Body for ``POST /admin/organizations``.
          *
@@ -3971,6 +4032,8 @@ export interface components {
             external_links?: components["schemas"]["ExternalLinks"] | null;
             /** Name */
             name: string;
+            /** Review Request Audience */
+            review_request_audience?: ("following" | "everyone" | "nobody") | null;
             /** Slug */
             slug: string;
             /** X Handle */
@@ -4055,6 +4118,8 @@ export interface components {
          *     caller. ``viewer_invited`` is true while the caller holds a pending invite.
          *     ``viewer_can_manage`` is true for an org-admin or a site admin: it gates
          *     the profile edit and the member management on the page.
+         *     ``review_request_audience`` is who may send the organization a review
+         *     request, set by its org-admins.
          */
         OrganizationRead: {
             /** Avatar Url */
@@ -4079,6 +4144,11 @@ export interface components {
             member_count: number;
             /** Name */
             name: string;
+            /**
+             * Review Request Audience
+             * @enum {string}
+             */
+            review_request_audience: "following" | "everyone" | "nobody";
             /** Slug */
             slug: string;
             /**
@@ -4109,15 +4179,27 @@ export interface components {
             slug: string;
         };
         /**
+         * OrganizationReviewRequestRead
+         * @description One open request addressed to an organization, with the event it names, for
+         *     ``GET /organizations/{slug}/review-requests``.
+         */
+        OrganizationReviewRequestRead: {
+            event: components["schemas"]["NotificationEventRef"];
+            request: components["schemas"]["ReviewRequestRead"];
+        };
+        /**
          * OrganizationUpdate
          * @description Body for ``PATCH /organizations/{slug}``: the fields an org-admin edits,
-         *     under the rules of ``PATCH /users/me``. ``name``, ``slug`` and ``x_handle``
-         *     stay with the site admin.
+         *     under the rules of ``PATCH /users/me``, and who may send the organization a
+         *     review request. ``name``, ``slug`` and ``x_handle`` stay with the site
+         *     admin.
          */
         OrganizationUpdate: {
             /** Bio */
             bio?: string | null;
             external_links?: components["schemas"]["ExternalLinks"] | null;
+            /** Review Request Audience */
+            review_request_audience?: ("following" | "everyone" | "nobody") | null;
         };
         /**
          * PaginatedEventDetails
@@ -4403,16 +4485,20 @@ export interface components {
         };
         /**
          * ReviewRequestCreate
-         * @description Body of ``POST /events/{id}/review-requests``: the analyst you ask to review the event.
+         * @description Body of ``POST /events/{id}/review-requests``: the analyst (``username``) or the
+         *     organization (``organization``, its slug) you ask to review the event. Exactly one.
          */
         ReviewRequestCreate: {
+            /** Organization */
+            organization?: string | null;
             /** Username */
-            username: string;
+            username?: string | null;
         };
         /**
          * ReviewRequestRead
-         * @description One request that ``target`` review an event. ``version_no`` is the live version when it
-         *     was sent; approving any version resolves it.
+         * @description One request that ``target`` (an analyst) or ``target_organization`` review an event;
+         *     exactly one of the two is set. ``version_no`` is the live version when it was sent;
+         *     approving any version resolves it.
          */
         ReviewRequestRead: {
             /**
@@ -4438,9 +4524,21 @@ export interface components {
              * @enum {string}
              */
             status: "open" | "approved" | "declined";
-            target: components["schemas"]["AuthorRef"];
+            target: components["schemas"]["AuthorRef"] | null;
+            target_organization: components["schemas"]["OrganizationRef"] | null;
             /** Version No */
             version_no: number;
+        };
+        /**
+         * ReviewRequestTargetList
+         * @description ``GET /events/{id}/review-request-targets``: the analysts and the organizations you can
+         *     ask to review the event now.
+         */
+        ReviewRequestTargetList: {
+            /** Analysts */
+            analysts: components["schemas"]["AuthorRef"][];
+            /** Organizations */
+            organizations: components["schemas"]["OrganizationRef"][];
         };
         /** SearchEventHit */
         SearchEventHit: {
@@ -7369,7 +7467,7 @@ export interface operations {
     list_review_request_targets_api_v1_events__geolocation_id__review_request_targets_get: {
         parameters: {
             query?: {
-                /** @description Narrows by a substring of the username */
+                /** @description Narrows by a substring of the username or organization */
                 q?: string;
             };
             header?: never;
@@ -7388,7 +7486,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AuthorRef"][];
+                    "application/json": components["schemas"]["ReviewRequestTargetList"];
                 };
             };
             /** @description Validation Error */
@@ -7783,6 +7881,41 @@ export interface operations {
             };
         };
     };
+    list_organization_approvals_api_v1_organizations__slug__approvals_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Opaque cursor from a Link: rel=next header */
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationApprovalRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     set_organization_avatar_api_v1_organizations__slug__avatar_put: {
         parameters: {
             query?: never;
@@ -8138,6 +8271,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrganizationMemberRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_organization_review_requests_api_v1_organizations__slug__review_requests_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationReviewRequestRead"][];
                 };
             };
             /** @description Validation Error */

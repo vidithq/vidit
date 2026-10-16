@@ -6,6 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- An org-admin approves and revokes approvals in an organization's name, a geolocator can ask an organization for a review that any org-admin answers, and the organization page lists its approvals and open requests ([#574](https://github.com/vidithq/vidit/pull/574)).
 - A geolocator can ask an analyst to review a geolocation; the analyst approves or declines from their notifications or the event page, and Settings chooses who may send you requests: people you follow, everyone or nobody ([#573](https://github.com/vidithq/vidit/pull/573)).
 - Analysts outside a geolocation's credit approve it one version at a time; any new version, an archive-only save included, asks reviewers to approve again, and a revoked approval keeps its public reason ([#572](https://github.com/vidithq/vidit/pull/572)).
 - The Requests board filters by conflict, capture source, tags, author and whether a request carries a location guess, sorts newest or oldest first, and shows how long each request has been open ([#560](https://github.com/vidithq/vidit/pull/560)).

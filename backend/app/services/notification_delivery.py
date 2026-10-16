@@ -15,6 +15,7 @@ import logging
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from functools import partial
+from typing import TypedDict
 
 from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.orm import Session
@@ -158,28 +159,22 @@ def _organization_admin_inherited(n: Notification, to: str) -> email.Email:
     )
 
 
-def _re_approve_requested(n: Notification, to: str) -> email.Email:
-    return email.re_approve_requested_email(
-        to=to, actor=n.actor.username, event_id=str(n.event.id), event_title=n.event.title
-    )
+class _ReviewFields(TypedDict):
+    actor: str
+    event_id: str
+    event_title: str
+    organization: str | None
 
 
-def _approval_received(n: Notification, to: str) -> email.Email:
-    return email.approval_received_email(
-        to=to, actor=n.actor.username, event_id=str(n.event.id), event_title=n.event.title
-    )
-
-
-def _review_request_received(n: Notification, to: str) -> email.Email:
-    return email.review_request_received_email(
-        to=to, actor=n.actor.username, event_id=str(n.event.id), event_title=n.event.title
-    )
-
-
-def _review_request_declined(n: Notification, to: str) -> email.Email:
-    return email.review_request_declined_email(
-        to=to, actor=n.actor.username, event_id=str(n.event.id), event_title=n.event.title
-    )
+def _review_fields(n: Notification) -> _ReviewFields:
+    """The fields of an approval or review request row: the actor, the event, and the
+    organization the row is about, when it names one."""
+    return {
+        "actor": n.actor.username,
+        "event_id": str(n.event.id),
+        "event_title": n.event.title,
+        "organization": n.organization.name if n.organization is not None else None,
+    }
 
 
 _EMAIL_BUILDERS: dict[NotificationKind, Callable[[Notification, str], email.Email]] = {
@@ -193,10 +188,16 @@ _EMAIL_BUILDERS: dict[NotificationKind, Callable[[Notification, str], email.Emai
     "organization_invite": _organization_invite,
     "organization_invite_accepted": _organization_invite_accepted,
     "organization_admin_inherited": _organization_admin_inherited,
-    "re_approve_requested": _re_approve_requested,
-    "approval_received": _approval_received,
-    "review_request_received": _review_request_received,
-    "review_request_declined": _review_request_declined,
+    "re_approve_requested": lambda n, to: email.re_approve_requested_email(
+        to=to, **_review_fields(n)
+    ),
+    "approval_received": lambda n, to: email.approval_received_email(to=to, **_review_fields(n)),
+    "review_request_received": lambda n, to: email.review_request_received_email(
+        to=to, **_review_fields(n)
+    ),
+    "review_request_declined": lambda n, to: email.review_request_declined_email(
+        to=to, **_review_fields(n)
+    ),
 }
 
 
@@ -308,32 +309,36 @@ def _organization_admin_inherited_push(n: Notification) -> push.PushMessage:
 
 
 def _re_approve_requested_push(n: Notification) -> push.PushMessage:
+    approver = n.organization.name if n.organization is not None else "you"
     return push.PushMessage(
-        title=f"{n.actor.username} saved a new version of a geolocation you approved",
+        title=f"{n.actor.username} saved a new version of a geolocation {approver} approved",
         body=n.event.title,
         path=f"/events/{n.event.id}",
     )
 
 
 def _approval_received_push(n: Notification) -> push.PushMessage:
+    on_behalf = f" for {n.organization.name}" if n.organization is not None else ""
     return push.PushMessage(
-        title=f"{n.actor.username} approved your geolocation",
+        title=f"{n.actor.username} approved your geolocation{on_behalf}",
         body=n.event.title,
         path=f"/events/{n.event.id}",
     )
 
 
 def _review_request_received_push(n: Notification) -> push.PushMessage:
+    target = n.organization.name if n.organization is not None else "you"
     return push.PushMessage(
-        title=f"{n.actor.username} asks you to review a geolocation",
+        title=f"{n.actor.username} asks {target} to review a geolocation",
         body=n.event.title,
         path=f"/events/{n.event.id}",
     )
 
 
 def _review_request_declined_push(n: Notification) -> push.PushMessage:
+    decliner = n.organization.name if n.organization is not None else n.actor.username
     return push.PushMessage(
-        title=f"{n.actor.username} declined to review your geolocation",
+        title=f"{decliner} declined to review your geolocation",
         body=n.event.title,
         path=f"/events/{n.event.id}",
     )

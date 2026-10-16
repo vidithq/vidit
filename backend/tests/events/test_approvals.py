@@ -260,7 +260,7 @@ def test_the_reviewer_revokes_with_a_public_reason(db, author, second_user, make
     assert listed["current"] is False
     assert listed["revoked_at"] is not None
     assert listed["revoke_reason"] == "The shadows disagree."
-    assert listed["revoked_by_admin"] is False
+    assert listed["revoked_as"] == "reviewer"
 
     again = _revoke(geo, approval["id"], second_user)
     assert again.status_code == 409
@@ -273,7 +273,7 @@ def test_a_site_admin_revokes_any_approval_and_is_audited(db, author, second_use
 
     response = _revoke(geo, approval["id"], admin_user, reason="Sockpuppet account")
     assert response.status_code == 200, response.text
-    assert response.json()["revoked_by_admin"] is True
+    assert response.json()["revoked_as"] == "site_admin"
 
     db.expire_all()
     audit = (
@@ -315,7 +315,7 @@ def test_joining_the_geolocators_revokes_the_invitees_approvals(db, author, seco
     (listed,) = _listed(geo)
     assert listed["current"] is False
     assert listed["revoke_reason"] == JOINED_AS_GEOLOCATOR_REASON
-    assert listed["revoked_by_admin"] is False
+    assert listed["revoked_as"] == "reviewer"
     db.expire_all()
     assert (
         db.query(EventApproval)

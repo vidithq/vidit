@@ -227,6 +227,50 @@ describe("NotificationsPage", () => {
     await waitFor(() => expect(api.apiFetchPage.mock.calls.length).toBeGreaterThan(loads));
   });
 
+  it("answers for an organization when the row names one", async () => {
+    const organization = { slug: "osw", name: "Open Source Watch", avatar_url: null };
+    const asked: Notification = {
+      ...follower,
+      id: "n9",
+      kind: "review_request_received",
+      event: { id: "e8", title: "Bridge strike" },
+      organization,
+      reapprove_version: 2,
+      review_request_id: "r1",
+    };
+    const reapprove: Notification = {
+      ...follower,
+      id: "n10",
+      kind: "re_approve_requested",
+      event: { id: "e7", title: "Depot fire" },
+      organization,
+      reapprove_version: 3,
+    };
+    serve([asked, reapprove]);
+    render(<NotificationsPage />);
+
+    expect(
+      await screen.findByRole("link", {
+        name: /cy asked Open Source Watch to review: Bridge strike/,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", {
+        name: /cy saved a new version of a geolocation Open Source Watch approved: Depot fire/,
+      }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Approve version 2 as Open Source Watch" }));
+    await waitFor(() =>
+      expect(api.apiFetch).toHaveBeenCalledWith("/events/e8/approvals", {
+        method: "POST",
+        body: JSON.stringify({ version_no: 2, note: null, organization: "osw" }),
+      }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Approve version 3 as Open Source Watch" }),
+    ).toBeInTheDocument();
+  });
+
   it("explains the empty feed", async () => {
     serve([]);
     render(<NotificationsPage />);

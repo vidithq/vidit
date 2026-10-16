@@ -231,13 +231,15 @@ erDiagram
         UUID id PK
         UUID event_id FK
         INT version_no "the version attested"
-        UUID reviewer_id FK
+        UUID reviewer_id FK "the analyst, or the acting org-admin"
+        UUID organization_id FK "nullable, the organization approving"
         VARCHAR verdict "approve"
         TEXT note "nullable"
         TIMESTAMPTZ created_at
         TIMESTAMPTZ revoked_at "nullable"
         UUID revoked_by_id FK "nullable"
         TEXT revoke_reason "nullable, public"
+        VARCHAR revoked_as "nullable: reviewer, organization_admin, site_admin"
     }
 
     review_requests {
@@ -245,7 +247,8 @@ erDiagram
         UUID event_id FK
         INT version_no "live when sent"
         UUID requester_id FK
-        UUID target_user_id FK "the analyst asked"
+        UUID target_user_id FK "nullable, the analyst asked"
+        UUID target_organization_id FK "nullable, the organization asked"
         VARCHAR status "open, approved, declined"
         TIMESTAMPTZ created_at
         TIMESTAMPTZ resolved_at "nullable"
@@ -338,6 +341,7 @@ erDiagram
         TEXT bio "nullable"
         TEXT avatar_url "nullable"
         JSONB external_links "default {}"
+        VARCHAR review_request_audience "following, everyone, nobody"
         UUID created_by_id FK "nullable, the site admin"
         TIMESTAMPTZ created_at
     }
@@ -525,6 +529,8 @@ erDiagram
     organizations ||--o{ organization_members : "organization_id"
     users ||--o{ organization_members : "user_id"
     organizations ||--o{ organization_invites : "organization_id"
+    organizations |o--o{ event_approvals : "organization_id"
+    organizations |o--o{ review_requests : "target_organization_id"
     users ||--o{ organization_invites : "user_id"
     users |o--o{ organization_invites : "invited_by_id"
     users |o--o{ organizations : "created_by_id"
@@ -788,32 +794,37 @@ The service caps geolocators plus pending invitations at 10 per event (`MAX_EVEN
 
 ### `event_approvals`
 
-An analyst's attestation that one version of a published event holds, written through [`/events/{id}/approvals`](api.md#approvals). A row is current while `version_no` equals `events.version_no` and `revoked_at` is NULL, so a new version ends it without a write and the row stays readable on the version it covered. Revocation stamps the row; nothing deletes it short of the event's or the reviewer's hard delete.
+An analyst's attestation, or an organization's through one of its org-admins, that one version of a published event holds, written through [`/events/{id}/approvals`](api.md#approvals). A row is current while `version_no` equals `events.version_no` and `revoked_at` is NULL, so a new version ends it without a write and the row stays readable on the version it covered. Revocation stamps the row; nothing deletes it short of the event's, the reviewer's or the organization's hard delete.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, NOT NULL |
 | `version_no` | `INTEGER` | NOT NULL. The live `events.version_no` when the approval was placed. |
-| `reviewer_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The analyst who approved. |
+| `reviewer_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The analyst who approved: for an organization's approval, the org-admin who placed it. |
+| `organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, nullable. The organization the approval speaks for; NULL for an analyst's own approval. |
 | `verdict` | `VARCHAR(20)` | NOT NULL, default `'approve'`, CHECK in `('approve')` (constraint `ck_event_approvals_verdict_valid`). `ApprovalVerdict` in [`models/approval.py`](../backend/app/models/approval.py) lists the same values. |
 | `note` | `TEXT` | nullable. The reviewer's note; the API caps it at 280 characters. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
-| `revoked_at` | `TIMESTAMPTZ` | nullable. Set when the reviewer, a site admin, or a co-geolocator acceptance revokes the approval. |
-| `revoked_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. Who revoked it: the reviewer, or the site admin. |
+| `revoked_at` | `TIMESTAMPTZ` | nullable. Set when the reviewer, an org-admin of the organization, a site admin, or a co-geolocator acceptance revokes the approval. |
+| `revoked_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. Who revoked it. |
 | `revoke_reason` | `TEXT` | nullable. The public reason. `ck_event_approvals_revoke_reason` sets it exactly when `revoked_at` is set. |
+| `revoked_as` | `VARCHAR(20)` | nullable, CHECK in `('reviewer', 'organization_admin', 'site_admin')` (constraint `ck_event_approvals_revoked_as_valid`). The role the revoker acted in, stamped at revocation because roles change later. `ck_event_approvals_revoked_as` sets it exactly when `revoked_at` is set. `ApprovalRevoker` in [`models/approval.py`](../backend/app/models/approval.py) lists the same values. |
 
-`uq_event_approvals_event_version_reviewer` on `(event_id, version_no, reviewer_id)`: one review per analyst and version. Only the live version takes a new approval, so this also allows one current approval per analyst and event. A revoked row keeps its place, so its reviewer cannot approve that version again. The leading `(event_id, version_no)` serves the per-version read.
+`uq_event_approvals_analyst`: unique partial index on `(event_id, version_no, reviewer_id) WHERE organization_id IS NULL`. One review per analyst and version. Only the live version takes a new approval, so this also allows one current approval per analyst and event. A revoked row keeps its place, so its reviewer cannot approve that version again. The leading `(event_id, version_no)` serves the per-version read.
+
+`uq_event_approvals_organization`: unique partial index on `(event_id, version_no, organization_id) WHERE organization_id IS NOT NULL AND revoked_at IS NULL`. One standing approval per organization and version; after a revocation another org-admin can approve the version again. An analyst's own approval and the approval they place for an organization are separate rows.
 
 **Indexes:**
 - `ix_event_approvals_reviewer_id` on `(reviewer_id)`. Backs the cascade when a reviewer's account is erased.
 - `ix_event_approvals_revoked_by_id`: partial index on `(revoked_by_id) WHERE revoked_by_id IS NOT NULL`. Backs the SET NULL when a revoker's account is erased.
+- `ix_event_approvals_organization_created_at`: partial index on `(organization_id, created_at) WHERE organization_id IS NOT NULL`. Serves the organization page's approvals, newest first, and backs the cascade when an organization is deleted.
 
 ---
 
 ### `review_requests`
 
-A geolocator's request that an analyst review an event, written through [`/events/{id}/review-requests`](api.md#review-requests). A row is open until the analyst approves the event, on any version, or declines it, and stays once resolved. Accepting a co-geolocator invitation deletes the open rows addressed to the new geolocator.
+A geolocator's request that an analyst or an organization review an event, written through [`/events/{id}/review-requests`](api.md#review-requests). A row is open until the target approves the event, on any version, or declines it, and stays once resolved. Accepting a co-geolocator invitation deletes the open rows addressed to the new geolocator.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -821,16 +832,18 @@ A geolocator's request that an analyst review an event, written through [`/event
 | `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, NOT NULL |
 | `version_no` | `INTEGER` | NOT NULL. The live `events.version_no` when the request was sent. |
 | `requester_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The geolocator who asked. |
-| `target_user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, nullable. The analyst asked. `ck_review_requests_one_target` requires it, so another kind of target can join as a sibling column under a widened check. |
+| `target_user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, nullable. The analyst asked. |
+| `target_organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, nullable. The organization asked. `ck_review_requests_one_target` (`num_nonnulls(target_user_id, target_organization_id) = 1`) sets exactly one of the two targets. |
 | `status` | `VARCHAR(20)` | NOT NULL, default `'open'`, CHECK in `('open', 'approved', 'declined')` (constraint `ck_review_requests_status_valid`). `ReviewRequestStatus` in [`models/review_request.py`](../backend/app/models/review_request.py) lists the same values. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 | `resolved_at` | `TIMESTAMPTZ` | nullable. `ck_review_requests_resolved` sets it exactly when `status` is not `open`. |
 
-`uq_review_requests_open`: unique partial index on `(event_id, target_user_id, requester_id) WHERE status = 'open'`. One open request per requester, analyst and event; a resolved row does not block a new request.
+`uq_review_requests_open`: unique partial index on `(event_id, target_user_id, requester_id) WHERE status = 'open'`. One open request per requester, analyst and event; a resolved row does not block a new request. `uq_review_requests_open_organization` on `(event_id, target_organization_id, requester_id) WHERE status = 'open' AND target_organization_id IS NOT NULL` holds the same rule for an organization.
 
 **Indexes:**
 - `ix_review_requests_target_user_id` on `(target_user_id, status)`. Serves the analyst's open requests and backs the cascade when their account is erased.
 - `ix_review_requests_requester_created_at` on `(requester_id, created_at)`. Serves the daily cap and backs the cascade when a requester's account is erased.
+- `ix_review_requests_target_organization_id`: partial index on `(target_organization_id, status) WHERE target_organization_id IS NOT NULL`. Serves the organization's open requests and backs the cascade when an organization is deleted.
 
 ---
 
@@ -1082,6 +1095,7 @@ A collective with its own public profile at `/organizations/{slug}`. Only a site
 | `bio` | `TEXT` | nullable. Same rules as `users.bio`. |
 | `avatar_url` | `TEXT` | nullable. Server-minted under `avatars/{organization_id}/`, like `users.avatar_url`. |
 | `external_links` | `JSONB` | NOT NULL, default `'{}'::jsonb`. Same keys and rules as `users.external_links`. |
+| `review_request_audience` | `VARCHAR(20)` | NOT NULL, default `'following'`, CHECK in `('following', 'everyone', 'nobody')` (constraint `ck_organizations_review_request_audience`). Who may send the organization a [review request](#review_requests), set by its org-admins: `following` admits an analyst whom any live org-admin follows. Same values as `user_preferences.review_request_audience`. |
 | `created_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The site admin who created it. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL |
 

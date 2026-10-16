@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import case, func
+from sqlalchemy import ColumnExpressionArgument, Select, case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
@@ -29,6 +29,7 @@ from app.schemas.organization import (
     OrganizationMembershipRead,
     OrganizationRead,
     OrganizationRef,
+    OrganizationUpdate,
 )
 from app.schemas.user import AuthorRef
 from app.services import admin as admin_service
@@ -134,6 +135,22 @@ def is_organization_admin(db: Session, *, org_id: uuid.UUID, user_id: uuid.UUID)
     return member is not None and member.role == "admin"
 
 
+def live_admin_ids(
+    org_id: uuid.UUID | ColumnExpressionArgument[uuid.UUID],
+) -> Select[tuple[uuid.UUID]]:
+    """The live org-admins of ``org_id``, the analysts who act in its name. ``org_id`` may be a
+    column, to correlate with an outer query."""
+    return (
+        select(OrganizationMember.user_id)
+        .join(User, User.id == OrganizationMember.user_id)
+        .where(
+            OrganizationMember.organization_id == org_id,
+            OrganizationMember.role == "admin",
+            User.deleted_at.is_(None),
+        )
+    )
+
+
 def _can_manage(db: Session, org: Organization, user: User) -> bool:
     """Org-admins manage their organization; a site admin manages any."""
     return user.is_admin or is_organization_admin(db, org_id=org.id, user_id=user.id)
@@ -232,7 +249,7 @@ def create_organization(db: Session, *, actor: User, body: OrganizationCreate) -
     org = Organization(
         slug=body.slug, name=body.name, x_handle=body.x_handle, created_by_id=actor.id
     )
-    apply_profile_update(org, body)
+    apply_update(org, body)
     db.add(org)
     db.flush()
     db.add(OrganizationMember(organization_id=org.id, user_id=first_admin.id, role="admin"))
@@ -254,6 +271,13 @@ def create_organization(db: Session, *, actor: User, body: OrganizationCreate) -
         raise SlugTakenError("An organization already uses this slug or X handle") from exc
     db.refresh(org)
     return org
+
+
+def apply_update(org: Organization, body: OrganizationUpdate) -> None:
+    """Apply the profile fields and the review request audience ``body`` sets."""
+    apply_profile_update(org, body)
+    if body.review_request_audience is not None:
+        org.review_request_audience = body.review_request_audience
 
 
 def build_read(db: Session, org: Organization, *, viewer: User | None) -> OrganizationRead:
@@ -283,6 +307,7 @@ def build_read(db: Session, org: Organization, *, viewer: User | None) -> Organi
         external_links=org.external_links or {},
         created_at=org.created_at,
         member_count=_live_members(db, org.id).count(),
+        review_request_audience=org.review_request_audience,
         viewer_role=role,
         viewer_invited=invited,
         viewer_can_manage=can_manage,

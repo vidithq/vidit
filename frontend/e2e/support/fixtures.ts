@@ -7,7 +7,7 @@
  * Typed as the generated frontend aliases, so a backend schema change reaches
  * the suite through the same drift gate every other reader goes through.
  */
-import type { Approval } from "@/lib/approvals";
+import type { Approval, OrganizationApproval } from "@/lib/approvals";
 import type { Collection } from "@/lib/collections";
 import type { UnreadCount } from "@/lib/notifications";
 import type {
@@ -18,6 +18,7 @@ import type {
 } from "@/lib/organizations";
 import type { UserPreferences } from "@/lib/preferences";
 import type { PushConfig } from "@/lib/push";
+import type { OrganizationReviewRequest } from "@/lib/reviewRequests";
 import type { XHandleState } from "@/lib/xHandle";
 import type {
   Conflict,
@@ -330,6 +331,7 @@ export const ORGANIZATION: Organization = {
   external_links: { x: "osw", website: "https://example.org" },
   created_at: "2025-03-01T09:00:00Z",
   member_count: 2,
+  review_request_audience: "following",
   viewer_role: "admin",
   viewer_invited: false,
   viewer_can_manage: true,
@@ -368,8 +370,11 @@ export const ORGANIZATION_INVITES: OrganizationInvite[] = [
 /** Nothing unread, as the sidebar's notification row reads it. */
 export const NO_UNREAD: UnreadCount = { count: 0 };
 
+const ORGANIZATION_REF = { slug: ORGANIZATION_SLUG, name: ORGANIZATION.name, avatar_url: null };
+
 /** The live version's approvals on the shared event: one standing review with a note long
- *  enough to wrap, so the Approvals card is measured at phone widths. */
+ *  enough to wrap, and one the organization's long name signs, so the Approvals card is
+ *  measured at phone widths. */
 export const EVENT_APPROVALS: Approval[] = [
   {
     id: "66666666-6666-4666-8666-666666666661",
@@ -385,7 +390,44 @@ export const EVENT_APPROVALS: Approval[] = [
     current: true,
     revoked_at: null,
     revoke_reason: null,
-    revoked_by_admin: false,
+    revoked_as: null,
+    organization: null,
+  },
+  {
+    id: "66666666-6666-4666-8666-666666666662",
+    version_no: 1,
+    verdict: "approve",
+    reviewer: { id: SIGNED_IN_USER.id, username: SIGNED_IN_USER.username, avatar_url: null },
+    note: null,
+    created_at: "2025-01-06T08:30:00Z",
+    current: true,
+    revoked_at: null,
+    revoke_reason: null,
+    revoked_as: null,
+    organization: ORGANIZATION_REF,
+  },
+];
+
+/** The approvals placed in the organization's name, as its page lists them. */
+export const ORGANIZATION_APPROVALS: OrganizationApproval[] = [
+  { event: { id: EVENT_ID, title: EVENT.title }, approval: EVENT_APPROVALS[1] },
+];
+
+/** One open request to the organization, which its org-admin can decline. */
+export const ORGANIZATION_REVIEW_REQUESTS: OrganizationReviewRequest[] = [
+  {
+    event: { id: EVENT_ID, title: EVENT.title },
+    request: {
+      id: "66666666-6666-4666-8666-666666666671",
+      event_id: EVENT_ID,
+      version_no: 1,
+      requester: EVENT_APPROVALS[0].reviewer,
+      target: null,
+      target_organization: ORGANIZATION_REF,
+      status: "open",
+      created_at: "2025-01-07T08:30:00Z",
+      resolved_at: null,
+    },
   },
 ];
 

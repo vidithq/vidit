@@ -489,47 +489,61 @@ def organization_admin_inherited_email(*, to: str, slug: str, name: str) -> Emai
     )
 
 
-def re_approve_requested_email(*, to: str, actor: str, event_id: str, event_title: str) -> Email:
+def re_approve_requested_email(
+    *, to: str, actor: str, event_id: str, event_title: str, organization: str | None = None
+) -> Email:
+    whose = f"{organization}'s approval" if organization else "Your approval"
+    again = f"approve again as {organization}" if organization else "approve again"
     return _notification_email(
         to=to,
-        subject=f"{actor} saved a new version of a geolocation you approved",
+        subject=f"{actor} saved a new version of a geolocation {organization or 'you'} approved",
         blocks=[
-            f"{actor} saved a new version of “{event_title}”. Your approval covered the "
-            "version before it, so it no longer stands. See what changed and approve again."
+            f"{actor} saved a new version of “{event_title}”. {whose} covered the version "
+            f"before it, so it no longer stands. See what changed and {again}."
         ],
         action=Action("Review the new version", event_link(event_id)),
         setting="New version to approve by email",
     )
 
 
-def approval_received_email(*, to: str, actor: str, event_id: str, event_title: str) -> Email:
+def approval_received_email(
+    *, to: str, actor: str, event_id: str, event_title: str, organization: str | None = None
+) -> Email:
+    on_behalf = f" for {organization}" if organization else ""
     return _notification_email(
         to=to,
-        subject=f"{actor} approved your geolocation",
-        blocks=[f"{actor} approved the current version of “{event_title}”."],
+        subject=f"{actor} approved your geolocation{on_behalf}",
+        blocks=[f"{actor} approved the current version of “{event_title}”{on_behalf}."],
         action=Action("View the geolocation", event_link(event_id)),
         setting="Approval received by email",
     )
 
 
-def review_request_received_email(*, to: str, actor: str, event_id: str, event_title: str) -> Email:
+def review_request_received_email(
+    *, to: str, actor: str, event_id: str, event_title: str, organization: str | None = None
+) -> Email:
+    target = organization or "you"
+    as_target = f" as {organization}" if organization else ""
     return _notification_email(
         to=to,
-        subject=f"{actor} asks you to review a geolocation",
+        subject=f"{actor} asks {target} to review a geolocation",
         blocks=[
-            f"{actor} asks you to review “{event_title}”. Approve its current version, or "
-            "decline the request, from the geolocation's page."
+            f"{actor} asks {target} to review “{event_title}”. Approve its current "
+            f"version{as_target}, or decline the request, from the geolocation's page."
         ],
         action=Action("Review the geolocation", event_link(event_id)),
         setting="Review request by email",
     )
 
 
-def review_request_declined_email(*, to: str, actor: str, event_id: str, event_title: str) -> Email:
+def review_request_declined_email(
+    *, to: str, actor: str, event_id: str, event_title: str, organization: str | None = None
+) -> Email:
+    on_behalf = f" for {organization}" if organization else ""
     return _notification_email(
         to=to,
-        subject=f"{actor} declined to review your geolocation",
-        blocks=[f"{actor} declined your request to review “{event_title}”."],
+        subject=f"{organization or actor} declined to review your geolocation",
+        blocks=[f"{actor} declined{on_behalf} your request to review “{event_title}”."],
         action=Action("View the geolocation", event_link(event_id)),
         setting="Review request declined by email",
     )

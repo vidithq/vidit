@@ -5,21 +5,25 @@ import Link from "next/link";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdmin } from "@/hooks/useAdmin";
+import { useAdministeredOrganizations } from "@/hooks/useAdministeredOrganizations";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useMutation } from "@/hooks/useMutation";
 import {
   APPROVAL_NOTE_MAX_LEN,
   approvalsPath,
+  approveLabel,
   approveEvent,
   canApprove,
   changesSince,
   reviewerApprovalsPath,
   revokeApproval,
+  revokedByLabel,
   standingApprovalBefore,
   type Approval,
 } from "@/lib/approvals";
 import { eventVersionHref, eventVersionPath } from "@/lib/events";
 import { formatDate } from "@/lib/format";
+import { organizationByline, type OrganizationRef } from "@/lib/organizations";
 import type { EventDetail, EventVersion } from "@/types";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button } from "@/components/ui/Button";
@@ -30,14 +34,15 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 
-function ApprovalState({ approval }: { approval: Approval }) {
+export function ApprovalState({ approval }: { approval: Approval }) {
   if (approval.revoked_at) return <Pill tone="danger">Revoked</Pill>;
   if (approval.current) return <Pill tone="accent">Current</Pill>;
   return <Pill tone="neutral">Outdated</Pill>;
 }
 
-/** One review: who placed it and when, its note, and, once revoked, the public reason. */
-function ApprovalRow({
+/** One review: who placed it (an organization signs with its name, its acting org-admin
+ *  beside it) and when, its note, and, once revoked, the public reason. */
+export function ApprovalRow({
   approval,
   onRevoke,
 }: {
@@ -48,7 +53,21 @@ function ApprovalRow({
     <div className="space-y-1 py-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="flex min-w-0 flex-wrap items-center gap-2">
-          <AuthorByline author={approval.reviewer} prefix={false} avatar className="text-sm" />
+          {approval.organization ? (
+            <>
+              <AuthorByline
+                author={organizationByline(approval.organization)}
+                prefix={false}
+                avatar
+                className="text-sm"
+              />
+              <span className="text-[11px] text-neutral-500">
+                <AuthorByline author={approval.reviewer} />
+              </span>
+            </>
+          ) : (
+            <AuthorByline author={approval.reviewer} prefix={false} avatar className="text-sm" />
+          )}
           <ApprovalState approval={approval} />
           <span className="text-[11px] text-neutral-500">{formatDate(approval.created_at)}</span>
         </span>
@@ -63,7 +82,7 @@ function ApprovalRow({
       )}
       {approval.revoked_at && (
         <p className="text-xs text-neutral-400 [overflow-wrap:anywhere]">
-          {approval.revoked_by_admin ? "Revoked by a site admin" : "Revoked"} on{" "}
+          {revokedByLabel(approval)} on{" "}
           {formatDate(approval.revoked_at)}: {approval.revoke_reason}
         </p>
       )}
@@ -80,10 +99,13 @@ export function ChangesSinceApproval({
   eventId,
   event,
   approvedVersion,
+  approver = "you",
 }: {
   eventId: string;
   event?: EventDetail;
   approvedVersion: number;
+  /** Who approved `approvedVersion`: the reader, or an organization they administer. */
+  approver?: string;
 }) {
   const live = useApiResource<EventDetail>(event ? null : `/events/${eventId}`);
   const filed = useApiResource<EventVersion>(eventVersionPath(eventId, approvedVersion));
@@ -93,10 +115,10 @@ export function ChangesSinceApproval({
   return (
     <p className="text-xs text-neutral-400 [overflow-wrap:anywhere]">
       {changed === null
-        ? `Version ${approvedVersion}, which you approved, was redacted, so its changes cannot be listed.`
+        ? `Version ${approvedVersion}, which ${approver} approved, was redacted, so its changes cannot be listed.`
         : changed.length === 0
-          ? `No versioned field changed since version ${approvedVersion}, which you approved.`
-          : `Changed since version ${approvedVersion}, which you approved: ${changed.join(", ")}.`}{" "}
+          ? `No versioned field changed since version ${approvedVersion}, which ${approver} approved.`
+          : `Changed since version ${approvedVersion}, which ${approver} approved: ${changed.join(", ")}.`}{" "}
       <Link href={eventVersionHref(eventId, approvedVersion)} className={TEXT_LINK}>
         See version {approvedVersion}
       </Link>
@@ -105,30 +127,36 @@ export function ChangesSinceApproval({
 }
 
 /** One-click approval of the version a re-approval notification offers, under the list of what
- *  changed since the reader's approval. A version filed since the feed loaded answers 409, shown
- *  under the button. */
+ *  changed since the reader's approval, or the organization's when the row names one. A version
+ *  filed since the feed loaded answers 409, shown under the button. */
 export function ReapproveButton({
   eventId,
   versionNo,
   approvedVersion,
+  organization,
   onApproved,
 }: {
   eventId: string;
   versionNo: number;
   approvedVersion: number | null;
+  organization: OrganizationRef | null;
   onApproved: () => void;
 }) {
-  const approve = useMutation(() => approveEvent(eventId, versionNo), {
-    fallback: "Failed to approve",
-    onSuccess: onApproved,
-  });
+  const approve = useMutation(
+    () => approveEvent(eventId, versionNo, undefined, organization?.slug),
+    { fallback: "Failed to approve", onSuccess: onApproved },
+  );
   return (
     <div className="space-y-2">
       {approvedVersion !== null && (
-        <ChangesSinceApproval eventId={eventId} approvedVersion={approvedVersion} />
+        <ChangesSinceApproval
+          eventId={eventId}
+          approvedVersion={approvedVersion}
+          approver={organization?.name}
+        />
       )}
       <Button onClick={() => void approve.run()} disabled={approve.loading}>
-        Approve version {versionNo}
+        {approveLabel(versionNo, organization)}
       </Button>
       {approve.error && (
         <div className={FORM_ERROR_BANNER} role="alert">
@@ -144,9 +172,10 @@ const NOTE_FIELD_ID = "approval-note";
 
 /**
  * The approvals of one version of a published event. On the live version an analyst outside the
- * event's geolocators approves it; the reviewer, or a site admin, revokes a review with a public
- * reason. A filed version (`live` false) lists the reviews it held and takes no new one.
- * `onApproved` runs after the reader's approval lands, which resolves their review requests.
+ * event's geolocators approves it, as themselves or as an org-admin for each organization they
+ * administer; the reviewer, an org-admin of the organization, or a site admin revokes a review
+ * with a public reason. A filed version (`live` false) lists the reviews it held and takes no
+ * new one. `onApproved` runs after an approval lands, which resolves review requests.
  */
 export function ApprovalsSection({
   event,
@@ -161,37 +190,45 @@ export function ApprovalsSection({
 }) {
   const { user } = useAuth();
   const { isAdmin } = useAdmin();
+  const administered = useAdministeredOrganizations();
   const approvals = useApiResource<Approval[]>(approvalsPath(event.id, versionNo));
   const [note, setNote] = useState("");
   const [revoking, setRevoking] = useState<string | null>(null);
   const [reason, setReason] = useState("");
 
+  // `null` approves as the reader, a slug for that organization; `undefined` revokes.
   const write = useMutation(
-    (kind: "approve" | "revoke") =>
-      kind === "approve"
-        ? approveEvent(event.id, versionNo, note)
-        : revokeApproval(event.id, revoking!, reason.trim()),
+    (organization?: string | null) =>
+      organization === undefined
+        ? revokeApproval(event.id, revoking!, reason.trim())
+        : approveEvent(event.id, versionNo, note, organization ?? undefined),
     {
       fallback: "Failed to update the approvals",
-      onSuccess: (_result, kind) => {
+      onSuccess: (_result, organization) => {
         setNote("");
         setRevoking(null);
         setReason("");
         approvals.refetch();
-        if (kind === "approve") onApproved?.();
+        if (organization !== undefined) onApproved?.();
       },
     },
   );
 
   const rows = approvals.data ?? [];
+  const administeredSlugs = new Set(administered.map((o) => o.slug));
   const eligible = live && canApprove(event, user?.id, rows);
+  const forOrganizations = live
+    ? administered.filter((o) => canApprove(event, user?.id, rows, o.slug))
+    : [];
   const mine = useApiResource<Approval[]>(
     eligible && user && event.version_no > 1
       ? reviewerApprovalsPath(event.id, user.username)
       : null,
   );
   const approvedVersion = mine.data ? standingApprovalBefore(mine.data, event.version_no) : null;
-  if (!eligible && rows.length === 0 && !approvals.error) return null;
+  if (!eligible && forOrganizations.length === 0 && rows.length === 0 && !approvals.error) {
+    return null;
+  }
 
   return (
     <Card as="section">
@@ -205,7 +242,10 @@ export function ApprovalsSection({
                 onRevoke={
                   !approval.revoked_at &&
                   revoking !== approval.id &&
-                  (approval.reviewer.id === user?.id || isAdmin)
+                  (isAdmin ||
+                    (approval.organization
+                      ? administeredSlugs.has(approval.organization.slug)
+                      : approval.reviewer.id === user?.id))
                     ? () => {
                         write.reset();
                         setRevoking(approval.id);
@@ -227,7 +267,7 @@ export function ApprovalsSection({
                   <div className="flex items-center gap-2">
                     <Button
                       variant="danger"
-                      onClick={() => void write.run("revoke")}
+                      onClick={() => void write.run(undefined)}
                       disabled={write.loading || !reason.trim()}
                     >
                       Revoke approval
@@ -247,7 +287,7 @@ export function ApprovalsSection({
         )
       )}
 
-      {eligible && (
+      {(eligible || forOrganizations.length > 0) && (
         <div className="space-y-2">
           {approvedVersion !== null && (
             <ChangesSinceApproval
@@ -266,11 +306,26 @@ export function ApprovalsSection({
             value={note}
             onChange={(e) => setNote(e.target.value)}
           />
-          <Button onClick={() => void write.run("approve")} disabled={write.loading}>
-            Approve version {versionNo}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {eligible && (
+              <Button onClick={() => void write.run(null)} disabled={write.loading}>
+                {approveLabel(versionNo)}
+              </Button>
+            )}
+            {forOrganizations.map((organization) => (
+              <Button
+                key={organization.slug}
+                variant={eligible ? "secondary" : "primary"}
+                onClick={() => void write.run(organization.slug)}
+                disabled={write.loading}
+              >
+                Approve as {organization.name}
+              </Button>
+            ))}
+          </div>
           <p className="text-xs text-neutral-500">
-            Your approval covers this version only. A new version asks you to approve again.
+            An approval covers this version only. A new version asks you, or the
+            organization&apos;s org-admins, to approve again.
           </p>
         </div>
       )}

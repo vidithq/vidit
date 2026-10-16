@@ -71,19 +71,19 @@ export const NOTIFICATION_KIND_COPY: Record<
   },
   re_approve_requested: {
     label: "New version to approve",
-    setting: "A geolocation you approved gets a new version.",
+    setting: "A geolocation you, or an organization you administer, approved gets a new version.",
   },
   approval_received: {
     label: "Approval received",
-    setting: "Someone approves your geolocation.",
+    setting: "Someone approves your geolocation, as themselves or for an organization.",
   },
   review_request_received: {
     label: "Review request",
-    setting: "Someone asks you to review their geolocation.",
+    setting: "Someone asks you, or an organization you administer, to review their geolocation.",
   },
   review_request_declined: {
     label: "Review request declined",
-    setting: "An analyst you asked declines to review your geolocation.",
+    setting: "An analyst or an organization you asked declines to review your geolocation.",
   },
 };
 
@@ -141,24 +141,25 @@ export function describeNotification(n: Notification): { text: string; href: str
         text: `You are now an org-admin of ${organization}`,
         href: n.organization ? organizationPath(n.organization.slug) : "/notifications",
       };
+    // The four kinds below name an organization when the approval or the request is one.
     case "re_approve_requested":
       return {
-        text: `${actor} saved a new version of a geolocation you approved: ${title}`,
+        text: `${actor} saved a new version of a geolocation ${n.organization ? organization : "you"} approved: ${title}`,
         href: eventHref,
       };
     case "approval_received":
       return {
-        text: `${actor} approved your geolocation: ${title}`,
+        text: `${actor} approved your geolocation${n.organization ? ` for ${organization}` : ""}: ${title}`,
         href: eventHref,
       };
     case "review_request_received":
       return {
-        text: `${actor} asked you to review: ${title}`,
+        text: `${actor} asked ${n.organization ? organization : "you"} to review: ${title}`,
         href: eventHref,
       };
     case "review_request_declined":
       return {
-        text: `${actor} declined to review: ${title}`,
+        text: `${actor} declined${n.organization ? ` for ${organization}` : ""} to review: ${title}`,
         href: eventHref,
       };
   }

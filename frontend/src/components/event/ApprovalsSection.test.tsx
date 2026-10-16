@@ -40,7 +40,8 @@ const approval = (over: Partial<Approval> = {}): Approval => ({
   current: true,
   revoked_at: null,
   revoke_reason: null,
-  revoked_by_admin: false,
+  revoked_as: null,
+  organization: null,
   ...over,
 });
 
@@ -142,6 +143,54 @@ describe("<ApprovalsSection>", () => {
     expect(await screen.findAllByRole("button", { name: "Revoke" })).toHaveLength(2);
   });
 
+  it("lets an org-admin approve as each organization they administer", async () => {
+    api.viewer = CY;
+    const BELLINGCAT = { slug: "bellingcat", name: "Bellingcat", avatar_url: null };
+    const OSINT = { slug: "osint-lab", name: "OSINT Lab", avatar_url: null };
+    api.apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+      if (init?.method === "POST") return Promise.resolve(approval());
+      if (path === "/users/cy/organizations") {
+        return Promise.resolve([
+          { organization: BELLINGCAT, role: "admin", joined_at: "2026-10-01T00:00:00Z" },
+          { organization: OSINT, role: "member", joined_at: "2026-10-01T00:00:00Z" },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+    render(<ApprovalsSection event={event} versionNo={2} live />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Approve as Bellingcat" }));
+    expect(screen.queryByRole("button", { name: "Approve as OSINT Lab" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Approve version 2" })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/approvals", {
+        method: "POST",
+        body: JSON.stringify({ version_no: 2, note: null, organization: "bellingcat" }),
+      }),
+    );
+  });
+
+  it("signs an organization approval with its name and gives its org-admins revoke", async () => {
+    api.viewer = CY;
+    const BELLINGCAT = { slug: "bellingcat", name: "Bellingcat", avatar_url: null };
+    api.apiFetch.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === "/users/cy/organizations"
+          ? [{ organization: BELLINGCAT, role: "admin", joined_at: "2026-10-01T00:00:00Z" }]
+          : [approval({ organization: BELLINGCAT }), approval({ id: "a2", reviewer: ANA })],
+      ),
+    );
+    render(<ApprovalsSection event={event} versionNo={2} live />);
+
+    expect(await screen.findByRole("link", { name: "Bellingcat" })).toHaveAttribute(
+      "href",
+      "/organizations/bellingcat",
+    );
+    expect(screen.getByRole("link", { name: "bo" })).toHaveAttribute("href", "/profile/bo");
+    expect(await screen.findAllByRole("button", { name: "Revoke" })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Approve as Bellingcat" })).toBeNull();
+  });
+
   it("shows a revoked approval with its public reason on a filed version", async () => {
     serve([
       approval({
@@ -149,7 +198,7 @@ describe("<ApprovalsSection>", () => {
         current: false,
         revoked_at: "2026-10-16T09:00:00Z",
         revoke_reason: "Sockpuppet account",
-        revoked_by_admin: true,
+        revoked_as: "site_admin",
       }),
     ]);
     render(<ApprovalsSection event={event} versionNo={1} live={false} />);
