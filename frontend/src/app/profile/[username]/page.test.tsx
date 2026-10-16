@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
@@ -117,11 +117,15 @@ const MEMBERSHIPS: OrganizationMembership[] = [
     role: "manager",
     joined_at: "2026-06-03T09:00:00Z",
   },
+  {
+    organization: { slug: "sahel-desk", name: "Sahel Desk", avatar_url: null },
+    role: "member",
+    joined_at: "2026-07-01T09:00:00Z",
+  },
 ];
 
 /** The blocks a reader meets, each named by text only that block shows, pinned by document position. */
 const BLOCKS: Record<string, string> = {
-  Organizations: "organizations",
   "Recent submissions": "recent submissions",
   Collections: "collections",
   Insights: "insights",
@@ -186,8 +190,6 @@ describe("public profile order", () => {
 
     // Map and Insights sit together; the growing list reads last.
     expect(blockOrder(container)).toEqual([
-      // Affiliation reads with the identity, before the work.
-      "organizations",
       "coverage",
       "insights",
       // The analyst's grouping, between the Insights card and the list.
@@ -304,7 +306,6 @@ describe("public profile order", () => {
     // Pending work outranks the portfolio; signing out sinks below all of it.
     expect(blockOrder(container)).toEqual([
       "detections queue",
-      "organizations",
       "coverage",
       "insights",
       "collections",
@@ -326,7 +327,10 @@ describe("public profile identity", () => {
     });
   });
 
-  function withProfile(overrides: Partial<PublicProfile>) {
+  function withProfile(
+    overrides: Partial<PublicProfile>,
+    memberships: OrganizationMembership[] = MEMBERSHIPS,
+  ) {
     const profile = { ...PROFILE, ...overrides };
     useApiResource.mockImplementation((path: string | null) => {
       if (path?.startsWith("/users/ana/events")) {
@@ -336,7 +340,7 @@ describe("public profile identity", () => {
         return { data: [], error: null, loading: false, refetch: vi.fn() };
       }
       if (path?.startsWith("/users/ana/organizations")) {
-        return { data: MEMBERSHIPS, error: null, loading: false, refetch: vi.fn() };
+        return { data: memberships, error: null, loading: false, refetch: vi.fn() };
       }
       if (path?.startsWith("/users/ana/collections")) {
         return {
@@ -360,7 +364,7 @@ describe("public profile identity", () => {
   });
 
   it("leaves the metadata line under the handle when the analyst wrote no bio", () => {
-    withProfile({ bio: null });
+    withProfile({ bio: null }, []);
     const { container } = mountProfile();
 
     // No empty line or orphaned card: the identity line sits under the handle.
@@ -368,6 +372,34 @@ describe("public profile identity", () => {
       "4 followers·2 following·Member since 5 Jan 2026"
     );
     expect(screen.getByText("ana")).toBeInTheDocument();
+  });
+
+  it("shows the analyst's organizations as logos on the identity line, each linking to its page", () => {
+    withProfile({ bio: null });
+    const { container } = mountProfile();
+
+    const identity = container.querySelector<HTMLElement>("h1 + div")!;
+    const manager = within(identity).getByRole("link", {
+      name: "Org manager of Open Source Watch",
+    });
+    expect(manager).toHaveAttribute("href", "/organizations/osw");
+    expect(
+      within(identity).getByRole("link", { name: "Member of Sahel Desk" }),
+    ).toHaveAttribute("href", "/organizations/sahel-desk");
+
+    fireEvent.focus(manager);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Open Source WatchOrg manager");
+
+    // The logos replace the card: no section titled Organizations.
+    expect(screen.queryByText("Organizations")).toBeNull();
+  });
+
+  it("shows no organization logos when the analyst belongs to none", () => {
+    withProfile({}, []);
+    mountProfile();
+
+    expect(screen.queryByRole("list", { name: "Organizations" })).toBeNull();
+    expect(screen.queryByRole("link", { name: /of / })).toBeNull();
   });
 
   it("copies the Discord username rather than linking it", () => {

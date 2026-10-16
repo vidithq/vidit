@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 
 import { usePinnedPopover } from "@/hooks/usePinnedPopover";
 import { cn } from "@/lib/cn";
@@ -16,6 +17,8 @@ export interface AvatarStackItem {
   variant: "analyst" | "organization";
   /** The picture's accessible name; `name` when unset. */
   label?: string;
+  /** The picture's own page: the picture links there, and its card is a tooltip without controls. */
+  href?: string;
   /** The card the picture opens, which holds the way on (a link to the profile). */
   renderCard: () => ReactNode;
 }
@@ -33,11 +36,61 @@ function tabbableAfter(from: HTMLElement, within: HTMLElement): HTMLElement | nu
   return all[all.indexOf(from) + 1] ?? null;
 }
 
+function Picture({ item }: { item: AvatarStackItem }) {
+  return (
+    <Avatar
+      as="span"
+      src={item.avatarUrl}
+      username={item.name}
+      size={SIZE}
+      shape={item.variant === "organization" ? "square" : "circle"}
+      decorative
+    />
+  );
+}
+
+const anchorClass = (item: AvatarStackItem) =>
+  cn("flex", item.variant === "organization" ? "rounded-md" : "rounded-full", RING);
+
+/** A picture that navigates: hover or focus shows its card as a tooltip, a click follows the link. */
+function LinkedAvatar({ item, href }: { item: AvatarStackItem; href: string }) {
+  const { open, wrapperProps, anchorProps, popoverProps } = usePinnedPopover<
+    HTMLSpanElement,
+    HTMLAnchorElement
+  >();
+  const tipId = useId();
+  return (
+    <span {...wrapperProps} className="relative flex hover:z-20 focus-within:z-20">
+      <Link
+        {...anchorProps}
+        onClick={undefined}
+        href={href}
+        aria-label={item.label ?? item.name}
+        aria-describedby={open ? tipId : undefined}
+        className={anchorClass(item)}
+      >
+        <Picture item={item} />
+      </Link>
+      {open &&
+        createPortal(
+          <span
+            {...popoverProps}
+            role="tooltip"
+            id={tipId}
+            className={`z-[2000] w-max max-w-xs rounded-md px-3 py-2 text-xs ${TOOLTIP_SURFACE}`}
+          >
+            {item.renderCard()}
+          </span>,
+          document.body,
+        )}
+    </span>
+  );
+}
+
 function StackedAvatar({ item }: { item: AvatarStackItem }) {
   const { open, pinned, close, wrapperProps, anchorProps, popoverProps } =
     usePinnedPopover<HTMLDivElement>();
   const cardId = useId();
-  const shape = item.variant === "organization" ? "square" : "circle";
   const { ref: anchorRef } = anchorProps;
   const { ref: cardRef } = popoverProps;
   // The card is portalled to the end of the body, out of the tab order: this tracks whether focus
@@ -96,16 +149,9 @@ function StackedAvatar({ item }: { item: AvatarStackItem }) {
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={open ? cardId : undefined}
-        className={cn("flex", shape === "square" ? "rounded-md" : "rounded-full", RING)}
+        className={anchorClass(item)}
       >
-        <Avatar
-          as="span"
-          src={item.avatarUrl}
-          username={item.name}
-          size={SIZE}
-          shape={shape}
-          decorative
-        />
+        <Picture item={item} />
       </button>
       {open &&
         createPortal(
@@ -164,10 +210,10 @@ export function AvatarStack({
     RING,
   );
   return (
-    <ul aria-label={label} className="flex items-center -space-x-1.5">
+    <ul aria-label={label} className="flex flex-wrap items-center gap-y-1 -space-x-1.5">
       {shown.map((item) => (
         <li key={item.key} className="flex shrink-0">
-          <StackedAvatar item={item} />
+          {item.href ? <LinkedAvatar item={item} href={item.href} /> : <StackedAvatar item={item} />}
         </li>
       ))}
       {hidden > 0 && (

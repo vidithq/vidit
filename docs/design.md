@@ -608,8 +608,8 @@ A geolocation opens `/events/{id}` and a request opens `/requests/{id}`.
 | Block | Component | Data source | Shown |
 |---|---|---|---|
 | Identity | `ProfileTitle`, `ProfileIdentity` ([`ProfileHeader.tsx`](../frontend/src/components/profile/ProfileHeader.tsx)), `LinkedAccountsLine` ([`LinkedAccounts.tsx`](../frontend/src/components/profile/LinkedAccounts.tsx)) | `GET /users/{username}` | Always |
+| Organization logos | `ProfileOrganizations`, inside `ProfileIdentity` | [`GET /users/{username}/organizations`](api.md#get-usersusernameorganizations) | When the analyst belongs to one |
 | Detections queue | `DetectionsEntry` | `useDetectionsCount` | Owner only, while the queue holds something |
-| Organizations | `ProfileOrganizations` | [`GET /users/{username}/organizations`](api.md#get-usersusernameorganizations) | When the analyst belongs to one |
 | Coverage | `ProfileMap` | `GET /events/points?author=…` | When the analyst has located events |
 | Insights | `ProfileInsights` | `GET /users/{username}/stats` | When the profile has events |
 | Collections | `CollectionsSection` | [`GET /users/{username}/collections`](api.md#get-usersusernamecollections) | Owner always; visitor when the list is not empty |
@@ -622,6 +622,7 @@ A geolocation opens `/events/{id}` and a request opens `/requests/{id}`.
 - The profile never prints the account's email, even to its owner: the email is private account information, so it reads on the settings page, in the Account card beside the username.
 - The bio has no card, so the evidence starts one glance below the handle. Empty renders nothing. Every http(s) URL in the bio links through `<OutboundLink>` (see [Outbound links](#outbound-links)) and breaks through `[overflow-wrap:anywhere]`; trailing sentence punctuation stays text. A long bio wraps rather than clamps, since `BIO_MAX_LEN` caps it at 500 characters. Authored line breaks collapse here and keep their shape in the edit field.
 - The metadata line reads `N followers · N following · Member since <date>` as secondary text. It carries no work figures; those live in Insights. Each segment holds together, so the row wraps between segments at 375 px. Zero values print.
+- The analyst's organizations close the metadata line as one more segment: their logos in an [`<AvatarStack>`](../frontend/src/components/ui/AvatarStack.tsx), each a rounded square (`variant="organization"`), every membership shown. Each item sets `href`, so the logo is a link to `/organizations/{slug}` named "Member of <organization>" or "Org manager of <organization>". Hover or focus opens a `TOOLTIP_SURFACE` tooltip with the organization's name and the analyst's role; a click follows the link. The row wraps with the line on a phone. An analyst in no organization, or a failed read, shows no segment, so the coverage map is the first block under the header.
 - The `actions` cluster carries the linked accounts, then Edit profile on your own profile, Follow on someone else's, or the save pair while editing.
 
 #### Linked accounts
@@ -636,7 +637,6 @@ A geolocation opens `/events/{id}` and a request opens `/requests/{id}`.
 #### Work blocks
 
 - **Detections queue** (`DetectionsEntry`): the count of `detected` geolocations awaiting your submission, linking to `/profile/{username}/detections`. It sits above the work because it is pending work.
-- **Organizations** (`ProfileOrganizations`): one `<LinkRow>` per organization, the role as the label and the name as the link to its page. It sits first among the blocks because affiliation is identity, not work.
 - **Coverage** (`ProfileMap`): the shared `<Map>` with an explicit world `bbox` (`WORLD_BOUNDS` through `toBboxParam`; the endpoint requires one), the camera fitted to the returned points. It maps `geolocated` and `detected` in the map's two point shades. The count beside the heading splits the same way ("N geolocated, N detected on the map"), so its `geolocated` leg equals the Insights `Geolocated` tile.
 - **Insights** (`ProfileInsights`): see [Insights](#insights).
 - **Collections** (`CollectionsSection`): a grid of mosaic cards, the turn from readings of the whole body of work to the work itself (see [Collections](#collections)).

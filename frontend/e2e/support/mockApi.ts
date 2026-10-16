@@ -9,6 +9,9 @@ import {
   MEDIA_ORIGIN,
 } from "./environment";
 import {
+  ANALYST_ORGANIZATIONS,
+  ANALYST_PROFILE,
+  ANALYST_STATS,
   COLLECTED_EVENT,
   COLLECTION,
   COLLECTION_ID,
@@ -98,6 +101,14 @@ const ROUTES: [RegExp, unknown][] = [
   [
     new RegExp(`^/organizations/${ORGANIZATION_SLUG}/invite-candidates$`),
     INVITE_CANDIDATES,
+  ],
+  // The analyst's profile: its header, organizations and Insights figures.
+  [new RegExp(`^/users/${SIGNED_IN_USER.username}$`), ANALYST_PROFILE],
+  [new RegExp(`^/users/${SIGNED_IN_USER.username}/organizations$`), ANALYST_ORGANIZATIONS],
+  [new RegExp(`^/users/${SIGNED_IN_USER.username}/stats$`), ANALYST_STATS],
+  [
+    new RegExp(`^/users/${SIGNED_IN_USER.username}/events$`),
+    { items: [], total: 0, page: 1, per_page: 5 },
   ],
   // The profile's Collections grid, which the signed-in analyst owns.
   [
