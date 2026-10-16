@@ -457,12 +457,12 @@ class Event(Base):
     )
 
 
-def timeline_at() -> ColumnElement[datetime]:
-    """When an event entered the timeline: ``requested_at`` for an open request, else
+def feed_at() -> ColumnElement[datetime]:
+    """When an event entered the feed: ``requested_at`` for an open request, else
     ``geolocated_at``.
 
     Both stamps are set on entry and never cleared, so the key is immutable while a row is in
-    the timeline. ``created_at`` stands in for a missing stamp because a keyset row comparison
+    the feed. ``created_at`` stands in for a missing stamp because a keyset row comparison
     against NULL is unknown. ``ix_events_timeline_at_id`` indexes this exact expression, and
     the planner matches it structurally, so changing it needs a migration.
     """
@@ -472,11 +472,12 @@ def timeline_at() -> ColumnElement[datetime]:
     )
 
 
-# Backs the timeline keyset (``services.social.get_timeline``, ``timeline_at DESC, id DESC``)
-# over the rows it can serve, so a page reads the index in order instead of sorting.
+# Backs the feed keyset (``services.social.get_feed``, ``feed_at DESC, id DESC``)
+# over the rows it can serve, so a page reads the index in order instead of sorting. The index
+# keeps its original name: renaming it needs a migration.
 Index(
     "ix_events_timeline_at_id",
-    timeline_at(),
+    feed_at(),
     Event.id,
     postgresql_where=and_(
         Event.deleted_at.is_(None),

@@ -31,6 +31,7 @@ import { ActionMenu } from "@/components/ui/ActionMenu";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
+import { PageWithRail } from "@/components/ui/PageWithRail";
 import { Card } from "@/components/ui/Card";
 import { CharCounter } from "@/components/ui/CharCounter";
 import { Pill } from "@/components/ui/Pill";
@@ -272,7 +273,7 @@ const MOCK_DETAIL_ARCHIVED: EventDetail = {
   ],
 };
 
-// The lighter geolocation-card payload (timeline / recent-submissions shape).
+// The lighter geolocation-card payload (feed / recent-submissions shape).
 const MOCK_CARD_GEO = {
   id: "demo",
   title: "Strike on a depot near Donetsk",
@@ -624,7 +625,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SegmentedControl>" usage="Exclusive-choice bar: submit mode (single / bulk import), admin delete mode (soft / hard), the detections queue filter, the timeline scope (following / all). tone=danger paints a destructive option's active state red; fullWidth stretches the track at every width, and below sm the track always stretches. A one-word label that needs a sentence takes a <FieldHelp> beside the bar, never hover text of its own.">
+          <Item name="<SegmentedControl>" usage="Exclusive-choice bar: submit mode (single / bulk import), admin delete mode (soft / hard), the detections queue filter, the feed scope (following / all). tone=danger paints a destructive option's active state red; fullWidth stretches the track at every width, and below sm the track always stretches. A one-word label that needs a sentence takes a <FieldHelp> beside the bar, never hover text of its own.">
             <div className="space-y-3">
               <SegmentedControl
                 aria-label="Preview mode"
@@ -1428,7 +1429,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<EmptyState>" usage="The one empty-state grammar. boxed: empty list pages (requests, search). plain: headline + hint + CTA inside an existing container (detections, recent submissions). invite: dashed first-run hero (timeline). One variant per site.">
+          <Item name="<EmptyState>" usage="The one empty-state grammar. boxed: empty list pages (requests, search). plain: headline + hint + CTA inside an existing container (detections, recent submissions). invite: dashed first-run hero (feed). One variant per site.">
             <div className="w-full max-w-md space-y-3">
               <Variant label='variant="boxed" (default)'>
                 <EmptyState>
@@ -1456,7 +1457,7 @@ export default function PalettePage() {
                 <EmptyState
                   variant="invite"
                   icon={MapPin}
-                  lead="Your timeline is empty"
+                  lead="Your feed is empty"
                   cta={<Button variant="primary">Explore the map</Button>}
                 >
                   Follow other analysts to see their latest geolocations here.
@@ -1465,7 +1466,25 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<LoadMoreRow>" usage="The one foot of a useCursorList list (requests, timeline, version history, invite codes): Load more while a next page exists, a spinner while it loads, a failed page's message above Try again, nothing once the walk ends. `infinite` loads the next page as the row nears the viewport and pauses after a failure until the click.">
+          <Item name="<PageWithRail>" usage="A main column plus a sticky 17.5rem right rail from lg up. PageShell composes it from its rail prop and widens its column to max-w-6xl, so the main column keeps the 53rem reading width: the filter rail of the feed, the Requests board and search. The rail scrolls on its own once taller than the viewport. Below lg it stacks above the column (narrow=&quot;stacked&quot;) or leaves the page (narrow=&quot;hidden&quot;, where FilterBar's Filters (N) button opens the same panel full screen). No rail: one full-width column.">
+            <div className="w-full">
+              <PageWithRail
+                railLabel="Example rail"
+                rail={
+                  <Card>
+                    <p className="text-xs text-neutral-300">Rail</p>
+                  </Card>
+                }
+              >
+                <Card>
+                  <p className="text-xs text-neutral-300">Main column</p>
+                  <p className="text-xs text-neutral-500">Stacks under the rail below lg.</p>
+                </Card>
+              </PageWithRail>
+            </div>
+          </Item>
+
+          <Item name="<LoadMoreRow>" usage="The one foot of a useCursorList list (requests, feed, version history, invite codes): Load more while a next page exists, a spinner while it loads, a failed page's message above Try again, nothing once the walk ends. `infinite` loads the next page as the row nears the viewport and pauses after a failure until the click.">
             <div className="w-full space-y-4">
               <Variant label="idle">
                 <LoadMoreRow walk={{ hasMore: true, loadingMore: false, loadMore: () => {}, error: null }} />
@@ -1501,7 +1520,7 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Composed views" />
 
-          <Item name="<EntityCard variant=feed>" usage="Feed (timeline): title and status first, then the byline with named dates (`dates`: Event, then Published or Requested) and coordinates, the media, and the key/value tag row (`cardTags`)">
+          <Item name="<EntityCard variant=feed>" usage="Feed: title and status first, then the byline with named dates (`dates`: Event, then Published or Requested) and coordinates, the media, and the key/value tag row (`cardTags`)">
             <div className="w-full max-w-xl">
               <EntityCard
                 variant="feed"
@@ -1646,7 +1665,7 @@ export default function PalettePage() {
               <li><span className="font-mono text-neutral-400">BetaBanner</span>: a {"<Pill tone=\"accent\">"} in a <code>position: fixed</code> wrapper, already visible bottom-right from <code>sm</code> up; below <code>sm</code> the same pill rides the nav drawer via {"<BetaBanner inline>"}</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span>: the primary nav, auth/route-driven, always on screen. Two shapes: a fixed rail on the left edge from <code>sm</code> up (glyphs, or glyphs plus labels once expanded), and below <code>sm</code> a floating chip in the top-left corner that opens the same rail as a drawer over the page</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span> chip and drawer: the rail&apos;s own phone shape, rendered by that component rather than a <code>components/ui/</code> primitive, so there is nothing here to reuse. The chip&apos;s open control is a deliberate one-off too: a 44px neutral thumb target, which {"<Button icon>"} does not offer (36px, accent or red)</li>
-              <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page; <span className="font-mono text-neutral-400">PageCenter</span> (from PageFrame) is the one centred full-screen block, on the same rail inset</li>
+              <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page: one left-aligned container on every app page, 53rem reading width without a rail and max-w-6xl with one (PageShell&apos;s <code>rail</code>); PageShell&apos;s <code>controls</code> slot puts a view&apos;s segmented control under the title, left-aligned (the feed scope, the Requests sort, the submit mode); <span className="font-mono text-neutral-400">PageCenter</span> (from PageFrame) is the one centred full-screen block, on the same rail inset</li>
             </ul>
           </Item>
         </section>

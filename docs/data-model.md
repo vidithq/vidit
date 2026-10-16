@@ -762,7 +762,7 @@ event happens ──▶ source posts the media ──▶ analyst posts the geolo
 - `ix_events_live`: partial index on `(created_at) WHERE deleted_at IS NULL`. Every public read filters on `deleted_at IS NULL`, and the partial index keeps it tight.
 - `ix_events_status_created_at` on `(status, created_at)`. The requested view, the map, and the detection queue all filter on `status`, newest first.
 - `ix_events_created_at_id` on `(created_at, id)`. Backs the keyset that the capped list endpoints page on. `GET /events` and `GET /events/detections` order by `created_at DESC, id DESC` and cut each page with a row comparison over that pair; see [`api.md`](api.md#pagination).
-- `ix_events_timeline_at_id` on `(timeline_at, id)`, where `timeline_at` is `coalesce(CASE WHEN status = 'requested' THEN requested_at ELSE geolocated_at END, created_at)`. Partial: visible (`deleted_at` and `hidden_at` NULL) `geolocated` and `requested` rows. Backs the keyset of [`GET /timeline`](api.md#get-timeline), which orders by `timeline_at DESC, id DESC`, so a page reads the index in order instead of sorting. The expression matches `models/event.timeline_at` exactly; the planner ignores the index on any difference.
+- `ix_events_timeline_at_id` on `(feed_at, id)`, where `feed_at` is `coalesce(CASE WHEN status = 'requested' THEN requested_at ELSE geolocated_at END, created_at)`. Partial: visible (`deleted_at` and `hidden_at` NULL) `geolocated` and `requested` rows. Backs the keyset of [`GET /feed`](api.md#get-feed), which orders by `feed_at DESC, id DESC`, so a page reads the index in order instead of sorting. The expression matches `models/event.feed_at` exactly; the planner ignores the index on any difference.
 - `ix_events_detected_from_url`: partial index on `(detected_from_url) WHERE detected_from_url IS NOT NULL`. Backs the admin machine-detection cohort scans, which count the rows carrying a provenance link at all. Human rows are always NULL here.
 - `ix_events_owner_detected_from_tweet_id`: partial index on `(owner_id, detected_from_tweet_id) WHERE detected_from_tweet_id IS NOT NULL`. Backs the post-id leg of the re-import match, one lookup per detection during a backfill, scoped to the importer's own rows.
 - `ix_events_detected_thread_tweet_ids`: partial GIN index on `(detected_thread_tweet_ids) WHERE detected_thread_tweet_ids IS NOT NULL`. Backs the array-overlap leg of the re-import match, one lookup per detection during a backfill.
@@ -966,7 +966,7 @@ One row names one target, through `event_id` or `collection_id`. Two real foreig
 
 ### `follows`
 
-Directed follow edges between analysts. Drives the `following` scope of `GET /timeline` and the `followers_count`, `following_count`, and `is_following` fields on `GET /users/{username}`.
+Directed follow edges between analysts. Drives the `following` scope of `GET /feed` and the `followers_count`, `following_count`, and `is_following` fields on `GET /users/{username}`.
 
 | Column | Type | Constraints |
 |--------|------|-------------|

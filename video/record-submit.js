@@ -550,7 +550,7 @@ async function prepareRequestUpload(auth) {
   await wait(900); // expand animation + labels fade in
 
   // Requests (the board) then Search (the other lens on the catalogue).
-  // Timeline is not on the rail. A rail entry that goes away is a skipped
+  // Feed is not on the rail. A rail entry that goes away is a skipped
   // hover, not a failed take: `count()` first, because `boundingBox()` on
   // an absent locator burns the full timeout before it throws.
   console.log("→ sidebar tour (Requests → Search)");

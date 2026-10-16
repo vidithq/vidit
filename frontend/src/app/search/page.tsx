@@ -42,6 +42,7 @@ import {
   addedWindowActive,
   buildActiveFilterPills,
   buildDateWindowPills,
+  countActiveFilters,
   eventWindowActive,
   hasAnyFilter,
   type DateWindows,
@@ -49,22 +50,37 @@ import {
   type EventFilterSectionName,
   type EventFilterValues,
 } from "@/components/filters/EventFilterSections";
+import { FilterBar } from "@/components/filters/FilterBar";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 
 import { META_LINE, TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
-import { Pill } from "@/components/ui/Pill";
+import {
+  SegmentedControl,
+  type SegmentedControlOption,
+} from "@/components/ui/SegmentedControl";
 import { creditProps } from "@/lib/geolocatorCredit";
 import { memberCountLabel, organizationPath } from "@/lib/organizations";
 
+const ICON = { size: 13, strokeWidth: 1.8, className: "max-sm:hidden" } as const;
+
+function typeLabel(icon: ReactNode, label: string) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {icon}
+      {label}
+    </span>
+  );
+}
+
 // The type picker: the two event groups are one "Events" entry (the filters only apply to
 // events); results still render as two groups.
-const TYPE_FILTERS: { value: SearchType; label: string; icon?: ReactNode }[] = [
+const TYPE_OPTIONS: SegmentedControlOption<SearchType>[] = [
   { value: "all", label: "All" },
-  { value: "event", label: "Events", icon: <MapPin size={11} /> },
-  { value: "collection", label: "Collections", icon: <CollectionIcon size={11} /> },
-  { value: "user", label: "Analysts", icon: <Users size={11} /> },
-  { value: "organization", label: "Organizations", icon: <Building2 size={11} /> },
+  { value: "event", label: typeLabel(<MapPin {...ICON} />, "Events") },
+  { value: "collection", label: typeLabel(<CollectionIcon {...ICON} />, "Collections") },
+  { value: "user", label: typeLabel(<Users {...ICON} />, "Analysts") },
+  { value: "organization", label: typeLabel(<Building2 {...ICON} />, "Organizations") },
 ];
 
 // Types that scope to events (the legacy singletons stay valid in shared URLs).
@@ -77,6 +93,16 @@ const REQUEST_SECTIONS = ALL_FILTER_SECTIONS.filter((s) => s !== "status");
 // The backend narrows collections on `author` and empties the group on every other event
 // predicate, so that scope offers the Author section alone.
 const COLLECTION_SECTIONS: ReadonlyArray<EventFilterSectionName> = ["author"];
+
+interface SearchFilters {
+  values: EventFilterValues;
+  dates: DateWindows;
+}
+
+const EMPTY_SEARCH_FILTERS: SearchFilters = {
+  values: EMPTY_EVENT_FILTERS,
+  dates: EMPTY_DATE_WINDOWS,
+};
 
 // Debounce window: live-feeling, but not one request per keystroke.
 const DEBOUNCE_MS = 300;
@@ -172,6 +198,71 @@ function SearchPageBody() {
   // Monotonic request token: late responses apply only if still latest. Comparing
   // `response.query` alone missed the type-filter race (same `q`, different `type`).
   const latestRequestId = useRef<number>(0);
+
+  const applyFilters = (next: SearchFilters) => {
+    setValues(next.values);
+    setDates(next.dates);
+  };
+  // The date windows are event predicates, so they stay off the Collections scope.
+  const renderPanel = (
+    panel: SearchFilters,
+    setPanel: (next: SearchFilters) => void
+  ) =>
+    filterSections && (
+      <EventFilterSections
+        tags={tagsData ?? []}
+        conflicts={conflictsData ?? []}
+        values={panel.values}
+        onPatch={(patch) =>
+          setPanel({ ...panel, values: { ...panel.values, ...patch } })
+        }
+        sections={filterSections}
+        dateSections={
+          onEventScope
+            ? [
+                {
+                  title: "Event date",
+                  concept: "event_date",
+                  summary: rangeSummary(panel.dates.eventFrom, panel.dates.eventTo),
+                  active: eventWindowActive(panel.dates),
+                  children: (
+                    <DateRange
+                      label="Event date"
+                      from={panel.dates.eventFrom}
+                      to={panel.dates.eventTo}
+                      onChange={(from, to) =>
+                        setPanel({
+                          ...panel,
+                          dates: { ...panel.dates, eventFrom: from, eventTo: to },
+                        })
+                      }
+                    />
+                  ),
+                },
+                {
+                  title: "Added",
+                  concept: "added",
+                  summary: rangeSummary(panel.dates.addedFrom, panel.dates.addedTo),
+                  active: addedWindowActive(panel.dates),
+                  children: (
+                    <DateRange
+                      label="Added"
+                      from={panel.dates.addedFrom}
+                      to={panel.dates.addedTo}
+                      onChange={(from, to) =>
+                        setPanel({
+                          ...panel,
+                          dates: { ...panel.dates, addedFrom: from, addedTo: to },
+                        })
+                      }
+                    />
+                  ),
+                },
+              ]
+            : []
+        }
+      />
+    );
 
   // Debounced commit of inputs to the snapshot and URL via `replace`, so Back doesn't fill
   // with intermediate states.
@@ -289,7 +380,20 @@ function SearchPageBody() {
   };
 
   return (
-    <PageShell title="Search">
+    <PageShell
+      title="Search"
+      rail={renderPanel({ values, dates }, applyFilters)}
+      railLabel="Filters"
+      narrowRail="hidden"
+      controls={
+        <SegmentedControl
+          options={TYPE_OPTIONS}
+          value={onEventScope ? "event" : typeFilter}
+          onChange={onChipClick}
+          aria-label="Result type"
+        />
+      }
+    >
         <Input
           type="search"
           icon={<SearchIcon size={14} />}
@@ -300,65 +404,18 @@ function SearchPageBody() {
           className="bg-neutral-900 placeholder:text-neutral-500"
         />
 
-        <div className="flex flex-wrap items-center gap-1.5">
-          {TYPE_FILTERS.map((opt) => (
-            <Pill
-              key={opt.value}
-              tone={
-                typeFilter === opt.value || (opt.value === "event" && onEventScope)
-                  ? "accent"
-                  : "neutral"
-              }
-              icon={opt.icon}
-              onClick={() => onChipClick(opt.value)}
-            >
-              {opt.label}
-            </Pill>
-          ))}
-        </div>
-
-        <ActiveFilterPills filters={activeFilters} onClearAll={clearFilters} />
-
-        {/* The panel shows directly when the scope has filters (sections collapse individually).
-            Date windows are event predicates, so they stay off the Collections scope. */}
-        {filterSections && (
-          <EventFilterSections
-            tags={tagsData ?? []}
-            conflicts={conflictsData ?? []}
-            values={values}
-            onPatch={onPatch}
-            sections={filterSections}
-            dateSections={onEventScope ? [
-              {
-                title: "Event date",
-                concept: "event_date",
-                summary: rangeSummary(dates.eventFrom, dates.eventTo),
-                active: eventWindowActive(dates),
-                children: (
-                  <DateRange
-                    label="Event date"
-                    from={dates.eventFrom}
-                    to={dates.eventTo}
-                    onChange={(from, to) => setDates((d) => ({ ...d, eventFrom: from, eventTo: to }))}
-                  />
-                ),
-              },
-              {
-                title: "Added",
-                concept: "added",
-                summary: rangeSummary(dates.addedFrom, dates.addedTo),
-                active: addedWindowActive(dates),
-                children: (
-                  <DateRange
-                    label="Added"
-                    from={dates.addedFrom}
-                    to={dates.addedTo}
-                    onChange={(from, to) => setDates((d) => ({ ...d, addedFrom: from, addedTo: to }))}
-                  />
-                ),
-              },
-            ] : []}
+        {filterSections ? (
+          <FilterBar
+            value={{ values, dates }}
+            empty={EMPTY_SEARCH_FILTERS}
+            count={countActiveFilters(values, dates)}
+            pills={activeFilters}
+            onClearAll={clearFilters}
+            onApply={applyFilters}
+            renderPanel={renderPanel}
           />
+        ) : (
+          <ActiveFilterPills filters={activeFilters} onClearAll={clearFilters} />
         )}
 
         {(activeQuery.trim() || hasActiveFilters) && (

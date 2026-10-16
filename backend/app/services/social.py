@@ -7,7 +7,7 @@ from sqlalchemy import Row, Select, and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased, joinedload, selectinload
 
-from app.models.event import Event, timeline_at
+from app.models.event import Event, feed_at
 from app.models.follow import Follow
 from app.models.user import User
 from app.services import notifications
@@ -15,13 +15,15 @@ from app.services.event_filters import (
     open_requests,
     published_credited_to,
     published_events,
+    taxonomy_predicates,
     visible_events,
 )
 from app.services.geolocator_credit import CREDIT_LOAD
 from app.services.pagination import keyset_before, take_page
 from app.services.thumbnails import thumbnail_media_criteria
 
-TimelineScope = Literal["following", "all"]
+FeedScope = Literal["following", "all"]
+FeedKind = Literal["geolocation", "request"]
 
 
 def follow_user(db: Session, *, follower_id: uuid.UUID, followed_user: User) -> bool:
@@ -92,42 +94,54 @@ def mutual_follow_ids(user_id: uuid.UUID) -> Select[tuple[uuid.UUID]]:
     )
 
 
-def get_timeline(
+def get_feed(
     db: Session,
     *,
     user_id: uuid.UUID,
-    scope: TimelineScope,
+    scope: FeedScope,
     size: int,
     cursor: tuple[datetime, uuid.UUID] | None = None,
+    kind: list[FeedKind] | None = None,
+    conflict: list[str] | None = None,
+    capture_source: list[str] | None = None,
+    tag: list[str] | None = None,
 ) -> tuple[list[Row[tuple[Event, float | None, float | None, datetime]]], bool]:
-    """One page of the timeline, newest first, and whether a next page holds a row.
+    """One page of the feed, newest first, and whether a next page holds a row.
 
-    The timeline carries two kinds of row, both credited to ``owner``: a geolocation an analyst
+    The feed carries two kinds of row, both credited to ``owner``: a geolocation an analyst
     published (:func:`services.event_filters.published_events`) and a request an analyst has
     open (:func:`services.event_filters.open_requests`). An open request's owner is its
     requester: ownership moves only when a request is geolocated. ``scope="following"`` keeps
     the rows owned by an analyst ``user_id`` follows; ``"all"`` keeps every row.
 
-    Rows are ``(event, lat, lng, timeline_at)`` ordered by ``timeline_at DESC, id DESC``
-    (:func:`models.event.timeline_at`), a total order over both kinds, so a keyset walk
+    ``kind`` keeps the named kinds (both when empty). ``conflict``, ``capture_source`` and ``tag``
+    narrow through :func:`services.event_filters.taxonomy_predicates`, as on ``GET /events``.
+
+    Rows are ``(event, lat, lng, feed_at)`` ordered by ``feed_at DESC, id DESC``
+    (:func:`models.event.feed_at`), a total order over both kinds, so a keyset walk
     neither repeats nor skips a row.
     """
+    kinds = set(kind or ("geolocation", "request"))
+    legs = []
     if scope == "following":
         followed = select(Follow.followed_id).where(Follow.follower_id == user_id)
-        rows = or_(
-            published_credited_to(followed),
-            and_(open_requests(), Event.owner_id.in_(followed)),
-        )
+        if "geolocation" in kinds:
+            legs.append(published_credited_to(followed))
+        if "request" in kinds:
+            legs.append(and_(open_requests(), Event.owner_id.in_(followed)))
     else:
-        rows = or_(published_events(), open_requests())
+        if "geolocation" in kinds:
+            legs.append(published_events())
+        if "request" in kinds:
+            legs.append(open_requests())
 
-    key = timeline_at()
+    key = feed_at()
     query = (
         db.query(
             Event,
             ST_Y(Event.event_coords).label("lat"),
             ST_X(Event.event_coords).label("lng"),
-            key.label("timeline_at"),
+            key.label("feed_at"),
         )
         # Loader choice: see ``list_detections`` in ``routers/events/read.py``.
         .options(
@@ -137,7 +151,11 @@ def get_timeline(
             selectinload(Event.media.and_(thumbnail_media_criteria())),
             CREDIT_LOAD,
         )
-        .filter(*visible_events(), rows)
+        .filter(
+            *visible_events(),
+            or_(*legs),
+            *taxonomy_predicates(conflict=conflict, capture_source=capture_source, tag=tag),
+        )
     )
     if cursor is not None:
         query = query.filter(keyset_before(key, Event.id, cursor))

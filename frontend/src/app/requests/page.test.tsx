@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
@@ -78,6 +78,7 @@ describe("RequestsPage", () => {
     expect(screen.getByRole("button", { name: "Capture source" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Location guess" })).toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole("button", { name: "Capture source" }));
     fireEvent.click(screen.getByRole("button", { name: "Drone" }));
 
     await waitFor(() => expect(lastQuery().getAll("capture_source")).toEqual(["Drone"]));
@@ -128,5 +129,27 @@ describe("RequestsPage", () => {
     expect(await screen.findByText("Open 3 days")).toBeInTheDocument();
     expect(screen.getByText("Open today")).toBeInTheDocument();
     expect(screen.getAllByText(/^Open /)).toHaveLength(2);
+  });
+
+  it("holds the panel in the Filters rail and applies the dialog's draft on Apply", async () => {
+    render(<RequestsPage />);
+    await screen.findByText(REQUEST.title);
+    expect(screen.getByRole("complementary", { name: "Filters" })).toContainElement(
+      screen.getByRole("button", { name: "Toggle Conflict" })
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    const dialog = screen.getByRole("dialog", { name: "Filters" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Toggle Conflict" }));
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Russian invasion of Ukraine" })
+    );
+    expect(lastQuery().has("conflict")).toBe(false);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply" }));
+    await waitFor(() =>
+      expect(lastQuery().getAll("conflict")).toEqual(["Russian invasion of Ukraine"])
+    );
+    expect(screen.getByRole("button", { name: "Filters (1)" })).toBeInTheDocument();
   });
 });

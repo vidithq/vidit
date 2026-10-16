@@ -708,7 +708,11 @@ def test_deleting_an_organization_removes_everything_in_its_name(
     [row] = [n for n in _feed(author) if n["kind"] == "organization_approval_removed"][:1]
     assert row["organization_name"] == name
 
-    audit = db.query(AdminEvent).filter_by(action="organization_deleted").one()
+    [audit] = [
+        event
+        for event in db.query(AdminEvent).filter_by(action="organization_deleted").all()
+        if event.target and event.target.get("slug") == slug
+    ]
     assert (audit.actor_id, audit.target["slug"], audit.target["approvals_removed"]) == (
         admin_user.id,
         slug,

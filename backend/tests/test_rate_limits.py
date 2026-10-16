@@ -248,7 +248,7 @@ _QUOTA_ROUTES = [
     "/api/v1/organizations/{slug}/approvals",
     "/api/v1/collections/{collection_id}",
     "/api/v1/collections/{collection_id}/events",
-    "/api/v1/timeline",
+    "/api/v1/feed",
 ]
 
 
@@ -480,7 +480,7 @@ _DOCUMENTED_LIMITS = [
         "get", "/api/v1/events/possible-duplicates", 60, "user", {"params": {"lat": 0, "lng": 0}}
     ),
     _Case("get", f"/api/v1/events/import-archive/{_MISSING_ID}", 60),
-    _Case("get", "/api/v1/timeline", 120),
+    _Case("get", "/api/v1/feed", 120),
     _Case(
         "post",
         "/api/v1/events/import-from-tweet",
