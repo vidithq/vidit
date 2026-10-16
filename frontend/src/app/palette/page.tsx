@@ -10,6 +10,7 @@ import {
   Bot,
   Camera,
   Check,
+  ChevronDown,
   Circle,
   Copy,
   Download,
@@ -512,25 +513,30 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<ActionMenu>" usage="A trigger that opens a short list of actions (role=menu): the event header's More menu (Version history, Geolocators, Add to collection, Close, Report) and the Share fallback (Copy link, Share on X) where the browser has no share sheet. The trigger is the ghost button, icon-only with label as its aria-label and title, or icon plus printed label with showLabel. Items are buttons (onSelect) or links (href), with an icon, the accent tone or tone=danger for the report, and active for an item whose panel is open (the active-row paint plus aria-expanded). A click or Enter opens on the first item, ArrowUp on the trigger opens on the last; arrows, Home and End move, Space or Enter activates, Escape closes and returns focus to the trigger, Tab or an outside click closes. `note` prints a line above the items (a detected row's share caveat). The list opens under the trigger aligned to its right edge and shifts sideways to stay 8px inside the viewport.">
+          <Item name="<ActionMenu>" usage="A trigger that opens a short list of actions (role=menu): the event header's version selector (v2 with a chevron: every version newest first, then Full history), its Share fallback (Copy link, Share on X) where the browser has no share sheet, and its More menu (Geolocators, Add to collection, Close, Report). The trigger is the ghost button, label as its aria-label and title: icon-only by default, or `text` printed before the icon, in which case label starts with that text. menuLabel names the list when it differs from the trigger. Items are buttons (onSelect) or links (href), with an icon, the accent tone or tone=danger for the report, a muted `meta` word after the label (Current), `active` for an item whose panel is open (the active-row paint plus aria-expanded), and `current` for the link to the page on screen (the same paint plus aria-current, focused when the menu opens). A click or Enter opens on the first item (or the current one), ArrowUp on the trigger opens on the last; arrows, Home and End move, Space or Enter activates, Escape closes and returns focus to the trigger, Tab or an outside click closes. `note` prints a line above the items (a detected row's share caveat). The list opens under the trigger aligned to its right edge, shifts sideways to stay 8px inside the viewport, and scrolls past 20rem.">
             <Variant label="icon trigger">
               <ActionMenu
                 label="More actions"
                 icon={<Ellipsis size={14} />}
                 items={[
-                  { key: "history", label: "Version history", icon: <History size={14} />, href: "/palette" },
                   { key: "copy", label: "Copy link", icon: <Copy size={14} />, active: true },
                   { key: "report", label: "Report", icon: <Flag size={14} />, tone: "danger" },
                 ]}
+                note="Detected and may still change."
               />
             </Variant>
-            <Variant label="printed label, with a note">
+            <Variant label="printed text (the version selector)">
               <ActionMenu
-                label="Share"
-                showLabel
-                icon={<ExternalLink size={14} />}
-                note="Detected and may still change."
-                items={[{ key: "copy", label: "Copy link", icon: <Copy size={14} /> }]}
+                label="v2: choose a version"
+                text="v2"
+                icon={<ChevronDown size={14} />}
+                menuLabel="Versions"
+                items={[
+                  { key: "v3", label: "Version 3", meta: "Current", href: "/palette" },
+                  { key: "v2", label: "Version 2", href: "/palette", current: true },
+                  { key: "v1", label: "Version 1", href: "/palette" },
+                  { key: "history", label: "Full history", icon: <History size={14} />, href: "/palette" },
+                ]}
               />
             </Variant>
           </Item>
@@ -886,7 +892,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<AvatarStack>" usage="The approval stamps in the event page's Verification card: an overlapping row of 28px pictures, oldest first. An organization (variant=organization) takes the rounded square, an analyst the circle; each picture is a button with its own accessible name (label, such as Approved by maya). Hover or focus opens the item's renderCard in a TOOLTIP_SURFACE card (usePinnedPopover); a click or a tap pins it and moves focus to its first link. Escape, or tabbing past either end of the card, closes it and returns focus to the row; the card holds while focus is inside it. The card carries the way on (the event page's card: picture, name, Version N · date, the note, on behalf of an organization, View profile or View organization). At most max (5 by default) show; the rest fold into a +N bubble, a button when onOverflow is set (the Verification card expands its full approval list) and plain text otherwise. Renders nothing for an empty list.">
+          <Item name="<AvatarStack>" usage="The approval stamps in the event page's Approvals card: an overlapping row of 28px pictures, oldest first. An organization (variant=organization) takes the rounded square, an analyst the circle; each picture is a button with its own accessible name (label, such as Approved by maya). Hover or focus opens the item's renderCard in a TOOLTIP_SURFACE card (usePinnedPopover); a click or a tap pins it and moves focus to its first link. Escape, or tabbing past either end of the card, closes it and returns focus to the row; the card holds while focus is inside it. The card carries the way on (the event page's card: picture, name, Version N · date, the note, on behalf of an organization, View profile or View organization). At most max (5 by default) show; the rest fold into a +N bubble, a button when onOverflow is set (the Approvals card expands its full approval list) and plain text otherwise. Renders nothing for an empty list.">
             <Variant label="analysts and an organization, max=3 with onOverflow (+N opens the panel)">
               <AvatarStack
                 label="Approved by"

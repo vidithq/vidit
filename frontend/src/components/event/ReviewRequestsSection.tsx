@@ -30,7 +30,7 @@ import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 /**
  * The target's answer to an open review request outside the approve form: Decline. The
  * notification row, the event page and the organization page render it; approving happens in
- * the event page's Verification card, after reading the event.
+ * the event page's Approvals card, after reading the event.
  */
 export function ReviewRequestDecline({
   eventId,
@@ -105,7 +105,15 @@ function targetOptions(targets: ReviewRequestTargets | null): TargetOption[] {
 
 /** The geolocator's picker: analysts who follow the reader, organizations an org manager of which
  *  follows them, and an exact username or slug, whose request may still be refused. */
-function RequestReviewForm({ eventId, onSent }: { eventId: string; onSent: () => void }) {
+function RequestReviewForm({
+  eventId,
+  onSent,
+  onCancel,
+}: {
+  eventId: string;
+  onSent: () => void;
+  onCancel: () => void;
+}) {
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [selected, setSelected] = useState<TargetOption | null>(null);
@@ -138,6 +146,7 @@ function RequestReviewForm({ eventId, onSent }: { eventId: string; onSent: () =>
         }}
         placeholder="Search analysts and organizations"
         autoComplete="off"
+        autoFocus
       />
       {options.length > 0 ? (
         <div className="flex flex-wrap gap-1.5">
@@ -160,12 +169,17 @@ function RequestReviewForm({ eventId, onSent }: { eventId: string; onSent: () =>
           </p>
         )
       )}
-      <Button
-        onClick={() => selected && void send.run(selected.target)}
-        disabled={send.loading || !selected}
-      >
-        {selected ? `Ask ${selected.label}` : "Ask for a review"}
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          onClick={() => selected && void send.run(selected.target)}
+          disabled={send.loading || !selected}
+        >
+          {selected ? `Ask ${selected.label}` : "Ask for a review"}
+        </Button>
+        <Button variant="ghost" onClick={onCancel} disabled={send.loading}>
+          Cancel
+        </Button>
+      </div>
       {(send.error || targets.error) && (
         <div className={FORM_ERROR_BANNER} role="alert">
           {send.error ?? targets.error}
@@ -176,10 +190,10 @@ function RequestReviewForm({ eventId, onSent }: { eventId: string; onSent: () =>
 }
 
 /**
- * Review requests on a published event, the last section of its Verification card. A geolocator
+ * Review requests on a published event, the last section of its Approvals card. A geolocator
  * sees the open requests and asks an analyst or an organization to review the live version; an
  * analyst asked, or an org manager of an organization asked, sees the request and can decline it,
- * or approve with the form above it. `refreshKey` changes when an approval may have resolved a
+ * or approve with **Approve** above it. `refreshKey` changes when an approval may have resolved a
  * request.
  */
 export function ReviewRequestsSection({
@@ -236,11 +250,20 @@ export function ReviewRequestsSection({
             requests.data && <p className="text-sm text-neutral-500">No open requests.</p>
           )}
           {asking ? (
-            <RequestReviewForm eventId={event.id} onSent={refetch} />
+            <RequestReviewForm
+              eventId={event.id}
+              onSent={() => {
+                setAsking(false);
+                refetch();
+              }}
+              onCancel={() => setAsking(false)}
+            />
           ) : (
-            <Button variant="secondary" onClick={() => setAsking(true)}>
-              Request a review
-            </Button>
+            <div>
+              <Button variant="secondary" onClick={() => setAsking(true)}>
+                Request a review
+              </Button>
+            </div>
           )}
         </>
       )}

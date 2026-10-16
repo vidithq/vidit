@@ -109,9 +109,30 @@ describe("<ActionMenu>", () => {
     expect(screen.getByRole("menuitem", { name: "Report" })).not.toHaveAttribute("aria-expanded");
   });
 
-  it("names the trigger by its printed label with showLabel", () => {
-    render(<ActionMenu label="Share" showLabel icon={<span aria-hidden>↗</span>} items={[]} />);
-    const trigger = screen.getByRole("button", { name: "Share" });
-    expect(trigger).not.toHaveAttribute("aria-label");
+  it("prints text on the trigger, names the list apart, and opens on the current item", () => {
+    render(
+      <ActionMenu
+        label="v2: choose a version"
+        text="v2"
+        icon={<span aria-hidden>▾</span>}
+        menuLabel="Versions"
+        items={[
+          { key: "v3", label: "Version 3", meta: "Current", href: "/events/e1" },
+          { key: "v2", label: "Version 2", href: "/events/e1/v2", current: true },
+          { key: "v1", label: "Version 1", href: "/events/e1/v1" },
+        ]}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: "v2: choose a version" });
+    expect(trigger).toHaveTextContent("v2");
+    fireEvent.click(trigger);
+
+    expect(screen.getByRole("menu", { name: "Versions" })).toBeInTheDocument();
+    const current = screen.getByRole("menuitem", { name: "Version 2" });
+    expect(current).toHaveAttribute("aria-current", "page");
+    expect(current).toHaveFocus();
+    expect(screen.getByRole("menuitem", { name: "Version 3 Current" })).not.toHaveAttribute(
+      "aria-current",
+    );
   });
 });

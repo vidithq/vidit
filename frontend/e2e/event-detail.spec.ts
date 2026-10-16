@@ -19,7 +19,7 @@ async function withoutWebShare(page: Page): Promise<void> {
 }
 
 test.describe("shared event link", () => {
-  test("holds Share and More in the header on a narrow column", async ({ page }) => {
+  test("holds the version, Share and More in the header on a narrow column", async ({ page }) => {
     await withoutWebShare(page);
     await mockApi(page);
     await page.goto(`/events/${EVENT_ID}`);
@@ -32,7 +32,13 @@ test.describe("shared event link", () => {
 
     // A signed-out reader has no primary action, and the stamps left the header.
     await expect(page.getByRole("link", { name: /^Edit/ })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /^Approve version/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Approve\b/ })).toHaveCount(0);
+
+    // The version selector names the version on screen and lists the versions plus the history.
+    await page.getByRole("button", { name: "v1: choose a version" }).click();
+    await expect(page.getByRole("menuitem")).toHaveText(["Version 1 Current", "Full history"]);
+    await expectControlInsideViewport(page, page.getByRole("menuitem", { name: "Full history" }));
+    await page.keyboard.press("Escape");
 
     await share.click();
     await expectControlInsideViewport(page, page.getByRole("menuitem", { name: "Share on X" }));
@@ -41,17 +47,17 @@ test.describe("shared event link", () => {
     await expect(page.getByRole("menu")).toHaveCount(0);
 
     await page.getByRole("button", { name: "More actions" }).click();
-    await expect(page.getByRole("menuitem")).toHaveText(["Version history", "Report"]);
+    await expect(page.getByRole("menuitem")).toHaveText(["Report"]);
     await expectNarrowViewportLayout(page, page.getByRole("menuitem", { name: "Report" }));
     await page.getByRole("menuitem", { name: "Report" }).click();
     await expectNarrowViewportLayout(page, page.getByRole("button", { name: "Send report" }));
   });
 
-  test("stacks the Verification card under the title, before the media", async ({ page }) => {
+  test("stacks the Approvals card under the title, before the media", async ({ page }) => {
     await mockApi(page);
     await page.goto(`/events/${EVENT_ID}`);
 
-    const card = page.getByRole("region", { name: "Verification" });
+    const card = page.getByRole("region", { name: "Approvals" });
     await expect(card.getByText(`Approved · ${EVENT_APPROVALS.length} · version 1`)).toBeVisible();
     const cardBox = await card.boundingBox();
     const mediaBox = await page.getByRole("heading", { name: "Source media" }).boundingBox();

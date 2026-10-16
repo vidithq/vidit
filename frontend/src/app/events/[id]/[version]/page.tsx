@@ -10,14 +10,15 @@ import { skipBackRecord } from "@/lib/navigation";
 import { VersionApprovals } from "@/components/event/Approvals";
 import { EventPageBody } from "@/components/event/EventPageBody";
 import { EventVersionBanner } from "@/components/event/EventVersionBanner";
+import { VersionSelector } from "@/components/event/VersionSelector";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
-import { Pill } from "@/components/ui/Pill";
 
 /**
  * One filed version at `/events/{id}/vN`: the canonical body fed the version's
- * snapshot, read-only, with no action cluster (those act on the record). Three
+ * snapshot, read-only. The header carries the version selector and no action
+ * (those act on the record). Three
  * reads: the event, the version, and the version below (it holds the edit's
  * byline and date).
  */
@@ -65,13 +66,9 @@ export default function EventVersionPage() {
     <PageShell
       back
       title={version.view?.title ?? geo.title}
-      subtitle={
-        <span className="flex flex-wrap items-center gap-2">
-          <AuthorByline author={geo.owner} avatar />
-          <Pill tone="neutral" title={`Version ${number}`}>
-            v{number}
-          </Pill>
-        </span>
+      subtitle={<AuthorByline author={geo.owner} avatar />}
+      actions={
+        <VersionSelector eventId={geo.id} liveVersion={geo.version_no} selected={number} />
       }
     >
       <EventVersionBanner eventId={geo.id} version={version} total={geo.version_no} />

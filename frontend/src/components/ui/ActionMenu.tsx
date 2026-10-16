@@ -25,6 +25,10 @@ export interface ActionMenuItem {
   tone?: "accent" | "danger";
   /** The item's panel is open: the item wears the active-row paint and says so. */
   active?: boolean;
+  /** A link to the page on screen (`aria-current`), which the menu focuses when it opens. */
+  current?: boolean;
+  /** A muted word after the label, such as *Current*. */
+  meta?: string;
 }
 
 const ITEM =
@@ -44,19 +48,23 @@ function itemNodes(menu: HTMLElement): HTMLElement[] {
  * A trigger button that opens a short list of actions (`role="menu"`). Arrow keys, Home and End
  * move between items; Escape closes and returns focus to the trigger; Tab or an outside click
  * closes. The menu opens under the trigger, aligned to its right edge, and shifts sideways when
- * that would cross the viewport.
+ * that would cross the viewport. A long list scrolls inside the menu.
  */
 export function ActionMenu({
   label,
   icon,
-  showLabel = false,
+  text,
+  menuLabel = label,
   items,
   note,
 }: {
-  /** The trigger's name: printed beside the icon with `showLabel`, its `aria-label` otherwise. */
+  /** The trigger's accessible name and tooltip. With `text`, it starts with that text. */
   label: string;
   icon: ReactNode;
-  showLabel?: boolean;
+  /** Printed on the trigger before the icon (the version selector's *v2*); icon-only when unset. */
+  text?: string;
+  /** The list's accessible name; the trigger's when unset. */
+  menuLabel?: string;
   items: ActionMenuItem[];
   /** A line above the items, read before acting on any of them. */
   note?: ReactNode;
@@ -87,7 +95,8 @@ export function ActionMenu({
     const shift = Math.max(EDGE_PX, Math.min(left, room)) - left;
     if (shift !== 0) menu.style.right = `${-shift}px`;
     const nodes = itemNodes(menu);
-    (focusOnOpen.current === "last" ? nodes[nodes.length - 1] : nodes[0])?.focus();
+    const current = nodes.find((node) => node.hasAttribute("aria-current"));
+    (focusOnOpen.current === "last" ? nodes[nodes.length - 1] : (current ?? nodes[0]))?.focus();
   }, [open]);
 
   useEffect(() => {
@@ -140,10 +149,10 @@ export function ActionMenu({
     <div ref={wrapperRef} className="relative inline-flex">
       <Button
         ref={triggerRef}
-        icon={!showLabel}
+        icon={!text}
         variant="ghost"
-        aria-label={showLabel ? undefined : label}
-        title={showLabel ? undefined : label}
+        aria-label={label}
+        title={label}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
@@ -151,28 +160,39 @@ export function ActionMenu({
         onKeyDown={onTriggerKeyDown}
         className={open ? ACCENT_SURFACE : ""}
       >
+        {text}
         {icon}
-        {showLabel && label}
       </Button>
       {open && (
         <div
           ref={menuRef}
           id={menuId}
           role="menu"
-          aria-label={label}
+          aria-label={menuLabel}
           onKeyDown={onMenuKeyDown}
           className={cn(
-            "absolute right-0 top-full z-50 mt-1 w-56 max-w-[calc(100vw-2rem)] space-y-0.5 rounded-md p-1",
+            "absolute right-0 top-full z-50 mt-1 max-h-80 w-56 max-w-[calc(100vw-2rem)] space-y-0.5 overflow-y-auto rounded-md p-1",
             TOOLTIP_SURFACE,
           )}
         >
           {note && <p className="px-2.5 py-1.5 text-[11px] text-neutral-400">{note}</p>}
           {items.map((item) => {
-            const className = cn(ITEM, ITEM_TONE[item.tone ?? "accent"], item.active && ACCENT_SURFACE);
+            const className = cn(
+              ITEM,
+              ITEM_TONE[item.tone ?? "accent"],
+              (item.active || item.current) && ACCENT_SURFACE,
+            );
             const content = (
               <>
                 {item.icon}
                 {item.label}
+                {/* The space keeps the accessible name two words ("Version 3 Current"). */}
+                {item.meta && " "}
+                {item.meta && (
+                  <span className="ml-auto text-[11px] font-normal text-neutral-500">
+                    {item.meta}
+                  </span>
+                )}
               </>
             );
             return item.href ? (
@@ -181,6 +201,7 @@ export function ActionMenu({
                 href={item.href}
                 role="menuitem"
                 tabIndex={-1}
+                aria-current={item.current ? "page" : undefined}
                 className={className}
                 onClick={() => close(false)}
               >

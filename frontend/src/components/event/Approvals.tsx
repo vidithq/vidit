@@ -237,8 +237,7 @@ export function ApprovalStamps({
 }
 
 const REVOKE_FIELD_ID = "approval-revoke-reason";
-/** The approve form's note field, which the event header's approve button focuses. */
-export const APPROVAL_NOTE_FIELD_ID = "approval-note";
+const NOTE_FIELD_ID = "approval-note";
 
 interface ApprovalGroup {
   key: string;
@@ -362,18 +361,21 @@ function ApprovalGroups({
  * The approve control of the live version: an optional note, **Approve version N** for an analyst
  * outside the event's geolocators who has not reviewed it, and one **Approve as <organization>**
  * per organization the reader manages whose approval of it does not stand. Above it, what
- * changed since the latest earlier version the reader approved.
+ * changed since the latest earlier version the reader approved. It opens from **Approve** and
+ * takes focus on its note; **Cancel** closes it.
  */
 export function ApproveForm({
   event,
   approvals,
   managed,
   onApproved,
+  onCancel,
 }: {
   event: EventDetail;
   approvals: ApprovalList;
   managed: OrganizationRef[];
   onApproved: () => void;
+  onCancel: () => void;
 }) {
   const { user } = useAuth();
   const [note, setNote] = useState("");
@@ -413,11 +415,12 @@ export function ApproveForm({
       {approvedVersion !== null && (
         <ChangesSinceApproval eventId={event.id} event={event} approvedVersion={approvedVersion} />
       )}
-      <label htmlFor={APPROVAL_NOTE_FIELD_ID} className={FORM_LABEL}>
+      <label htmlFor={NOTE_FIELD_ID} className={FORM_LABEL}>
         Note (optional)
       </label>
       <Textarea
-        id={APPROVAL_NOTE_FIELD_ID}
+        id={NOTE_FIELD_ID}
+        autoFocus
         rows={2}
         maxLength={APPROVAL_NOTE_MAX_LEN}
         value={note}
@@ -439,6 +442,9 @@ export function ApproveForm({
             Approve as {organization.name}
           </Button>
         ))}
+        <Button variant="ghost" onClick={onCancel} disabled={approve.loading}>
+          Cancel
+        </Button>
       </div>
       <p className="text-xs text-neutral-500">
         An approval covers this version only. A new version asks you, or the
@@ -453,7 +459,7 @@ export function ApproveForm({
   );
 }
 
-/** The approvals of an event sorted the way the Verification card reads them. A closed event
+/** The approvals of an event sorted the way the Approvals card reads them. A closed event
  *  keeps its approvals readable, none of them current (the server's `current`). */
 export function approvalTally(event: EventDetail, rows: Approval[]) {
   return {

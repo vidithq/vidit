@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Check, ChevronDown, ChevronUp, Stamp } from "lucide-react";
+import { Check, ChevronDown, ChevronUp } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useManagedOrganizations } from "@/hooks/useManagedOrganizations";
 import type { ApiResource } from "@/hooks/useApiResource";
-import { approveLabel, approveOptions, type Approval, type ApprovalList } from "@/lib/approvals";
+import { approveOptions, type Approval, type ApprovalList } from "@/lib/approvals";
+import type { OrganizationRef } from "@/lib/organizations";
 import type { EventDetail } from "@/types";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button } from "@/components/ui/Button";
@@ -15,7 +16,6 @@ import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import {
-  APPROVAL_NOTE_FIELD_ID,
   ApprovalHistory,
   ApprovalStamps,
   ApproveForm,
@@ -26,30 +26,6 @@ import { ReviewRequestsSection } from "@/components/event/ReviewRequestsSection"
 
 const HISTORY_ID = "approval-history";
 
-/**
- * The event header's primary control for a reader who may approve the live version: it moves
- * focus to the approve form's note in the Verification card, so the reader approves after
- * reading, beside the other approvals.
- */
-export function ApproveShortcut({
-  event,
-  approvals,
-}: {
-  event: EventDetail;
-  approvals: ApprovalList;
-}) {
-  const { user } = useAuth();
-  const managed = useManagedOrganizations();
-  const { eligible, organizations } = approveOptions(event, approvals, managed, user?.id);
-  if (!eligible && organizations.length === 0) return null;
-  return (
-    <Button onClick={() => document.getElementById(APPROVAL_NOTE_FIELD_ID)?.focus()}>
-      <Stamp size={14} />
-      {approveLabel(event.version_no)}
-    </Button>
-  );
-}
-
 /** The current approval with a note placed last, or null. */
 function latestNote(current: Approval[]): Approval | null {
   return (
@@ -59,12 +35,49 @@ function latestNote(current: Approval[]): Approval | null {
   );
 }
 
+/** **Approve** for a reader who may approve the live version, expanding the approve form in
+ *  place; **Cancel** collapses it again. */
+function ApproveAction({
+  event,
+  approvals,
+  managed,
+  onApproved,
+}: {
+  event: EventDetail;
+  approvals: ApprovalList;
+  managed: OrganizationRef[];
+  onApproved: () => void;
+}) {
+  const { user } = useAuth();
+  const [open, setOpen] = useState(false);
+  const { eligible, organizations } = approveOptions(event, approvals, managed, user?.id);
+  if (!eligible && organizations.length === 0) return null;
+  if (!open) {
+    return (
+      <div>
+        <Button variant="secondary" onClick={() => setOpen(true)}>
+          Approve
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <ApproveForm
+      event={event}
+      approvals={approvals}
+      managed={managed}
+      onApproved={onApproved}
+      onCancel={() => setOpen(false)}
+    />
+  );
+}
+
 /**
- * The published event's Verification card: whether the live version stands approved, its
- * current approvals as stamps, the latest note, the outdated and revoked approvals behind one
- * line, the approve form for a reader who may approve, and the review requests.
+ * The published event's Approvals card: whether the live version stands approved, its current
+ * approvals as stamps, the latest note, the outdated and revoked approvals behind one line,
+ * **Approve** for a reader who may approve, and the review requests.
  */
-export function VerificationCard({
+export function ApprovalsCard({
   event,
   approvals,
 }: {
@@ -88,9 +101,9 @@ export function VerificationCard({
   ].filter(Boolean);
 
   return (
-    <section aria-label="Verification">
+    <section aria-label="Approvals">
       <Card>
-        <SectionEyebrow title="Verification" margin="none" />
+        <SectionEyebrow title="Approvals" margin="none" />
         {approvals.data && (
           <div className="space-y-3">
             {current.length > 0 ? (
@@ -137,7 +150,7 @@ export function VerificationCard({
                 />
               </div>
             )}
-            <ApproveForm
+            <ApproveAction
               event={event}
               approvals={approvals.data}
               managed={managed}

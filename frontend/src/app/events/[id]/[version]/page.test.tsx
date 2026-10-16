@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { EventDetail, EventVersion } from "@/types";
@@ -133,6 +133,17 @@ describe("EventVersionPage", () => {
     );
     // The snapshot's coordinates, not the live row's.
     expect(screen.getByText(/49\.5/)).toBeTruthy();
+  });
+
+  it("shows the version on screen as selected in the header's version selector", () => {
+    render(<EventVersionPage />);
+    fireEvent.click(screen.getByRole("button", { name: "v2: choose a version" }));
+    const current = screen.getByRole("menuitem", { name: "Version 2" });
+    expect(current.getAttribute("aria-current")).toBe("page");
+    expect(current.getAttribute("href")).toBe("/events/e1/v2");
+    expect(screen.getByRole("menuitem", { name: "Version 3 Current" }).getAttribute("href")).toBe(
+      "/events/e1"
+    );
   });
 
   it("says version 1 was published rather than edited", () => {

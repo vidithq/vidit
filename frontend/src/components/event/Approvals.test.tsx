@@ -27,7 +27,7 @@ vi.mock("@/hooks/useAdmin", () => ({
 }));
 
 import { ApprovalStamps, VersionApprovals } from "./Approvals";
-import { VerificationCard } from "./Verification";
+import { ApprovalsCard } from "./ApprovalsCard";
 
 const ANA = { id: "u1", username: "ana" };
 const BO = { id: "u2", username: "bo" };
@@ -68,7 +68,7 @@ function serve(rows: Approval[], extra: Record<string, unknown> = {}) {
 
 function Panel({ geo = event }: { geo?: EventDetail }) {
   const approvals = useApiResource<ApprovalList>(allApprovalsPath(geo.id));
-  return <VerificationCard event={geo} approvals={approvals} />;
+  return <ApprovalsCard event={geo} approvals={approvals} />;
 }
 
 /** Opens the outdated and revoked approvals under the stamps; resolves once they show. */
@@ -76,6 +76,11 @@ async function expandHistory() {
   fireEvent.click(
     await screen.findByRole("button", { name: /All approvals|outdated|revoked|stood at closing/ }),
   );
+}
+
+/** Expands the approve form from the card's compact **Approve**. */
+async function openApproveForm() {
+  fireEvent.click(await screen.findByRole("button", { name: "Approve" }));
 }
 
 /** How many times the card read the approval list. */
@@ -197,7 +202,7 @@ describe("<ApprovalStamps>", () => {
   });
 });
 
-describe("<VerificationCard>", () => {
+describe("<ApprovalsCard>", () => {
   it("says the live version stands approved, with the count and the version", async () => {
     serve([approval(), approval({ id: "a2", reviewer: CY })]);
     render(<Panel />);
@@ -234,6 +239,9 @@ describe("<VerificationCard>", () => {
     render(<Panel />);
 
     expect(await screen.findByText("Not approved yet")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Note (optional)")).toBeNull();
+    await openApproveForm();
+    expect(screen.getByLabelText("Note (optional)")).toHaveFocus();
     fireEvent.change(screen.getByLabelText("Note (optional)"), {
       target: { value: "Skyline matches" },
     });
@@ -257,10 +265,23 @@ describe("<VerificationCard>", () => {
       return reads === 1 ? Promise.resolve(listOf([])) : new Promise(() => {});
     });
     render(<Panel />);
+    await openApproveForm();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Approve version 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Approve version 2" }));
     await waitFor(() => expect(reads).toBe(2));
     expect(screen.getByRole("button", { name: "Approve version 2" })).toBeDisabled();
+  });
+
+  it("keeps the approve form collapsed until asked, and Cancel collapses it again", async () => {
+    api.viewer = CY;
+    serve([]);
+    render(<Panel />);
+
+    await openApproveForm();
+    expect(screen.getByRole("button", { name: "Approve version 2" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByLabelText("Note (optional)")).toBeNull();
+    expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
   });
 
   it("tells a reviewer of an earlier version what changed since", async () => {
@@ -269,6 +290,7 @@ describe("<VerificationCard>", () => {
       "/events/e1/versions/1": filedVersion(event, 1, { title: "Bridge strike, first read" }),
     });
     render(<Panel />);
+    await openApproveForm();
 
     expect(
       await screen.findByText(/Changed since version 1, which you approved: Title\./),
@@ -283,7 +305,7 @@ describe("<VerificationCard>", () => {
     render(<Panel />);
 
     expect(await screen.findByText("Approved · 1 · version 2")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Approve (version|as)/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Approve\b/ })).toBeNull();
     expect(screen.queryByLabelText("Note (optional)")).toBeNull();
   });
 
@@ -302,7 +324,7 @@ describe("<VerificationCard>", () => {
     render(<Panel />);
 
     expect(await screen.findByText("Approved · 1 · version 2")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Approve (version|as)/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Approve\b/ })).toBeNull();
   });
 
   it("folds outdated and revoked approvals into one line that expands to their groups", async () => {
@@ -416,6 +438,7 @@ describe("<VerificationCard>", () => {
       ],
     });
     render(<Panel />);
+    await openApproveForm();
 
     fireEvent.click(await screen.findByRole("button", { name: "Approve as Bellingcat" }));
     expect(screen.queryByRole("button", { name: "Approve as OSINT Lab" })).toBeNull();
@@ -454,6 +477,7 @@ describe("<VerificationCard>", () => {
 
     expect(await screen.findByRole("heading", { name: "Review requests" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Request a review" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
   });
 });
 

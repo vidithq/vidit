@@ -87,6 +87,21 @@ describe("<ReviewRequestsSection>", () => {
         body: JSON.stringify({ username: "cy" }),
       }),
     );
+    // Sent: the form collapses back to its button.
+    expect(await screen.findByRole("button", { name: "Request a review" })).toBeInTheDocument();
+  });
+
+  it("keeps the request form collapsed until asked, and Cancel collapses it again", async () => {
+    api.viewer = ANA;
+    serve([]);
+    render(<ReviewRequestsSection event={event} refreshKey={0} />);
+
+    expect(await screen.findByText("No open requests.")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Ask an analyst or an organization/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Request a review" }));
+    expect(screen.getByLabelText(/Ask an analyst or an organization/)).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByLabelText(/Ask an analyst or an organization/)).toBeNull();
   });
 
   it("lets a geolocator ask an organization", async () => {

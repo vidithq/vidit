@@ -55,17 +55,18 @@ export function ShareControl({
       </span>
       {webShare ? (
         <Button
+          icon
           variant="ghost"
+          aria-label="Share"
+          title="Share"
           onClick={caveat ? trigger : nativeShare}
           className={armed ? ARMED_RING : ""}
         >
           <Share2 size={14} />
-          Share
         </Button>
       ) : (
         <ActionMenu
           label="Share"
-          showLabel
           icon={<Share2 size={14} />}
           note={caveat}
           items={[

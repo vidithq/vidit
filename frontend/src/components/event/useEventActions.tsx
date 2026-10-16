@@ -2,13 +2,13 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { CircleX, Ellipsis, Flag, History, MapPin, Pencil, Users } from "lucide-react";
+import { CircleX, Ellipsis, Flag, MapPin, Pencil, Users } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import { allApprovalsPath, type ApprovalList } from "@/lib/approvals";
 import { COLLECTABLE_STATUSES, CollectionIcon } from "@/lib/collections";
-import { eventHistoryHref, hasPublishedRecord } from "@/lib/events";
+import { hasPublishedRecord } from "@/lib/events";
 import { AddToCollectionPanel } from "@/components/collections/AddToCollectionPanel";
 import { ActionMenu, type ActionMenuItem } from "@/components/ui/ActionMenu";
 import { buttonClasses } from "@/components/ui/Button";
@@ -17,24 +17,27 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { closeActionLabel, CloseEventForm } from "@/components/event/CloseEventForm";
 import { EventShare } from "@/components/event/EventShare";
 import { GeolocatorInviteCard, GeolocatorsPanel } from "@/components/event/GeolocatorCredit";
-import { ApproveShortcut, VerificationCard } from "@/components/event/Verification";
+import { ApprovalsCard } from "@/components/event/ApprovalsCard";
+import { VersionSelector } from "@/components/event/VersionSelector";
 import { useReportContent } from "@/components/report/useReportContent";
 import type { EventDetail } from "@/types";
 
 /**
  * The header of one event, assembled once so no surface hand-assembles a row and controls can't
- * drift between them. Three controls, left to right, in the surface's top-right slot
- * (`docs/design.md`, Event header):
+ * drift between them. Left to right, in the surface's top-right slot (`docs/design.md`, Event
+ * header and Approvals card):
  *
- * 1. **The primary action**, at most one, filled. On the request page, Geolocate. On the event
- *    page, Edit for the owner, or Approve version N for a reader who may approve.
- * 2. **Share**: the device's share sheet, or a menu with Copy link and Share on X.
- * 3. **More**: everything else that applies to this reader and row: Version history, Geolocators,
- *    Add to collection, the close, and Report. Each opens a panel under the header (Version
- *    history navigates). Nothing here destroys a row: closing keeps it readable with its reason.
+ * 1. **The version selector**, on the event page of a published row: the version on screen,
+ *    opening every version and the full history.
+ * 2. **The primary action**, at most one, filled: Geolocate on the request page, Edit for the
+ *    owner on the event page.
+ * 3. **Share**: the device's share sheet, or a menu with Copy link and Share on X.
+ * 4. **More**: everything else that applies to this reader and row: Geolocators, Add to
+ *    collection, the close, and Report. Each opens a panel under the header. Nothing here
+ *    destroys a row: closing keeps it readable with its reason.
  *
- * On the event page of a published row the hook also returns the Verification card (status,
- * approvals, the approve form, review requests), which the page renders beside the body.
+ * On the event page of a published row the hook also returns the Approvals card (status,
+ * approvals, Approve, review requests), which the page renders beside the body.
  *
  * The hook returns nodes rather than rendering them because the header, the panels and the card
  * land in different slots. Called before a surface's early returns, with `event` null while the
@@ -51,8 +54,8 @@ export type ActionSurface = "event" | "request" | "panel" | "edit";
 // `utilities` is Share and Report, which any reader of the record may use. `flow` is geolocating an
 // open request. `collect` shelves the row on one of the reader's
 // collections, `editRequest` corrects an open request, `saveVersion` corrects a published
-// geolocation, `close` takes a row back. `history`, `credit` and `approvals` (the Verification
-// card) belong to the event page, the one surface serving the published record.
+// geolocation, `close` takes a row back. `history` (the version selector), `credit` and `approvals`
+// (the Approvals card) belong to the event page, the one surface serving the published record.
 const TIERS: Record<
   ActionSurface,
   {
@@ -91,8 +94,8 @@ export interface EventActions {
   actions: ReactNode;
   /** The panels the More menu opens, for the body under the header. */
   panels: ReactNode;
-  /** The Verification card, on the event page of a published row only. */
-  verification: ReactNode;
+  /** The Approvals card, on the event page of a published row only. */
+  approvalsCard: ReactNode;
 }
 
 /** A panel the More menu opens. It mounts when opened and takes focus then, so a keyboard or
@@ -123,9 +126,9 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
   // The event read says whether the reader holds an invitation; an answer hides the card at
   // once, before the caller's refetch lands.
   const [answeredFor, setAnsweredFor] = useState<string | null>(null);
-  const showsVerification = !!event && !!tiers?.approvals && hasPublishedRecord(event);
+  const showsApprovals = !!event && !!tiers?.approvals && hasPublishedRecord(event);
   const approvals = useApiResource<ApprovalList>(
-    showsVerification ? allApprovalsPath(event.id) : null,
+    showsApprovals ? allApprovalsPath(event.id) : null,
   );
 
   // This hook survives a client navigation between rows, so per-event state follows the row, not
@@ -136,7 +139,7 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
     setCrediting(false);
   }, [event?.id]);
 
-  if (!event || !tiers) return { actions: null, panels: null, verification: null };
+  if (!event || !tiers) return { actions: null, panels: null, approvalsCard: null };
 
   const isOpenRequest = event.status === "requested";
 
@@ -178,24 +181,14 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
       Geolocate
     </Link>
   ) : (
-    edit ||
-    (showsVerification && approvals.data && (
-      <ApproveShortcut event={event} approvals={approvals.data} />
-    ))
+    edit
+  );
+  // Public, since a corrected record is only auditable if any reader can walk the corrections.
+  const versions = tiers.history && hasPublishedRecord(event) && (
+    <VersionSelector eventId={event.id} liveVersion={event.version_no} selected={event.version_no} />
   );
 
   const more: ActionMenuItem[] = [
-    // Public, since a corrected record is only auditable if any reader can walk the corrections.
-    ...(tiers.history && hasPublishedRecord(event)
-      ? [
-          {
-            key: "history",
-            label: "Version history",
-            icon: <History size={14} />,
-            href: eventHistoryHref(event.id),
-          },
-        ]
-      : []),
     // On the request page Geolocate holds the primary slot, so the asker's edit moves here.
     ...(geolocates && edit
       ? [
@@ -256,12 +249,13 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
 
   // A surface with nothing to offer gets nothing rather than an empty row: the wrapper is an item
   // in the host's cluster, so an empty one prints a gap beside the host's own controls.
-  const rowIsEmpty = !primary && !tiers.utilities && more.length === 0;
+  const rowIsEmpty = !versions && !primary && !tiers.utilities && more.length === 0;
 
   // `flex-wrap` plus `justify-end`: a long primary label wraps the row into right-aligned lines
   // instead of pushing the header sideways (PageShell caps the cluster at the header width).
   const actions = rowIsEmpty ? null : (
     <div className="flex flex-wrap items-center justify-end gap-1.5">
+      {versions}
       {primary}
       {tiers.utilities && <EventShare event={event} />}
       {more.length > 0 && (
@@ -320,8 +314,8 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
         {report.panel && <MenuPanel id={REPORT_PANEL_ID}>{report.panel}</MenuPanel>}
       </>
     ),
-    verification: showsVerification ? (
-      <VerificationCard event={event} approvals={approvals} />
+    approvalsCard: showsApprovals ? (
+      <ApprovalsCard event={event} approvals={approvals} />
     ) : null,
   };
 }

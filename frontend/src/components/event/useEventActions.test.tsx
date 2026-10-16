@@ -47,6 +47,7 @@ beforeEach(() => {
 function eventFixture(
   status: EventStatus,
   beforeClosedStatus: BeforeClosedStatus | null = null,
+  versionNo = 1,
 ): EventDetail {
   return {
     id: "e1",
@@ -59,7 +60,7 @@ function eventFixture(
     event_time: null,
     source_posted_at: "2026-05-30T14:32:00Z",
     status,
-    version_no: 1,
+    version_no: versionNo,
     is_graphic: false,
     close_reason: null,
     before_closed_status: beforeClosedStatus,
@@ -86,20 +87,22 @@ function Harness({
   status,
   surface,
   beforeClosedStatus = null,
+  versionNo = 1,
 }: {
   status: EventStatus;
   surface: ActionSurface;
   beforeClosedStatus?: BeforeClosedStatus | null;
+  versionNo?: number;
 }) {
-  const { actions, panels, verification } = useEventActions({
-    event: eventFixture(status, beforeClosedStatus),
+  const { actions, panels, approvalsCard } = useEventActions({
+    event: eventFixture(status, beforeClosedStatus, versionNo),
     surface,
   });
   return (
     <>
       {actions && <header data-testid="header">{actions}</header>}
       {panels}
-      {verification}
+      {approvalsCard}
     </>
   );
 }
@@ -141,39 +144,37 @@ const stamp = (id: string, username: string, over: Partial<Approval> = {}): Appr
   ...over,
 });
 
+/** The header's buttons, left to right, by accessible name. */
+const headerButtons = () =>
+  within(header())
+    .getAllByRole("button")
+    .map((b) => b.getAttribute("aria-label") ?? b.textContent);
+
 describe("the event header per reader", () => {
-  it("gives the owner Edit as the primary action, Share, and their verbs under More", async () => {
+  it("gives the owner the version, Edit as the primary action, Share, and their verbs under More", async () => {
     renderAs(OWNER, { status: "geolocated", surface: "event" });
     const edit = within(header()).getByRole("link", { name: "Edit this geolocation" });
     expect(edit).toHaveAttribute("href", "/events/e1/edit");
     expect(edit).toHaveTextContent("Edit");
-    expect(within(header()).getByRole("button", { name: "Share" })).toBeInTheDocument();
+    expect(headerButtons()).toEqual(["v1: choose a version", "Share", "More actions"]);
     expect(moreItems()).toEqual([
-      "Version history",
       "Geolocators",
       "Add to collection",
       "Close this geolocation",
       "Report",
     ]);
     await screen.findByText("Not approved yet");
-    expect(within(header()).queryByRole("button", { name: /^Approve/ })).toBeNull();
   });
 
-  it("gives an analyst who may approve Approve version N, which focuses the approve form", async () => {
+  // Approving starts from the Approvals card, after reading the record.
+  it("gives an analyst who may approve no primary action; Approve waits in the card", async () => {
     renderAs(ANALYST, { status: "geolocated", surface: "event" });
-    const approve = await within(header()).findByRole("button", { name: "Approve version 1" });
+    const card = await screen.findByRole("region", { name: "Approvals" });
+    expect(await within(card).findByRole("button", { name: "Approve" })).toBeInTheDocument();
+    expect(within(card).queryByLabelText("Note (optional)")).toBeNull();
     expect(within(header()).queryByRole("link", { name: /^Edit/ })).toBeNull();
-    expect(moreItems()).toEqual(["Version history", "Report"]);
-
-    fireEvent.click(approve);
-    expect(screen.getByLabelText("Note (optional)")).toHaveFocus();
-  });
-
-  it("gives an analyst who already approved no primary action", async () => {
-    api.approvals = [stamp("a1", ANALYST.username, { reviewer: ANALYST })];
-    renderAs(ANALYST, { status: "geolocated", surface: "event" });
-    await screen.findByText("Approved · 1 · version 1");
-    expect(within(header()).queryByRole("button", { name: /^Approve/ })).toBeNull();
+    expect(headerButtons()).toEqual(["v1: choose a version", "Share", "More actions"]);
+    expect(moreItems()).toEqual(["Report"]);
   });
 
   // Credit only: a co-geolocator shelves the row and sees its geolocators, and never edits,
@@ -182,31 +183,23 @@ describe("the event header per reader", () => {
     renderAs(CO_GEOLOCATOR, { status: "geolocated", surface: "event" });
     await screen.findByText("Not approved yet");
     expect(within(header()).queryByRole("link", { name: /^Edit/ })).toBeNull();
-    expect(within(header()).queryByRole("button", { name: /^Approve/ })).toBeNull();
-    expect(moreItems()).toEqual([
-      "Version history",
-      "Geolocators",
-      "Add to collection",
-      "Report",
-    ]);
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+    expect(moreItems()).toEqual(["Geolocators", "Add to collection", "Report"]);
   });
 
-  it("gives a signed-out reader Share and More with the history and the report", async () => {
+  it("gives a signed-out reader the version, Share, and More with the report", async () => {
     renderAs(null, { status: "geolocated", surface: "event" });
     await screen.findByText("Not approved yet");
-    expect(within(header()).getAllByRole("button").map((b) => b.textContent || b.getAttribute("aria-label"))).toEqual([
-      "Share",
-      "More actions",
-    ]);
-    expect(moreItems()).toEqual(["Version history", "Report"]);
+    expect(headerButtons()).toEqual(["v1: choose a version", "Share", "More actions"]);
+    expect(moreItems()).toEqual(["Report"]);
   });
 
-  it("carries no approval stamps and no Approvals trigger in the header", async () => {
+  it("carries no approval stamps and no approve control in the header", async () => {
     api.approvals = [stamp("a1", "maya")];
-    renderAs(null, { status: "geolocated", surface: "event" });
+    renderAs(ANALYST, { status: "geolocated", surface: "event" });
     await screen.findByText("Approved · 1 · version 1");
     expect(within(header()).queryByRole("list", { name: "Approved by" })).toBeNull();
-    expect(within(header()).queryByRole("button", { name: "Approvals" })).toBeNull();
+    expect(within(header()).queryByRole("button", { name: /^Approve/ })).toBeNull();
   });
 });
 
@@ -321,22 +314,28 @@ describe("panels the More menu opens", () => {
   });
 });
 
-describe("the version history", () => {
-  // A retraction keeps the record it took back, so the history is what a reader most needs after one.
-  it("links the history from More on a published or retracted row", () => {
-    for (const before of [null, "geolocated"] as const) {
-      const { unmount } = renderAs(null, {
-        status: before ? "closed" : "geolocated",
-        surface: "event",
-        beforeClosedStatus: before,
-      });
-      fireEvent.click(within(header()).getByRole("button", { name: "More actions" }));
-      expect(screen.getByRole("menuitem", { name: "Version history" })).toHaveAttribute(
-        "href",
-        "/events/e1/history",
-      );
-      unmount();
-    }
+describe("the version selector", () => {
+  it("names the version on screen and lists every version newest first, then the full history", () => {
+    renderAs(null, { status: "geolocated", surface: "event", versionNo: 3 });
+    const trigger = within(header()).getByRole("button", { name: "v3: choose a version" });
+    expect(trigger).toHaveTextContent("v3");
+    fireEvent.click(trigger);
+
+    const items = within(screen.getByRole("menu", { name: "Versions" })).getAllByRole("menuitem");
+    expect(items.map((item) => [item.textContent, item.getAttribute("href")])).toEqual([
+      ["Version 3 Current", "/events/e1"],
+      ["Version 2", "/events/e1/v2"],
+      ["Version 1", "/events/e1/v1"],
+      ["Full history", "/events/e1/history"],
+    ]);
+    expect(items[0]).toHaveAttribute("aria-current", "page");
+    expect(items[0]).toHaveFocus();
+  });
+
+  // A retraction keeps the record it took back, so its versions are what a reader most needs after one.
+  it("stays on a retracted row", () => {
+    renderAs(null, { status: "closed", surface: "event", beforeClosedStatus: "geolocated" });
+    expect(within(header()).getByRole("button", { name: "v1: choose a version" })).toBeInTheDocument();
   });
 
   it.each<[EventStatus, BeforeClosedStatus | null]>([
@@ -344,21 +343,21 @@ describe("the version history", () => {
     ["detected", null],
     ["closed", "requested"],
     ["closed", "detected"],
-  ])("offers no version history for a %s row, which never published", (status, before) => {
-    renderAs(null, { status, surface: "event", beforeClosedStatus: before });
-    expect(moreItems()).not.toContain("Version history");
+  ])("is absent from a %s row, which never published", (status, before) => {
+    renderAs(OWNER, { status, surface: "event", beforeClosedStatus: before });
+    expect(within(header()).queryByRole("button", { name: /choose a version/ })).toBeNull();
   });
 
-  it("carries no version history on the request page", () => {
+  it("is absent from the request page", () => {
     renderAs(null, { status: "geolocated", surface: "request" });
-    expect(moreItems()).not.toContain("Version history");
+    expect(within(header()).queryByRole("button", { name: /choose a version/ })).toBeNull();
   });
 });
 
-describe("the Verification card", () => {
+describe("the Approvals card", () => {
   it("comes with the event page of a published row", async () => {
     renderAs(null, { status: "geolocated", surface: "event" });
-    expect(await screen.findByRole("region", { name: "Verification" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Approvals" })).toBeInTheDocument();
   });
 
   it.each<[ActionSurface, EventStatus]>([
@@ -367,7 +366,7 @@ describe("the Verification card", () => {
     ["event", "requested"],
   ])("is absent from the %s surface of a %s row, which reads no approvals", (surface, status) => {
     renderAs(null, { status, surface });
-    expect(screen.queryByRole("region", { name: "Verification" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Approvals" })).toBeNull();
     expect(api.apiFetch).not.toHaveBeenCalledWith(
       "/events/e1/approvals?all_versions=true",
       expect.anything(),
