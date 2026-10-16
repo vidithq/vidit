@@ -329,15 +329,15 @@ class GeolocatorInviteRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class TimelineItemRead(EventList):
-    """One timeline row: an event card plus when it entered the timeline.
+class FeedItemRead(EventList):
+    """One feed row: an event card plus when it entered the feed.
 
     ``status`` tells the two kinds apart, ``geolocated`` and ``requested``; ``owner`` is the
-    analyst credited (``services.social.get_timeline``).
+    analyst credited (``services.social.get_feed``).
     """
 
     # ``requested_at`` for a request, ``geolocated_at`` for a geolocation: the sort key.
-    timeline_at: datetime
+    feed_at: datetime
 
 
 class PaginatedEvents(BaseModel):

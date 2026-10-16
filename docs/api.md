@@ -177,8 +177,8 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/organizations/{slug}/invite/decline` | 🔒 | Decline your invite |
 | PATCH | `/organizations/{slug}/members/{username}` | 🔒 | Change a member's role (managers) |
 | DELETE | `/organizations/{slug}/members/{username}` | 🔒 | Remove a member, or leave |
-| **Timeline** | | | |
-| GET | `/timeline` | 🔒 | Published geolocations and open requests, from followed analysts or everyone |
+| **Feed** | | | |
+| GET | `/feed` | 🔒 | Published geolocations and open requests, from followed analysts or everyone |
 | **Webhooks** | | | |
 | GET | `/webhooks/x` | 🌐 | X webhook CRC challenge (HMAC answer, no DB) |
 | POST | `/webhooks/x` | 🌐 | Receive an X Account Activity delivery (signature-verified) and queue bot mentions |
@@ -261,8 +261,8 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `GET /tags` | 60/min |
 | `POST /tags` | 30/min |
 | `GET /conflicts` | 60/min |
-| **Users / Timeline** | |
-| `GET /users/{username}`, `GET /users/{username}/stats`, `GET /users/{username}/events`, `GET /users/{username}/collections`, `GET /users/{username}/organizations`, `GET /timeline` | 120/min |
+| **Users / Feed** | |
+| `GET /users/{username}`, `GET /users/{username}/stats`, `GET /users/{username}/events`, `GET /users/{username}/collections`, `GET /users/{username}/organizations`, `GET /feed` | 120/min |
 | `PATCH /users/me` | 30/min |
 | `PUT`/`DELETE /users/me/avatar` | 20/min |
 | `POST`/`DELETE /users/{username}/follow` | 60/min |
@@ -304,7 +304,7 @@ The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/u
 
 **1000/hour per account.** One bucket is shared across these 22 read paths, not one bucket per endpoint:
 
-`GET /events` · `/events/{id}` · `/events/{id}/versions` · `/events/{id}/versions/{version_no}` · `/events/{id}/approvals` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/users/{username}/collections` · `/users/{username}/organizations` · `/organizations/{slug}` · `/organizations/{slug}/members` · `/organizations/{slug}/approvals` · `/collections/{id}` · `/collections/{id}/events` · `/timeline`
+`GET /events` · `/events/{id}` · `/events/{id}/versions` · `/events/{id}/versions/{version_no}` · `/events/{id}/approvals` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/users/{username}/collections` · `/users/{username}/organizations` · `/organizations/{slug}` · `/organizations/{slug}/members` · `/organizations/{slug}/approvals` · `/collections/{id}` · `/collections/{id}/events` · `/feed`
 
 - The key is `User.id`, read from the signature-verified session cookie.
 - The backend evaluates the per-IP table limit first, so a request the table rejects costs the account nothing.
@@ -1323,7 +1323,7 @@ flowchart LR
   credits[("`**event_geolocators**
   the credit`")]:::store
   credited["`**credited_to**
-  profile, stats, timeline, author filter, collections`"]:::shared
+  profile, stats, feed, author filter, collections`"]:::shared
 
   invite --> invites
   drop --> invites
@@ -2923,13 +2923,13 @@ Remove a member, or leave when `username` is your own. Removing someone else tak
 
 ---
 
-## Timeline
+## Feed
 
-### `GET /timeline` 🔒
+### `GET /feed` 🔒
 
 Two kinds of row, newest first: a geolocation an analyst published and a request an analyst has open. Cursor-paged (see [Pagination](#pagination)).
 
-| Kind | Rows | Timeline timestamp |
+| Kind | Rows | Feed timestamp |
 |---|---|---|
 | Geolocation | `status = geolocated`, the set [`GET /users/{username}/events`](#get-usersusernameevents) serves | `geolocated_at` |
 | Request | `status = requested` | `requested_at` |
@@ -2945,7 +2945,7 @@ A detection, a retraction and a withdrawn request are in neither kind. A soft-de
 | `limit` | int | Rows per page, default 10. See [Pagination](#pagination). |
 | `cursor` | string | Opaque cursor from the previous page's `Link: rel="next"` header. See [Pagination](#pagination). |
 
-**Response 200:** an array of `TimelineItemRead`: the [`EventList`](#get-events) card plus `timeline_at`.
+**Response 200:** an array of `FeedItemRead`: the [`EventList`](#get-events) card plus `feed_at`.
 ```json
 [
   {
@@ -2957,7 +2957,7 @@ A detection, a retraction and a withdrawn request are in neither kind. A soft-de
     "status": "requested",
     "before_closed_status": null,
     "owner": { "id": "uuid", "username": "kalush" },
-    "timeline_at": "2026-03-16T09:14:22Z",
+    "feed_at": "2026-03-16T09:14:22Z",
     "media": null,
     "tags": [],
     "conflicts": []
@@ -2967,7 +2967,7 @@ A detection, a retraction and a withdrawn request are in neither kind. A soft-de
 
 **Response headers:** `Link: <…&cursor=…>; rel="next"` when a further page exists.
 
-`status` tells the two kinds apart. `timeline_at` is the row's timeline timestamp. Rows are ordered by `timeline_at DESC, id DESC`, one total order across both kinds, so a walk never repeats or skips a row.
+`status` tells the two kinds apart. `feed_at` is the row's feed timestamp. Rows are ordered by `feed_at DESC, id DESC`, one total order across both kinds, so a walk never repeats or skips a row.
 
 ---
 
@@ -3574,7 +3574,7 @@ One Account Activity delivery.
 | `GET /admin/invite-codes` | cursor | `created_at DESC, id DESC` | 100 | 100 |
 | [`GET /events/{id}/versions`](#get-eventsidversions) | cursor | `version_no DESC` | 50 | 100 |
 | [`GET /notifications`](#get-notifications) | cursor | `created_at DESC, id DESC` | 100 | 100 |
-| [`GET /timeline`](#get-timeline) | cursor | `timeline_at DESC, id DESC` | 10 | 100 |
+| [`GET /feed`](#get-feed) | cursor | `feed_at DESC, id DESC` | 10 | 100 |
 | [`GET /collections/{id}/events`](#get-collectionsidevents) | cursor | `event_date, event_time, created_at, id` ascending; a missing date or time sorts last | 100 | 100 |
 | [`GET /users/{username}/events`](#get-usersusernameevents) | offset | `event_date DESC`, then `created_at DESC, id DESC` | 20 | 100 |
 | [`GET /users/{username}/collections`](#get-usersusernamecollections) | offset | newest first | 20 | 100 |

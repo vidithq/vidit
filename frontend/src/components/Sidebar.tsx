@@ -20,7 +20,7 @@ import {
 import BetaBanner from "@/components/BetaBanner";
 import { setPhoneBackSlot } from "@/lib/phoneBackSlot";
 import {
-  Activity,
+  Newspaper,
   Bell,
   Globe,
   Plus,
@@ -69,9 +69,9 @@ interface NavItem {
   activeFor?: (pathname: string) => boolean;
 }
 
-// Order: Map, Submit, Requests, Timeline, Search, About (public/meta plus the guides hub) last.
+// Order: Map, Submit, Requests, Feed, Search, About (public/meta plus the guides hub) last.
 // The bot guide is reached from About and X itself. Home has no slot (the logo links it). Submit
-// and Timeline carry `auth: true` and hide signed-out. Profile, Notifications, Settings, Sign-in
+// and Feed carry `auth: true` and hide signed-out. Profile, Notifications, Settings, Sign-in
 // and Sign-out are the identity block at the bottom.
 const NAV_ITEMS: ReadonlyArray<NavItem> = [
   {
@@ -88,7 +88,7 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     label: "Requests",
     activeFor: (p) => p === "/requests" || p.startsWith("/requests/"),
   },
-  { href: "/timeline", icon: Activity, label: "Timeline", auth: true },
+  { href: "/feed", icon: Newspaper, label: "Feed", auth: true },
   { href: "/search", icon: Search, label: "Search" },
   {
     href: "/about",

@@ -266,7 +266,7 @@ const MOCK_DETAIL_ARCHIVED: EventDetail = {
   ],
 };
 
-// The lighter geolocation-card payload (timeline / recent-submissions shape).
+// The lighter geolocation-card payload (feed / recent-submissions shape).
 const MOCK_CARD_GEO = {
   id: "demo",
   title: "Strike on a depot near Donetsk",
@@ -578,7 +578,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SegmentedControl>" usage="Exclusive-choice bar: submit mode (single / bulk import), admin delete mode (soft / hard), the detections queue filter, the timeline scope (following / all). tone=danger paints a destructive option's active state red; fullWidth stretches the track at every width, and below sm the track always stretches. A one-word label that needs a sentence takes a <FieldHelp> beside the bar, never hover text of its own.">
+          <Item name="<SegmentedControl>" usage="Exclusive-choice bar: submit mode (single / bulk import), admin delete mode (soft / hard), the detections queue filter, the feed scope (following / all). tone=danger paints a destructive option's active state red; fullWidth stretches the track at every width, and below sm the track always stretches. A one-word label that needs a sentence takes a <FieldHelp> beside the bar, never hover text of its own.">
             <div className="space-y-3">
               <SegmentedControl
                 aria-label="Preview mode"
@@ -1382,7 +1382,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<EmptyState>" usage="The one empty-state grammar. boxed: empty list pages (requests, search). plain: headline + hint + CTA inside an existing container (detections, recent submissions). invite: dashed first-run hero (timeline). One variant per site.">
+          <Item name="<EmptyState>" usage="The one empty-state grammar. boxed: empty list pages (requests, search). plain: headline + hint + CTA inside an existing container (detections, recent submissions). invite: dashed first-run hero (feed). One variant per site.">
             <div className="w-full max-w-md space-y-3">
               <Variant label='variant="boxed" (default)'>
                 <EmptyState>
@@ -1410,7 +1410,7 @@ export default function PalettePage() {
                 <EmptyState
                   variant="invite"
                   icon={MapPin}
-                  lead="Your timeline is empty"
+                  lead="Your feed is empty"
                   cta={<Button variant="primary">Explore the map</Button>}
                 >
                   Follow other analysts to see their latest geolocations here.
@@ -1419,7 +1419,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<LoadMoreRow>" usage="The one foot of a useCursorList list (requests, timeline, version history, invite codes): Load more while a next page exists, a spinner while it loads, a failed page's message above Try again, nothing once the walk ends. `infinite` loads the next page as the row nears the viewport and pauses after a failure until the click.">
+          <Item name="<LoadMoreRow>" usage="The one foot of a useCursorList list (requests, feed, version history, invite codes): Load more while a next page exists, a spinner while it loads, a failed page's message above Try again, nothing once the walk ends. `infinite` loads the next page as the row nears the viewport and pauses after a failure until the click.">
             <div className="w-full space-y-4">
               <Variant label="idle">
                 <LoadMoreRow walk={{ hasMore: true, loadingMore: false, loadMore: () => {}, error: null }} />
@@ -1455,7 +1455,7 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Composed views" />
 
-          <Item name="<EntityCard variant=feed>" usage="Feed (timeline): title and status first, then the byline with named dates (`dates`: Event, then Published or Requested) and coordinates, the media, and the key/value tag row (`cardTags`)">
+          <Item name="<EntityCard variant=feed>" usage="Feed: title and status first, then the byline with named dates (`dates`: Event, then Published or Requested) and coordinates, the media, and the key/value tag row (`cardTags`)">
             <div className="w-full max-w-xl">
               <EntityCard
                 variant="feed"

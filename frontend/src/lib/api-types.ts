@@ -1733,6 +1733,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/feed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Feed
+         * @description Published geolocations and open requests, newest first.
+         *
+         *     ``scope=following`` (default) keeps the rows owned by analysts the
+         *     current user follows, and is empty when they follow nobody; ``scope=all``
+         *     keeps every row. Cursor-paged, capped at 100 rows; the ``Link: rel="next"``
+         *     cursor is present exactly when a next page holds a row.
+         */
+        get: operations["get_feed_api_v1_feed_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/notifications": {
         parameters: {
             query?: never;
@@ -2166,31 +2191,6 @@ export interface paths {
         put?: never;
         /** Create Tag */
         post: operations["create_tag_api_v1_tags_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/timeline": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Timeline
-         * @description Published geolocations and open requests, newest first.
-         *
-         *     ``scope=following`` (default) keeps the rows owned by analysts the
-         *     current user follows, and is empty when they follow nobody; ``scope=all``
-         *     keeps every row. Cursor-paged, capped at 100 rows; the ``Link: rel="next"``
-         *     cursor is present exactly when a next page holds a row.
-         */
-        get: operations["get_timeline_api_v1_timeline_get"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3942,6 +3942,49 @@ export interface components {
             /** X */
             x?: string | null;
         };
+        /**
+         * FeedItemRead
+         * @description One feed row: an event card plus when it entered the feed.
+         *
+         *     ``status`` tells the two kinds apart, ``geolocated`` and ``requested``; ``owner`` is the
+         *     analyst credited (``services.social.get_feed``).
+         */
+        FeedItemRead: {
+            /** Before Closed Status */
+            before_closed_status: ("requested" | "detected" | "geolocated") | null;
+            /** Conflicts */
+            conflicts: components["schemas"]["ConflictRead"][];
+            event_coords: components["schemas"]["CoordsRead"] | null;
+            /** Event Date */
+            event_date: string | null;
+            /**
+             * Feed At
+             * Format: date-time
+             */
+            feed_at: string;
+            /** Geolocators */
+            geolocators: components["schemas"]["AuthorRef"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Graphic */
+            is_graphic: boolean;
+            media: components["schemas"]["MediaRead"] | null;
+            owner: components["schemas"]["AuthorRef"];
+            /** Requested At */
+            requested_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "requested" | "detected" | "geolocated" | "closed";
+            /** Tags */
+            tags: components["schemas"]["TagRead"][];
+            /** Title */
+            title: string;
+        };
         /** ForgotPasswordRequest */
         ForgotPasswordRequest: {
             /**
@@ -4835,49 +4878,6 @@ export interface components {
             id: string;
             /** Name */
             name: string;
-        };
-        /**
-         * TimelineItemRead
-         * @description One timeline row: an event card plus when it entered the timeline.
-         *
-         *     ``status`` tells the two kinds apart, ``geolocated`` and ``requested``; ``owner`` is the
-         *     analyst credited (``services.social.get_timeline``).
-         */
-        TimelineItemRead: {
-            /** Before Closed Status */
-            before_closed_status: ("requested" | "detected" | "geolocated") | null;
-            /** Conflicts */
-            conflicts: components["schemas"]["ConflictRead"][];
-            event_coords: components["schemas"]["CoordsRead"] | null;
-            /** Event Date */
-            event_date: string | null;
-            /** Geolocators */
-            geolocators: components["schemas"]["AuthorRef"][];
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Is Graphic */
-            is_graphic: boolean;
-            media: components["schemas"]["MediaRead"] | null;
-            owner: components["schemas"]["AuthorRef"];
-            /** Requested At */
-            requested_at: string | null;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "requested" | "detected" | "geolocated" | "closed";
-            /** Tags */
-            tags: components["schemas"]["TagRead"][];
-            /**
-             * Timeline At
-             * Format: date-time
-             */
-            timeline_at: string;
-            /** Title */
-            title: string;
         };
         /**
          * TweetImportRead
@@ -7971,6 +7971,42 @@ export interface operations {
             };
         };
     };
+    get_feed_api_v1_feed_get: {
+        parameters: {
+            query?: {
+                scope?: "following" | "all";
+                limit?: number;
+                /** @description Opaque cursor from a Link: rel=next header */
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedItemRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_notifications_api_v1_notifications_get: {
         parameters: {
             query?: {
@@ -8798,42 +8834,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TagRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_timeline_api_v1_timeline_get: {
-        parameters: {
-            query?: {
-                scope?: "following" | "all";
-                limit?: number;
-                /** @description Opaque cursor from a Link: rel=next header */
-                cursor?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TimelineItemRead"][];
                 };
             };
             /** @description Validation Error */

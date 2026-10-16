@@ -242,12 +242,12 @@ describe("Sidebar drawer controls", () => {
     );
   });
 
-  it("links the timeline and lights it on its page", () => {
-    viewer.pathname = "/timeline";
+  it("links the feed and lights it on its page", () => {
+    viewer.pathname = "/feed";
     render(<Sidebar />);
 
-    const entry = screen.getByRole("link", { name: "Timeline" });
-    expect(entry).toHaveAttribute("href", "/timeline");
+    const entry = screen.getByRole("link", { name: "Feed" });
+    expect(entry).toHaveAttribute("href", "/feed");
     expect(entry).not.toHaveClass("text-neutral-400");
     expect(screen.getByRole("link", { name: "Map" })).toHaveClass(
       "text-neutral-400",

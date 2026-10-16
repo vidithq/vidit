@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { components } from "@/lib/api-types";
 
-type TimelineItem = components["schemas"]["TimelineItemRead"];
+type FeedItem = components["schemas"]["FeedItemRead"];
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
@@ -31,7 +31,7 @@ vi.mock("@/hooks/useApiResource", () => ({
 
 // The walk is `useCursorList`'s; this page owns the path it builds and what it makes of the rows.
 const walk = vi.hoisted(() => ({
-  items: [] as TimelineItem[],
+  items: [] as FeedItem[],
   error: null as string | null,
   loading: false,
   loadingMore: false,
@@ -47,12 +47,12 @@ vi.mock("@/hooks/useCursorList", () => ({
   },
 }));
 
-import TimelinePage from "./page";
+import FeedPage from "./page";
 
 const ANA = { id: "u1", username: "ana", avatar_url: null };
 const BOB = { id: "u2", username: "bob", avatar_url: null };
 
-function item(extra: Partial<TimelineItem>): TimelineItem {
+function item(extra: Partial<FeedItem>): FeedItem {
   return {
     id: "e1",
     title: "Strike on a depot",
@@ -66,7 +66,7 @@ function item(extra: Partial<TimelineItem>): TimelineItem {
     media: null,
     tags: [],
     conflicts: [],
-    timeline_at: "2026-06-01T10:00:00Z",
+    feed_at: "2026-06-01T10:00:00Z",
     requested_at: null,
     ...extra,
   };
@@ -118,13 +118,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("TimelinePage", () => {
+describe("FeedPage", () => {
   it("cards a request and a geolocation, each linked and credited by kind", () => {
     walk.items = [
       item({ id: "r1", title: "Where is this bridge", status: "requested", owner: BOB }),
       item({ id: "g1", title: "Strike on a depot", event_coords: { lat: 48.01, lng: 37.8 } }),
     ];
-    render(<TimelinePage />);
+    render(<FeedPage />);
 
     expect(screen.getByRole("link", { name: "Where is this bridge" })).toHaveAttribute(
       "href",
@@ -141,8 +141,8 @@ describe("TimelinePage", () => {
 
   it("starts on Following and walks everyone's activity on All", () => {
     walk.items = [item({})];
-    render(<TimelinePage />);
-    expect(lastPath()).toBe("/timeline?scope=following");
+    render(<FeedPage />);
+    expect(lastPath()).toBe("/feed?scope=following");
     expect(screen.getByRole("button", { name: "Following" })).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -150,21 +150,21 @@ describe("TimelinePage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "All" }));
 
-    expect(lastPath()).toBe("/timeline?scope=all");
+    expect(lastPath()).toBe("/feed?scope=all");
     expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("offers All to an analyst who follows nobody", () => {
-    render(<TimelinePage />);
+    render(<FeedPage />);
 
     expect(screen.getByText("You follow no analysts yet")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Show all activity" }));
-    expect(lastPath()).toBe("/timeline?scope=all");
+    expect(lastPath()).toBe("/feed?scope=all");
   });
 
   it("says nothing matched when the analysts followed have posted nothing", () => {
     profile.following_count = 3;
-    render(<TimelinePage />);
+    render(<FeedPage />);
 
     expect(screen.getByText("Nothing from analysts you follow yet")).toBeInTheDocument();
     expect(screen.queryByText("You follow no analysts yet")).toBeNull();
@@ -175,7 +175,7 @@ describe("TimelinePage", () => {
     const watchers = stubObservers();
     walk.items = [item({})];
     walk.hasMore = true;
-    render(<TimelinePage />);
+    render(<FeedPage />);
 
     expect(walk.loadMore).not.toHaveBeenCalled();
     scrollToFoot(watchers);
@@ -189,9 +189,9 @@ describe("TimelinePage", () => {
     walk.items = [item({})];
     walk.hasMore = true;
     auth.loading = true;
-    const { rerender } = render(<TimelinePage />);
+    const { rerender } = render(<FeedPage />);
     auth.loading = false;
-    rerender(<TimelinePage />);
+    rerender(<FeedPage />);
 
     scrollToFoot(watchers);
     expect(walk.loadMore).toHaveBeenCalledTimes(1);
@@ -202,7 +202,7 @@ describe("TimelinePage", () => {
     walk.items = [item({ title: "Already loaded" })];
     walk.hasMore = true;
     walk.error = "API error 500";
-    render(<TimelinePage />);
+    render(<FeedPage />);
 
     expect(screen.getByRole("link", { name: "Already loaded" })).toBeInTheDocument();
     expect(screen.getByText("API error 500")).toBeInTheDocument();
@@ -215,7 +215,7 @@ describe("TimelinePage", () => {
 
   it("shows only the error when the first page fails", () => {
     walk.error = "API error 500";
-    render(<TimelinePage />);
+    render(<FeedPage />);
 
     expect(screen.getByText("API error 500")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
@@ -225,15 +225,15 @@ describe("TimelinePage", () => {
     walk.items = [item({})];
     walk.hasMore = true;
     walk.loadingMore = true;
-    const { rerender } = render(<TimelinePage />);
+    const { rerender } = render(<FeedPage />);
     expect(screen.getByRole("button", { name: "Loading…" })).toBeDisabled();
-    expect(screen.queryByText("You have reached the end of the timeline")).toBeNull();
+    expect(screen.queryByText("You have reached the end of the feed")).toBeNull();
 
     walk.hasMore = false;
     walk.loadingMore = false;
-    rerender(<TimelinePage />);
+    rerender(<FeedPage />);
     expect(screen.queryByRole("button", { name: /Load/ })).toBeNull();
-    expect(screen.getByText("You have reached the end of the timeline")).toBeInTheDocument();
+    expect(screen.getByText("You have reached the end of the feed")).toBeInTheDocument();
   });
 
   it("puts the title first, names both dates, and keys the taxonomy without Unknown", () => {
@@ -241,7 +241,7 @@ describe("TimelinePage", () => {
       item({
         id: "g1",
         event_date: "2009-08-25",
-        timeline_at: "2026-10-03T09:00:00Z",
+        feed_at: "2026-10-03T09:00:00Z",
         conflicts: [
           {
             id: "c1",
@@ -259,9 +259,9 @@ describe("TimelinePage", () => {
           { id: "t3", name: "airstrike", category: "free" },
         ],
       }),
-      item({ id: "r1", title: "Where is this bridge", status: "requested", timeline_at: "2026-10-04T09:00:00Z" }),
+      item({ id: "r1", title: "Where is this bridge", status: "requested", feed_at: "2026-10-04T09:00:00Z" }),
     ];
-    const { container } = render(<TimelinePage />);
+    const { container } = render(<FeedPage />);
 
     const card = container.querySelector("article")!;
     const heading = card.querySelector("h2")!;
