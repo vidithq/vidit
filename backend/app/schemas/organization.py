@@ -31,7 +31,7 @@ class OrganizationRead(BaseModel):
     caller. ``viewer_invited`` is true while the caller holds a pending invite.
     ``viewer_can_manage`` is true for an org manager or a site admin: it gates
     the profile edit and the member management on the page.
-    ``approval_request_audience`` is who may send the organization a approval
+    ``approval_request_audience`` is who may send the organization an approval
     request, set by its org managers: shown to them and to site admins only, null
     for anyone else, so the setting is not read off the page.
     """

@@ -46,7 +46,7 @@ class Organization(Base):
     external_links: Mapped[dict[str, Any]] = mapped_column(
         JSONB, default=dict, nullable=False, server_default="{}"
     )
-    # Who may send the organization a approval request, set by its org managers. ``following``
+    # Who may send the organization an approval request, set by its org managers. ``following``
     # admits an analyst whom at least one live org manager follows.
     approval_request_audience: Mapped[ApprovalRequestAudience] = mapped_column(
         String(20),

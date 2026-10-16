@@ -1357,7 +1357,7 @@ export interface paths {
         put?: never;
         /**
          * Decline Approval Request
-         * @description Decline a approval request addressed to you, or to an organization you manage.
+         * @description Decline an approval request addressed to you, or to an organization you manage.
          */
         post: operations["decline_approval_request_api_v1_events__geolocation_id__approval_requests__request_id__decline_post"];
         delete?: never;
@@ -4295,7 +4295,7 @@ export interface components {
          *     caller. ``viewer_invited`` is true while the caller holds a pending invite.
          *     ``viewer_can_manage`` is true for an org manager or a site admin: it gates
          *     the profile edit and the member management on the page.
-         *     ``approval_request_audience`` is who may send the organization a approval
+         *     ``approval_request_audience`` is who may send the organization an approval
          *     request, set by its org managers: shown to them and to site admins only, null
          *     for anyone else, so the setting is not read off the page.
          */
@@ -4926,7 +4926,7 @@ export interface components {
          *     default. ``notifications`` lists every registered kind in registry order.
          *     ``product_updates`` is whether a consent to product update emails is
          *     current; it has no default to fall back to, since consent is never
-         *     presumed. ``approval_request_audience`` is who may send you a approval
+         *     presumed. ``approval_request_audience`` is who may send you an approval
          *     request.
          */
         UserPreferencesRead: {

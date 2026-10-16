@@ -103,7 +103,7 @@ def decline_approval_request(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ApprovalRequestRead:
-    """Decline a approval request addressed to you, or to an organization you manage."""
+    """Decline an approval request addressed to you, or to an organization you manage."""
     geo = resolve_live_event(db, geolocation_id)
     try:
         row = approval_requests.decline(db, geo=geo, request_id=request_id, user=current_user)

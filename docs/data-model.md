@@ -810,7 +810,7 @@ The service caps geolocators plus pending invitations at 10 per event (`MAX_EVEN
 
 ### `event_geolocator_departures`
 
-An analyst who held an event's credit and lost it: the owner removed them, or they left. [`services/geolocator_credit.remove`](../backend/app/services/geolocator_credit.py) writes the row in the transaction that deletes the `event_geolocators` row. A former geolocator neither approves the event nor receives a approval request for it, as a current one.
+An analyst who held an event's credit and lost it: the owner removed them, or they left. [`services/geolocator_credit.remove`](../backend/app/services/geolocator_credit.py) writes the row in the transaction that deletes the `event_geolocators` row. A former geolocator neither approves the event nor receives an approval request for it, as a current one.
 
 | Column | Type | Constraints |
 |--------|------|-------------|

@@ -9,7 +9,7 @@ export type ApprovalRequestAudience =
   components["schemas"]["UserPreferencesRead"]["approval_request_audience"];
 type Author = components["schemas"]["AuthorRef"];
 
-/** Whom a approval request asks: an analyst by username, or an organization by slug. */
+/** Whom an approval request asks: an analyst by username, or an organization by slug. */
 export type ApprovalRequestTarget = { username: string } | { organization: string };
 
 /** The audience of an analyst or organization that never chose one.
@@ -30,10 +30,10 @@ function audienceOptions(labels: Record<ApprovalRequestAudience, string>) {
   }));
 }
 
-/** The Settings choices for who may send the reader a approval request. */
+/** The Settings choices for who may send the reader an approval request. */
 export const APPROVAL_REQUEST_AUDIENCE_OPTIONS = audienceOptions(AUDIENCE_LABELS);
 
-/** The organization page's choices for who may send the organization a approval request.
+/** The organization page's choices for who may send the organization an approval request.
  *  `following` admits an analyst any org manager follows. */
 export const ORGANIZATION_AUDIENCE_OPTIONS = audienceOptions({
   ...AUDIENCE_LABELS,

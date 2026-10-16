@@ -505,7 +505,7 @@ def _managed(db: Session, *, user: User, rows: list[Notification]) -> set[uuid.U
     )
 
 
-# A approval request's key in the feed: the event, the requester, and the organization it targets
+# An approval request's key in the feed: the event, the requester, and the organization it targets
 # (None for one addressed to the reader). There is one open request per requester, target and
 # event.
 RequestKey = tuple[uuid.UUID, uuid.UUID, uuid.UUID | None]

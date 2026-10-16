@@ -8,7 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 
-# Who may send this analyst a approval request: analysts they follow, any signed-in analyst, or
+# Who may send this analyst an approval request: analysts they follow, any signed-in analyst, or
 # nobody. Value-domain source of truth; ``ck_user_preferences_approval_request_audience`` pins it
 # at the DB (keep the two in step).
 ApprovalRequestAudience = Literal["following", "everyone", "nobody"]

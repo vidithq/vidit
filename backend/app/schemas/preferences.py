@@ -46,7 +46,7 @@ class UserPreferencesRead(BaseModel):
     default. ``notifications`` lists every registered kind in registry order.
     ``product_updates`` is whether a consent to product update emails is
     current; it has no default to fall back to, since consent is never
-    presumed. ``approval_request_audience`` is who may send you a approval
+    presumed. ``approval_request_audience`` is who may send you an approval
     request."""
 
     display: DisplayPreferences

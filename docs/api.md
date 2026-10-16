@@ -120,7 +120,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/events/{id}/approval-requests` | 🔒 | Open approval requests: all for the event's geolocators, yours and your organizations' otherwise |
 | GET | `/events/{id}/approval-request-targets` | 🔒 | The analysts and organizations you can ask to approve the event now, geolocators only |
 | POST | `/events/{id}/approval-requests` | 🔒 | Ask an analyst or an organization to approve a published event you geolocated |
-| POST | `/events/{id}/approval-requests/{request_id}/decline` | 🔒 | Decline a approval request addressed to you or to an organization you manage |
+| POST | `/events/{id}/approval-requests/{request_id}/decline` | 🔒 | Decline an approval request addressed to you or to an organization you manage |
 | **Collections** | | | |
 | POST | `/collections` | 🔒 | Open a collection (title, description, and the events it holds) |
 | POST | `/collections/{id}/report` | 🌐 | Report a collection for moderation (anonymous allowed) |
@@ -1719,7 +1719,7 @@ Ask an analyst or an organization to approve the live version of the event.
 
 ### `POST /events/{id}/approval-requests/{request_id}/decline` 🔒
 
-Decline a approval request addressed to you, or to an organization you are an org manager of.
+Decline an approval request addressed to you, or to an organization you are an org manager of.
 
 **Response 200:** the declined request. The requester receives a `approval_request_declined` notification.
 
@@ -2299,7 +2299,7 @@ Change some of your preferences. The first write creates your stored row.
 - `product_updates: true` grants the consent to product update emails with source `settings`, and `false` withdraws it. Granting while a consent is current changes nothing, so the original grant time stays.
 - In `display`, an omitted field keeps its stored value, and `null` clears it so it reads the default again.
 - In `notifications`, each entry sets channels of one kind. A value equal to the kind's default drops your override, so only differences from the defaults are stored, and a later change of a default reaches you if you never moved that switch.
-- `approval_request_audience` sets who may send you a approval request. Omit it or send `null` to keep the stored value.
+- `approval_request_audience` sets who may send you an approval request. Omit it or send `null` to keep the stored value.
 
 The body rejects unknown fields, unknown kinds, unknown channels, and display or audience values outside the table above.
 

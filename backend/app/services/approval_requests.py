@@ -56,7 +56,7 @@ DECLINE_COOLDOWN = timedelta(days=7)
 
 
 class ApprovalRequestError(Exception):
-    """A approval request write the rules refuse, with a stable ``code``."""
+    """An approval request write the rules refuse, with a stable ``code``."""
 
     code: str
 
