@@ -5,11 +5,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
+import { useUnreadNotifications } from "@/contexts/NotificationsContext";
 import { useAdmin } from "@/hooks/useAdmin";
 import { ACCENT_SURFACE } from "@/components/ui/styles";
 import { ICON_TAP_STEP } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { Dot } from "@/components/ui/Dot";
+import { OutboundLink } from "@/components/ui/OutboundLink";
 import {
   DiscordGlyph,
   GitHubGlyph,
@@ -18,6 +20,7 @@ import {
 import BetaBanner from "@/components/BetaBanner";
 import { setPhoneBackSlot } from "@/lib/phoneBackSlot";
 import {
+  Bell,
   Globe,
   Plus,
   Settings,
@@ -68,7 +71,8 @@ interface NavItem {
 // Order: Map, Submit, Requests, Search, About (public/meta plus the guides hub) last. Timeline is
 // off the rail until its collaboration mechanics arrive; the bot guide is reached from About and
 // X itself. Home has no slot (the logo links it). Only Submit carries `auth: true` and hides
-// signed-out. Profile, Settings, Sign-in and Sign-out are the identity block at the bottom.
+// signed-out. Profile, Notifications, Settings, Sign-in and Sign-out are the identity block at
+// the bottom.
 const NAV_ITEMS: ReadonlyArray<NavItem> = [
   {
     href: "/map",
@@ -103,6 +107,11 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
 // pending-detections dot).
 const ADMIN_ITEM: NavItem = { href: "/admin", icon: Swords, label: "Admin" };
 const SIGN_IN_ITEM: NavItem = { href: "/login", icon: LogIn, label: "Sign in" };
+const NOTIFICATIONS_ITEM: NavItem = {
+  href: "/notifications",
+  icon: Bell,
+  label: "Notifications",
+};
 const SETTINGS_ITEM: NavItem = {
   href: "/settings",
   icon: Settings,
@@ -132,6 +141,7 @@ export default function Sidebar() {
   const { user, loading } = useAuth();
   const { isAdmin } = useAdmin();
   const { count: detectionCount } = useDetectionsCount();
+  const { unread } = useUnreadNotifications();
 
   useEffect(() => {
     if (expanded) {
@@ -229,9 +239,13 @@ export default function Sidebar() {
   // the drawer's. `drawerOpen` is included so a control added later that forgets the gate still shows labels.
   const showLabels = labelsVisible || drawerOpen || drawerLabels;
 
-  const renderNavItem = (item: NavItem) => {
+  // `notify` badges the icon with the `<Dot>` and names it for screen readers.
+  const renderNavItem = (item: NavItem, notify?: { label: string }) => {
     const active = isActive(item, pathname);
     const Icon = item.icon;
+    const icon = (
+      <Icon size={18} strokeWidth={active ? 2.2 : 1.8} className="shrink-0" />
+    );
     return (
       <Link
         key={item.href}
@@ -243,10 +257,18 @@ export default function Sidebar() {
             : "text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800"
         }`}
       >
-        <Icon size={18} strokeWidth={active ? 2.2 : 1.8} className="shrink-0" />
+        {notify ? (
+          <span className="relative flex shrink-0">
+            {icon}
+            <Dot className="absolute -top-0.5 -right-1 ring-2 ring-neutral-900" />
+          </span>
+        ) : (
+          icon
+        )}
         {showLabels && (
           <span className="truncate flex-1 animate-label-in">{item.label}</span>
         )}
+        {notify && <span className="sr-only">{notify.label}</span>}
       </Link>
     );
   };
@@ -343,36 +365,30 @@ export default function Sidebar() {
           </Link>
           {showLabels && (
             <div className="flex items-center gap-1 ml-auto pr-1 animate-label-in">
-              <a
+              <OutboundLink
                 href={GITHUB_URL}
-                target="_blank"
-                rel="noopener noreferrer"
                 title="Vidit on GitHub"
                 aria-label="Vidit on GitHub"
                 className={BRAND_LINK_CLASS}
               >
                 <GitHubGlyph />
-              </a>
-              <a
+              </OutboundLink>
+              <OutboundLink
                 href={X_URL}
-                target="_blank"
-                rel="noopener noreferrer"
                 title="Vidit on X"
                 aria-label="Vidit on X"
                 className={BRAND_LINK_CLASS}
               >
                 <XGlyph />
-              </a>
-              <a
+              </OutboundLink>
+              <OutboundLink
                 href={DISCORD_URL}
-                target="_blank"
-                rel="noopener noreferrer"
                 title="Vidit Discord"
                 aria-label="Vidit Discord"
                 className={BRAND_LINK_CLASS}
               >
                 <DiscordGlyph />
-              </a>
+              </OutboundLink>
             </div>
           )}
         </div>
@@ -384,7 +400,7 @@ export default function Sidebar() {
           ref={navRef}
           className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1 px-2 pb-3"
         >
-          {NAV_ITEMS.filter((item) => !item.auth || user).map(renderNavItem)}
+          {NAV_ITEMS.filter((item) => !item.auth || user).map((item) => renderNavItem(item))}
         </nav>
 
         {/* Bottom block, one visual group, no border-t: the flex-1 spacer above separates it. */}
@@ -420,7 +436,7 @@ export default function Sidebar() {
                   iconClassName="text-current"
                   decorative
                 />
-                {/* Pending-submission nudge, the rail's only badge. */}
+                {/* Pending-submission nudge. */}
                 {detectionCount > 0 && (
                   <Dot className="absolute -top-0.5 -right-1 ring-2 ring-neutral-900" />
                 )}
@@ -440,6 +456,11 @@ export default function Sidebar() {
             renderNavItem(SIGN_IN_ITEM)
           )}
 
+          {user &&
+            renderNavItem(
+              NOTIFICATIONS_ITEM,
+              unread > 0 ? { label: `${unread} unread notifications` } : undefined,
+            )}
           {user && renderNavItem(SETTINGS_ITEM)}
 
           {/* The foot control, one row at every width but two buttons: below `sm` it closes the drawer, from

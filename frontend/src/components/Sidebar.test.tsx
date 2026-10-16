@@ -9,6 +9,7 @@ import Sidebar from "./Sidebar";
 const viewer = vi.hoisted(() => ({
   avatar_url: null as string | null,
   detections: 0,
+  unread: 0,
   pathname: "/map",
 }));
 vi.mock("@/contexts/AuthContext", () => ({
@@ -20,6 +21,9 @@ vi.mock("@/contexts/AuthContext", () => ({
 vi.mock("@/contexts/DetectionsContext", () => ({
   useDetectionsCount: () => ({ count: viewer.detections, refresh: () => {} }),
 }));
+vi.mock("@/contexts/NotificationsContext", () => ({
+  useUnreadNotifications: () => ({ unread: viewer.unread, refresh: () => {} }),
+}));
 vi.mock("@/hooks/useAdmin", () => ({
   useAdmin: () => ({ isAdmin: false, loading: false }),
 }));
@@ -29,6 +33,7 @@ describe("Sidebar identity row", () => {
   beforeEach(() => {
     viewer.avatar_url = null;
     viewer.detections = 0;
+    viewer.unread = 0;
     viewer.pathname = "/map";
   });
 
@@ -69,6 +74,30 @@ describe("Sidebar identity row", () => {
     expect(wrapper).toHaveClass("relative");
     expect(wrapper?.querySelector(".bg-orange-500")).not.toBeNull();
     expect(row).toHaveTextContent("3 geolocations awaiting submission");
+  });
+});
+
+describe("Sidebar notifications row", () => {
+  beforeEach(() => {
+    viewer.unread = 0;
+    viewer.pathname = "/map";
+  });
+
+  it("links the feed with no dot while nothing is unread", () => {
+    render(<Sidebar />);
+
+    const row = screen.getByRole("link", { name: "Notifications" });
+    expect(row).toHaveAttribute("href", "/notifications");
+    expect(row.querySelector(".bg-orange-500")).toBeNull();
+  });
+
+  it("shows the notify dot and names the count when something is unread", () => {
+    viewer.unread = 2;
+    render(<Sidebar />);
+
+    const row = screen.getByTitle("Notifications");
+    expect(row.querySelector(".bg-orange-500")).not.toBeNull();
+    expect(row).toHaveTextContent("2 unread notifications");
   });
 });
 

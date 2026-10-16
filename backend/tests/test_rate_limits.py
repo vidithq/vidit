@@ -354,7 +354,8 @@ def test_read_quota_key_rejects_a_forged_token(user):
 #
 # Some groups still write, each reaped by a fixture:
 # * `/auth/login` writes an `auth_events` row per attempt;
-# * `PATCH /users/me` and `DELETE /users/me/avatar` touch the throwaway `user` row;
+# * `PATCH /users/me`, `PATCH /users/me/preferences`, `POST /notifications/read` and
+#   `DELETE /users/me/avatar` touch the throwaway `user` row;
 # * admin actions write `admin_events` rows and `POST /admin/invite-codes`
 #   mints 30 codes;
 # * `POST /collections` opens 30 collections (dropped by the owner cascade);
@@ -529,6 +530,17 @@ _DOCUMENTED_LIMITS = [
     _Case("delete", f"{ME}/avatar", 20),
     _Case("post", "/api/v1/users/no-such-user/follow", 60),
     _Case("delete", "/api/v1/users/no-such-user/follow", 60),
+    _Case("get", f"{ME}/preferences", 120),
+    _Case("patch", f"{ME}/preferences", 60, "user", {"json": {"display": {"theme": "dark"}}}),
+    _Case("get", "/api/v1/notifications", 120),
+    _Case("get", "/api/v1/notifications/unread-count", 120),
+    _Case(
+        "post",
+        "/api/v1/notifications/read",
+        60,
+        "user",
+        {"json": {"ids": [str(_MISSING_ID)]}},
+    ),
     # The create stores a row per request; the other probes 404 after the limiter.
     _Case(
         "post",

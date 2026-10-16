@@ -275,6 +275,23 @@ erDiagram
         TIMESTAMPTZ created_at
     }
 
+    notifications {
+        UUID id PK
+        UUID user_id FK "the recipient"
+        VARCHAR kind "request_fulfilled | new_follower"
+        UUID actor_id FK "nullable, who acted"
+        UUID event_id FK "nullable, what it concerns"
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ read_at "nullable, NULL is unread"
+    }
+
+    user_preferences {
+        UUID user_id PK
+        JSONB notification_overrides "per-kind, per-channel overrides only"
+        JSONB display "palette, theme, help_tooltips"
+        TIMESTAMPTZ updated_at
+    }
+
     bot_mentions {
         UUID id PK
         VARCHAR mention_tweet_id "UNIQUE, X snowflake"
@@ -349,6 +366,10 @@ erDiagram
     events ||--o{ collection_events : "event_id"
     users ||--o{ follows : "follower_id"
     users ||--o{ follows : "followed_id"
+    users ||--o{ notifications : "user_id"
+    users |o--o{ notifications : "actor_id"
+    events |o--o{ notifications : "event_id"
+    users ||--o| user_preferences : "user_id"
     users ||--o{ archive_import_jobs : "owner_id"
     events ||--o{ source_archives : "event_id"
 ```
@@ -689,6 +710,47 @@ Indexes:
 - `ix_follows_followed_id` on `(followed_id)`. The PK indexes the forward direction, who is X following, on its leading column. Without this index, the reverse direction, who follows X, the query that powers `followers_count` on every profile load, would full-scan.
 
 `ON DELETE CASCADE` applies to both FKs. Hard-deleting an analyst drops every edge on either side, so a deleted user cannot keep ghost followers or ghost followings. Soft-deleted users (`users.deleted_at IS NOT NULL`) keep their edges. The public profile returns 404 regardless, and resurrecting an account should resurrect its graph.
+
+---
+
+### `notifications`
+
+One thing that happened to an analyst, shown in their feed at [`GET /notifications`](api.md#notifications). The action that causes it writes the row in its own transaction.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `UUID` | PK, default `uuid4()` |
+| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The recipient. |
+| `kind` | `VARCHAR(40)` | NOT NULL, CHECK in `('request_fulfilled', 'new_follower')` (constraint `ck_notifications_kind_valid`). The kind registry `NOTIFICATION_KINDS` in [`models/notification.py`](../backend/app/models/notification.py) lists the same values with their per-channel defaults. |
+| `actor_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, nullable. Who acted: the fulfiller or the follower. |
+| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, nullable. The event the row concerns; NULL for `new_follower`. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()`. Orders the feed. |
+| `read_at` | `TIMESTAMPTZ` | nullable. Set by `POST /notifications/read` on the rows the feed showed; NULL is unread. Read state is per row because `created_at` is stamped at flush: an action that flushes its row and commits after a slow upload would land behind a single read marker already moved past it. |
+
+Indexes:
+
+- `ix_notifications_user_created_at` on `(user_id, created_at, id)`. Backs the feed's keyset walk.
+- `ix_notifications_user_unread`: partial index on `(user_id) WHERE read_at IS NULL`. Backs the unread count.
+- `ix_notifications_actor_id` on `(actor_id)` and `ix_notifications_event_id` on `(event_id)`. Back the cascades when an actor or an event is hard-deleted.
+
+Every foreign key cascades, so a hard-deleted recipient, actor or event takes its rows with it. A soft delete or a takedown keeps the row and hides it at read time: the feed and the count skip a row whose event has `deleted_at` or `hidden_at` set, or whose actor has `deleted_at` set. Undoing the takedown shows the row again.
+
+`new_follower` is written once per follower: an unfollow and re-follow finds the earlier row and writes none.
+
+---
+
+### `user_preferences`
+
+One analyst's stored preferences, read and written through [`/users/me/preferences`](api.md#get-usersmepreferences). The first write creates the row, and a missing row reads as the defaults.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `user_id` | `UUID` | PK, FK → `users.id` ON DELETE CASCADE |
+| `notification_overrides` | `JSONB` | NOT NULL, default `'{}'::jsonb`. `{kind: {channel: bool}}`, holding only the values that differ from the kind's default in `NOTIFICATION_KINDS`. A write equal to the default removes the key, so a changed default reaches every analyst who never moved that switch. |
+| `display` | `JSONB` | NOT NULL, default `'{}'::jsonb`. `palette`, `theme` and `help_tooltips`, each present once written. A missing key reads as the default in `schemas/preferences.DISPLAY_DEFAULTS`. |
+| `updated_at` | `TIMESTAMPTZ` | NOT NULL, stamped on every write |
+
+A stored value the API no longer accepts, such as a retired kind or palette, reads as its default.
 
 ---
 

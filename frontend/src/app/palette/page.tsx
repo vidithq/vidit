@@ -1233,7 +1233,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<LinkRow>" usage="Stay in touch and Guides (About). The profile's linked accounts are icon buttons instead, so this row is the About page's alone. The trailing ↗ marks external only: an in-app href routes through next/link, a mailto stays a plain <a>, and neither takes the glyph.">
+          <Item name="<LinkRow>" usage="Stay in touch and Guides (About), and each row of the Notifications feed (kind and date as the label, the sentence as the value). The profile's linked accounts are icon buttons instead. The trailing ↗ marks external only: an in-app href routes through next/link, a mailto stays a plain <a>, and neither takes the glyph.">
             <div className="w-full max-w-md space-y-2">
               <LinkRow icon={AtSign} label="X / Twitter" value="@vidithq" href="https://x.com/vidithq" />
               <LinkRow icon={BookOpen} label="How Vidit works" value="/guide" href="/guide" external={false} />

@@ -1,0 +1,74 @@
+from fastapi import APIRouter, Depends, Query, Request, Response, status
+from sqlalchemy.orm import Session
+
+from app.dependencies import get_current_user, get_db
+from app.models.user import User
+from app.ratelimit import limiter
+from app.schemas.notification import (
+    NotificationRead,
+    NotificationReadUpdate,
+    NotificationUnreadCount,
+)
+from app.services import notifications as notifications_service
+from app.services.pagination import (
+    MAX_PAGE_SIZE,
+    decode_cursor,
+    encode_cursor,
+    next_link,
+    page_size,
+    take_page,
+)
+
+router = APIRouter()
+
+
+@router.get("", response_model=list[NotificationRead])
+@limiter.limit("120/minute")
+def list_notifications(
+    request: Request,
+    response: Response,
+    limit: int = Query(MAX_PAGE_SIZE, ge=1),
+    cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[NotificationRead]:
+    """Your notifications, newest first, capped at 100 per page (``Link: rel="next"`` cursor).
+
+    Listing marks nothing read; ``POST /notifications/read`` does.
+    """
+    size = page_size(limit)
+    window = notifications_service.list_feed(
+        db,
+        user=current_user,
+        limit=size,
+        cursor=decode_cursor(cursor) if cursor is not None else None,
+    )
+    rows, has_next = take_page(window, size)
+    if has_next:
+        last = rows[-1]
+        response.headers["Link"] = next_link(request, encode_cursor(last.created_at, last.id))
+    return [notifications_service.build_read(row) for row in rows]
+
+
+@router.get("/unread-count", response_model=NotificationUnreadCount)
+@limiter.limit("120/minute")
+def get_unread_count(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> NotificationUnreadCount:
+    """How many visible notifications you have not been shown yet."""
+    return NotificationUnreadCount(count=notifications_service.unread_count(db, user=current_user))
+
+
+@router.post("/read", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("60/minute")
+def mark_notifications_read(
+    request: Request,
+    body: NotificationReadUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    """Mark the listed notifications read. Ids that are not yours change nothing."""
+    notifications_service.mark_read(db, user=current_user, ids=body.ids)
+    db.commit()

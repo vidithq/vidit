@@ -11,10 +11,12 @@ from app.models.event import Event, EventGeolocator, EventVersion
 from app.models.follow import Follow
 from app.models.invite_code import InviteCode
 from app.models.media import Media
+from app.models.notification import Notification
 from app.models.pending_registration import PendingRegistration
 from app.models.source_archive import SourceArchive
 from app.models.tag import Tag, event_tags
 from app.models.user import User
+from app.models.user_preferences import UserPreferences
 
 __all__ = [
     "AdminEvent",
@@ -33,10 +35,12 @@ __all__ = [
     "EventVersion",
     "InviteCode",
     "Media",
+    "Notification",
     "PendingRegistration",
     "SourceArchive",
     "Tag",
     "User",
+    "UserPreferences",
     "event_conflicts",
     "event_tags",
 ]

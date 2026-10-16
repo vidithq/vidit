@@ -8,6 +8,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 - The Requests board filters by conflict, capture source, tags, author and whether a request carries a location guess, sorts newest or oldest first, and shows how long each request has been open ([#560](https://github.com/vidithq/vidit/pull/560)).
 - A link to a site outside a short known list (archives, X, Telegram, YouTube and a few others) shows its full address and asks before you leave Vidit, and a URL in a profile bio is now a link ([#559](https://github.com/vidithq/vidit/pull/559)).
+- A notification feed tells you when someone geolocates a request you opened or follows you, with an unread dot in the sidebar; Settings saves an email choice per kind, and theme, accent and help tooltips now follow your account across devices ([#562](https://github.com/vidithq/vidit/pull/562)).
 
 ### Fixed
 

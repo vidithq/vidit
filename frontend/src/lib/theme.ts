@@ -9,9 +9,11 @@
  */
 
 import { createAttributePreference } from "./attributePreference";
+import type { components } from "./api-types";
 
-export type ThemeId = "dark" | "light";
+export type ThemeId = components["schemas"]["DisplayPreferences"]["theme"];
 
+// Mirrors backend schemas/preferences.DISPLAY_DEFAULTS; change both.
 export const DEFAULT_THEME: ThemeId = "dark";
 export const THEME_EVENT = "vidit:theme-changed";
 
@@ -28,4 +30,6 @@ const pref = createAttributePreference<ThemeId>({
 });
 
 export const getTheme = pref.get;
+export const getSavedTheme = pref.saved;
 export const setTheme = pref.set;
+export const clearTheme = pref.clear;

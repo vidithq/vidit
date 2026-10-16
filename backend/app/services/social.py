@@ -8,12 +8,14 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from app.models.event import Event
 from app.models.follow import Follow
 from app.models.user import User
+from app.services import notifications
 from app.services.event_filters import published_events, visible_events
 from app.services.thumbnails import thumbnail_media_criteria
 
 
 def follow_user(db: Session, *, follower_id: uuid.UUID, followed_user: User) -> bool:
-    """Insert a follow row. Idempotent: returns ``False`` if the edge exists.
+    """Insert a follow row and notify the followed analyst. Idempotent: returns
+    ``False`` if the edge exists.
 
     The router resolves the target user and rejects self-follows first.
 
@@ -33,6 +35,7 @@ def follow_user(db: Session, *, follower_id: uuid.UUID, followed_user: User) -> 
             db.add(Follow(follower_id=follower_id, followed_id=followed_user.id))
     except IntegrityError:
         return False
+    notifications.notify_new_follower(db, follower_id=follower_id, followed_id=followed_user.id)
     return True
 
 

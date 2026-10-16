@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.cache import points_cache
 from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, STATUS_REQUESTED, Event
 from app.models.user import User
-from app.services import source_archive
+from app.services import notifications, source_archive
 from app.services.evidence_intake import attach_evidence_and_commit, collect_media_keys
 from app.services.permissions import ensure_owner
 from app.services.storage import sweep_keys
@@ -114,9 +114,10 @@ async def geolocate(
         raise EventStateError("Only requested or detected events can be geolocated")
     if geo.status == STATUS_DETECTED:
         ensure_owner(geo, current_user)
-    # A requested event's ``source_url`` is the requester's evidence anchor; a
-    # fulfiller must not rewrite it. Captured before ``status`` flips.
-    keep_requester_source_url = geo.status == STATUS_REQUESTED
+    # Captured before ``status`` flips. A requested event's ``source_url`` is
+    # the requester's evidence anchor, which a fulfiller must not rewrite.
+    fulfils_request = geo.status == STATUS_REQUESTED
+    keep_requester_source_url = fulfils_request
 
     # A ``geolocated`` row always has a source URL, and a detection may lack one.
     effective_source_url = geo.source_url if keep_requester_source_url else source_url
@@ -161,6 +162,8 @@ async def geolocate(
         geo.geolocated_at = datetime.now(UTC)
     # Hands edit-rights to the fulfiller of a request and records the credit.
     _credit_geolocator(db, geo, current_user)
+    if fulfils_request:
+        notifications.notify_request_fulfilled(db, event=geo, fulfiller=current_user)
 
     replace_source_links(db, geo, secondary_links)
 

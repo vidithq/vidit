@@ -13,8 +13,10 @@ from app.routers._errors import raise_typed_error
 from app.routers.events._common import build_event_list
 from app.schemas.collection import CollectionList
 from app.schemas.event import PaginatedEvents
+from app.schemas.preferences import UserPreferencesRead, UserPreferencesUpdate
 from app.schemas.user import UserProfile, UserRead, UserStatsRead, UserUpdate
 from app.services import collections as collections_service
+from app.services import preferences as preferences_service
 from app.services import social, user_stats
 from app.services import users as users_service
 from app.services.event_filters import published_events, visible_events
@@ -96,6 +98,31 @@ def delete_my_avatar(
 ) -> User:
     """Drop your profile picture (surfaces fall back to the monogram)."""
     return users_service.clear_avatar(db, user=current_user)
+
+
+@router.get("/me/preferences", response_model=UserPreferencesRead)
+@limiter.limit("120/minute")
+def get_my_preferences(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> UserPreferencesRead:
+    """Your display and notification preferences, each beside its default."""
+    return preferences_service.get_preferences(db, user=current_user)
+
+
+@router.patch("/me/preferences", response_model=UserPreferencesRead)
+@limiter.limit("60/minute")
+def update_my_preferences(
+    request: Request,
+    body: UserPreferencesUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> UserPreferencesRead:
+    """Change some of your preferences; omitted fields keep their value."""
+    result = preferences_service.update_preferences(db, user=current_user, body=body)
+    db.commit()
+    return result
 
 
 @router.get("/{username}", response_model=UserProfile)
