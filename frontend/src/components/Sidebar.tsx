@@ -20,7 +20,7 @@ import {
 import BetaBanner from "@/components/BetaBanner";
 import { setPhoneBackSlot } from "@/lib/phoneBackSlot";
 import {
-  Newspaper,
+  Activity,
   Bell,
   Globe,
   Plus,
@@ -88,7 +88,7 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     label: "Requests",
     activeFor: (p) => p === "/requests" || p.startsWith("/requests/"),
   },
-  { href: "/feed", icon: Newspaper, label: "Feed", auth: true },
+  { href: "/feed", icon: Activity, label: "Feed", auth: true },
   { href: "/search", icon: Search, label: "Search" },
   {
     href: "/about",

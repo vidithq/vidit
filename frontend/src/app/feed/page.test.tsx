@@ -18,15 +18,21 @@ vi.mock("@/hooks/useRequireAuth", () => ({
   }),
 }));
 
-// The profile read answers the follow count once the following view comes back empty.
+// The profile read answers the follow count once the following view comes back empty, and the
+// taxonomy reads feed the filter panel.
 const profile = vi.hoisted(() => ({ following_count: 0 }));
 vi.mock("@/hooks/useApiResource", () => ({
-  useApiResource: (path: string | null) => ({
-    data: path ? profile : null,
-    error: null,
-    loading: false,
-    refetch: () => {},
-  }),
+  useApiResource: (path: string | null) => {
+    const data =
+      path === "/tags"
+        ? [{ id: "t1", name: "airstrike", category: "free" }]
+        : path === "/conflicts?used=true"
+          ? [{ id: "c1", name: "Russo-Ukrainian war" }]
+          : path
+            ? profile
+            : null;
+    return { data, error: null, loading: false, refetch: () => {} };
+  },
 }));
 
 // The walk is `useCursorList`'s; this page owns the path it builds and what it makes of the rows.
@@ -281,5 +287,75 @@ describe("FeedPage", () => {
     expect(within(card).getAllByText("Capture source:")).toHaveLength(1);
     expect(within(card).queryByText("Unknown")).toBeNull();
     expect(within(card).getByText("airstrike")).toBeInTheDocument();
+  });
+
+  it("narrows the walk from the rail: kind, conflict and tag", () => {
+    walk.items = [item({})];
+    render(<FeedPage />);
+    const rail = screen.getByRole("complementary", { name: "Filters" });
+
+    fireEvent.click(within(rail).getByRole("button", { name: "Toggle Kind" }));
+    fireEvent.click(within(rail).getByRole("button", { name: "Requests" }));
+    expect(lastPath()).toBe("/feed?scope=following&kind=request");
+
+    fireEvent.click(within(rail).getByRole("button", { name: "Toggle Conflict" }));
+    fireEvent.click(within(rail).getByRole("button", { name: "Russo-Ukrainian war" }));
+    fireEvent.click(within(rail).getByRole("button", { name: "Toggle Tags" }));
+    fireEvent.click(within(rail).getByRole("button", { name: "airstrike" }));
+    expect(lastPath()).toBe(
+      "/feed?scope=following&kind=request&conflict=Russo-Ukrainian+war&tag=airstrike",
+    );
+    expect(screen.getByRole("button", { name: "Filters (3)" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTitle("Remove filter: Requests"));
+    expect(lastPath()).toBe(
+      "/feed?scope=following&conflict=Russo-Ukrainian+war&tag=airstrike",
+    );
+  });
+
+  it("edits a draft in the Filters dialog and applies it once", () => {
+    walk.items = [item({})];
+    render(<FeedPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    const dialog = screen.getByRole("dialog", { name: "Filters" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Toggle Kind" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Geolocations" }));
+    expect(lastPath()).toBe("/feed?scope=following");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(lastPath()).toBe("/feed?scope=following&kind=geolocation");
+
+    fireEvent.click(screen.getByRole("button", { name: "Filters (1)" }));
+    const reopened = screen.getByRole("dialog", { name: "Filters" });
+    fireEvent.click(within(reopened).getByRole("button", { name: "Clear" }));
+    fireEvent.click(within(reopened).getByRole("button", { name: "Apply" }));
+    expect(lastPath()).toBe("/feed?scope=following");
+  });
+
+  it("drops the draft when the dialog closes without Apply", () => {
+    walk.items = [item({})];
+    render(<FeedPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    const dialog = screen.getByRole("dialog", { name: "Filters" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Toggle Kind" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Requests" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(lastPath()).toBe("/feed?scope=following");
+  });
+
+  it("says nothing matched the filters instead of the follow prompts", () => {
+    profile.following_count = 0;
+    render(<FeedPage />);
+    const rail = screen.getByRole("complementary", { name: "Filters" });
+    fireEvent.click(within(rail).getByRole("button", { name: "Toggle Kind" }));
+    fireEvent.click(within(rail).getByRole("button", { name: "Requests" }));
+
+    expect(screen.getByText("Nothing in the feed matches the filters.")).toBeInTheDocument();
+    expect(screen.queryByText("You follow no analysts yet")).toBeNull();
   });
 });

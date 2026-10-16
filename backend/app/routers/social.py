@@ -13,7 +13,7 @@ from app.services.pagination import (
     next_link,
     page_size,
 )
-from app.services.social import FeedScope
+from app.services.social import FeedKind, FeedScope
 
 router = APIRouter()
 
@@ -27,6 +27,10 @@ def get_feed(
     scope: FeedScope = Query("following"),
     limit: int = Query(10, ge=1),
     cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
+    kind: list[FeedKind] | None = Query(None),
+    conflict: list[str] | None = Query(None),
+    capture_source: list[str] | None = Query(None),
+    tag: list[str] | None = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[FeedItemRead]:
@@ -34,8 +38,9 @@ def get_feed(
 
     ``scope=following`` (default) keeps the rows owned by analysts the
     current user follows, and is empty when they follow nobody; ``scope=all``
-    keeps every row. Cursor-paged, capped at 100 rows; the ``Link: rel="next"``
-    cursor is present exactly when a next page holds a row.
+    keeps every row. ``kind``, ``conflict``, ``capture_source`` and ``tag``
+    narrow the rows as on ``GET /events``. Cursor-paged, capped at 100 rows; the
+    ``Link: rel="next"`` cursor is present exactly when a next page holds a row.
     """
     size = page_size(limit)
     rows, has_next = social.get_feed(
@@ -44,6 +49,10 @@ def get_feed(
         scope=scope,
         size=size,
         cursor=decode_cursor(cursor) if cursor is not None else None,
+        kind=kind,
+        conflict=conflict,
+        capture_source=capture_source,
+        tag=tag,
     )
     if has_next:
         last, _, _, last_at = rows[-1]

@@ -2942,6 +2942,8 @@ A detection, a retraction and a withdrawn request are in neither kind. A soft-de
 | Param | Type | Description |
 |-------|------|-------------|
 | `scope` | string | `following` (default) keeps the geolocations crediting an analyst you follow and the requests one of them opened, and is empty when you follow nobody. `all` keeps every row. Anything else returns 422. |
+| `kind` | string (repeatable) | `geolocation` or `request` keeps that kind of row. Both, or none, keep both. Anything else returns 422. |
+| `conflict`, `capture_source`, `tag` | string (repeatable) | Same semantics as on [`GET /events`](#get-events). |
 | `limit` | int | Rows per page, default 10. See [Pagination](#pagination). |
 | `cursor` | string | Opaque cursor from the previous page's `Link: rel="next"` header. See [Pagination](#pagination). |
 

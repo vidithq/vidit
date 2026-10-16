@@ -19,12 +19,12 @@ import { Pill } from "@/components/ui/Pill";
 import type { Concept } from "@/lib/fieldHelp";
 
 /**
- * The event filter panel, shared by the map overlay, the search page and the Requests board: one
- * component owns the section list (Status, Conflict, Capture source, Source media, Location guess,
- * the surface's date sections, Tags, Author), so a vocabulary change lands on all three. Surfaces
- * differ in their date controls (injected via `dateSections`) and in `sections`, the subset they
- * offer (the search page's Collections group is narrowed by `author` alone, and only the board
- * offers Location guess).
+ * The event filter panel, shared by the map overlay, the search page, the Requests board and the
+ * feed: one component owns the section list (the surface's lead sections, Status, Conflict, Capture
+ * source, Source media, Location guess, the surface's date sections, Tags, Author), so a vocabulary
+ * change lands on all four. Surfaces differ in their injected sections (`leadSections`,
+ * `dateSections`) and in `sections`, the subset they offer (the search page's Collections group is
+ * narrowed by `author` alone, and only the board offers Location guess).
  *
  * State stays surface-owned: this component takes one `values` object and emits patches.
  * `buildActiveFilterPills` derives the matching pill entries from the same shape so the
@@ -219,30 +219,34 @@ export function buildDateWindowPills(
   ];
 }
 
-/** True when anything in the shared vocabulary narrows the view. The author counts though it has
- * no pill, so a filtered surface never reads as unfiltered. */
-export function hasAnyFilter(
+/** How many filters in the shared vocabulary narrow the view: one per pill, plus the author, which
+ * counts though it has no pill, so a filtered surface never reads as unfiltered. */
+export function countActiveFilters(
   values: EventFilterValues,
   windows: DateWindows
-): boolean {
+): number {
   return (
-    values.statuses.length > 0 ||
-    values.conflicts.length > 0 ||
-    values.captureSources.length > 0 ||
-    values.tags.length > 0 ||
-    values.mediaTypes.length > 0 ||
-    values.locationGuess.length > 0 ||
-    !!values.author.trim() ||
-    eventWindowActive(windows) ||
-    addedWindowActive(windows)
+    values.statuses.length +
+    values.conflicts.length +
+    values.captureSources.length +
+    values.tags.length +
+    values.mediaTypes.length +
+    values.locationGuess.length +
+    (values.author.trim() ? 1 : 0) +
+    (eventWindowActive(windows) ? 1 : 0) +
+    (addedWindowActive(windows) ? 1 : 0)
   );
 }
+
+export const hasAnyFilter = (values: EventFilterValues, windows: DateWindows): boolean =>
+  countActiveFilters(values, windows) > 0;
 
 export function EventFilterSections({
   tags,
   conflicts,
   values,
   onPatch,
+  leadSections = [],
   dateSections = [],
   sections = ALL_FILTER_SECTIONS,
 }: {
@@ -252,6 +256,8 @@ export function EventFilterSections({
   conflicts: Conflict[];
   values: EventFilterValues;
   onPatch: EventFilterPatch;
+  /** Surface-specific sections above the shared stack (the feed's Kind). */
+  leadSections?: InjectedSection[];
   dateSections?: InjectedSection[];
   /** Which sections this surface offers (default: all). A surface scoped to a view a section can't
    * narrow leaves it out rather than offer a control that can only empty the result. */
@@ -309,7 +315,9 @@ export function EventFilterSections({
     "Location guess": values.locationGuess.length > 0,
     Tags: values.tags.length > 0,
     Author: !!values.author.trim(),
-    ...Object.fromEntries(dateSections.map((s) => [s.title, s.active])),
+    ...Object.fromEntries(
+      [...leadSections, ...dateSections].map((s) => [s.title, s.active])
+    ),
   };
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(isActive);
   const toggleSection = (title: string) =>
@@ -334,8 +342,24 @@ export function EventFilterSections({
         ...freeTags.slice(TAGS_PREVIEW).filter((t) => values.tags.includes(t.name)),
       ];
 
+  const renderInjected = (section: InjectedSection) => (
+    <FilterSection
+      key={section.title}
+      title={section.title}
+      concept={section.concept}
+      summary={section.summary}
+      active={isActive[section.title]}
+      open={!!openSections[section.title]}
+      onToggle={() => toggleSection(section.title)}
+    >
+      {section.children}
+    </FilterSection>
+  );
+
   return (
     <div className="bg-neutral-900 rounded-lg border border-neutral-700 px-3">
+      {leadSections.map(renderInjected)}
+
       {offers("status") && (
         <FilterSection
           title="Status"
@@ -424,19 +448,7 @@ export function EventFilterSections({
         </FilterSection>
       )}
 
-      {dateSections.map((section) => (
-        <FilterSection
-          key={section.title}
-          title={section.title}
-          concept={section.concept}
-          summary={section.summary}
-          active={isActive[section.title]}
-          open={!!openSections[section.title]}
-          onToggle={() => toggleSection(section.title)}
-        >
-          {section.children}
-        </FilterSection>
-      ))}
+      {dateSections.map(renderInjected)}
 
       {offers("tags") && freeTags.length > 0 && (
         <FilterSection

@@ -1746,8 +1746,9 @@ export interface paths {
          *
          *     ``scope=following`` (default) keeps the rows owned by analysts the
          *     current user follows, and is empty when they follow nobody; ``scope=all``
-         *     keeps every row. Cursor-paged, capped at 100 rows; the ``Link: rel="next"``
-         *     cursor is present exactly when a next page holds a row.
+         *     keeps every row. ``kind``, ``conflict``, ``capture_source`` and ``tag``
+         *     narrow the rows as on ``GET /events``. Cursor-paged, capped at 100 rows; the
+         *     ``Link: rel="next"`` cursor is present exactly when a next page holds a row.
          */
         get: operations["get_feed_api_v1_feed_get"];
         put?: never;
@@ -7978,6 +7979,10 @@ export interface operations {
                 limit?: number;
                 /** @description Opaque cursor from a Link: rel=next header */
                 cursor?: string | null;
+                kind?: ("geolocation" | "request")[] | null;
+                conflict?: string[] | null;
+                capture_source?: string[] | null;
+                tag?: string[] | null;
             };
             header?: never;
             path?: never;

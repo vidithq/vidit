@@ -318,15 +318,16 @@ On a form, the mark rides the field holding the link, not a block under it:
 
 ### Page chrome
 
-Every main-app page uses [`<PageShell>`](../frontend/src/components/ui/PageShell.tsx), which owns the `title` / `subtitle` / `back` / `actions` slots:
+Every main-app page uses [`<PageShell>`](../frontend/src/components/ui/PageShell.tsx), which owns the `title` / `subtitle` / `back` / `actions` / `controls` slots:
 
 | Element | Style | Notes |
 |---|---|---|
-| Column | `max-w-4xl mx-auto px-4 sm:px-6 pt-10 max-sm:pt-16 pb-16 space-y-6` | One width across the app. The offset + column (`sm:pl-14` + `max-w-4xl mx-auto px-4 sm:px-6`) come from [`<PageFrame>`](../frontend/src/components/ui/PageFrame.tsx), which PageShell composes and the public landing uses directly, so both share the same left inset. The side padding drops a step below `sm`, where the desktop gutter leaves the cards too narrow to hold a title beside a thumbnail on a 375px screen. The top padding steps up there instead, to clear the menu chip the rail leaves in the corner; see [Phone chrome](#phone-chrome). |
+| Column | `px-4 sm:px-6 lg:pl-18`, then `max-w-[53rem]` (reading) or `max-w-6xl` (with a rail), then `pt-10 max-sm:pt-16 pb-16 space-y-6` | One container across the app, left-aligned right after the sidebar, so the title starts at the same x on every page. [`<PageFrame>`](../frontend/src/components/ui/PageFrame.tsx) owns the offset (`sm:pl-14`) and the container through its `column` prop. A page without a rail takes `reading`, 53rem of content, the line length a centred `max-w-4xl` column leaves inside its padding; the free space falls on the right. A page with a rail takes `wide`, up to `max-w-6xl` (1152px) of content, which holds a 53rem main column beside the [right rail](#right-rail). `PageShell` picks the column from its `rail` prop. `lg:pl-18` keeps a gutter left of the title for the back arrow. The side padding drops a step below `sm`, where the desktop gutter leaves the cards too narrow to hold a title beside a thumbnail on a 375px screen. The top padding steps up there instead, to clear the menu chip the rail leaves in the corner; see [Phone chrome](#phone-chrome). The public landing keeps `PageFrame`'s `center` column, the same width centred. |
 | H1 (`title`) | `text-xl font-medium text-neutral-100` | Consistent on every page. |
 | Subtitle | `text-sm text-neutral-400` | Tight under the H1 (8 px gap). |
-| Back arrow (`back`) | `max-sm:hidden flex -ml-2 mb-1 lg:inline-flex lg:absolute lg:right-full lg:top-1.5 lg:mr-3 lg:mb-0 lg:ml-0` | Lives in the gutter from `lg` up, so the title's x-coordinate is the same whether back is present or not. That gutter exists only once the centred column has room to sit off the rail; between `sm` and `lg` the button is a row of its own above the title, since a gutter-parked one lands under the fixed sidebar, where taps reach the nav rather than the button. Below `sm` the header carries no back control at all: the same button is portaled into the menu chip instead (see [Phone chrome](#phone-chrome)). `-ml-2` takes back 8 of the 9px the 36px square insets its 18px glyph by, so the arrow reads as aligned with the heading. **When to set it:** `back` marks a drill-in page reached from content (event / request detail, edit, profile, the detections queue), where "back" means "return to where I clicked this". Sidebar destinations (map, submit, requests, search, about, settings) never set it: they are entered from the rail, so there is no "where I came from" to promise. **What it walks:** [`smartBack`](../frontend/src/lib/navigation.ts) pops an app-kept stack of visited paths rather than calling `history.back()`, which would walk off the origin. A route that only redirects keeps itself out of that stack (`skipBackRecord`, called before the redirect), since walking back onto one runs its redirect again and lands where the walk started, which reads as an arrow that does nothing. |
+| Back arrow (`back`) | `max-sm:hidden flex -ml-2 mb-1 lg:inline-flex lg:absolute lg:right-full lg:top-1.5 lg:mr-3 lg:mb-0 lg:ml-0` | Lives in the gutter from `lg` up, so the title's x-coordinate is the same whether back is present or not. The gutter is the column's `lg:pl-18`; between `sm` and `lg` the button is a row of its own above the title, since a gutter-parked one lands under the fixed sidebar, where taps reach the nav rather than the button. Below `sm` the header carries no back control at all: the same button is portaled into the menu chip instead (see [Phone chrome](#phone-chrome)). `-ml-2` takes back 8 of the 9px the 36px square insets its 18px glyph by, so the arrow reads as aligned with the heading. **When to set it:** `back` marks a drill-in page reached from content (event / request detail, edit, profile, the detections queue), where "back" means "return to where I clicked this". Sidebar destinations (map, submit, requests, search, about, settings) never set it: they are entered from the rail, so there is no "where I came from" to promise. **What it walks:** [`smartBack`](../frontend/src/lib/navigation.ts) pops an app-kept stack of visited paths rather than calling `history.back()`, which would walk off the origin. A route that only redirects keeps itself out of that stack (`skipBackRecord`, called before the redirect), since walking back onto one runs its redirect again and lands where the walk started, which reads as an arrow that does nothing. |
 | Actions (`actions`) | Right of the title, wrapping under it below a `14rem` title basis | The page-level action cluster. Every control that acts on the thing the page is about goes here, so a reader finds them in one place. On a profile that is the glyph row (the linked accounts, then Edit profile on your own), and Follow on someone else's profile or the save pair while editing. On an event surface it is the three-tier grammar below. The map's side panel mirrors the position, right-aligned beside its title. A panel a cluster control opens (the report form, the close form) renders under the header, directly below the trigger; two open panels stack as separate cards rather than sharing a slot. Flex line-breaking measures the title's base size, so the cluster takes its own line rather than squeezing a heading into a one-word column. A preference, not a minimum (`min-w-0`): a hard floor outgrows the frame on the narrowest phones and scrolls the page sideways. The cluster is capped at the header width (`max-w-full`) and wraps inside itself, so a row of several buttons breaks into right-aligned lines on a phone. The subtitle breaks anywhere, since a bio can hold a bare URL, one unbreakable token. |
+| Controls (`controls`) | `flex flex-wrap items-center justify-between gap-2`, one `space-y-6` step under the header | The view controls: the `<SegmentedControl>` that picks what the page lists or how (the feed scope, the Requests sort, the submit mode), left-aligned under the title. A companion control in the same node takes the row's right end (the board's **Post request**). The row sits above a [right rail](#right-rail), so the rail starts level with the list. |
 
 Pre-data states use `<PageLoading>` / `<PageError>` (one centered shell). Opt-outs: `/` (landing), `/map` (full-screen map), the `(auth)/*` group, and `app/error.tsx`.
 
@@ -335,6 +336,63 @@ The public guides use the same shell, signed in or out: `/guide` ("How Vidit wor
 The `(auth)/*` group composes [`<AuthCard>`](../frontend/src/components/auth/AuthCard.tsx) (a `max-w-sm` centered card). The two single-email pages (`/forgot-password`, `/resend-confirmation`) also share [`<SingleEmailFlow>`](../frontend/src/components/auth/SingleEmailFlow.tsx), whose sent-state copy stays anti-enumeration ("if X is registered…", never confirming the address exists).
 
 The registration form asks for consent to product update emails with a [`<ToggleRow>`](../frontend/src/components/ui/ToggleRow.tsx) in its described shape, directly under the email field and off by default, so a consent is never presumed. A switch, not a checkbox: the app has one boolean control, and the row reads the same here as the matching row in Settings → Notifications. `/unsubscribe` is an `<AuthCard>` too: it withdraws the consent only on a click of its button, so a mail scanner that opens the link withdraws nothing.
+
+#### Right rail
+
+```mermaid
+flowchart TB
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef page fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef state fill:#fdf3e7,stroke:#b8661a,color:#7a430f
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`the layout primitives, thick-bordered`"]:::core
+    l2["`shared filter piece`"]:::shared
+    l3["`a page that mounts it`"]:::page
+    l4["`what the reader sees`"]:::state
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
+  end
+
+  shell["`**PageShell rail=…**
+  PageFrame column=wide: up to 1152px, left-aligned`"]:::core
+  layout["`**PageWithRail**
+  53rem main column plus a 17.5rem rail`"]:::core
+  pages["`**Feed, Requests board, Search**
+  rail: EventFilterSections; narrowRail=hidden`"]:::page
+  wide["`**lg and up**
+  rail sticks beside the list, scrolls on its own when taller`"]:::state
+  narrow["`**below lg**
+  rail leaves the page`"]:::state
+  bar["`**FilterBar**
+  Filters (N) button and the active-filter pills`"]:::shared
+  dialog["`**MediaOverlay dialog + Card**
+  the same panel on a draft: Cancel, Clear, Apply`"]:::shared
+  list["`**the list**
+  refetches once, with the applied filters`"]:::state
+
+  pages --> shell --> layout
+  layout --> wide
+  layout --> narrow
+  narrow --> bar
+  bar -->|Filters N| dialog
+  dialog -->|Apply| list
+```
+
+[`<PageWithRail>`](../frontend/src/components/ui/PageWithRail.tsx) lays a page out as a main column and a right rail. Use it for any page whose side panel stays in view while its main column scrolls. Pass the panel as `<PageShell>`'s `rail` (with `railLabel` and `narrowRail`): `PageShell` composes `PageWithRail` and widens its column to `wide`, so the main column keeps the 53rem reading width beside the rail once the screen holds both. A page whose rail comes and goes passes `null` while it is gone, which keeps the column one width and keeps its element mounted.
+
+- **From `lg` up** the rail is a `17.5rem` (280px) column right of the main column. It sticks to the top of the viewport while the main column scrolls. Once the rail is taller than the viewport it scrolls on its own, so its foot stays reachable.
+- **Below `lg`** the `narrow` prop picks the shape. `stacked` (the default) puts the rail above the main column. `hidden` takes the rail off the page, for a page that offers its own narrow entry to it.
+- **Without a `rail`** (`null`) the page takes the `reading` column, so a page can drop the rail on a view it does not apply to.
+
+The feed, the [Requests board](#requests-board) and search mount the shared filter panel ([`EventFilterSections`](../frontend/src/components/filters/EventFilterSections.tsx)) in the rail with `narrowRail="hidden"`. The map keeps its floating overlay panel. Above each list sits [`<FilterBar>`](../frontend/src/components/filters/FilterBar.tsx): the removable active-filter pills, and below `lg` a **Filters** button that reads **Filters (N)** while N filters are active. The button opens the same panel full screen in `MediaOverlay`'s dialog variant around a `<Card>`. The panel there edits a draft, so the list refetches once:
+
+- **Apply** applies the draft and closes the dialog.
+- **Clear** empties the draft. Apply then clears the list's filters.
+- **Cancel**, Escape or a tap on the backdrop closes the dialog and drops the draft.
+
+The pills act on the applied filters at every width. The pill row hides from `lg` up while no filter is active, since the button is off the page there.
 
 #### Phone chrome
 
@@ -546,23 +604,26 @@ flowchart TB
 
   toggle["`**SegmentedControl**
   scope: Following (default) or All`"]:::page
+  filters["`**filter rail**
+  Kind, Conflict, Capture source, Tags`"]:::shared
   walk["`**useCursorList**
-  one walk per scope; a new scope starts a new walk`"]:::shared
+  one walk per scope and filter set; a change starts a new walk`"]:::shared
   api["`**GET /feed**
-  scope, limit 10, cursor from Link rel=next`"]:::core
+  scope, kind, conflict, capture_source, tag, limit 10, cursor`"]:::core
   cards["`**EntityCard variant=feed**
   one card per row, appended page by page`"]:::page
   row["`**LoadMoreRow infinite**
   useInfiniteScroll observes the row`"]:::shared
 
   empty["`**empty first page**
-  Following: no follows, or nothing posted; All: boxed line`"]:::state
+  filtered: boxed line; Following: no follows, or nothing posted; All: boxed line`"]:::state
   failed["`**failed page**
   cards stay, message above Try again; scrolling pauses`"]:::state
   done["`**end of the walk**
   You have reached the end of the feed`"]:::state
 
   toggle --> walk --> api
+  filters --> walk
   api -->|first page| cards
   api -->|no rows| empty
   cards --> row
@@ -574,7 +635,9 @@ flowchart TB
 
 `/feed` is a signed-in page, linked from the rail between Requests and Search. [`GET /feed`](api.md#get-feed) decides which rows it lists and in what order. `/timeline` redirects permanently to `/feed`.
 
-**A [`<SegmentedControl>`](../frontend/src/components/ui/SegmentedControl.tsx) in the header picks the scope**, **Following** (default) or **All**. Picking an option starts a new walk with `scope`, so the list and its empty state describe the scope on screen.
+**A [`<SegmentedControl>`](../frontend/src/components/ui/SegmentedControl.tsx) under the title picks the scope**, **Following** (default) or **All**. Picking an option starts a new walk with `scope`, so the list and its empty state describe the scope on screen.
+
+**The [filter rail](#right-rail) narrows the walk.** The panel offers **Kind** (**Geolocations**, **Requests**), Conflict, Capture source and Tags, the filters `GET /feed` serves. A change starts a new walk with `kind`, `conflict`, `capture_source` and `tag`. The filters live in page state and reset on reload. A filtered view that matches nothing reads *Nothing in the feed matches the filters.* in the `boxed` empty state, instead of the follow prompts below.
 
 **A card names its kind.** Each row is the `feed` [`<EntityCard>`](../frontend/src/components/ui/EntityCard.tsx), which only the feed renders. Read top to bottom, it holds:
 
@@ -586,7 +649,7 @@ flowchart TB
 
 A geolocation opens `/events/{id}` and a request opens `/requests/{id}`.
 
-**An empty first page names its cause.** An empty **Following** view reads the viewer's `following_count` from [`GET /users/{username}`](api.md#get-usersusername) to tell two cases apart:
+**An empty first page names its cause.** An unfiltered empty **Following** view reads the viewer's `following_count` from [`GET /users/{username}`](api.md#get-usersusername) to tell two cases apart:
 
 | Case | Empty state | Actions |
 |---|---|---|
@@ -716,7 +779,7 @@ flowchart TB
 - **Members.** `OrganizationMembers` lists one row per member: the `<AuthorByline>` with the avatar, a `<Pill>` for the role (accent for an org manager, neutral for a member), and the controls the viewer holds. A manager flips the role and removes; every member leaves from their own row. Removing and leaving take the two-click `DANGER_CONFIRM`. The server's `last_manager` refusal shows as the row's error banner.
 - **Approvals.** `OrganizationApprovals` lists the approvals placed in the organization's name, newest first, with **Load more** past a page: each row is the event's title, linked, over the event page's own `ApprovalRow`, so the acting org manager, the state pill, the note and a revocation's reason read the same in both places.
 - **Review requests.** `OrganizationReviewRequests` shows to managers. Its first row is **Accept review requests from**, the Settings row's `<SegmentedControl>` with the organization's labels (**People our org managers follow**, **Everyone**, **Nobody**), saved on change. Under it, the open requests addressed to the organization, oldest first: the event, linked, and who asked when. An org manager gets **Decline** on each; approving happens on the event page, as the organization. A site admin who is not an org manager reads the list without the answer.
-- **Search.** [`/search`](../frontend/src/app/search/page.tsx) finds an organization by name, slug or bio, with no navigation entry of its own. The **Organizations** scope chip carries the `Building2` glyph, and the group follows **Analysts**. Each hit is the analyst hit's row, `ProfileResult`: the picture, the highlighted name, a meta line tagged with `Building2` (`Organization · N members`), and the bio excerpt when the bio matched. The row links to the organization page. The filter panel stays closed on this scope, since every filter is an event predicate.
+- **Search.** [`/search`](../frontend/src/app/search/page.tsx) finds an organization by name, slug or bio, with no navigation entry of its own. The **Organizations** scope chip carries the `Building2` glyph, and the group follows **Analysts**. Each hit is the analyst hit's row, `ProfileResult`: the picture, the highlighted name, a meta line tagged with `Building2` (`Organization · N members`), and the bio excerpt when the bio matched. The row links to the organization page. The page shows no filter rail on this scope, since every filter is an event predicate.
 - **Invites.** `OrganizationInvites` shows to managers. An org manager gets a `<Select>` of the analysts the server accepts, with one line saying the list holds mutual follows only; a site admin who is not an org manager sees the pending invites without the picker. Each pending invite withdraws with one ghost button.
 - **Deletion.** Only a site admin deletes an organization, from the admin panel's Organizations list (`OrganizationsPanel`). **Delete** opens a `WARNING_CALLOUT` that says what goes with the organization, a field for its slug, and the danger button, which stays disabled until the typed slug matches and then takes `DANGER_CONFIRM`.
 
@@ -854,7 +917,7 @@ Opening one is [`/collections/new`](../frontend/src/app/collections/new/page.tsx
 
 #### Search, shelving, and moderation
 
-**Search.** `/search` carries a `Collections` result group and scope chip, between Events and Analysts. Each hit is `<CollectionCard showOwner>`, whose meta line leads with `by user` through `<AuthorByline link={false}>`. On this scope the filter panel shows the Author section only: every other filter is an event predicate, and the backend empties the group on it, while `author` narrows the group (see [`api.md`](api.md#get-search)). It is the event scope's own section, the typeahead over `GET /search/authors`, so a scope change keeps the analyst. The panel takes its sections per scope through the `sections` prop of [`EventFilterSections.tsx`](../frontend/src/components/filters/EventFilterSections.tsx), which also drops Status on the legacy request scope. Every section of the filter panel opens collapsed on the map, the search page and the Requests board, except a section that holds an active value, which opens expanded so the applied filters stay visible; each header still toggles its section.
+**Search.** `/search` carries a `Collections` result group and scope chip, between Events and Analysts. Each hit is `<CollectionCard showOwner>`, whose meta line leads with `by user` through `<AuthorByline link={false}>`. On this scope the filter panel shows the Author section only: every other filter is an event predicate, and the backend empties the group on it, while `author` narrows the group (see [`api.md`](api.md#get-search)). It is the event scope's own section, the typeahead over `GET /search/authors`, so a scope change keeps the analyst. The panel takes its sections per scope through the `sections` prop of [`EventFilterSections.tsx`](../frontend/src/components/filters/EventFilterSections.tsx), which also drops Status on the legacy request scope. Every section of the filter panel opens collapsed on the map, the search page, the Requests board and the feed, except a section that holds an active value, which opens expanded so the applied filters stay visible; each header still toggles its section.
 
 **Shelving.** [`<AddToCollectionPanel>`](../frontend/src/components/collections/AddToCollectionPanel.tsx) opens from the owner's management tier on an event page, for `geolocated` and `detected` rows only; on a request or a closed row the control is absent.
 
@@ -868,7 +931,7 @@ Opening one is [`/collections/new`](../frontend/src/app/collections/new/page.tsx
 
 [`/requests`](../frontend/src/app/requests/page.tsx) lists open requests from [`GET /events`](api.md#get-events) with `view=requested&status=requested`, cursor-paged behind a **Load more** button.
 
-- The status is fixed to `requested`. The board mounts the shared filter panel ([`EventFilterSections`](../frontend/src/components/filters/EventFilterSections.tsx)) without its Status section, because a `closed` chip would read as "done" on a work queue. Source media is also left out, because `GET /events` takes no `media` filter.
+- The status is fixed to `requested`. The board mounts the shared filter panel ([`EventFilterSections`](../frontend/src/components/filters/EventFilterSections.tsx)) in the [filter rail](#right-rail) without its Status section, because a `closed` chip would read as "done" on a work queue. Source media is also left out, because `GET /events` takes no `media` filter.
 - The panel offers Conflict, Capture source, Location guess, Tags and Author. Location guess is offered on the board alone. **With a guess** keeps requests that carry a guessed point, **No guess** keeps the blind ones, and picking both or neither drops the filter. The section sends [`has_coords`](api.md#get-events).
 - A `<SegmentedControl>` orders the list **Newest** (the default) or **Oldest**. It sends [`sort`](api.md#get-events), so every page of the cursor walk keeps that order.
 - Each card shows how long the request has been open, in whole days from `requested_at`, through `<EntityCard>`'s `age` slot: *Open today*, *Open 1 day*, *Open 12 days*. A row with no `requested_at` shows no age.

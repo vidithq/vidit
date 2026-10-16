@@ -7,6 +7,7 @@
  * Typed as the generated frontend aliases, so a backend schema change reaches
  * the suite through the same drift gate every other reader goes through.
  */
+import type { components } from "@/lib/api-types";
 import type { Approval, OrganizationApproval } from "@/lib/approvals";
 import type { Collection } from "@/lib/collections";
 import type { UnreadCount } from "@/lib/notifications";
@@ -24,6 +25,7 @@ import type {
   Conflict,
   EventDetail,
   EventListItem,
+  SearchResponse,
   Tag,
   User,
 } from "@/types";
@@ -159,6 +161,23 @@ export const REQUESTED_EVENT: EventListItem = {
   },
   tags: [CURATED_TAGS[3]],
   conflicts: CONFLICTS,
+};
+
+/** The feed's one row: the open request, stamped with when it entered the feed. */
+export const FEED_ITEMS: components["schemas"]["FeedItemRead"][] = [
+  { ...REQUESTED_EVENT, feed_at: "2025-01-03T09:00:00Z" },
+];
+
+/** A search that matched nothing, what the filtered search page reads. */
+export const EMPTY_SEARCH: SearchResponse = {
+  geolocations: [],
+  requests: [],
+  collections: [],
+  users: [],
+  organizations: [],
+  total: { geolocations: 0, requests: 0, collections: 0, users: 0, organizations: 0 },
+  query: "",
+  type: "event",
 };
 
 /** Id of the collection the collection-page spec opens. */
