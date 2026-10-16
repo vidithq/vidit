@@ -89,6 +89,11 @@ describe("ogProfileCounts", () => {
       { label: "Followers", value: 7 },
     ]);
   });
+
+  it("names one follower in the singular", () => {
+    const one = { ...profile, followers_count: 1 };
+    expect(ogProfileCounts(one, null)).toContainEqual({ label: "Follower", value: 1 });
+  });
 });
 
 describe("ogMosaicBoxes", () => {

@@ -68,3 +68,8 @@ export function safeHostname(url: string): string {
     return url;
   }
 }
+
+/** `noun` for a count of one, `noun` plus `s` for any other: regular English plurals only. */
+export function pluralNoun(count: number, noun: string): string {
+  return count === 1 ? noun : `${noun}s`;
+}

@@ -1,6 +1,7 @@
 // Pure helpers behind the share cards (`app/**/opengraph-image.tsx`), kept out of the
 // Satori modules so they stay testable without the `node:fs` font read.
 
+import { pluralNoun } from "@/lib/format";
 import type { PublicProfile, UserStats } from "@/lib/users";
 
 /** Equirectangular world projection, normalised to the unit square. */
@@ -53,7 +54,7 @@ export function ogProfileCounts(profile: PublicProfile, stats: UserStats | null)
   return [
     { label: "Geolocated", value: stats?.geolocated_count ?? profile.geolocations_count },
     ...(stats ? [{ label: "Detected", value: stats.detected_count }] : []),
-    { label: "Followers", value: profile.followers_count },
+    { label: pluralNoun(profile.followers_count, "Follower"), value: profile.followers_count },
   ];
 }
 

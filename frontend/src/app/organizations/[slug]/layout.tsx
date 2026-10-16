@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { pluralNoun } from "@/lib/format";
 import { ogCount } from "@/lib/og";
 import { organizationPath, type Organization } from "@/lib/organizations";
 
@@ -24,7 +25,7 @@ export async function generateMetadata({
   return portfolioMetadata({
     name: org?.name ?? slug,
     summary: org
-      ? `${ogCount(org.member_count)} member${org.member_count === 1 ? "" : "s"}.`
+      ? `${ogCount(org.member_count)} ${pluralNoun(org.member_count, "member")}.`
       : "No organization on Vidit has this address.",
     bio: org?.bio,
     url: organizationPath(org?.slug ?? slug),
