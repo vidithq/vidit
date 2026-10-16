@@ -24,10 +24,10 @@ import {
 
 /**
  * The reader's "something is wrong with this" control, on every detail surface. One state machine,
- * two nodes: `trigger` is the red flag icon button closing the utilities tier next to the share
- * controls, and `panel` is the form it opens, rendered in the surface's body where a select and
- * textarea fit. `useEventActions` assembles both into the event cluster, and the collection page
- * into its own.
+ * two nodes: `trigger` is the red flag icon button beside the share control, and `panel` is the
+ * form it opens, rendered in the surface's body where a select and textarea fit. The collection
+ * page renders both. The event surfaces put the report in their More menu instead, through
+ * `toggle` and `open`.
  *
  * Icon-only like the share pair: `aria-label` plus `title` carry the name. Red because reporting
  * is the destructive-in-intent act a reader can do to a published claim: the `danger` variant of
@@ -76,6 +76,9 @@ export function useReportContent(
 ): {
   trigger: ReactNode;
   panel: ReactNode;
+  open: boolean;
+  /** Opens or closes the form; null once the report is sent. */
+  toggle: (() => void) | null;
 } {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState<ContentReportReason>("illegal_content");
@@ -115,6 +118,8 @@ export function useReportContent(
   if (sent) {
     return {
       trigger: null,
+      open: false,
+      toggle: null,
       panel: (
         <div className={FORM_SUCCESS_BANNER} role="status">
           Report received. An admin reviews it and decides what happens to the{" "}
@@ -123,6 +128,11 @@ export function useReportContent(
       ),
     };
   }
+
+  const toggle = () => {
+    reportMutation.reset();
+    setOpen((prev) => !prev);
+  };
 
   const trigger = (
     <Button
@@ -133,19 +143,18 @@ export function useReportContent(
       aria-expanded={open}
       // Only while the form is mounted: `aria-controls` to an absent id is a dangling reference.
       aria-controls={open ? FORM_ID : undefined}
-      onClick={() => {
-        reportMutation.reset();
-        setOpen((prev) => !prev);
-      }}
+      onClick={toggle}
     >
       <Flag size={14} />
     </Button>
   );
 
-  if (!open) return { trigger, panel: null };
+  if (!open) return { trigger, panel: null, open, toggle };
 
   return {
     trigger,
+    open,
+    toggle,
     panel: (
       <div id={FORM_ID}>
         <Card as="section">

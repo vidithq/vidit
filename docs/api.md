@@ -1525,7 +1525,7 @@ The approvals of the event, revoked ones included, ordered by version and then o
 | Param | Meaning |
 |---|---|
 | `version_no` | Keep one version. Omitted without `reviewer` or `all_versions`, it is the live version. |
-| `all_versions` | `true` lists every version's approvals. The event page reads the list this way for its approval stamps and its Approvals panel. |
+| `all_versions` | `true` lists every version's approvals. The event page reads the list this way for its Verification card. |
 | `reviewer` | Keep one analyst's own approvals, by username, 1 to 50 characters, without the ones they placed for an organization. Without `version_no`, every version is listed. |
 
 **Response 200 (`ApprovalList`):**
@@ -2659,7 +2659,7 @@ Your notifications, newest first. Cursor-paged; [Pagination](#pagination) gives 
 
 `reapprove_version` is set on a `re_approve_requested` row, and on a `review_request_received` row whose request is open, when you can approve the event now: it is `geolocated`, you are not one of its current or former geolocators, and you have not reviewed its live version. On a row that names an organization, the approval is the organization's: you must still be its org manager, and its approval of the live version must not stand. It holds the live version number. The feed page offers no approve control: approving happens on the event page with [`POST /events/{id}/approvals`](#post-eventsidapprovals). It is `null` on every other row.
 
-`approved_version` is set beside `reapprove_version` on a `re_approve_requested` row: the latest earlier version your unrevoked approval stands on, or the organization's on a row that names one, or `null` when none does. The event page's Approvals panel lists the fields that changed between that version and the live event.
+`approved_version` is set beside `reapprove_version` on a `re_approve_requested` row: the latest earlier version your unrevoked approval stands on, or the organization's on a row that names one, or `null` when none does. The event page's Verification card lists the fields that changed between that version and the live event.
 
 `review_request_id` is the open [review request](#review-requests) behind the newest `review_request_received` row of its event, requester and organization, addressed to you or to the organization the row names, which the feed page's decline control posts to [`POST /events/{id}/review-requests/{request_id}/decline`](#post-eventsidreview-requestsrequest_iddecline). It is `null` once the request is resolved, and on every other row.
 

@@ -1,0 +1,210 @@
+"use client";
+
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
+import Link from "next/link";
+
+import { cn } from "@/lib/cn";
+import { Button } from "./Button";
+import { ACCENT_SURFACE, TOOLTIP_SURFACE } from "./styles";
+
+export interface ActionMenuItem {
+  key: string;
+  label: string;
+  icon?: ReactNode;
+  /** Navigates instead of acting. */
+  href?: string;
+  onSelect?: () => void;
+  tone?: "accent" | "danger";
+  /** The item's panel is open: the item wears the active-row paint and says so. */
+  active?: boolean;
+}
+
+const ITEM =
+  "flex w-full min-h-9 items-center gap-2 rounded px-2.5 py-1.5 text-left text-xs font-medium outline-none transition-colors";
+const ITEM_TONE = {
+  accent: "text-orange-400 hover:bg-orange-500/10 focus-visible:bg-orange-500/10",
+  danger: "text-red-400 hover:bg-red-500/10 focus-visible:bg-red-500/10",
+} as const;
+// The menu keeps this much room from either viewport edge.
+const EDGE_PX = 8;
+
+function itemNodes(menu: HTMLElement): HTMLElement[] {
+  return [...menu.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+}
+
+/**
+ * A trigger button that opens a short list of actions (`role="menu"`). Arrow keys, Home and End
+ * move between items; Escape closes and returns focus to the trigger; Tab or an outside click
+ * closes. The menu opens under the trigger, aligned to its right edge, and shifts sideways when
+ * that would cross the viewport.
+ */
+export function ActionMenu({
+  label,
+  icon,
+  showLabel = false,
+  items,
+  note,
+}: {
+  /** The trigger's name: printed beside the icon with `showLabel`, its `aria-label` otherwise. */
+  label: string;
+  icon: ReactNode;
+  showLabel?: boolean;
+  items: ActionMenuItem[];
+  /** A line above the items, read before acting on any of them. */
+  note?: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const menuId = useId();
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const focusOnOpen = useRef<"first" | "last">("first");
+
+  const close = (restoreFocus: boolean) => {
+    setOpen(false);
+    if (restoreFocus) triggerRef.current?.focus();
+  };
+
+  const openAt = (edge: "first" | "last") => {
+    focusOnOpen.current = edge;
+    setOpen(true);
+  };
+
+  // Placed before paint: a style write, not state, so the menu never renders at the wrong edge.
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!open || !menu) return;
+    const { left, width } = menu.getBoundingClientRect();
+    const room = document.documentElement.clientWidth - EDGE_PX - width;
+    const shift = Math.max(EDGE_PX, Math.min(left, room)) - left;
+    if (shift !== 0) menu.style.right = `${-shift}px`;
+    const nodes = itemNodes(menu);
+    (focusOnOpen.current === "last" ? nodes[nodes.length - 1] : nodes[0])?.focus();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (e: MouseEvent) => {
+      if (!wrapperRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onPointer);
+    return () => document.removeEventListener("mousedown", onPointer);
+  }, [open]);
+
+  const onTriggerKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      openAt(e.key === "ArrowDown" ? "first" : "last");
+    }
+  };
+
+  const onMenuKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const nodes = itemNodes(e.currentTarget);
+    const at = nodes.indexOf(document.activeElement as HTMLElement);
+    const move = (index: number) => {
+      e.preventDefault();
+      nodes[(index + nodes.length) % nodes.length]?.focus();
+    };
+    switch (e.key) {
+      case "ArrowDown":
+        return move(at + 1);
+      case "ArrowUp":
+        return move(at - 1);
+      case "Home":
+        return move(0);
+      case "End":
+        return move(nodes.length - 1);
+      case "Escape":
+        e.preventDefault();
+        return close(true);
+      case "Tab":
+        return close(false);
+      case " ":
+        // A link answers Enter only; Space activates every item.
+        if (at >= 0) {
+          e.preventDefault();
+          nodes[at].click();
+        }
+    }
+  };
+
+  return (
+    <div ref={wrapperRef} className="relative inline-flex">
+      <Button
+        ref={triggerRef}
+        icon={!showLabel}
+        variant="ghost"
+        aria-label={showLabel ? undefined : label}
+        title={showLabel ? undefined : label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        onClick={() => (open ? close(false) : openAt("first"))}
+        onKeyDown={onTriggerKeyDown}
+        className={open ? ACCENT_SURFACE : ""}
+      >
+        {icon}
+        {showLabel && label}
+      </Button>
+      {open && (
+        <div
+          ref={menuRef}
+          id={menuId}
+          role="menu"
+          aria-label={label}
+          onKeyDown={onMenuKeyDown}
+          className={cn(
+            "absolute right-0 top-full z-50 mt-1 w-56 max-w-[calc(100vw-2rem)] space-y-0.5 rounded-md p-1",
+            TOOLTIP_SURFACE,
+          )}
+        >
+          {note && <p className="px-2.5 py-1.5 text-[11px] text-neutral-400">{note}</p>}
+          {items.map((item) => {
+            const className = cn(ITEM, ITEM_TONE[item.tone ?? "accent"], item.active && ACCENT_SURFACE);
+            const content = (
+              <>
+                {item.icon}
+                {item.label}
+              </>
+            );
+            return item.href ? (
+              <Link
+                key={item.key}
+                href={item.href}
+                role="menuitem"
+                tabIndex={-1}
+                className={className}
+                onClick={() => close(false)}
+              >
+                {content}
+              </Link>
+            ) : (
+              <button
+                key={item.key}
+                type="button"
+                role="menuitem"
+                tabIndex={-1}
+                aria-expanded={item.active}
+                className={className}
+                onClick={() => {
+                  close(true);
+                  item.onSelect?.();
+                }}
+              >
+                {content}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}

@@ -13,7 +13,10 @@ import {
   Circle,
   Copy,
   Download,
+  Ellipsis,
   ExternalLink,
+  Flag,
+  History,
   Mail,
   MapPin,
   MessageCircle,
@@ -25,6 +28,7 @@ import {
 
 import type { Conflict, EventDetail, EventStatus, Media, Tag } from "@/types";
 import { PageShell } from "@/components/ui/PageShell";
+import { ActionMenu } from "@/components/ui/ActionMenu";
 import { Card } from "@/components/ui/Card";
 import { CharCounter } from "@/components/ui/CharCounter";
 import { Pill } from "@/components/ui/Pill";
@@ -441,7 +445,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="TOOLTIP_SURFACE" usage="The bubble of an anchored popover (usePinnedPopover): the FieldHelp explanation and the AvatarStack card. Colour only; callers add rounded-md, padding and text size.">
+          <Item name="TOOLTIP_SURFACE" usage="The bubble of an anchored popover (usePinnedPopover): the FieldHelp explanation and the AvatarStack card, and the ActionMenu list. Colour only; callers add rounded-md, padding and text size.">
             <span className={`inline-block rounded-md px-2 py-1 text-xs ${TOOLTIP_SURFACE}`}>
               maya
             </span>
@@ -506,6 +510,29 @@ export default function PalettePage() {
                 </Variant>
               </div>
             </div>
+          </Item>
+
+          <Item name="<ActionMenu>" usage="A trigger that opens a short list of actions (role=menu): the event header's More menu (Version history, Geolocators, Add to collection, Close, Report) and the Share fallback (Copy link, Share on X) where the browser has no share sheet. The trigger is the ghost button, icon-only with label as its aria-label and title, or icon plus printed label with showLabel. Items are buttons (onSelect) or links (href), with an icon, the accent tone or tone=danger for the report, and active for an item whose panel is open (the active-row paint plus aria-expanded). A click or Enter opens on the first item, ArrowUp on the trigger opens on the last; arrows, Home and End move, Space or Enter activates, Escape closes and returns focus to the trigger, Tab or an outside click closes. `note` prints a line above the items (a detected row's share caveat). The list opens under the trigger aligned to its right edge and shifts sideways to stay 8px inside the viewport.">
+            <Variant label="icon trigger">
+              <ActionMenu
+                label="More actions"
+                icon={<Ellipsis size={14} />}
+                items={[
+                  { key: "history", label: "Version history", icon: <History size={14} />, href: "/palette" },
+                  { key: "copy", label: "Copy link", icon: <Copy size={14} />, active: true },
+                  { key: "report", label: "Report", icon: <Flag size={14} />, tone: "danger" },
+                ]}
+              />
+            </Variant>
+            <Variant label="printed label, with a note">
+              <ActionMenu
+                label="Share"
+                showLabel
+                icon={<ExternalLink size={14} />}
+                note="Detected and may still change."
+                items={[{ key: "copy", label: "Copy link", icon: <Copy size={14} /> }]}
+              />
+            </Variant>
           </Item>
 
           <Item name="<ActiveFilterPills>" usage="The one rendering of active filters: a row of removable accent chips (label + ×), shared by the map's filter overlay and the search page so active filter state reads identically everywhere. Entries are {key, label, icon?, onRemove}; `onClearAll` adds a quiet clear-everything affordance once two or more filters are on. Renders nothing when the list is empty.">
@@ -859,7 +886,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<AvatarStack>" usage="The approval stamps under the event page's action row: an overlapping row of 28px pictures, oldest first. An organization (variant=organization) takes the rounded square, an analyst the circle; each picture is a button with its own accessible name (label, such as Approved by maya). Hover or focus opens the item's renderCard in a TOOLTIP_SURFACE card (usePinnedPopover); a click or a tap pins it and moves focus to its first link. Escape, or tabbing past either end of the card, closes it and returns focus to the row; the card holds while focus is inside it. The card carries the way on (the event page's card: picture, name, Version N · date, the note, on behalf of an organization, View profile or View organization). At most max (5 by default) show; the rest fold into a +N bubble, a button when onOverflow is set (the event page opens its Approvals panel) and plain text otherwise. Renders nothing for an empty list.">
+          <Item name="<AvatarStack>" usage="The approval stamps in the event page's Verification card: an overlapping row of 28px pictures, oldest first. An organization (variant=organization) takes the rounded square, an analyst the circle; each picture is a button with its own accessible name (label, such as Approved by maya). Hover or focus opens the item's renderCard in a TOOLTIP_SURFACE card (usePinnedPopover); a click or a tap pins it and moves focus to its first link. Escape, or tabbing past either end of the card, closes it and returns focus to the row; the card holds while focus is inside it. The card carries the way on (the event page's card: picture, name, Version N · date, the note, on behalf of an organization, View profile or View organization). At most max (5 by default) show; the rest fold into a +N bubble, a button when onOverflow is set (the Verification card expands its full approval list) and plain text otherwise. Renders nothing for an empty list.">
             <Variant label="analysts and an organization, max=3 with onOverflow (+N opens the panel)">
               <AvatarStack
                 label="Approved by"

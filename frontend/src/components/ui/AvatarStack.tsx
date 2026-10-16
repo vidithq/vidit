@@ -136,9 +136,9 @@ function StackedAvatar({ item }: { item: AvatarStackItem }) {
 }
 
 /**
- * An overlapping row of pictures: the approval stamps in the event page header. Hover, focus or a
- * click on a picture opens its card; a click pins the card and moves focus into it, and Escape or
- * tabbing out closes it and returns focus to the row. At most `max` show; the rest collapse into
+ * An overlapping row of pictures: the approval stamps in the event page's Verification card.
+ * Hover, focus or a click on a picture opens its card; a click pins the card and moves focus into
+ * it, and Escape or tabbing out closes it and returns focus to the row. At most `max` show; the rest collapse into
  * a `+N` bubble, a button when `onOverflow` is set.
  */
 export function AvatarStack({

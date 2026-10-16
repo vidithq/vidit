@@ -22,16 +22,15 @@ import {
 } from "@/lib/reviewRequests";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 
 /**
- * The target's answer to an open review request outside the Approvals panel: Decline. The
+ * The target's answer to an open review request outside the approve form: Decline. The
  * notification row, the event page and the organization page render it; approving happens in
- * the event page's Approvals panel, after reading the event.
+ * the event page's Verification card, after reading the event.
  */
 export function ReviewRequestDecline({
   eventId,
@@ -177,10 +176,11 @@ function RequestReviewForm({ eventId, onSent }: { eventId: string; onSent: () =>
 }
 
 /**
- * Review requests on a published event. A geolocator sees the open requests and asks an analyst
- * or an organization to review the live version; an analyst asked, or an org manager of an
- * organization asked, sees the request and can decline it, or approve from the Approvals panel.
- * `refreshKey` changes when an approval elsewhere on the page may have resolved a request.
+ * Review requests on a published event, the last section of its Verification card. A geolocator
+ * sees the open requests and asks an analyst or an organization to review the live version; an
+ * analyst asked, or an org manager of an organization asked, sees the request and can decline it,
+ * or approve with the form above it. `refreshKey` changes when an approval may have resolved a
+ * request.
  */
 export function ReviewRequestsSection({
   event,
@@ -210,16 +210,16 @@ export function ReviewRequestsSection({
   if (!geolocator && mine.length === 0) return null;
 
   return (
-    <Card as="section">
-      <SectionEyebrow title="Review requests" margin="none" />
+    <section className="space-y-3 border-t border-neutral-800 pt-4">
+      <SectionEyebrow as="h3" title="Review requests" margin="none" />
       {mine.map((request) => (
         <div key={request.id} className="space-y-2">
           <p className="text-sm text-neutral-300">
             <AuthorByline author={request.requester} prefix={false} /> asks{" "}
             {request.target_organization ? request.target_organization.name : "you"} to review
             this geolocation. Approve it
-            {request.target_organization ? ` as ${request.target_organization.name}` : ""} in the
-            Approvals panel, or decline.
+            {request.target_organization ? ` as ${request.target_organization.name}` : ""} above,
+            or decline.
           </p>
           <ReviewRequestDecline eventId={event.id} requestId={request.id} onAnswered={refetch} />
         </div>
@@ -249,6 +249,6 @@ export function ReviewRequestsSection({
           {requests.error}
         </div>
       )}
-    </Card>
+    </section>
   );
 }

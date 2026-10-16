@@ -194,7 +194,8 @@ The vocabulary:
 - **Copy.** The clipboard write and the flash timer are one hook, [`useCopyToClipboard`](../frontend/src/hooks/useCopyToClipboard.ts). A call site wears it as the ghost icon button for a mark set in a line ([`<CoordinateActions>`](../frontend/src/components/event/CoordinateActions.tsx), the profile's Discord account) or as a text button (the admin invite row). The flash is the same in every shape: the resting mark flips to a check and the tooltip follows, while the accessible name holds still and the confirmation lands in a sibling `role="status"` region, since a name that changes on click is re-announced as a new control. The resting mark is the platform's own where the value names itself (Discord carries its brand mark); the check is fixed.
 - **Small assemblies.**
   - [`<Avatar>`](../frontend/src/components/ui/Avatar.tsx) is the profile-picture circle: the profile header, the feed card's author circle (through `<EntityCard>`), the user search hits, `<AuthorByline>`'s avatar variant, and the sidebar identity row, which renders it in the rail's 18px glyph box. `size` is the only dimension a caller sets, and the fallback is the handle's initial or a neutral user icon. An `avatar_url` addresses a server-minted object on the media host, uploaded through the profile header's picker (the shared `<FileManager>` in single-file image mode). A failed load falls back to the same circle and a new picture retries, because replacing a picture deletes the old object and a CDN edge can answer for a key before a new one propagates. `iconClassName` colours the icon fallback (the sidebar passes `text-current`, so the glyph follows the row's hover and active state). `decorative` drops the alt text where the host names itself, so the image does not displace the enclosing link's accessible name. `shape="square"` rounds the corners instead of the circle, for an organization shown beside analysts.
-  - [`<AvatarStack>`](../frontend/src/components/ui/AvatarStack.tsx) is an overlapping row of 28px `<Avatar>` pictures: the approval stamps in the event page header (see [Event action tiers](#event-action-tiers)). An item's `variant` picks the circle (`analyst`) or the rounded square (`organization`), and its `label` is the picture's accessible name. A ring in the page colour separates overlapping pictures. Each picture is a button that opens the item's `renderCard`: hover or focus opens it, and a click or a tap pins it and moves focus to its first link. The card holds while focus is inside it. Escape, or Tab past either end of the card, closes it and returns focus to the row. At most `max` show (5 by default); the rest fold into a `+N` bubble, a button when `onOverflow` is set.
+  - [`<AvatarStack>`](../frontend/src/components/ui/AvatarStack.tsx) is an overlapping row of 28px `<Avatar>` pictures: the approval stamps in the event page's Verification card (see [Event header and Verification card](#event-header-and-verification-card)). An item's `variant` picks the circle (`analyst`) or the rounded square (`organization`), and its `label` is the picture's accessible name. A ring in the page colour separates overlapping pictures. Each picture is a button that opens the item's `renderCard`: hover or focus opens it, and a click or a tap pins it and moves focus to its first link. The card holds while focus is inside it. Escape, or Tab past either end of the card, closes it and returns focus to the row. At most `max` show (5 by default); the rest fold into a `+N` bubble, a button when `onOverflow` is set.
+  - [`<ActionMenu>`](../frontend/src/components/ui/ActionMenu.tsx) is the one menu of actions: a ghost trigger (icon-only, or icon plus printed label with `showLabel`) that opens a `role="menu"` list painted with `TOOLTIP_SURFACE`. Items are buttons (`onSelect`) or links (`href`), each with an icon, in the accent tone or `danger` for a report, and `active` marks an item whose panel is open. A click, Enter or ArrowDown opens on the first item and ArrowUp on the last; the arrows, Home and End move between items; Space or Enter activates one; Escape closes and returns focus to the trigger; Tab or an outside click closes. The list aligns to the trigger's right edge and shifts sideways to stay 8px inside the viewport. `note` prints a line above the items. The event header's More menu and the Share fallback are its two consumers.
   - [`<AuthorByline>`](../frontend/src/components/ui/AuthorByline.tsx) is "by user". `avatar` leads with the author's picture instead of the "by " prefix, on the detail pages and the map side-panel header. `coAuthors` credits more analysts after the lead, "by ana, bo and cy", each with the same picture and link: an event's credit line is its owner and then every other geolocator (`creditProps` in [`geolocatorCredit.ts`](../frontend/src/lib/geolocatorCredit.ts)). `link={false}` drops the profile anchor for a slot that is already one click, such as a version-history row under its stretched link. The detail body's Author and Requested by rows both render through it.
 - **Usernames.** A Vidit username prints bare, with no `@`: bylines, cards, admin panels, the search author filter, page titles, metadata, share text, and share cards. An `@` marks an external account only: a linked X or GitHub account (`displayLinkValue`), an X post author, the bot's replies on X, and `@viditbot`.
   - [`<Dot>`](../frontend/src/components/ui/Dot.tsx) is the accent "new content awaits" dot: sidebar nav badges (through `notify`), the rail's identity row when detections are pending, the profile's detections entry, and the map filter panel's in-flight pulse. Position, ring, and size come through `className`.
@@ -326,7 +327,7 @@ Every main-app page uses [`<PageShell>`](../frontend/src/components/ui/PageShell
 | H1 (`title`) | `text-xl font-medium text-neutral-100` | Consistent on every page. |
 | Subtitle | `text-sm text-neutral-400` | Tight under the H1 (8 px gap). |
 | Back arrow (`back`) | `max-sm:hidden flex -ml-2 mb-1 lg:inline-flex lg:absolute lg:right-full lg:top-1.5 lg:mr-3 lg:mb-0 lg:ml-0` | Lives in the gutter from `lg` up, so the title's x-coordinate is the same whether back is present or not. That gutter exists only once the centred column has room to sit off the rail; between `sm` and `lg` the button is a row of its own above the title, since a gutter-parked one lands under the fixed sidebar, where taps reach the nav rather than the button. Below `sm` the header carries no back control at all: the same button is portaled into the menu chip instead (see [Phone chrome](#phone-chrome)). `-ml-2` takes back 8 of the 9px the 36px square insets its 18px glyph by, so the arrow reads as aligned with the heading. **When to set it:** `back` marks a drill-in page reached from content (event / request detail, edit, profile, the detections queue), where "back" means "return to where I clicked this". Sidebar destinations (map, submit, requests, search, about, settings) never set it: they are entered from the rail, so there is no "where I came from" to promise. **What it walks:** [`smartBack`](../frontend/src/lib/navigation.ts) pops an app-kept stack of visited paths rather than calling `history.back()`, which would walk off the origin. A route that only redirects keeps itself out of that stack (`skipBackRecord`, called before the redirect), since walking back onto one runs its redirect again and lands where the walk started, which reads as an arrow that does nothing. |
-| Actions (`actions`) | Right of the title, wrapping under it below a `14rem` title basis | The page-level action cluster. Every control that acts on the thing the page is about goes here, so a reader finds them in one place. On a profile that is the glyph row (the linked accounts, then Edit profile on your own), and Follow on someone else's profile or the save pair while editing. On an event surface it is the three-tier grammar below. The map's side panel mirrors the position, right-aligned beside its title. A panel a cluster control opens (the report form, the close form) renders under the header, directly below the trigger; two open panels stack as separate cards rather than sharing a slot. Flex line-breaking measures the title's base size, so the cluster takes its own line rather than squeezing a heading into a one-word column. A preference, not a minimum (`min-w-0`): a hard floor outgrows the frame on the narrowest phones and scrolls the page sideways. The cluster is capped at the header width (`max-w-full`) and wraps inside itself, so a row of several buttons breaks into right-aligned lines on a phone. The subtitle breaks anywhere, since a bio can hold a bare URL, one unbreakable token. |
+| Actions (`actions`) | Right of the title, wrapping under it below a `14rem` title basis | The page-level action cluster. Every control that acts on the thing the page is about goes here, so a reader finds them in one place. On a profile that is the glyph row (the linked accounts, then Edit profile on your own), and Follow on someone else's profile or the save pair while editing. On an event surface it is the [event header](#event-header-and-verification-card): a primary action, Share and More. The map's side panel mirrors the position, right-aligned beside its title. A panel a cluster control opens (the report form, the close form) renders under the header; two open panels stack as separate cards rather than sharing a slot. Flex line-breaking measures the title's base size, so the cluster takes its own line rather than squeezing a heading into a one-word column. A preference, not a minimum (`min-w-0`): a hard floor outgrows the frame on the narrowest phones and scrolls the page sideways. The cluster is capped at the header width (`max-w-full`) and wraps inside itself, so a row of several buttons breaks into right-aligned lines on a phone. The subtitle breaks anywhere, since a bio can hold a bare URL, one unbreakable token. |
 
 Pre-data states use `<PageLoading>` / `<PageError>` (one centered shell). Opt-outs: `/` (landing), `/map` (full-screen map), the `(auth)/*` group, and `app/error.tsx`.
 
@@ -419,7 +420,7 @@ flowchart TB
   snap["`**snapshotToEventView**
   maps a stored snapshot onto the live row's shape`"]:::shared
   actions["`**useEventActions**
-  the three tiers: utilities, flow action, management`"]:::shared
+  the header (primary action, Share, More) and the Verification card`"]:::shared
   form["`**EventEditForm** at **/events/{id}/edit**
   one form, two shapes chosen by the row's status`"]:::shared
 
@@ -444,19 +445,79 @@ flowchart TB
 
 The history list's `Current` row opens the canonical page rather than a version address, since that is where the record as it stands is read.
 
-#### Event action tiers
+#### Event header and Verification card
 
-Every surface that shows one event puts its controls in three tiers, in this order, in the slot above. [`useEventActions`](../frontend/src/components/event/useEventActions.tsx) assembles them and returns two nodes, the row and the panels its triggers open, so a surface renders the grammar instead of building a row of its own.
+An event's detail page carries three controls in its header, and a published event's page carries a Verification card beside the record. [`useEventActions`](../frontend/src/components/event/useEventActions.tsx) assembles them and returns three nodes: the header controls, the panels the More menu opens, and the Verification card. A surface renders those nodes instead of building controls of its own.
 
-| Tier | Position | Contents |
+```mermaid
+flowchart TB
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`what the reader sees`"]:::spec
+    l2["`a shared primitive or component`"]:::shared
+    l3["`the one place the controls are chosen`"]:::core
+    l1 ~~~ l2 ~~~ l3
+  end
+
+  hook["`**useEventActions**
+  picks the controls for the surface, the row and the reader`"]:::core
+
+  subgraph header [Header, right of the title]
+    direction LR
+    primary["`**Primary action**, at most one
+    Edit, Approve version N, or Geolocate`"]:::spec
+    share["`**Share**
+    the share sheet, or Copy link and Share on X`"]:::spec
+    more["`**More**
+    Version history, Geolocators, Add to collection, Close, Report`"]:::spec
+  end
+
+  menu["`**ActionMenu**`"]:::shared
+  sharectl["`**EventShare** through **ShareControl**`"]:::shared
+  panels["`**Panels** under the header
+  each takes focus when it opens`"]:::spec
+  card["`**VerificationCard**
+  right column from lg, under the title below it`"]:::spec
+
+  hook --> primary
+  hook --> share
+  hook --> more
+  hook --> card
+  sharectl --> share
+  menu --> share
+  menu --> more
+  more --> panels
+  primary -->|"Approve version N focuses the approve form"| card
+```
+
+The header holds the three controls in this order, left to right:
+
+| Control | Who sees it | What it does |
 |---|---|---|
-| Utilities | Far right, icon-only | On the event page, **History** and the **Approvals** panel trigger first. The X intent ([`ShareButtons`](../frontend/src/components/event/ShareButtons.tsx), wrapping the shared [`<ShareOnX>`](../frontend/src/components/share/ShareOnX.tsx) intent builder and button that the collection page's header also renders, see [Collections](#collections)) plus the report flag. On every reading surface: reading an event and passing it on or flagging it needs no standing. There is no copy-link beside them, since the address is in the address bar the reader is already looking at. |
-| Flow action | Left of the utilities, filled | At most one, and only where the surface has one to offer: geolocate an open request. |
-| Management | Between the two: icon buttons in the row | The controls only the author holds. Both detail pages hold the close, and the event page also holds editing a published geolocation, shelving it on one of the author's own collections (see [Collections](#collections)) and the **Geolocators** panel. A co-geolocator holds the two credit controls and nothing else: shelving the row on their own collections, and the Geolocators panel, where they can leave. Nothing is hidden behind a disclosure: the author's own verbs are the ones they reach for most, and a menu over two of them costs a click on every use. Nothing here destroys a row either, so nothing wears the destructive colour: closing keeps the row readable with its reason, and removing one for good is an admin act. |
+| Primary action | On the event page, the owner, or a reader who may approve. On the request page, every reader. | A filled button. **Edit** opens `/events/{id}/edit`; its accessible name is *Edit this geolocation* on a published row, which names the version it files, and *Edit this request* on an open request, which it overwrites. **Approve version N** moves focus to the note field of the approve form in the Verification card. **Geolocate** opens the submit form on the request. A co-geolocator and a signed-out reader see no primary action. |
+| Share | Every reader | Passes the record on. See **Share** below. |
+| More | Every reader | An [`<ActionMenu>`](../frontend/src/components/ui/ActionMenu.tsx) holding every other control that applies to the reader and the row. See **More** below. |
+
+**Share.** [`ShareControl`](../frontend/src/components/share/ShareControl.tsx) checks for the Web Share API. Where the browser has `navigator.share`, **Share** opens the device's share sheet with the event's address and title. Elsewhere it opens a menu with **Copy link** ([`useCopyToClipboard`](../frontend/src/hooks/useCopyToClipboard.ts), confirmed as *Link copied* in a `role="status"` region) and **Share on X** (`openShareIntent` from [`ShareOnX.tsx`](../frontend/src/components/share/ShareOnX.tsx), prefilled with the title, the credit line and the coordinates). [`EventShare`](../frontend/src/components/event/EventShare.tsx) builds those values from the event. A `detected` row is still editable by its owner, so it carries a caveat: the share sheet takes a confirming second click, and the menu prints *Detected and may still change.* above its items. The collection page keeps its own Share on X button (see [Collections](#collections)).
+
+**More.** Each item shows only when it applies:
+
+- **Version history** links to `/events/{id}/history` for any reader of a published record, retraction included, on the event page only.
+- **Edit this request** is the asker's edit on the request page, where Geolocate holds the primary slot.
+- **Geolocators** opens the Geolocators panel for the owner and every co-geolocator of a published row.
+- **Add to collection** opens the collection picker for the owner and every co-geolocator of a row a collection may hold (see [Collections](#collections)).
+- **Close this request**, **Close this detection** or **Close this geolocation** opens the close form for the owner of a live row.
+- **Report** opens the report form for every reader, signed out included, until a report is sent.
+
+An item that opens a panel toggles it and wears the active-row paint while the panel is open. The panel renders under the header and takes focus when it mounts, so a keyboard or screen reader user lands in it. Open panels stack as separate cards. Nothing in the menu destroys a row: closing keeps the row readable with its reason, and removing one for good is an admin act. Only Report wears the red tone.
 
 **Shared credit.** The Geolocators panel ([`GeolocatorsPanel`](../frontend/src/components/event/GeolocatorCredit.tsx)) lists the event's geolocators, owner first. The owner invites an analyst by username, withdraws a pending invitation and removes a co-geolocator there; a co-geolocator sees the same list with a **Leave** button on their own row. An analyst the owner invited reads a **Geolocator invitation** card under the header instead, with **Accept** and **Decline** ([`InviteAnswerButtons`](../frontend/src/components/event/GeolocatorCredit.tsx)); the notification feed puts the same two buttons under the invitation's row, since the row itself is one link. Every byline of the event credits every geolocator.
 
-**Approvals.** A published event's approvals live in its header, not at the foot of the page.
+**Verification card.** A published event's approvals and review requests live in one card beside the record.
 
 ```mermaid
 flowchart LR
@@ -475,34 +536,54 @@ flowchart LR
   read["`**GET /events/{id}/approvals?all_versions=true**
   every version's approvals and viewer_can_approve`"]:::core
   hook["`**useEventActions**
-  fetches once, owns the panel state`"]:::shared
-  stamps["`**ApprovalStamps** through **AvatarStack**
-  under the action row: the current approvals, oldest first, at most 5 then +N`"]:::spec
-  trigger["`**Approvals** icon after History`"]:::spec
-  panel["`**ApprovalsPanel**
-  approve, current, outdated by version, revoked`"]:::spec
+  fetches once`"]:::shared
+  card["`**VerificationCard**`"]:::shared
 
-  read --> hook
-  hook --> stamps
-  hook --> trigger
-  stamps -- "+N" --> panel
-  trigger --> panel
+  status["`**Status**
+  Approved · N · version V, or Not approved yet`"]:::spec
+  stamps["`**ApprovalStamps** through **AvatarStack**
+  the current approvals, at most 5 then +N`"]:::spec
+  note["`**Latest note**
+  quoted with its author`"]:::spec
+  line["`**Muted line**
+  1 outdated (v1) · 1 revoked`"]:::spec
+  history["`**ApprovalHistory**
+  current, outdated by version, revoked, with Revoke`"]:::spec
+  form["`**ApproveForm**
+  note, Approve version N, Approve as an organization`"]:::spec
+  requests["`**ReviewRequestsSection**
+  open requests, Request a review, Decline`"]:::spec
+  shortcut["`**Approve version N** in the header`"]:::spec
+
+  read --> hook --> card
+  card --> status
+  card --> stamps
+  card --> note
+  card --> line
+  card --> form
+  card --> requests
+  line -->|"expands in place"| history
+  stamps -->|"+N"| history
+  shortcut -->|"focuses"| form
 ```
 
-- **Stamps.** [`ApprovalStamps`](../frontend/src/components/event/Approvals.tsx) renders the current approvals as an [`<AvatarStack>`](../frontend/src/components/ui/AvatarStack.tsx) right-aligned under the action row, inside the header: an overlapping row of 28px pictures, oldest first. A muted **Approved by** label with a check icon leads the row; below `sm` it narrows to the check icon. An analyst's approval is a circle and an organization's is a rounded square. Each stamp is a button named "Approved by maya". Hovering, focusing or tapping it opens a card: the picture, the name, **Version N · date**, the note clamped to four lines, "on behalf of <organization>" for an organization's approval, and a **View profile** or **View organization** link. A click opens the card rather than navigating, and moves focus to the link; Escape, or Tab past either end of the card, closes it and returns focus to the stamps. Past five, the rest fold into a **+N** bubble that opens the Approvals panel. Nothing renders while no approval stands.
-- **The panel.** The **Approvals** icon button (a stamp) sits right after **History** in the utilities unit and toggles the Approvals panel under the header, like the Geolocators panel ([`ApprovalsPanel`](../frontend/src/components/event/Approvals.tsx)). The panel opens with the approve control: an optional note, **Approve version N**, and one **Approve as <organization>** per organization the reader manages whose approval of the version does not stand. Above the control, an analyst who approved an earlier version reads the fields that changed since, with a link to that version's page ([`ChangesSinceApproval`](../frontend/src/components/event/Approvals.tsx), the version history's own `changedFields`). The control shows only when the API's `viewer_can_approve` is true, so a former geolocator never sees a button the API refuses, and only while `canApprove` finds no earlier review of the live version. Under it, three groups follow. **Version N, current** lists the live version's standing approvals. **Version N, outdated** lists each earlier version's standing approvals, newest version first, with the fields that changed since that version and a link to it. **Revoked** lists the revoked approvals with their version and public reason. A closed event has no current approval: its first group reads **Version N, event closed**, and each standing approval of that version carries an **Event closed** pill, so the stamps row is empty.
+- **Layout.** From `lg` up the page has two columns: the record (source media, location, details, proof) on the left and the card in an `18rem` column on the right. The card sticks to the top of the viewport while the record scrolls. Once the card is taller than the viewport it scrolls on its own, and the page takes the scroll back at either end of it, so the foot of the card stays reachable. Below `lg` the card sits under the title block, before the media.
+- **Status.** An accent [`<Pill>`](../frontend/src/components/ui/Pill.tsx) with a check reads **Approved · N · version V** while N approvals of the live version stand. A neutral pill reads **Not approved yet** otherwise, or **Closed, no current approval** on a closed event.
+- **Stamps.** [`ApprovalStamps`](../frontend/src/components/event/Approvals.tsx) renders the current approvals as an [`<AvatarStack>`](../frontend/src/components/ui/AvatarStack.tsx) named *Approved by*: an overlapping row of 28px pictures, oldest first. An analyst's approval is a circle and an organization's is a rounded square. Each stamp is a button named "Approved by maya". Hovering, focusing or tapping it opens a card: the picture, the name, **Version N · date**, the note clamped to four lines, "on behalf of <organization>" for an organization's approval, and a **View profile** or **View organization** link. A click opens the card rather than navigating, and moves focus to the link; Escape, or Tab past either end of the card, closes it and returns focus to the stamps. Past five, the rest fold into a **+N** bubble that expands the full list.
+- **Latest note.** The most recent current approval that carries a note is quoted under the stamps, clamped to four lines, with its author's byline.
+- **Full list.** A muted line summarises what the stamps leave out: *1 outdated (v1) · 1 revoked*, or *N stood at closing* on a closed event, or *All approvals* when every approval is current. It expands in place to [`ApprovalHistory`](../frontend/src/components/event/Approvals.tsx), three groups. **Version N, current** lists the live version's standing approvals. **Version N, outdated** lists each earlier version's standing approvals, newest version first, with the fields that changed since that version and a link to it ([`ChangesSinceApproval`](../frontend/src/components/event/Approvals.tsx), the version history's own `changedFields`). **Revoked** lists the revoked approvals with their version and public reason. A closed event has no current approval: its first group reads **Version N, event closed**, and each standing approval of that version carries an **Event closed** pill.
+- **Approve form.** [`ApproveForm`](../frontend/src/components/event/Approvals.tsx) holds an optional note, **Approve version N**, and one **Approve as <organization>** per organization the reader manages whose approval of the version does not stand. Above the note, an analyst who approved an earlier version reads the fields that changed since, with a link to that version's page. The form shows only when the API's `viewer_can_approve` is true, so a former geolocator never sees a button the API refuses, and only while `canApprove` finds no earlier review of the live version (`approveOptions` in [`lib/approvals.ts`](../frontend/src/lib/approvals.ts), which the header's **Approve version N** reads too).
+- **Review requests.** [`ReviewRequestsSection`](../frontend/src/components/event/ReviewRequestsSection.tsx) closes the card. A geolocator sees the open requests and **Request a review**. An analyst asked, or an org manager of an organization asked, reads the request with **Decline**, and approves with the form above it. An approval refetches the requests, since it resolves the reader's own.
 - **Rows.** Each row ([`ApprovalRow`](../frontend/src/components/event/Approvals.tsx)) prints the reviewer, the date, the note and a pill: **Current**, **Outdated** or **Revoked**. An organization's approval signs with the organization's picture and name, linked to its page (`organizationByline` through `<AuthorByline>`), with the acting org manager beside it, or "on behalf of <organization>" once that account is erased. **Revoke** opens an inline reason field. It goes to the reviewer, to the organization's org managers for an organization's approval, and to site admins. A revoked row says whether an org manager or a site admin revoked it.
 - **Filed versions.** A filed version's page (`/events/{id}/vN`) ends with an **Approvals** card ([`VersionApprovals`](../frontend/src/components/event/Approvals.tsx)) that lists the approvals of that version, with **Revoke** and no approve control. The card is absent when the version held none.
 
-Approving happens in the panel only, after reading the event: a re-approval request or a review request in the notification feed links to the event page and offers no approve control. An open review request's feed row carries **Decline** beside its link, inside the row ([`ReviewRequestDecline`](../frontend/src/components/event/ReviewRequestsSection.tsx)), since declining needs no review of the event.
+Approving happens in the Verification card only, after reading the event: a re-approval request or a review request in the notification feed links to the event page and offers no approve control. An open review request's feed row carries **Decline** beside its link, inside the row ([`ReviewRequestDecline`](../frontend/src/components/event/ReviewRequestsSection.tsx)), since declining needs no review of the event.
 
-A surface renders the tiers it has. The request page carries all three. The event page has no flow action (a published geolocation is finished work) and carries utilities plus, for its author, the pencil labelled *Edit this geolocation*, whose label names the version it files rather than promising an in-place rewrite, and the close.
+**One verb closes every shape.** The verb is *Close*, and only the noun changes with the row: *Close this request*, *Close this detection*, *Close this geolocation* ([`CloseEventForm`](../frontend/src/components/event/CloseEventForm.tsx) holds that copy, and the More menu item, the panel eyebrow, the reason label and the panel's confirm button all read it). One write ends all three, so one word names it on every surface. What the close means still differs by row, and the record says so: the closed page carries the reason, and the state it left is *withdrawn*, *rejected* or *retracted*. A closed row shows no close control at all: closing is terminal and the owner has no un-close. The panel asks for a reason and says it stays public, because that reason is what a reader finds on the closed page in place of the claim.
 
-**One verb closes every shape.** The verb is *Close*, and only the noun changes with the row: *Close this request*, *Close this detection*, *Close this geolocation* ([`CloseEventForm`](../frontend/src/components/event/CloseEventForm.tsx) holds that copy, and the action row, the panel eyebrow, the reason label and the panel's confirm button all read it). One write ends all three, so one word names it on every surface. What the close means still differs by row, and the record says so: the closed page carries the reason, and the state it left is *withdrawn*, *rejected* or *retracted*. A closed row shows no close control at all: closing is terminal and the owner has no un-close. The panel asks for a reason and says it stays public, because that reason is what a reader finds on the closed page in place of the claim.
+A retracted geolocation keeps its page. It reads as a `Closed` badge with the reason and the closing day beside it, over the record it took back: the coordinates, the evidence, the credits and the version history are all still there, and Version history stays in the More menu, since walking what the record used to claim is exactly what a reader does after a retraction. The map's side panel and the forms carry no header controls at all. The panel previews a row whose own page is one click away on the title, so acting on the record belongs there rather than in a preview of it; a form's primary action is its own Submit, at the bottom of the fields it applies, and sharing or reporting a row one is in the middle of rewriting acts on a record that is not the one on screen. The detection form's header cluster is its own controls instead (the queue position, Skip, Close).
 
-A retracted geolocation keeps its page. It reads as a `Closed` badge with the reason and the closing day beside it, over the record it took back: the coordinates, the evidence, the credits and the version history are all still there, and the History button stays in the utilities row, since walking what the record used to claim is exactly what a reader does after a retraction. The map's side panel and the forms carry no tier at all. The panel previews a row whose own page is one click away on the title, so acting on the record belongs there rather than in a preview of it; a form's flow action is its own Submit, at the bottom of the fields it applies, and sharing or reporting a row one is in the middle of rewriting acts on a record that is not the one on screen. The detection form's header cluster is its own controls instead (the queue position, Skip, Close).
-
-An event corrected at least once prints its version beside the byline, as a neutral [`<Pill>`](../frontend/src/components/ui/Pill.tsx) reading `v2`. Version 1 prints nothing: an event nobody has corrected has no history to announce. A published event, retraction included, also carries an icon-compact **History** button into its version list, first in the utilities row of the top-right cluster, before the X share. It is not an owner control: the other tiers act on the record, and this one reads it. Every reader gets it, because a corrected record is auditable only when anyone can walk the corrections. The event page alone carries it; the map panel and the forms show one version by construction.
+An event corrected at least once prints its version beside the byline, as a neutral [`<Pill>`](../frontend/src/components/ui/Pill.tsx) reading `v2`. Version 1 prints nothing: an event nobody has corrected has no history to announce. A published event, retraction included, also lists **Version history** first in its More menu. It is not an owner control: the other items act on the record, and this one reads it. Every reader gets it, because a corrected record is auditable only when anyone can walk the corrections. The event page alone carries it; the map panel and the forms show one version by construction.
 
 #### The owner edit form
 
@@ -819,7 +900,7 @@ flowchart LR
 
 **One read serves the pins, the panel, and the rows.** `fetchCollectionSequence` walks `GET /collections/{id}/events` to the end of its cursor once, under the `READER_MAX_ITEMS` ceiling (past it the page holds the earliest 500 items and marks no cut). `N of M` counts what the list shows. There is no collection-scoped points endpoint.
 
-**The header cluster is the [event action tiers](#event-action-tiers) without the flow tier.** The utilities lead (Share on X, then Report), and the owner's Edit and Drop follow, so the destructive control sits at the edge. It is the event cluster's `flex-wrap justify-end` row.
+**The header cluster is a row of icon buttons.** Share on X and Report lead, and the owner's Edit and Drop follow, so the destructive control sits at the edge. It wraps like the [event header](#event-header-and-verification-card), `flex-wrap justify-end`.
 
 - **Share on X** is the ghost [`<ShareOnX>`](../frontend/src/components/share/ShareOnX.tsx) icon button, prefilled with the title, `by {owner}`, the meta line's segments, and the collection's URL. It has no confirm, since a collection has no `detected` state.
 - **Report** is the red `dangerGhost` flag, for every reader, signed out included: [`useReportContent`](../frontend/src/components/report/useReportContent.tsx), the event page's form, with the same five buckets and 2000-character cap. Its panel opens under the header and names its subject, so it never reads as a report on the current item.

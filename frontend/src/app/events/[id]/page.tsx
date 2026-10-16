@@ -1,17 +1,15 @@
 "use client";
 
-import { useState } from "react";
 import { useParams } from "next/navigation";
 
 import type { EventDetail } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { EventPageBody } from "@/components/event/EventPageBody";
-import { ReviewRequestsSection } from "@/components/event/ReviewRequestsSection";
 import { useEventActions } from "@/components/event/useEventActions";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { Pill } from "@/components/ui/Pill";
-import { hasPublishedRecord } from "@/lib/events";
+import { cn } from "@/lib/cn";
 import { creditProps } from "@/lib/geolocatorCredit";
 
 export default function EventPage() {
@@ -22,13 +20,11 @@ export default function EventPage() {
     error,
     refetch,
   } = useApiResource<EventDetail>(eventId ? `/events/${eventId}` : null);
-  // Geolocated events carry only the utilities tier plus, for the author, edit and close (which refetch). Called before early returns.
-  const [approvedCount, setApprovedCount] = useState(0);
-  const { actions, panels } = useEventActions({
+  // Called before the early returns.
+  const { actions, panels, verification } = useEventActions({
     event: geo,
     surface: "event",
     onChanged: refetch,
-    onApproved: () => setApprovedCount((n) => n + 1),
   });
 
   if (error)
@@ -54,14 +50,27 @@ export default function EventPage() {
       }
       actions={actions}
     >
-        {/* Directly under the header, where the trigger that opened it is. */}
+        {/* Directly under the header, where the menu that opened them is. */}
         {panels}
 
-        <EventPageBody geo={geo} />
-
-        {hasPublishedRecord(geo) && (
-          <ReviewRequestsSection event={geo} refreshKey={approvedCount} />
-        )}
+        {/* Two columns from `lg`: the record, and the Verification card beside it. Below `lg` the
+            card comes first, under the title. The card sticks while the record scrolls, and scrolls
+            on its own once it is taller than the viewport, so its foot stays reachable. */}
+        <div
+          className={cn(
+            "grid gap-6",
+            verification && "lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start",
+          )}
+        >
+          {verification && (
+            <aside className="min-w-0 lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1 lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto">
+              {verification}
+            </aside>
+          )}
+          <div className="min-w-0 space-y-6 lg:col-start-1 lg:row-start-1">
+            <EventPageBody geo={geo} />
+          </div>
+        </div>
     </PageShell>
   );
 }
