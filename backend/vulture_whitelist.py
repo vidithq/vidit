@@ -99,6 +99,7 @@ redacted  # schemas/event.py EventVersionRead (wire field, built in routers/even
 # Written by ``services/versions.redact_version``, read by nothing in ``app/``;
 # the readable trail is the ``admin_events`` row the same write files.
 redacted_by_id  # models/event.py EventVersion
+last_success_at  # models/push_subscription.py + schemas/push.py: worker-stamped, wire-read only
 
 # ── Test-only helper ──────────────────────────────────────────────────────────
 # Called only from tests/, which the gate does not scan.

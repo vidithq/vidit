@@ -256,7 +256,7 @@ def test_a_row_queued_too_long_is_skipped(
 def test_every_kind_that_can_email_has_a_builder():
     """A kind an analyst can switch on for email needs an email to send."""
     emailable = {kind for kind, channels in NOTIFICATION_KINDS.items() if "email" in channels}
-    assert emailable - set(notification_delivery._BUILDERS) == set()
+    assert emailable - set(notification_delivery._EMAIL_BUILDERS) == set()
 
 
 def _two_queued_rows(db, author, second_user, admin_user, conflict, tag) -> None:
@@ -278,9 +278,9 @@ def test_a_kind_without_a_builder_is_skipped_and_the_drain_goes_on(
     db, author, second_user, admin_user, conflict, capture_source_tag, outbox, monkeypatch
 ):
     _two_queued_rows(db, author, second_user, admin_user, conflict, capture_source_tag)
-    builders = dict(notification_delivery._BUILDERS)
+    builders = dict(notification_delivery._EMAIL_BUILDERS)
     del builders["request_fulfilled"]
-    monkeypatch.setattr(notification_delivery, "_BUILDERS", builders)
+    monkeypatch.setattr(notification_delivery, "_EMAIL_BUILDERS", builders)
 
     notification_delivery.drain(db)
 
@@ -299,8 +299,8 @@ def test_a_row_that_raises_is_retried_and_the_drain_goes_on(
 
     monkeypatch.setattr(
         notification_delivery,
-        "_BUILDERS",
-        {**notification_delivery._BUILDERS, "request_fulfilled": _broken},
+        "_EMAIL_BUILDERS",
+        {**notification_delivery._EMAIL_BUILDERS, "request_fulfilled": _broken},
     )
 
     notification_delivery.drain(db)

@@ -75,6 +75,13 @@ export default function PrivacyPage() {
               not linked to anyone.
             </li>
             <li>
+              <span className="text-neutral-100">Push notification devices</span>:
+              for each browser or app where you turn on push notifications, the
+              address its push service gave it, its encryption keys, its user
+              agent and when it last received a notification. Turning push off on
+              the device deletes the record.
+            </li>
+            <li>
               <span className="text-neutral-100">Connection data</span>: your
               IP address is used only, and without being stored, as a request
               rate-limiting key. No table on the platform keeps it.
@@ -145,6 +152,11 @@ export default function PrivacyPage() {
             hosting, file storage, service email delivery, aggregate audience
             measurement and error reporting. The content you publish is, by
             nature, public.
+          </p>
+          <p className={PARAGRAPH}>
+            A push notification travels through the push service of your
+            browser&apos;s vendor (Google, Mozilla, Apple or Microsoft). It is
+            encrypted for your device, so that service cannot read it.
           </p>
         </Card>
 

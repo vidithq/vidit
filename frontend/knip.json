@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "ignore": ["src/lib/api-types.ts", "scripts/build-og-landmass.mjs"],
+  "ignore": ["src/lib/api-types.ts", "scripts/build-og-landmass.mjs", "public/sw.js"],
   "ignoreDependencies": ["@eslint/eslintrc"],
   "ignoreExportsUsedInFile": true
 }

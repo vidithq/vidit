@@ -133,6 +133,9 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/users/me/avatar` | 🔒 | Remove your profile picture |
 | GET | `/users/me/preferences` | 🔒 | Your display and notification preferences, each beside its default |
 | PATCH | `/users/me/preferences` | 🔒 | Change some of your preferences |
+| GET | `/users/me/push-config` | 🔒 | The key a browser subscribes to push notifications with |
+| POST | `/users/me/push-subscriptions` | 🔒 | Register this browser for push notifications |
+| DELETE | `/users/me/push-subscriptions/{id}` | 🔒 | Stop push notifications to one of your devices |
 | GET | `/users/{username}/events` | 🌐 | List an analyst's published geolocations |
 | GET | `/users/{username}/collections` | 🌐 | List an analyst's collections |
 | POST | `/users/{username}/follow` | 🔒 | Follow (idempotent; self-follow → 400) |
@@ -219,6 +222,8 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST`/`DELETE /users/{username}/follow` | 60/min |
 | `GET /users/me/preferences` | 120/min |
 | `PATCH /users/me/preferences` | 60/min |
+| `GET /users/me/push-config` | 60/min |
+| `POST /users/me/push-subscriptions`, `DELETE /users/me/push-subscriptions/{id}` | 30/min |
 | **Notifications** | |
 | `GET /notifications`, `GET /notifications/unread-count` | 120/min |
 | `POST /notifications/read` | 60/min |
@@ -1717,13 +1722,21 @@ Your display and notification preferences. Each value is the one in effect: your
   "display_defaults": { "palette": "orange", "theme": "dark", "help_tooltips": true },
   "display_stored": { "palette": "rose", "theme": "light", "help_tooltips": null },
   "notifications": [
-    { "kind": "request_fulfilled", "channels": { "email": false }, "defaults": { "email": true } },
-    { "kind": "new_follower", "channels": { "email": false }, "defaults": { "email": false } }
+    {
+      "kind": "request_fulfilled",
+      "channels": { "email": false, "push": true },
+      "defaults": { "email": true, "push": true }
+    },
+    {
+      "kind": "new_follower",
+      "channels": { "email": false, "push": false },
+      "defaults": { "email": false, "push": false }
+    }
   ]
 }
 ```
 
-`display_stored` holds only the display values your account has saved, `null` where it has none, so a client can tell a saved value from a default. `notifications` lists every registered notification kind, in registry order. `channels` holds the delivery channels besides the in-app feed, which is always on and has no switch. With `email` on, Vidit also emails that kind to your verified address (see [Notifications](#notifications)).
+`display_stored` holds only the display values your account has saved, `null` where it has none, so a client can tell a saved value from a default. `notifications` lists every registered notification kind, in registry order. `channels` holds the delivery channels besides the in-app feed, which is always on and has no switch. With `email` on, Vidit also emails that kind to your verified address. With `push` on, Vidit also sends it as a push notification to every device you registered (see [Notifications](#notifications)).
 
 | Field | Values |
 |-------|--------|
@@ -1731,7 +1744,7 @@ Your display and notification preferences. Each value is the one in effect: your
 | `display.theme` | `dark`, `light` |
 | `display.help_tooltips` | `true` shows the `?` field help |
 | `notifications[].kind` | `request_fulfilled`, `new_follower` |
-| `notifications[].channels` | `email` |
+| `notifications[].channels` | `email`, `push` |
 
 ---
 
@@ -1758,6 +1771,69 @@ The body rejects unknown fields, unknown kinds, unknown channels, and display va
 | Code | Case |
 |------|------|
 | 422 | An unknown field, kind, channel or display value |
+
+---
+
+### `GET /users/me/push-config` 🔒
+
+The key a browser needs to subscribe to push notifications from this deployment.
+
+**Response 200:**
+```json
+{ "public_key": "BCVx...base64url" }
+```
+
+`public_key` is the VAPID application server key, base64url-encoded. It is `null` when the deployment sends no push notifications.
+
+---
+
+### `POST /users/me/push-subscriptions` 🔒
+
+Register this browser for push notifications. The body is the browser's `PushSubscription.toJSON()`; `expirationTime` is ignored. The `User-Agent` header is stored with the device.
+
+**Body:**
+```json
+{
+  "endpoint": "https://fcm.googleapis.com/fcm/send/...",
+  "expirationTime": null,
+  "keys": { "p256dh": "BNc...", "auth": "tBH..." }
+}
+```
+
+- `endpoint` is an https URL on a browser push service: `fcm.googleapis.com`, `updates.push.services.mozilla.com`, `web.push.apple.com`, or a host under `.push.apple.com` or `.notify.windows.com`.
+- `keys.p256dh` is a base64url uncompressed P-256 public key (65 bytes) and `keys.auth` a base64url 16-byte secret.
+
+Registering an endpoint again refreshes its keys and returns the same `id`. An endpoint registered by another account moves to yours, since one browser holds one subscription.
+
+**Response 201:**
+```json
+{
+  "id": "3f0c...",
+  "user_agent": "Mozilla/5.0 ...",
+  "created_at": "2026-10-15T09:00:00Z",
+  "last_success_at": null
+}
+```
+
+The response never carries the endpoint: anyone who holds it can push to the device.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 422 | An endpoint off the push services, or malformed keys |
+
+---
+
+### `DELETE /users/me/push-subscriptions/{id}` 🔒
+
+Stop push notifications to one of your devices.
+
+**Response 204:** no body.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | No device with this id on your account |
 
 ---
 
@@ -1848,7 +1924,7 @@ flowchart LR
   readat[("`**notifications.read_at**
   per row; NULL is unread`")]:::store
   queue[("`**notification_deliveries**
-  one row per email to send`")]:::store
+  one row per channel to send on`")]:::store
   worker["`**notification_delivery.drain**
   re-checks the switch and the filter, sends after the action commits`"]:::core
 
@@ -1867,6 +1943,8 @@ flowchart LR
 An action that concerns another analyst writes a [`notifications`](data-model.md#notifications) row in its own transaction, so a rolled-back action leaves no row. Nobody is notified of their own action. Every read passes the same filter: a row whose event is soft-deleted or taken down, or whose actor is soft-deleted, is hidden from the feed and the count, including when that happens after the row was written. Read state is per row: `read_at` is NULL until `POST /notifications/read` names the row, which the feed page does for the unread rows it shows. A row whose action commits after the feed was read stays unread, whatever its `created_at`.
 
 When your email switch for the kind is on and your address is verified, the same transaction queues an email. The worker sends it after the action commits, so a provider failure never fails the action. At send time the worker skips the email if the switch is now off or the feed would hide the row. Notification email has a daily cap, in total and per recipient, and a queued email older than 48 hours is dropped. The email links to the item and to Settings. The queue and the caps are in [`engineering.md`](engineering.md#email).
+
+When your push switch for the kind is on and you registered at least one device, the same transaction queues a push. The worker sends it to each of your devices, with a title, a short body and the path a click opens. Push has no daily cap. The delivery path is in [`engineering.md`](engineering.md#web-push).
 
 | Kind | Emitted when | `actor` | `event` |
 |------|--------------|---------|---------|
