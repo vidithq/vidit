@@ -248,7 +248,6 @@ export default function FeedPage() {
       rail={renderPanel(filters, setFilters)}
       railLabel="Filters"
       narrowRail="hidden"
-      subtitle="Geolocations and requests, newest first."
       controls={
         <SegmentedControl
           options={SCOPES}

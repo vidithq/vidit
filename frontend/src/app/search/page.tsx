@@ -55,18 +55,32 @@ import { useApiResource } from "@/hooks/useApiResource";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 
 import { META_LINE, TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
-import { Pill } from "@/components/ui/Pill";
+import {
+  SegmentedControl,
+  type SegmentedControlOption,
+} from "@/components/ui/SegmentedControl";
 import { creditProps } from "@/lib/geolocatorCredit";
 import { memberCountLabel, organizationPath } from "@/lib/organizations";
 
+const ICON = { size: 13, strokeWidth: 1.8, className: "max-sm:hidden" } as const;
+
+function typeLabel(icon: ReactNode, label: string) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {icon}
+      {label}
+    </span>
+  );
+}
+
 // The type picker: the two event groups are one "Events" entry (the filters only apply to
 // events); results still render as two groups.
-const TYPE_FILTERS: { value: SearchType; label: string; icon?: ReactNode }[] = [
+const TYPE_OPTIONS: SegmentedControlOption<SearchType>[] = [
   { value: "all", label: "All" },
-  { value: "event", label: "Events", icon: <MapPin size={11} /> },
-  { value: "collection", label: "Collections", icon: <CollectionIcon size={11} /> },
-  { value: "user", label: "Analysts", icon: <Users size={11} /> },
-  { value: "organization", label: "Organizations", icon: <Building2 size={11} /> },
+  { value: "event", label: typeLabel(<MapPin {...ICON} />, "Events") },
+  { value: "collection", label: typeLabel(<CollectionIcon {...ICON} />, "Collections") },
+  { value: "user", label: typeLabel(<Users {...ICON} />, "Analysts") },
+  { value: "organization", label: typeLabel(<Building2 {...ICON} />, "Organizations") },
 ];
 
 // Types that scope to events (the legacy singletons stay valid in shared URLs).
@@ -371,6 +385,14 @@ function SearchPageBody() {
       rail={renderPanel({ values, dates }, applyFilters)}
       railLabel="Filters"
       narrowRail="hidden"
+      controls={
+        <SegmentedControl
+          options={TYPE_OPTIONS}
+          value={onEventScope ? "event" : typeFilter}
+          onChange={onChipClick}
+          aria-label="Result type"
+        />
+      }
     >
         <Input
           type="search"
@@ -381,23 +403,6 @@ function SearchPageBody() {
           autoFocus
           className="bg-neutral-900 placeholder:text-neutral-500"
         />
-
-        <div className="flex flex-wrap items-center gap-1.5">
-          {TYPE_FILTERS.map((opt) => (
-            <Pill
-              key={opt.value}
-              tone={
-                typeFilter === opt.value || (opt.value === "event" && onEventScope)
-                  ? "accent"
-                  : "neutral"
-              }
-              icon={opt.icon}
-              onClick={() => onChipClick(opt.value)}
-            >
-              {opt.label}
-            </Pill>
-          ))}
-        </div>
 
         {filterSections ? (
           <FilterBar

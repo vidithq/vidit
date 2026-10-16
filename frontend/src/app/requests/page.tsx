@@ -86,7 +86,7 @@ export default function RequestsPage() {
     [values, sort]
   );
   const walk = useCursorList<EventListItem>(buildPath);
-  const { items: requests, error, loading, hasMore } = walk;
+  const { items: requests, error, loading } = walk;
 
   return (
     <PageShell
@@ -148,11 +148,6 @@ export default function RequestsPage() {
 
       {!loading && requests.length > 0 && (
         <>
-          <div className="text-[11px] text-neutral-500">
-            <span className="text-neutral-300 font-medium">
-              {requests.length} open{hasMore ? " so far" : ""}
-            </span>
-          </div>
           <div className="space-y-3">
             {requests.map((r) => (
               <EntityCard
