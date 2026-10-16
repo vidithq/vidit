@@ -86,6 +86,7 @@ import { StatusBadge } from "@/components/event/StatusBadge";
 import {
   TEXT_LINK,
   TAPPABLE_HOVER,
+  META_LINE,
   ACCENT_SURFACE,
   ACCENT_RAMP,
   CHART_TAIL,
@@ -392,6 +393,13 @@ export default function PalettePage() {
             <a href="#" className={TEXT_LINK} onClick={(e) => e.preventDefault()}>
               A text link
             </a>
+          </Item>
+
+          <Item name="META_LINE" usage="A card's muted meta line with inline glyphs: the feed card's date and coordinates, a search hit's organization line">
+            <span className={META_LINE}>
+              <MapPin size={11} aria-hidden />
+              Organization · 4 members
+            </span>
           </Item>
 
           <Item name="TAPPABLE_HOVER" usage="A whole card / section is one click target: accent border on hover. Pair `group` + `group-hover:text-orange-400` so the title takes the accent too.">

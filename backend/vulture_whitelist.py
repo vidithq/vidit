@@ -50,6 +50,7 @@ _.handle_data  # app/services/sanitize.py
 # ── Pydantic response-model fields ────────────────────────────────────────────
 # Set by the service layer and serialized by Pydantic; never read back in app/.
 redeemer  # schemas/admin.py AdminInviteCodeRead
+username_highlight  # schemas/search.py SearchUserHit
 in_collection  # schemas/collection.py CollectionMembershipRead
 cover  # schemas/collection.py CollectionRead, the card's mosaic
 archives_imported  # schemas/admin.py AdminInviteRedeemerRead

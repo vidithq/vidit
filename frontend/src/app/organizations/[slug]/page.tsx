@@ -9,6 +9,7 @@ import { formatDate } from "@/lib/format";
 import {
   answerOrganizationInvite,
   deleteOrganizationAvatar,
+  memberCountLabel,
   organizationPath,
   updateOrganization,
   uploadOrganizationAvatar,
@@ -73,7 +74,7 @@ export default function OrganizationPage() {
   if (!org) return <PageLoading />;
 
   const segments = [
-    `${org.member_count} member${org.member_count === 1 ? "" : "s"}`,
+    memberCountLabel(org.member_count),
     ...(org.x_handle ? [`@${org.x_handle} on X`] : []),
     `Since ${formatDate(org.created_at)}`,
   ];

@@ -20,6 +20,7 @@ from app.main import app
 from app.models.collection import Collection, CollectionEvent
 from app.models.event import STATUS_DETECTED, STATUS_REQUESTED, Event
 from app.models.media import Media
+from app.models.organization import Organization, OrganizationMember
 from app.models.user import User
 from app.services.auth import hash_password
 from app.services.search import HIGHLIGHT_START, HIGHLIGHT_STOP
@@ -81,7 +82,14 @@ def test_empty_query_returns_empty_groups(caller):
     assert body["requests"] == []
     assert body["users"] == []
     assert body["collections"] == []
-    assert body["total"] == {"geolocations": 0, "requests": 0, "collections": 0, "users": 0}
+    assert body["organizations"] == []
+    assert body["total"] == {
+        "geolocations": 0,
+        "requests": 0,
+        "collections": 0,
+        "users": 0,
+        "organizations": 0,
+    }
     assert body["query"] == ""
     assert body["type"] == "all"
 
@@ -90,7 +98,8 @@ def test_whitespace_only_query_returns_empty_groups(caller):
     response = client.get("/api/v1/search?q=%20%20%20", headers=login_as(client, caller))
     assert response.status_code == 200
     assert all(
-        response.json()[k] == [] for k in ("geolocations", "requests", "collections", "users")
+        response.json()[k] == []
+        for k in ("geolocations", "requests", "collections", "users", "organizations")
     )
 
 
@@ -681,7 +690,8 @@ def test_search_type_all_returns_every_group(db, caller, seed_collection):
         email=f"all-{uuid.uuid4().hex}@example.com",
         password_hash=hash_password("p"),
     )
-    db.add_all([geo, request, user])
+    org = Organization(slug=f"o{uuid.uuid4().hex[:12]}", name=f"Org {token}")
+    db.add_all([geo, request, user, org])
     db.flush()
     db.add(
         Media(
@@ -692,7 +702,7 @@ def test_search_type_all_returns_every_group(db, caller, seed_collection):
         )
     )
     db.commit()
-    geo_id, request_id, user_id = geo.id, request.id, user.id
+    geo_id, request_id, user_id, org_id = geo.id, request.id, user.id, org.id
     collection_id = seed_collection(f"Shelf {token}", "One shelf.")
     try:
         response = client.get(
@@ -705,11 +715,13 @@ def test_search_type_all_returns_every_group(db, caller, seed_collection):
         assert [h["id"] for h in body["requests"]] == [str(request_id)]
         assert [h["id"] for h in body["users"]] == [str(user_id)]
         assert [h["id"] for h in body["collections"]] == [str(collection_id)]
+        assert [h["id"] for h in body["organizations"]] == [str(org_id)]
         assert body["total"] == {
             "geolocations": 1,
             "requests": 1,
             "collections": 1,
             "users": 1,
+            "organizations": 1,
         }
         assert body["query"] == token
         assert body["type"] == "all"
@@ -717,6 +729,7 @@ def test_search_type_all_returns_every_group(db, caller, seed_collection):
         db.query(Event).filter(Event.id == geo_id).delete(synchronize_session=False)
         db.query(Event).filter(Event.id == request_id).delete(synchronize_session=False)
         db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
+        db.query(Organization).filter(Organization.id == org_id).delete(synchronize_session=False)
         db.commit()
 
 
@@ -965,7 +978,8 @@ def test_author_unknown_returns_empty_groups(caller):
     response = client.get("/api/v1/search?author=no-such-analyst-here")
     assert response.status_code == 200
     assert all(
-        response.json()[k] == [] for k in ("geolocations", "requests", "collections", "users")
+        response.json()[k] == []
+        for k in ("geolocations", "requests", "collections", "users", "organizations")
     )
 
 
@@ -1159,3 +1173,166 @@ def test_fts_query_uses_the_gin_index(db):
     finally:
         db.execute(satext("RESET enable_seqscan"))
     assert "ix_events_search_fts" in plan, plan
+
+
+@pytest.fixture
+def seed_org(db):
+    """Create an organization; ``members`` are live users joined as members."""
+    made: list[uuid.UUID] = []
+
+    def _make(*, name: str, slug: str | None = None, bio: str | None = None, members=()):
+        org = Organization(slug=slug or f"o{uuid.uuid4().hex[:12]}", name=name, bio=bio)
+        db.add(org)
+        db.flush()
+        for user in members:
+            db.add(OrganizationMember(organization_id=org.id, user_id=user.id, role="member"))
+        db.commit()
+        made.append(org.id)
+        return org.id
+
+    yield _make
+    db.expire_all()
+    db.query(Organization).filter(Organization.id.in_(made)).delete(synchronize_session=False)
+    db.commit()
+
+
+def _org_hits(caller, token: str, **params) -> dict:
+    response = client.get(
+        "/api/v1/search",
+        params={"q": token, "type": "organization", **params},
+        headers=login_as(client, caller),
+    )
+    assert response.status_code == 200
+    return response.json()
+
+
+def test_search_matches_organization_by_name(db, caller, seed_org):
+    token = _unique_token()
+    gone = User(
+        username=f"gone{uuid.uuid4().hex[:8]}",
+        email=f"gone-{uuid.uuid4().hex}@example.com",
+        password_hash=hash_password("p"),
+        deleted_at=datetime.now(UTC),
+    )
+    db.add(gone)
+    db.commit()
+    org_id = seed_org(name=f"Open {token} Collective", members=[caller, gone])
+    try:
+        body = _org_hits(caller, token)
+        assert body["total"]["organizations"] == 1
+        hit = body["organizations"][0]
+        assert hit["id"] == str(org_id)
+        assert f"{HIGHLIGHT_START}{token}{HIGHLIGHT_STOP}" in hit["name_highlight"]
+        assert hit["bio_highlight"] is None
+        # The soft-deleted member is not counted.
+        assert hit["member_count"] == 1
+        # The other groups stay empty on this scope.
+        assert body["users"] == [] and body["geolocations"] == []
+    finally:
+        db.query(User).filter(User.id == gone.id).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_search_matches_organization_by_slug(caller, seed_org):
+    token = _unique_token()
+    org_id = seed_org(name="Unrelated name", slug=token)
+    body = _org_hits(caller, token)
+    assert [h["id"] for h in body["organizations"]] == [str(org_id)]
+    assert body["organizations"][0]["slug"] == token
+
+
+def test_search_matches_organization_by_bio_with_highlighted_snippet(caller, seed_org):
+    token = _unique_token()
+    org_id = seed_org(
+        name="Some collective",
+        bio=f"A group that tracks {token} sightings across the region every week.",
+    )
+    hit = _org_hits(caller, token)["organizations"][0]
+    assert hit["id"] == str(org_id)
+    assert f"{HIGHLIGHT_START}{token}{HIGHLIGHT_STOP}" in hit["bio_highlight"]
+
+
+def test_organization_hit_carries_public_fields_only(db, caller, seed_org):
+    token = _unique_token()
+    org_id = seed_org(name=f"Org {token}")
+    org = db.get(Organization, org_id)
+    org.x_handle = f"x{uuid.uuid4().hex[:8]}"
+    org.created_by_id = caller.id
+    org.review_request_audience = "nobody"
+    db.commit()
+    hit = _org_hits(caller, token)["organizations"][0]
+    assert set(hit) == {
+        "id",
+        "slug",
+        "name",
+        "name_highlight",
+        "bio",
+        "bio_highlight",
+        "avatar_url",
+        "member_count",
+    }
+
+
+def test_organization_search_caps_per_group_and_totals_before_the_cap(caller, seed_org):
+    token = _unique_token()
+    for i in range(3):
+        seed_org(name=f"Org {token} number {i}")
+    body = _org_hits(caller, token, limit=2)
+    assert len(body["organizations"]) == 2
+    assert body["total"]["organizations"] == 3
+
+
+def test_event_filter_empties_the_organizations_group(caller, seed_org):
+    token = _unique_token()
+    seed_org(name=f"Org {token}")
+    body = _org_hits(caller, token, type="all", status="geolocated")
+    assert body["organizations"] == []
+    assert body["total"]["organizations"] == 0
+
+
+def test_a_deleted_organization_leaves_search(db, caller, seed_org):
+    token = _unique_token()
+    admin = User(
+        username=f"admin{uuid.uuid4().hex[:8]}",
+        email=f"admin-{uuid.uuid4().hex}@example.com",
+        password_hash=hash_password("p"),
+        is_admin=True,
+    )
+    db.add(admin)
+    db.commit()
+    org_id = seed_org(name=f"Org {token}", members=[caller])
+    slug = db.get(Organization, org_id).slug
+    try:
+        assert _org_hits(caller, token)["total"]["organizations"] == 1
+        deleted = client.delete(
+            f"/api/v1/admin/organizations/{slug}", headers=login_as(client, admin)
+        )
+        assert deleted.status_code == 204
+        body = _org_hits(caller, token)
+        assert body["organizations"] == []
+        assert body["total"]["organizations"] == 0
+    finally:
+        db.query(User).filter(User.id == admin.id).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_organization_fts_query_uses_the_gin_index(db):
+    """The SQL tsvector must match the migration's GIN index expression, or it seq-scans."""
+    from sqlalchemy import text as satext
+
+    from app.services import search as search_service
+
+    db.execute(satext("SET enable_seqscan = off"))
+    try:
+        plan = "\n".join(
+            row[0]
+            for row in db.execute(
+                satext(
+                    "EXPLAIN SELECT id FROM organizations WHERE "
+                    f"{search_service._ORGANIZATION_TSVECTOR} @@ plainto_tsquery('simple', 'depot')"
+                )
+            )
+        )
+    finally:
+        db.execute(satext("RESET enable_seqscan"))
+    assert "ix_organizations_search_fts" in plan, plan

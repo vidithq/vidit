@@ -10,7 +10,7 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { MapPin, Search as SearchIcon, Users } from "lucide-react";
+import { Building2, MapPin, Search as SearchIcon, Users } from "lucide-react";
 import { CollectionCard } from "@/components/collections/CollectionCard";
 import { CollectionIcon } from "@/lib/collections";
 import { StatusBadge } from "@/components/event/StatusBadge";
@@ -21,6 +21,7 @@ import type {
   Conflict,
   SearchRequestHit,
   SearchEventHit,
+  SearchOrganizationHit,
   SearchResponse,
   SearchType,
   SearchUserHit,
@@ -51,9 +52,10 @@ import {
 import { useApiResource } from "@/hooks/useApiResource";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 
-import { TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
+import { META_LINE, TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
 import { Pill } from "@/components/ui/Pill";
 import { creditProps } from "@/lib/geolocatorCredit";
+import { memberCountLabel, organizationPath } from "@/lib/organizations";
 
 // The type picker: the two event groups are one "Events" entry (the filters only apply to
 // events); results still render as two groups.
@@ -62,6 +64,7 @@ const TYPE_FILTERS: { value: SearchType; label: string; icon?: ReactNode }[] = [
   { value: "event", label: "Events", icon: <MapPin size={11} /> },
   { value: "collection", label: "Collections", icon: <CollectionIcon size={11} /> },
   { value: "user", label: "Analysts", icon: <Users size={11} /> },
+  { value: "organization", label: "Organizations", icon: <Building2 size={11} /> },
 ];
 
 // Types that scope to events (the legacy singletons stay valid in shared URLs).
@@ -156,8 +159,8 @@ function SearchPageBody() {
   ];
   const hasActiveFilters = hasAnyFilter(values, dates);
   const onEventScope = EVENT_TYPES.includes(typeFilter);
-  // Panel sections the scope offers, or null where no filter narrows it (Analysts, and All,
-  // which spans four groups).
+  // Panel sections the scope offers, or null where no filter narrows it (Analysts,
+  // Organizations, and All, which spans every group).
   const filterSections: ReadonlyArray<EventFilterSectionName> | null = onEventScope
     ? typeFilter === "request"
       ? REQUEST_SECTIONS
@@ -250,7 +253,8 @@ function SearchPageBody() {
       results.total.geolocations +
       results.total.requests +
       results.total.collections +
-      results.total.users
+      results.total.users +
+      results.total.organizations
     );
   }, [results]);
 
@@ -276,7 +280,7 @@ function SearchPageBody() {
   };
 
   const showGroup = (
-    group: "geolocation" | "request" | "collection" | "user"
+    group: "geolocation" | "request" | "collection" | "user" | "organization"
   ): boolean => {
     if (typeFilter === "all") return true;
     // The Events scope is the two event groups; a collection is not an event.
@@ -387,8 +391,8 @@ function SearchPageBody() {
             under the start-typing prompt for a debounce window. */}
         {!queryInput.trim() && !hasActiveFilters && (
           <EmptyState>
-            Start typing to search across geolocations, requests, collections
-            and analysts.
+            Start typing to search across geolocations, requests, collections,
+            analysts and organizations.
           </EmptyState>
         )}
 
@@ -460,6 +464,14 @@ function SearchPageBody() {
               <ResultGroup title="Analysts" count={results.total.users}>
                 {results.users.map((u) => (
                   <UserResult key={u.id} hit={u} />
+                ))}
+              </ResultGroup>
+            )}
+
+            {showGroup("organization") && results.organizations.length > 0 && (
+              <ResultGroup title="Organizations" count={results.total.organizations}>
+                {results.organizations.map((o) => (
+                  <OrganizationResult key={o.id} hit={o} />
                 ))}
               </ResultGroup>
             )}
@@ -582,25 +594,71 @@ function RequestResult({ hit }: { hit: SearchRequestHit }) {
   );
 }
 
-function UserResult({ hit }: { hit: SearchUserHit }) {
-  // Sanctioned duplicate of EntityCard's shell (see design.md): a user hit has no media slot or
-  // meta rows, and folding it in would leak avatar and no-thumb conditionals into the card.
+/** One profile hit, an analyst or an organization. */
+function ProfileResult({
+  href,
+  avatarUrl,
+  avatarName,
+  name,
+  meta,
+  bioHighlight,
+}: {
+  href: string;
+  avatarUrl: string | null;
+  avatarName: string;
+  name: ReactNode;
+  meta?: ReactNode;
+  bioHighlight: string | null;
+}) {
+  // Sanctioned duplicate of EntityCard's shell (see design.md): a profile hit has no media slot
+  // or meta rows, and folding it in would leak avatar and no-thumb conditionals into the card.
   return (
     <Link
-      href={`/profile/${hit.username}`}
+      href={href}
       className={`flex items-start gap-3 p-3 bg-neutral-900 border border-neutral-800 rounded-md ${TAPPABLE_HOVER}`}
     >
-      <Avatar src={hit.avatar_url} username={hit.username} size="size-10" />
+      <Avatar src={avatarUrl} username={avatarName} size="size-10" />
       <div className="flex-1 min-w-0 space-y-1">
-        <h3 className="text-sm font-medium text-neutral-100 inline-flex items-center gap-1.5">
-          @<Highlighted value={hit.username_highlight} />
+        <h3 className="text-sm font-medium text-neutral-100">
+          {name}
         </h3>
-        {hit.bio_highlight && (
+        {meta}
+        {bioHighlight && (
           <p className="text-xs text-neutral-400 line-clamp-2">
-            <Highlighted value={hit.bio_highlight} />
+            <Highlighted value={bioHighlight} />
           </p>
         )}
       </div>
     </Link>
+  );
+}
+
+function UserResult({ hit }: { hit: SearchUserHit }) {
+  return (
+    <ProfileResult
+      href={`/profile/${hit.username}`}
+      avatarUrl={hit.avatar_url}
+      avatarName={hit.username}
+      name={<Highlighted value={hit.username_highlight} />}
+      bioHighlight={hit.bio_highlight}
+    />
+  );
+}
+
+function OrganizationResult({ hit }: { hit: SearchOrganizationHit }) {
+  return (
+    <ProfileResult
+      href={organizationPath(hit.slug)}
+      avatarUrl={hit.avatar_url}
+      avatarName={hit.name}
+      name={<Highlighted value={hit.name_highlight} />}
+      meta={
+        <p className={META_LINE}>
+          <Building2 size={11} aria-hidden />
+          {`Organization · ${memberCountLabel(hit.member_count)}`}
+        </p>
+      }
+      bioHighlight={hit.bio_highlight}
+    />
   );
 }

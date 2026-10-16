@@ -1147,6 +1147,8 @@ A collective with its own public profile at `/organizations/{slug}`. Only a site
 | `created_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The site admin who created it. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL |
 
+- `ix_organizations_search_fts`, a GIN over `to_tsvector('simple', coalesce(name, '') || ' ' || coalesce(slug, '') || ' ' || coalesce(bio, ''))`. Backs the organizations group of [`GET /search`](api.md#get-search). The expression has to stay identical to `services/search._ORGANIZATION_TSVECTOR`, or the planner drops the index and scans the table.
+
 ---
 
 ### `organization_members`

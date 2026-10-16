@@ -312,7 +312,8 @@ describe("the event picker's two sources", () => {
       requests: [],
       collections: [],
       users: [],
-      total: { geolocations: 0, requests: 0, collections: 0, users: 0 },
+      organizations: [],
+      total: { geolocations: 0, requests: 0, collections: 0, users: 0, organizations: 0 },
       query: "kakhovka",
       type: "event",
     });
@@ -348,7 +349,8 @@ describe("the event picker's two sources", () => {
       requests: [],
       collections: [],
       users: [],
-      total: { geolocations: 62, requests: 0, collections: 0, users: 0 },
+      organizations: [],
+      total: { geolocations: 62, requests: 0, collections: 0, users: 0, organizations: 0 },
       query: "kakhovka",
       type: "event",
     });

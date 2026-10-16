@@ -131,7 +131,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | PUT | `/collections/{id}/events/{event_id}` | 🔒 | Put one of your events on it (idempotent) |
 | DELETE | `/collections/{id}/events/{event_id}` | 🔒 | Take one event off it (idempotent) |
 | **Search** | | | |
-| GET | `/search` | 🌐 | Free-text search across geolocations / requests / collections / users |
+| GET | `/search` | 🌐 | Free-text search across geolocations / requests / collections / users / organizations |
 | GET | `/search/authors` | 🌐 | Username typeahead for the author filter |
 | **Tags** | | | |
 | GET | `/tags` | 🌐 | List tags (defaults to ones referenced by live geos) |
@@ -1733,7 +1733,7 @@ Decline a review request addressed to you, or to an organization you are an org 
 
 ## Search
 
-Full-text discovery across four result groups: `geolocations` (located view: `geolocated` and `detected` rows with coordinates), `requests` (`requested` rows), `collections`, and `users`. Matching uses the Postgres `simple` dictionary, and the response is grouped by entity. Search does not index `source_url` or proof content.
+Full-text discovery across five result groups: `geolocations` (located view: `geolocated` and `detected` rows with coordinates), `requests` (`requested` rows), `collections`, `users`, and `organizations`. Matching uses the Postgres `simple` dictionary, and the response is grouped by entity. Search does not index `source_url` or proof content.
 
 ### `GET /search` 🌐
 
@@ -1741,7 +1741,7 @@ Full-text discovery across four result groups: `geolocations` (located view: `ge
 | Param | Type | Description |
 |-------|------|-------------|
 | `q` | string | Free-text query. |
-| `type` | enum | `all` (default), `event` (both event groups), `geolocation`, `request`, `collection`, or `user`. Anything else → 422. |
+| `type` | enum | `all` (default), `event` (both event groups), `geolocation`, `request`, `collection`, `user`, or `organization`. Anything else → 422. |
 | `limit` | int | Per-group cap. 1 ≤ `limit` ≤ 50, default 20. |
 | *filter set* | | The event filters of [`GET /events`](#get-events): `status`, `conflict`, `capture_source`, `tag`, `media` (repeatable), `event_date_from` / `event_date_to`, `submitted_from` / `submitted_to`, `author`. They scope the two event groups; a `status` value a group's view can't contain empties that group. |
 
@@ -1749,13 +1749,14 @@ Full-text discovery across four result groups: `geolocations` (located view: `ge
 
 - An empty `q` with no active filter returns empty groups.
 - An empty `q` with an active filter enters **browse mode**: the filtered view, newest first, with plain titles as their own highlight.
-- Any active filter empties the users group.
+- Any active filter empties the users and organizations groups.
 - The collections group reads one filter, `author`, which narrows it to that analyst's collections. Any other active filter empties it. With an empty `q`, `author` lists the analyst's collections newest first.
 - A collection hit matches on its title and `description_text` together. It is the full [`CollectionRead`](#get-collectionsid) and carries no `*_highlight` field. A withheld collection, one whose owner is soft-deleted, and one holding nothing showable are absent.
+- An organization hit matches on its name, slug and bio together. It carries the public fields of the [organization page](#get-organizationsslug) header: no review request audience and no creator. `member_count` counts live members.
 - Ranking is `ts_rank` descending, then `created_at` descending.
 - Every group excludes soft-deleted rows.
 
-**Highlight markers:** each event and user hit carries one or more `*_highlight` fields with STX (`U+0002`) / ETX (`U+0003`) control bytes around matched fragments. JSON encodes them as `\u0002` / `\u0003`. The frontend (`lib/search.ts::splitHighlights`) splits on those bytes and wraps the inner segments in `<mark>`. No raw HTML crosses the wire.
+**Highlight markers:** each event, user and organization hit carries one or more `*_highlight` fields with STX (`U+0002`) / ETX (`U+0003`) control bytes around matched fragments. JSON encodes them as `\u0002` / `\u0003`. The frontend (`lib/search.ts::splitHighlights`) splits on those bytes and wraps the inner segments in `<mark>`. No raw HTML crosses the wire.
 
 **Response 200:**
 ```json
@@ -1799,14 +1800,26 @@ Full-text discovery across four result groups: `geolocations` (located view: `ge
       "avatar_url": null
     }
   ],
-  "total": { "geolocations": 1, "requests": 1, "collections": 1, "users": 1 },
+  "organizations": [
+    {
+      "id": "uuid",
+      "slug": "kharkiv-watch",
+      "name": "Kharkiv Watch",
+      "name_highlight": "Kharkiv Watch",
+      "bio": "Open-source monitoring of the Kharkiv front.",
+      "bio_highlight": null,
+      "avatar_url": null,
+      "member_count": 4
+    }
+  ],
+  "total": { "geolocations": 1, "requests": 1, "collections": 1, "users": 1, "organizations": 1 },
   "query": "kharkiv",
   "type": "all"
 }
 ```
 
 - `media` on both event groups holds at most one row, the card thumbnail of [`GET /events`](#get-events).
-- `bio_highlight` is `null` when only the username matched.
+- `bio_highlight` is `null` when only the username, or an organization's name or slug, matched.
 - Groups you did not request through `type` come back as empty arrays.
 - `total` holds each group's match count before the `limit` cap, in browse mode too.
 - `type` echoes the request.

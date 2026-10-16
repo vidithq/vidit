@@ -1,4 +1,5 @@
-"""``GET /search``: full-text search across geolocations, requests, collections, users.
+"""``GET /search``: full-text search across geolocations, requests, collections, users
+and organizations.
 
 Anonymous like the rest of the read surface; the 60/min per-IP limit is the
 abuse floor. FTS plumbing is in ``services/search.py``.
@@ -36,7 +37,9 @@ def search(
     q: str = Query("", description="Free-text query (empty returns an empty result set)"),
     type: str = Query(
         "all",
-        description="One of 'all', 'event', 'geolocation', 'request', 'collection', 'user'",
+        description=(
+            "One of 'all', 'event', 'geolocation', 'request', 'collection', 'user', 'organization'"
+        ),
     ),
     limit: int = Query(20, ge=1, le=50, description="Per-group cap"),
     # The standard event filter set (``services/event_filters``); scopes the two
@@ -57,12 +60,13 @@ def search(
     media: list[str] | None = Query(None),
     db: Session = Depends(get_db),
 ) -> SearchResponse:
-    """Grouped FTS across the four result groups.
+    """Grouped FTS across the five result groups.
 
     Empty or whitespace-only ``q`` returns an empty response (keeps the
     still-typing hits cheap).
 
-    Any active filter scopes the event groups and empties the users group;
+    Any active filter scopes the event groups and empties the users and
+    organizations groups;
     ``author`` narrows the collections group to that owner and every other
     filter empties it. With an empty ``q`` the response browses the filtered
     view, collections included when ``author`` is the only filter (the
@@ -99,11 +103,13 @@ def search(
         requests=grouped["requests"]["hits"],
         collections=grouped["collections"]["hits"],
         users=grouped["users"]["hits"],
+        organizations=grouped["organizations"]["hits"],
         total=SearchTotals(
             geolocations=grouped["geolocations"]["total"],
             requests=grouped["requests"]["total"],
             collections=grouped["collections"]["total"],
             users=grouped["users"]["total"],
+            organizations=grouped["organizations"]["total"],
         ),
         query=q,
         # Safe: the ``ALLOWED_TYPES`` guard above proves membership.

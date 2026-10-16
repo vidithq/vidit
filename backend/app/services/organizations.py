@@ -205,10 +205,11 @@ def hand_over_manager_roles(db: Session, *, leaving_user_id: uuid.UUID) -> None:
         )
 
 
-def list_for_admin(db: Session) -> list[AdminOrganizationRead]:
-    """Every organization with its live member and org manager counts, those
-    without an org manager first."""
-    live = (
+def live_member_counts(db: Session):
+    """Subquery of ``org_id``, ``members`` and ``managers``: each organization's
+    live member and org manager counts. An organization without a live member
+    has no row, so outer-join it and coalesce to 0."""
+    return (
         db.query(
             OrganizationMember.organization_id.label("org_id"),
             func.count().label("members"),
@@ -219,6 +220,12 @@ def list_for_admin(db: Session) -> list[AdminOrganizationRead]:
         .group_by(OrganizationMember.organization_id)
         .subquery()
     )
+
+
+def list_for_admin(db: Session) -> list[AdminOrganizationRead]:
+    """Every organization with its live member and org manager counts, those
+    without an org manager first."""
+    live = live_member_counts(db)
     managers = func.coalesce(live.c.managers, 0)
     rows = (
         db.query(Organization, func.coalesce(live.c.members, 0), managers)

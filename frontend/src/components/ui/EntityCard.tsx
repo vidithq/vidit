@@ -6,7 +6,7 @@ import type { Media } from "@/types";
 import { cn } from "@/lib/cn";
 import { formatDate } from "@/lib/format";
 import { displayUrlsFor, posterFrameUrl } from "@/lib/mediaUrls";
-import { TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
+import { META_LINE, TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
 import { GraphicContentGate } from "@/components/ui/GraphicContentGate";
 import { Pill } from "@/components/ui/Pill";
 import { Avatar } from "@/components/ui/Avatar";
@@ -250,7 +250,7 @@ export function EntityCard({
                 <AuthorLinks authors={[author, ...coAuthors]} />
               </span>
             )}
-            <span className="text-[11px] text-neutral-500 inline-flex items-center gap-2">
+            <span className={META_LINE}>
               {date && formatDate(date)}
               {coords && <CoordsMeta coords={coords} />}
             </span>

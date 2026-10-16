@@ -1,6 +1,6 @@
 """Pydantic shapes for ``GET /search``.
 
-Four groups: the two event views, collections and analysts. Hits carry
+Five groups: the two event views, collections, analysts and organizations. Hits carry
 ``*_highlight`` fields with sentinel-delimited match fragments
 (``services.search.HIGHLIGHT_START`` / ``HIGHLIGHT_STOP``) that the frontend
 turns into ``<mark>`` tags, so no raw HTML crosses the wire. Field sets mirror
@@ -24,7 +24,7 @@ from app.schemas.user import AuthorRef
 
 # The ``type=`` values, echoed on the response. Mirrors
 # ``services.search.ALLOWED_TYPES`` (a plain set there for the runtime check).
-SearchType = Literal["all", "event", "geolocation", "request", "collection", "user"]
+SearchType = Literal["all", "event", "geolocation", "request", "collection", "user", "organization"]
 
 
 class SearchTotals(BaseModel):
@@ -34,6 +34,7 @@ class SearchTotals(BaseModel):
     requests: int
     collections: int
     users: int
+    organizations: int
 
 
 class SearchEventHit(BaseModel):
@@ -94,6 +95,21 @@ class SearchUserHit(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class SearchOrganizationHit(BaseModel):
+    """Public fields only, the organization page's header: no review request
+    audience, no creator."""
+
+    id: uuid.UUID
+    slug: str
+    name: str
+    name_highlight: str
+    bio: str | None
+    # Same rule as ``SearchUserHit.bio_highlight``.
+    bio_highlight: str | None
+    avatar_url: str | None
+    member_count: int
+
+
 class SearchResponse(BaseModel):
     """Grouped result set. Groups not requested via ``type=`` are empty arrays,
     keeping the JSON shape stable."""
@@ -105,6 +121,7 @@ class SearchResponse(BaseModel):
     # a mark would often cut.
     collections: list[CollectionRead]
     users: list[SearchUserHit]
+    organizations: list[SearchOrganizationHit]
 
     # Group totals, so the UI needn't re-sum the lists.
     total: SearchTotals
