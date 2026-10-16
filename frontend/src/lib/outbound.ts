@@ -3,9 +3,10 @@ import { SNAPSHOT_HOSTS } from "./snapshots";
 /** Vidit's own domain: a link to it, or to a subdomain, stays in the app. */
 export const VIDIT_HOST = "vidit.app";
 
-/** Hosts a reader reaches in one click. Every other host asks first (`<OutboundLink>`). An entry
- *  also covers its subdomains, so add the narrowest host that fits: `www.google.com`, not
- *  `google.com`, which would cover `sites.google.com` and the pages anyone publishes there. */
+/** Hosts a reader reaches in one click. Every other host asks first (`<OutboundLink>`). A bare
+ *  host also covers its subdomains, so add the narrowest host that fits. An entry with a path
+ *  covers that exact host and path only: `www.google.com` whole would let `/url?q=` bounce a
+ *  one-click link anywhere. Never add a host that serves an open redirector on any path. */
 const KNOWN_HOSTS: readonly string[] = [
   ...SNAPSHOT_HOSTS,
   "x.com",
@@ -15,14 +16,13 @@ const KNOWN_HOSTS: readonly string[] = [
   "youtu.be",
   "github.com",
   "discord.gg",
-  "www.google.com",
+  "www.google.com/maps",
   "vercel.com",
   "railway.com",
   "aws.amazon.com",
 ];
 
-/** The lowercase hostname of an http(s) URL, or null for anything else. */
-export function httpHostname(href: string): string | null {
+function parseHttp(href: string): URL | null {
   let parsed: URL;
   try {
     parsed = new URL(href);
@@ -30,7 +30,12 @@ export function httpHostname(href: string): string | null {
     return null;
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
-  return parsed.hostname || null;
+  return parsed.hostname ? parsed : null;
+}
+
+/** The lowercase hostname of an http(s) URL, or null for anything else. */
+export function httpHostname(href: string): string | null {
+  return parseHttp(href)?.hostname ?? null;
 }
 
 /** True when `hostname` is `host` or one of its subdomains. Compared on whole labels, so
@@ -39,15 +44,32 @@ function onHost(hostname: string, host: string): boolean {
   return hostname === host || hostname.endsWith(`.${host}`);
 }
 
+function isKnown(url: URL, entry: string): boolean {
+  const slash = entry.indexOf("/");
+  if (slash === -1) return onHost(url.hostname, entry);
+  return url.hostname === entry.slice(0, slash) && url.pathname === entry.slice(slash);
+}
+
 type LinkKind = "internal" | "known" | "unknown";
 
 /** How a link renders: `internal` routes in the app, `known` opens in one click, `unknown` asks
  *  first, null is not an http(s) link and renders as text. */
 export function linkKind(href: string): LinkKind | null {
-  const hostname = httpHostname(href);
-  if (!hostname) return null;
-  if (onHost(hostname, VIDIT_HOST)) return "internal";
-  return KNOWN_HOSTS.some((host) => onHost(hostname, host)) ? "known" : "unknown";
+  const url = parseHttp(href);
+  if (!url) return null;
+  // The parser turns `\` into `/`, and the router reads a path starting `//` as another host.
+  if (onHost(url.hostname, VIDIT_HOST)) {
+    return url.pathname.startsWith("//") ? "unknown" : "internal";
+  }
+  return KNOWN_HOSTS.some((entry) => isKnown(url, entry)) ? "known" : "unknown";
+}
+
+/** Where an unknown link leads: a Vidit URL whose path starts `//` resolves to the host in that
+ *  path, the way the router would read it. Any other link leads to itself. */
+export function linkTarget(href: string): string {
+  const url = parseHttp(href);
+  if (!url || !onHost(url.hostname, VIDIT_HOST) || !url.pathname.startsWith("//")) return href;
+  return new URL(`${url.pathname}${url.search}${url.hash}`, url.origin).href;
 }
 
 const URL_IN_TEXT = /https?:\/\/[^\s<>"]+/gi;

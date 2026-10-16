@@ -3,7 +3,7 @@
 import { useState, type ComponentPropsWithoutRef, type MouseEvent, type ReactNode } from "react";
 import Link from "next/link";
 
-import { httpHostname, linkKind } from "@/lib/outbound";
+import { httpHostname, linkKind, linkTarget } from "@/lib/outbound";
 import { Button } from "./Button";
 import { Card } from "./Card";
 import { MediaOverlay } from "./MediaLightbox";
@@ -50,7 +50,7 @@ export function OutboundLink({ href, children, ugc = false, ...rest }: OutboundL
     );
   }
   return (
-    <ConfirmedLink href={href} rel={rel} {...rest}>
+    <ConfirmedLink href={linkTarget(href)} rel={rel} {...rest}>
       {children}
     </ConfirmedLink>
   );
