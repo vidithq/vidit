@@ -46,10 +46,11 @@ test.describe("shared event link", () => {
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);
 
-    await page.getByRole("button", { name: "More actions" }).click();
-    await expect(page.getByRole("menuitem")).toHaveText(["Report"]);
-    await expectNarrowViewportLayout(page, page.getByRole("menuitem", { name: "Report" }));
-    await page.getByRole("menuitem", { name: "Report" }).click();
+    // A reader's More would hold the report alone, so the flag sits beside Share instead.
+    await expect(page.getByRole("button", { name: "More actions" })).toHaveCount(0);
+    const report = page.getByRole("button", { name: "Report" });
+    await expectNarrowViewportLayout(page, report);
+    await report.click();
     await expectNarrowViewportLayout(page, page.getByRole("button", { name: "Send report" }));
   });
 
@@ -81,9 +82,11 @@ test.describe("shared event link", () => {
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toHaveCount(0);
 
-    // The bubble expands the full list in place.
+    // The bubble shows the rest of the stamps, which wrap inside the card.
     await stamps.getByRole("button", { name: "Show 2 more approvals" }).click();
-    await expect(card.getByRole("heading", { name: "Version 1, current" })).toBeVisible();
-    await expectNarrowViewportLayout(page, card.getByRole("button", { name: "All approvals" }));
+    await expect(stamps.getByRole("button", { name: /^Approved by/ })).toHaveCount(
+      EVENT_APPROVALS.length,
+    );
+    await expectNarrowViewportLayout(page, stamps.getByRole("button", { name: /^Approved by/ }).last());
   });
 });

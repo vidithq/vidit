@@ -1,12 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { Check, ChevronDown, ChevronUp } from "lucide-react";
+import { Check } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useManagedOrganizations } from "@/hooks/useManagedOrganizations";
 import type { ApiResource } from "@/hooks/useApiResource";
-import { approveOptions, type Approval, type ApprovalList } from "@/lib/approvals";
+import {
+  approveOptions,
+  standingApprovalBefore,
+  type Approval,
+  type ApprovalList,
+} from "@/lib/approvals";
 import type { OrganizationRef } from "@/lib/organizations";
 import type { EventDetail } from "@/types";
 import { AuthorByline } from "@/components/ui/AuthorByline";
@@ -16,20 +21,21 @@ import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import {
-  ApprovalHistory,
   ApprovalStamps,
   ApproveForm,
+  RevokeForm,
+  YourOutdatedApproval,
   approvalSigner,
-  approvalTally,
 } from "@/components/event/Approvals";
 import { ApprovalRequestsSection } from "@/components/event/ApprovalRequestsSection";
 
-const HISTORY_ID = "approval-history";
+// Stamps shown before the +N bubble, which shows the rest.
+const STAMPS_SHOWN = 5;
 
-/** The current approval with a note placed last, or null. */
-function latestNote(current: Approval[]): Approval | null {
+/** The standing approval with a note placed last, or null. */
+function latestNote(standing: Approval[]): Approval | null {
   return (
-    current
+    standing
       .filter((a) => a.note)
       .sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null
   );
@@ -73,9 +79,11 @@ function ApproveAction({
 }
 
 /**
- * The published event's Approvals card: whether the live version stands approved, its current
- * approvals as stamps, the latest note, the outdated and revoked approvals behind one line,
- * **Approve** for a reader who may approve, and the approval requests.
+ * The published event's Approvals card, about the live version only: whether it stands approved,
+ * its standing approvals as stamps (whose cards offer **Revoke** to whoever may revoke), the
+ * latest note, the reader's own outdated approval with what changed since, **Approve** for a
+ * reader who may approve, and the approval requests. Outdated and revoked approvals are read on
+ * each version's page.
  */
 export function ApprovalsCard({
   event,
@@ -85,20 +93,22 @@ export function ApprovalsCard({
   /** Every version's approvals, fetched once by `useEventActions`. */
   approvals: ApiResource<ApprovalList>;
 }) {
+  const { user } = useAuth();
   const managed = useManagedOrganizations();
-  const [expanded, setExpanded] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  const [revoking, setRevoking] = useState<Approval | null>(null);
   const [approvedCount, setApprovedCount] = useState(0);
   const rows = approvals.data?.items ?? [];
-  const { closed, current, live, outdatedVersions, revoked } = approvalTally(event, rows);
-  const note = latestNote(current);
+  const closed = event.status !== "geolocated";
+  // The live version's standing approvals: current, or, on a closed event, those that stood when
+  // it closed.
+  const standing = rows.filter((a) => a.version_no === event.version_no && !a.revoked_at);
+  const note = latestNote(standing);
   const noteSigner = note && approvalSigner(note);
-  const outdated = rows.filter((a) => outdatedVersions.includes(a.version_no) && !a.revoked_at);
-  const summary = [
-    closed && live.length > 0 && `${live.length} stood at closing`,
-    outdated.length > 0 &&
-      `${outdated.length} outdated (${outdatedVersions.map((v) => `v${v}`).join(", ")})`,
-    revoked.length > 0 && `${revoked.length} revoked`,
-  ].filter(Boolean);
+  const outdatedOwn = standingApprovalBefore(
+    rows.filter((a) => !a.organization && a.reviewer?.id === user?.id),
+    event.version_no,
+  );
 
   return (
     <section aria-label="Approvals">
@@ -106,16 +116,38 @@ export function ApprovalsCard({
         <SectionEyebrow title="Approvals" margin="none" />
         {approvals.data && (
           <div className="space-y-3">
-            {current.length > 0 ? (
+            {standing.length > 0 && !closed ? (
               <Pill tone="accent" icon={<Check size={11} />}>
-                Approved · {current.length} · version {event.version_no}
+                Approved · {standing.length} · version {event.version_no}
               </Pill>
             ) : (
               <Pill tone="neutral">
-                {closed ? "Closed, no current approval" : "Not approved yet"}
+                {!closed
+                  ? "Not approved yet"
+                  : standing.length > 0
+                    ? `Closed · ${standing.length} stood at closing`
+                    : "Closed, no current approval"}
               </Pill>
             )}
-            <ApprovalStamps approvals={rows} onOverflow={() => setExpanded(true)} />
+            <ApprovalStamps
+              approvals={standing}
+              max={showAll ? standing.length : STAMPS_SHOWN}
+              onOverflow={() => setShowAll(true)}
+              managed={managed}
+              onRevoke={setRevoking}
+            />
+            {revoking && (
+              <RevokeForm
+                key={revoking.id}
+                eventId={event.id}
+                approval={revoking}
+                onRevoked={() => {
+                  setRevoking(null);
+                  approvals.refetch();
+                }}
+                onCancel={() => setRevoking(null)}
+              />
+            )}
             {note && (
               <figure className="space-y-1">
                 <blockquote className="line-clamp-4 border-l-2 border-neutral-700 pl-3 text-sm text-neutral-300 [overflow-wrap:anywhere]">
@@ -128,27 +160,8 @@ export function ApprovalsCard({
                 )}
               </figure>
             )}
-            {rows.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setExpanded((open) => !open)}
-                aria-expanded={expanded}
-                aria-controls={expanded ? HISTORY_ID : undefined}
-                className="inline-flex items-center gap-1 text-left text-xs text-neutral-500 transition-colors hover:text-neutral-300"
-              >
-                {summary.length > 0 ? summary.join(" · ") : "All approvals"}
-                {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-              </button>
-            )}
-            {expanded && (
-              <div id={HISTORY_ID} className="space-y-3">
-                <ApprovalHistory
-                  event={event}
-                  rows={rows}
-                  managed={managed}
-                  onRevoked={approvals.refetch}
-                />
-              </div>
+            {outdatedOwn !== null && (
+              <YourOutdatedApproval event={event} approvedVersion={outdatedOwn} />
             )}
             <ApproveAction
               event={event}

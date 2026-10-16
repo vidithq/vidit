@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { CircleX, Ellipsis, Flag, MapPin, Pencil, Users } from "lucide-react";
+import { CircleX, Ellipsis, Flag, MapPin, SquarePen, Users } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
@@ -29,12 +29,13 @@ import type { EventDetail } from "@/types";
  *
  * 1. **The version selector**, on the event page of a published row: the version on screen,
  *    opening every version and the full history.
- * 2. **The primary action**, at most one, filled: Geolocate on the request page, Edit for the
- *    owner on the event page.
+ * 2. **The flow action** on the request page, filled: Geolocate. **Edit**, an icon button, for
+ *    the owner on both detail pages (in More on the request page, where Geolocate holds the slot).
  * 3. **Share**: the device's share sheet, or a menu with Copy link and Share on X.
  * 4. **More**: everything else that applies to this reader and row: Geolocators, Add to
- *    collection, the close, and Report. Each opens a panel under the header. Nothing here
- *    destroys a row: closing keeps it readable with its reason.
+ *    collection, the close, and Report. Each opens a panel under the header. A single item shows
+ *    as its own icon button instead of the menu. Nothing here destroys a row: closing keeps it
+ *    readable with its reason.
  *
  * On the event page of a published row the hook also returns the Approvals card (status,
  * approvals, Approve, approval requests), which the page renders beside the body.
@@ -164,14 +165,13 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
   const edit = (canEditRequest || canSaveVersion) && (
     <Link
       href={`/events/${event.id}/edit`}
-      className={buttonClasses("primary")}
-      // "Edit" alone would read as an in-place rewrite of a published record, which is corrected by
-      // adding a version; a request is overwritten, so its name promises no version.
-      aria-label={canSaveVersion ? "Edit this geolocation" : "Edit this request"}
-      title={canSaveVersion ? "Edit this geolocation (saves a new version)" : "Edit this request"}
+      className={buttonClasses("ghost", { icon: true })}
+      aria-label="Edit"
+      // A published record is corrected by adding a version, a request is overwritten: the tooltip
+      // says which, so "Edit" never reads as an in-place rewrite of a published record.
+      title={canSaveVersion ? "Edit (saves a new version)" : "Edit this request"}
     >
-      <Pencil size={14} />
-      Edit
+      <SquarePen size={14} />
     </Link>
   );
 
@@ -195,7 +195,7 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
           {
             key: "edit",
             label: "Edit this request",
-            icon: <Pencil size={14} />,
+            icon: <SquarePen size={14} />,
             href: `/events/${event.id}/edit`,
           },
         ]

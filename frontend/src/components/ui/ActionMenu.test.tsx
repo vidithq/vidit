@@ -109,6 +109,26 @@ describe("<ActionMenu>", () => {
     expect(screen.getByRole("menuitem", { name: "Report" })).not.toHaveAttribute("aria-expanded");
   });
 
+  it("renders a menu of one item as that item's own icon control", () => {
+    const onReport = vi.fn();
+    render(
+      <ActionMenu
+        label="More actions"
+        icon={<span>…</span>}
+        items={[
+          { key: "report", label: "Report", icon: <span aria-hidden>!</span>, tone: "danger", onSelect: onReport, active: true },
+        ]}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
+    const report = screen.getByRole("button", { name: "Report" });
+    expect(report).toHaveAttribute("title", "Report");
+    expect(report).toHaveAttribute("aria-expanded", "true");
+    expect(report).not.toHaveAttribute("aria-haspopup");
+    fireEvent.click(report);
+    expect(onReport).toHaveBeenCalledOnce();
+  });
+
   it("prints text on the trigger, names the list apart, and opens on the current item", () => {
     render(
       <ActionMenu

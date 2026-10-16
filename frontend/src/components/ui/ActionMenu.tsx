@@ -12,7 +12,7 @@ import {
 import Link from "next/link";
 
 import { cn } from "@/lib/cn";
-import { Button } from "./Button";
+import { Button, buttonClasses } from "./Button";
 import { ACCENT_SURFACE, TOOLTIP_SURFACE } from "./styles";
 
 export interface ActionMenuItem {
@@ -48,7 +48,8 @@ function itemNodes(menu: HTMLElement): HTMLElement[] {
  * A trigger button that opens a short list of actions (`role="menu"`). Arrow keys, Home and End
  * move between items; Escape closes and returns focus to the trigger; Tab or an outside click
  * closes. The menu opens under the trigger, aligned to its right edge, and shifts sideways when
- * that would cross the viewport. A long list scrolls inside the menu.
+ * that would cross the viewport. A long list scrolls inside the menu. A menu of one item renders
+ * that item as its own icon control instead (the item's icon, tone, name and open state).
  */
 export function ActionMenu({
   label,
@@ -144,6 +145,36 @@ export function ActionMenu({
         }
     }
   };
+
+  // A menu of one item is that item: its own icon control, one click instead of two.
+  if (items.length === 1 && !text) {
+    const [item] = items;
+    const variant = item.tone === "danger" ? "dangerGhost" : "ghost";
+    const shown = item.icon ?? item.label;
+    return item.href ? (
+      <Link
+        href={item.href}
+        aria-label={item.label}
+        title={item.label}
+        aria-current={item.current ? "page" : undefined}
+        className={buttonClasses(variant, { icon: !!item.icon })}
+      >
+        {shown}
+      </Link>
+    ) : (
+      <Button
+        icon={!!item.icon}
+        variant={variant}
+        aria-label={item.label}
+        title={item.label}
+        aria-expanded={item.active}
+        onClick={item.onSelect}
+        className={item.active ? ACCENT_SURFACE : ""}
+      >
+        {shown}
+      </Button>
+    );
+  }
 
   return (
     <div ref={wrapperRef} className="relative inline-flex">

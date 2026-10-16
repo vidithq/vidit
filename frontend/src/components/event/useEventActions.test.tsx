@@ -151,11 +151,11 @@ const headerButtons = () =>
     .map((b) => b.getAttribute("aria-label") ?? b.textContent);
 
 describe("the event header per reader", () => {
-  it("gives the owner the version, Edit as the primary action, Share, and their verbs under More", async () => {
+  it("gives the owner the version, the Edit icon, Share, and their verbs under More", async () => {
     renderAs(OWNER, { status: "geolocated", surface: "event" });
-    const edit = within(header()).getByRole("link", { name: "Edit this geolocation" });
+    const edit = within(header()).getByRole("link", { name: "Edit" });
     expect(edit).toHaveAttribute("href", "/events/e1/edit");
-    expect(edit).toHaveTextContent("Edit");
+    expect(edit).toHaveAttribute("title", "Edit (saves a new version)");
     expect(headerButtons()).toEqual(["v1: choose a version", "Share", "More actions"]);
     expect(moreItems()).toEqual([
       "Geolocators",
@@ -173,8 +173,9 @@ describe("the event header per reader", () => {
     expect(await within(card).findByRole("button", { name: "Approve" })).toBeInTheDocument();
     expect(within(card).queryByLabelText("Note (optional)")).toBeNull();
     expect(within(header()).queryByRole("link", { name: /^Edit/ })).toBeNull();
-    expect(headerButtons()).toEqual(["v1: choose a version", "Share", "More actions"]);
-    expect(moreItems()).toEqual(["Report"]);
+    // A menu of one item is that item: the report flag sits beside Share.
+    expect(headerButtons()).toEqual(["v1: choose a version", "Share", "Report"]);
+    expect(moreItems()).toEqual([]);
   });
 
   // Credit only: a co-geolocator shelves the row and sees its geolocators, and never edits,
@@ -187,11 +188,11 @@ describe("the event header per reader", () => {
     expect(moreItems()).toEqual(["Geolocators", "Add to collection", "Report"]);
   });
 
-  it("gives a signed-out reader the version, Share, and More with the report", async () => {
+  it("gives a signed-out reader the version, Share, and the report as its own button", async () => {
     renderAs(null, { status: "geolocated", surface: "event" });
     await screen.findByText("Not approved yet");
-    expect(headerButtons()).toEqual(["v1: choose a version", "Share", "More actions"]);
-    expect(moreItems()).toEqual(["Report"]);
+    expect(headerButtons()).toEqual(["v1: choose a version", "Share", "Report"]);
+    expect(moreItems()).toEqual([]);
   });
 
   it("carries no approval stamps and no approve control in the header", async () => {
@@ -204,21 +205,20 @@ describe("the event header per reader", () => {
 });
 
 describe("owner management: correcting, taking back, and never destroying", () => {
-  it.each<EventStatus>(["requested", "closed", "detected"])(
-    "shows no published edit on the event surface for a %s row",
+  it.each<EventStatus>(["closed", "detected"])(
+    "shows no edit on the event surface for a %s row",
     (status) => {
       renderAs(OWNER, { status, surface: "event" });
-      expect(screen.queryByRole("link", { name: "Edit this geolocation" })).toBeNull();
+      expect(screen.queryByRole("link", { name: "Edit" })).toBeNull();
     },
   );
 
-  // Overwritten rather than versioned, so the label promises no version.
-  it("makes the request edit the owner's primary action on the event surface", () => {
+  // Overwritten rather than versioned, so the tooltip promises no version.
+  it("gives the owner the request edit icon on the event surface", () => {
     renderAs(OWNER, { status: "requested", surface: "event" });
-    expect(within(header()).getByRole("link", { name: "Edit this request" })).toHaveAttribute(
-      "href",
-      "/events/e1/edit",
-    );
+    const edit = within(header()).getByRole("link", { name: "Edit" });
+    expect(edit).toHaveAttribute("href", "/events/e1/edit");
+    expect(edit).toHaveAttribute("title", "Edit this request");
     expect(moreItems()).toEqual(["Close this request", "Report"]);
   });
 
@@ -235,7 +235,8 @@ describe("owner management: correcting, taking back, and never destroying", () =
   it("shows a visitor Geolocate and no owner verb on the request page", () => {
     renderAs(ANALYST, { status: "requested", surface: "request" });
     expect(within(header()).getByRole("link", { name: "Geolocate" })).toBeInTheDocument();
-    expect(moreItems()).toEqual(["Report"]);
+    expect(moreItems()).toEqual([]);
+    expect(within(header()).getByRole("button", { name: "Report" })).toBeInTheDocument();
   });
 
   // One verb closes all three live states; the noun names the row.
@@ -307,9 +308,9 @@ describe("panels the More menu opens", () => {
     expect(moreItems()).not.toContain("Geolocators");
   });
 
-  it("opens the report form from More, signed out", () => {
+  it("opens the report form from the lone report button, signed out", () => {
     renderAs(null, { status: "geolocated", surface: "event" });
-    chooseMore("Report");
+    fireEvent.click(within(header()).getByRole("button", { name: "Report" }));
     expect(screen.getByRole("heading", { name: "Report this event" })).toBeInTheDocument();
   });
 });
