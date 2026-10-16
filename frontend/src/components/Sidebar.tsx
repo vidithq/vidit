@@ -20,6 +20,7 @@ import {
 import BetaBanner from "@/components/BetaBanner";
 import { setPhoneBackSlot } from "@/lib/phoneBackSlot";
 import {
+  Activity,
   Bell,
   Globe,
   Plus,
@@ -68,11 +69,10 @@ interface NavItem {
   activeFor?: (pathname: string) => boolean;
 }
 
-// Order: Map, Submit, Requests, Search, About (public/meta plus the guides hub) last. Timeline is
-// off the rail until its collaboration mechanics arrive; the bot guide is reached from About and
-// X itself. Home has no slot (the logo links it). Only Submit carries `auth: true` and hides
-// signed-out. Profile, Notifications, Settings, Sign-in and Sign-out are the identity block at
-// the bottom.
+// Order: Map, Submit, Requests, Timeline, Search, About (public/meta plus the guides hub) last.
+// The bot guide is reached from About and X itself. Home has no slot (the logo links it). Submit
+// and Timeline carry `auth: true` and hide signed-out. Profile, Notifications, Settings, Sign-in
+// and Sign-out are the identity block at the bottom.
 const NAV_ITEMS: ReadonlyArray<NavItem> = [
   {
     href: "/map",
@@ -88,6 +88,7 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     label: "Requests",
     activeFor: (p) => p === "/requests" || p.startsWith("/requests/"),
   },
+  { href: "/timeline", icon: Activity, label: "Timeline", auth: true },
   { href: "/search", icon: Search, label: "Search" },
   {
     href: "/about",

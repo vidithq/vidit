@@ -35,6 +35,8 @@ const PILL_TONE: Record<PillTone, string> = {
 interface PillProps {
   tone?: PillTone;
   icon?: ReactNode;
+  /** The key of a key/value pill (`Conflict: Russo-Ukrainian war`), muted before the value. */
+  label?: string;
   title?: string;
   /** Orthogonal extras; conflicts resolve caller-wins via `cn`. */
   className?: string;
@@ -46,11 +48,20 @@ interface PillProps {
 export function Pill({
   tone = "neutral",
   icon,
+  label,
   title,
   className = "",
   children,
   onClick,
 }: PillProps) {
+  const content = label ? (
+    <>
+      <span className="font-normal opacity-70">{label}:</span>
+      {children}
+    </>
+  ) : (
+    children
+  );
   // An interactive chip takes `<Button>`'s phone tap step (a resting pill is
   // about 19px). A static pill keeps the resting height.
   const cls = cn(
@@ -63,14 +74,14 @@ export function Pill({
     return (
       <button type="button" onClick={onClick} title={title} className={cls}>
         {icon}
-        {children}
+        {content}
       </button>
     );
   }
   return (
     <span title={title} className={cls}>
       {icon}
-      {children}
+      {content}
     </span>
   );
 }

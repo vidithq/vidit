@@ -178,7 +178,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | PATCH | `/organizations/{slug}/members/{username}` | 🔒 | Change a member's role (managers) |
 | DELETE | `/organizations/{slug}/members/{username}` | 🔒 | Remove a member, or leave |
 | **Timeline** | | | |
-| GET | `/timeline` | 🔒 | Activity feed from followed analysts |
+| GET | `/timeline` | 🔒 | Published geolocations and open requests, from followed analysts or everyone |
 | **Webhooks** | | | |
 | GET | `/webhooks/x` | 🌐 | X webhook CRC challenge (HMAC answer, no DB) |
 | POST | `/webhooks/x` | 🌐 | Receive an X Account Activity delivery (signature-verified) and queue bot mentions |
@@ -2927,11 +2927,47 @@ Remove a member, or leave when `username` is your own. Removing someone else tak
 
 ### `GET /timeline` 🔒
 
-Geolocations crediting analysts you follow, newest submission first. Published work only, the set [`GET /users/{username}/events`](#get-usersusernameevents) serves. Offset-paged (see [Pagination](#pagination)).
+Two kinds of row, newest first: a geolocation an analyst published and a request an analyst has open. Cursor-paged (see [Pagination](#pagination)).
 
-**Query params:** `page` and `per_page`, see [Pagination](#pagination).
+| Kind | Rows | Timeline timestamp |
+|---|---|---|
+| Geolocation | `status = geolocated`, the set [`GET /users/{username}/events`](#get-usersusernameevents) serves | `geolocated_at` |
+| Request | `status = requested` | `requested_at` |
 
-**Response 200:** a `PaginatedEvents`, as on [`GET /users/{username}/events`](#get-usersusernameevents).
+A geolocation credits every geolocator: `owner` and `geolocators`. A request credits `owner`, its requester, since ownership moves only when a request is geolocated.
+
+A detection, a retraction and a withdrawn request are in neither kind. A soft-deleted or withheld event never appears, and neither does the work of a soft-deleted account. A fulfilled request leaves the request kind and enters the geolocation kind, credited to the analyst who geolocated it.
+
+**Query params:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `scope` | string | `following` (default) keeps the geolocations crediting an analyst you follow and the requests one of them opened, and is empty when you follow nobody. `all` keeps every row. Anything else returns 422. |
+| `limit` | int | Rows per page, default 10. See [Pagination](#pagination). |
+| `cursor` | string | Opaque cursor from the previous page's `Link: rel="next"` header. See [Pagination](#pagination). |
+
+**Response 200:** an array of `TimelineItemRead`: the [`EventList`](#get-events) card plus `timeline_at`.
+```json
+[
+  {
+    "id": "uuid",
+    "title": "Where is this bridge?",
+    "event_coords": null,
+    "event_date": "2026-03-15",
+    "is_graphic": false,
+    "status": "requested",
+    "before_closed_status": null,
+    "owner": { "id": "uuid", "username": "kalush" },
+    "timeline_at": "2026-03-16T09:14:22Z",
+    "media": null,
+    "tags": [],
+    "conflicts": []
+  }
+]
+```
+
+**Response headers:** `Link: <…&cursor=…>; rel="next"` when a further page exists.
+
+`status` tells the two kinds apart. `timeline_at` is the row's timeline timestamp. Rows are ordered by `timeline_at DESC, id DESC`, one total order across both kinds, so a walk never repeats or skips a row.
 
 ---
 
@@ -3538,11 +3574,11 @@ One Account Activity delivery.
 | `GET /admin/invite-codes` | cursor | `created_at DESC, id DESC` | 100 | 100 |
 | [`GET /events/{id}/versions`](#get-eventsidversions) | cursor | `version_no DESC` | 50 | 100 |
 | [`GET /notifications`](#get-notifications) | cursor | `created_at DESC, id DESC` | 100 | 100 |
+| [`GET /timeline`](#get-timeline) | cursor | `timeline_at DESC, id DESC` | 10 | 100 |
 | [`GET /collections/{id}/events`](#get-collectionsidevents) | cursor | `event_date, event_time, created_at, id` ascending; a missing date or time sorts last | 100 | 100 |
 | [`GET /users/{username}/events`](#get-usersusernameevents) | offset | `event_date DESC`, then `created_at DESC, id DESC` | 20 | 100 |
 | [`GET /users/{username}/collections`](#get-usersusernamecollections) | offset | newest first | 20 | 100 |
 | [`GET /events/detections`](#get-eventsdetections) | offset | `created_at DESC` | 20 | 100 |
-| [`GET /timeline`](#get-timeline) | offset | `created_at DESC, id DESC` | 20 | 100 |
 | `GET /admin/reports` | offset | open first, then newest | 20 | 100 |
 | [`GET /search`](#get-search) | per-group `limit`, no paging | `ts_rank DESC, created_at DESC` | 20 | 50 |
 | [`GET /events/{id}/collections`](#get-eventsidcollections) | none | newest first | | 100 |

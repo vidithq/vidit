@@ -1,38 +1,54 @@
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
 from app.routers.events._common import build_event_list
-from app.schemas.event import PaginatedEvents
+from app.schemas.event import TimelineItemRead
 from app.services import social
-from app.services.pagination import page_size
+from app.services.pagination import (
+    decode_cursor,
+    encode_cursor,
+    next_link,
+    page_size,
+)
+from app.services.social import TimelineScope
 
 router = APIRouter()
 
 
-@router.get("/timeline", response_model=PaginatedEvents)
+@router.get("/timeline", response_model=list[TimelineItemRead])
 @authenticated_read_quota
 @limiter.limit("120/minute")
 def get_timeline(
     request: Request,
-    page: int = Query(1, ge=1),
-    per_page: int = Query(20, ge=1),
+    response: Response,
+    scope: TimelineScope = Query("following"),
+    limit: int = Query(10, ge=1),
+    cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> PaginatedEvents:
-    """Geolocations authored by accounts the current user follows, newest first.
+) -> list[TimelineItemRead]:
+    """Published geolocations and open requests, newest first.
 
-    Empty when the user follows nobody (the frontend shows an empty state, not
-    a global feed). Offset-paged, capped at 100 rows per page.
+    ``scope=following`` (default) keeps the rows owned by analysts the
+    current user follows, and is empty when they follow nobody; ``scope=all``
+    keeps every row. Cursor-paged, capped at 100 rows; the ``Link: rel="next"``
+    cursor is present exactly when a next page holds a row.
     """
-    per_page = page_size(per_page)
-    result = social.get_timeline(
+    size = page_size(limit)
+    rows, has_next = social.get_timeline(
         db,
         user_id=current_user.id,
-        page=page,
-        per_page=per_page,
+        scope=scope,
+        size=size,
+        cursor=decode_cursor(cursor) if cursor is not None else None,
     )
-    items = [build_event_list(geo, lat=lat, lng=lng) for geo, lat, lng in result["items"]]
-    return PaginatedEvents(items=items, total=result["total"], page=page, per_page=per_page)
+    if has_next:
+        last, _, _, last_at = rows[-1]
+        response.headers["Link"] = next_link(request, encode_cursor(last_at, last.id))
+    return [
+        TimelineItemRead(**build_event_list(geo, lat=lat, lng=lng).model_dump(), timeline_at=at)
+        for geo, lat, lng, at in rows
+    ]

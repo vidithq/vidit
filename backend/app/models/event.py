@@ -18,6 +18,8 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
     and_,
+    case,
+    func,
     text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
@@ -453,3 +455,32 @@ class Event(Base):
         # DESC``, ``services/pagination.keyset_before``).
         Index("ix_events_created_at_id", "created_at", "id"),
     )
+
+
+def timeline_at() -> ColumnElement[datetime]:
+    """When an event entered the timeline: ``requested_at`` for an open request, else
+    ``geolocated_at``.
+
+    Both stamps are set on entry and never cleared, so the key is immutable while a row is in
+    the timeline. ``created_at`` stands in for a missing stamp because a keyset row comparison
+    against NULL is unknown. ``ix_events_timeline_at_id`` indexes this exact expression, and
+    the planner matches it structurally, so changing it needs a migration.
+    """
+    return func.coalesce(
+        case((Event.status == STATUS_REQUESTED, Event.requested_at), else_=Event.geolocated_at),
+        Event.created_at,
+    )
+
+
+# Backs the timeline keyset (``services.social.get_timeline``, ``timeline_at DESC, id DESC``)
+# over the rows it can serve, so a page reads the index in order instead of sorting.
+Index(
+    "ix_events_timeline_at_id",
+    timeline_at(),
+    Event.id,
+    postgresql_where=and_(
+        Event.deleted_at.is_(None),
+        Event.hidden_at.is_(None),
+        Event.status.in_((STATUS_GEOLOCATED, STATUS_REQUESTED)),
+    ),
+)

@@ -1,8 +1,8 @@
 """End-to-end tests for the social-graph endpoints.
 
 Covers follow and unfollow (idempotent, 404 on an unknown or soft-deleted
-target, auth required), ``GET /timeline`` (live published geolocations from
-followed users, coordinates inline, pagination), the profile follow counters
+target, auth required), ``GET /timeline`` (published geolocations and open
+requests, scope, credit, exclusions, cursor walk), the profile follow counters
 and ``is_following``, and the DB-level ``ck_follows_no_self_follow``.
 """
 
@@ -15,15 +15,24 @@ import pytest
 from fastapi.testclient import TestClient
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
+from sqlalchemy import event, text
 from sqlalchemy.exc import IntegrityError
 
-from app.database import SessionLocal
+from app.database import SessionLocal, engine
 from app.main import app
-from app.models.event import STATUS_CLOSED, STATUS_DETECTED, STATUS_GEOLOCATED, Event
+from app.models.event import (
+    STATUS_CLOSED,
+    STATUS_DETECTED,
+    STATUS_GEOLOCATED,
+    STATUS_REQUESTED,
+    Event,
+)
 from app.models.follow import Follow
 from app.models.media import Media
 from app.models.user import User
+from app.services import social as social_service
 from app.services.auth import hash_password
+from app.services.pagination import MAX_PAGE_SIZE, encode_cursor
 from tests.conftest import login_as
 
 client = TestClient(app)
@@ -226,8 +235,6 @@ def test_follow_swallows_integrity_error_from_concurrent_race(db, cleanup, monke
     (idempotent ``204``), not a 500.
 
     Forced by pre-populating the row and patching the existence check."""
-    from app.services import social as social_service
-
     record_user, _ = cleanup
     follower = _make_user(db, suffix="follower")
     target = _make_user(db, suffix="target")
@@ -249,6 +256,44 @@ def test_follow_swallows_integrity_error_from_concurrent_race(db, cleanup, monke
 # ── GET /timeline ─────────────────────────────────────────────────────────
 
 
+def _make_request(db, *, requester: User, title: str = "Help", at: datetime | None = None) -> Event:
+    request = Event(
+        owner_id=requester.id,
+        requested_by_id=requester.id,
+        title=title,
+        source_url="https://example.com/ask",
+        status=STATUS_REQUESTED,
+        requested_at=at or datetime.now(UTC),
+    )
+    db.add(request)
+    db.commit()
+    db.refresh(request)
+    return request
+
+
+def _fulfil(event: Event, *, by: User, at: datetime | None = None) -> None:
+    # Read before the writes: refreshing an expired ``by`` autoflushes, and a half-written
+    # row trips ``ck_events_coords_status``.
+    owner_id = by.id
+    event.event_coords = from_shape(Point(37.8, 48.0), srid=4326)
+    event.geolocated_at = at or datetime.now(UTC)
+    event.owner_id = owner_id
+    event.status = STATUS_GEOLOCATED
+
+
+def _walk(headers: dict, url: str) -> list[dict]:
+    """Every row of a timeline walk, following ``Link: rel="next"`` to the end."""
+    rows: list[dict] = []
+    next_url: str | None = url
+    while next_url is not None:
+        response = client.get(next_url, headers=headers)
+        assert response.status_code == 200
+        rows.extend(response.json())
+        link = response.headers.get("Link")
+        next_url = link[1 : link.index(">")] if link else None
+    return rows
+
+
 def test_timeline_requires_auth():
     response = client.get("/api/v1/timeline")
     assert response.status_code == 401
@@ -261,183 +306,239 @@ def test_timeline_empty_when_no_follows(db, cleanup):
 
     response = client.get("/api/v1/timeline", headers=login_as(client, me))
     assert response.status_code == 200
-    body = response.json()
-    assert body["items"] == []
-    assert body["total"] == 0
+    assert response.json() == []
+    assert "Link" not in response.headers
 
 
-def test_timeline_returns_followed_users_geolocations_with_coords(db, cleanup):
+def test_timeline_following_carries_geolocations_and_requests_credited(db, cleanup):
+    """A geolocation counts for its owner and a request for its requester, so a request
+    fulfilled by a stranger leaves the requester's followers and reaches the fulfiller's."""
     record_user, record_geo = cleanup
     viewer = _make_user(db, suffix="viewer")
-    author_a = _make_user(db, suffix="autha")
-    author_b = _make_user(db, suffix="authb")
+    analyst = _make_user(db, suffix="analyst")
     stranger = _make_user(db, suffix="stranger")
-    record_user(viewer)
-    record_user(author_a)
-    record_user(author_b)
-    record_user(stranger)
+    for user in (viewer, analyst, stranger):
+        record_user(user)
 
-    # A and B order oppositely on the two candidate keys (A: older event date,
-    # newer submission), so the assertion pins newest submission first.
-    geo_a = _make_geo(db, author=author_a, title="A", event=date(2026, 5, 10))
-    geo_b = _make_geo(db, author=author_b, title="B", event=date(2026, 5, 11))
-    geo_stranger = _make_geo(db, author=stranger, title="Stranger", event=date(2026, 5, 12))
-    geo_b.created_at = datetime(2026, 5, 20, 9, 0, tzinfo=UTC)
-    geo_a.created_at = datetime(2026, 5, 20, 10, 0, tzinfo=UTC)
-    record_geo(geo_a)
-    record_geo(geo_b)
-    record_geo(geo_stranger)
-
-    db.add(Follow(follower_id=viewer.id, followed_id=author_a.id))
-    db.add(Follow(follower_id=viewer.id, followed_id=author_b.id))
+    geo = _make_geo(db, author=analyst, title="Geo")
+    geo.geolocated_at = datetime(2026, 5, 20, 9, 0, tzinfo=UTC)
+    ask = _make_request(
+        db, requester=analyst, title="Ask", at=datetime(2026, 5, 20, 10, 0, tzinfo=UTC)
+    )
+    fulfilled_by_stranger = _make_request(db, requester=analyst, title="Fulfilled by stranger")
+    _fulfil(fulfilled_by_stranger, by=stranger)
+    answered_for_stranger = _make_request(db, requester=stranger, title="Answered by analyst")
+    _fulfil(answered_for_stranger, by=analyst, at=datetime(2026, 5, 20, 8, 0, tzinfo=UTC))
+    stranger_geo = _make_geo(db, author=stranger, title="Stranger geo")
+    stranger_ask = _make_request(db, requester=stranger, title="Stranger ask")
     db.add(
         Media(
-            event_id=geo_a.id,
+            event_id=geo.id,
             role="source",
-            storage_url=f"http://localhost:8000/local-storage/uploads/{geo_a.id}/thumb.jpg",
+            storage_url=f"http://localhost:8000/local-storage/uploads/{geo.id}/thumb.jpg",
             media_type="image",
         )
     )
+    db.add(Follow(follower_id=viewer.id, followed_id=analyst.id))
     db.commit()
+    for row in (geo, ask, fulfilled_by_stranger, answered_for_stranger, stranger_geo, stranger_ask):
+        record_geo(row)
 
     response = client.get("/api/v1/timeline", headers=login_as(client, viewer))
     assert response.status_code == 200
-    body = response.json()
-    titles = [item["title"] for item in body["items"]]
-    assert "A" in titles and "B" in titles
-    assert "Stranger" not in titles
-    assert titles.index("A") < titles.index("B")
-    assert body["total"] == 2
-    for item in body["items"]:
-        assert isinstance(item["event_coords"]["lat"], (int, float))
-        assert isinstance(item["event_coords"]["lng"], (int, float))
-    by_title = {item["title"]: item for item in body["items"]}
-    assert by_title["A"]["media"]["storage_url"].endswith("thumb.jpg")
-    assert by_title["A"]["media"]["media_type"] == "image"
-    assert by_title["B"]["media"] is None
+    items = response.json()
+    assert [item["title"] for item in items] == ["Ask", "Geo", "Answered by analyst"]
+    by_title = {item["title"]: item for item in items}
+
+    assert by_title["Ask"]["status"] == STATUS_REQUESTED
+    assert by_title["Ask"]["owner"]["username"] == analyst.username
+    assert by_title["Ask"]["timeline_at"].startswith("2026-05-20T10:00:00")
+    assert by_title["Ask"]["event_coords"] is None
+
+    assert by_title["Geo"]["status"] == STATUS_GEOLOCATED
+    assert by_title["Geo"]["owner"]["username"] == analyst.username
+    assert by_title["Geo"]["timeline_at"].startswith("2026-05-20T09:00:00")
+    assert isinstance(by_title["Geo"]["event_coords"]["lat"], (int, float))
+    assert by_title["Geo"]["media"]["storage_url"].endswith("thumb.jpg")
+
+    assert by_title["Answered by analyst"]["owner"]["username"] == analyst.username
 
 
-def test_timeline_excludes_soft_deleted_geolocations(db, cleanup):
+def test_timeline_all_scope_carries_rows_of_analysts_not_followed(db, cleanup):
+    record_user, record_geo = cleanup
+    viewer = _make_user(db, suffix="viewer")
+    stranger = _make_user(db, suffix="stranger")
+    record_user(viewer)
+    record_user(stranger)
+
+    # Far-future stamps put these rows on the first page of a feed other tests also write to.
+    geo = _make_geo(db, author=stranger, title="Stranger geo")
+    geo.geolocated_at = datetime(2999, 1, 1, 0, 0, 1, tzinfo=UTC)
+    ask = _make_request(
+        db, requester=stranger, title="Stranger ask", at=datetime(2999, 1, 1, 0, 0, 2, tzinfo=UTC)
+    )
+    db.commit()
+    record_geo(geo)
+    record_geo(ask)
+
+    headers = login_as(client, viewer)
+    assert client.get("/api/v1/timeline", headers=headers).json() == []
+    response = client.get("/api/v1/timeline?scope=all&limit=100", headers=headers)
+    assert response.status_code == 200
+    ids = [item["id"] for item in response.json()]
+    assert str(ask.id) in ids and str(geo.id) in ids
+    assert ids.index(str(ask.id)) < ids.index(str(geo.id))
+
+
+def test_timeline_excludes_unpublished_closed_deleted_and_hidden_rows(db, cleanup):
+    """Each kind keeps its own predicate: a detection is unvouched, a retraction and a
+    withdrawn request are closed, and a soft-deleted or withheld row is out of every read."""
     record_user, record_geo = cleanup
     viewer = _make_user(db, suffix="viewer")
     author = _make_user(db, suffix="author")
     record_user(viewer)
     record_user(author)
 
-    live = _make_geo(db, author=author, title="Live", event=date(2026, 5, 10))
-    deleted = _make_geo(db, author=author, title="Deleted", event=date(2026, 5, 11))
-    deleted.deleted_at = datetime.now(UTC)
-    db.commit()
-    record_geo(live)
-    record_geo(deleted)
-
-    db.add(Follow(follower_id=viewer.id, followed_id=author.id))
-    db.commit()
-
-    response = client.get("/api/v1/timeline", headers=login_as(client, viewer))
-    body = response.json()
-    titles = [item["title"] for item in body["items"]]
-    assert titles == ["Live"]
-    assert body["total"] == 1
-
-
-def test_timeline_carries_only_what_the_author_published(db, cleanup):
-    """The follow feed serves the published set only (the author's profile feed
-    predicate): a ``detected`` row is unvouched machine output and a retraction is withdrawn."""
-    record_user, record_geo = cleanup
-    viewer = _make_user(db, suffix="viewer")
-    author = _make_user(db, suffix="author")
-    record_user(viewer)
-    record_user(author)
-
-    published = _make_geo(db, author=author, title="Published", event=date(2026, 5, 10))
-    detection = _make_geo(db, author=author, title="Detection", event=date(2026, 5, 11))
+    published = _make_geo(db, author=author, title="Published")
+    ask = _make_request(db, requester=author, title="Open ask")
+    detection = _make_geo(db, author=author, title="Detection")
     detection.status = STATUS_DETECTED
-    retracted = _make_geo(db, author=author, title="Retracted", event=date(2026, 5, 12))
+    retracted = _make_geo(db, author=author, title="Retracted")
     retracted.status = STATUS_CLOSED
     retracted.before_closed_status = STATUS_GEOLOCATED
     retracted.closed_at = datetime.now(UTC)
     retracted.close_reason = "The footage was misattributed."
-    db.commit()
-    record_geo(published)
-    record_geo(detection)
-    record_geo(retracted)
-
+    withdrawn = _make_request(db, requester=author, title="Withdrawn ask")
+    withdrawn.status = STATUS_CLOSED
+    withdrawn.before_closed_status = STATUS_REQUESTED
+    withdrawn.closed_at = datetime.now(UTC)
+    withdrawn.close_reason = "Found it myself."
+    deleted_geo = _make_geo(db, author=author, title="Deleted geo")
+    deleted_geo.deleted_at = datetime.now(UTC)
+    deleted_ask = _make_request(db, requester=author, title="Deleted ask")
+    deleted_ask.deleted_at = datetime.now(UTC)
+    hidden_geo = _make_geo(db, author=author, title="Hidden geo")
+    hidden_geo.hidden_at = datetime.now(UTC)
+    hidden_ask = _make_request(db, requester=author, title="Hidden ask")
+    hidden_ask.hidden_at = datetime.now(UTC)
+    rows = (
+        published,
+        ask,
+        detection,
+        retracted,
+        withdrawn,
+        deleted_geo,
+        deleted_ask,
+        hidden_geo,
+        hidden_ask,
+    )
+    # A band of timestamps no other test writes: the all scope's page cut just above it holds
+    # every row of ours that qualifies, whatever else the shared feed carries.
+    for second, row in enumerate(rows):
+        stamp = datetime(2998, 1, 1, 0, 0, second, tzinfo=UTC)
+        if row.geolocated_at is not None:
+            row.geolocated_at = stamp
+        if row.requested_at is not None:
+            row.requested_at = stamp
+        record_geo(row)
     db.add(Follow(follower_id=viewer.id, followed_id=author.id))
     db.commit()
 
-    body = client.get("/api/v1/timeline", headers=login_as(client, viewer)).json()
-    assert [item["title"] for item in body["items"]] == ["Published"]
-    assert body["total"] == 1
+    headers = login_as(client, viewer)
+    following = client.get("/api/v1/timeline", headers=headers).json()
+    assert {item["title"] for item in following} == {"Published", "Open ask"}
+
+    above_band = encode_cursor(datetime(2998, 1, 1, 0, 1, tzinfo=UTC), uuid.UUID(int=2**128 - 1))
+    page = client.get(
+        f"/api/v1/timeline?scope=all&limit={len(rows)}&cursor={above_band}", headers=headers
+    ).json()
+    band = {item["title"] for item in page if item["timeline_at"].startswith("2998-")}
+    assert band == {"Published", "Open ask"}
 
 
-def test_timeline_paginates(db, cleanup):
+def test_timeline_cursor_walks_mixed_kinds_without_gaps_or_repeats(db, cleanup):
+    """Geolocations and requests interleave on one key, ties broken by id, so a walk
+    two rows at a time serves every row once, in order."""
     record_user, record_geo = cleanup
     viewer = _make_user(db, suffix="viewer")
     author = _make_user(db, suffix="author")
     record_user(viewer)
     record_user(author)
 
-    for i in range(5):
-        geo = _make_geo(db, author=author, title=f"G{i}", event=date(2026, 5, i + 1))
-        record_geo(geo)
+    rows: list[Event] = []
+    for i in range(4):
+        geo = _make_geo(db, author=author, title=f"G{i}")
+        geo.geolocated_at = datetime(2026, 5, 20, 10 + i, 0, tzinfo=UTC)
+        rows.append(geo)
+        at = datetime(2026, 5, 20, 10 + i, 30, tzinfo=UTC)
+        rows.append(_make_request(db, requester=author, title=f"R{i}", at=at))
+    tie = datetime(2026, 5, 20, 12, 0, tzinfo=UTC)
+    tied_geo = _make_geo(db, author=author, title="Tied geo")
+    tied_geo.geolocated_at = tie
+    rows.append(tied_geo)
+    rows.append(_make_request(db, requester=author, title="Tied ask", at=tie))
     db.add(Follow(follower_id=viewer.id, followed_id=author.id))
     db.commit()
+    for row in rows:
+        record_geo(row)
 
-    page1 = client.get(
-        "/api/v1/timeline?page=1&per_page=2", headers=login_as(client, viewer)
-    ).json()
-    page2 = client.get(
-        "/api/v1/timeline?page=2&per_page=2", headers=login_as(client, viewer)
-    ).json()
-    assert page1["total"] == 5
-    assert len(page1["items"]) == 2
-    assert len(page2["items"]) == 2
-    assert {it["id"] for it in page1["items"]} & {it["id"] for it in page2["items"]} == set()
+    walked = _walk(login_as(client, viewer), "/api/v1/timeline?limit=2")
+    ids = [item["id"] for item in walked]
+    assert len(ids) == len(set(ids)), "a row was served twice"
+    assert set(ids) == {str(row.id) for row in rows}
+    keys = [(item["timeline_at"], item["id"]) for item in walked]
+    assert keys == sorted(keys, reverse=True)
+    assert {item["status"] for item in walked} == {STATUS_GEOLOCATED, STATUS_REQUESTED}
 
 
-def test_timeline_offset_pager_walks_the_whole_feed(db, cleanup):
-    """The feed is offset-paged: `page` / `per_page` walk it to exhaustion,
-    each row once, and `total` reports the whole match count on every page."""
+@pytest.mark.parametrize("scope", ["following", "all"])
+@pytest.mark.parametrize("paged", [False, True], ids=["first page", "cursor page"])
+def test_timeline_page_query_reads_its_index(db, scope, paged):
+    """The page query's ORDER BY matches ``ix_events_timeline_at_id`` exactly. Sorting is
+    priced out, so a drifted expression shows as a plan without the index."""
+    captured: list[str] = []
+
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        if "coalesce" in statement:
+            captured.append(cursor.mogrify(statement, parameters).decode())
+
+    cursor = (datetime(2026, 5, 20, tzinfo=UTC), uuid.uuid4()) if paged else None
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        social_service.get_timeline(db, user_id=uuid.uuid4(), scope=scope, size=10, cursor=cursor)
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+
+    db.execute(text("SET LOCAL enable_sort = off"))
+    plan = "\n".join(db.execute(text("EXPLAIN " + captured[0].replace("%", "%%"))).scalars())
+    db.rollback()
+    assert "ix_events_timeline_at_id" in plan, plan
+
+
+def test_timeline_caps_limit_and_rejects_garbage(db, cleanup):
+    """The default page is 10 rows and over-asking is clamped to the 100-row cap; a bad
+    limit, scope or cursor is a 422."""
     record_user, record_geo = cleanup
     viewer = _make_user(db, suffix="viewer")
     author = _make_user(db, suffix="author")
     record_user(viewer)
     record_user(author)
-
-    created = set()
-    for i in range(5):
-        geo = _make_geo(db, author=author, title=f"G{i}", event=date(2026, 5, i + 1))
-        record_geo(geo)
-        created.add(str(geo.id))
+    for i in range(MAX_PAGE_SIZE + 1):
+        record_geo(_make_geo(db, author=author, title=f"G{i}"))
     db.add(Follow(follower_id=viewer.id, followed_id=author.id))
     db.commit()
-
-    headers = login_as(client, viewer)
-    walked: list[str] = []
-    for page in (1, 2, 3):
-        response = client.get(f"/api/v1/timeline?per_page=2&page={page}", headers=headers)
-        assert response.status_code == 200
-        body = response.json()
-        assert body["total"] == 5
-        walked.extend(item["id"] for item in body["items"])
-
-    assert len(walked) == len(set(walked)), "a row was served twice"
-    assert set(walked) == created
-
-
-def test_timeline_caps_per_page_and_rejects_garbage(db, cleanup):
-    """Over-asking is clamped to the cap; below 1 or non-numeric is a 422."""
-    record_user, _ = cleanup
-    viewer = _make_user(db, suffix="viewer")
-    record_user(viewer)
     headers = login_as(client, viewer)
 
-    capped = client.get("/api/v1/timeline?per_page=500", headers=headers)
+    default = client.get("/api/v1/timeline", headers=headers)
+    assert len(default.json()) == 10
+    assert "Link" in default.headers
+
+    capped = client.get("/api/v1/timeline?limit=500", headers=headers)
     assert capped.status_code == 200
-    assert capped.json()["per_page"] == 100
+    assert len(capped.json()) == MAX_PAGE_SIZE
+    assert "Link" in capped.headers
 
-    for query in ("per_page=0", "page=0", "page=abc"):
+    for query in ("limit=0", "limit=abc", "scope=everyone", "cursor=garbage"):
         response = client.get(f"/api/v1/timeline?{query}", headers=headers)
         assert response.status_code == 422, f"expected 422 for {query!r}"
 

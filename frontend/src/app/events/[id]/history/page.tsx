@@ -6,9 +6,9 @@ import { useParams } from "next/navigation";
 import type { EventDetail, EventVersion, EventVersionList } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useCursorList } from "@/hooks/useCursorList";
+import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { eventVersionsPath, eventVersions } from "@/lib/events";
 import { EventVersionRow } from "@/components/event/EventVersionRow";
-import { Button } from "@/components/ui/Button";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
@@ -32,14 +32,10 @@ export default function EventHistoryPage() {
     (cursor: string | null) => eventVersionsPath(eventId, cursor),
     [eventId]
   );
-  const {
-    items: rows,
-    error: historyError,
-    loading,
-    loadingMore,
-    hasMore,
-    loadMore,
-  } = useCursorList<EventVersion, EventVersionList>(buildPath, versionRows);
+  const walk = useCursorList<EventVersion, EventVersionList>(buildPath, versionRows);
+  const { items: rows, loading, hasMore } = walk;
+  // A failed later page shows in the load-more row; only a failed first page leaves no rows.
+  const historyError = rows.length === 0 ? walk.error : null;
 
   if (error) return <PageError message={error} />;
   if (!geo) return <PageLoading />;
@@ -66,13 +62,7 @@ export default function EventHistoryPage() {
               <EventVersionRow key={version.number} eventId={geo.id} version={version} />
             ))}
           </div>
-          {hasMore && (
-            <div className="flex justify-center">
-              <Button variant="secondary" onClick={loadMore} disabled={loadingMore}>
-                {loadingMore ? "Loading…" : "Load more"}
-              </Button>
-            </div>
-          )}
+          <LoadMoreRow walk={walk} />
         </>
       )}
     </PageShell>

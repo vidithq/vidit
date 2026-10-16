@@ -13,7 +13,8 @@ the query; this module bounds a page and links to the next one.
 The cursor is keyset, not offset, so rows inserted mid-walk neither duplicate
 nor skip. Most lists page on ``(created_at, id)`` under
 ``ORDER BY created_at DESC, id DESC`` (``id`` makes the order total);
-``GET /events?sort=oldest`` walks the same pair ascending. A list
+``GET /events?sort=oldest`` walks the same pair ascending, and the timeline
+swaps in its own timestamp (``models/event.timeline_at``). A list
 with a unique ordinal pages on that (:func:`encode_ordinal_cursor`, a version
 history on ``version_no``). A collection's items page on
 ``event_date, event_time, created_at, id`` ascending
@@ -171,7 +172,7 @@ def keyset_after(
 
 
 def keyset_before(
-    created_at_col: InstrumentedAttribute[datetime],
+    created_at_col: InstrumentedAttribute[datetime] | ColumnElement[datetime],
     id_col: InstrumentedAttribute[uuid.UUID],
     cursor: tuple[datetime, uuid.UUID],
 ) -> ColumnElement[bool]:
@@ -179,7 +180,9 @@ def keyset_before(
 
     A row comparison lets Postgres use a composite index on the pair
     (``events`` has ``ix_events_created_at_id``; ``invite_codes`` has none and
-    sorts the whole table, fine for an admin-only list).
+    sorts the whole table, fine for an admin-only list). The timeline passes its
+    computed timestamp in place of ``created_at``; it must be non-NULL, as in
+    :func:`keyset_after`.
     """
     return tuple_(created_at_col, id_col) < cursor
 

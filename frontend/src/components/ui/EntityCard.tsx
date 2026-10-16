@@ -109,13 +109,18 @@ interface EntityCardBaseProps {
   uniformHeight?: boolean;
   /** The row the surface currently stands on: accent border, marked current. */
   selected?: boolean;
+  /** The compact row's one date. */
   date?: string;
   /** How long the entity has been open ("Open 3 days"), after the date in the meta line. */
   age?: string;
+  /** The feed card's dates, each named (`Event 9 May 2026`, `Published 3 Oct
+   *  2026`), since it carries more than one. */
+  dates?: { label: string; date: string }[];
   coords?: { lat: number; lng: number } | null;
   /** `url` is null on a sourceless machine detection ("To confirm" label). */
   source?: { url: string | null };
-  tags?: { id: string; name: string }[];
+  /** A tag with a `label` renders as a key/value pill (`lib/cardTags.ts`). */
+  tags?: { id: string; name: string; label?: string }[];
 }
 
 // The row control hangs in the compact row's badge column. The feed card has no
@@ -204,6 +209,7 @@ export function EntityCard({
   selected = false,
   date,
   age,
+  dates,
   coords,
   source,
   tags,
@@ -233,11 +239,25 @@ export function EntityCard({
     <MediaThumb media={media} isGraphic={isGraphic} className="w-20 sm:w-28" />
   );
 
+  const tagRow =
+    tags && tags.length > 0 ? (
+      <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+        {tags.map((t) => (
+          <Pill key={t.id} tone="neutral" label={t.label}>
+            {t.name}
+          </Pill>
+        ))}
+      </div>
+    ) : null;
+
   if (variant === "feed") {
     return (
       <article className={cn(shell, "flex-col gap-3", TAPPABLE_HOVER)}>
         {stretched}
-        {badge && <div className="absolute top-3 right-3 z-20">{badge}</div>}
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="text-sm font-medium text-neutral-100">{title}</h2>
+          {badge && <div className="shrink-0">{badge}</div>}
+        </div>
         <div className="relative z-20 flex items-center gap-2.5 text-xs w-fit">
           {author && (
             <Link href={`/profile/${author.username}`}>
@@ -250,27 +270,22 @@ export function EntityCard({
                 <AuthorLinks authors={[author, ...coAuthors]} />
               </span>
             )}
-            <span className={META_LINE}>
-              {date && formatDate(date)}
+            <span className={cn(META_LINE, "flex-wrap gap-x-2")}>
+              {dates?.map((d) => (
+                <span key={d.label}>
+                  {d.label} {formatDate(d.date)}
+                </span>
+              ))}
               {coords && <CoordsMeta coords={coords} />}
             </span>
           </div>
         </div>
-        <div className="space-y-3">
-          <h2 className="text-sm font-medium text-neutral-100">{title}</h2>
-          <MediaThumb
-            media={media}
-            isGraphic={isGraphic}
-            className="w-full border border-neutral-800"
-          />
-        </div>
-        {tags && tags.length > 0 && (
-          <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
-            {tags.map((t) => (
-              <Pill key={t.id} tone="neutral">{t.name}</Pill>
-            ))}
-          </div>
-        )}
+        <MediaThumb
+          media={media}
+          isGraphic={isGraphic}
+          className="w-full border border-neutral-800"
+        />
+        {tagRow}
       </article>
     );
   }
@@ -309,13 +324,7 @@ export function EntityCard({
               </span>
             )}
           </div>
-          {tags && tags.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-              {tags.map((t) => (
-                <Pill key={t.id} tone="neutral">{t.name}</Pill>
-              ))}
-            </div>
-          )}
+          {tagRow}
         </div>
         {(badge || action) && (
           // The badge is inert; the action is lifted above the stretched link

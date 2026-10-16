@@ -5,6 +5,7 @@ import { useCallback, useState } from "react";
 import { Megaphone } from "lucide-react";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useCursorList } from "@/hooks/useCursorList";
+import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { eventListPath, type EventListSort } from "@/lib/events";
 import { formatOpenAge } from "@/lib/format";
 import type { Conflict, EventListItem, Tag } from "@/types";
@@ -26,7 +27,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
-import { Button, buttonClasses } from "@/components/ui/Button";
+import { buttonClasses } from "@/components/ui/Button";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 
 // Status is fixed to `requested`, so the board offers no Status section: "closed" would read as
@@ -72,14 +73,8 @@ export default function RequestsPage() {
       }),
     [values, sort]
   );
-  const {
-    items: requests,
-    error,
-    loading,
-    loadingMore,
-    hasMore,
-    loadMore,
-  } = useCursorList<EventListItem>(buildPath);
+  const walk = useCursorList<EventListItem>(buildPath);
+  const { items: requests, error, loading, hasMore } = walk;
 
   return (
     <PageShell title="Requests">
@@ -112,7 +107,9 @@ export default function RequestsPage() {
         sections={BOARD_SECTIONS}
       />
 
-      {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
+      {error && requests.length === 0 && (
+        <div className={FORM_ERROR_BANNER}>{error}</div>
+      )}
 
       {loading && (
         <p className="text-sm text-neutral-500">Loading requests…</p>
@@ -159,17 +156,7 @@ export default function RequestsPage() {
               />
             ))}
           </div>
-          {hasMore && (
-            <div className="flex justify-center">
-              <Button
-                variant="secondary"
-                onClick={loadMore}
-                disabled={loadingMore}
-              >
-                {loadingMore ? "Loading…" : "Load more"}
-              </Button>
-            </div>
-          )}
+          <LoadMoreRow walk={walk} />
         </>
       )}
     </PageShell>

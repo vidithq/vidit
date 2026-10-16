@@ -199,6 +199,7 @@ The vocabulary:
 - **Usernames.** A Vidit username prints bare, with no `@`: bylines, cards, admin panels, the search author filter, page titles, metadata, share text, and share cards. An `@` marks an external account only: a linked X or GitHub account (`displayLinkValue`), an X post author, the bot's replies on X, and `@viditbot`.
   - [`<Dot>`](../frontend/src/components/ui/Dot.tsx) is the accent "new content awaits" dot: sidebar nav badges (through `notify`), the rail's identity row when detections are pending, the profile's detections entry, and the map filter panel's in-flight pulse. Position, ring, and size come through `className`.
   - [`<EmptyState>`](../frontend/src/components/ui/EmptyState.tsx) owns the empty-state grammar (`boxed` / `plain` / `invite`).
+  - [`<LoadMoreRow>`](../frontend/src/components/ui/LoadMoreRow.tsx) is the foot of every [`useCursorList`](../frontend/src/hooks/useCursorList.ts) list: **Load more**, a spinner while the page loads, a failed page's message above **Try again**, and nothing once the walk ends. `infinite` loads the next page as the row nears the viewport (the timeline). A failed first page leaves no rows and no row, so the list shows that error itself.
   - [`usePinnedPopover`](../frontend/src/hooks/usePinnedPopover.ts) is the anchored-popover machinery (pin, hover, outside-click / Escape dismiss, portal plus viewport clamp), used by `FieldHelp` and by `<AvatarStack>`'s card. Both bubbles paint with `TOOLTIP_SURFACE`.
 - **Instruction lists.** [`<NumberedSteps>`](../frontend/src/components/ui/NumberedSteps.tsx) is the static "1, 2, 3…" list (numbered disc, title, body): `plain` on the public guides, `boxed` with a per-step icon for the archive export walkthrough on `/submit`. Every step looks the same because it is reference copy, not state. For a check mark or a spinner, use `<ProgressSteps>`.
 - **Live progress.** [`<ProgressSteps>`](../frontend/src/components/ui/ProgressSteps.tsx) is the vertical stepper for a live multi-step operation (the archive import): check for done, highlighted disc for the active step, muted for pending. A determinate bar renders only when a real 0..1 `progress` ratio exists. A step in flight without one takes a discreet `spinner` next to its label, never a fake animation. `keepDetail` pins a step's detail line after completion (a privacy guarantee, a final count). `failed` turns the active step into the red failure marker. The message itself stays in the form's `FORM_ERROR_BANNER`.
@@ -238,7 +239,7 @@ The vocabulary:
 - A control with nothing to act on is that button `disabled`, which paints it grey and drops it from the tab order. An inert link becomes a disabled button.
 - `aria-label` is the whole name and `title` repeats it, so every icon-only control carries a tooltip equal to its accessible name. There is no tooltip primitive beyond that. Only a tooltip that moves while the name holds still (the copy flash) may differ.
 - [`<Switch>`](../frontend/src/components/ui/Switch.tsx) is the one boolean toggle (`md` settings rows, `sm` map filter rows; `as="span"` when a whole-row parent owns the click).
-- [`<SegmentedControl>`](../frontend/src/components/ui/SegmentedControl.tsx) is the exclusive-choice bar (submit type, admin delete mode, the detections queue filter, the Requests board sort; `tone="danger"` for a destructive active option). It stretches below `sm` (see [Phone chrome](#phone-chrome)). A bar whose one-word labels need a sentence takes a `<FieldHelp>` beside it.
+- [`<SegmentedControl>`](../frontend/src/components/ui/SegmentedControl.tsx) is the exclusive-choice bar (submit type, admin delete mode, the detections queue filter, the Requests board sort, the timeline scope; `tone="danger"` for a destructive active option). It stretches below `sm` (see [Phone chrome](#phone-chrome)). A bar whose one-word labels need a sentence takes a `<FieldHelp>` beside it.
 - `<Input icon>` overlays a leading icon (the search box). `<Input trailing>` overlays the field's own actions at the other edge, centred on the field's height and taking the pointer: the map and copy marks of a longitude field, the picker of a date field, the archive mark of a URL field.
   - Each trailing control is the ghost icon button, set a hair apart so two hover plates read as two controls.
   - The field is one height across its three variants, so the square sits inside any of them with a 3px gutter.
@@ -432,11 +433,11 @@ flowchart TB
   vn --> snap --> body
   canonical --> actions
   history --> vn
-  canonical -- "History" --> history
+  canonical -->|"History"| history
   actions --> form
   panel --> canonical
-  form -- "detected" --> geo
-  form -- "geolocated" --> ver
+  form -->|"detected"| geo
+  form -->|"geolocated"| ver
   geo --> rows
   ver --> rows
 ```
@@ -519,11 +520,86 @@ The page titles itself *Version history* and names the event under it as plain t
 
 **A row is credited to the edit that produced it.** The API files that credit on the version the edit superseded, so version *n* takes its content from version row *n* and its byline, date and note from row *n - 1* ([`eventVersions`](../frontend/src/lib/events.ts)). Version 1 was published rather than edited, so it reads *Published* and carries the record's own author and date. The changed fields are computed on the client from the two adjacent versions, since the API serves what each version held rather than what an edit did, and they print under the names the event page already uses for the same values. Two versions that cannot be compared, a redacted one on either side, print nothing rather than an empty edit.
 
-**The list walks the shared cursor**, `Load more` at the foot like every other list. The page is 50 versions, half the shared row cap, so a history that reaches the 100-version ceiling still pages and the control is one the product exercises rather than one it only declares. A version's credit sits on the version below it, so the oldest row of an unfinished walk is credit for the row above it rather than a row of its own: it is held back until the next page completes it. A row is whole or absent, never a version number with no editor beside it.
+**The list walks the shared cursor**, with [`<LoadMoreRow>`](../frontend/src/components/ui/LoadMoreRow.tsx) at the foot like every other cursor list. The page is 50 versions, half the shared row cap, so a history that reaches the 100-version ceiling still pages and the control is one the product exercises rather than one it only declares. A version's credit sits on the version below it, so the oldest row of an unfinished walk is credit for the row above it rather than a row of its own: it is held back until the next page completes it. A row is whole or absent, never a version number with no editor beside it.
 
 **A version page is the canonical page minus its actions.** Both render [`<EventPageBody>`](../frontend/src/components/event/EventPageBody.tsx), fed either the live row or a snapshot mapped onto the same shape (`snapshotToEventView`), so a version cannot drift into a layout of its own. Sharing, reporting and editing act on the record, so the action cluster is absent. An amber [`<EventVersionBanner>`](../frontend/src/components/event/EventVersionBanner.tsx) opens the page (*Version 2 of 4, edited by ana on 18 Mar 2026*) with an orange link to the current version, the callout split every warning surface takes: the card is the caution, the clickable affordance stays the accent. A redacted version renders the banner and an `<EmptyState>` saying so, and no content.
 
 **`/events/{id}` stays canonical.** A version page carries `robots: noindex` and a canonical link to `/events/{id}`, and asking for the current version's own number forwards there rather than serving the record at two addresses. The route is a `[version]` segment beside the static `edit` and `history` ones, so a version keeps a one-segment address; a segment that is not `v` followed by a version number is a 404, as is a number past the current version.
+
+### Timeline
+
+```mermaid
+flowchart TB
+  classDef page fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef state fill:#fdf3e7,stroke:#b8661a,color:#7a430f
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`timeline page only`"]:::page
+    l2["`shared list primitive`"]:::shared
+    l3["`the server walk, thick-bordered`"]:::core
+    l4["`what the reader sees`"]:::state
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
+  end
+
+  toggle["`**SegmentedControl**
+  scope: Following (default) or All`"]:::page
+  walk["`**useCursorList**
+  one walk per scope; a new scope starts a new walk`"]:::shared
+  api["`**GET /timeline**
+  scope, limit 10, cursor from Link rel=next`"]:::core
+  cards["`**EntityCard variant=feed**
+  one card per row, appended page by page`"]:::page
+  row["`**LoadMoreRow infinite**
+  useInfiniteScroll observes the row`"]:::shared
+
+  empty["`**empty first page**
+  Following: no follows, or nothing posted; All: boxed line`"]:::state
+  failed["`**failed page**
+  cards stay, message above Try again; scrolling pauses`"]:::state
+  done["`**end of the walk**
+  You have reached the end of the timeline`"]:::state
+
+  toggle --> walk --> api
+  api -->|first page| cards
+  api -->|no rows| empty
+  cards --> row
+  row -->|within one screen| walk
+  row -->|request fails| failed
+  failed -->|Try again| walk
+  api -->|no next page| done
+```
+
+`/timeline` is a signed-in page, linked from the rail between Requests and Search. [`GET /timeline`](api.md#get-timeline) decides which rows it lists and in what order.
+
+**A [`<SegmentedControl>`](../frontend/src/components/ui/SegmentedControl.tsx) in the header picks the scope**, **Following** (default) or **All**. Picking an option starts a new walk with `scope`, so the list and its empty state describe the scope on screen.
+
+**A card names its kind.** Each row is the `feed` [`<EntityCard>`](../frontend/src/components/ui/EntityCard.tsx), which only the timeline renders. Read top to bottom, it holds:
+
+1. The title, with the [`<StatusBadge>`](../frontend/src/components/event/StatusBadge.tsx) beside it, so *Geolocated* or *Requested* says what the row is.
+2. The byline, which credits the row's owner. An open request's owner is its requester.
+3. The dates, each named: *Event 25 Aug 2009* when the event date is known, then *Published 3 Oct 2026* on a geolocation or *Requested 3 Oct 2026* on a request (`timeline_at`). The coordinates follow when the row has them.
+4. The media.
+5. The tag row from [`cardTags`](../frontend/src/lib/cardTags.ts). A conflict or a capture source is a key/value [`<Pill>`](../frontend/src/components/ui/Pill.tsx) (`label`), for example *Conflict: Russo-Ukrainian war* and *Capture source: Smartphone*. A keyed value of *Unknown* is dropped, since it tells the reader nothing. Free tags follow as plain pills.
+
+A geolocation opens `/events/{id}` and a request opens `/requests/{id}`.
+
+**An empty first page names its cause.** An empty **Following** view reads the viewer's `following_count` from [`GET /users/{username}`](api.md#get-usersusername) to tell two cases apart:
+
+| Case | Empty state | Actions |
+|---|---|---|
+| The viewer follows nobody | `invite`, *You follow no analysts yet* | **Show all activity**, **Explore the map** |
+| The analysts followed have posted nothing | `plain`, *Nothing from analysts you follow yet* | **Show all activity** |
+
+**Show all activity** switches the scope to **All**. An empty **All** view is a `boxed` line. A first page that fails shows its error banner alone.
+
+**The list walks the shared cursor and scrolls without a click.** A page is 10 rows. [`useCursorList`](../frontend/src/hooks/useCursorList.ts) holds the walk, and the foot is [`<LoadMoreRow infinite>`](../frontend/src/components/ui/LoadMoreRow.tsx), the foot every cursor list shares. Its [`useInfiniteScroll`](../frontend/src/hooks/useInfiniteScroll.ts) calls `loadMore` when the row comes within one screen of the viewport, from the render that mounts the row. While the next page loads, the button is disabled and shows a spinner with *Loading…*.
+
+**A failed page keeps the cards.** The error shows above the row, the button reads **Try again**, and scrolling stops loading until the click, since the row is still in view.
+
+**The end of the walk is marked.** Once no next page exists, the foot reads *You have reached the end of the timeline* in the `plain` empty state.
 
 ### Public profile
 
@@ -709,16 +785,16 @@ flowchart LR
   search --> gs
   page --> gc
   page --> reader --> gce
-  page -- "Report, Drop" --> act
+  page -->|"Report, Drop"| act
   panel --> ge
-  panel -- "toggle" --> member
-  panel -- "New collection" --> newp
+  panel -->|"toggle"| member
+  panel -->|"New collection"| newp
   newp --> form
   edit --> form
   form --> pick
-  form -- "create" --> post
-  form -- "save" --> patch
-  form -- "save, per row" --> member
+  form -->|"create"| post
+  form -->|"save"| patch
+  form -->|"save, per row"| member
 ```
 
 #### The collection page

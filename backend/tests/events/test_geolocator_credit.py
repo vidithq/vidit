@@ -458,7 +458,7 @@ def test_followers_see_co_credited_work_in_their_timeline(db, author, second_use
         == 204
     )
     timeline = client.get("/api/v1/timeline").json()
-    assert [item["id"] for item in timeline["items"]] == [str(geo.id)]
+    assert [item["id"] for item in timeline] == [str(geo.id)]
 
 
 def test_a_co_geolocator_collects_the_event(db, author, second_user, make_user):
