@@ -26,6 +26,7 @@ const MONTSERRAT_700 = readFileSync(
 export const dynamic = "force-static";
 export const runtime = "nodejs";
 
+// `/icon/android-192` is also the email header image (backend `email_layout._LOGO_PATH`); change both.
 export function generateImageMetadata() {
   return [
     { id: "favicon", contentType: "image/png", size: { width: 32, height: 32 } },

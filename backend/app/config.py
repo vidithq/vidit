@@ -62,6 +62,12 @@ class Settings(BaseSettings):
     email_from: str = "noreply@vidit.app"
     email_from_name: str = "Vidit"
 
+    # Notification emails sent in any trailing 24 hours, in total and per
+    # recipient. They share the provider quota (100 a day on the Resend free
+    # tier) with the auth emails, which are sent inline and never counted.
+    notification_email_daily_cap: int = 50
+    notification_email_daily_cap_per_user: int = 10
+
     # Recipient of the "new content report" notification. Unset sends nothing
     # (reports still queue for the admin console). One address: fan-out is the
     # mail provider's job.

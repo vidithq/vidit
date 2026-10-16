@@ -8,13 +8,14 @@ since removed) reads as its default.
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 from pydantic import ValidationError
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app.models.notification import NOTIFICATION_KINDS
+from app.models.notification import NOTIFICATION_KINDS, NotificationChannel, NotificationKind
 from app.models.user import User
 from app.models.user_preferences import UserPreferences
 from app.schemas.preferences import (
@@ -41,18 +42,30 @@ def _valid_stored_display(stored: dict[str, Any]) -> dict[str, Any]:
     return valid
 
 
+def _effective_channels(
+    row: UserPreferences | None, kind: NotificationKind
+) -> dict[NotificationChannel, bool]:
+    stored = (row.notification_overrides if row is not None else {}).get(kind, {})
+    return {
+        channel: stored[channel] if isinstance(stored.get(channel), bool) else default
+        for channel, default in NOTIFICATION_KINDS[kind].items()
+    }
+
+
+def channel_enabled(
+    db: Session, *, user_id: uuid.UUID, kind: NotificationKind, channel: NotificationChannel
+) -> bool:
+    """Whether ``user_id`` gets ``kind`` on ``channel``: their override, else the default."""
+    return _effective_channels(db.get(UserPreferences, user_id), kind)[channel]
+
+
 def _build_read(row: UserPreferences | None) -> UserPreferencesRead:
-    overrides = row.notification_overrides if row is not None else {}
-    notifications = []
-    for kind, defaults in NOTIFICATION_KINDS.items():
-        stored = overrides.get(kind, {})
-        channels = {
-            channel: stored[channel] if isinstance(stored.get(channel), bool) else default
-            for channel, default in defaults.items()
-        }
-        notifications.append(
-            NotificationPreferenceRead(kind=kind, channels=channels, defaults=dict(defaults))
+    notifications = [
+        NotificationPreferenceRead(
+            kind=kind, channels=_effective_channels(row, kind), defaults=dict(defaults)
         )
+        for kind, defaults in NOTIFICATION_KINDS.items()
+    ]
     stored_display = _valid_stored_display(row.display if row is not None else {})
     return UserPreferencesRead(
         display=DisplayPreferences.model_validate(

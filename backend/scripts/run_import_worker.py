@@ -5,7 +5,8 @@ webhook: claims ``archive_import_jobs`` rows (``FOR UPDATE SKIP LOCKED``, so a
 second worker is safe), runs the backfill off the API process and emails the
 owner the outcome (``services/archive_jobs``). Each pass also drains
 ``bot_webhook_events`` through the shared mention pipeline (``services/bot``);
-the webhook endpoint only inserts. Each pass opens a fresh session shared
+the webhook endpoint only inserts. Each pass first sends the queued
+notification emails (``services/notification_delivery``). Each pass opens a fresh session shared
 across its jobs (per-job isolation is the rollback inside ``process``), and a
 pass that dies outside job processing is captured and retried with a backoff.
 (useful by hand and for a cron fallback).
@@ -25,6 +26,7 @@ from app.database import SessionLocal
 from app.observability import configure_logging, init_sentry
 from app.services.archive_jobs import run_once
 from app.services.bot import drain_webhook_events
+from app.services.notification_delivery import drain as drain_notification_emails
 
 _IDLE_SLEEP_SECONDS = 5.0
 _ERROR_BACKOFF_SECONDS = 15.0
@@ -38,7 +40,7 @@ async def _drain_both(db) -> int:
 def _drain() -> int:
     db = SessionLocal()
     try:
-        return asyncio.run(_drain_both(db))
+        return drain_notification_emails(db) + asyncio.run(_drain_both(db))
     finally:
         db.close()
 
@@ -51,7 +53,10 @@ def main() -> None:
 
     if os.environ.get("IMPORT_WORKER_ONCE"):
         handled = _drain()
-        print(f"Import worker pass OK: {handled} job(s) / webhook mention(s) handled.")
+        print(
+            f"Import worker pass OK: {handled} job(s) / webhook mention(s) / "
+            "notification email(s) handled."
+        )
         return
 
     print("Import worker up; polling the queue.")

@@ -2,7 +2,16 @@ import uuid
 from datetime import UTC, datetime
 from typing import Literal, get_args
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, text
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -78,4 +87,67 @@ class Notification(Base):
         # Back the cascades of a hard-deleted actor or event.
         Index("ix_notifications_actor_id", "actor_id"),
         Index("ix_notifications_event_id", "event_id"),
+    )
+
+
+# ``queued``: waiting for the worker. ``sending``: claimed, the provider call
+# under way or its outcome unknown; never retried, it turns ``failed`` once
+# stale. ``sent``: the provider accepted it. ``failed``: refused past the
+# attempt budget, or stale in ``sending``. ``skipped``: dropped unsent (the
+# switch went off, the address went away, the item was hidden, or it aged out
+# in the queue).
+NotificationDeliveryStatus = Literal["queued", "sending", "sent", "failed", "skipped"]
+
+
+class NotificationDelivery(Base):
+    """One notification to deliver on one channel, written beside the
+    ``Notification`` row when the recipient's switch for that kind is on.
+
+    The worker drains the queue (``services/notification_delivery``), so a send
+    happens after the action commits and never inside it.
+    """
+
+    __tablename__ = "notification_deliveries"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    notification_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("notifications.id", ondelete="CASCADE"), nullable=False
+    )
+    channel: Mapped[NotificationChannel] = mapped_column(String(20), nullable=False)
+    status: Mapped[NotificationDeliveryStatus] = mapped_column(
+        String(10), nullable=False, default="queued"
+    )
+    # Provider refusals so far; the row fails at ``MAX_ATTEMPTS``.
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    # The latest claim: the stale clock while ``sending``, the retry clock once
+    # a refusal puts the row back in ``queued``.
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    notification = relationship("Notification")
+
+    __table_args__ = (
+        CheckConstraint("channel IN ('email')", name="ck_notification_deliveries_channel_valid"),
+        CheckConstraint(
+            "status IN ('queued', 'sending', 'sent', 'failed', 'skipped')",
+            name="ck_notification_deliveries_status_valid",
+        ),
+        UniqueConstraint("notification_id", "channel", name="uq_notification_deliveries_channel"),
+        # The claim walk, oldest first.
+        Index(
+            "ix_notification_deliveries_queued",
+            "created_at",
+            postgresql_where="status = 'queued'",
+        ),
+        # The daily cap counts.
+        Index(
+            "ix_notification_deliveries_sent_at",
+            "sent_at",
+            postgresql_where="status = 'sent'",
+        ),
     )
