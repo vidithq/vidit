@@ -6,7 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
-- A site admin can delete an organization from the admin panel after typing its slug; its memberships, invites, review requests and approvals go with it, and each event owner who loses its approval is notified.
+- A site admin can delete an organization from the admin panel after typing its slug; its memberships, invites, review requests and approvals go with it, and each event owner who loses its approval is notified ([#576](https://github.com/vidithq/vidit/pull/576)).
 - An org manager approves and revokes approvals in an organization's name, a geolocator can ask an organization for a review that any org manager answers, and the organization page lists its approvals and open requests ([#574](https://github.com/vidithq/vidit/pull/574)).
 - A geolocator can ask an analyst to review a geolocation; the analyst approves or declines from their notifications or the event page, and Settings chooses who may send you requests: people you follow, everyone or nobody ([#573](https://github.com/vidithq/vidit/pull/573)).
 - Analysts outside a geolocation's credit approve it one version at a time; any new version, an archive-only save included, asks reviewers to approve again, and a revoked approval keeps its public reason ([#572](https://github.com/vidithq/vidit/pull/572)).
@@ -23,7 +23,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 ### Fixed
 
 - A Vidit link whose path starts with two slashes or a backslash, and a Google link other than the map check, now ask before you leave Vidit instead of opening another site in one click ([#565](https://github.com/vidithq/vidit/pull/565)).
-- Notification emails get a per-actor cap and a one-click unsubscribe per kind, push devices can be revoked, former geolocators cannot approve, review request refusals reveal no setting, and approving happens only on the event page.
+- Notification emails get a per-actor cap and a one-click unsubscribe per kind, push devices can be revoked, former geolocators cannot approve, review request refusals reveal no setting, and approving happens only on the event page ([#576](https://github.com/vidithq/vidit/pull/576)).
 - When X fails to serve part of a thread, or the coordinate sits above the posts the bot reads, the bot and the post import say the thread was only partly read instead of reporting no coordinate ([#555](https://github.com/vidithq/vidit/pull/555)).
 - Vidit usernames show without `@` everywhere, including bylines, admin panels, page titles and share cards; `@` now marks only X and GitHub handles ([#557](https://github.com/vidithq/vidit/pull/557)).
 
