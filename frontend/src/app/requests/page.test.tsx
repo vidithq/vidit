@@ -78,6 +78,7 @@ describe("RequestsPage", () => {
     expect(screen.getByRole("button", { name: "Capture source" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Location guess" })).toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole("button", { name: "Capture source" }));
     fireEvent.click(screen.getByRole("button", { name: "Drone" }));
 
     await waitFor(() => expect(lastQuery().getAll("capture_source")).toEqual(["Drone"]));

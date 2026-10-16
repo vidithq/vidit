@@ -32,6 +32,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
+- The filter panel on the map, search and Requests board opens with every section collapsed, except a section that holds an active filter, which opens expanded.
 - A shared profile link previews the analyst's detected count beside geolocated, followers and media, credited as on the profile, and shows a GIF, WebP or AVIF profile picture instead of a blank or the initial ([#581](https://github.com/vidithq/vidit/pull/581)).
 - A Vidit link whose path starts with two slashes or a backslash, and a Google link other than the map check, now ask before you leave Vidit instead of opening another site in one click ([#565](https://github.com/vidithq/vidit/pull/565)).
 - Notification emails get a per-actor cap and a one-click unsubscribe per kind, push devices can be revoked, former geolocators cannot approve, review request refusals reveal no setting, and approving happens only on the event page ([#576](https://github.com/vidithq/vidit/pull/576)).
