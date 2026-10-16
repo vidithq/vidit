@@ -1,6 +1,8 @@
 // Pure helpers behind the share cards (`app/**/opengraph-image.tsx`), kept out of the
 // Satori modules so they stay testable without the `node:fs` font read.
 
+import type { PublicProfile, UserStats } from "@/lib/users";
+
 /** Equirectangular world projection, normalised to the unit square. */
 export interface ProjectedPoint {
   /** 0 at 180°W, 1 at 180°E. */
@@ -36,6 +38,23 @@ export function ogTruncate(text: string, max: number): string {
 
 export function ogCount(value: number): string {
   return value.toLocaleString("en-US");
+}
+
+export interface OgProfileCount {
+  label: string;
+  value: number;
+}
+
+/** An analyst's headline counts for the share card and the link description, credited as the
+ *  profile credits them: geolocated and detected are the Insights figures (co-geolocated events
+ *  included), followers the header's. A failed stats read keeps geolocated off
+ *  `geolocations_count`, the same figure, and drops detected. */
+export function ogProfileCounts(profile: PublicProfile, stats: UserStats | null): OgProfileCount[] {
+  return [
+    { label: "Geolocated", value: stats?.geolocated_count ?? profile.geolocations_count },
+    ...(stats ? [{ label: "Detected", value: stats.detected_count }] : []),
+    { label: "Followers", value: profile.followers_count },
+  ];
 }
 
 export interface OgMosaicBox {

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
-import { ogCount, ogTruncate } from "@/lib/og";
-import type { PublicProfile } from "@/lib/users";
+import { ogCount, ogProfileCounts, ogTruncate } from "@/lib/og";
+import type { PublicProfile, UserStats } from "@/lib/users";
 
 import { ogFetch } from "../../_og/data";
 import { portfolioMetadata } from "../../_og/metadata";
@@ -22,20 +22,27 @@ export async function generateMetadata({
   params: Promise<{ username: string }>;
 }): Promise<Metadata> {
   const { username } = await params;
-  const read = await ogFetch<PublicProfile>(`/users/${encodeURIComponent(username)}`);
+  const path = encodeURIComponent(username);
+  // The same two reads as the card, so the data cache answers one of them for the other.
+  const [read, statsRead] = await Promise.all([
+    ogFetch<PublicProfile>(`/users/${path}`),
+    ogFetch<UserStats>(`/users/${path}/stats`),
+  ]);
 
   // A failed upstream gets no tags (site-wide defaults inherit): "not found" would freeze into crawlers.
   if (read.status === "failed") return {};
 
   const profile = read.status === "ok" ? read.data : null;
   const handle = ogTruncate(profile?.username ?? username, 40);
+  const stats = statsRead.status === "ok" ? statsRead.data : null;
 
-  // `geolocations_count` is the published-geolocation figure the card (GEOLOCATED) and Insights both name.
   return portfolioMetadata({
     name: handle,
     username: handle,
     summary: profile
-      ? `${ogCount(profile.geolocations_count)} geolocated, ${ogCount(profile.followers_count)} followers.`
+      ? `${ogProfileCounts(profile, stats)
+          .map(({ label, value }) => `${ogCount(value)} ${label.toLowerCase()}`)
+          .join(", ")}.`
       : "This handle has no profile on Vidit.",
     bio: profile?.bio,
     url: `/profile/${encodeURIComponent(profile?.username ?? username)}`,

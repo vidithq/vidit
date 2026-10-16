@@ -5,9 +5,11 @@ import {
   isPrivateAddress,
   ogCount,
   ogMosaicBoxes,
+  ogProfileCounts,
   ogTruncate,
   projectEquirectangular,
 } from "./og";
+import type { PublicProfile, UserStats } from "./users";
 
 describe("projectEquirectangular", () => {
   it("puts the null island at the centre of the frame", () => {
@@ -65,6 +67,27 @@ describe("ogTruncate", () => {
 describe("ogCount", () => {
   it("separates thousands", () => {
     expect(ogCount(1234567)).toBe("1,234,567");
+  });
+});
+
+describe("ogProfileCounts", () => {
+  const profile = { geolocations_count: 12, followers_count: 7 } as PublicProfile;
+  // The stats read credits co-geolocated events, so its figure leads the profile's own.
+  const stats = { geolocated_count: 15, detected_count: 2400 } as UserStats;
+
+  it("counts geolocated and detected off the profile stats, then followers", () => {
+    expect(ogProfileCounts(profile, stats)).toEqual([
+      { label: "Geolocated", value: 15 },
+      { label: "Detected", value: 2400 },
+      { label: "Followers", value: 7 },
+    ]);
+  });
+
+  it("keeps geolocated off the profile and drops detected when the stats read failed", () => {
+    expect(ogProfileCounts(profile, null)).toEqual([
+      { label: "Geolocated", value: 12 },
+      { label: "Followers", value: 7 },
+    ]);
   });
 });
 

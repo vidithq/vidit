@@ -1,8 +1,12 @@
 import type { LookupAddress } from "node:dns";
 
+import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ogImageDataUri, ogFetch } from "./data";
+
+/** A 4×4 opaque picture, raw, for `sharp` to encode in the format a test needs. */
+const SOLID = sharp({ create: { width: 4, height: 4, channels: 3, background: "#f97316" } });
 
 // The image leg reads through `undici`'s own `fetch` with the guarded `Agent` as dispatcher, so
 // the module is mocked, not the global `fetch` (a dispatcher is only honoured by the undici
@@ -201,16 +205,60 @@ describe("ogImageDataUri", () => {
     expect(init.redirect).toBe("error");
   });
 
-  it("hands the caller its fallback on a type Satori cannot decode", async () => {
+  it.each([
+    ["image/webp", "webp"],
+    ["image/gif", "gif"],
+  ] as const)("re-encodes a %s avatar as a PNG the rasteriser draws", async (type, format) => {
+    // resvg draws nothing for a GIF or WebP data URI, so it arrives as a PNG of the same picture.
+    const picture = await SOLID.clone().toFormat(format).toBuffer();
+    imageResolveWith(response({ contentType: type, chunks: [new Uint8Array(picture)] }));
+    const uri = await ogImageDataUri(`https://pbs.example.com/a.${format}`);
+    expect(uri?.startsWith("data:image/png;base64,")).toBe(true);
+    const meta = await sharp(Buffer.from(uri!.split(",")[1], "base64")).metadata();
+    expect(meta).toMatchObject({ format: "png", width: 4, height: 4 });
+  });
+
+  it("re-encodes a drawable picture too large to inline, at most card-sized", async () => {
+    // Stored uncompressed, 1400 px square runs to about 6 MB: under the fetch cap, over inline.
+    const big = await sharp({
+      create: { width: 1400, height: 1400, channels: 3, background: "#f97316" },
+    })
+      .png({ compressionLevel: 0 })
+      .toBuffer();
+    expect(big.byteLength).toBeGreaterThan(2 * 1024 * 1024);
+    imageResolveWith(response({ contentType: "image/png", chunks: [new Uint8Array(big)] }));
+    const uri = await ogImageDataUri("https://cdn.example.com/big.png");
+    const meta = await sharp(Buffer.from(uri!.split(",")[1], "base64")).metadata();
+    expect(meta).toMatchObject({ format: "png", width: 1200, height: 1200 });
+  });
+
+  it("hands the caller its fallback on a body the type promised but no decoder reads", async () => {
     imageResolveWith(response({ contentType: "image/webp", chunks: [new Uint8Array([1, 2, 3])] }));
     expect(await ogImageDataUri("https://cdn.example.com/a.webp")).toBeNull();
+    expect(String(warn.mock.calls[0][0])).toContain("og image skipped");
+  });
+
+  it("hands the caller its fallback on a type it cannot decode", async () => {
+    imageResolveWith(response({ contentType: "text/html", chunks: [new Uint8Array([1, 2, 3])] }));
+    expect(await ogImageDataUri("https://cdn.example.com/a.html")).toBeNull();
+  });
+
+  it("reads the API's own origin, the local storage backend, without the public-host guards", async () => {
+    // `NEXT_PUBLIC_API_URL` is `https://api.invalid` under test; in development the API is
+    // `http://localhost:8000`, which the URL guard and the address guard both refuse.
+    imageResolveWith(response({ contentType: "image/jpeg", chunks: [new Uint8Array([1, 2, 3])] }));
+    expect(await ogImageDataUri("https://api.invalid/local-storage/avatars/a.jpg")).toBe(
+      "data:image/jpeg;base64,AQID",
+    );
+    const init = undiciFetchMock.mock.calls[0][1] as { dispatcher?: unknown };
+    expect(init.dispatcher).toBeUndefined();
   });
 
   it("refuses a declared length over the ceiling before reading the body", async () => {
     const res = imageResolveWith(
       response({
         contentType: "image/png",
-        contentLength: String(4 * 1024 * 1024),
+        contentLength: String(9 * 1024 * 1024),
         chunks: [new Uint8Array([1, 2, 3])],
       }),
     );
@@ -219,16 +267,12 @@ describe("ogImageDataUri", () => {
   });
 
   it("drops a body that passes the ceiling while it streams", async () => {
-    // No content-length, so only the running budget can catch it: three chunks
-    // of 1 MB each against a 2 MB ceiling.
+    // No content-length, so only the running budget can catch it: nine chunks
+    // of 1 MB each against an 8 MB ceiling.
     const res = imageResolveWith(
       response({
         contentType: "image/png",
-        chunks: [
-          new Uint8Array(1024 * 1024),
-          new Uint8Array(1024 * 1024),
-          new Uint8Array(1024 * 1024),
-        ],
+        chunks: Array.from({ length: 9 }, () => new Uint8Array(1024 * 1024)),
       }),
     );
     expect(await ogImageDataUri("https://cdn.example.com/big.png")).toBeNull();
@@ -288,16 +332,16 @@ describe("the image warning", () => {
   });
 
   it("names the undecodable type", async () => {
-    imageResolveWith(response({ contentType: "image/webp", chunks: [new Uint8Array([1])] }));
-    await ogImageDataUri("https://cdn.example.com/a.webp");
-    expect(String(warn.mock.calls[0][0])).toContain("image/webp");
+    imageResolveWith(response({ contentType: "image/svg+xml", chunks: [new Uint8Array([1])] }));
+    await ogImageDataUri("https://cdn.example.com/a.svg");
+    expect(String(warn.mock.calls[0][0])).toContain("image/svg+xml");
   });
 
   it("names the byte cap when the body passes it mid-stream", async () => {
     imageResolveWith(
       response({
         contentType: "image/png",
-        chunks: [new Uint8Array(1024 * 1024), new Uint8Array(1024 * 1024 + 1)],
+        chunks: [new Uint8Array(8 * 1024 * 1024), new Uint8Array(1)],
       }),
     );
     await ogImageDataUri("https://cdn.example.com/big.png");
