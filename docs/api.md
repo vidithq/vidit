@@ -227,11 +227,16 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | **Notifications** | |
 | `GET /notifications`, `GET /notifications/unread-count` | 120/min |
 | `POST /notifications/read` | 60/min |
+| **Product updates** | |
+| `POST /product-updates/unsubscribe` | 30/min (anonymous allowed) |
 | **Admin** 🛡️ | |
 | `POST /admin/invite-codes` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
 | `POST /admin/invite-codes/{id}/revoke` · `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `DELETE /admin/events/{id}` | 60/hour |
 | `POST /admin/reports/{id}/resolve` · `PATCH /admin/events/{id}/moderation` · `POST /admin/events/{id}/versions/{version_no}/redact` · `PATCH /admin/collections/{id}/moderation` · `DELETE /admin/collections/{id}` | 60/hour |
 | `POST /admin/maintenance/reap-*` · `POST /admin/maintenance/send-completion-digests` | 30/hour |
+| `GET /admin/product-updates` | 120/min |
+| `POST /admin/product-updates/preview` | 60/hour |
+| `POST /admin/product-updates/test` · `POST /admin/product-updates` | 10/hour |
 
 The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list, `/admin/reports` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: both are HMAC-gated.
 
@@ -267,9 +272,12 @@ Stage a registration. Anonymous. **This call creates no `users` row.** The submi
   "username": "kalush",
   "email": "kalush@example.com",
   "password": "••••••••",
-  "invite_code": "abc123"
+  "invite_code": "abc123",
+  "product_updates": false
 }
 ```
+
+`product_updates` is optional and defaults to `false`. `true` records a consent to [product update emails](#product-updates) at the time of this request, and confirmation copies it to the new account with source `sign_up`.
 
 **Response 202:**
 ```json
@@ -1732,9 +1740,12 @@ Your display and notification preferences. Each value is the one in effect: your
       "channels": { "email": false, "push": false },
       "defaults": { "email": false, "push": false }
     }
-  ]
+  ],
+  "product_updates": false
 }
 ```
+
+`product_updates` is `true` while you hold a current consent to [product update emails](#product-updates). It has no default to fall back to: consent is never presumed.
 
 `display_stored` holds only the display values your account has saved, `null` where it has none, so a client can tell a saved value from a default. `notifications` lists every registered notification kind, in registry order. `channels` holds the delivery channels besides the in-app feed, which is always on and has no switch. With `email` on, Vidit also emails that kind to your verified address. With `push` on, Vidit also sends it as a push notification to every device you registered (see [Notifications](#notifications)).
 
@@ -1756,10 +1767,12 @@ Change some of your preferences. The first write creates your stored row.
 ```json
 {
   "display": { "theme": "light", "palette": null },
-  "notifications": { "request_fulfilled": { "email": false } }
+  "notifications": { "request_fulfilled": { "email": false } },
+  "product_updates": true
 }
 ```
 
+- `product_updates: true` grants the consent to product update emails with source `settings`, and `false` withdraws it. Granting while a consent is current changes nothing, so the original grant time stays.
 - In `display`, an omitted field keeps its stored value, and `null` clears it so it reads the default again.
 - In `notifications`, each entry sets channels of one kind. A value equal to the kind's default drops your override, so only differences from the defaults are stored, and a later change of a default reaches you if you never moved that switch.
 
@@ -2005,6 +2018,27 @@ Geolocations by analysts you follow, newest submission first. Published work onl
 **Query params:** `page` and `per_page`, see [Pagination](#pagination).
 
 **Response 200:** a `PaginatedEvents`, as on [`GET /users/{username}/events`](#get-usersusernameevents).
+
+---
+
+## Product updates
+
+A product update email announces one major release (`MAJOR.MINOR.0`) to the analysts who consented: at sign-up, in Settings through [`PATCH /users/me/preferences`](#patch-usersmepreferences), and only with a verified address. It is not a [notification](#notifications) kind. An admin sends it from the [admin endpoints](#get-adminproduct-updates) and the worker delivers it under its own daily cap ([`engineering.md`](engineering.md#product-update-emails)).
+
+### `POST /product-updates/unsubscribe`
+
+Withdraw the consent named by a signed token. Anonymous and exempt from the CSRF check: the token is the authorization. Every product update email carries the token twice: in the visible link to the `/unsubscribe` page, and in the `List-Unsubscribe` header, which a mail client posts one-click (`List-Unsubscribe-Post: List-Unsubscribe=One-Click`). The request body is ignored.
+
+**Query params:** `token`, from the email.
+
+The token carries no expiry. It stops working only when `JWT_SECRET` rotates. Idempotent: an account with no current consent answers the same.
+
+**Response 204:** no body.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 400 | `invalid_unsubscribe_token`: the token does not verify |
 
 ---
 
@@ -2345,6 +2379,92 @@ Email every analyst holding unpublished detections one message with the count an
 ```json
 { "analysts_notified": 4, "detections_pending": 137, "digest_send_failures": 0 }
 ```
+
+### `GET /admin/product-updates` 🛡️
+
+Every [product update](#product-updates) sent, newest first, with its delivery progress.
+
+**Response 200:**
+```json
+{
+  "items": [
+    {
+      "id": "…",
+      "label": "1.4.0",
+      "title": "Collections and approvals",
+      "link_url": "https://vidit.app/about",
+      "created_at": "2026-10-15T09:00:00Z",
+      "recipient_count": 75,
+      "progress": { "queued": 45, "sending": 0, "sent": 28, "failed": 0, "skipped": 2 }
+    }
+  ]
+}
+```
+
+`progress` counts the delivery rows by status. The statuses are in [`data-model.md`](data-model.md#product_update_deliveries).
+
+### `POST /admin/product-updates/preview` 🛡️
+
+Render an announcement as you would receive it, and count the analysts it would reach now.
+
+**Body:**
+```json
+{
+  "label": "1.4.0",
+  "title": "Collections and approvals",
+  "body": "Vidit 1.4 is out.\n\n- Collections\n- Approvals",
+  "link_url": "https://vidit.app/about"
+}
+```
+
+- `label` matches `MAJOR.MINOR.0`, so a patch release is refused.
+- `title` holds 1 to 120 characters and `body` 1 to 5000.
+- In `body`, a blank line starts a paragraph, and a paragraph whose lines all start with `- ` is a list.
+- `link_url` is optional, an http or https URL.
+
+**Response 200:**
+```json
+{
+  "subject": "Vidit 1.4.0: Collections and approvals",
+  "html": "<!doctype html>…",
+  "text": "Collections and approvals\n\n…",
+  "recipients": 75,
+  "daily_cap": 30,
+  "batch_size": 10,
+  "days": 3
+}
+```
+
+`recipients` counts the analysts with a current consent, a verified address and a live active account. `days` is how many trailing-24-hour windows `PRODUCT_UPDATE_EMAIL_DAILY_CAP` needs to send to all of them.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 422 | A label that is not `MAJOR.MINOR.0`, an empty or over-long field, or a link that is not http or https |
+
+### `POST /admin/product-updates/test` 🛡️
+
+Email the announcement to your own address, at once and outside the daily caps. Same body as the preview.
+
+**Response 204:** no body.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 409 | `email_unverified`: your address carries no `email_verified_at` |
+| 502 | `test_send_failed`: the provider did not accept the email |
+
+### `POST /admin/product-updates` 🛡️
+
+Send the announcement. Same body as the preview. One transaction records the announcement, writes one delivery row per analyst the preview counts, and writes an `admin_events` row `product_update_sent` with the label and the recipient count. The worker sends the emails afterwards, at most `PRODUCT_UPDATE_EMAIL_BATCH_SIZE` per pass and `PRODUCT_UPDATE_EMAIL_DAILY_CAP` in any 24 hours. Each label is sent once.
+
+**Response 201:** the announcement, in the shape of one [`GET /admin/product-updates`](#get-adminproduct-updates) item, with every row `queued`.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 409 | `product_update_already_sent`: the label was already sent |
+| 422 | As for the preview |
 
 </details>
 

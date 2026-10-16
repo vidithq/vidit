@@ -9,6 +9,7 @@ since removed) reads as its default.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import ValidationError
@@ -26,6 +27,7 @@ from app.schemas.preferences import (
     UserPreferencesRead,
     UserPreferencesUpdate,
 )
+from app.services import product_update_consent
 
 
 def _valid_stored_display(stored: dict[str, Any]) -> dict[str, Any]:
@@ -59,7 +61,7 @@ def channel_enabled(
     return _effective_channels(db.get(UserPreferences, user_id), kind)[channel]
 
 
-def _build_read(row: UserPreferences | None) -> UserPreferencesRead:
+def _build_read(row: UserPreferences | None, *, product_updates: bool) -> UserPreferencesRead:
     notifications = [
         NotificationPreferenceRead(
             kind=kind, channels=_effective_channels(row, kind), defaults=dict(defaults)
@@ -74,11 +76,15 @@ def _build_read(row: UserPreferences | None) -> UserPreferencesRead:
         display_defaults=DISPLAY_DEFAULTS,
         display_stored=DisplayPreferencesUpdate.model_validate(stored_display),
         notifications=notifications,
+        product_updates=product_updates,
     )
 
 
 def get_preferences(db: Session, *, user: User) -> UserPreferencesRead:
-    return _build_read(db.get(UserPreferences, user.id))
+    return _build_read(
+        db.get(UserPreferences, user.id),
+        product_updates=product_update_consent.has_consent(db, user.id),
+    )
 
 
 def _locked_row(db: Session, user: User) -> UserPreferences:
@@ -127,4 +133,9 @@ def update_preferences(
                 overrides.pop(kind, None)
         row.notification_overrides = overrides
 
-    return _build_read(row)
+    if body.product_updates is True:
+        product_update_consent.grant(db, user_id=user.id, source="settings", at=datetime.now(UTC))
+    elif body.product_updates is False:
+        product_update_consent.withdraw(db, user_id=user.id)
+
+    return _build_read(row, product_updates=product_update_consent.has_consent(db, user.id))

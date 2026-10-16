@@ -307,6 +307,36 @@ erDiagram
         TIMESTAMPTZ last_success_at "nullable"
     }
 
+    product_update_consents {
+        UUID id PK
+        UUID user_id FK
+        VARCHAR source "sign_up | settings"
+        TIMESTAMPTZ granted_at
+        TIMESTAMPTZ withdrawn_at "nullable, NULL while current"
+    }
+
+    product_updates {
+        UUID id PK
+        VARCHAR label UK "MAJOR.MINOR.0"
+        VARCHAR title
+        TEXT body
+        TEXT link_url "nullable"
+        UUID sent_by FK "nullable"
+        INTEGER recipient_count
+        TIMESTAMPTZ created_at
+    }
+
+    product_update_deliveries {
+        UUID id PK
+        UUID product_update_id FK
+        UUID user_id FK
+        VARCHAR status "queued | sending | sent | failed | skipped"
+        INTEGER attempts "provider refusals"
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ claimed_at "nullable"
+        TIMESTAMPTZ sent_at "nullable"
+    }
+
     user_preferences {
         UUID user_id PK
         JSONB notification_overrides "per-kind, per-channel overrides only"
@@ -394,6 +424,10 @@ erDiagram
     notifications ||--o{ notification_deliveries : "notification_id"
     users ||--o| user_preferences : "user_id"
     users ||--o{ push_subscriptions : "user_id"
+    users ||--o{ product_update_consents : "user_id"
+    users |o--o{ product_updates : "sent_by"
+    product_updates ||--o{ product_update_deliveries : "product_update_id"
+    users ||--o{ product_update_deliveries : "user_id"
     users ||--o{ archive_import_jobs : "owner_id"
     events ||--o{ source_archives : "event_id"
 ```
@@ -484,6 +518,7 @@ A code is valid exactly when `revoked_at IS NULL AND used_at IS NULL AND (expire
 | `invite_code_id` | `UUID` | FK → `invite_codes.id` ON DELETE CASCADE, NOT NULL. The invite is referenced but **not consumed** until confirmation. |
 | `token_hash` | `TEXT` | UNIQUE, NOT NULL. `sha256(secret)`. The plaintext token exists only in the email link. |
 | `expires_at` | `TIMESTAMPTZ` | NOT NULL. Set to 24 hours after mint. |
+| `product_updates_consented_at` | `TIMESTAMPTZ` | nullable. The time of the request when the sign-up form's product update switch was on, NULL when it was off. Confirmation copies it into a [`product_update_consents`](#product_update_consents) row with `source = 'sign_up'`. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
 Indexes:
@@ -809,6 +844,60 @@ One browser or installed app an analyst registered for Web Push, through [`POST 
 | `last_success_at` | `TIMESTAMPTZ` | nullable. The last push the push service accepted. |
 
 The worker deletes a row when its push service answers 404 or 410, the answer for a subscription that is gone for good.
+
+---
+
+### `product_update_consents`
+
+The consent record for product update emails ([`engineering.md`](engineering.md#product-update-emails)). Each grant is one row. A withdrawal stamps `withdrawn_at`, and a later grant adds a new row, so no change overwrites an earlier grant or withdrawal.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `UUID` | PK, default `uuid4()` |
+| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL |
+| `source` | `VARCHAR(10)` | NOT NULL, CHECK in `('sign_up', 'settings')` (constraint `ck_product_update_consents_source_valid`). Where the grant was given. |
+| `granted_at` | `TIMESTAMPTZ` | NOT NULL. For a sign-up grant, the time of the registration request, not of the confirmation. |
+| `withdrawn_at` | `TIMESTAMPTZ` | nullable. Set by the Settings switch or the unsubscribe link. NULL while the grant is current. |
+
+Indexes:
+
+- `uq_product_update_consents_current` UNIQUE on `(user_id)` where `withdrawn_at IS NULL`. At most one current grant per analyst; a grant while one is current writes nothing.
+
+---
+
+### `product_updates`
+
+One major release announcement, written when the admin sends it.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `UUID` | PK, default `uuid4()` |
+| `label` | `VARCHAR(20)` | UNIQUE, NOT NULL. The release, `MAJOR.MINOR.0`. The UNIQUE constraint sends each label once. |
+| `title` | `VARCHAR(120)` | NOT NULL. The heading; the subject reads `Vidit <label>: <title>`. |
+| `body` | `TEXT` | NOT NULL. Plain text: a blank line starts a paragraph, and a paragraph of lines that start with `- ` is a list. |
+| `link_url` | `TEXT` | nullable. An http or https URL, the email's one action. |
+| `sent_by` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The admin who sent it. |
+| `recipient_count` | `INTEGER` | NOT NULL. The delivery rows the send queued. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()`. When it was sent. |
+
+---
+
+### `product_update_deliveries`
+
+The email queue for product updates: one row per announcement and recipient, written by the send for every analyst with a current consent, a verified address and a live active account. The worker drains it under its own daily cap ([`engineering.md`](engineering.md#product-update-emails)).
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `UUID` | PK, default `uuid4()` |
+| `product_update_id` | `UUID` | FK → `product_updates.id` ON DELETE CASCADE, NOT NULL. UNIQUE with `user_id` (constraint `uq_product_update_deliveries_user`). |
+| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The recipient. |
+| `status`, `attempts`, `created_at`, `claimed_at`, `sent_at` | | As in [`notification_deliveries`](#notification_deliveries), except that a `queued` row never ages out: a large audience takes several days. The status CHECK is `ck_product_update_deliveries_status_valid`. `skipped` means the recipient withdrew consent, lost the verified address, or left since the send. |
+
+Indexes:
+
+- `ix_product_update_deliveries_user_id` on `(user_id)`. Backs the cascade of a hard-deleted recipient.
+- `ix_product_update_deliveries_queued` on `(created_at)` where `status = 'queued'`. Backs the claim.
+- `ix_product_update_deliveries_sent_at` on `(sent_at)` where `status = 'sent'`. Backs the daily cap count.
 
 ---
 

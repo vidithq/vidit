@@ -13,6 +13,11 @@ from app.models.invite_code import InviteCode
 from app.models.media import Media
 from app.models.notification import Notification, NotificationDelivery
 from app.models.pending_registration import PendingRegistration
+from app.models.product_update import (
+    ProductUpdate,
+    ProductUpdateConsent,
+    ProductUpdateDelivery,
+)
 from app.models.push_subscription import PushSubscription
 from app.models.source_archive import SourceArchive
 from app.models.tag import Tag, event_tags
@@ -40,6 +45,9 @@ __all__ = [
     "NotificationDelivery",
     "PendingRegistration",
     "PushSubscription",
+    "ProductUpdate",
+    "ProductUpdateConsent",
+    "ProductUpdateDelivery",
     "SourceArchive",
     "Tag",
     "User",

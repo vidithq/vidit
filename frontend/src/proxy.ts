@@ -45,6 +45,8 @@ const PUBLIC_PREFIXES = [
   "/resend-confirmation",
   "/forgot-password",
   "/reset-password",
+  // The unsubscribe link of a product update email: the signed token stands in for a session.
+  "/unsubscribe",
 ];
 
 function isPublic(pathname: string): boolean {

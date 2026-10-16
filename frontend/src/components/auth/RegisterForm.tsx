@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/form-styles";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { ToggleRow } from "@/components/ui/ToggleRow";
 
 
 
@@ -32,12 +33,13 @@ export default function RegisterForm({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [inviteCode, setInviteCode] = useState(initialInviteCode);
+  const [productUpdates, setProductUpdates] = useState(false);
   const inviteCodeLocked = initialInviteCode.length > 0;
 
   const submitRegister = useMutation(
     async () => {
       try {
-        const result = await register(username, email, password, inviteCode);
+        const result = await register(username, email, password, inviteCode, productUpdates);
         return result.email;
       } catch (err) {
         // Already registered but unconfirmed: recoverable, so route to the pending screen's Resend rather
@@ -137,6 +139,13 @@ export default function RegisterForm({
             onChange={(e) => setEmail(e.target.value)}
           />
         </div>
+
+        <ToggleRow
+          label="Email me about major releases"
+          description="One email per major Vidit release. Unsubscribe from any of them, or in Settings."
+          on={productUpdates}
+          onToggle={() => setProductUpdates((on) => !on)}
+        />
 
         <div className="space-y-1">
           <label htmlFor="password" className={FORM_LABEL_COMPACT}>

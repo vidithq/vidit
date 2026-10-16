@@ -137,7 +137,7 @@ def test_patch_null_clears_a_display_value(db, user):
         {"display": {"palette": "chartreuse"}},
         {"display": {"theme": "sepia"}},
         {"display": {"font": "serif"}},
-        {"product_updates": True},
+        {"marketing_emails": True},
     ],
 )
 def test_patch_rejects_values_outside_the_allowlists(db, user, body):

@@ -96,8 +96,8 @@ class Notification(Base):
 # under way or its outcome unknown; never retried, it turns ``failed`` once
 # stale. ``sent``: the provider accepted it. ``failed``: refused past the
 # attempt budget, or stale in ``sending``. ``skipped``: dropped unsent (the
-# switch went off, the address went away, the item was hidden, or it aged out
-# in the queue).
+# switch or consent went off, the address went away, the item was hidden, or
+# it aged out in the queue).
 NotificationDeliveryStatus = Literal["queued", "sending", "sent", "failed", "skipped"]
 
 
@@ -108,21 +108,11 @@ NotificationDeliveryStatus = Literal["queued", "sending", "sent", "failed", "ski
 DeliveryOutcome = Literal["sent", "skipped", "refused", "unknown"]
 
 
-class NotificationDelivery(Base):
-    """One notification to deliver on one channel, written beside the
-    ``Notification`` row when the recipient's switch for that kind is on.
-
-    The worker drains the queue (``services/notification_delivery``), so a send
-    happens after the action commits and never inside it.
-    """
-
-    __tablename__ = "notification_deliveries"
+class DeliveryState:
+    """The send state of one row of a queue the worker drains
+    (``services/notification_delivery.deliver``)."""
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    notification_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("notifications.id", ondelete="CASCADE"), nullable=False
-    )
-    channel: Mapped[NotificationChannel] = mapped_column(String(20), nullable=False)
     status: Mapped[NotificationDeliveryStatus] = mapped_column(
         String(10), nullable=False, default="queued"
     )
@@ -137,6 +127,22 @@ class NotificationDelivery(Base):
     # a refusal puts the row back in ``queued``.
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class NotificationDelivery(DeliveryState, Base):
+    """One notification to deliver on one channel, written beside the
+    ``Notification`` row when the recipient's switch for that kind is on.
+
+    The worker drains the queue (``services/notification_delivery``), so a send
+    happens after the action commits and never inside it.
+    """
+
+    __tablename__ = "notification_deliveries"
+
+    notification_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("notifications.id", ondelete="CASCADE"), nullable=False
+    )
+    channel: Mapped[NotificationChannel] = mapped_column(String(20), nullable=False)
 
     notification = relationship("Notification")
 

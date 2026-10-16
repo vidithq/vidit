@@ -38,6 +38,8 @@ class RegisterRequest(BaseModel):
     email: NormalizedEmail
     password: NewPassword
     invite_code: str = Field(min_length=1, max_length=64)
+    # Consent to product update emails, off unless the form's switch was on.
+    product_updates: bool = False
 
 
 class RegisterResponse(BaseModel):

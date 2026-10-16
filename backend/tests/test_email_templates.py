@@ -59,6 +59,15 @@ BUILDERS: dict[str, Callable[[], email.Email]] = {
         to="a@example.com", actor="bo", event_id="e1", event_title="Strike & smoke"
     ),
     "new_follower": lambda: email.new_follower_email(to="a@example.com", actor="bo"),
+    "product_update": lambda: email.product_update_email(
+        to="a@example.com",
+        label="1.0.0",
+        title="Collections",
+        blocks=["A release.", ("One", "Two")],
+        link_url=f"{BASE}/about",
+        unsubscribe_url=f"{BASE}/unsubscribe?token=tok",
+        one_click_url="https://api.example.com/api/v1/product-updates/unsubscribe?token=tok",
+    ),
 }
 
 
@@ -125,6 +134,17 @@ def test_notification_email_names_the_switch_and_carries_list_unsubscribe(name):
     assert message.headers == {"List-Unsubscribe": f"<{BASE}/settings>"}
     assert "notification settings" in message.text
     assert "bo" in message.subject
+
+
+def test_product_update_email_offers_a_visible_and_a_one_click_unsubscribe():
+    message = BUILDERS["product_update"]()
+    assert message.subject == "Vidit 1.0.0: Collections"
+    assert f"Unsubscribe: {BASE}/unsubscribe?token=tok" in message.text
+    assert f'href="{BASE}/unsubscribe?token=tok"' in message.html
+    assert message.headers == {
+        "List-Unsubscribe": "<https://api.example.com/api/v1/product-updates/unsubscribe?token=tok>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    }
 
 
 def test_auth_email_carries_no_list_unsubscribe():
