@@ -2,14 +2,23 @@ import type { ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
 
-// The shared page frame: clears the fixed nav chrome and centres content in one
-// column (max-w-4xl mx-auto px-4 sm:px-6). From `sm` up the rail is a fixed 56px
-// column (sm:pl-14); below it the rail is a drawer behind a floating chip that
-// takes no inset of its own: the caller's top padding clears it (PageShell's
-// `max-sm:pt-16`, the landing's hero padding). Vertical rhythm is the caller's.
+// The shared page frame: clears the fixed nav chrome and holds the content
+// column. From `sm` up the rail is a fixed 56px column (sm:pl-14); below it the
+// rail is a drawer behind a floating chip that takes no inset of its own: the
+// caller's top padding clears it (PageShell's `max-sm:pt-16`, the landing's hero
+// padding). Vertical rhythm is the caller's.
 // No "use client", so the SEO landing (a server component) can use it. This file
 // is the only place `sm:pl-14` is written (here and in `PageCenter`).
 // Why the side padding steps at `sm`: docs/design.md, Page chrome.
+//
+// `column` picks the width. `wide` and `reading` are the app container every
+// `PageShell` page shares, left-aligned right after the rail, so the content's
+// left edge sits at one x on every page. `lg:pl-18` keeps a gutter left of the
+// title wide enough for PageShell's back arrow, which parks there from `lg` up.
+// `wide` holds up to `max-w-6xl` of content, for a page with a right rail.
+// `reading` holds 53rem, the content width the centred column leaves inside its
+// `sm:px-6`, so a page without a rail keeps its line length. `center` is the
+// landing's centred `max-w-4xl` column.
 
 // The display cutout's horizontal insets, applied once for every route.
 // `app/layout.tsx` exports `viewportFit: "cover"`, so in landscape on a notched
@@ -24,20 +33,30 @@ const SAFE_SIDES = "safe-pl safe-pr";
 // row sits behind the bottom chrome; a column frame gains dead scroll.
 const MIN_HEIGHT = "min-h-dvh";
 
+const COLUMN_WIDTH = { wide: "max-w-6xl", reading: "max-w-[53rem]" } as const;
+
 export function PageFrame({
   children,
   className = "",
+  column = "center",
 }: {
   children: ReactNode;
   className?: string;
+  column?: "center" | "reading" | "wide";
 }) {
   return (
     <div className={`${MIN_HEIGHT} sm:pl-14`}>
       <div className={SAFE_SIDES}>
-        {/* `cn`, so a caller's `px-*` replaces the column padding. */}
-        <div className={cn("max-w-4xl mx-auto px-4 sm:px-6", className)}>
-          {children}
-        </div>
+        {column !== "center" ? (
+          <div className="px-4 sm:px-6 lg:pl-18">
+            <div className={cn(COLUMN_WIDTH[column], className)}>{children}</div>
+          </div>
+        ) : (
+          // `cn`, so a caller's `px-*` replaces the column padding.
+          <div className={cn("max-w-4xl mx-auto px-4 sm:px-6", className)}>
+            {children}
+          </div>
+        )}
       </div>
     </div>
   );

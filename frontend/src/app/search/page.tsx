@@ -51,7 +51,6 @@ import {
   type EventFilterValues,
 } from "@/components/filters/EventFilterSections";
 import { FilterBar } from "@/components/filters/FilterBar";
-import { PageWithRail } from "@/components/ui/PageWithRail";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 
@@ -367,12 +366,12 @@ function SearchPageBody() {
   };
 
   return (
-    <PageShell title="Search">
-      <PageWithRail
-        rail={renderPanel({ values, dates }, applyFilters)}
-        railLabel="Filters"
-        narrow="hidden"
-      >
+    <PageShell
+      title="Search"
+      rail={renderPanel({ values, dates }, applyFilters)}
+      railLabel="Filters"
+      narrowRail="hidden"
+    >
         <Input
           type="search"
           icon={<SearchIcon size={14} />}
@@ -530,7 +529,6 @@ function SearchPageBody() {
             )}
           </>
         )}
-      </PageWithRail>
     </PageShell>
   );
 }

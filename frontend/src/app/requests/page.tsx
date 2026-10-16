@@ -21,7 +21,6 @@ import {
   type EventFilterValues,
 } from "@/components/filters/EventFilterSections";
 import { FilterBar } from "@/components/filters/FilterBar";
-import { PageWithRail } from "@/components/ui/PageWithRail";
 import { EntityCard } from "@/components/ui/EntityCard";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { PageShell } from "@/components/ui/PageShell";
@@ -92,6 +91,9 @@ export default function RequestsPage() {
   return (
     <PageShell
       title="Requests"
+      rail={renderPanel(values, setValues)}
+      railLabel="Filters"
+      narrowRail="hidden"
       controls={
         <>
           <SegmentedControl
@@ -110,70 +112,68 @@ export default function RequestsPage() {
         </>
       }
     >
-      <PageWithRail rail={renderPanel(values, setValues)} railLabel="Filters" narrow="hidden">
-        <FilterBar
-          value={values}
-          empty={EMPTY_EVENT_FILTERS}
-          count={activeCount}
-          pills={buildActiveFilterPills(values, onPatch)}
-          onClearAll={clearFilters}
-          onApply={setValues}
-          renderPanel={renderPanel}
-        />
+      <FilterBar
+        value={values}
+        empty={EMPTY_EVENT_FILTERS}
+        count={activeCount}
+        pills={buildActiveFilterPills(values, onPatch)}
+        onClearAll={clearFilters}
+        onApply={setValues}
+        renderPanel={renderPanel}
+      />
 
-        {error && requests.length === 0 && (
-          <div className={FORM_ERROR_BANNER}>{error}</div>
-        )}
+      {error && requests.length === 0 && (
+        <div className={FORM_ERROR_BANNER}>{error}</div>
+      )}
 
-        {loading && (
-          <p className="text-sm text-neutral-500">Loading requests…</p>
-        )}
+      {loading && (
+        <p className="text-sm text-neutral-500">Loading requests…</p>
+      )}
 
-        {!error && !loading && requests.length === 0 && (
-          <EmptyState>
-            {activeCount > 0 ? (
-              "No open requests match the filters."
-            ) : (
-              <>
-                No open requests yet.{" "}
-                <Link href="/submit" className={TEXT_LINK}>
-                  Post the first one
-                </Link>
-                .
-              </>
-            )}
-          </EmptyState>
-        )}
+      {!error && !loading && requests.length === 0 && (
+        <EmptyState>
+          {activeCount > 0 ? (
+            "No open requests match the filters."
+          ) : (
+            <>
+              No open requests yet.{" "}
+              <Link href="/submit" className={TEXT_LINK}>
+                Post the first one
+              </Link>
+              .
+            </>
+          )}
+        </EmptyState>
+      )}
 
-        {!loading && requests.length > 0 && (
-          <>
-            <div className="text-[11px] text-neutral-500">
-              <span className="text-neutral-300 font-medium">
-                {requests.length} open{hasMore ? " so far" : ""}
-              </span>
-            </div>
-            <div className="space-y-3">
-              {requests.map((r) => (
-                <EntityCard
-                  key={r.id}
-                  variant="compact"
-                  detailHref={`/requests/${r.id}`}
-                  title={r.title}
-                  badge={<StatusBadge status={r.status} />}
-                  media={r.media ?? undefined}
-                  isGraphic={r.is_graphic}
-                  author={r.owner}
-                  date={r.event_date ?? undefined}
-                  age={r.requested_at ? formatOpenAge(r.requested_at) : undefined}
-                  coords={r.event_coords}
-                  tags={r.tags}
-                />
-              ))}
-            </div>
-            <LoadMoreRow walk={walk} />
-          </>
-        )}
-      </PageWithRail>
+      {!loading && requests.length > 0 && (
+        <>
+          <div className="text-[11px] text-neutral-500">
+            <span className="text-neutral-300 font-medium">
+              {requests.length} open{hasMore ? " so far" : ""}
+            </span>
+          </div>
+          <div className="space-y-3">
+            {requests.map((r) => (
+              <EntityCard
+                key={r.id}
+                variant="compact"
+                detailHref={`/requests/${r.id}`}
+                title={r.title}
+                badge={<StatusBadge status={r.status} />}
+                media={r.media ?? undefined}
+                isGraphic={r.is_graphic}
+                author={r.owner}
+                date={r.event_date ?? undefined}
+                age={r.requested_at ? formatOpenAge(r.requested_at) : undefined}
+                coords={r.event_coords}
+                tags={r.tags}
+              />
+            ))}
+          </div>
+          <LoadMoreRow walk={walk} />
+        </>
+      )}
     </PageShell>
   );
 }

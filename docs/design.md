@@ -322,10 +322,10 @@ Every main-app page uses [`<PageShell>`](../frontend/src/components/ui/PageShell
 
 | Element | Style | Notes |
 |---|---|---|
-| Column | `max-w-4xl mx-auto px-4 sm:px-6 pt-10 max-sm:pt-16 pb-16 space-y-6` | One width across the app. The offset + column (`sm:pl-14` + `max-w-4xl mx-auto px-4 sm:px-6`) come from [`<PageFrame>`](../frontend/src/components/ui/PageFrame.tsx), which PageShell composes and the public landing uses directly, so both share the same left inset. The side padding drops a step below `sm`, where the desktop gutter leaves the cards too narrow to hold a title beside a thumbnail on a 375px screen. The top padding steps up there instead, to clear the menu chip the rail leaves in the corner; see [Phone chrome](#phone-chrome). |
+| Column | `px-4 sm:px-6 lg:pl-18`, then `max-w-[53rem]` (reading) or `max-w-6xl` (with a rail), then `pt-10 max-sm:pt-16 pb-16 space-y-6` | One container across the app, left-aligned right after the sidebar, so the title starts at the same x on every page. [`<PageFrame>`](../frontend/src/components/ui/PageFrame.tsx) owns the offset (`sm:pl-14`) and the container through its `column` prop. A page without a rail takes `reading`, 53rem of content, the line length a centred `max-w-4xl` column leaves inside its padding; the free space falls on the right. A page with a rail takes `wide`, up to `max-w-6xl` (1152px) of content, which holds a 53rem main column beside the [right rail](#right-rail). `PageShell` picks the column from its `rail` prop. `lg:pl-18` keeps a gutter left of the title for the back arrow. The side padding drops a step below `sm`, where the desktop gutter leaves the cards too narrow to hold a title beside a thumbnail on a 375px screen. The top padding steps up there instead, to clear the menu chip the rail leaves in the corner; see [Phone chrome](#phone-chrome). The public landing keeps `PageFrame`'s `center` column, the same width centred. |
 | H1 (`title`) | `text-xl font-medium text-neutral-100` | Consistent on every page. |
 | Subtitle | `text-sm text-neutral-400` | Tight under the H1 (8 px gap). |
-| Back arrow (`back`) | `max-sm:hidden flex -ml-2 mb-1 lg:inline-flex lg:absolute lg:right-full lg:top-1.5 lg:mr-3 lg:mb-0 lg:ml-0` | Lives in the gutter from `lg` up, so the title's x-coordinate is the same whether back is present or not. That gutter exists only once the centred column has room to sit off the rail; between `sm` and `lg` the button is a row of its own above the title, since a gutter-parked one lands under the fixed sidebar, where taps reach the nav rather than the button. Below `sm` the header carries no back control at all: the same button is portaled into the menu chip instead (see [Phone chrome](#phone-chrome)). `-ml-2` takes back 8 of the 9px the 36px square insets its 18px glyph by, so the arrow reads as aligned with the heading. **When to set it:** `back` marks a drill-in page reached from content (event / request detail, edit, profile, the detections queue), where "back" means "return to where I clicked this". Sidebar destinations (map, submit, requests, search, about, settings) never set it: they are entered from the rail, so there is no "where I came from" to promise. **What it walks:** [`smartBack`](../frontend/src/lib/navigation.ts) pops an app-kept stack of visited paths rather than calling `history.back()`, which would walk off the origin. A route that only redirects keeps itself out of that stack (`skipBackRecord`, called before the redirect), since walking back onto one runs its redirect again and lands where the walk started, which reads as an arrow that does nothing. |
+| Back arrow (`back`) | `max-sm:hidden flex -ml-2 mb-1 lg:inline-flex lg:absolute lg:right-full lg:top-1.5 lg:mr-3 lg:mb-0 lg:ml-0` | Lives in the gutter from `lg` up, so the title's x-coordinate is the same whether back is present or not. The gutter is the column's `lg:pl-18`; between `sm` and `lg` the button is a row of its own above the title, since a gutter-parked one lands under the fixed sidebar, where taps reach the nav rather than the button. Below `sm` the header carries no back control at all: the same button is portaled into the menu chip instead (see [Phone chrome](#phone-chrome)). `-ml-2` takes back 8 of the 9px the 36px square insets its 18px glyph by, so the arrow reads as aligned with the heading. **When to set it:** `back` marks a drill-in page reached from content (event / request detail, edit, profile, the detections queue), where "back" means "return to where I clicked this". Sidebar destinations (map, submit, requests, search, about, settings) never set it: they are entered from the rail, so there is no "where I came from" to promise. **What it walks:** [`smartBack`](../frontend/src/lib/navigation.ts) pops an app-kept stack of visited paths rather than calling `history.back()`, which would walk off the origin. A route that only redirects keeps itself out of that stack (`skipBackRecord`, called before the redirect), since walking back onto one runs its redirect again and lands where the walk started, which reads as an arrow that does nothing. |
 | Actions (`actions`) | Right of the title, wrapping under it below a `14rem` title basis | The page-level action cluster. Every control that acts on the thing the page is about goes here, so a reader finds them in one place. On a profile that is the glyph row (the linked accounts, then Edit profile on your own), and Follow on someone else's profile or the save pair while editing. On an event surface it is the three-tier grammar below. The map's side panel mirrors the position, right-aligned beside its title. A panel a cluster control opens (the report form, the close form) renders under the header, directly below the trigger; two open panels stack as separate cards rather than sharing a slot. Flex line-breaking measures the title's base size, so the cluster takes its own line rather than squeezing a heading into a one-word column. A preference, not a minimum (`min-w-0`): a hard floor outgrows the frame on the narrowest phones and scrolls the page sideways. The cluster is capped at the header width (`max-w-full`) and wraps inside itself, so a row of several buttons breaks into right-aligned lines on a phone. The subtitle breaks anywhere, since a bio can hold a bare URL, one unbreakable token. |
 | Controls (`controls`) | `flex flex-wrap items-center justify-between gap-2`, one `space-y-6` step under the header | The view controls: the `<SegmentedControl>` that picks what the page lists or how (the feed scope, the Requests sort, the submit mode), left-aligned under the title. A companion control in the same node takes the row's right end (the board's **Post request**). The row sits above a [right rail](#right-rail), so the rail starts level with the list. |
 
@@ -348,17 +348,19 @@ flowchart TB
 
   subgraph legend [Legend]
     direction LR
-    l1["`the layout primitive, thick-bordered`"]:::core
+    l1["`the layout primitives, thick-bordered`"]:::core
     l2["`shared filter piece`"]:::shared
     l3["`a page that mounts it`"]:::page
     l4["`what the reader sees`"]:::state
     l1 ~~~ l2 ~~~ l3 ~~~ l4
   end
 
+  shell["`**PageShell rail=…**
+  PageFrame column=wide: up to 1152px, left-aligned`"]:::core
   layout["`**PageWithRail**
-  main column plus an 18rem rail`"]:::core
+  53rem main column plus a 17.5rem rail`"]:::core
   pages["`**Feed, Requests board, Search**
-  rail: EventFilterSections; narrow=hidden`"]:::page
+  rail: EventFilterSections; narrowRail=hidden`"]:::page
   wide["`**lg and up**
   rail sticks beside the list, scrolls on its own when taller`"]:::state
   narrow["`**below lg**
@@ -370,7 +372,7 @@ flowchart TB
   list["`**the list**
   refetches once, with the applied filters`"]:::state
 
-  pages --> layout
+  pages --> shell --> layout
   layout --> wide
   layout --> narrow
   narrow --> bar
@@ -378,13 +380,13 @@ flowchart TB
   dialog -->|Apply| list
 ```
 
-[`<PageWithRail>`](../frontend/src/components/ui/PageWithRail.tsx) lays a page out as a main column and a right rail inside `<PageShell>`. Use it for any page whose side panel stays in view while its main column scrolls.
+[`<PageWithRail>`](../frontend/src/components/ui/PageWithRail.tsx) lays a page out as a main column and a right rail. Use it for any page whose side panel stays in view while its main column scrolls. Pass the panel as `<PageShell>`'s `rail` (with `railLabel` and `narrowRail`): `PageShell` composes `PageWithRail` and widens its column to `wide`, so the main column keeps the 53rem reading width beside the rail once the screen holds both. A page whose rail comes and goes passes `null` while it is gone, which keeps the column one width and keeps its element mounted.
 
-- **From `lg` up** the rail is an `18rem` column right of the main column. It sticks to the top of the viewport while the main column scrolls. Once the rail is taller than the viewport it scrolls on its own, so its foot stays reachable.
+- **From `lg` up** the rail is a `17.5rem` (280px) column right of the main column. It sticks to the top of the viewport while the main column scrolls. Once the rail is taller than the viewport it scrolls on its own, so its foot stays reachable.
 - **Below `lg`** the `narrow` prop picks the shape. `stacked` (the default) puts the rail above the main column. `hidden` takes the rail off the page, for a page that offers its own narrow entry to it.
-- **Without a `rail`** the main column takes the full width, so a page can drop the rail on a view it does not apply to.
+- **Without a `rail`** (`null`) the page takes the `reading` column, so a page can drop the rail on a view it does not apply to.
 
-The feed, the [Requests board](#requests-board) and search mount the shared filter panel ([`EventFilterSections`](../frontend/src/components/filters/EventFilterSections.tsx)) in the rail with `narrow="hidden"`. The map keeps its floating overlay panel. Above each list sits [`<FilterBar>`](../frontend/src/components/filters/FilterBar.tsx): the removable active-filter pills, and below `lg` a **Filters** button that reads **Filters (N)** while N filters are active. The button opens the same panel full screen in `MediaOverlay`'s dialog variant around a `<Card>`. The panel there edits a draft, so the list refetches once:
+The feed, the [Requests board](#requests-board) and search mount the shared filter panel ([`EventFilterSections`](../frontend/src/components/filters/EventFilterSections.tsx)) in the rail with `narrowRail="hidden"`. The map keeps its floating overlay panel. Above each list sits [`<FilterBar>`](../frontend/src/components/filters/FilterBar.tsx): the removable active-filter pills, and below `lg` a **Filters** button that reads **Filters (N)** while N filters are active. The button opens the same panel full screen in `MediaOverlay`'s dialog variant around a `<Card>`. The panel there edits a draft, so the list refetches once:
 
 - **Apply** applies the draft and closes the dialog.
 - **Clear** empties the draft. Apply then clears the list's filters.

@@ -3,7 +3,8 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
 /**
- * A main column with a sticky right rail from `lg` up, inside `PageShell`.
+ * A main column with a sticky 17.5rem right rail from `lg` up. `PageShell` composes it from its
+ * `rail` prop; mount it directly only outside `PageShell` (the palette).
  *
  * The rail sticks while the main column scrolls. Once it is taller than the viewport it scrolls on
  * its own, so its foot stays reachable. Below `lg` the rail either stacks above the main column
@@ -26,7 +27,7 @@ export function PageWithRail({
     <div
       className={cn(
         "grid gap-6",
-        rail && "lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start",
+        rail && "lg:grid-cols-[minmax(0,1fr)_17.5rem] lg:items-start",
       )}
     >
       {rail && (

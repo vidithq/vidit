@@ -16,7 +16,6 @@ import { Button, buttonClasses } from "@/components/ui/Button";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { ChipBucket } from "@/components/ui/ChipBucket";
 import { chipSummary } from "@/components/ui/FilterSection";
-import { PageWithRail } from "@/components/ui/PageWithRail";
 import {
   EMPTY_DATE_WINDOWS,
   EMPTY_EVENT_FILTERS,
@@ -246,6 +245,9 @@ export default function FeedPage() {
   return (
     <PageShell
       title="Feed"
+      rail={renderPanel(filters, setFilters)}
+      railLabel="Filters"
+      narrowRail="hidden"
       subtitle="Geolocations and requests, newest first."
       controls={
         <SegmentedControl
@@ -256,22 +258,16 @@ export default function FeedPage() {
         />
       }
     >
-      <PageWithRail
-        rail={renderPanel(filters, setFilters)}
-        railLabel="Filters"
-        narrow="hidden"
-      >
-        <FilterBar
-          value={filters}
-          empty={EMPTY_FEED_FILTERS}
-          count={activeCount}
-          pills={pills}
-          onClearAll={() => setFilters(EMPTY_FEED_FILTERS)}
-          onApply={setFilters}
-          renderPanel={renderPanel}
-        />
-        {body}
-      </PageWithRail>
+      <FilterBar
+        value={filters}
+        empty={EMPTY_FEED_FILTERS}
+        count={activeCount}
+        pills={pills}
+        onClearAll={() => setFilters(EMPTY_FEED_FILTERS)}
+        onApply={setFilters}
+        renderPanel={renderPanel}
+      />
+      {body}
     </PageShell>
   );
 }

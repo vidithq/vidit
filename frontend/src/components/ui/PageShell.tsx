@@ -10,6 +10,7 @@ import { getPhoneBackSlot, subscribePhoneBackSlot } from "@/lib/phoneBackSlot";
 import { TEXT_LINK } from "./styles";
 import { Button } from "./Button";
 import { PageCenter, PageFrame } from "./PageFrame";
+import { PageWithRail } from "./PageWithRail";
 
 export function PageShell({
   title,
@@ -18,6 +19,9 @@ export function PageShell({
   backFallback,
   actions,
   controls,
+  rail,
+  railLabel,
+  narrowRail,
   children,
 }: {
   title: ReactNode;
@@ -30,6 +34,12 @@ export function PageShell({
   /** The view controls under the title, left-aligned (a scope or sort `SegmentedControl`, a
    *  mode picker), with any companion control pushed to the row's right end. */
   controls?: ReactNode;
+  /** A right rail beside `children` (see `PageWithRail`). A page whose rail comes and goes passes
+   *  `null` while it is gone, so the column keeps its element and its focus. The frame is `wide`
+   *  while a rail shows and `reading` otherwise, which leaves the main column one width. */
+  rail?: ReactNode;
+  railLabel?: string;
+  narrowRail?: "stacked" | "hidden";
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -55,7 +65,10 @@ export function PageShell({
   );
   return (
     // `max-sm:pt-16` (64px) clears the off-canvas rail's chip (about 55px).
-    <PageFrame className="pt-10 max-sm:pt-16 pb-16 space-y-6">
+    <PageFrame
+      column={rail ? "wide" : "reading"}
+      className="pt-10 max-sm:pt-16 pb-16 space-y-6"
+    >
       <header className="relative">
         {back && (
           // `right-full` parks the button outside the header's left edge, so the
@@ -92,7 +105,13 @@ export function PageShell({
       {controls && (
         <div className="flex flex-wrap items-center justify-between gap-2">{controls}</div>
       )}
-      {children}
+      {rail === undefined ? (
+        children
+      ) : (
+        <PageWithRail rail={rail} railLabel={railLabel} narrow={narrowRail}>
+          {children}
+        </PageWithRail>
+      )}
     </PageFrame>
   );
 }
