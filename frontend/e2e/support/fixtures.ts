@@ -7,6 +7,7 @@
  * Typed as the generated frontend aliases, so a backend schema change reaches
  * the suite through the same drift gate every other reader goes through.
  */
+import type { Approval } from "@/lib/approvals";
 import type { Collection } from "@/lib/collections";
 import type { UnreadCount } from "@/lib/notifications";
 import type {
@@ -365,6 +366,27 @@ export const ORGANIZATION_INVITES: OrganizationInvite[] = [
 
 /** Nothing unread, as the sidebar's notification row reads it. */
 export const NO_UNREAD: UnreadCount = { count: 0 };
+
+/** The live version's approvals on the shared event: one standing review with a note long
+ *  enough to wrap, so the Approvals card is measured at phone widths. */
+export const EVENT_APPROVALS: Approval[] = [
+  {
+    id: "66666666-6666-4666-8666-666666666661",
+    version_no: 1,
+    verdict: "approve",
+    reviewer: {
+      id: "77777777-7777-4777-8777-777777777771",
+      username: "second_reviewer_with_a_long_handle",
+      avatar_url: null,
+    },
+    note: "The utility poles, the tree line and the roof vents all match the satellite view from the eastern approach.",
+    created_at: "2025-01-05T08:30:00Z",
+    current: true,
+    revoked_at: null,
+    revoke_reason: null,
+    revoked_by_admin: false,
+  },
+];
 
 /**
  * A maplibre style with nothing in it. The map still mounts, sizes itself and

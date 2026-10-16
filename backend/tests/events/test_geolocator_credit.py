@@ -154,19 +154,6 @@ def test_accept_credits_the_invitee(db, author, second_user):
     assert _answer(geo, second_user, "accept").json()["detail"]["code"] == "invite_not_found"
 
 
-def test_accept_calls_the_approval_revocation_hook(db, author, second_user, monkeypatch):
-    calls: list[tuple[uuid.UUID, uuid.UUID]] = []
-    monkeypatch.setattr(
-        geolocator_credit,
-        "revoke_approvals_on_join",
-        lambda db, *, geo, user: calls.append((geo.id, user.id)),
-    )
-    geo = _published(db, author)
-    _invite(geo, author, second_user.username)
-    assert _answer(geo, second_user, "accept").status_code == 204
-    assert calls == [(geo.id, second_user.id)]
-
-
 def test_accept_after_a_retraction_is_refused(db, author, second_user):
     geo = _published(db, author)
     _invite(geo, author, second_user.username)

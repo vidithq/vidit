@@ -1,4 +1,5 @@
 from app.models.admin_event import AdminEvent
+from app.models.approval import EventApproval
 from app.models.archive_import_job import ArchiveImportJob
 from app.models.auth_event import AuthEvent
 from app.models.auth_token import AuthToken
@@ -39,6 +40,7 @@ __all__ = [
     "ContentReport",
     "Follow",
     "Event",
+    "EventApproval",
     "EventGeolocator",
     "EventGeolocatorInvite",
     "EventVersion",

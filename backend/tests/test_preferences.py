@@ -124,7 +124,7 @@ def test_patch_null_clears_a_display_value(db, user):
 @pytest.mark.parametrize(
     "body",
     [
-        {"notifications": {"approval_received": {"email": True}}},
+        {"notifications": {"not_a_kind": {"email": True}}},
         {"notifications": {"request_fulfilled": {"sms": True}}},
         {"notifications": {"request_fulfilled": {"email": "yes please"}}},
         {"display": {"palette": "chartreuse"}},

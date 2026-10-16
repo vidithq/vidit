@@ -1,0 +1,63 @@
+import uuid
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.models.approval import ApprovalVerdict
+from app.schemas.user import AuthorRef
+
+# Mirrored by the frontend's lib/approvals.APPROVAL_NOTE_MAX_LEN; change both.
+APPROVAL_NOTE_MAX_LENGTH = 280
+REVOKE_REASON_MAX_LENGTH = 2000
+
+
+class ApprovalCreate(BaseModel):
+    """Body of ``POST /events/{id}/approvals``: the version you read, and an optional note."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version_no: int = Field(ge=1)
+    note: str | None = Field(default=None, max_length=APPROVAL_NOTE_MAX_LENGTH)
+
+    @field_validator("note")
+    @classmethod
+    def _blank_is_none(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+
+class ApprovalRevoke(BaseModel):
+    """Body of ``POST /events/{id}/approvals/{approval_id}/revoke``. The reason is public."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1, max_length=REVOKE_REASON_MAX_LENGTH)
+
+    @field_validator("reason")
+    @classmethod
+    def _not_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("A reason is required")
+        return stripped
+
+
+class ApprovalRead(BaseModel):
+    """One review of one version of an event.
+
+    ``current`` is true while the review covers the live version and is not
+    revoked. ``revoked_by_admin`` is true when a site admin, not the reviewer,
+    revoked it.
+    """
+
+    id: uuid.UUID
+    version_no: int
+    verdict: ApprovalVerdict
+    reviewer: AuthorRef
+    note: str | None
+    created_at: datetime
+    current: bool
+    revoked_at: datetime | None
+    revoke_reason: str | None
+    revoked_by_admin: bool

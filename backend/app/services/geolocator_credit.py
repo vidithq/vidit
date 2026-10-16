@@ -13,10 +13,12 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from datetime import UTC, datetime
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from app.models.approval import EventApproval
 from app.models.collection import Collection, CollectionEvent
 from app.models.event import STATUS_GEOLOCATED, Event, EventGeolocator, EventGeolocatorInvite
 from app.models.user import User
@@ -29,6 +31,9 @@ CREDIT_LOAD = selectinload(Event.geolocators).joinedload(EventGeolocator.user)
 
 # Geolocators plus pending invitations, per event. Bounds the byline every card prints.
 MAX_EVENT_GEOLOCATORS = 10
+
+# The public reason on an approval its reviewer gave up by joining the event's geolocators.
+JOINED_AS_GEOLOCATOR_REASON = "Joined the geolocators of this event"
 
 
 class GeolocatorCreditError(Exception):
@@ -202,13 +207,25 @@ def decline(db: Session, *, geo: Event, user: User) -> None:
 
 
 def revoke_approvals_on_join(db: Session, *, geo: Event, user: User) -> None:
-    """Revoke ``user``'s current approvals of ``geo``, reason "joined as geolocator".
+    """Revoke every unrevoked approval ``user`` gave ``geo``, with
+    :data:`JOINED_AS_GEOLOCATOR_REASON`: a geolocator cannot approve their own event.
 
-    A geolocator cannot approve their own event. Approvals do not exist yet: this is the one
-    place the approvals change fills, and :func:`accept` already calls it inside its
-    transaction.
+    Every version, not only the live one, since the reviewer is no longer independent of the
+    work. Staged in the caller's transaction.
     """
-    del db, geo, user
+    db.execute(
+        update(EventApproval)
+        .where(
+            EventApproval.event_id == geo.id,
+            EventApproval.reviewer_id == user.id,
+            EventApproval.revoked_at.is_(None),
+        )
+        .values(
+            revoked_at=datetime.now(UTC),
+            revoked_by_id=user.id,
+            revoke_reason=JOINED_AS_GEOLOCATOR_REASON,
+        )
+    )
 
 
 def remove(db: Session, *, geo: Event, actor: User, username: str) -> None:

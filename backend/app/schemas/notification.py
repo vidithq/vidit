@@ -20,7 +20,11 @@ class NotificationRead(BaseModel):
     """One feed row. ``actor``, ``event`` and ``organization`` are null on a
     kind that names none; ``read_at`` is null until the feed has shown the row.
     ``invite_pending`` is true on a ``co_geolocator_invite`` row whose
-    invitation still waits for the reader's answer."""
+    invitation still waits for the reader's answer. ``reapprove_version`` is
+    the live version a ``re_approve_requested`` row offers to approve, null
+    when the reader cannot approve it now. ``approved_version`` is then the
+    latest earlier version the reader's approval still stands on, the base of
+    the change list."""
 
     id: uuid.UUID
     kind: NotificationKind
@@ -30,6 +34,8 @@ class NotificationRead(BaseModel):
     organization: OrganizationRef | None
     read_at: datetime | None
     invite_pending: bool
+    reapprove_version: int | None
+    approved_version: int | None
 
 
 class NotificationUnreadCount(BaseModel):

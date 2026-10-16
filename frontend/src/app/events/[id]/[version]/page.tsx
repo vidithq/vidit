@@ -7,6 +7,7 @@ import type { EventDetail, EventVersion } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { eventVersionPath, eventVersion, parseVersionSegment } from "@/lib/events";
 import { skipBackRecord } from "@/lib/navigation";
+import { ApprovalsSection } from "@/components/event/ApprovalsSection";
 import { EventPageBody } from "@/components/event/EventPageBody";
 import { EventVersionBanner } from "@/components/event/EventVersionBanner";
 import { AuthorByline } from "@/components/ui/AuthorByline";
@@ -82,6 +83,7 @@ export default function EventVersionPage() {
           served. The version keeps its number and its place in the history.
         </EmptyState>
       )}
+      <ApprovalsSection event={geo} versionNo={number} live={false} />
     </PageShell>
   );
 }

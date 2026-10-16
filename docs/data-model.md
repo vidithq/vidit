@@ -49,6 +49,10 @@ flowchart LR
   the owner invites; the invitee accepts into event_geolocators`"]:::spec
   versions[("`**event_versions**
   the superseded state, as version_no moves on`")]:::store
+  approve["`**POST /events/{id}/approvals**
+  an analyst outside the credit attests one version`"]:::spec
+  approvals[("`**event_approvals**
+  current only on the live version`")]:::store
   reports[("`**content_reports**
   any viewer, signed in or not; a row names an event or a collection`")]:::store
   shelve["`**PUT /collections/{id}/events/{event_id}**
@@ -66,6 +70,7 @@ flowchart LR
   vouch --> credit
   geolocated --> invite --> credit
   version --> versions
+  geolocated --> approve --> approvals
   requested --> close
   detected --> close
   geolocated --> close
@@ -76,7 +81,7 @@ flowchart LR
   shelve --> shelves
 ```
 
-The three entries on the left are the three ways a row is born: a request and a direct submit come from [`POST /events/requests` and `POST /events`](api.md#post-events), and a machine detection comes from the [ingest engine](ingestion.md). The four statuses and the constraints that pin them are [`events`](#events). The four writes are `update_request`, `geolocate`, `save_version` and `close`, all in [`api.md`](api.md). Two of them correct a row rather than move it, and they differ on what the row is: `update_request` overwrites an open question, while `save_version` files what it supersedes, because a published row is a vouched claim. The tables on the right exist because a write happened: [`event_geolocators`](#event_geolocators) records who vouched, the owner and every analyst who accepted an invitation ([`event_geolocator_invites`](#event_geolocator_invites)), [`event_versions`](#event_versions) holds what a correction superseded, [`content_reports`](#content_reports) holds what a viewer flagged, and [`collections`](#collections) with [`collection_events`](#collection_events) holds the curated sets a credited analyst puts the row on.
+The three entries on the left are the three ways a row is born: a request and a direct submit come from [`POST /events/requests` and `POST /events`](api.md#post-events), and a machine detection comes from the [ingest engine](ingestion.md). The four statuses and the constraints that pin them are [`events`](#events). The four writes are `update_request`, `geolocate`, `save_version` and `close`, all in [`api.md`](api.md). Two of them correct a row rather than move it, and they differ on what the row is: `update_request` overwrites an open question, while `save_version` files what it supersedes, because a published row is a vouched claim. The tables on the right exist because a write happened: [`event_geolocators`](#event_geolocators) records who vouched, the owner and every analyst who accepted an invitation ([`event_geolocator_invites`](#event_geolocator_invites)), [`event_versions`](#event_versions) holds what a correction superseded, [`event_approvals`](#event_approvals) holds who attested which version, [`content_reports`](#content_reports) holds what a viewer flagged, and [`collections`](#collections) with [`collection_events`](#collection_events) holds the curated sets a credited analyst puts the row on.
 
 ## Schema overview
 
@@ -214,6 +219,19 @@ erDiagram
         UUID event_id FK
         UUID user_id FK "the invitee"
         TIMESTAMPTZ created_at
+    }
+
+    event_approvals {
+        UUID id PK
+        UUID event_id FK
+        INT version_no "the version attested"
+        UUID reviewer_id FK
+        VARCHAR verdict "approve"
+        TEXT note "nullable"
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ revoked_at "nullable"
+        UUID revoked_by_id FK "nullable"
+        TEXT revoke_reason "nullable, public"
     }
 
     event_source_links {
@@ -455,6 +473,9 @@ erDiagram
     users ||--o{ event_geolocators : "user_id"
     events ||--o{ event_geolocator_invites : "event_id"
     users ||--o{ event_geolocator_invites : "user_id"
+    events ||--o{ event_approvals : "event_id"
+    users ||--o{ event_approvals : "reviewer_id"
+    users |o--o{ event_approvals : "revoked_by_id"
     events ||--o{ event_source_links : "event_id"
     events ||--o{ event_versions : "event_id"
     users ||--o{ event_versions : "edited_by_id"
@@ -744,6 +765,31 @@ The service caps geolocators plus pending invitations at 10 per event (`MAX_EVEN
 
 ---
 
+### `event_approvals`
+
+An analyst's attestation that one version of a published event holds, written through [`/events/{id}/approvals`](api.md#approvals). A row is current while `version_no` equals `events.version_no` and `revoked_at` is NULL, so a new version ends it without a write and the row stays readable on the version it covered. Revocation stamps the row; nothing deletes it short of the event's or the reviewer's hard delete.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `UUID` | PK, default `uuid4()` |
+| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, NOT NULL |
+| `version_no` | `INTEGER` | NOT NULL. The live `events.version_no` when the approval was placed. |
+| `reviewer_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The analyst who approved. |
+| `verdict` | `VARCHAR(20)` | NOT NULL, default `'approve'`, CHECK in `('approve')` (constraint `ck_event_approvals_verdict_valid`). `ApprovalVerdict` in [`models/approval.py`](../backend/app/models/approval.py) lists the same values. |
+| `note` | `TEXT` | nullable. The reviewer's note; the API caps it at 280 characters. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
+| `revoked_at` | `TIMESTAMPTZ` | nullable. Set when the reviewer, a site admin, or a co-geolocator acceptance revokes the approval. |
+| `revoked_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. Who revoked it: the reviewer, or the site admin. |
+| `revoke_reason` | `TEXT` | nullable. The public reason. `ck_event_approvals_revoke_reason` sets it exactly when `revoked_at` is set. |
+
+`uq_event_approvals_event_version_reviewer` on `(event_id, version_no, reviewer_id)`: one review per analyst and version. Only the live version takes a new approval, so this also allows one current approval per analyst and event. A revoked row keeps its place, so its reviewer cannot approve that version again. The leading `(event_id, version_no)` serves the per-version read.
+
+**Indexes:**
+- `ix_event_approvals_reviewer_id` on `(reviewer_id)`. Backs the cascade when a reviewer's account is erased.
+- `ix_event_approvals_revoked_by_id`: partial index on `(revoked_by_id) WHERE revoked_by_id IS NOT NULL`. Backs the SET NULL when a revoker's account is erased.
+
+---
+
 ### `event_versions`
 
 One superseded version of a published event. Correcting a `geolocated` row must not silently rewrite the record, so the pre-edit state is filed here before the edit lands and `events.version_no` moves on. A version number is a public address, so a filed row is never removed and never renumbered while its event lives: nothing reuses a number, nothing reorders the history, and `/events/{id}/vN` means the same thing forever. Redaction is the one write a filed row takes (below), and the cascade with its event is the one delete.
@@ -857,8 +903,8 @@ One thing that happened to an analyst, shown in their feed at [`GET /notificatio
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The recipient. |
-| `kind` | `VARCHAR(40)` | NOT NULL, CHECK in `('request_fulfilled', 'new_follower', 'x_handle_request_approved', 'x_handle_request_declined', 'co_geolocator_invite', 'co_geolocator_removed', 'ownership_transferred', 'organization_invite', 'organization_invite_accepted', 'organization_admin_inherited')` (constraint `ck_notifications_kind_valid`). The kind registry `NOTIFICATION_KINDS` in [`models/notification.py`](../backend/app/models/notification.py) lists the same values with their per-channel defaults. |
-| `actor_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, nullable. Who acted: the fulfiller, the follower, the owner who invited or removed you, the inviting org-admin, or the analyst who accepted an organization invite. NULL on the X handle request outcomes, which name no admin, and on `ownership_transferred` and `organization_admin_inherited`, which must not name the erased analyst. |
+| `kind` | `VARCHAR(40)` | NOT NULL, CHECK in `('request_fulfilled', 'new_follower', 'x_handle_request_approved', 'x_handle_request_declined', 'co_geolocator_invite', 'co_geolocator_removed', 'ownership_transferred', 'organization_invite', 'organization_invite_accepted', 'organization_admin_inherited', 're_approve_requested', 'approval_received')` (constraint `ck_notifications_kind_valid`). The kind registry `NOTIFICATION_KINDS` in [`models/notification.py`](../backend/app/models/notification.py) lists the same values with their per-channel defaults. |
+| `actor_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, nullable. Who acted: the fulfiller, the follower, the owner who invited or removed you or saved a new version, the reviewer who approved, the inviting org-admin, or the analyst who accepted an organization invite. NULL on the X handle request outcomes, which name no admin, and on `ownership_transferred` and `organization_admin_inherited`, which must not name the erased analyst. |
 | `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, nullable. The event the row concerns; NULL for a kind that names none. |
 | `organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, nullable. The organization an `organization_*` row concerns. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()`. Orders the feed. |

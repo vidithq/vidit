@@ -44,6 +44,7 @@ from app.models.media import Media
 from app.models.tag import Tag
 from app.models.user import User
 from app.schemas.media import MediaRead
+from app.services import notifications
 from app.services.sanitize import extract_image_srcs
 
 # Version ceiling per event: a script re-posting the same edit would otherwise
@@ -211,6 +212,11 @@ def file_version(
     With it on, raises :class:`VersionLimitError` at
     :data:`MAX_VERSIONS_PER_EVENT` before anything is staged.
 
+    The new version ends every approval of the superseded one
+    (``models/approval.EventApproval`` is current only on the live version), so
+    each analyst whose approval stood is asked to review it again
+    (``re_approve_requested``).
+
     Staged, not committed: the caller commits it with its write. Call it before
     mutating any field, since the snapshot reads the live row.
     """
@@ -226,6 +232,9 @@ def file_version(
         snapshot=build_snapshot(geo) if snapshot is None else snapshot,
     )
     db.add(row)
+    notifications.notify_re_approve_requested(
+        db, event=geo, editor_id=edited_by.id, superseded_version=geo.version_no
+    )
     geo.version_no = geo.version_no + 1
     return row
 

@@ -489,6 +489,29 @@ def organization_admin_inherited_email(*, to: str, slug: str, name: str) -> Emai
     )
 
 
+def re_approve_requested_email(*, to: str, actor: str, event_id: str, event_title: str) -> Email:
+    return _notification_email(
+        to=to,
+        subject=f"{actor} saved a new version of a geolocation you approved",
+        blocks=[
+            f"{actor} saved a new version of “{event_title}”. Your approval covered the "
+            "version before it, so it no longer stands. See what changed and approve again."
+        ],
+        action=Action("Review the new version", event_link(event_id)),
+        setting="New version to approve by email",
+    )
+
+
+def approval_received_email(*, to: str, actor: str, event_id: str, event_title: str) -> Email:
+    return _notification_email(
+        to=to,
+        subject=f"{actor} approved your geolocation",
+        blocks=[f"{actor} approved the current version of “{event_title}”."],
+        action=Action("View the geolocation", event_link(event_id)),
+        setting="Approval received by email",
+    )
+
+
 def product_update_email(
     *,
     to: str,

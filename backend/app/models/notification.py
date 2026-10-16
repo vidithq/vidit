@@ -30,6 +30,8 @@ NotificationKind = Literal[
     "organization_invite",
     "organization_invite_accepted",
     "organization_admin_inherited",
+    "re_approve_requested",
+    "approval_received",
 ]
 
 # A delivery channel besides the in-app feed, which is always on.
@@ -51,6 +53,8 @@ NOTIFICATION_KINDS: dict[NotificationKind, dict[NotificationChannel, bool]] = {
     "organization_invite": {"email": True, "push": True},
     "organization_invite_accepted": {"email": False, "push": False},
     "organization_admin_inherited": {"email": True, "push": True},
+    "re_approve_requested": {"email": False, "push": False},
+    "approval_received": {"email": False, "push": False},
 }
 assert set(NOTIFICATION_KINDS) == set(get_args(NotificationKind))
 
@@ -102,7 +106,7 @@ class Notification(Base):
             "'x_handle_request_approved', 'x_handle_request_declined', "
             "'co_geolocator_invite', 'co_geolocator_removed', 'ownership_transferred', "
             "'organization_invite', 'organization_invite_accepted', "
-            "'organization_admin_inherited')",
+            "'organization_admin_inherited', 're_approve_requested', 'approval_received')",
             name="ck_notifications_kind_valid",
         ),
         # The feed walk, newest first per recipient.
