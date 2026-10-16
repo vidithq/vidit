@@ -299,11 +299,19 @@ export function EventFilterSections({
     [authorQuery, canSuggest],
     AUTHOR_SUGGEST_DEBOUNCE_MS,
   );
-  // Accordion open-state lives here so a re-render never resets it. Curated buckets open by default.
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    Conflict: true,
-    "Capture source": true,
-  });
+  // Accordion open-state lives here so a re-render never resets it. Every section starts collapsed
+  // except one holding an active value, so the reader sees what is applied.
+  const isActive: Record<string, boolean> = {
+    Status: values.statuses.length > 0,
+    Conflict: values.conflicts.length > 0,
+    "Capture source": values.captureSources.length > 0,
+    "Source media": values.mediaTypes.length > 0,
+    "Location guess": values.locationGuess.length > 0,
+    Tags: values.tags.length > 0,
+    Author: !!values.author.trim(),
+    ...Object.fromEntries(dateSections.map((s) => [s.title, s.active])),
+  };
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>(isActive);
   const toggleSection = (title: string) =>
     setOpenSections((s) => ({ ...s, [title]: !s[title] }));
 
@@ -333,7 +341,7 @@ export function EventFilterSections({
           title="Status"
           concept="status"
           summary={chipSummary(values.statuses.map(statusLabel))}
-          active={values.statuses.length > 0}
+          active={isActive.Status}
           open={!!openSections["Status"]}
           onToggle={() => toggleSection("Status")}
         >
@@ -354,7 +362,7 @@ export function EventFilterSections({
           title="Conflict"
           concept="conflict"
           summary={chipSummary(values.conflicts)}
-          active={values.conflicts.length > 0}
+          active={isActive.Conflict}
           open={!!openSections["Conflict"]}
           onToggle={() => toggleSection("Conflict")}
         >
@@ -371,7 +379,7 @@ export function EventFilterSections({
           title="Capture source"
           concept="capture_source"
           summary={chipSummary(values.captureSources)}
-          active={values.captureSources.length > 0}
+          active={isActive["Capture source"]}
           open={!!openSections["Capture source"]}
           onToggle={() => toggleSection("Capture source")}
         >
@@ -388,7 +396,7 @@ export function EventFilterSections({
           title="Source media"
           concept="source_media"
           summary={chipSummary(values.mediaTypes.map(capitalize))}
-          active={values.mediaTypes.length > 0}
+          active={isActive["Source media"]}
           open={!!openSections["Source media"]}
           onToggle={() => toggleSection("Source media")}
         >
@@ -404,7 +412,7 @@ export function EventFilterSections({
         <FilterSection
           title="Location guess"
           summary={chipSummary(values.locationGuess.map(locationGuessLabel))}
-          active={values.locationGuess.length > 0}
+          active={isActive["Location guess"]}
           open={!!openSections["Location guess"]}
           onToggle={() => toggleSection("Location guess")}
         >
@@ -422,7 +430,7 @@ export function EventFilterSections({
           title={section.title}
           concept={section.concept}
           summary={section.summary}
-          active={section.active}
+          active={isActive[section.title]}
           open={!!openSections[section.title]}
           onToggle={() => toggleSection(section.title)}
         >
@@ -434,7 +442,7 @@ export function EventFilterSections({
         <FilterSection
           title="Tags"
           summary={chipSummary(values.tags)}
-          active={values.tags.length > 0}
+          active={isActive.Tags}
           open={!!openSections["Tags"]}
           onToggle={() => toggleSection("Tags")}
         >
@@ -458,7 +466,7 @@ export function EventFilterSections({
         <FilterSection
           title="Author"
           summary={values.author.trim() || "Any"}
-          active={!!values.author.trim()}
+          active={isActive.Author}
           open={!!openSections["Author"]}
           onToggle={() => toggleSection("Author")}
         >
