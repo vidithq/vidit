@@ -136,6 +136,8 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/users/me/push-config` | 🔒 | The key a browser subscribes to push notifications with |
 | POST | `/users/me/push-subscriptions` | 🔒 | Register this browser for push notifications |
 | DELETE | `/users/me/push-subscriptions/{id}` | 🔒 | Stop push notifications to one of your devices |
+| GET | `/users/me/x-handle` | 🔒 | The X handle bound to your account, and your change request |
+| PUT | `/users/me/x-handle-request` | 🔒 | Ask an admin to bind a new X handle (replaces your earlier request) |
 | GET | `/users/{username}/events` | 🌐 | List an analyst's published geolocations |
 | GET | `/users/{username}/collections` | 🌐 | List an analyst's collections |
 | POST | `/users/{username}/follow` | 🔒 | Follow (idempotent; self-follow → 400) |
@@ -162,6 +164,9 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | PATCH | `/admin/collections/{id}/moderation` | 🛡️ | Withhold a collection from public view, or restore it (moves `hidden_at`) |
 | DELETE | `/admin/collections/{id}` | 🛡️ | Withhold a collection from public view (the takedown alias of the PATCH above) |
 | PATCH | `/admin/users/{id}/x-handle` | 🛡️ | Link / clear the bot-attribution X handle |
+| GET | `/admin/x-handle-requests` | 🛡️ | Pending X handle change requests, oldest first |
+| POST | `/admin/x-handle-requests/{id}/approve` | 🛡️ | Bind the requested handle and notify the analyst |
+| POST | `/admin/x-handle-requests/{id}/decline` | 🛡️ | Decline a request with a reason and notify the analyst |
 | GET | `/admin/reports` | 🛡️ | The moderation queue: event and collection reports, open ones first |
 | POST | `/admin/reports/{id}/resolve` | 🛡️ | Close one report with a verdict, applying it to what the report names |
 | PATCH | `/admin/events/{id}/moderation` | 🛡️ | Set an event's graphic flag / takedown directly, no report behind it |
@@ -224,6 +229,8 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `PATCH /users/me/preferences` | 60/min |
 | `GET /users/me/push-config` | 60/min |
 | `POST /users/me/push-subscriptions`, `DELETE /users/me/push-subscriptions/{id}` | 30/min |
+| `GET /users/me/x-handle` | 120/min |
+| `PUT /users/me/x-handle-request` | 10/hour |
 | **Notifications** | |
 | `GET /notifications`, `GET /notifications/unread-count` | 120/min |
 | `POST /notifications/read` | 60/min |
@@ -233,12 +240,13 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST /admin/invite-codes` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
 | `POST /admin/invite-codes/{id}/revoke` · `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `DELETE /admin/events/{id}` | 60/hour |
 | `POST /admin/reports/{id}/resolve` · `PATCH /admin/events/{id}/moderation` · `POST /admin/events/{id}/versions/{version_no}/redact` · `PATCH /admin/collections/{id}/moderation` · `DELETE /admin/collections/{id}` | 60/hour |
+| `POST /admin/x-handle-requests/{id}/approve` · `POST /admin/x-handle-requests/{id}/decline` | 60/hour |
 | `POST /admin/maintenance/reap-*` · `POST /admin/maintenance/send-completion-digests` | 30/hour |
 | `GET /admin/product-updates` | 120/min |
 | `POST /admin/product-updates/preview` | 60/hour |
 | `POST /admin/product-updates/test` · `POST /admin/product-updates` | 10/hour |
 
-The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list, `/admin/reports` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: both are HMAC-gated.
+The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list, `/admin/reports` list, `/admin/x-handle-requests` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: both are HMAC-gated.
 
 ### Per-user read quota
 
@@ -1754,7 +1762,7 @@ Your display and notification preferences. Each value is the one in effect: your
 | `display.palette` | `orange`, `blue`, `emerald`, `violet`, `rose` |
 | `display.theme` | `dark`, `light` |
 | `display.help_tooltips` | `true` shows the `?` field help |
-| `notifications[].kind` | `request_fulfilled`, `new_follower` |
+| `notifications[].kind` | `request_fulfilled`, `new_follower`, `x_handle_request_approved`, `x_handle_request_declined` |
 | `notifications[].channels` | `email`, `push` |
 
 ---
@@ -1850,6 +1858,94 @@ Stop push notifications to one of your devices.
 
 ---
 
+### `GET /users/me/x-handle` 🔒
+
+The X handle bound to your account, which the Vidit bot and the archive import use to credit posts to you, and your change request if you have one. Only an admin writes the bound handle.
+
+**Response 200:**
+```json
+{
+  "x_handle": "osint_hawk",
+  "request": {
+    "id": "8c0e…",
+    "x_handle": "new_hawk",
+    "reason": "I renamed my X account",
+    "status": "declined",
+    "decline_reason": "Post from the new handle first",
+    "created_at": "2026-10-01T10:00:00Z",
+    "decided_at": "2026-10-02T09:00:00Z"
+  }
+}
+```
+
+`x_handle` is `null` when no handle is bound. `request` is `null` when you have no request. `status` is `pending` or `declined`; `decline_reason` and `decided_at` are set exactly when it is `declined`. An approved request leaves no row: its handle is the bound one.
+
+---
+
+### `PUT /users/me/x-handle-request` 🔒
+
+Ask an admin to bind a new X handle to your account.
+
+```mermaid
+flowchart LR
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`an analyst endpoint`"]:::spec
+    l2["`an admin endpoint`"]:::shared
+    l3["`the one write path of the bound handle`"]:::core
+    l4[("`a stored value`")]:::store
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
+  end
+
+  put["`**PUT /users/me/x-handle-request**
+  replaces your earlier request`"]:::spec
+  req[("`**x_handle_requests**
+  one row per analyst`")]:::store
+  approve["`**POST …/approve**
+  deletes the request`"]:::shared
+  decline["`**POST …/decline**
+  the reason stays on the request`"]:::shared
+  write["`**set_user_x_handle**
+  conflict check, audit row`"]:::core
+  handle[("`**users.x_handle**`")]:::store
+  notes[("`**notifications**
+  x_handle_request_approved or _declined`")]:::store
+
+  put --> req
+  req --> approve
+  req --> decline
+  approve --> write
+  write --> handle
+  approve --> notes
+  decline --> notes
+```
+
+You hold at most one request. A new one replaces your earlier request, pending or declined, under a new `id`. An approval binds the handle through the same write path as [`PATCH /admin/users/{id}/x-handle`](#patch-adminusersidx-handle) and deletes the request. A decline keeps the request with the admin's reason, which [`GET /users/me/x-handle`](#get-usersmex-handle) returns until you file another one. Either decision writes a [notification](#notifications).
+
+The request does not check whether another account holds the handle: the admin's approval does, so the endpoint does not reveal who holds which handle.
+
+**Body:**
+```json
+{ "x_handle": "@new_hawk", "reason": "I renamed my X account" }
+```
+
+`x_handle` is normalized like [`PATCH /admin/users/{id}/x-handle`](#patch-adminusersidx-handle). `reason` is optional, at most 500 characters; a blank reason is stored as `null`.
+
+**Response 200:** your handle and the new request, in the shape of [`GET /users/me/x-handle`](#get-usersmex-handle).
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 409 `x_handle_unchanged` | The handle is already bound to your account |
+| 422 | A handle outside `^[a-z0-9_]{1,15}$` after normalization, a reason over 500 characters, or an unknown field |
+
+---
+
 ### `GET /users/{username}/events`
 
 An analyst's published geolocations: live rows with `status = "geolocated"` only, newest event date first. `total` counts the same set, and so does `geolocations_count` on [`GET /users/{username}`](#get-usersusername). Offset-paged; [Pagination](#pagination) gives the ordering and cap.
@@ -1924,6 +2020,8 @@ flowchart LR
   on a request: request_fulfilled to the analyst who opened it`"]:::spec
   follow["`**POST /users/{username}/follow**
   new_follower to the followed analyst, once per follower`"]:::spec
+  xhandle["`**POST /admin/x-handle-requests/{id}/approve** and **/decline**
+  x_handle_request_approved or _declined to the requester`"]:::spec
   rows[("`**notifications**
   written in the action's transaction`")]:::store
   visible["`**_visible_rows**
@@ -1943,6 +2041,7 @@ flowchart LR
 
   geolocate --> rows
   follow --> rows
+  xhandle --> rows
   rows --> visible
   visible --> feed
   visible --> count
@@ -1963,6 +2062,8 @@ When your push switch for the kind is on and you registered at least one device,
 |------|--------------|---------|---------|
 | `request_fulfilled` | Another analyst geolocates a request you opened | the fulfiller | the request |
 | `new_follower` | An analyst follows you for the first time | the follower | null |
+| `x_handle_request_approved` | An admin approves your [X handle request](#put-usersmex-handle-request) | null | null |
+| `x_handle_request_declined` | An admin declines your X handle request | null | null |
 
 ### `GET /notifications` 🔒
 
@@ -2269,6 +2370,57 @@ Link or clear the X handle the bot attributes mentions to. Registration also cop
 **Response 422:** value outside the handle alphabet.
 
 **Response 404:** unknown or soft-deleted user id.
+
+### `GET /admin/x-handle-requests` 🛡️
+
+Pending [X handle requests](#put-usersmex-handle-request) on live accounts, oldest first. Unpaged: an analyst holds at most one request.
+
+**Response 200:**
+```json
+[
+  {
+    "id": "8c0e…",
+    "user": { "id": "…", "username": "ana", "email": "ana@example.com", "is_admin": false, "x_handle": "osint_hawk", "created_at": "…" },
+    "x_handle": "new_hawk",
+    "reason": "I renamed my X account",
+    "created_at": "2026-10-01T10:00:00Z"
+  }
+]
+```
+
+`user` is the `AdminUserRead` of the requester, so `user.x_handle` is the handle the request replaces.
+
+### `POST /admin/x-handle-requests/{id}/approve` 🛡️
+
+Bind the requested handle to the requester through the write path of [`PATCH /admin/users/{id}/x-handle`](#patch-adminusersidx-handle), with its conflict check and its `x_handle_linked` audit row. In the same transaction, the request is deleted and the requester gets an `x_handle_request_approved` [notification](#notifications). A refused approval changes nothing and leaves the request pending.
+
+**Response 200:** the requester's updated `AdminUserRead`.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 `x_handle_request_not_found` | No pending request has that `id`: unknown, replaced by a newer request, or already decided |
+| 404 `user_not_found` | The requester is soft-deleted |
+| 409 `x_handle_conflict` | Another account holds the handle |
+
+### `POST /admin/x-handle-requests/{id}/decline` 🛡️
+
+Decline a request. The requester reads the reason in Settings and gets an `x_handle_request_declined` [notification](#notifications). Audited as `x_handle_request_declined`.
+
+**Body:**
+```json
+{ "reason": "Post from the new handle first" }
+```
+
+`reason` is required, at most 500 characters, and not blank.
+
+**Response 204:** no body.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 `x_handle_request_not_found` | No pending request has that `id` |
+| 422 | A missing, blank, or over-long reason |
 
 ### `GET /admin/reports` 🛡️
 

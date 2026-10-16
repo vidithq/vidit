@@ -34,6 +34,7 @@ test.describe("settings", () => {
     await mockApi(page);
     await page.goto("/settings");
 
+    await expect(page.getByText("@osint_hawk_2024")).toBeVisible();
     const updatePassword = page.getByRole("button", { name: "Update password" });
     await expectNarrowViewportLayout(page, updatePassword);
   });

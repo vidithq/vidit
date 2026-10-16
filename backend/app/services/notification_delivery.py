@@ -125,6 +125,8 @@ def _new_follower(n: Notification, to: str) -> email.Email:
 _EMAIL_BUILDERS: dict[NotificationKind, Callable[[Notification, str], email.Email]] = {
     "request_fulfilled": _request_fulfilled,
     "new_follower": _new_follower,
+    "x_handle_request_approved": lambda _n, to: email.x_handle_request_approved_email(to=to),
+    "x_handle_request_declined": lambda _n, to: email.x_handle_request_declined_email(to=to),
 }
 
 
@@ -170,9 +172,23 @@ def _new_follower_push(n: Notification) -> push.PushMessage:
     )
 
 
+_X_HANDLE_APPROVED_PUSH = push.PushMessage(
+    title="Your X handle change was approved",
+    body="Posts from the new handle now count as yours.",
+    path="/settings",
+)
+
+_X_HANDLE_DECLINED_PUSH = push.PushMessage(
+    title="Your X handle change was declined",
+    body="Open Settings to read why.",
+    path="/settings",
+)
+
 _PUSH_BUILDERS: dict[NotificationKind, Callable[[Notification], push.PushMessage]] = {
     "request_fulfilled": _request_fulfilled_push,
     "new_follower": _new_follower_push,
+    "x_handle_request_approved": lambda _n: _X_HANDLE_APPROVED_PUSH,
+    "x_handle_request_declined": lambda _n: _X_HANDLE_DECLINED_PUSH,
 }
 
 

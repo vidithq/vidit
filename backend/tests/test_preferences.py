@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
+from app.models.notification import NOTIFICATION_KINDS
 from app.models.user import User
 from app.models.user_preferences import UserPreferences
 from app.services.auth import hash_password
@@ -61,16 +62,8 @@ def test_get_without_a_row_returns_the_defaults(db, user):
     assert body["display_defaults"] == _DEFAULT_DISPLAY
     assert body["display_stored"] == _NOTHING_STORED
     assert body["notifications"] == [
-        {
-            "kind": "request_fulfilled",
-            "channels": {"email": True, "push": True},
-            "defaults": {"email": True, "push": True},
-        },
-        {
-            "kind": "new_follower",
-            "channels": {"email": False, "push": False},
-            "defaults": {"email": False, "push": False},
-        },
+        {"kind": kind, "channels": defaults, "defaults": defaults}
+        for kind, defaults in NOTIFICATION_KINDS.items()
     ]
     assert _stored(db, user) is None
 
@@ -160,7 +153,7 @@ def test_stale_stored_values_read_as_defaults(db, user):
     body = client.get(_PATH).json()
     assert body["display"] == {**_DEFAULT_DISPLAY, "theme": "light"}
     assert body["display_stored"] == {**_NOTHING_STORED, "theme": "light"}
-    assert [n["kind"] for n in body["notifications"]] == ["request_fulfilled", "new_follower"]
+    assert [n["kind"] for n in body["notifications"]] == list(NOTIFICATION_KINDS)
     assert body["notifications"][1]["channels"] == {"email": False, "push": False}
 
 
