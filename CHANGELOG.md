@@ -11,7 +11,6 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - A notification feed tells you when someone geolocates a request you opened or follows you, with an unread dot in the sidebar; Settings saves an email choice per kind, and theme, accent and help tooltips now follow your account across devices ([#562](https://github.com/vidithq/vidit/pull/562)).
 - Notifications switched on for email now reach your verified address, under a daily cap that keeps room for sign-up and password emails; every email uses one branded layout ([#566](https://github.com/vidithq/vidit/pull/566)).
 - Notifications can reach your browser or installed app as push notifications: enable a device in Settings and pick the kinds per channel; on iPhone and iPad, add Vidit to the Home Screen first ([#570](https://github.com/vidithq/vidit/pull/570)).
-- Analysts who opt in, at sign-up or in Settings, get one email per major release with a one-click unsubscribe; admins compose, preview, test and send it from the console, paced under its own daily cap.
 - Analysts who opt in, at sign-up or in Settings, get one email per major release with a one-click unsubscribe; admins compose, preview, test and send it from the console, paced under its own daily cap ([#571](https://github.com/vidithq/vidit/pull/571)).
 
 ### Fixed
