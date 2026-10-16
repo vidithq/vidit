@@ -16,9 +16,11 @@ import type {
   Organization,
   OrganizationInvite,
   OrganizationMember,
+  OrganizationMembership,
 } from "@/lib/organizations";
 import type { UserPreferences } from "@/lib/preferences";
 import type { PushConfig } from "@/lib/push";
+import type { PublicProfile, UserStats } from "@/lib/users";
 import type { OrganizationApprovalRequest } from "@/lib/approvalRequests";
 import type { XHandleState } from "@/lib/xHandle";
 import type {
@@ -390,6 +392,49 @@ export const ORGANIZATION_INVITES: OrganizationInvite[] = [
 export const NO_UNREAD: UnreadCount = { count: 0 };
 
 const ORGANIZATION_REF = { slug: ORGANIZATION_SLUG, name: ORGANIZATION.name, avatar_url: null };
+
+/** The signed-in analyst's profile as `GET /users/{username}` serves it. */
+export const ANALYST_PROFILE: PublicProfile = {
+  id: SIGNED_IN_USER.id,
+  username: SIGNED_IN_USER.username,
+  bio: SIGNED_IN_USER.bio,
+  avatar_url: null,
+  external_links: { x: "analyst", website: "https://example.org" },
+  followers_count: 1204,
+  following_count: 318,
+  geolocations_count: 12,
+  created_at: SIGNED_IN_USER.created_at,
+  is_following: false,
+};
+
+/** Org manager of one organization and member of five more: a row of logos long enough to wrap
+ * the identity line at 320px. */
+export const ANALYST_ORGANIZATIONS: OrganizationMembership[] = [
+  { organization: ORGANIZATION_REF, role: "manager", joined_at: "2025-03-01T09:00:00Z" },
+  ...["sahel-desk", "black-sea-watch", "geo-confirmed", "eastern-front", "rail-monitor"].map(
+    (slug) => ({
+      organization: { slug, name: `Organization ${slug}`, avatar_url: null },
+      role: "member" as const,
+      joined_at: "2025-05-01T09:00:00Z",
+    }),
+  ),
+];
+
+export const ANALYST_STATS: UserStats = {
+  total_events: 12,
+  geolocated_count: 12,
+  detected_count: 0,
+  media_count: 20,
+  top_conflicts: [{ name: "Russia-Ukraine", count: 12 }],
+  capture_sources: [{ name: "Drone", count: 8 }],
+  source_hosts: [{ name: "t.me", count: 12 }],
+  other_hosts_count: 0,
+  no_source_count: 0,
+  activity: Array.from({ length: 6 }, (_, i) => ({
+    period: `2025-0${i + 1}`,
+    count: i,
+  })),
+};
 
 const SECOND_REVIEWER = {
   id: "77777777-7777-4777-8777-777777777771",
