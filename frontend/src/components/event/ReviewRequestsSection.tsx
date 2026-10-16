@@ -29,9 +29,9 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 
 /**
- * The target's answer to an open review request outside the Approvals card: Decline. The
+ * The target's answer to an open review request outside the Approvals panel: Decline. The
  * notification row, the event page and the organization page render it; approving happens in
- * the event page's Approvals card, after reading the event.
+ * the event page's Approvals panel, after reading the event.
  */
 export function ReviewRequestDecline({
   eventId,
@@ -179,7 +179,7 @@ function RequestReviewForm({ eventId, onSent }: { eventId: string; onSent: () =>
 /**
  * Review requests on a published event. A geolocator sees the open requests and asks an analyst
  * or an organization to review the live version; an analyst asked, or an org manager of an
- * organization asked, sees the request and can decline it, or approve from the Approvals card.
+ * organization asked, sees the request and can decline it, or approve from the Approvals panel.
  * `refreshKey` changes when an approval elsewhere on the page may have resolved a request.
  */
 export function ReviewRequestsSection({
@@ -219,7 +219,7 @@ export function ReviewRequestsSection({
             {request.target_organization ? request.target_organization.name : "you"} to review
             this geolocation. Approve it
             {request.target_organization ? ` as ${request.target_organization.name}` : ""} in the
-            Approvals card, or decline.
+            Approvals panel, or decline.
           </p>
           <ReviewRequestDecline eventId={event.id} requestId={request.id} onAnswered={refetch} />
         </div>

@@ -5,7 +5,7 @@ import Link from "next/link";
 
 import { useCursorList } from "@/hooks/useCursorList";
 import { organizationApprovalsPath, type OrganizationApproval } from "@/lib/approvals";
-import { ApprovalRow } from "@/components/event/ApprovalsSection";
+import { ApprovalRow } from "@/components/event/Approvals";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";

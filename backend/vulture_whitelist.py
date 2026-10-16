@@ -82,6 +82,7 @@ member_count  # schemas/organization.py OrganizationRead
 viewer_role  # schemas/organization.py OrganizationRead
 viewer_invited  # schemas/organization.py OrganizationRead
 viewer_can_manage  # schemas/organization.py OrganizationRead
+viewer_can_approve  # schemas/approval.py ApprovalList
 display_defaults  # schemas/preferences.py UserPreferencesRead
 display_stored  # schemas/preferences.py UserPreferencesRead
 palette  # schemas/preferences.py, read through model_dump

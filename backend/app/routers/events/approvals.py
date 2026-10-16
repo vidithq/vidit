@@ -14,7 +14,7 @@ from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
 from app.routers._errors import raise_typed_error
 from app.routers.events._common import resolve_live_event, resolve_readable_event
-from app.schemas.approval import ApprovalCreate, ApprovalRead, ApprovalRevoke
+from app.schemas.approval import ApprovalCreate, ApprovalList, ApprovalRead, ApprovalRevoke
 from app.services import approvals
 from app.services.approvals import APPROVAL_ERROR_STATUS, ApprovalError
 
@@ -25,25 +25,32 @@ def _raise(exc: ApprovalError) -> NoReturn:
     raise_typed_error(exc, APPROVAL_ERROR_STATUS)
 
 
-@router.get("/{geolocation_id}/approvals", response_model=list[ApprovalRead])
+@router.get("/{geolocation_id}/approvals", response_model=ApprovalList)
 @authenticated_read_quota
 @limiter.limit("120/minute")
 def list_approvals(
     request: Request,
     geolocation_id: uuid.UUID,
     version_no: int | None = Query(
-        None, ge=1, description="Defaults to the live version unless reviewer is set"
+        None,
+        ge=1,
+        description="Defaults to the live version unless reviewer or all_versions is set",
     ),
     reviewer: str | None = Query(None, min_length=1, max_length=50),
+    all_versions: bool = Query(False, description="Every version's approvals, oldest first"),
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user_optional),
-) -> list[ApprovalRead]:
-    """The approvals of the event: one version's, or one analyst's across versions."""
+) -> ApprovalList:
+    """The approvals of the event: one version's, every version's, or one analyst's across
+    versions, and whether you may approve it."""
     geo = resolve_readable_event(db, geolocation_id, current_user)
-    if version_no is None and reviewer is None:
+    if version_no is None and reviewer is None and not all_versions:
         version_no = geo.version_no
     rows = approvals.list_approvals(db, geo=geo, version_no=version_no, reviewer=reviewer)
-    return [approvals.build_read(row, live_version=geo.version_no) for row in rows]
+    return ApprovalList(
+        items=[approvals.build_read(row, live_version=geo.version_no) for row in rows],
+        viewer_can_approve=approvals.may_approve(db, geo=geo, user=current_user),
+    )
 
 
 @router.post(

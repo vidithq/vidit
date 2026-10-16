@@ -70,7 +70,10 @@ const ROUTES: [RegExp, unknown][] = [
   [/^\/tags$/, CURATED_TAGS],
   [/^\/conflicts$/, CONFLICTS],
   [new RegExp(`^/events/${EVENT_ID}$`), EVENT],
-  [new RegExp(`^/events/${EVENT_ID}/approvals$`), EVENT_APPROVALS],
+  [
+    new RegExp(`^/events/${EVENT_ID}/approvals$`),
+    { items: EVENT_APPROVALS, viewer_can_approve: false },
+  ],
   [
     new RegExp(`^/events/${SECOND_COLLECTED_EVENT_ID}$`),
     SECOND_COLLECTED_EVENT_DETAIL,

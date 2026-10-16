@@ -6,6 +6,7 @@ import type { OrganizationRef } from "./organizations";
 import type { EventDetail, EventVersion } from "@/types";
 
 export type Approval = components["schemas"]["ApprovalRead"];
+export type ApprovalList = components["schemas"]["ApprovalList"];
 export type OrganizationApproval = components["schemas"]["OrganizationApprovalRead"];
 type Author = components["schemas"]["AuthorRef"];
 type Revoker = NonNullable<Approval["revoked_as"]>;
@@ -17,6 +18,11 @@ export const APPROVAL_NOTE_MAX_LEN = 280;
 export function approvalsPath(eventId: string, versionNo?: number): string {
   const base = `/events/${eventId}/approvals`;
   return versionNo === undefined ? base : `${base}?version_no=${versionNo}`;
+}
+
+/** The reviews of every version of an event, by version then oldest first. */
+export function allApprovalsPath(eventId: string): string {
+  return `${approvalsPath(eventId)}?all_versions=true`;
 }
 
 /** The approvals placed in an organization's name, newest first (cursor-paged). */
@@ -35,11 +41,6 @@ const REVOKED_BY: Record<Revoker, string> = {
 /** The public line's lead for a revoked approval: who revoked it, by role, never by name. */
 export function revokedByLabel(approval: Approval): string {
   return approval.revoked_as ? REVOKED_BY[approval.revoked_as] : "Revoked";
-}
-
-/** One analyst's own reviews of an event across its versions, oldest version first. */
-export function reviewerApprovalsPath(eventId: string, username: string): string {
-  return `/events/${eventId}/approvals?reviewer=${encodeURIComponent(username)}`;
 }
 
 /** The latest version below `liveVersion` that one of `rows` still stands on, or null.

@@ -79,7 +79,17 @@ def _listed(geo: Event, version_no: int | None = None) -> list[dict]:
     query = "" if version_no is None else f"?version_no={version_no}"
     response = client.get(f"{_EVENTS}/{geo.id}/approvals{query}")
     assert response.status_code == 200, response.text
-    return response.json()
+    return response.json()["items"]
+
+
+def _may_approve(geo: Event, user: User | None) -> bool:
+    if user is None:
+        client.cookies.clear()
+        response = client.get(f"{_EVENTS}/{geo.id}/approvals")
+    else:
+        response = client.get(f"{_EVENTS}/{geo.id}/approvals", headers=login_as(client, user))
+    assert response.status_code == 200, response.text
+    return response.json()["viewer_can_approve"]
 
 
 def _kinds(db, user: User) -> list[tuple[str, uuid.UUID | None, uuid.UUID | None]]:
@@ -129,6 +139,26 @@ def test_geolocators_cannot_approve(db, author, second_user):
     assert _listed(geo) == []
 
 
+def test_the_list_says_whether_the_caller_may_approve(db, author, second_user, make_user):
+    geo = _published(db, author)
+    assert _may_approve(geo, second_user) is True
+    assert _may_approve(geo, author) is False
+    assert _may_approve(geo, None) is False
+
+    former = make_user()
+    db.add(EventGeolocator(event_id=geo.id, user_id=former.id))
+    db.commit()
+    assert _may_approve(geo, former) is False
+    left = client.delete(
+        f"{_EVENTS}/{geo.id}/geolocators/{former.username}", headers=login_as(client, former)
+    )
+    assert left.status_code == 204, left.text
+    assert _may_approve(geo, former) is False
+
+    assert _approve(geo, second_user).status_code == 201
+    assert _may_approve(geo, second_user) is True
+
+
 def test_approving_needs_a_session(db, author):
     geo = _published(db, author)
     client.cookies.clear()
@@ -166,9 +196,8 @@ def test_a_closed_event_takes_no_approval_and_keeps_its_own(db, author, second_u
 def test_the_list_is_capped(db, author, make_user, monkeypatch):
     monkeypatch.setattr(approvals, "MAX_APPROVALS_LISTED", 2)
     geo = _published(db, author)
-    for _ in range(3):
-        assert _approve(geo, make_user()).status_code == 201
-    assert len(_listed(geo)) == 2
+    placed = [_approve(geo, make_user()).json()["id"] for _ in range(3)]
+    assert [a["id"] for a in _listed(geo)] == placed[1:]
 
 
 def test_one_review_per_analyst_and_version(db, author, second_user):
@@ -223,8 +252,16 @@ def test_a_new_version_resets_approvals_and_asks_reviewers_again(
     assert [a["current"] for a in _listed(geo)] == [True]
 
     client.cookies.clear()
-    mine = client.get(f"{_EVENTS}/{geo.id}/approvals?reviewer={second_user.username}").json()
+    mine = client.get(f"{_EVENTS}/{geo.id}/approvals?reviewer={second_user.username}").json()[
+        "items"
+    ]
     assert [(a["version_no"], a["current"]) for a in mine] == [(1, False), (2, True)]
+    every = client.get(f"{_EVENTS}/{geo.id}/approvals?all_versions=true").json()["items"]
+    assert [(a["id"], a["version_no"]) for a in every] == [
+        (kept["id"], 1),
+        (revoked["id"], 1),
+        (mine[1]["id"], 2),
+    ]
 
 
 def test_an_archive_only_save_resets_approvals_too(

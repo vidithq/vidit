@@ -1,8 +1,25 @@
-import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { render, screen, fireEvent, within } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useEventActions, type ActionSurface } from "./useEventActions";
+import type { Approval } from "@/lib/approvals";
 import type { BeforeClosedStatus, EventDetail, EventStatus } from "@/types";
+
+const api = vi.hoisted(() => ({ approvals: [] as unknown[], apiFetch: vi.fn() }));
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
+  apiFetch: api.apiFetch,
+}));
+beforeEach(() => {
+  api.approvals = [];
+  api.apiFetch.mockImplementation((path: string) =>
+    Promise.resolve(
+      path === "/events/e1/approvals?all_versions=true"
+        ? { items: api.approvals, viewer_can_approve: true }
+        : [],
+    ),
+  );
+});
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
@@ -309,5 +326,75 @@ describe("utilities are the detail pages' tier", () => {
       expect(screen.queryByRole("button", { name: "Copy link" })).toBeNull();
       unmount();
     }
+  });
+});
+
+const stamp = (id: string, username: string, over: Partial<Approval> = {}): Approval => ({
+  id,
+  version_no: 1,
+  verdict: "approve",
+  reviewer: { id: `r-${id}`, username },
+  note: null,
+  created_at: "2026-10-15T09:00:00Z",
+  current: true,
+  revoked_at: null,
+  revoke_reason: null,
+  revoked_as: null,
+  organization: null,
+  ...over,
+});
+
+describe("approvals", () => {
+  // The stamps sit at the top right, under the row; the panel stays shut until asked for.
+  it("stamps the current approvals under the row and keeps the panel closed", async () => {
+    api.approvals = [
+      stamp("a1", "maya"),
+      stamp("a2", "bo", {
+        organization: { slug: "geo-collective", name: "Geo Collective", avatar_url: null },
+      }),
+      stamp("a3", "cy", { current: false, revoked_at: "2026-10-16T09:00:00Z" }),
+    ];
+    render(<Harness status="geolocated" surface="event" viewer="visitor" />);
+
+    const stamps = await screen.findByRole("list", { name: "Approved by" });
+    expect(within(stamps).getByRole("button", { name: "Approved by maya" })).toBeInTheDocument();
+    expect(
+      within(stamps).getByRole("button", { name: "Approved by Geo Collective" }),
+    ).toBeInTheDocument();
+    expect(within(stamps).queryByRole("button", { name: "Approved by cy" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Approvals" })).toBeNull();
+  });
+
+  it("opens the Approvals panel from the header trigger and from the overflow bubble", async () => {
+    api.approvals = Array.from({ length: 7 }, (_, i) => stamp(`a${i}`, `r${i}`));
+    render(<Harness status="geolocated" surface="event" viewer="visitor" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Show 2 more approvals" }));
+    expect(screen.getByRole("heading", { name: "Approvals" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Version 1, current" })).toBeInTheDocument();
+
+    const trigger = screen.getByRole("button", { name: "Approvals" });
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(trigger);
+    expect(screen.queryByRole("heading", { name: "Approvals" })).toBeNull();
+  });
+
+  it("stamps nothing while no approval stands", async () => {
+    render(<Harness status="geolocated" surface="event" viewer="visitor" />);
+    expect(await screen.findByRole("button", { name: "Approvals" })).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Approved by" })).toBeNull();
+  });
+
+  it.each<[ActionSurface, EventStatus]>([
+    ["request", "geolocated"],
+    ["panel", "geolocated"],
+    ["event", "requested"],
+  ])("carries no approvals on the %s surface of a %s row", (surface, status) => {
+    render(<Harness status={status} surface={surface} viewer="visitor" />);
+    expect(screen.queryByRole("button", { name: "Approvals" })).toBeNull();
+    expect(api.apiFetch).not.toHaveBeenCalledWith(
+      "/events/e1/approvals?all_versions=true",
+      expect.anything(),
+    );
   });
 });

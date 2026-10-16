@@ -114,7 +114,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/events/{id}/geolocator-invites/accept` | 🔒 | Accept your invitation and join the event's geolocators |
 | POST | `/events/{id}/geolocator-invites/decline` | 🔒 | Decline your invitation |
 | DELETE | `/events/{id}/geolocators/{username}` | 🔒 | Remove a co-geolocator (owner), or leave as one |
-| GET | `/events/{id}/approvals` | 🌐 | The approvals of one version (the live one by default), or one analyst's across versions |
+| GET | `/events/{id}/approvals` | 🌐 | The approvals of one version (the live one by default), of every version (`all_versions=true`), or one analyst's across versions |
 | POST | `/events/{id}/approvals` | 🔒 | Approve the live version of a published event you are not credited on, as yourself or for an organization you manage |
 | POST | `/events/{id}/approvals/{approval_id}/revoke` | 🔒 | Revoke an approval with a public reason: your own, your organization's as its org manager, or any as a site admin |
 | GET | `/events/{id}/review-requests` | 🔒 | Open review requests: all for the event's geolocators, yours and your organizations' otherwise |
@@ -1518,16 +1518,25 @@ Every write locks the event row first, so an approval, a revocation and a new ve
 
 ### `GET /events/{id}/approvals`
 
-The approvals of the event, revoked ones included, ordered by version and then oldest first. At most 500 approvals are returned (`MAX_APPROVALS_LISTED` in [`services/approvals.py`](../backend/app/services/approvals.py)); filter by `version_no` or `reviewer` to read past it. An analyst's approval whose reviewer is soft-deleted is left out. An organization's approval stays whatever became of the member who placed it, with `reviewer` set to `null` once that account is soft-deleted or erased. Visibility as [`GET /events/{id}`](#get-eventsid).
+The approvals of the event, revoked ones included, ordered by version and then oldest first. At most 500 approvals are returned, the newest ones, so a read of every version keeps the live version's (`MAX_APPROVALS_LISTED` in [`services/approvals.py`](../backend/app/services/approvals.py)); filter by `version_no` or `reviewer` to read past it. An analyst's approval whose reviewer is soft-deleted is left out. An organization's approval stays whatever became of the member who placed it, with `reviewer` set to `null` once that account is soft-deleted or erased. Visibility as [`GET /events/{id}`](#get-eventsid).
 
 **Query params:**
 
 | Param | Meaning |
 |---|---|
-| `version_no` | Keep one version. Omitted without `reviewer`, it is the live version. |
-| `reviewer` | Keep one analyst's own approvals, by username, 1 to 50 characters, without the ones they placed for an organization. Without `version_no`, every version is listed: the Approvals card reads your own this way to find the version you last approved. |
+| `version_no` | Keep one version. Omitted without `reviewer` or `all_versions`, it is the live version. |
+| `all_versions` | `true` lists every version's approvals. The event page reads the list this way for its approval stamps and its Approvals panel. |
+| `reviewer` | Keep one analyst's own approvals, by username, 1 to 50 characters, without the ones they placed for an organization. Without `version_no`, every version is listed. |
 
-**Response 200:** a list of approval shapes.
+**Response 200 (`ApprovalList`):**
+```json
+{ "items": [ { "id": "uuid", "version_no": 2, "...": "an approval shape" } ], "viewer_can_approve": true }
+```
+
+| Field | Meaning |
+|---|---|
+| `items` | The approval shapes |
+| `viewer_can_approve` | `true` when you are signed in, the event is published, and you never held credit on it, so you may approve it as yourself or for an organization you manage. `false` for an anonymous caller, an unpublished event, and a current or former geolocator. Whether you already reviewed the live version reads from `items`. |
 
 **Errors:**
 | Code | Case |
@@ -2637,7 +2646,7 @@ Your notifications, newest first. Cursor-paged; [Pagination](#pagination) gives 
 
 `reapprove_version` is set on a `re_approve_requested` row, and on a `review_request_received` row whose request is open, when you can approve the event now: it is `geolocated`, you are not one of its current or former geolocators, and you have not reviewed its live version. On a row that names an organization, the approval is the organization's: you must still be its org manager, and its approval of the live version must not stand. It holds the live version number. The feed page offers no approve control: approving happens on the event page with [`POST /events/{id}/approvals`](#post-eventsidapprovals). It is `null` on every other row.
 
-`approved_version` is set beside `reapprove_version` on a `re_approve_requested` row: the latest earlier version your unrevoked approval stands on, or the organization's on a row that names one, or `null` when none does. The event page's Approvals card lists the fields that changed between that version and the live event.
+`approved_version` is set beside `reapprove_version` on a `re_approve_requested` row: the latest earlier version your unrevoked approval stands on, or the organization's on a row that names one, or `null` when none does. The event page's Approvals panel lists the fields that changed between that version and the live event.
 
 `review_request_id` is the open [review request](#review-requests) behind the newest `review_request_received` row of its event, requester and organization, addressed to you or to the organization the row names, which the feed page's decline control posts to [`POST /events/{id}/review-requests/{request_id}/decline`](#post-eventsidreview-requestsrequest_iddecline). It is `null` once the request is resolved, and on every other row.
 

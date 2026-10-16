@@ -4,7 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 import { eventDetail } from "@/test/eventDetail";
 import { useEventActions } from "./useEventActions";
 
-const api = vi.hoisted(() => ({ apiFetch: vi.fn() }));
+// The approvals read the event page makes stays in flight; these tests read the invitation only.
+const api = vi.hoisted(() => ({ apiFetch: vi.fn(() => new Promise(() => {})) }));
 vi.mock("@/lib/api", () => ({
   apiFetch: api.apiFetch,
   apiFetchPage: vi.fn(),

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   Archive,
@@ -61,6 +62,7 @@ import { ToggleRow } from "@/components/ui/ToggleRow";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Avatar } from "@/components/ui/Avatar";
 import { AuthorByline } from "@/components/ui/AuthorByline";
+import { AvatarStack } from "@/components/ui/AvatarStack";
 import { organizationByline } from "@/lib/organizations";
 import { Dot } from "@/components/ui/Dot";
 import { GraphicContentGate } from "@/components/ui/GraphicContentGate";
@@ -91,6 +93,7 @@ import {
   HOVER_REVEAL,
   ARMED_RING,
   WARNING_CALLOUT,
+  TOOLTIP_SURFACE,
 } from "@/components/ui/styles";
 import { Button, buttonClasses, DANGER_CONFIRM } from "@/components/ui/Button";
 import { CoordinateActions } from "@/components/event/CoordinateActions";
@@ -426,6 +429,12 @@ export default function PalettePage() {
             <div className={`rounded-md px-4 py-3 text-sm ${WARNING_CALLOUT}`}>
               Heads up, check this before submitting.
             </div>
+          </Item>
+
+          <Item name="TOOLTIP_SURFACE" usage="The bubble of an anchored popover (usePinnedPopover): the FieldHelp explanation and the AvatarStack card. Colour only; callers add rounded-md, padding and text size.">
+            <span className={`inline-block rounded-md px-2 py-1 text-xs ${TOOLTIP_SURFACE}`}>
+              maya
+            </span>
           </Item>
         </section>
 
@@ -773,7 +782,7 @@ export default function PalettePage() {
 
           <Item
             name="<FieldHelp>"
-            usage="The one hover text in the app: a `?` on a label, a section heading, a filter bar or an icon group, whose bubble carries the concept's sentence from the lib/fieldHelp.ts registry (a native title attribute is never used). Registry-only: every instance of a concept reads the same words, so the `?` takes the concept key and nothing else."
+            usage="The one explanation hover text in the app (the AvatarStack card describes an approval, never a concept): a `?` on a label, a section heading, a filter bar or an icon group, whose bubble carries the concept's sentence from the lib/fieldHelp.ts registry (a native title attribute is never used). Registry-only: every instance of a concept reads the same words, so the `?` takes the concept key and nothing else."
           >
             <span className="inline-flex items-center gap-1 text-sm text-neutral-300">
               Coordinates <FieldHelp concept="coordinates" />
@@ -800,7 +809,7 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Content" />
 
-          <Item name="<Avatar>" usage="The profile-picture circle: profile header (icon), feed card author circle via EntityCard + user search results (initial), sidebar identity row (icon, in the rail's 18px glyph box). `size` is the only dimension a caller sets: the icon fallback scales with the circle. A picture that fails to load falls back to the same circle (an avatar_url names a server-minted object on the media host, which a replace or remove deletes and a CDN edge can answer for before a new one propagates), and a new picture retries. iconClassName colours the icon fallback (the sidebar passes text-current so it tracks hover + the active accent); decorative drops the alt text where the host already names itself. Renders a <div>; as=&quot;span&quot; for phrasing-content hosts (the AuthorByline's avatar variant, the sidebar row's badge anchor).">
+          <Item name="<Avatar>" usage="The profile-picture circle: profile header (icon), feed card author circle via EntityCard + user search results (initial), sidebar identity row (icon, in the rail's 18px glyph box). `size` is the only dimension a caller sets: the icon fallback scales with the circle. A picture that fails to load falls back to the same circle (an avatar_url names a server-minted object on the media host, which a replace or remove deletes and a CDN edge can answer for before a new one propagates), and a new picture retries. iconClassName colours the icon fallback (the sidebar passes text-current so it tracks hover + the active accent); decorative drops the alt text where the host already names itself. shape=&quot;square&quot; rounds the corners instead, for an organization beside analysts (AvatarStack). Renders a <div>; as=&quot;span&quot; for phrasing-content hosts (the AuthorByline's avatar variant, the sidebar row's badge anchor).">
             <Variant label='fallback="icon" (profile header)'>
               <Avatar username="demo" size="w-11 h-11" fallback="icon" />
             </Variant>
@@ -809,6 +818,9 @@ export default function PalettePage() {
             </Variant>
             <Variant label='fallback="initial"'>
               <Avatar username="ana-demo" size="size-10" />
+            </Variant>
+            <Variant label='shape="square" (an organization)'>
+              <Avatar username="Open Source Watch" size="size-10" shape="square" />
             </Variant>
             <Variant label="src that fails to load (falls back)">
               <Avatar
@@ -828,6 +840,38 @@ export default function PalettePage() {
                   decorative
                 />
               </span>
+            </Variant>
+          </Item>
+
+          <Item name="<AvatarStack>" usage="The approval stamps under the event page's action row: an overlapping row of 28px pictures, oldest first. An organization (variant=organization) takes the rounded square, an analyst the circle; each picture is a button with its own accessible name (label, such as Approved by maya). Hover or focus opens the item's renderCard in a TOOLTIP_SURFACE card (usePinnedPopover); a click or a tap pins it and moves focus to its first link. Escape, or tabbing past either end of the card, closes it and returns focus to the row; the card holds while focus is inside it. The card carries the way on (the event page's card: picture, name, Version N · date, the note, on behalf of an organization, View profile or View organization). At most max (5 by default) show; the rest fold into a +N bubble, a button when onOverflow is set (the event page opens its Approvals panel) and plain text otherwise. Renders nothing for an empty list.">
+            <Variant label="analysts and an organization, max=3 with onOverflow (+N opens the panel)">
+              <AvatarStack
+                label="Approved by"
+                max={3}
+                onOverflow={() => {}}
+                overflowLabel={(hidden) => `Show ${hidden} more approvals`}
+                items={[
+                  { name: "maya", variant: "analyst" as const },
+                  { name: "Open Source Watch", variant: "organization" as const },
+                  { name: "bo", variant: "analyst" as const },
+                  { name: "cy", variant: "analyst" as const },
+                  { name: "dee", variant: "analyst" as const },
+                ].map(({ name, variant }) => ({
+                  key: name,
+                  name,
+                  variant,
+                  label: `Approved by ${name}`,
+                  renderCard: () => (
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-neutral-100">{name}</p>
+                      <p className="text-neutral-500">Version 2 · 14 Mar 2026</p>
+                      <Link href="/palette" className={TEXT_LINK}>
+                        {variant === "organization" ? "View organization" : "View profile"}
+                      </Link>
+                    </div>
+                  ),
+                }))}
+              />
             </Variant>
           </Item>
 

@@ -16,13 +16,13 @@ import {
  * clip it: the placement effect measures it, places it under the anchor, flips above on bottom
  * overflow, clamps left/right, and keeps it hidden until measured. Callers spread
  * `wrapperProps` / `anchorProps` / `popoverProps` on their own markup. */
-export function usePinnedPopover() {
+export function usePinnedPopover<Popover extends HTMLElement = HTMLSpanElement>() {
   const [pinned, setPinned] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
   const wrapperRef = useRef<HTMLSpanElement>(null);
   const anchorRef = useRef<HTMLButtonElement>(null);
-  const popoverRef = useRef<HTMLSpanElement>(null);
+  const popoverRef = useRef<Popover>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const open = pinned || hovered;

@@ -5,7 +5,8 @@ import { User } from "lucide-react";
 
 // User avatar circle: the image, or a fallback (a neutral icon or the username
 // initial). A `<div>` by default; pass `as="span"` inside phrasing content
-// (`AuthorByline`), where a block child is invalid nesting.
+// (`AuthorByline`), where a block child is invalid nesting. `shape="square"`
+// rounds the corners instead, for an organization beside analysts.
 export function Avatar({
   src,
   username,
@@ -14,6 +15,7 @@ export function Avatar({
   as: Tag = "div",
   decorative = false,
   iconClassName = "text-neutral-500",
+  shape = "circle",
 }: {
   src?: string | null;
   username: string;
@@ -26,6 +28,7 @@ export function Avatar({
   decorative?: boolean;
   /** Colour for the icon fallback (`text-current` to follow the host). */
   iconClassName?: string;
+  shape?: "circle" | "square";
 }) {
   // An `avatar_url` can 404 (the object is deleted on replace, and a CDN edge
   // can lag a new one). Track the failed src, not a flag, so a new picture
@@ -35,7 +38,7 @@ export function Avatar({
 
   return (
     <Tag
-      className={`${size} rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center overflow-hidden shrink-0`}
+      className={`${size} ${shape === "square" ? "rounded-md" : "rounded-full"} bg-neutral-800 border border-neutral-700 flex items-center justify-center overflow-hidden shrink-0`}
     >
       {showImage ? (
         // eslint-disable-next-line @next/next/no-img-element

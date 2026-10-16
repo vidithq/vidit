@@ -72,6 +72,16 @@ class ApprovalRead(BaseModel):
     revoked_as: ApprovalRevoker | None
 
 
+class ApprovalList(BaseModel):
+    """``GET /events/{id}/approvals``: the reviews, and whether the caller may approve the
+    event at all. ``viewer_can_approve`` is false for an anonymous caller, an event that is not
+    published, and an analyst who holds or held credit on it; whether the caller already
+    reviewed the live version reads from ``items``."""
+
+    items: list[ApprovalRead]
+    viewer_can_approve: bool
+
+
 class OrganizationApprovalRead(BaseModel):
     """One approval an org manager placed in an organization's name, with the event it covers,
     for ``GET /organizations/{slug}/approvals``."""
