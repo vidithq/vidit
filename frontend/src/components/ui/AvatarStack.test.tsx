@@ -83,4 +83,32 @@ describe("<AvatarStack>", () => {
     expect(screen.getAllByRole("button")).toHaveLength(2);
     expect(screen.getByText("+1")).toBeInTheDocument();
   });
+
+  it("makes an item with href a link whose card is a tooltip", () => {
+    render(
+      <AvatarStack
+        label="Organizations"
+        items={[
+          {
+            key: "osw",
+            name: "Open Source Watch",
+            variant: "organization",
+            label: "Member of Open Source Watch",
+            href: "/organizations/osw",
+            renderCard: () => "Open Source Watch",
+          },
+        ]}
+      />,
+    );
+    const logo = screen.getByRole("link", { name: "Member of Open Source Watch" });
+    expect(logo).toHaveAttribute("href", "/organizations/osw");
+    expect(screen.queryByRole("button")).toBeNull();
+
+    fireEvent.focus(logo);
+    const tip = screen.getByRole("tooltip");
+    expect(tip).toHaveTextContent("Open Source Watch");
+    expect(logo).toHaveAttribute("aria-describedby", tip.id);
+    fireEvent.blur(logo);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
 });

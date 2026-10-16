@@ -5,6 +5,7 @@ import { Pencil } from "lucide-react";
 
 import { formatDate } from "@/lib/format";
 import { splitLinks } from "@/lib/outbound";
+import type { OrganizationMembership } from "@/lib/organizations";
 import type { PublicProfile } from "@/lib/users";
 import type { ExternalLinks } from "@/types";
 import { Avatar } from "@/components/ui/Avatar";
@@ -15,6 +16,7 @@ import { OutboundLink } from "@/components/ui/OutboundLink";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { ACCEPTED_IMAGE_MIME } from "@/lib/mediaTypes";
 import { LinkedAccountsLine } from "./LinkedAccounts";
+import { ProfileOrganizations } from "./ProfileOrganizations";
 import type { ProfileEditState } from "./useProfileEdit";
 
 /** The page title: avatar and name, the analyst's handle or the organization's name (H1;
@@ -55,9 +57,16 @@ export function ProfileTitle({ name, edit }: { name: string; edit: ProfileEditSt
  *
  * The metadata is the followers / following / member-since line, secondary text rather than tiles
  * (the work figures live in the Insights card). Zero values print. Each segment holds together so
- * the row wraps between segments at 375 px.
+ * the row wraps between segments at 375 px. The analyst's organizations close the line as logos,
+ * and an analyst in none shows no segment for them.
  */
-export function ProfileIdentity({ profile }: { profile: PublicProfile }) {
+export function ProfileIdentity({
+  profile,
+  organizations,
+}: {
+  profile: PublicProfile;
+  organizations: OrganizationMembership[] | null;
+}) {
   return (
     <IdentityLines
       bio={profile.bio}
@@ -65,6 +74,9 @@ export function ProfileIdentity({ profile }: { profile: PublicProfile }) {
         `${profile.followers_count} follower${profile.followers_count === 1 ? "" : "s"}`,
         `${profile.following_count} following`,
         `Member since ${formatDate(profile.created_at)}`,
+        ...(organizations?.length
+          ? [<ProfileOrganizations key="organizations" memberships={organizations} />]
+          : []),
       ]}
     />
   );
@@ -72,7 +84,7 @@ export function ProfileIdentity({ profile }: { profile: PublicProfile }) {
 
 /** The bio, then the metadata segments joined by middots: the identity block of an analyst's
  * profile and of an organization's page. */
-export function IdentityLines({ bio: rawBio, segments }: { bio: string | null; segments: string[] }) {
+export function IdentityLines({ bio: rawBio, segments }: { bio: string | null; segments: ReactNode[] }) {
   const bio = rawBio?.trim() || null;
 
   return (
@@ -90,9 +102,9 @@ export function IdentityLines({ bio: rawBio, segments }: { bio: string | null; s
           )}
         </p>
       )}
-      <p className="flex flex-wrap items-center text-xs text-neutral-500">
+      <div className="flex flex-wrap items-center text-xs text-neutral-500">
         {segments.map((segment, i) => (
-          <span key={segment} className="whitespace-nowrap">
+          <span key={i} className="flex items-center whitespace-nowrap">
             {i > 0 && (
               <span aria-hidden="true" className="px-1.5 text-neutral-700">
                 ·
@@ -101,7 +113,7 @@ export function IdentityLines({ bio: rawBio, segments }: { bio: string | null; s
             {segment}
           </span>
         ))}
-      </p>
+      </div>
     </div>
   );
 }

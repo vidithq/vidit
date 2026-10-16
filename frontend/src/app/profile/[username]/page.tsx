@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { eventListPath } from "@/lib/events";
+import { userOrganizationsPath, type OrganizationMembership } from "@/lib/organizations";
 import type { PublicProfile } from "@/lib/users";
 import type { EventListItem } from "@/types";
 import { Button } from "@/components/ui/Button";
@@ -26,7 +27,6 @@ import {
 } from "@/components/profile/RecentSubmissions";
 import { DetectionsEntry } from "@/components/profile/DetectionsEntry";
 import FollowButton from "@/components/profile/FollowButton";
-import { ProfileOrganizations } from "@/components/profile/ProfileOrganizations";
 import { OpenRequests } from "@/components/profile/OpenRequests";
 import { useProfileEdit } from "@/components/profile/useProfileEdit";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
@@ -48,6 +48,10 @@ export default function ProfilePage() {
     username ? `/users/${username}/events?per_page=5` : null
   );
   const submissions = submissionsData?.items ?? [];
+  // A failed read renders no logos, like the other optional blocks.
+  const { data: organizations } = useApiResource<OrganizationMembership[]>(
+    username ? userOrganizationsPath(username) : null
+  );
   // The analyst's open calls, from the requests board's public list; error deliberately unread.
   const { data: openRequests } = useApiResource<EventListItem[]>(
     username
@@ -93,16 +97,16 @@ export default function ProfilePage() {
 
   const isOwn = !!currentUser && profile.username === currentUser.username;
 
-  // Portfolio order: identity block (`ProfileIdentity`) and linked-account icons in the header actions
-  // (`ProfileActions`), then the organizations, the coverage map, Insights, recent submissions, open
-  // requests, sign out.
+  // Portfolio order: identity block (`ProfileIdentity`, organization logos included) and linked-account
+  // icons in the header actions (`ProfileActions`), then the coverage map, Insights, recent submissions,
+  // open requests, sign out.
   // The detections entry is the exception: pending work, so it stays above the fold on the owner's profile.
   // Editing collapses the page to the form alone (bio and linked-accounts inputs contiguous, so Save stays on screen).
   return (
     <PageShell
       back
       title={<ProfileTitle name={profile.username} edit={edit} />}
-      subtitle={edit.editing ? undefined : <ProfileIdentity profile={profile} />}
+      subtitle={edit.editing ? undefined : <ProfileIdentity profile={profile} organizations={organizations} />}
       actions={
         <ProfileActions links={profile.external_links} canEdit={isOwn} edit={edit}>
           {!isOwn && (
@@ -126,8 +130,6 @@ export default function ProfilePage() {
 
       {!edit.editing && (
         <>
-          <ProfileOrganizations username={profile.username} />
-
           <ProfileMap username={profile.username} />
 
           <ProfileInsights username={profile.username} />

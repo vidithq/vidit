@@ -25,6 +25,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- A profile shows the analyst's organizations as logos on the follower line, each linking to the organization and naming it with the analyst's role on hover or focus, so the coverage map opens the page ([#586](https://github.com/vidithq/vidit/pull/586)).
 - App pages share one container, left-aligned after the sidebar: a page keeps its reading width, and a page with a right rail widens to hold it beside the same main column ([#588](https://github.com/vidithq/vidit/pull/588)).
 - The timeline is now the feed: the page moves from `/timeline` to `/feed` (the old address redirects), the sidebar entry is "Feed", and `GET /timeline` becomes `GET /feed` with `feed_at` in place of `timeline_at` ([#585](https://github.com/vidithq/vidit/pull/585)).
 - Settings lists each notification kind once, with an Email and a Push switch side by side, and closes the Push column with one reason when the server sends no push or your account has no push device ([#575](https://github.com/vidithq/vidit/pull/575)).
