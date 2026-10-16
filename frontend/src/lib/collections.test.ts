@@ -64,6 +64,7 @@ const item = (
   is_graphic: false,
   media: null,
   owner: { id: "u1", username: "ana", avatar_url: null },
+  geolocators: [],
   tags: [],
   ...over,
 });

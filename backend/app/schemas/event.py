@@ -297,12 +297,31 @@ class EventList(BaseModel):
     # that was never a request.
     requested_at: datetime | None
     owner: AuthorRef
+    # See ``EventRead.geolocators``; the card's byline.
+    geolocators: list[AuthorRef]
     # Card thumbnail (``services.thumbnails``), None when neither exists. One
     # media keeps the list light; ``EventRead.media`` has the full set. No
     # default so a constructor can't silently ship a false "no media".
     media: MediaRead | None
     tags: list[TagRead]
     conflicts: list[ConflictRead]
+
+    model_config = {"from_attributes": True}
+
+
+class GeolocatorInviteCreate(BaseModel):
+    """Body of ``POST /events/{id}/geolocator-invites``: who to invite."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    username: str = Field(min_length=1, max_length=50)
+
+
+class GeolocatorInviteRead(BaseModel):
+    """One pending invitation to share an event's geolocation credit."""
+
+    user: AuthorRef
+    created_at: datetime
 
     model_config = {"from_attributes": True}
 

@@ -61,15 +61,8 @@ SOURCE_URL_MAX_LENGTH = 2000
 MAX_SECONDARY_SOURCE_LINKS = 10
 
 
-class EventGeolocator(Base):
-    """Durable credit for the geolocation: who vouched the location.
-
-    Written at the ``geolocate`` transition (at least one row). The owner is
-    always among these rows, so a user erasure cannot leave a ``geolocated``
-    event below one geolocator. The composite PK makes credit idempotent.
-    """
-
-    __tablename__ = "event_geolocators"
+class _EventAnalystPair:
+    """One analyst on one event, both cascading: the shape of a credit and of an invitation."""
 
     event_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
@@ -83,12 +76,45 @@ class EventGeolocator(Base):
         nullable=False,
     )
 
+
+class EventGeolocator(_EventAnalystPair, Base):
+    """Durable credit for the geolocation: who vouched the location.
+
+    Written at the ``geolocate`` transition (at least one row) and when an
+    invited analyst accepts (``EventGeolocatorInvite``). The owner is always
+    among these rows: an erasure hands a co-credited event to the earliest
+    other geolocator rather than leaving it below one. The composite PK makes
+    credit idempotent.
+    """
+
+    __tablename__ = "event_geolocators"
+
     event = relationship("Event", back_populates="geolocators")
     user = relationship("User")
 
     __table_args__ = (
         # Serves the "a user's geolocations" profile query.
         Index("ix_event_geolocators_user_created_at", "user_id", "created_at"),
+    )
+
+
+class EventGeolocatorInvite(_EventAnalystPair, Base):
+    """A pending invitation to share the geolocation credit of a published event.
+
+    The owner writes the row; the invitee accepts or declines it. Accepting
+    deletes it and inserts the ``event_geolocators`` row in one transaction, and
+    declining or a withdrawal deletes it, so a row exists only while pending
+    (``services/geolocator_credit``). The composite PK allows one pending
+    invitation per analyst and event.
+    """
+
+    __tablename__ = "event_geolocator_invites"
+
+    user = relationship("User")
+
+    __table_args__ = (
+        # Backs the cascade of an erased invitee.
+        Index("ix_event_geolocator_invites_user_id", "user_id"),
     )
 
 

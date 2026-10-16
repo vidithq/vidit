@@ -206,6 +206,37 @@ describe("owner management: correcting, taking back, and never destroying", () =
   });
 });
 
+function CreditHarness({ status }: { status: EventStatus }) {
+  const event = {
+    ...eventFixture(status, null, SOMEONE_ELSE),
+    geolocators: [SOMEONE_ELSE, AUTHOR],
+  };
+  const { actions } = useEventActions({ event, surface: "event" });
+  return <>{actions}</>;
+}
+
+describe("shared credit", () => {
+  it("opens the geolocators panel for the owner of a published row", () => {
+    render(<Harness status="geolocated" surface="event" />);
+    fireEvent.click(screen.getByRole("button", { name: "Geolocators" }));
+    expect(screen.getByRole("heading", { name: "Geolocators" })).toBeInTheDocument();
+  });
+
+  it.each<EventStatus>(["requested", "detected"])("offers no geolocators panel on a %s row", (status) => {
+    render(<Harness status={status} surface="event" />);
+    expect(screen.queryByRole("button", { name: "Geolocators" })).toBeNull();
+  });
+
+  // Credit only: a co-geolocator shelves the row and sees its geolocators, and never edits or closes it.
+  it("gives a co-geolocator the panel and the collection control, not the owner's verbs", () => {
+    render(<CreditHarness status="geolocated" />);
+    expect(screen.getByRole("button", { name: "Geolocators" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add to collection" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Edit this geolocation" })).toBeNull();
+    expect(closeControl()).toBeNull();
+  });
+});
+
 describe("utilities are the detail pages' tier", () => {
   // Sharing and flagging are reads, so the pages that show a record carry them.
   it.each<ActionSurface>(["event", "request"])(

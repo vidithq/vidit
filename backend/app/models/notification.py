@@ -24,6 +24,9 @@ NotificationKind = Literal[
     "new_follower",
     "x_handle_request_approved",
     "x_handle_request_declined",
+    "co_geolocator_invite",
+    "co_geolocator_removed",
+    "ownership_transferred",
 ]
 
 # A delivery channel besides the in-app feed, which is always on.
@@ -39,6 +42,9 @@ NOTIFICATION_KINDS: dict[NotificationKind, dict[NotificationChannel, bool]] = {
     "new_follower": {"email": False, "push": False},
     "x_handle_request_approved": {"email": True, "push": True},
     "x_handle_request_declined": {"email": True, "push": True},
+    "co_geolocator_invite": {"email": True, "push": True},
+    "co_geolocator_removed": {"email": False, "push": False},
+    "ownership_transferred": {"email": True, "push": True},
 }
 assert set(NOTIFICATION_KINDS) == set(get_args(NotificationKind))
 
@@ -83,7 +89,8 @@ class Notification(Base):
     __table_args__ = (
         CheckConstraint(
             "kind IN ('request_fulfilled', 'new_follower', "
-            "'x_handle_request_approved', 'x_handle_request_declined')",
+            "'x_handle_request_approved', 'x_handle_request_declined', "
+            "'co_geolocator_invite', 'co_geolocator_removed', 'ownership_transferred')",
             name="ck_notifications_kind_valid",
         ),
         # The feed walk, newest first per recipient.

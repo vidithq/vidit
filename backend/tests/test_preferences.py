@@ -124,7 +124,7 @@ def test_patch_null_clears_a_display_value(db, user):
 @pytest.mark.parametrize(
     "body",
     [
-        {"notifications": {"co_geolocator_invite": {"email": True}}},
+        {"notifications": {"approval_received": {"email": True}}},
         {"notifications": {"request_fulfilled": {"sms": True}}},
         {"notifications": {"request_fulfilled": {"email": "yes please"}}},
         {"display": {"palette": "chartreuse"}},

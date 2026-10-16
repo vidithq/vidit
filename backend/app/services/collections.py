@@ -1,17 +1,19 @@
 """Personal collections: create, curate, and read.
 
-A collection is a named set of one analyst's own events, shown on the owner's
-public profile. Two rules hold everywhere in this module:
+A collection is a named set of events one analyst is credited on, shown on the
+owner's public profile. Two rules hold everywhere in this module:
 
 * **What a collection may show is one predicate**,
   :func:`services.event_filters.collectable_events`. The item page, count,
   date range, mosaic, tag union and add verb all read it, so an event that
   closes, is taken down or is soft-deleted leaves all of them with no write to
   ``collection_events``.
-* **An event joins its owner's collection only.** No SQL constraint spans the
-  two tables, so :func:`ensure_collectable` enforces it with
-  :func:`services.permissions.ensure_owner` (403 for someone else's event), for
-  both :func:`add_event` and :func:`create_collection`.
+* **An event joins only the collections of an analyst credited on it**: its
+  owner or a co-geolocator (:func:`services.event_filters.credited_to`). No SQL
+  constraint spans the tables, so :func:`ensure_collectable` enforces it (403
+  otherwise) for both :func:`add_event` and :func:`create_collection`, and
+  removing a co-geolocator drops the event from their collections
+  (``services/geolocator_credit.remove``).
 
 A collection stores no file: its card mosaic is read off the items at request
 time by :func:`cover_tiles_for`.
@@ -24,6 +26,7 @@ from collections.abc import Sequence
 from datetime import date, datetime, time
 from typing import Any, NamedTuple
 
+from fastapi import HTTPException, status
 from geoalchemy2.functions import ST_X, ST_Y
 from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.exc import IntegrityError
@@ -41,7 +44,8 @@ from app.schemas.collection import (
     CollectionRead,
 )
 from app.schemas.tag import TagRead
-from app.services.event_filters import collectable_events
+from app.services.event_filters import collectable_events, credited_to
+from app.services.geolocator_credit import CREDIT_LOAD
 from app.services.pagination import keyset_after
 from app.services.permissions import ensure_owner
 from app.services.sanitize import html_text, sanitize_html
@@ -382,11 +386,22 @@ def resolve_collection(db: Session, *, collection_id: uuid.UUID, viewer: User | 
     return collection
 
 
+def _refuse_uncredited(credited: bool) -> None:
+    if not credited:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+
+
+def ensure_credited(db: Session, *, event_id: uuid.UUID, user: User) -> None:
+    """403 unless ``user`` is credited on the event (:func:`credited_to`)."""
+    credited = db.query(credited_to([user.id])).filter(Event.id == event_id).scalar()
+    _refuse_uncredited(bool(credited))
+
+
 def ensure_collectable(db: Session, *, event_ids: Sequence[uuid.UUID], user: User) -> None:
     """Refuse any id that is not one of ``user``'s collectable events.
 
-    Per id, in arrival order: no such event is a 404, somebody else's event is
-    a 403, and a state a collection does not show
+    Per id, in arrival order: no such event is a 404, an event ``user`` is not
+    credited on is a 403, and a state a collection does not show
     (:func:`services.event_filters.collectable_events`) is a 409. Shared by
     :func:`add_event` and :func:`create_collection`. One statement whatever the
     count, projecting only the columns the refusals read.
@@ -397,7 +412,7 @@ def ensure_collectable(db: Session, *, event_ids: Sequence[uuid.UUID], user: Use
         row.id: row
         for row in db.query(
             Event.id,
-            Event.owner_id,
+            credited_to([user.id]).label("credited"),
             collectable_events().label("collectable"),
         ).filter(Event.id.in_(event_ids))
     }
@@ -405,7 +420,7 @@ def ensure_collectable(db: Session, *, event_ids: Sequence[uuid.UUID], user: Use
         row = rows.get(event_id)
         if row is None:
             raise EventNotFoundError("Event not found")
-        ensure_owner(row, user)
+        _refuse_uncredited(row.credited)
         if not row.collectable:
             raise EventNotCollectableError("This event is not one a collection can hold")
 
@@ -599,6 +614,7 @@ def list_items(
             selectinload(Event.tags),
             selectinload(Event.conflicts),
             selectinload(Event.media.and_(thumbnail_media_criteria())),
+            CREDIT_LOAD,
         )
         .filter(CollectionEvent.collection_id == collection_id, collectable_events())
     )

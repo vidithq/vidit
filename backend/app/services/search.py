@@ -36,7 +36,13 @@ from app.services.collections import (
     has_showable_item,
     visible_collections,
 )
-from app.services.event_filters import EventFilters, owner_username_matches, visible_events
+from app.services.event_filters import (
+    EventFilters,
+    credited_to,
+    owner_username_matches,
+    visible_events,
+)
+from app.services.geolocator_credit import CREDIT_LOAD, live_geolocators
 from app.services.thumbnails import pick_thumbnail, thumbnail_media_criteria
 
 # ``ts_headline`` sentinels: STX / ETX, not an ASCII marker like ``[[HL]]``,
@@ -175,6 +181,7 @@ def search_geolocations(
             joinedload(Event.owner),
             joinedload(Event.media.and_(thumbnail_media_criteria())),
             joinedload(Event.tags),
+            CREDIT_LOAD,
         )
         .filter(Event.id.in_(ids))
         .all()
@@ -199,6 +206,7 @@ def search_geolocations(
                 "is_graphic": geo.is_graphic,
                 "status": geo.status,
                 "owner": geo.owner,
+                "geolocators": live_geolocators(geo),
                 "media": [thumb] if thumb is not None else [],
                 "tags": geo.tags,
             }
@@ -434,8 +442,8 @@ def suggest_authors(db: Session, *, query: str, limit: int = 8) -> list[str]:
     """Usernames matching ``query`` for the author-filter typeahead.
 
     Case-insensitive substring, prefix matches first then alphabetical. Scoped
-    to live users owning at least one live event: all the filter can match,
-    and it keeps this anonymous endpoint from enumerating accounts. ``query``
+    to live users credited on at least one live event: all the filter can
+    match, and it keeps this anonymous endpoint from enumerating accounts. ``query``
     is gated by ``AUTHOR_FILTER_PATTERN`` at the router; ``_`` is escaped
     because it is allowed there but is a LIKE wildcard.
     """
@@ -443,9 +451,7 @@ def suggest_authors(db: Session, *, query: str, limit: int = 8) -> list[str]:
     if not q:
         return []
     like = q.replace("_", r"\_")
-    has_live_event = (
-        db.query(Event.id).filter(Event.owner_id == User.id, *visible_events()).exists()
-    )
+    has_live_event = db.query(Event.id).filter(credited_to([User.id]), *visible_events()).exists()
     rows = (
         db.query(User.username)
         .filter(

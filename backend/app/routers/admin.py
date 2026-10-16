@@ -286,8 +286,9 @@ def delete_user_admin(
 ) -> AdminUserDeleteResponse:
     """Remove a user account. Default soft (sets `users.deleted_at` and
     cascade-soft-deletes their submissions); `?hard=true` is GDPR erasure
-    (drops the row, their geolocations and S3 objects). Both paths invalidate
-    the points cache."""
+    (drops the row, their geolocations and S3 objects, and hands a co-credited
+    event to its earliest live co-geolocator). Both paths invalidate the points
+    cache."""
     try:
         if hard:
             result = admin_service.hard_delete_user(db, actor_id=current_user.id, user_id=user_id)
@@ -298,6 +299,7 @@ def delete_user_admin(
                 mode="hard",
                 deleted_at=None,
                 cascaded_geolocations=result["geolocation_count"],
+                transferred_events=result["transferred_count"],
                 media_count=result["media_count"],
             )
 

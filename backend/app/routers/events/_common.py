@@ -23,6 +23,7 @@ from app.schemas.event import (
 from app.schemas.media import MediaRead
 from app.services.event_filters import visible_events
 from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
+from app.services.geolocator_credit import live_geolocators
 from app.services.source_archive import SnapshotRejected, archive_row_for
 from app.services.thumbnails import pick_thumbnail
 from app.services.versions import VersionLimitError
@@ -119,7 +120,7 @@ def build_event_list(
     """Assemble the ``EventList`` card for one event.
 
     The list twin of :func:`build_event_read`; coordinates come in
-    re-projected by the caller.
+    re-projected by the caller, which eager-loads ``geolocator_credit.CREDIT_LOAD``.
     """
     return EventList(
         id=geo.id,
@@ -131,6 +132,7 @@ def build_event_list(
         before_closed_status=geo.before_closed_status,
         requested_at=geo.requested_at,
         owner=geo.owner,
+        geolocators=live_geolocators(geo),
         media=thumbnail_media(geo),
         tags=geo.tags,
         conflicts=geo.conflicts,
@@ -221,8 +223,7 @@ def build_event_read(
             if geo.requested_by is not None and geo.requested_by.deleted_at is None
             else None
         ),
-        # Drop soft-deleted contributors for the same reason as ``requested_by``.
-        geolocators=[g.user for g in geo.geolocators if g.user.deleted_at is None],
+        geolocators=live_geolocators(geo),
         media=[m for m in geo.media if m.role == "source"],
         thumbnail=thumbnail_media(geo),
         tags=geo.tags,

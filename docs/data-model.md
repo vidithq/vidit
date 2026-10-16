@@ -45,12 +45,14 @@ flowchart LR
 
   credit[("`**event_geolocators**
   durable credit, owner included`")]:::store
+  invite["`**POST /events/{id}/geolocator-invites**
+  the owner invites; the invitee accepts into event_geolocators`"]:::spec
   versions[("`**event_versions**
   the superseded state, as version_no moves on`")]:::store
   reports[("`**content_reports**
   any viewer, signed in or not; a row names an event or a collection`")]:::store
   shelve["`**PUT /collections/{id}/events/{event_id}**
-  the owner puts one of their own rows on a named shelf`"]:::spec
+  a credited analyst puts the row on one of their named shelves`"]:::spec
   shelves[("`**collections** + **collection_events**
   which curated sets the row is on`")]:::store
 
@@ -62,6 +64,7 @@ flowchart LR
   detected --> vouch
   vouch --> geolocated --> version --> geolocated
   vouch --> credit
+  geolocated --> invite --> credit
   version --> versions
   requested --> close
   detected --> close
@@ -73,7 +76,7 @@ flowchart LR
   shelve --> shelves
 ```
 
-The three entries on the left are the three ways a row is born: a request and a direct submit come from [`POST /events/requests` and `POST /events`](api.md#post-events), and a machine detection comes from the [ingest engine](ingestion.md). The four statuses and the constraints that pin them are [`events`](#events). The four writes are `update_request`, `geolocate`, `save_version` and `close`, all in [`api.md`](api.md). Two of them correct a row rather than move it, and they differ on what the row is: `update_request` overwrites an open question, while `save_version` files what it supersedes, because a published row is a vouched claim. The tables on the right exist because a write happened: [`event_geolocators`](#event_geolocators) records who vouched, [`event_versions`](#event_versions) holds what a correction superseded, [`content_reports`](#content_reports) holds what a viewer flagged, and [`collections`](#collections) with [`collection_events`](#collection_events) holds the curated sets the owner puts their own rows on.
+The three entries on the left are the three ways a row is born: a request and a direct submit come from [`POST /events/requests` and `POST /events`](api.md#post-events), and a machine detection comes from the [ingest engine](ingestion.md). The four statuses and the constraints that pin them are [`events`](#events). The four writes are `update_request`, `geolocate`, `save_version` and `close`, all in [`api.md`](api.md). Two of them correct a row rather than move it, and they differ on what the row is: `update_request` overwrites an open question, while `save_version` files what it supersedes, because a published row is a vouched claim. The tables on the right exist because a write happened: [`event_geolocators`](#event_geolocators) records who vouched, the owner and every analyst who accepted an invitation ([`event_geolocator_invites`](#event_geolocator_invites)), [`event_versions`](#event_versions) holds what a correction superseded, [`content_reports`](#content_reports) holds what a viewer flagged, and [`collections`](#collections) with [`collection_events`](#collection_events) holds the curated sets a credited analyst puts the row on.
 
 ## Schema overview
 
@@ -204,6 +207,12 @@ erDiagram
     event_geolocators {
         UUID event_id FK
         UUID user_id FK
+        TIMESTAMPTZ created_at
+    }
+
+    event_geolocator_invites {
+        UUID event_id FK
+        UUID user_id FK "the invitee"
         TIMESTAMPTZ created_at
     }
 
@@ -416,6 +425,8 @@ erDiagram
     conflicts ||--o{ event_conflicts : "conflict_id"
     events ||--o{ event_geolocators : "event_id"
     users ||--o{ event_geolocators : "user_id"
+    events ||--o{ event_geolocator_invites : "event_id"
+    users ||--o{ event_geolocator_invites : "user_id"
     events ||--o{ event_source_links : "event_id"
     events ||--o{ event_versions : "event_id"
     users ||--o{ event_versions : "edited_by_id"
@@ -461,7 +472,7 @@ erDiagram
 | `is_admin` | `BOOLEAN` | NOT NULL, default `false`. The system flips this to `true` automatically on login or registration if the email matches `ADMIN_EMAILS`. |
 | `email_verified_at` | `TIMESTAMPTZ` | nullable. Written once by the registration confirmation (to `created_at`). Every account the registration flow creates carries it. [Notification email](#notification_deliveries) goes only to an account that carries it, so an older account with NULL here receives none. |
 | `last_seen_at` | `TIMESTAMPTZ` | nullable. The instant of the account's most recent authenticated request. `dependencies.get_current_user` rewrites it once the stored value is older than `LAST_SEEN_THROTTLE` (15 minutes), so a session costs one UPDATE per window. `POST /auth/login` and `POST /auth/confirm-registration` stamp it when they issue cookies. The admin onboarding table reads it as the account's activity, falling back to the newest `login` auth event while it is NULL. |
-| `deleted_at` | `TIMESTAMPTZ` | nullable. A non-NULL value marks the user as soft-deleted: login is rejected, the profile returns 404, and public reads filter the row out. Soft-deleting a user cascades to soft-delete every event they own. Hard-delete, the GDPR escape hatch, drops the user row, the events they own, and their contributor rows, and sweeps S3. Because the owner is always among an event's geolocators, hard-delete never leaves a `geolocated` event with zero geolocators. |
+| `deleted_at` | `TIMESTAMPTZ` | nullable. A non-NULL value marks the user as soft-deleted: login is rejected, the profile returns 404, and public reads filter the row out. Soft-deleting a user cascades to soft-delete every event they own. Hard-delete, the GDPR escape hatch, drops the user row, the events only they are credited on, and their contributor rows, and sweeps S3. An owned event with another live geolocator passes to the earliest of them instead, files included. Because the owner is always among an event's geolocators, hard-delete never leaves a `geolocated` event with zero geolocators. |
 | `token_version` | `INTEGER` | NOT NULL, default `0`. A monotonic session-invalidation counter. The session JWT embeds this value as a `tv` claim, and `get_current_user` returns 401 on a mismatch. The system bumps this counter on logout, password change, password reset, and soft-delete, which invalidates every outstanding JWT for the user at once. A JWT with no `tv` claim also returns 401. |
 | `bio` | `TEXT` | nullable. A short plain-text blurb shown on the public profile. Analysts edit it through `PATCH /users/me`. The API layer caps it at 500 characters. There is no database constraint, so changing the cap does not require a migration. |
 | `avatar_url` | `TEXT` | nullable. The public URL of the analyst's profile picture, always an object on the media host. The server mints the value: `PUT /users/me/avatar` stores one metadata-stripped 400 px JPEG under `avatars/{user_id}/` and writes its URL here, `DELETE /users/me/avatar` clears the column and the object, and `PATCH /users/me` rejects the field, so the avatar cannot become a beacon that collects readers' IP addresses and User-Agents. |
@@ -589,7 +600,7 @@ One row represents one event across its whole lifecycle. `status` tracks the lif
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
-| `owner_id` | `UUID` | FK → `users.id`, NOT NULL. The edit-rights owner. For a `requested` event, this is the poster. It moves to the fulfiller at the `geolocated` transition, so permission checks stay a single-owner check across the lifecycle. The owner is always among the event's geolocators; see `event_geolocators`. |
+| `owner_id` | `UUID` | FK → `users.id`, NOT NULL. The edit-rights owner. For a `requested` event, this is the poster. It moves to the fulfiller at the `geolocated` transition, so permission checks stay a single-owner check across the lifecycle. A hard delete of the owner's account moves it to the earliest live co-geolocator. The owner is always among the event's geolocators; see `event_geolocators`. |
 | `requested_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. Records who opened the request. This is preserved across fulfilment so the identity of the requester is not erased. NULL for a directly submitted geolocation. |
 | `title` | `VARCHAR(255)` | NOT NULL |
 | `event_coords` | `GEOMETRY(Point, 4326)` | nullable. The subject: what the footage shows. Tied to `status` by `ck_events_coords_status`: required for `geolocated`, optional otherwise. A `requested` request may carry an approximate guess. Each event has one subject point. |
@@ -662,7 +673,7 @@ event happens ──▶ source posts the media ──▶ analyst posts the geolo
 
 ### `event_geolocators`
 
-Durable credit for the geolocation: who vouched for the location. `owner_id` is always among these rows. The system writes at least one row at the `geolocate` transition, and the credit is collaborative: an event can have many geolocators.
+Durable credit for the geolocation: who vouched for the location. `owner_id` is always among these rows. The system writes at least one row at the `geolocate` transition, and one more each time an invited analyst accepts (see [`event_geolocator_invites`](#event_geolocator_invites)). Credit grants no write right: every write still checks `owner_id`. Every read that lists an analyst's work matches an event on `owner_id` or on these rows (`services/event_filters.credited_to`).
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -675,7 +686,26 @@ Composite PK: `(event_id, user_id)`. Makes the credit idempotent.
 **Indexes:**
 - `ix_event_geolocators_user_created_at` on `(user_id, created_at)`. Supports the reverse query, a user's geolocations, for the profile page.
 
-The composite PK's leading `event_id` serves the forward read, who geolocated event X. Because `owner_id` is always among the geolocators, and `hard_delete_user` deletes the events a user owns, erasing a user can never leave a `geolocated` event with zero geolocators.
+The composite PK's leading `event_id` serves the forward read, who geolocated event X. A row is deleted when the owner removes a co-geolocator or a co-geolocator leaves; the owner's own row stays. `hard_delete_user` hands each owned event that has another live geolocator to the earliest of them by `created_at`, and deletes the rest, so erasing a user never leaves a `geolocated` event with zero geolocators.
+
+---
+
+### `event_geolocator_invites`
+
+A pending invitation to share an event's credit. The owner of a `geolocated` event writes the row; the invitee answers it through [`/events/{id}/geolocator-invites`](api.md#shared-credit). Accepting deletes the row and inserts the `event_geolocators` row in one transaction; declining or a withdrawal deletes it. A row exists only while the invitation is pending.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE |
+| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE. The invitee. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
+
+Composite PK: `(event_id, user_id)`: one pending invitation per analyst and event. Its leading `event_id` serves the event's invitation list.
+
+**Indexes:**
+- `ix_event_geolocator_invites_user_id` on `(user_id)`. Backs the cascade when an invitee's account is erased.
+
+The service caps geolocators plus pending invitations at 10 per event (`MAX_EVENT_GEOLOCATORS`).
 
 ---
 
@@ -792,9 +822,9 @@ One thing that happened to an analyst, shown in their feed at [`GET /notificatio
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The recipient. |
-| `kind` | `VARCHAR(40)` | NOT NULL, CHECK in `('request_fulfilled', 'new_follower', 'x_handle_request_approved', 'x_handle_request_declined')` (constraint `ck_notifications_kind_valid`). The kind registry `NOTIFICATION_KINDS` in [`models/notification.py`](../backend/app/models/notification.py) lists the same values with their per-channel defaults. |
-| `actor_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, nullable. Who acted: the fulfiller or the follower. NULL on the X handle request outcomes, which name no admin. |
-| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, nullable. The event the row concerns; NULL for every kind except `request_fulfilled`. |
+| `kind` | `VARCHAR(40)` | NOT NULL, CHECK in `('request_fulfilled', 'new_follower', 'x_handle_request_approved', 'x_handle_request_declined', 'co_geolocator_invite', 'co_geolocator_removed', 'ownership_transferred')` (constraint `ck_notifications_kind_valid`). The kind registry `NOTIFICATION_KINDS` in [`models/notification.py`](../backend/app/models/notification.py) lists the same values with their per-channel defaults. |
+| `actor_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, nullable. Who acted: the fulfiller, the follower, or the owner who invited or removed you. NULL on the X handle request outcomes, which name no admin, and on `ownership_transferred`, which must not name the erased owner. |
+| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, nullable. The event the row concerns; NULL for `new_follower` and the X handle request outcomes. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()`. Orders the feed. |
 | `read_at` | `TIMESTAMPTZ` | nullable. Set by `POST /notifications/read` on the rows the feed showed; NULL is unread. Read state is per row because `created_at` is stamped at flush: an action that flushes its row and commits after a slow upload would land behind a single read marker already moved past it. |
 
@@ -949,7 +979,7 @@ An analyst's request that an admin bind a new X handle to their account, filed t
 
 ### `collections`
 
-A named, curated set of one analyst's own events, shown on the owner's public profile: a spatial dossier or an operation reconstruction. Personal, with exactly one owner and no collaborators. Two written fields say what it is, the title and a required description, and the items order themselves by when their events happened, so the table carries no manual position, no denormalized count and no version history.
+A named, curated set of events one analyst is credited on, as owner or as a co-geolocator, shown on the owner's public profile: a spatial dossier or an operation reconstruction. Personal, with exactly one owner and no collaborators. Two written fields say what it is, the title and a required description, and the items order themselves by when their events happened, so the table carries no manual position, no denormalized count and no version history.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -974,7 +1004,7 @@ A named, curated set of one analyst's own events, shown on the owner's public pr
 
 **The card mosaic is computed, not stored.** A collection carries no cover column and no cover object. The `cover` field of the read is up to four tiles taken off the items themselves: walk the showable items in chronological order, skip one flagged `is_graphic`, take each remaining item's card media (`services/thumbnails.pick_thumbnail`, preferring an image over a clip on an item carrying both), and stop at four. A graphic item is skipped rather than ending the walk, so a card never shows death or injury to a reader who did not open the item. The list is empty when no item qualifies. See [`api.md`](api.md#get-collectionsid).
 
-**The ownership invariant lives in the service.** An event joins its owner's collection only, which spans two tables and so is no CHECK: `services/collections.add_event` enforces it, and an attempt to shelve somebody else's event is a 403. See [`api.md`](api.md#collections).
+**The credit invariant lives in the service.** An event joins only the collections of an analyst it credits (`services/event_filters.credited_to`), which spans three tables and so is no CHECK: `services/collections.ensure_collectable` enforces it, and an attempt to shelve an event that does not credit you is a 403. Removing a co-geolocator deletes that analyst's memberships of the event in the same transaction. See [`api.md`](api.md#collections).
 
 ---
 

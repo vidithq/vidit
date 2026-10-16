@@ -47,6 +47,7 @@ import {
   ringOffsets,
   ringRadius,
 } from "./stack";
+import { creditProps } from "@/lib/geolocatorCredit";
 
 // CARTO basemap pair. maplibre paint can't read CSS variables, so tiles swap off the theme here.
 const BASEMAP_STYLE = {
@@ -506,7 +507,7 @@ function PinPreviewCard({
             />
             <p className="text-[11px] text-neutral-500">
               {entry.event_date && <>{formatDate(entry.event_date)} </>}
-              <AuthorByline author={entry.owner} size="xs" />
+              <AuthorByline {...creditProps(entry)} size="xs" />
             </p>
           </>
         ) : error ? (

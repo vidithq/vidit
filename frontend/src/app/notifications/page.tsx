@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect } from "react";
-import { AtSign, CircleCheck, UserPlus, type LucideIcon } from "lucide-react";
+import {
+  ArrowRightLeft,
+  AtSign,
+  CircleCheck,
+  UserMinus,
+  UserPlus,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 
 import { useUnreadNotifications } from "@/contexts/NotificationsContext";
 import { useCursorList } from "@/hooks/useCursorList";
@@ -15,6 +23,7 @@ import {
   type Notification,
   type NotificationKind,
 } from "@/lib/notifications";
+import { InviteAnswerButtons } from "@/components/event/GeolocatorCredit";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LinkRow } from "@/components/ui/LinkRow";
@@ -27,9 +36,20 @@ const KIND_ICON: Record<NotificationKind, LucideIcon> = {
   new_follower: UserPlus,
   x_handle_request_approved: AtSign,
   x_handle_request_declined: AtSign,
+  co_geolocator_invite: Users,
+  co_geolocator_removed: UserMinus,
+  ownership_transferred: ArrowRightLeft,
 };
 
-function NotificationRows({ title, rows }: { title: string; rows: Notification[] }) {
+function NotificationRows({
+  title,
+  rows,
+  onChanged,
+}: {
+  title: string;
+  rows: Notification[];
+  onChanged: () => void;
+}) {
   if (rows.length === 0) return null;
   return (
     <section>
@@ -38,14 +58,19 @@ function NotificationRows({ title, rows }: { title: string; rows: Notification[]
         {rows.map((n) => {
           const { text, href } = describeNotification(n);
           return (
-            <LinkRow
-              key={n.id}
-              icon={KIND_ICON[n.kind]}
-              label={`${NOTIFICATION_KIND_COPY[n.kind].label} · ${formatDate(n.created_at)}`}
-              value={text}
-              href={href}
-              external={false}
-            />
+            <div key={n.id} className="space-y-2">
+              <LinkRow
+                icon={KIND_ICON[n.kind]}
+                label={`${NOTIFICATION_KIND_COPY[n.kind].label} · ${formatDate(n.created_at)}`}
+                value={text}
+                href={href}
+                external={false}
+              />
+              {/* The answer sits under the row, not in it: the row is one link. */}
+              {n.invite_pending && n.event && (
+                <InviteAnswerButtons eventId={n.event.id} onAnswered={onChanged} />
+              )}
+            </div>
           );
         })}
       </div>
@@ -58,7 +83,7 @@ function NotificationRows({ title, rows }: { title: string; rows: Notification[]
 export default function NotificationsPage() {
   const { user, loading: authLoading } = useRequireAuth();
   const { refresh } = useUnreadNotifications();
-  const { items, error, loading, loadingMore, hasMore, loadMore } =
+  const { items, error, loading, loadingMore, hasMore, loadMore, reload } =
     useCursorList<Notification>(notificationsPath);
 
   // The unread rows loaded so far, as one key, so a later page marks its own rows.
@@ -83,12 +108,20 @@ export default function NotificationsPage() {
       ) : items.length === 0 ? (
         <EmptyState>
           Nothing yet. A notification appears here when someone geolocates a request you
-          opened or follows you.
+          opened, follows you, or invites you to share the credit of a geolocation.
         </EmptyState>
       ) : (
         <>
-          <NotificationRows title="New" rows={items.filter((n) => n.read_at === null)} />
-          <NotificationRows title="Earlier" rows={items.filter((n) => n.read_at !== null)} />
+          <NotificationRows
+            title="New"
+            rows={items.filter((n) => n.read_at === null)}
+            onChanged={reload}
+          />
+          <NotificationRows
+            title="Earlier"
+            rows={items.filter((n) => n.read_at !== null)}
+            onChanged={reload}
+          />
           {hasMore && (
             <div className="flex justify-center">
               <Button variant="secondary" onClick={loadMore} disabled={loadingMore}>

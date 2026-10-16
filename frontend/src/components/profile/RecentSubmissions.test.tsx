@@ -27,6 +27,7 @@ function submission(id: string): RecentSubmission {
     status: "geolocated",
     before_closed_status: null,
     requested_at: null,
+    geolocators: [],
     event_coords: { lat: 48.1, lng: 37.4 },
     event_date: "2026-03-15",
     is_graphic: false,

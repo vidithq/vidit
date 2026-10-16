@@ -24,7 +24,8 @@ from app.services import preferences as preferences_service
 from app.services import push as push_service
 from app.services import social, user_stats, x_handle_requests
 from app.services import users as users_service
-from app.services.event_filters import published_events, visible_events
+from app.services.event_filters import credited_to, published_events, visible_events
+from app.services.geolocator_credit import CREDIT_LOAD
 from app.services.pagination import page_size
 from app.services.thumbnails import thumbnail_media_criteria
 
@@ -213,14 +214,14 @@ def get_user_profile(
 ) -> UserProfile:
     user = _get_live_user_or_404(db, username)
 
-    # Published work, not everything owned: the profile's headline number and
+    # Published work credited to them, not everything owned: the profile's headline number and
     # the size of the Recent submissions block and the coverage split's
     # ``geolocated`` leg. Counting detections made the page contradict itself.
     # Same predicate as the feed below. The wider ``geolocated`` + ``detected``
     # figure is ``total_events`` on ``GET /users/{username}/stats``.
     geolocations_count = (
         db.query(Event)
-        .filter(Event.owner_id == user.id, *visible_events(), published_events())
+        .filter(credited_to([user.id]), *visible_events(), published_events())
         .count()
     )
 
@@ -353,9 +354,9 @@ def get_user_geolocations(
     # negative OFFSET (a 500).
     per_page = page_size(per_page)
 
-    owned_and_published = (Event.owner_id == user.id, *visible_events(), published_events())
+    credited_and_published = (credited_to([user.id]), *visible_events(), published_events())
 
-    total = db.query(Event).filter(*owned_and_published).count()
+    total = db.query(Event).filter(*credited_and_published).count()
 
     rows = (
         db.query(
@@ -369,8 +370,9 @@ def get_user_geolocations(
             selectinload(Event.tags),
             selectinload(Event.conflicts),
             selectinload(Event.media.and_(thumbnail_media_criteria())),
+            CREDIT_LOAD,
         )
-        .filter(*owned_and_published)
+        .filter(*credited_and_published)
         # ``event_date`` is neither unique nor non-null, so ties could repeat or
         # skip rows across OFFSET pages; ``created_at, id`` makes it total.
         .order_by(Event.event_date.desc(), Event.created_at.desc(), Event.id.desc())

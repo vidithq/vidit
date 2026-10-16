@@ -13,6 +13,7 @@ import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button } from "@/components/ui/Button";
 import { EventDetailBody } from "@/components/event/EventDetailBody";
 import { useEventActions } from "@/components/event/useEventActions";
+import { creditProps } from "@/lib/geolocatorCredit";
 
 /** Where the panel sits. `overlay`: a card over the full-screen map page (a bottom sheet below
  * `sm`), taking the display cutout as margins from `sm` up and as padding on the sheet's three
@@ -134,7 +135,7 @@ export function DetailSidePanel({
             {/* Byline alone under the title; anything the grammar returns rides this row (none today). */}
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs text-neutral-400">
-                <AuthorByline author={detail.owner} size="xs" avatar />
+                <AuthorByline {...creditProps(detail)} size="xs" avatar />
               </p>
               {actions && (
                 <div className="flex items-center gap-3 shrink-0">{actions}</div>
