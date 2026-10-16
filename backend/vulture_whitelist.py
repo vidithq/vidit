@@ -124,6 +124,7 @@ revoked_by_id  # models/approval.py EventApproval
 analysts  # schemas/review_request.py ReviewRequestTargetList (wire field)
 approval  # schemas/approval.py OrganizationApprovalRead (wire field)
 last_success_at  # models/push_subscription.py + schemas/push.py: worker-stamped, wire-read only
+viewer_invite_pending  # schemas/event.py EventRead: set by GET /events/{id}, read on the wire
 
 # ── Test-only helper ──────────────────────────────────────────────────────────
 # Called only from tests/, which the gate does not scan.

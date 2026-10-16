@@ -100,6 +100,10 @@ export const FIELD_HELP = {
     text: "Submits this detection: your edits are saved and it becomes Geolocated (a person stands behind it). It becomes public, and from then on every change you make is kept as a new version, the source link and the source media included. Give it a full read first, then click Submit twice to confirm.",
     label: "What does Submit do?",
   },
+  last_org_manager: {
+    text: "The last org manager cannot leave, be removed or become a member. Make another member org manager first.",
+    label: "Why can the last org manager not leave?",
+  },
 } as const;
 
 /** A concept key: the single argument every `<FieldHelp>` takes. */

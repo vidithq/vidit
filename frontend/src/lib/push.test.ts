@@ -1,9 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({ apiFetch: vi.fn() }));
-vi.mock("./api", () => ({ apiFetch: api.apiFetch }));
+vi.mock("./api", () => ({
+  apiFetch: api.apiFetch,
+  ApiError: class ApiError extends Error {
+    constructor(
+      message: string,
+      readonly status: number,
+      readonly code: string | null = null,
+    ) {
+      super(message);
+    }
+  },
+}));
 
-import { disablePush, enablePush, readPushState } from "./push";
+import { ApiError } from "./api";
+import {
+  disablePush,
+  enablePush,
+  forgetThisPushDevice,
+  readPushState,
+  thisPushDeviceId,
+} from "./push";
 
 // An uncompressed P-256 point, base64url: 0x04 then 64 bytes.
 const KEY = btoa(String.fromCharCode(4, ...new Array(64).fill(1)))
@@ -97,7 +115,7 @@ describe("push", () => {
     expect(options.applicationServerKey[0]).toBe(4);
     expect(api.apiFetch).toHaveBeenCalledWith("/users/me/push-subscriptions", {
       method: "POST",
-      body: JSON.stringify(SUBSCRIPTION_JSON),
+      body: JSON.stringify({ ...SUBSCRIPTION_JSON, resync: false }),
     });
   });
 
@@ -118,5 +136,46 @@ describe("push", () => {
       method: "DELETE",
     });
     expect(subscription.unsubscribe).toHaveBeenCalled();
+  });
+
+  it("drops the browser subscription even when the server revoke fails", async () => {
+    const subscription = fakeSubscription();
+    installBrowser({ permission: "granted", subscription });
+    api.apiFetch.mockResolvedValueOnce({ id: "device-1" }).mockRejectedValueOnce(new Error("down"));
+
+    await expect(disablePush()).rejects.toThrow("down");
+    expect(subscription.unsubscribe).toHaveBeenCalled();
+  });
+
+  it("reads a device revoked elsewhere as off and drops its subscription", async () => {
+    const subscription = fakeSubscription();
+    installBrowser({ permission: "granted", subscription });
+    api.apiFetch.mockRejectedValueOnce(new ApiError("revoked", 409, "device_revoked"));
+
+    expect(await thisPushDeviceId()).toBeNull();
+    expect(api.apiFetch).toHaveBeenCalledWith("/users/me/push-subscriptions", {
+      method: "POST",
+      body: JSON.stringify({ ...SUBSCRIPTION_JSON, resync: true }),
+    });
+    expect(subscription.unsubscribe).toHaveBeenCalled();
+  });
+
+  it("forgets this device at sign-out, and never throws", async () => {
+    const subscription = fakeSubscription();
+    installBrowser({ permission: "granted", subscription });
+    await forgetThisPushDevice();
+    expect(api.apiFetch).toHaveBeenLastCalledWith("/users/me/push-subscriptions/device-1", {
+      method: "DELETE",
+    });
+    expect(subscription.unsubscribe).toHaveBeenCalled();
+
+    api.apiFetch.mockRejectedValue(new Error("offline"));
+    await expect(forgetThisPushDevice()).resolves.toBeUndefined();
+  });
+
+  it("does nothing at sign-out in a browser without push", async () => {
+    setUserAgent("Mozilla/5.0 (X11; Linux x86_64)");
+    await forgetThisPushDevice();
+    expect(api.apiFetch).not.toHaveBeenCalled();
   });
 });

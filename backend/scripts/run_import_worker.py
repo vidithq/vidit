@@ -7,8 +7,9 @@ owner the outcome (``services/archive_jobs``). Each pass also drains
 ``bot_webhook_events`` through the shared mention pipeline (``services/bot``);
 the webhook endpoint only inserts. Each pass first sends the queued
 notification emails (``services/notification_delivery``), then one batch of
-product update emails (``services/product_updates``). Each pass opens a fresh session shared
-across its jobs (per-job isolation is the rollback inside ``process``), and a
+product update emails (``services/product_updates``). An email queue that raises is captured
+and skipped for the pass, so it never holds back the jobs and mentions. Each pass opens a fresh
+session shared across its jobs (per-job isolation is the rollback inside ``process``), and a
 pass that dies outside job processing is captured and retried with a backoff.
 (useful by hand and for a cron fallback).
 """
@@ -17,11 +18,13 @@ import asyncio
 import os
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent))
 
 import sentry_sdk
+from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.observability import configure_logging, init_sentry
@@ -39,12 +42,22 @@ async def _drain_both(db) -> int:
     return handled + (await drain_webhook_events(db)).mentions_seen
 
 
+def _isolated(drain: Callable[[Session], int], db: Session) -> int:
+    """Run one email queue's ``drain``; an error is captured and the pass goes on."""
+    try:
+        return drain(db)
+    except Exception:  # noqa: BLE001
+        sentry_sdk.capture_exception()
+        db.rollback()
+        return 0
+
+
 def _drain() -> int:
     db = SessionLocal()
     try:
         return (
-            drain_notification_emails(db)
-            + drain_product_update_emails(db)
+            _isolated(drain_notification_emails, db)
+            + _isolated(drain_product_update_emails, db)
             + asyncio.run(_drain_both(db))
         )
     finally:

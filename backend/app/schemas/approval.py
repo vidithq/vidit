@@ -15,7 +15,7 @@ REVOKE_REASON_MAX_LENGTH = 2000
 
 class ApprovalCreate(BaseModel):
     """Body of ``POST /events/{id}/approvals``: the version you read, an optional note, and the
-    slug of the organization you approve for as its org-admin (your own approval without it)."""
+    slug of the organization you approve for as its org manager (your own approval without it)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -51,16 +51,18 @@ class ApprovalRead(BaseModel):
     """One review of one version of an event.
 
     ``organization`` is the organization the review was placed for, with
-    ``reviewer`` the org-admin who placed it; null for an analyst's own review.
+    ``reviewer`` the org manager who placed it; null for an analyst's own review.
+    ``reviewer`` is null on an organization's review once the account of the
+    org manager who placed it is erased: the review stays the organization's.
     ``current`` is true while the review covers the live version and is not
-    revoked. ``revoked_as`` says who revoked it: the reviewer, an org-admin of
+    revoked. ``revoked_as`` says who revoked it: the reviewer, an org manager of
     the organization, or a site admin.
     """
 
     id: uuid.UUID
     version_no: int
     verdict: ApprovalVerdict
-    reviewer: AuthorRef
+    reviewer: AuthorRef | None
     organization: OrganizationRef | None
     note: str | None
     created_at: datetime
@@ -71,7 +73,7 @@ class ApprovalRead(BaseModel):
 
 
 class OrganizationApprovalRead(BaseModel):
-    """One approval an org-admin placed in an organization's name, with the event it covers,
+    """One approval an org manager placed in an organization's name, with the event it covers,
     for ``GET /organizations/{slug}/approvals``."""
 
     event: NotificationEventRef

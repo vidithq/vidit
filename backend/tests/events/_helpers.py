@@ -10,6 +10,7 @@ from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
 from app.main import app
+from app.models.approval import EventApproval
 from app.models.conflict import Conflict
 from app.models.event import (
     STATUS_CLOSED,
@@ -24,6 +25,16 @@ from app.services.events import build_source_link_rows
 from tests._fixtures import TINY_JPEG
 
 client = TestClient(app)
+
+
+def delete_user(db, user_id: uuid.UUID) -> None:
+    """Delete a fixture user the way an erasure does: their own approvals first, which
+    ``ck_event_approvals_reviewer`` would refuse to keep without a reviewer. Does not commit."""
+    db.query(EventApproval).filter(
+        EventApproval.reviewer_id == user_id, EventApproval.organization_id.is_(None)
+    ).delete(synchronize_session=False)
+    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
+
 
 # ``/events/points`` requires a ``bbox``; tests not about it pass the whole globe.
 WORLD_BBOX = "-90,-180,90,180"

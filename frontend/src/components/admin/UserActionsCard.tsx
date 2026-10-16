@@ -12,7 +12,7 @@ import {
 } from "@/lib/admin";
 import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
-import { FORM_LABEL } from "@/components/ui/form-styles";
+import { FORM_LABEL, LIST_TILE } from "@/components/ui/form-styles";
 import { WARNING_CALLOUT } from "@/components/ui/styles";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -135,7 +135,7 @@ export function UserActionsCard({
   const idle = dangerMode === null && !showXHandleForm;
 
   return (
-    <div className="border border-neutral-800 rounded-md p-3 space-y-2">
+    <div className={`${LIST_TILE} space-y-2`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm text-neutral-100 inline-flex items-center gap-1.5">

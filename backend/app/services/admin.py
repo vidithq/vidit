@@ -2,11 +2,12 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, delete, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.admin_event import AdminEvent
+from app.models.approval import EventApproval
 from app.models.archive_import_job import ArchiveImportJob
 from app.models.auth_event import EVENT_LOGIN, AuthEvent
 from app.models.bot_mention import BotMention
@@ -20,6 +21,7 @@ from app.models.event import (
 )
 from app.models.invite_code import InviteCode
 from app.models.media import Media
+from app.models.organization import Organization
 from app.models.user import User
 from app.schemas.admin import (
     AdminDetectionStatsRead,
@@ -173,15 +175,18 @@ def serialize_invite_code(db: Session, invite: InviteCode) -> AdminInviteCodeRea
 def _assert_x_handle_free(
     db: Session, x_handle: str, *, exclude_user_id: uuid.UUID | None = None
 ) -> None:
-    """Raise the typed conflict when any user row already carries the handle.
+    """Raise the typed conflict when any user row or organization already carries the handle.
 
-    Soft-deleted rows count too: ``users.x_handle`` is UNIQUE across every row.
+    Soft-deleted rows count too: ``users.x_handle`` is UNIQUE across every row. Analysts and
+    organizations share one namespace, so the bot never credits a handle to two owners.
     """
     query = db.query(User).filter(User.x_handle == x_handle)
     if exclude_user_id is not None:
         query = query.filter(User.id != exclude_user_id)
     if query.first() is not None:
         raise XHandleConflictError("x_handle is already linked to another account")
+    if db.query(Organization.id).filter(Organization.x_handle == x_handle).first() is not None:
+        raise XHandleConflictError("x_handle is already linked to an organization")
 
 
 def log_admin_event(
@@ -593,12 +598,14 @@ def soft_delete_user(
     *,
     actor_id: uuid.UUID,
     user_id: uuid.UUID,
-) -> tuple[User, int]:
+) -> tuple[User, int, int]:
     """Mark a user as removed-from-public-view + cascade to their submissions.
 
-    Returns ``(user, cascaded_geolocations)``: the count of live (``deleted_at IS NULL``) events
-    flipped in this call. Idempotent on an already-deleted user (same timestamp, no audit row,
-    count zero).
+    An owned event another live analyst is credited on passes to the earliest of them first
+    (:func:`services.geolocator_credit.hand_over_owned_events`), as on erasure, so shared work
+    stays published. Returns ``(user, cascaded_geolocations, transferred_events)``: the live
+    (``deleted_at IS NULL``) events flipped and the events handed over in this call. Idempotent
+    on an already-deleted user (same timestamp, no audit row, counts zero).
 
     Requests and geolocations are one table, so a single cascade covers both.
     """
@@ -606,7 +613,18 @@ def soft_delete_user(
     if user is None:
         raise UserNotFoundError("User not found")
     if user.deleted_at is not None:
-        return user, 0
+        return user, 0, 0
+
+    # The lock serializes with an invitation being accepted on the same event. Taken before
+    # ``deleted_at`` is set, so the hand-over sees these as live.
+    owned = (
+        db.query(Event)
+        .filter(Event.owner_id == user.id, Event.deleted_at.is_(None))
+        .with_for_update()
+        .all()
+    )
+    handed_over = geolocator_credit.hand_over_owned_events(db, owner=user, events=owned)
+    db.flush()
 
     now = datetime.now(UTC)
     user.deleted_at = now
@@ -619,7 +637,7 @@ def soft_delete_user(
     # target records the freed value.
     freed_x_handle = user.x_handle
     user.x_handle = None
-    organizations.hand_over_admin_roles(db, leaving_user_id=user.id)
+    organizations.hand_over_manager_roles(db, leaving_user_id=user.id)
 
     # Cascade to every live event (located and requested). ``deleted_at IS NULL`` leaves earlier
     # timestamps untouched, so the count reflects only what this call flipped.
@@ -640,12 +658,13 @@ def soft_delete_user(
             "user_id": str(user.id),
             "username": user.username,
             "cascaded_geolocations": cascaded_geolocations,
+            "transferred_events": len(handed_over),
             "freed_x_handle": freed_x_handle,
         },
     )
     db.commit()
     db.refresh(user)
-    return user, cascaded_geolocations
+    return user, cascaded_geolocations, len(handed_over)
 
 
 def hard_delete_user(
@@ -667,10 +686,11 @@ def hard_delete_user(
        cascade would drop those rows before we could read them.
     3. Delete each event left manually: ``owner_id`` carries no ``ON DELETE CASCADE``. Each
        ``db.delete`` cascades to that row's media, contributor rows and tags.
-    4. Hand the org-admin role of each organization they were the last live org-admin of
+    4. Hand the org manager role of each organization they were the last live org manager of
        to its earliest-joined live member
-       (:func:`services.organizations.hand_over_admin_roles`), in the same transaction as
-       step 1. Delete the user. ``auth_tokens``, their collections (and memberships), their
+       (:func:`services.organizations.hand_over_manager_roles`), in the same transaction as
+       step 1. Delete the analyst's own approvals; those they placed for an organization stay
+       the organization's, with ``reviewer_id`` set to NULL. Delete the user. ``auth_tokens``, their collections (and memberships), their
        invitations and their contributor rows on other people's events cascade-drop;
        ``admin_events.actor_id`` and ``invite_codes.used_by`` flip to NULL (migration
        f1a3b5c7d9e0), so invite-code rows outlive the user as audit trail.
@@ -708,8 +728,14 @@ def hard_delete_user(
     for geo in geolocations:
         db.delete(geo)
 
-    # 4. Hand any last org-admin role to the earliest member, then drop the user row.
-    organizations.hand_over_admin_roles(db, leaving_user_id=user.id)
+    # 4. Hand any last org manager role to the earliest member, drop the analyst's own
+    # approvals, then the user row; the approvals they placed for an organization stay.
+    organizations.hand_over_manager_roles(db, leaving_user_id=user.id)
+    db.execute(
+        delete(EventApproval).where(
+            EventApproval.reviewer_id == user.id, EventApproval.organization_id.is_(None)
+        )
+    )
     db.delete(user)
 
     log_admin_event(db, actor_id=actor_id, action="user_hard_deleted", target=target)

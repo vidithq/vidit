@@ -8,7 +8,13 @@ from app.models.bot_webhook_event import BotWebhookEvent
 from app.models.collection import Collection, CollectionEvent
 from app.models.conflict import Conflict, event_conflicts
 from app.models.content_report import ContentReport
-from app.models.event import Event, EventGeolocator, EventGeolocatorInvite, EventVersion
+from app.models.event import (
+    Event,
+    EventGeolocator,
+    EventGeolocatorDeparture,
+    EventGeolocatorInvite,
+    EventVersion,
+)
 from app.models.follow import Follow
 from app.models.invite_code import InviteCode
 from app.models.media import Media
@@ -20,7 +26,7 @@ from app.models.product_update import (
     ProductUpdateConsent,
     ProductUpdateDelivery,
 )
-from app.models.push_subscription import PushSubscription
+from app.models.push_subscription import PushSubscription, RevokedPushEndpoint
 from app.models.review_request import ReviewRequest
 from app.models.source_archive import SourceArchive
 from app.models.tag import Tag, event_tags
@@ -43,6 +49,7 @@ __all__ = [
     "Event",
     "EventApproval",
     "EventGeolocator",
+    "EventGeolocatorDeparture",
     "EventGeolocatorInvite",
     "EventVersion",
     "InviteCode",
@@ -54,6 +61,7 @@ __all__ = [
     "OrganizationMember",
     "PendingRegistration",
     "PushSubscription",
+    "RevokedPushEndpoint",
     "ProductUpdate",
     "ProductUpdateConsent",
     "ProductUpdateDelivery",

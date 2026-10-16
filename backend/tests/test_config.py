@@ -103,6 +103,24 @@ def test_remote_db_with_cookie_secure_true_passes(monkeypatch):
     assert settings.cookie_secure is True
 
 
+def test_a_deployment_refuses_a_localhost_api_url(monkeypatch):
+    _clear_storage_env(monkeypatch)
+    monkeypatch.setenv("COOKIE_SECURE", "true")
+    monkeypatch.delenv("API_URL", raising=False)
+    with pytest.raises(ValidationError, match="API_URL must name the public API"):
+        Settings()
+
+
+@pytest.mark.parametrize(
+    "name", ["PRODUCT_UPDATE_EMAIL_DAILY_CAP", "PRODUCT_UPDATE_EMAIL_BATCH_SIZE"]
+)
+def test_product_update_pacing_refuses_zero(monkeypatch, name):
+    _clear_storage_env(monkeypatch)
+    monkeypatch.setenv(name, "0")
+    with pytest.raises(ValidationError):
+        Settings()
+
+
 def test_default_jwt_secret_with_ipv6_localhost_passes(monkeypatch):
     _clear_storage_env(monkeypatch)
     monkeypatch.delenv("JWT_SECRET", raising=False)
@@ -184,3 +202,5 @@ def test_email_caps_must_leave_room_for_auth_email(monkeypatch):
 def _clear_storage_env(monkeypatch):
     for var in ("STORAGE_BACKEND", "AWS_REGION", "S3_BUCKET", "CLOUDFRONT_DOMAIN"):
         monkeypatch.delenv(var, raising=False)
+    # A deployment (COOKIE_SECURE) needs a public API_URL; the tests that do not probe it get one.
+    monkeypatch.setenv("API_URL", "https://api.vidit.example/api/v1")

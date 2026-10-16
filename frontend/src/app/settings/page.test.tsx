@@ -141,6 +141,52 @@ describe("SettingsPage", () => {
     );
   });
 
+  it("lists the account's push devices and revokes one", async () => {
+    const devices = [
+      {
+        id: "d1",
+        user_agent: "Mozilla/5.0 (Pixel 8)",
+        created_at: "2026-10-01T09:00:00Z",
+        last_success_at: null,
+      },
+    ];
+    const base = api.apiFetch.getMockImplementation()!;
+    api.apiFetch.mockImplementation((path: string, init?: RequestInit) =>
+      path === "/users/me/push-subscriptions"
+        ? Promise.resolve(devices)
+        : path.startsWith("/users/me/push-subscriptions/")
+          ? Promise.resolve(undefined)
+          : base(path, init),
+    );
+    render(<SettingsPage />);
+
+    expect(await screen.findByText("Mozilla/5.0 (Pixel 8)")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
+    await waitFor(() =>
+      expect(api.apiFetch).toHaveBeenCalledWith("/users/me/push-subscriptions/d1", {
+        method: "DELETE",
+      }),
+    );
+  });
+
+  it("reloads the device list after a password change, which forgot every device", async () => {
+    render(<SettingsPage />);
+    const listed = () =>
+      api.apiFetch.mock.calls.filter(
+        ([path, init]) => path === "/users/me/push-subscriptions" && !init?.method,
+      ).length;
+    await waitFor(() => expect(listed()).toBe(1));
+
+    fireEvent.change(screen.getByLabelText("Current password"), { target: { value: "old-password-1" } });
+    fireEvent.change(screen.getByLabelText("New password"), { target: { value: "new-password-12" } });
+    fireEvent.change(screen.getByLabelText("Confirm new password"), {
+      target: { value: "new-password-12" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Update password" }));
+
+    await waitFor(() => expect(listed()).toBe(2));
+  });
+
   it("keeps the major release email switch off until the analyst turns it on", async () => {
     render(<SettingsPage />);
 

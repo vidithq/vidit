@@ -16,11 +16,12 @@ from py_vapid.utils import b64urlencode
 from pywebpush import WebPushException
 
 from app.config import settings
+from app.models.auth_token import PURPOSE_PASSWORD_RESET
 from app.models.notification import NOTIFICATION_KINDS, Notification, NotificationDelivery
 from app.models.push_subscription import PushSubscription
 from app.models.user import User
 from app.models.user_preferences import UserPreferences
-from app.services import email, notification_delivery, push
+from app.services import auth_tokens, email, notification_delivery, push
 from tests.conftest import login_as
 from tests.events._helpers import client
 from tests.events.test_requests import _geolocate_fulfilment, _make_request
@@ -201,6 +202,59 @@ def test_delete_drops_only_your_own_device(db, author, second_user):
     assert _devices(db, author) == []
 
 
+def test_list_shows_only_your_devices_newest_first_without_endpoints(db, author, second_user):
+    older = _subscription()
+    older_id = _register(author, older).json()["id"]
+    newer_id = _register(author).json()["id"]
+    _register(second_user)
+
+    response = client.get(_SUBSCRIPTIONS, headers=login_as(client, author))
+    assert response.status_code == 200, response.text
+    assert [d["id"] for d in response.json()] == [newer_id, older_id]
+    assert older["endpoint"] not in response.text
+
+
+def test_a_password_change_forgets_every_device(db, author, second_user):
+    _register(author)
+    _register(author)
+    _register(second_user)
+    response = client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": "password123", "new_password": "newpassword456"},
+        headers=login_as(client, author),
+    )
+    assert response.status_code == 204, response.text
+    assert _devices(db, author) == []
+    assert len(_devices(db, second_user)) == 1
+
+
+def test_a_password_reset_forgets_every_device(db, author):
+    _register(author)
+    raw = auth_tokens.mint(db, user_id=author.id, purpose=PURPOSE_PASSWORD_RESET, ttl_minutes=15)
+    db.commit()
+    client.cookies.clear()
+    response = client.post(
+        "/api/v1/auth/reset-password", json={"token": raw, "new_password": "newpassword456"}
+    )
+    assert response.status_code == 204, response.text
+    assert _devices(db, author) == []
+
+
+def test_a_revoked_device_stays_revoked_until_enabled_again(db, author):
+    body = _subscription()
+    device_id = _register(author, body).json()["id"]
+    headers = login_as(client, author)
+    assert client.delete(f"{_SUBSCRIPTIONS}/{device_id}", headers=headers).status_code == 204
+
+    resync = _register(author, {**body, "resync": True})
+    assert (resync.status_code, resync.json()["detail"]["code"]) == (409, "device_revoked")
+    assert _devices(db, author) == []
+    assert body["endpoint"] not in resync.text
+
+    assert _register(author, body).status_code == 201
+    assert _register(author, {**body, "resync": True}).status_code == 201
+
+
 def test_push_routes_require_a_session():
     client.cookies.clear()
     assert client.get(_CONFIG).status_code == 401
@@ -336,6 +390,41 @@ def test_refusal_is_retried_and_logs_no_endpoint(
     assert len(_devices(db, author)) == 1
     assert "503" in caplog.text
     assert body["endpoint"] not in caplog.text
+
+
+def test_three_rejections_in_a_row_drop_the_device_and_a_success_resets_the_count(
+    db, author, vapid, services
+):
+    flaky, broken, busy = _subscription(), _subscription(), _subscription()
+    _register(author, flaky)
+    _register(author, broken)
+    _register(author, busy)
+    services.answers[flaky["endpoint"]] = 403
+    services.answers[broken["endpoint"]] = 403
+    # A busy or failing push service says nothing about the device.
+    services.answers[busy["endpoint"]] = 429
+    message = push.PushMessage(title="t", body="b", path="/")
+
+    for _ in range(2):
+        push.send(db, user_id=author.id, message=message)
+        db.commit()
+    services.answers.pop(flaky["endpoint"])
+    push.send(db, user_id=author.id, message=message)
+    db.commit()
+    services.answers[flaky["endpoint"]] = 403
+    push.send(db, user_id=author.id, message=message)
+    db.commit()
+
+    assert {d.endpoint for d in _devices(db, author)} == {flaky["endpoint"], busy["endpoint"]}
+
+
+def test_registering_past_the_device_cap_drops_the_oldest(db, author, monkeypatch):
+    monkeypatch.setattr(push, "MAX_DEVICES_PER_USER", 2)
+    _register(author)
+    middle = _register(author).json()["id"]
+    newest = _register(author).json()["id"]
+
+    assert {str(d.id) for d in _devices(db, author)} == {middle, newest}
 
 
 def test_transport_error_leaves_the_row_sending(

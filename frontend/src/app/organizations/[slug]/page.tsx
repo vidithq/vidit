@@ -35,12 +35,12 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
 /** An organization's public page: the analyst profile's header (name, picture, bio, links), then
  * the invite answer for an invited viewer, the members, the approvals placed in its name, and,
- * for org-admins and site admins, its review requests and invites. Org-admins and site admins
+ * for org managers and site admins, its review requests and invites. Org managers and site admins
  * edit the bio, links and picture in place, as an analyst edits their profile. */
 export default function OrganizationPage() {
   const params = useParams();
   const slug = typeof params.slug === "string" ? params.slug : "";
-  const { user, loading: authLoading, refresh } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
   const path = slug ? organizationPath(slug) : null;
   const { data: org, error, refetch } = useApiResource<Organization>(path);
@@ -51,7 +51,6 @@ export default function OrganizationPage() {
   const edit = useProfileEdit({
     username: slug,
     profile: org,
-    refreshAuth: refresh,
     refetchProfile: refetch,
     calls: {
       update: (body) => updateOrganization(slug, body),
@@ -132,7 +131,7 @@ export default function OrganizationPage() {
           {org.viewer_can_manage && <OrganizationReviewRequests org={org} onChanged={refetch} />}
 
           {org.viewer_can_manage && (
-            <OrganizationInvites slug={slug} canInvite={org.viewer_role === "admin"} />
+            <OrganizationInvites slug={slug} canInvite={org.viewer_role === "manager"} />
           )}
         </>
       )}

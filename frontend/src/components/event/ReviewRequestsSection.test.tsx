@@ -47,16 +47,16 @@ function serve(
     analysts: [CY],
     organizations: [BELLINGCAT],
   },
-  administered: (typeof BELLINGCAT)[] = [],
+  managed: (typeof BELLINGCAT)[] = [],
 ) {
   api.apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
     if (init?.method === "POST") return Promise.resolve(request({ status: "declined" }));
     if (path.includes("review-request-targets")) return Promise.resolve(targets);
     if (path.endsWith("/organizations")) {
       return Promise.resolve(
-        administered.map((organization) => ({
+        managed.map((organization) => ({
           organization,
-          role: "admin",
+          role: "manager",
           joined_at: "2026-10-01T00:00:00Z",
         })),
       );
@@ -137,7 +137,7 @@ describe("<ReviewRequestsSection>", () => {
     );
   });
 
-  it("lets an org-admin of the organization asked decline for it", async () => {
+  it("lets an org manager of the organization asked decline for it", async () => {
     api.viewer = CY;
     serve([request({ target: null, target_organization: BELLINGCAT })], undefined, [BELLINGCAT]);
     render(<ReviewRequestsSection event={event} refreshKey={0} />);

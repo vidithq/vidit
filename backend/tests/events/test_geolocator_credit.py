@@ -8,14 +8,18 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from app.config import settings
 from app.models.collection import Collection, CollectionEvent
 from app.models.event import STATUS_CLOSED, Event, EventGeolocator, EventGeolocatorInvite
-from app.models.notification import Notification
+from app.models.notification import Notification, NotificationDelivery
 from app.models.organization import Organization, OrganizationMember
 from app.models.user import User
+from app.models.user_preferences import UserPreferences
 from app.services import admin as admin_service
 from app.services import email, geolocator_credit, notification_delivery, organizations
+from app.services import notifications as notifications_service
 from app.services.auth import hash_password
+from app.services.event_filters import published_credited_to
 from app.services.sanitize import html_from_text
 from tests.conftest import login_as
 from tests.events._helpers import _make_geo, client
@@ -123,6 +127,20 @@ def test_invitations_are_capped(db, author, make_user, monkeypatch):
     assert capped.json()["detail"]["code"] == "too_many_geolocators"
 
 
+def test_the_cap_counts_live_analysts_only(db, author, make_user, monkeypatch):
+    monkeypatch.setattr(geolocator_credit, "MAX_EVENT_GEOLOCATORS", 3)
+    geo = _published(db, author)
+    _credit(db, geo, make_user(deleted_at=datetime.now(UTC)))
+    banned_invitee = make_user()
+    assert _invite(geo, author, banned_invitee.username).status_code == 201
+    banned_invitee.deleted_at = datetime.now(UTC)
+    db.commit()
+
+    assert _invite(geo, author, make_user().username).status_code == 201
+    assert _invite(geo, author, make_user().username).status_code == 201
+    assert _invite(geo, author, make_user().username).status_code == 409
+
+
 def test_invite_list_shows_the_owner_all_and_others_their_own(db, author, second_user, make_user):
     geo = _published(db, author)
     third = make_user()
@@ -138,6 +156,19 @@ def test_invite_list_shows_the_owner_all_and_others_their_own(db, author, second
     assert names(author) == [second_user.username, third.username]
     assert names(third) == [third.username]
     assert names(make_user()) == []
+
+
+def test_the_event_read_says_whether_the_reader_holds_an_invitation(db, author, second_user):
+    geo = _published(db, author)
+    login_as(client, second_user)
+    assert client.get(f"{_EVENTS}/{geo.id}").json()["viewer_invite_pending"] is False
+    assert _invite(geo, author, second_user.username).status_code == 201
+    login_as(client, second_user)
+    assert client.get(f"{_EVENTS}/{geo.id}").json()["viewer_invite_pending"] is True
+    login_as(client, author)
+    assert client.get(f"{_EVENTS}/{geo.id}").json()["viewer_invite_pending"] is False
+    client.cookies.clear()
+    assert client.get(f"{_EVENTS}/{geo.id}").json()["viewer_invite_pending"] is False
 
 
 def test_accept_credits_the_invitee(db, author, second_user):
@@ -180,6 +211,94 @@ def test_decline_and_withdraw_drop_the_invitation(db, author, second_user, make_
     db.expire_all()
     assert db.query(EventGeolocatorInvite).filter_by(event_id=geo.id).count() == 0
     assert _geolocator_names(geo) == [author.username]
+
+
+def test_a_withdraw_and_invite_loop_notifies_once(db, author, second_user):
+    geo = _published(db, author)
+    path = f"{_EVENTS}/{geo.id}/geolocator-invites/{second_user.username}"
+    for _ in range(3):
+        assert _invite(geo, author, second_user.username).status_code == 201
+        assert client.delete(path, headers=login_as(client, author)).status_code == 204
+    assert _invite(geo, author, second_user.username).status_code == 201
+
+    assert _notifications(db, second_user) == [("co_geolocator_invite", author.id, geo.id)]
+    login_as(client, second_user)
+    feed = client.get("/api/v1/notifications").json()
+    assert [(n["kind"], n["invite_pending"]) for n in feed] == [("co_geolocator_invite", True)]
+
+
+def test_only_the_newest_invitation_row_offers_an_answer(db, author, second_user):
+    geo = _published(db, author)
+    path = f"{_EVENTS}/{geo.id}/geolocator-invites/{second_user.username}"
+    assert _invite(geo, author, second_user.username).status_code == 201
+    assert client.delete(path, headers=login_as(client, author)).status_code == 204
+    db.query(Notification).filter(Notification.user_id == second_user.id).update(
+        {"created_at": datetime.now(UTC) - timedelta(days=8)}
+    )
+    db.commit()
+    assert _invite(geo, author, second_user.username).status_code == 201
+
+    login_as(client, second_user)
+    feed = client.get("/api/v1/notifications").json()
+    assert [n["invite_pending"] for n in feed] == [True, False]
+
+
+def test_one_actor_queues_a_capped_number_of_emails(db, author, make_user, monkeypatch):
+    monkeypatch.setattr(settings, "notification_email_daily_cap_per_actor", 2)
+    geo = _published(db, author)
+    invitees = [make_user(email_verified_at=datetime.now(UTC)) for _ in range(3)]
+    for invitee in invitees:
+        assert _invite(geo, author, invitee.username).status_code == 201
+
+    db.expire_all()
+    channels = [
+        [
+            d.channel
+            for d in db.query(NotificationDelivery)
+            .join(Notification)
+            .filter(Notification.user_id == invitee.id)
+        ]
+        for invitee in invitees
+    ]
+    assert channels == [["email"], ["email"], []]
+    assert all(_notifications(db, invitee) for invitee in invitees)
+
+
+def test_the_per_actor_cap_spares_fan_out_and_is_not_spent_by_it(
+    db, author, second_user, make_user, monkeypatch
+):
+    monkeypatch.setattr(settings, "notification_email_daily_cap_per_actor", 1)
+    second_user.email_verified_at = datetime.now(UTC)
+    db.add(
+        UserPreferences(
+            user_id=second_user.id,
+            notification_overrides={"re_approve_requested": {"email": True}},
+        )
+    )
+    db.commit()
+    geo = _published(db, author)
+    for _ in range(2):
+        notifications_service._emit(
+            db,
+            recipient_id=second_user.id,
+            kind="re_approve_requested",
+            actor_id=author.id,
+            event_id=geo.id,
+        )
+    db.commit()
+    invitee = make_user(email_verified_at=datetime.now(UTC))
+    assert _invite(geo, author, invitee.username).status_code == 201
+
+    def emails(user: User) -> int:
+        db.expire_all()
+        return (
+            db.query(NotificationDelivery)
+            .join(Notification)
+            .filter(Notification.user_id == user.id, NotificationDelivery.channel == "email")
+            .count()
+        )
+
+    assert (emails(second_user), emails(invitee)) == (2, 1)
 
 
 def test_credit_grants_no_edit_right(db, author, second_user):
@@ -314,6 +433,21 @@ def test_author_filter_and_search_match_any_geolocator(db, author, second_user):
     assert second_user.username in suggestions.json()["authors"]
 
 
+def test_published_credit_reads_match_through_the_geolocator_rows(db, author, second_user):
+    owned = _published(db, author)
+    shared = _published(db, second_user)
+    _credit(db, shared, author)
+    _make_geo(db, author=author, status="detected")
+
+    predicate = published_credited_to([author.id])
+    sql = str(predicate.compile(compile_kwargs={"literal_binds": True}))
+    assert "EXISTS" not in sql
+    assert "UNION" in sql
+    found = {e.id for e in db.query(Event).filter(predicate)}
+    assert {owned.id, shared.id} <= found
+    assert all(db.get(Event, event_id).status == "geolocated" for event_id in found)
+
+
 def test_followers_see_co_credited_work_in_their_timeline(db, author, second_user, make_user):
     geo = _published(db, author)
     _credit(db, geo, second_user)
@@ -414,6 +548,67 @@ def test_erasure_hands_over_a_retracted_event_too(db, admin_user, author, second
     assert db.get(Event, geo.id).owner_id == second_user.id
 
 
+def test_erasure_purges_a_soft_deleted_event_instead_of_handing_it_over(
+    db, admin_user, author, second_user
+):
+    geo = _published(db, author)
+    _credit(db, geo, second_user)
+    geo.deleted_at = datetime.now(UTC)
+    db.commit()
+    geo_id = geo.id
+
+    body = _erase(admin_user, author)
+    assert (body["cascaded_geolocations"], body["transferred_events"]) == (1, 0)
+    db.expire_all()
+    assert db.get(Event, geo_id) is None
+    assert _notifications(db, second_user) == []
+
+
+def _ban(admin: User, user: User) -> dict:
+    response = client.delete(f"/api/v1/admin/users/{user.id}", headers=login_as(client, admin))
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_a_ban_hands_co_credited_events_over_and_hides_the_rest(
+    db, admin_user, author, second_user
+):
+    shared = _published(db, author)
+    _credit(db, shared, second_user)
+    alone = _published(db, author)
+
+    body = _ban(admin_user, author)
+    assert (body["cascaded_geolocations"], body["transferred_events"]) == (1, 1)
+
+    db.expire_all()
+    kept = db.get(Event, shared.id)
+    assert (kept.owner_id, kept.deleted_at) == (second_user.id, None)
+    assert db.get(Event, alone.id).deleted_at is not None
+    assert _notifications(db, second_user) == [("ownership_transferred", None, shared.id)]
+
+
+def test_erasure_after_a_ban_hands_over_what_the_ban_hid(db, admin_user, author, second_user):
+    """An event the ban hid before co-credited work was handed over at ban time (its
+    ``deleted_at`` is the owner's) passes on erasure; one deleted on its own is purged."""
+    geo = _published(db, author)
+    _credit(db, geo, second_user)
+    removed = _published(db, author)
+    _credit(db, removed, second_user)
+    banned_at = datetime.now(UTC)
+    author.deleted_at = banned_at
+    geo.deleted_at = banned_at
+    removed.deleted_at = banned_at - timedelta(days=1)
+    db.commit()
+    geo_id, removed_id = geo.id, removed.id
+
+    body = _erase(admin_user, author)
+    assert (body["cascaded_geolocations"], body["transferred_events"]) == (1, 1)
+    db.expire_all()
+    kept = db.get(Event, geo_id)
+    assert (kept.owner_id, kept.deleted_at) == (second_user.id, None)
+    assert db.get(Event, removed_id) is None
+
+
 def test_erasure_deletes_an_event_with_no_live_co_geolocator(db, admin_user, author, make_user):
     alone = _published(db, author).id
     with_banned = _published(db, author)
@@ -428,14 +623,14 @@ def test_erasure_deletes_an_event_with_no_live_co_geolocator(db, admin_user, aut
 
 @pytest.fixture
 def led_organization(db, author, make_user):
-    """An organization ``author`` is the only org-admin of, with one member."""
+    """An organization ``author`` is the only org manager of, with one member."""
     org = Organization(slug=f"cg-{uuid.uuid4().hex[:8]}", name="Credit collective")
     db.add(org)
     db.flush()
     member = make_user()
     db.add_all(
         [
-            OrganizationMember(organization_id=org.id, user_id=author.id, role="admin"),
+            OrganizationMember(organization_id=org.id, user_id=author.id, role="manager"),
             OrganizationMember(organization_id=org.id, user_id=member.id, role="member"),
         ]
     )
@@ -451,7 +646,7 @@ def _role(db, org: Organization, user: User) -> str | None:
     return row.role if row is not None else None
 
 
-def test_erasure_hands_over_events_and_the_org_admin_role_together(
+def test_erasure_hands_over_events_and_the_org_manager_role_together(
     db, admin_user, author, second_user, led_organization
 ):
     org, member = led_organization
@@ -462,11 +657,11 @@ def test_erasure_hands_over_events_and_the_org_admin_role_together(
 
     db.expire_all()
     assert db.get(Event, geo.id).owner_id == second_user.id
-    assert _role(db, org, member) == "admin"
+    assert _role(db, org, member) == "manager"
     assert _notifications(db, second_user) == [("ownership_transferred", None, geo.id)]
     inherited = db.query(Notification).filter(Notification.user_id == member.id).all()
     assert [(n.kind, n.actor_id, n.organization_id) for n in inherited] == [
-        ("organization_admin_inherited", None, org.id)
+        ("organization_manager_inherited", None, org.id)
     ]
 
 
@@ -480,7 +675,7 @@ def test_a_failed_org_hand_over_rolls_back_the_event_hand_over(
     def _boom(*_a, **_kw):
         raise RuntimeError("hand-over failed")
 
-    monkeypatch.setattr(organizations, "hand_over_admin_roles", _boom)
+    monkeypatch.setattr(organizations, "hand_over_manager_roles", _boom)
     with pytest.raises(RuntimeError):
         admin_service.hard_delete_user(db, actor_id=admin_user.id, user_id=author.id)
     db.rollback()

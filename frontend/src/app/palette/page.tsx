@@ -104,6 +104,7 @@ import {
   FORM_INVALID_LABEL,
   FORM_ERROR_BANNER,
   FORM_SUCCESS_BANNER,
+  LIST_TILE,
 } from "@/components/ui/form-styles";
 import { Input, Select } from "@/components/ui/Input";
 import { LinkListInput } from "@/components/ui/LinkListInput";
@@ -750,6 +751,13 @@ export default function PalettePage() {
 
           <Item name="FORM_SUCCESS_BANNER" usage="Confirmation / info notice (password updated, reset). Orange, not green.">
             <div className={`${FORM_SUCCESS_BANNER} max-w-sm`}>Saved.</div>
+          </Item>
+
+          <Item name="LIST_TILE" usage="One item of an admin list: a pending X handle request, a report, a detection stat, the user actions. A bordered tile on the panel; the caller adds the spacing between its lines.">
+            <div className={`${LIST_TILE} max-w-sm space-y-2 text-sm text-neutral-300`}>
+              <p>@osint_hawk_2025</p>
+              <p className="text-xs text-neutral-500">Requested 2 days ago</p>
+            </div>
           </Item>
 
           <Item name="<IncompleteFormNotice>" usage="Lists all unmet required fields at once (submit / validate / request)">

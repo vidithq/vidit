@@ -8,11 +8,12 @@ import { formatDate } from "@/lib/format";
 import { setOrganizationReviewRequestAudience, type Organization } from "@/lib/organizations";
 import {
   ORGANIZATION_AUDIENCE_OPTIONS,
+  REVIEW_REQUEST_AUDIENCE_DEFAULT,
   organizationReviewRequestsPath,
   type OrganizationReviewRequest,
   type ReviewRequestAudience,
 } from "@/lib/reviewRequests";
-import { ReviewRequestAnswer } from "@/components/event/ReviewRequestsSection";
+import { ReviewRequestDecline } from "@/components/event/ReviewRequestsSection";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -21,10 +22,10 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 
 /**
- * The organization's review requests, for its org-admins and site admins: who may send one (the
+ * The organization's review requests, for its org managers and site admins: who may send one (the
  * organization's audience, which they set here), and the open requests, oldest first. An
- * org-admin declines a request here, or approves it in the organization's name from the event
- * page. A site admin who is not an org-admin reads the list without answering.
+ * org manager declines a request here, or approves it in the organization's name from the event
+ * page. A site admin who is not an org manager reads the list without answering.
  */
 export function OrganizationReviewRequests({
   org,
@@ -41,7 +42,7 @@ export function OrganizationReviewRequests({
     { fallback: "Could not change who can send review requests", onSuccess: onChanged },
   );
   const rows = requests.data ?? [];
-  const canAnswer = org.viewer_role === "admin";
+  const canAnswer = org.viewer_role === "manager";
   const error = audience.error ?? requests.error;
 
   return (
@@ -58,7 +59,7 @@ export function OrganizationReviewRequests({
         <SegmentedControl
           aria-label="Accept review requests from"
           options={ORGANIZATION_AUDIENCE_OPTIONS}
-          value={org.review_request_audience}
+          value={org.review_request_audience ?? REVIEW_REQUEST_AUDIENCE_DEFAULT}
           onChange={(value) => void audience.run(value)}
         />
       </div>
@@ -81,10 +82,9 @@ export function OrganizationReviewRequests({
                 {formatDate(request.created_at)}
               </p>
               {canAnswer && (
-                <ReviewRequestAnswer
+                <ReviewRequestDecline
                   eventId={event.id}
                   requestId={request.id}
-                  versionNo={null}
                   onAnswered={requests.refetch}
                 />
               )}

@@ -4,23 +4,33 @@ An emitter adds its row to the caller's session and never commits, so the row
 lands in the transaction of the action it reports. For each channel the
 recipient can receive on (a verified address for email, a registered device for
 push) whose switch for the kind is on, a ``notification_deliveries`` row joins
-it for the worker to send. Reads hide a
-row whose event is soft-deleted or taken down, or whose actor is soft-deleted,
-whenever that happened.
+it for the worker to send. An actor who queued
+``settings.notification_email_daily_cap_per_actor`` emails of the kinds they send straight at
+someone (:data:`ACTOR_CAPPED_KINDS`) in the trailing day queues no more of them: the row still
+reaches the feed and push. Reads hide a
+row whose event is soft-deleted or taken down, or whose actor is soft-deleted or
+deactivated, whenever that happened.
 """
 
 from __future__ import annotations
 
 import uuid
 from collections.abc import Collection
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import NamedTuple
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Query, Session, aliased, contains_eager, joinedload
 
+from app.config import settings
 from app.models.approval import EventApproval
-from app.models.event import STATUS_GEOLOCATED, Event, EventGeolocator, EventGeolocatorInvite
+from app.models.event import (
+    STATUS_GEOLOCATED,
+    Event,
+    EventGeolocator,
+    EventGeolocatorDeparture,
+    EventGeolocatorInvite,
+)
 from app.models.notification import (
     Notification,
     NotificationChannel,
@@ -40,6 +50,34 @@ from app.services.preferences import channel_enabled
 
 _Actor = aliased(User)
 
+ACTOR_EMAIL_WINDOW = timedelta(hours=24)
+# An invitation withdrawn and sent again inside this window raises no second notification: the
+# first row in the feed offers the answer again while the invitation is pending.
+REINVITE_QUIET_PERIOD = timedelta(days=7)
+
+
+# The kinds an analyst sends straight at another analyst, whose emails the per-actor cap counts
+# and limits. Fan-out an action sets off for everyone concerned (a new version's re-approval
+# requests, an approval's notices) is neither counted nor capped.
+ACTOR_CAPPED_KINDS: frozenset[NotificationKind] = frozenset(
+    {"co_geolocator_invite", "organization_invite", "review_request_received"}
+)
+
+
+def _actor_email_capped(db: Session, actor_id: uuid.UUID) -> bool:
+    queued = (
+        db.query(func.count(NotificationDelivery.id))
+        .join(Notification, NotificationDelivery.notification_id == Notification.id)
+        .filter(
+            Notification.actor_id == actor_id,
+            Notification.kind.in_(ACTOR_CAPPED_KINDS),
+            NotificationDelivery.channel == "email",
+            NotificationDelivery.created_at >= datetime.now(UTC) - ACTOR_EMAIL_WINDOW,
+        )
+        .scalar()
+    )
+    return (queued or 0) >= settings.notification_email_daily_cap_per_actor
+
 
 def _emit(
     db: Session,
@@ -49,6 +87,7 @@ def _emit(
     actor_id: uuid.UUID | None = None,
     event_id: uuid.UUID | None = None,
     organization_id: uuid.UUID | None = None,
+    organization_name: str | None = None,
 ) -> None:
     if actor_id == recipient_id:
         return
@@ -58,13 +97,19 @@ def _emit(
         actor_id=actor_id,
         event_id=event_id,
         organization_id=organization_id,
+        organization_name=organization_name,
     )
     db.add(row)
     recipient = db.get(User, recipient_id)
     if recipient is None:
         return
     reachable: dict[NotificationChannel, bool] = {
-        "email": has_verified_email(recipient),
+        "email": has_verified_email(recipient)
+        and (
+            actor_id is None
+            or kind not in ACTOR_CAPPED_KINDS
+            or not _actor_email_capped(db, actor_id)
+        ),
         "push": push.has_device(db, user_id=recipient_id),
     }
     for channel, can_receive in reachable.items():
@@ -127,7 +172,23 @@ def notify_x_handle_request_outcome(
 
 
 def notify_co_geolocator_invite(db: Session, *, event: Event, invitee_id: uuid.UUID) -> None:
-    """Tell ``invitee_id`` that the owner of ``event`` invites them to share its credit."""
+    """Tell ``invitee_id`` that the owner of ``event`` invites them to share its credit.
+
+    Silent when an invitation to the same event reached them within
+    :data:`REINVITE_QUIET_PERIOD`, so a withdraw and invite loop sends one notification.
+    """
+    recent = (
+        db.query(Notification.id)
+        .filter(
+            Notification.user_id == invitee_id,
+            Notification.kind == "co_geolocator_invite",
+            Notification.event_id == event.id,
+            Notification.created_at >= datetime.now(UTC) - REINVITE_QUIET_PERIOD,
+        )
+        .first()
+    )
+    if recent is not None:
+        return
     _emit(
         db,
         recipient_id=invitee_id,
@@ -157,7 +218,7 @@ def notify_ownership_transferred(db: Session, *, event: Event, heir_id: uuid.UUI
 
 
 def notify_organization_invite(db: Session, *, invite: OrganizationInvite) -> None:
-    """Tell the invitee that an org-admin invited them to join."""
+    """Tell the invitee that an org manager invited them to join."""
     _emit(
         db,
         recipient_id=invite.user_id,
@@ -170,9 +231,9 @@ def notify_organization_invite(db: Session, *, invite: OrganizationInvite) -> No
 def notify_organization_invite_accepted(
     db: Session, *, invite: OrganizationInvite, member_id: uuid.UUID
 ) -> None:
-    """Tell the org-admin who sent ``invite`` that it was accepted.
+    """Tell the org manager who sent ``invite`` that it was accepted.
 
-    Silent when that org-admin's account is gone. A decline notifies nobody.
+    Silent when that org manager's account is gone. A decline notifies nobody.
     """
     if invite.invited_by_id is None:
         return
@@ -185,19 +246,38 @@ def notify_organization_invite_accepted(
     )
 
 
-def notify_organization_admin_inherited(
+def notify_organization_manager_inherited(
     db: Session, *, organization_id: uuid.UUID, heir_id: uuid.UUID
 ) -> None:
-    """Tell ``heir_id`` they became an org-admin because the last one left Vidit.
+    """Tell ``heir_id`` they became an org manager because the last one left Vidit.
 
     Names no actor: the notification never says whose account was erased.
     """
     _emit(
         db,
         recipient_id=heir_id,
-        kind="organization_admin_inherited",
+        kind="organization_manager_inherited",
         organization_id=organization_id,
     )
+
+
+def notify_organization_approval_removed(
+    db: Session, *, organization_name: str, events: Collection[tuple[uuid.UUID, uuid.UUID]]
+) -> None:
+    """Tell the owner of each event in ``events`` (``(event_id, owner_id)`` pairs, one per
+    event) that the approval ``organization_name`` gave it went with the organization.
+
+    Names no actor: a site admin deleted the organization, and the row keeps its name, since
+    the organization row is gone.
+    """
+    for event_id, owner_id in events:
+        _emit(
+            db,
+            recipient_id=owner_id,
+            kind="organization_approval_removed",
+            event_id=event_id,
+            organization_name=organization_name,
+        )
 
 
 def notify_approval_received(
@@ -222,6 +302,20 @@ def notify_approval_received(
         )
 
 
+def _ever_credited_ids(db: Session, event: Event) -> set[uuid.UUID]:
+    """The analysts who hold or held credit on ``event``: none of them approves it, so none is
+    asked to on an organization's behalf."""
+    current = db.scalars(
+        select(EventGeolocator.user_id).where(EventGeolocator.event_id == event.id)
+    )
+    former = db.scalars(
+        select(EventGeolocatorDeparture.user_id).where(
+            EventGeolocatorDeparture.event_id == event.id
+        )
+    )
+    return {event.owner_id, *current, *former}
+
+
 def notify_review_request_received(
     db: Session,
     *,
@@ -231,8 +325,9 @@ def notify_review_request_received(
     organization_id: uuid.UUID | None = None,
 ) -> None:
     """Tell the target that ``requester_id`` asks them to review ``event``: one analyst, or the
-    org-admins of ``organization_id``."""
-    for recipient_id in recipient_ids:
+    org managers of ``organization_id`` who never held credit on it."""
+    credited = _ever_credited_ids(db, event) if organization_id is not None else set()
+    for recipient_id in set(recipient_ids) - credited:
         _emit(
             db,
             recipient_id=recipient_id,
@@ -267,12 +362,13 @@ def notify_re_approve_requested(
     db: Session, *, event: Event, editor_id: uuid.UUID, superseded_version: int
 ) -> None:
     """Ask every analyst whose own approval of ``superseded_version`` stood to review the new
-    one, and every live org-admin of an organization whose approval of it stood.
+    one, and every live org manager outside the event's current and former geolocators of an
+    organization whose approval of it stood.
 
     A revoked approval asks nothing.
     """
     # Imported here: services/organizations imports this module.
-    from app.services.organizations import live_admin_ids
+    from app.services.organizations import live_manager_ids
 
     recipients: list[tuple[uuid.UUID, uuid.UUID | None]] = []
     for reviewer_id, organization_id in db.execute(
@@ -283,12 +379,15 @@ def notify_re_approve_requested(
         )
     ).tuples():
         if organization_id is None:
+            assert reviewer_id is not None  # ck_event_approvals_reviewer
             recipients.append((reviewer_id, None))
         else:
             recipients.extend(
-                (admin_id, organization_id)
-                for admin_id in db.scalars(live_admin_ids(organization_id))
+                (manager_id, organization_id)
+                for manager_id in db.scalars(live_manager_ids(organization_id))
             )
+    credited = _ever_credited_ids(db, event)
+    recipients = [(r, org) for r, org in recipients if org is None or r not in credited]
     for recipient_id, organization_id in recipients:
         _emit(
             db,
@@ -301,7 +400,8 @@ def notify_re_approve_requested(
 
 
 def _visible_rows(db: Session, user: User) -> Query[Notification]:
-    """``user``'s rows whose event and actor a reader may still see."""
+    """``user``'s rows whose event and actor a reader may still see: the actor is neither
+    soft-deleted nor deactivated, the rule the drain applies to the recipient."""
     return (
         db.query(Notification)
         .outerjoin(Event, Notification.event_id == Event.id)
@@ -309,7 +409,10 @@ def _visible_rows(db: Session, user: User) -> Query[Notification]:
         .filter(
             Notification.user_id == user.id,
             or_(Notification.event_id.is_(None), and_(*visible_events())),
-            or_(Notification.actor_id.is_(None), _Actor.deleted_at.is_(None)),
+            or_(
+                Notification.actor_id.is_(None),
+                and_(_Actor.deleted_at.is_(None), _Actor.is_active.is_(True)),
+            ),
         )
     )
 
@@ -342,23 +445,52 @@ def list_feed(
     )
 
 
-def pending_invites(db: Session, *, user: User, rows: list[Notification]) -> set[uuid.UUID]:
-    """The events among ``rows``' invitations that still wait for ``user``'s answer."""
-    event_ids = {r.event_id for r in rows if r.kind == "co_geolocator_invite" and r.event_id}
+def _newest_rows(
+    db: Session, *, user: User, kind: NotificationKind, rows: list[Notification], by: tuple
+) -> set[uuid.UUID]:
+    """The ids of ``user``'s newest ``kind`` row per key ``by``, over the whole feed, for the
+    events ``rows`` name. Only the newest row of a key answers: an older one stands for an
+    invitation or a request already answered."""
+    event_ids = {r.event_id for r in rows if r.kind == kind and r.event_id}
     if not event_ids:
         return set()
     return set(
         db.scalars(
-            select(EventGeolocatorInvite.event_id).where(
-                EventGeolocatorInvite.user_id == user.id,
-                EventGeolocatorInvite.event_id.in_(event_ids),
+            select(Notification.id)
+            .where(
+                Notification.user_id == user.id,
+                Notification.kind == kind,
+                Notification.event_id.in_(event_ids),
             )
+            .order_by(*by, Notification.created_at.desc(), Notification.id.desc())
+            .distinct(*by)
         )
     )
 
 
-def _administered(db: Session, *, user: User, rows: list[Notification]) -> set[uuid.UUID]:
-    """The organizations named by ``rows`` that ``user`` is an org-admin of now."""
+def pending_invites(db: Session, *, user: User, rows: list[Notification]) -> set[uuid.UUID]:
+    """The ``co_geolocator_invite`` rows among ``rows`` that offer an answer: the newest row of
+    an event whose invitation still waits for ``user``."""
+    newest = _newest_rows(
+        db, user=user, kind="co_geolocator_invite", rows=rows, by=(Notification.event_id,)
+    )
+    if not newest:
+        return set()
+    waiting = set(
+        db.scalars(
+            select(EventGeolocatorInvite.event_id).where(
+                EventGeolocatorInvite.user_id == user.id,
+                EventGeolocatorInvite.event_id.in_(
+                    {r.event_id for r in rows if r.id in newest and r.event_id}
+                ),
+            )
+        )
+    )
+    return {r.id for r in rows if r.id in newest and r.event_id in waiting}
+
+
+def _managed(db: Session, *, user: User, rows: list[Notification]) -> set[uuid.UUID]:
+    """The organizations named by ``rows`` that ``user`` is an org manager of now."""
     org_ids = {r.organization_id for r in rows if r.organization_id is not None}
     if not org_ids:
         return set()
@@ -366,7 +498,7 @@ def _administered(db: Session, *, user: User, rows: list[Notification]) -> set[u
         db.scalars(
             select(OrganizationMember.organization_id).where(
                 OrganizationMember.user_id == user.id,
-                OrganizationMember.role == "admin",
+                OrganizationMember.role == "manager",
                 OrganizationMember.organization_id.in_(org_ids),
             )
         )
@@ -381,14 +513,16 @@ RequestKey = tuple[uuid.UUID, uuid.UUID, uuid.UUID | None]
 
 def open_review_requests(
     db: Session, *, user: User, rows: list[Notification]
-) -> dict[RequestKey, uuid.UUID]:
-    """The open review request behind each of ``rows``' ``review_request_received`` rows: one
-    addressed to ``user``, or to an organization ``user`` is an org-admin of now."""
+) -> dict[uuid.UUID, uuid.UUID]:
+    """The open review request behind each of ``rows``' ``review_request_received`` rows, by
+    notification id: one addressed to ``user``, or to an organization ``user`` is an org manager
+    of now. Only the newest row of a key carries it; an older one stands for a request already
+    answered."""
     received = [r for r in rows if r.kind == "review_request_received" and r.event_id]
     if not received:
         return {}
     event_ids = {r.event_id for r in received}
-    org_ids = _administered(db, user=user, rows=received)
+    org_ids = _managed(db, user=user, rows=received)
     found = db.execute(
         select(
             ReviewRequest.event_id,
@@ -404,9 +538,24 @@ def open_review_requests(
             ReviewRequest.event_id.in_(event_ids),
         )
     ).tuples()
-    return {
+    by_key: dict[RequestKey, uuid.UUID] = {
         (event_id, requester_id, org_id): request_id
         for event_id, requester_id, org_id, request_id in found
+    }
+    newest = _newest_rows(
+        db,
+        user=user,
+        kind="review_request_received",
+        rows=received,
+        by=(Notification.event_id, Notification.actor_id, Notification.organization_id),
+    )
+    return {
+        r.id: request_id
+        for r in received
+        if r.id in newest
+        and r.actor_id is not None
+        and r.event_id is not None
+        and (request_id := by_key.get((r.event_id, r.actor_id, r.organization_id))) is not None
     }
 
 
@@ -433,13 +582,13 @@ def reapproval_offers(
     db: Session, *, user: User, rows: list[Notification]
 ) -> dict[OfferKey, ReapprovalOffer]:
     """The offer of each event among ``rows``' re-approval and review requests that ``user``
-    can approve now, as themselves or for the organization the row names: published, not
+    can approve now, as themselves or for the organization the row names: published, never
     credited to them, and not yet approved at the live version (by them, or by the organization,
-    which they must still administer).
+    which they must still manage).
 
     Callers eager-load ``Notification.event``.
     """
-    administered = _administered(db, user=user, rows=rows)
+    managed = _managed(db, user=user, rows=rows)
     candidates: dict[OfferKey, int] = {
         (r.event.id, r.organization_id): r.event.version_no
         for r in rows
@@ -447,7 +596,7 @@ def reapproval_offers(
         and r.event is not None
         and r.event.status == STATUS_GEOLOCATED
         and r.event.owner_id != user.id
-        and (r.organization_id is None or r.organization_id in administered)
+        and (r.organization_id is None or r.organization_id in managed)
     }
     if not candidates:
         return {}
@@ -457,6 +606,13 @@ def reapproval_offers(
             select(EventGeolocator.event_id).where(
                 EventGeolocator.user_id == user.id,
                 EventGeolocator.event_id.in_(event_ids),
+            )
+        )
+    ) | set(
+        db.scalars(
+            select(EventGeolocatorDeparture.event_id).where(
+                EventGeolocatorDeparture.user_id == user.id,
+                EventGeolocatorDeparture.event_id.in_(event_ids),
             )
         )
     )
@@ -475,7 +631,7 @@ def reapproval_offers(
                     EventApproval.reviewer_id == user.id,
                     EventApproval.organization_id.is_(None),
                 ),
-                EventApproval.organization_id.in_(administered),
+                EventApproval.organization_id.in_(managed),
             ),
         )
     ).tuples():
@@ -502,15 +658,9 @@ def build_read(
     *,
     pending: set[uuid.UUID],
     offers: dict[OfferKey, ReapprovalOffer],
-    review_requests: dict[RequestKey, uuid.UUID],
+    review_requests: dict[uuid.UUID, uuid.UUID],
 ) -> NotificationRead:
-    review_request_id = (
-        review_requests.get((row.event_id, row.actor_id, row.organization_id))
-        if row.kind == "review_request_received"
-        and row.event_id is not None
-        and row.actor_id is not None
-        else None
-    )
+    review_request_id = review_requests.get(row.id)
     # A resolved review request offers nothing, though the event may still be approvable.
     offers_approval = row.kind == "re_approve_requested" or review_request_id is not None
     offer = (
@@ -529,8 +679,9 @@ def build_read(
             if row.organization is not None
             else None
         ),
+        organization_name=row.organization_name,
         read_at=row.read_at,
-        invite_pending=row.kind == "co_geolocator_invite" and row.event_id in pending,
+        invite_pending=row.id in pending,
         reapprove_version=offer.live_version if offer is not None else None,
         approved_version=(
             offer.approved_version

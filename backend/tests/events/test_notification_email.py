@@ -11,7 +11,8 @@ from app.config import settings
 from app.models.notification import NOTIFICATION_KINDS, Notification, NotificationDelivery
 from app.models.user import User
 from app.models.user_preferences import UserPreferences
-from app.services import email, notification_delivery
+from app.services import email, notification_delivery, product_update_consent
+from app.services.preferences import email_unsubscribe_token
 from tests.conftest import login_as
 from tests.events._helpers import client
 from tests.events.test_requests import _geolocate_fulfilment, _make_request
@@ -69,7 +70,9 @@ def test_fulfilment_queues_and_the_drain_sends_one_branded_email(
     assert second_user.username in message.subject
     assert f"/events/{request.id}" in message.text
     assert f"{settings.frontend_url}/settings" in message.text
-    assert message.headers["List-Unsubscribe"] == f"<{settings.frontend_url}/settings>"
+    assert message.headers["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
+    one_click = message.headers["List-Unsubscribe"].strip("<>")
+    assert one_click.startswith(f"{settings.api_url}/notifications/unsubscribe?token=")
     [row] = _deliveries(db, author)
     assert row.status == "sent"
     assert row.sent_at is not None
@@ -171,6 +174,41 @@ def test_per_user_cap_holds_only_that_recipient(
 
     assert [r.status for r in _deliveries(db, author)] == ["sent", "queued"]
     assert [r.status for r in _deliveries(db, second_user)] == ["sent"]
+
+
+@pytest.mark.parametrize(
+    ("status", "attempts", "counted"),
+    [
+        ("sending", 0, True),
+        ("failed", 0, True),
+        ("failed", notification_delivery.MAX_ATTEMPTS, False),
+    ],
+)
+def test_the_caps_count_rows_that_may_have_gone_out(
+    db,
+    author,
+    second_user,
+    conflict,
+    capture_source_tag,
+    outbox,
+    monkeypatch,
+    status,
+    attempts,
+    counted,
+):
+    _verify(db, author)
+    _fulfil(db, author, second_user, conflict, capture_source_tag)
+    _fulfil(db, author, second_user, conflict, capture_source_tag)
+    first = _deliveries(db, author)[0]
+    first.status = status
+    first.attempts = attempts
+    first.claimed_at = datetime.now(UTC) - timedelta(hours=2)
+    db.commit()
+    monkeypatch.setattr(settings, "notification_email_daily_cap", 1)
+
+    notification_delivery.drain(db)
+
+    assert _deliveries(db, author)[1].status == ("queued" if counted else "sent")
 
 
 def test_send_failure_never_breaks_the_action(
@@ -308,3 +346,64 @@ def test_a_row_that_raises_is_retried_and_the_drain_goes_on(
     [row] = _deliveries(db, author)
     assert (row.status, row.attempts) == ("queued", 1)
     assert [r.status for r in _deliveries(db, second_user)] == ["sent"]
+
+
+@pytest.mark.parametrize("outcome", ["sent", "unknown"])
+def test_a_failed_write_after_a_send_never_requeues_the_row(
+    db, author, second_user, conflict, capture_source_tag, monkeypatch, outcome
+):
+    _verify(db, author)
+    _fulfil(db, author, second_user, conflict, capture_source_tag)
+    row = notification_delivery._claim_next(db, now=datetime.now(UTC), channel="email")
+    assert row is not None
+
+    def land_fails(_row, _outcome):
+        raise RuntimeError("database went away")
+
+    monkeypatch.setattr(notification_delivery, "_land", land_fails)
+    notification_delivery.deliver(db, row, lambda: outcome, what="notification email")
+
+    [stored] = _deliveries(db, author)
+    assert (stored.status, stored.attempts) == ("sending", 0)
+
+
+def test_the_one_click_unsubscribe_turns_off_that_kind_by_email_only(
+    db, author, second_user, conflict, capture_source_tag, outbox
+):
+    _verify(db, author)
+    _fulfil(db, author, second_user, conflict, capture_source_tag)
+    notification_delivery.drain(db)
+    [message] = [m for m in outbox if m.to == author.email]
+    token = message.headers["List-Unsubscribe"].split("token=")[1].rstrip(">")
+
+    client.cookies.clear()
+    path = "/api/v1/notifications/unsubscribe"
+    assert client.post(path, params={"token": token}).status_code == 204
+    assert client.post(path, params={"token": token}).status_code == 204
+
+    db.expire_all()
+    prefs = db.get(UserPreferences, author.id)
+    assert prefs.notification_overrides == {"request_fulfilled": {"email": False}}
+
+    forged = token.replace("request_fulfilled", "new_follower")
+    refused = client.post(path, params={"token": forged})
+    assert (refused.status_code, refused.json()["detail"]["code"]) == (
+        400,
+        "invalid_unsubscribe_token",
+    )
+    product_token = product_update_consent.unsubscribe_token(author.id)
+    assert client.post(path, params={"token": product_token}).status_code == 400
+
+
+def test_opening_the_unsubscribe_url_confirms_first_and_changes_nothing(db, author):
+    token = email_unsubscribe_token(author.id, "request_fulfilled")
+    client.cookies.clear()
+    response = client.get(
+        "/api/v1/notifications/unsubscribe", params={"token": token}, follow_redirects=False
+    )
+    assert response.status_code == 303
+    assert response.headers["location"].startswith(
+        f"{settings.frontend_url}/unsubscribe/notifications?token="
+    )
+    db.expire_all()
+    assert db.get(UserPreferences, author.id) is None

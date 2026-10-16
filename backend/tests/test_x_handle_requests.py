@@ -4,13 +4,15 @@ analyst is notified either way."""
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import event
 
-from app.database import SessionLocal
+from app.database import SessionLocal, engine
 from app.main import app
 from app.models.admin_event import AdminEvent
 from app.models.notification import Notification, NotificationDelivery
@@ -243,6 +245,28 @@ def test_approve_binds_the_handle_and_notifies(db, analyst, admin):
         .one()
     )
     assert audit.target == {"user_id": str(analyst.id), "x_handle": handle}
+
+
+@pytest.mark.parametrize("verb", ["approve", "decline"])
+def test_a_decision_locks_the_account_before_the_request(db, analyst, admin, verb):
+    """``submit`` locks the account, then the request; a decision taking the other order
+    deadlocks against a resubmission."""
+    request_id = _submit(analyst, _handle()).json()["request"]["id"]
+    login_as(client, admin)
+    locked: list[str] = []
+
+    def record(_conn, _cursor, statement, _params, _context, _many):
+        if "FOR UPDATE" in statement:
+            locked.append(re.search(r"FROM\s+(\w+)", statement).group(1))
+
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        body = {"json": {"reason": "Not yours"}} if verb == "decline" else {}
+        response = client.post(f"{_QUEUE}/{request_id}/{verb}", **body)
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+    assert response.status_code in (200, 204), response.text
+    assert locked[:2] == ["users", "x_handle_requests"]
 
 
 def test_approve_goes_through_the_conflict_check(db, make_user, admin):

@@ -26,7 +26,10 @@ from app.services import preferences as preferences_service
 from app.services import push as push_service
 from app.services import social, user_stats, x_handle_requests
 from app.services import users as users_service
-from app.services.event_filters import credited_to, published_events, visible_events
+from app.services.event_filters import (
+    published_credited_to,
+    visible_events,
+)
 from app.services.geolocator_credit import CREDIT_LOAD
 from app.services.pagination import page_size
 from app.services.thumbnails import thumbnail_media_criteria
@@ -133,6 +136,17 @@ def get_push_config(
     return PushConfigRead(public_key=push_service.public_key())
 
 
+@router.get("/me/push-subscriptions", response_model=list[PushSubscriptionRead])
+@limiter.limit("120/minute")
+def list_push_subscriptions(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[PushSubscription]:
+    """The devices registered for your push notifications, newest first."""
+    return push_service.list_devices(db, user=current_user)
+
+
 @router.post(
     "/me/push-subscriptions",
     response_model=PushSubscriptionRead,
@@ -146,9 +160,12 @@ def register_push_subscription(
     current_user: User = Depends(get_current_user),
 ) -> PushSubscription:
     """Register this browser for push notifications; registering again refreshes it."""
-    row = push_service.register(
-        db, user=current_user, body=body, user_agent=request.headers.get("user-agent")
-    )
+    try:
+        row = push_service.register(
+            db, user=current_user, body=body, user_agent=request.headers.get("user-agent")
+        )
+    except push_service.DeviceRevokedError as exc:
+        raise_typed_error(exc, {exc.code: 409})
     db.commit()
     return row
 
@@ -212,9 +229,7 @@ def get_user_profile(
     # Same predicate as the feed below. The wider ``geolocated`` + ``detected``
     # figure is ``total_events`` on ``GET /users/{username}/stats``.
     geolocations_count = (
-        db.query(Event)
-        .filter(credited_to([user.id]), *visible_events(), published_events())
-        .count()
+        db.query(Event).filter(published_credited_to([user.id]), *visible_events()).count()
     )
 
     followers_count = db.query(Follow).filter(Follow.followed_id == user.id).count()
@@ -359,7 +374,7 @@ def get_user_geolocations(
     # negative OFFSET (a 500).
     per_page = page_size(per_page)
 
-    credited_and_published = (credited_to([user.id]), *visible_events(), published_events())
+    credited_and_published = (published_credited_to([user.id]), *visible_events())
 
     total = db.query(Event).filter(*credited_and_published).count()
 

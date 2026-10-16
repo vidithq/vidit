@@ -1,6 +1,6 @@
 """Organization approvals and organization review requests: who may approve in an
 organization's name, one standing approval per organization and version, the reset a new
-version brings and whom it notifies, revocation by an org-admin or a site admin, the
+version brings and whom it notifies, revocation by an org manager or a site admin, the
 organization's review request audience, resolution and decline, the organization page's lists,
 and delivery."""
 
@@ -12,16 +12,20 @@ from datetime import UTC, datetime
 import pytest
 
 from app.models.admin_event import AdminEvent
+from app.models.approval import EventApproval
 from app.models.event import Event, EventGeolocator
 from app.models.follow import Follow
-from app.models.notification import Notification
-from app.models.organization import Organization, OrganizationMember
+from app.models.notification import Notification, NotificationDelivery
+from app.models.organization import Organization, OrganizationInvite, OrganizationMember
 from app.models.review_request import ReviewRequest
 from app.models.user import User
-from app.services import email, notification_delivery
+from app.services import email, notification_delivery, organizations
 from app.services.auth import hash_password
+from app.services.review_requests import REFUSAL_MESSAGE
+from tests._fixtures import TINY_JPEG
 from tests.conftest import login_as
-from tests.events._helpers import _make_geo, client
+from tests.events._helpers import _make_geo, client, delete_user
+from tests.events.test_review_requests import _age_declines
 from tests.events.test_versions import _form, _save_version
 from tests.events.test_versions import _published as _published_with_floor
 
@@ -49,7 +53,7 @@ def make_user(db):
     db.expire_all()
     for user_id in made:
         db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
-        db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
+        delete_user(db, user_id)
     db.commit()
 
 
@@ -58,14 +62,14 @@ def make_org(db):
     made: list[uuid.UUID] = []
 
     def make(
-        *, admins: list[User], members: list[User] = (), audience: str = "following"
+        *, managers: list[User], members: list[User] = (), audience: str = "following"
     ) -> Organization:
         slug = f"org-{uuid.uuid4().hex[:8]}"
         org = Organization(slug=slug, name=f"Org {slug}", review_request_audience=audience)
         db.add(org)
         db.flush()
-        for user in admins:
-            db.add(OrganizationMember(organization_id=org.id, user_id=user.id, role="admin"))
+        for user in managers:
+            db.add(OrganizationMember(organization_id=org.id, user_id=user.id, role="manager"))
         for user in members:
             db.add(OrganizationMember(organization_id=org.id, user_id=user.id, role="member"))
         db.commit()
@@ -135,15 +139,15 @@ def _feed(user: User) -> list[dict]:
 # ── Who may approve for an organization ─────────────────────────────
 
 
-def test_an_org_admin_approves_for_the_organization(db, author, make_user, make_org):
-    admin = make_user()
-    org = make_org(admins=[admin])
+def test_an_org_manager_approves_for_the_organization(db, author, make_user, make_org):
+    manager = make_user()
+    org = make_org(managers=[manager])
     geo = _published(db, author)
 
-    response = _approve(geo, admin, org)
+    response = _approve(geo, manager, org)
     assert response.status_code == 201, response.text
     body = response.json()
-    assert body["reviewer"]["username"] == admin.username
+    assert body["reviewer"]["username"] == manager.username
     assert body["organization"]["slug"] == org.slug
     assert body["current"] is True
 
@@ -151,22 +155,122 @@ def test_an_org_admin_approves_for_the_organization(db, author, make_user, make_
     listed = client.get(f"{_EVENTS}/{geo.id}/approvals").json()
     assert [a["organization"]["slug"] for a in listed] == [org.slug]
     [received] = _rows(db, author, "approval_received")
-    assert (received.actor_id, received.organization_id) == (admin.id, org.id)
+    assert (received.actor_id, received.organization_id) == (manager.id, org.id)
 
 
-def test_only_an_org_admin_approves_in_its_name(db, author, make_user, make_org):
-    admin, member = make_user(), make_user()
-    org = make_org(admins=[admin], members=[member])
+def test_an_organization_approval_outlives_the_acting_org_managers_account(
+    db, author, admin_user, make_user, make_org
+):
+    acting, other_manager = make_user(), make_user()
+    org = make_org(managers=[acting, other_manager])
+    geo = _published(db, author)
+    assert _approve(geo, acting, org).status_code == 201
+    assert _approve(geo, acting).status_code == 201
+
+    erased = client.delete(
+        f"/api/v1/admin/users/{acting.id}?hard=true", headers=login_as(client, admin_user)
+    )
+    assert erased.status_code == 200, erased.text
+
+    client.cookies.clear()
+    rows = client.get(f"{_EVENTS}/{geo.id}/approvals").json()
+    assert [(r["organization"]["slug"], r["reviewer"], r["current"]) for r in rows] == [
+        (org.slug, None, True)
+    ]
+    listed = client.get(f"{_ORGS}/{org.slug}/approvals").json()
+    assert [item["approval"]["reviewer"] for item in listed] == [None]
+    revoked = client.post(
+        f"{_EVENTS}/{geo.id}/approvals/{rows[0]['id']}/revoke",
+        json={"reason": "Checked again"},
+        headers=login_as(client, other_manager),
+    )
+    assert revoked.status_code == 200, revoked.text
+
+
+def test_an_organization_approval_stays_listed_when_its_member_is_banned(
+    db, author, make_user, make_org
+):
+    acting = make_user()
+    org = make_org(managers=[acting, make_user()])
+    geo = _published(db, author)
+    assert _approve(geo, acting, org).status_code == 201
+    acting.deleted_at = datetime.now(UTC)
+    db.commit()
+
+    client.cookies.clear()
+    rows = client.get(f"{_EVENTS}/{geo.id}/approvals").json()
+    assert [(r["organization"]["slug"], r["reviewer"]) for r in rows] == [(org.slug, None)]
+    listed = client.get(f"{_ORGS}/{org.slug}/approvals").json()
+    assert [item["approval"]["reviewer"] for item in listed] == [None]
+
+
+def test_a_new_version_asks_no_org_manager_who_holds_credit(
+    db, author, make_user, make_org, conflict, capture_source_tag
+):
+    acting, co = make_user(), make_user()
+    org = make_org(managers=[acting, co])
+    geo = _published_with_floor(db, author, conflict, capture_source_tag)
+    assert _approve(geo, acting, org).status_code == 201
+    db.add(EventGeolocator(event_id=geo.id, user_id=co.id))
+    db.commit()
+
+    saved = _save_version(geo.id, author, data=_form(conflict, capture_source_tag))
+    assert saved.status_code == 200, saved.text
+    assert len(_rows(db, acting, "re_approve_requested")) == 1
+    assert _rows(db, co, "re_approve_requested") == []
+
+
+def test_org_managers_who_hold_credit_are_not_asked(db, author, make_user, make_org):
+    outsider, co = make_user(), make_user()
+    org = make_org(managers=[outsider, co], audience="everyone")
+    geo = _published(db, author)
+    db.add(EventGeolocator(event_id=geo.id, user_id=co.id))
+    db.commit()
+
+    assert _ask(geo, author, org).status_code == 201
+    asked = (
+        db.query(Notification.user_id)
+        .filter(Notification.kind == "review_request_received", Notification.event_id == geo.id)
+        .all()
+    )
+    assert [user_id for (user_id,) in asked] == [outsider.id]
+
+
+def test_the_organization_approvals_page_by_cursor_and_skip_unreadable_events(
+    db, author, make_user, make_org
+):
+    acting = make_user()
+    org = make_org(managers=[acting])
+    events = [_published(db, author) for _ in range(4)]
+    for geo in events:
+        assert _approve(geo, acting, org).status_code == 201
+    events[0].hidden_at = datetime.now(UTC)
+    events[1].deleted_at = datetime.now(UTC)
+    db.commit()
+
+    client.cookies.clear()
+    first = client.get(f"{_ORGS}/{org.slug}/approvals", params={"limit": 1})
+    assert first.status_code == 200, first.text
+    next_url = first.headers["Link"].split(";")[0].strip("<>")
+    second = client.get(next_url)
+    assert "Link" not in second.headers
+    walked = [item["event"]["id"] for item in first.json() + second.json()]
+    assert walked == [str(events[3].id), str(events[2].id)]
+
+
+def test_only_an_org_manager_approves_in_its_name(db, author, make_user, make_org):
+    manager, member = make_user(), make_user()
+    org = make_org(managers=[manager], members=[member])
     geo = _published(db, author)
 
     refused = _approve(geo, member, org)
     assert refused.status_code == 403
-    assert _code(refused) == "not_organization_admin"
+    assert _code(refused) == "not_organization_manager"
 
     outsider = _approve(geo, make_user(), org)
-    assert _code(outsider) == "not_organization_admin"
+    assert _code(outsider) == "not_organization_manager"
 
-    headers = login_as(client, admin)
+    headers = login_as(client, manager)
     unknown = client.post(
         f"{_EVENTS}/{geo.id}/approvals",
         json={"version_no": 1, "organization": "no-such-org"},
@@ -178,7 +282,7 @@ def test_only_an_org_admin_approves_in_its_name(db, author, make_user, make_org)
 
 def test_a_geolocator_cannot_approve_for_an_organization(db, author, make_user, make_org):
     co = make_user()
-    org = make_org(admins=[author, co])
+    org = make_org(managers=[author, co])
     geo = _published(db, author)
     db.add(EventGeolocator(event_id=geo.id, user_id=co.id))
     db.commit()
@@ -194,7 +298,7 @@ def test_a_geolocator_cannot_approve_for_an_organization(db, author, make_user, 
 
 def test_one_standing_approval_per_organization_and_version(db, author, make_user, make_org):
     first, second = make_user(), make_user()
-    org = make_org(admins=[first, second])
+    org = make_org(managers=[first, second])
     geo = _published(db, author)
 
     placed = _approve(geo, first, org).json()
@@ -202,25 +306,25 @@ def test_one_standing_approval_per_organization_and_version(db, author, make_use
     assert duplicate.status_code == 409
     assert _code(duplicate) == "already_approved"
 
-    # The org-admin's own approval is a separate attestation.
+    # The org manager's own approval is a separate attestation.
     assert _approve(geo, first).status_code == 201
 
     assert _revoke(geo, placed["id"], second).status_code == 200
     again = _approve(geo, second, org)
     assert again.status_code == 201, again.text
 
-    other = make_org(admins=[first])
+    other = make_org(managers=[first])
     assert _approve(geo, first, other).status_code == 201
 
 
 # ── A new version resets organization approvals ─────────────────────
 
 
-def test_a_new_version_resets_and_asks_the_org_admins(
+def test_a_new_version_resets_and_asks_the_org_managers(
     db, author, make_user, make_org, conflict, capture_source_tag
 ):
-    acting, other_admin, member = make_user(), make_user(), make_user()
-    org = make_org(admins=[acting, other_admin], members=[member])
+    acting, other_manager, member = make_user(), make_user(), make_user()
+    org = make_org(managers=[acting, other_manager], members=[member])
     geo = _published_with_floor(db, author, conflict, capture_source_tag)
     assert _approve(geo, acting, org).status_code == 201
     assert _approve(geo, acting).status_code == 201
@@ -234,27 +338,27 @@ def test_a_new_version_resets_and_asks_the_org_admins(
 
     asked = _rows(db, acting, "re_approve_requested")
     assert {r.organization_id for r in asked} == {None, org.id}
-    [for_org] = _rows(db, other_admin, "re_approve_requested")
+    [for_org] = _rows(db, other_manager, "re_approve_requested")
     assert for_org.organization_id == org.id
     assert _rows(db, member, "re_approve_requested") == []
 
-    [row] = [n for n in _feed(other_admin) if n["kind"] == "re_approve_requested"]
+    [row] = [n for n in _feed(other_manager) if n["kind"] == "re_approve_requested"]
     assert row["organization"]["slug"] == org.slug
     assert row["reapprove_version"] == geo.version_no
     assert row["approved_version"] == 1
 
-    assert _approve(geo, other_admin, org, version_no=geo.version_no).status_code == 201
+    assert _approve(geo, other_manager, org, version_no=geo.version_no).status_code == 201
     [row] = [n for n in _feed(acting) if n["organization"]]
     assert row["reapprove_version"] is None
 
 
-def test_a_demoted_admin_loses_the_organization_offer(
+def test_a_demoted_manager_loses_the_organization_offer(
     db, author, make_user, make_org, conflict, capture_source_tag
 ):
-    admin, demoted = make_user(), make_user()
-    org = make_org(admins=[admin, demoted])
+    manager, demoted = make_user(), make_user()
+    org = make_org(managers=[manager, demoted])
     geo = _published_with_floor(db, author, conflict, capture_source_tag)
-    assert _approve(geo, admin, org).status_code == 201
+    assert _approve(geo, manager, org).status_code == 201
     saved = _save_version(geo.id, author, data=_form(conflict, capture_source_tag))
     assert saved.status_code == 200, saved.text
     [asked] = _rows(db, demoted, "re_approve_requested")
@@ -272,9 +376,9 @@ def test_a_demoted_admin_loses_the_organization_offer(
 # ── Revocation ──────────────────────────────────────────────────────
 
 
-def test_an_org_admin_revokes_the_organization_approval(db, author, make_user, make_org):
-    acting, other_admin, member = make_user(), make_user(), make_user()
-    org = make_org(admins=[acting, other_admin], members=[member])
+def test_an_org_manager_revokes_the_organization_approval(db, author, make_user, make_org):
+    acting, other_manager, member = make_user(), make_user(), make_user()
+    org = make_org(managers=[acting, other_manager], members=[member])
     geo = _published(db, author)
     approval = _approve(geo, acting, org).json()
 
@@ -282,17 +386,17 @@ def test_an_org_admin_revokes_the_organization_approval(db, author, make_user, m
     assert refused.status_code == 403
     assert _code(refused) == "revoke_forbidden"
 
-    response = _revoke(geo, approval["id"], other_admin)
+    response = _revoke(geo, approval["id"], other_manager)
     assert response.status_code == 200, response.text
-    assert response.json()["revoked_as"] == "organization_admin"
+    assert response.json()["revoked_as"] == "organization_manager"
     assert response.json()["revoke_reason"] == "Wrong building"
     db.expire_all()
-    assert db.query(AdminEvent).filter(AdminEvent.actor_id == other_admin.id).count() == 0
+    assert db.query(AdminEvent).filter(AdminEvent.actor_id == other_manager.id).count() == 0
 
 
-def test_the_acting_member_revokes_only_while_org_admin(db, author, make_user, make_org):
+def test_the_acting_member_revokes_only_while_org_manager(db, author, make_user, make_org):
     acting, keeper = make_user(), make_user()
-    org = make_org(admins=[acting, keeper])
+    org = make_org(managers=[acting, keeper])
     geo = _published(db, author)
     approval = _approve(geo, acting, org).json()
 
@@ -303,7 +407,7 @@ def test_the_acting_member_revokes_only_while_org_admin(db, author, make_user, m
     assert _code(_revoke(geo, approval["id"], acting)) == "revoke_forbidden"
 
     db.query(OrganizationMember).filter(OrganizationMember.user_id == acting.id).update(
-        {"role": "admin"}
+        {"role": "manager"}
     )
     db.commit()
     response = _revoke(geo, approval["id"], acting)
@@ -312,7 +416,7 @@ def test_the_acting_member_revokes_only_while_org_admin(db, author, make_user, m
 
 def test_a_site_admin_revokes_an_organization_approval(db, author, admin_user, make_user, make_org):
     acting = make_user()
-    org = make_org(admins=[acting])
+    org = make_org(managers=[acting])
     geo = _published(db, author)
     approval = _approve(geo, acting, org).json()
 
@@ -330,24 +434,24 @@ def test_a_site_admin_revokes_an_organization_approval(db, author, admin_user, m
 # ── Review requests to an organization ──────────────────────────────
 
 
-def test_following_admits_an_analyst_an_org_admin_follows(db, author, make_user, make_org):
-    admin = make_user()
-    org = make_org(admins=[admin])
+def test_following_admits_an_analyst_an_org_manager_follows(db, author, make_user, make_org):
+    manager = make_user()
+    org = make_org(managers=[manager])
     geo = _published(db, author)
 
     refused = _ask(geo, author, org)
     assert refused.status_code == 403
     assert _code(refused) == "requests_not_accepted"
-    assert "org-admins follow" in refused.json()["detail"]["message"]
+    assert refused.json()["detail"]["message"] == REFUSAL_MESSAGE
 
-    db.add(Follow(follower_id=admin.id, followed_id=author.id))
+    db.add(Follow(follower_id=manager.id, followed_id=author.id))
     db.commit()
     assert _ask(geo, author, org).status_code == 201
 
 
-def test_the_org_admins_set_the_audience(db, author, make_user, make_org):
-    admin, member = make_user(), make_user()
-    org = make_org(admins=[admin], members=[member])
+def test_the_org_managers_set_the_audience(db, author, make_user, make_org):
+    manager, member = make_user(), make_user()
+    org = make_org(managers=[manager], members=[member])
     geo = _published(db, author)
 
     headers = login_as(client, member)
@@ -356,7 +460,7 @@ def test_the_org_admins_set_the_audience(db, author, make_user, make_org):
     )
     assert patch.status_code == 403
 
-    headers = login_as(client, admin)
+    headers = login_as(client, manager)
     patch = client.patch(
         f"{_ORGS}/{org.slug}", json={"review_request_audience": "everyone"}, headers=headers
     )
@@ -365,25 +469,28 @@ def test_the_org_admins_set_the_audience(db, author, make_user, make_org):
     assert _ask(geo, author, org).status_code == 201
 
     other = _published(db, author)
-    headers = login_as(client, admin)
+    headers = login_as(client, manager)
     patch = client.patch(
         f"{_ORGS}/{org.slug}", json={"review_request_audience": "nobody"}, headers=headers
     )
     assert patch.status_code == 200, patch.text
-    db.add(Follow(follower_id=admin.id, followed_id=author.id))
+    db.add(Follow(follower_id=manager.id, followed_id=author.id))
     db.commit()
     refused = _ask(other, author, org)
     assert _code(refused) == "requests_not_accepted"
-    assert (
-        refused.json()["detail"]["message"] == "This organization does not accept review requests"
-    )
+    assert refused.json()["detail"]["message"] == REFUSAL_MESSAGE
 
 
-def test_the_picker_lists_organizations_that_would_accept(db, author, make_user, make_org):
-    admin = make_user()
-    open_org = make_org(admins=[admin], audience="everyone")
-    closed_org = make_org(admins=[make_user()], audience="nobody")
-    own_org = make_org(admins=[author], audience="everyone")
+def test_the_picker_suggests_organizations_without_revealing_their_audience(
+    db, author, make_user, make_org
+):
+    manager = make_user()
+    open_org = make_org(managers=[manager], audience="everyone")
+    db.add(Follow(follower_id=manager.id, followed_id=author.id))
+    db.commit()
+    stranger_org = make_org(managers=[make_user()], audience="everyone")
+    closed_org = make_org(managers=[make_user()], audience="nobody")
+    own_org = make_org(managers=[author], audience="everyone")
     geo = _published(db, author)
 
     def picked(q: str = "") -> set[str]:
@@ -395,8 +502,15 @@ def test_the_picker_lists_organizations_that_would_accept(db, author, make_user,
     listed = picked()
     assert open_org.slug in listed
     assert closed_org.slug not in listed
-    # Every org-admin of it geolocated the event.
+    # An organization that would take anyone's request stays out until asked for by slug.
+    assert stranger_org.slug not in listed
+    assert picked(stranger_org.slug) == {stranger_org.slug}
+    assert picked(closed_org.slug) == {closed_org.slug}
+    # Every org manager of it geolocated the event.
     assert own_org.slug not in listed
+    # Another organization's org manager following the requester admits nothing here.
+    unfollowed = make_org(managers=[make_user()])
+    assert _code(_ask(geo, author, unfollowed)) == "requests_not_accepted"
     assert picked(open_org.slug[4:]) == {open_org.slug}
 
     assert _ask(geo, author, open_org).status_code == 201
@@ -407,19 +521,19 @@ def test_the_picker_lists_organizations_that_would_accept(db, author, make_user,
     assert _code(refused) == "target_is_geolocator"
 
 
-def test_a_request_reaches_every_org_admin_and_an_approval_resolves_it(
+def test_a_request_reaches_every_org_manager_and_an_approval_resolves_it(
     db, author, make_user, make_org
 ):
     first, second, member = make_user(), make_user(), make_user()
-    org = make_org(admins=[first, second], members=[member], audience="everyone")
+    org = make_org(managers=[first, second], members=[member], audience="everyone")
     geo = _published(db, author)
 
     created = _ask(geo, author, org)
     assert created.status_code == 201, created.text
     assert created.json()["target"] is None
     assert created.json()["target_organization"]["slug"] == org.slug
-    for admin in (first, second):
-        [row] = _rows(db, admin, "review_request_received")
+    for manager in (first, second):
+        [row] = _rows(db, manager, "review_request_received")
         assert (row.actor_id, row.organization_id) == (author.id, org.id)
     assert _rows(db, member, "review_request_received") == []
 
@@ -446,9 +560,9 @@ def test_a_request_reaches_every_org_admin_and_an_approval_resolves_it(
     assert _code(again) == "already_approved"
 
 
-def test_any_org_admin_declines_for_the_organization(db, author, make_user, make_org):
+def test_any_org_manager_declines_for_the_organization(db, author, make_user, make_org):
     first, second, member = make_user(), make_user(), make_user()
-    org = make_org(admins=[first, second], members=[member], audience="everyone")
+    org = make_org(managers=[first, second], members=[member], audience="everyone")
     geo = _published(db, author)
     request_id = _ask(geo, author, org).json()["id"]
 
@@ -467,11 +581,11 @@ def test_any_org_admin_declines_for_the_organization(db, author, make_user, make
 def test_the_organization_page_lists_its_approvals_and_open_requests(
     db, author, make_user, make_org
 ):
-    admin, member = make_user(), make_user()
-    org = make_org(admins=[admin], members=[member], audience="everyone")
+    manager, member = make_user(), make_user()
+    org = make_org(managers=[manager], members=[member], audience="everyone")
     approved = _published(db, author)
     asked = _published(db, author)
-    approval = _approve(approved, admin, org).json()
+    approval = _approve(approved, manager, org).json()
     request_id = _ask(asked, author, org).json()["id"]
 
     client.cookies.clear()
@@ -483,7 +597,7 @@ def test_the_organization_page_lists_its_approvals_and_open_requests(
 
     login_as(client, member)
     assert client.get(f"{_ORGS}/{org.slug}/review-requests").status_code == 403
-    login_as(client, admin)
+    login_as(client, manager)
     [open_row] = client.get(f"{_ORGS}/{org.slug}/review-requests").json()
     assert open_row["event"]["id"] == str(asked.id)
     assert open_row["request"]["id"] == request_id
@@ -497,17 +611,18 @@ def test_organization_rows_name_the_organization_in_email_and_push(
 ):
     sent: list[email.Email] = []
     monkeypatch.setattr(email, "send", sent.append)
-    admin = make_user(email_verified_at=datetime.now(UTC))
-    org = make_org(admins=[admin], audience="everyone")
+    manager = make_user(email_verified_at=datetime.now(UTC))
+    org = make_org(managers=[manager], audience="everyone")
     geo = _published(db, author)
     request_id = _ask(geo, author, org).json()["id"]
     notification_delivery.drain(db)
-    [asked] = [m for m in sent if m.to == admin.email]
+    [asked] = [m for m in sent if m.to == manager.email]
     assert asked.subject == f"{author.username} asks {org.name} to review a geolocation"
 
-    assert _decline(geo, request_id, admin).status_code == 200
+    assert _decline(geo, request_id, manager).status_code == 200
+    _age_declines(db, geo)
     assert _ask(geo, author, org).status_code == 201
-    assert _approve(geo, admin, org).status_code == 201
+    assert _approve(geo, manager, org).status_code == 201
     db.expire_all()
     rows = db.query(Notification).filter(Notification.event_id == geo.id).all()
     assert {r.kind for r in rows} == {
@@ -521,3 +636,87 @@ def test_organization_rows_name_the_organization_in_email_and_push(
         assert message.path == f"/events/{geo.id}"
         built = notification_delivery._EMAIL_BUILDERS[row.kind](row, "probe@example.com")
         assert org.name in built.subject
+
+
+# ── Deletion ────────────────────────────────────────────────────────
+
+
+def _delete_org(org: Organization, user: User):
+    return client.delete(f"/api/v1/admin/organizations/{org.slug}", headers=login_as(client, user))
+
+
+def test_only_a_site_admin_deletes_an_organization(db, author, make_user, make_org):
+    manager = make_user()
+    org = make_org(managers=[manager])
+    assert _delete_org(org, manager).status_code == 403
+    client.cookies.clear()
+    assert client.delete(f"/api/v1/admin/organizations/{org.slug}").status_code in (401, 403)
+    db.expire_all()
+    assert db.get(Organization, org.id) is not None
+
+
+def test_deleting_an_organization_removes_everything_in_its_name(
+    db, author, admin_user, make_user, make_org, monkeypatch
+):
+    swept: list[list[str]] = []
+    monkeypatch.setattr(organizations, "sweep_keys", lambda keys, **_: swept.append(list(keys)))
+    author.email_verified_at = datetime.now(UTC)
+    manager, member, invitee, outsider = make_user(), make_user(), make_user(), make_user()
+    org = make_org(managers=[manager], members=[member], audience="everyone")
+    db.add(OrganizationInvite(organization_id=org.id, user_id=invitee.id, invited_by_id=manager.id))
+    db.commit()
+    picture = client.put(
+        f"{_ORGS}/{org.slug}/avatar",
+        headers=login_as(client, manager),
+        files={"file": ("a.jpg", TINY_JPEG, "image/jpeg")},
+    )
+    assert picture.status_code == 200, picture.text
+    first, second, revoked_only = (_published(db, author) for _ in range(3))
+    assert _approve(first, manager, org).status_code == 201
+    assert _approve(second, manager, org).status_code == 201
+    rid = _approve(revoked_only, manager, org).json()["id"]
+    assert _revoke(revoked_only, rid, manager).status_code == 200
+    assert _approve(first, outsider).status_code == 201
+    assert _ask(revoked_only, author, org).status_code == 201
+
+    org_id, slug, name = org.id, org.slug, org.name
+    assert _delete_org(org, admin_user).status_code == 204
+
+    db.expire_all()
+    assert db.get(Organization, org_id) is None
+    assert db.query(OrganizationMember).filter_by(organization_id=org_id).count() == 0
+    assert db.query(OrganizationInvite).filter_by(organization_id=org_id).count() == 0
+    assert db.query(ReviewRequest).filter_by(target_organization_id=org_id).count() == 0
+    assert db.query(EventApproval).filter_by(organization_id=org_id).count() == 0
+    assert db.query(EventApproval).filter_by(event_id=first.id).count() == 1
+
+    removed = (
+        db.query(Notification)
+        .filter_by(user_id=author.id, kind="organization_approval_removed")
+        .all()
+    )
+    assert sorted(str(n.event_id) for n in removed) == sorted([str(first.id), str(second.id)])
+    assert {(n.organization_name, n.actor_id) for n in removed} == {(name, None)}
+    assert (
+        db.query(NotificationDelivery)
+        .filter(NotificationDelivery.notification_id.in_([n.id for n in removed]))
+        .count()
+        == 0
+    )
+    [row] = [n for n in _feed(author) if n["kind"] == "organization_approval_removed"][:1]
+    assert row["organization_name"] == name
+
+    audit = db.query(AdminEvent).filter_by(action="organization_deleted").one()
+    assert (audit.actor_id, audit.target["slug"], audit.target["approvals_removed"]) == (
+        admin_user.id,
+        slug,
+        3,
+    )
+    assert len(swept) == 1 and swept[0][0].startswith(f"avatars/{org_id}/")
+
+
+def test_deleting_an_unknown_organization_is_not_found(admin_user):
+    response = client.delete(
+        "/api/v1/admin/organizations/no-such-org", headers=login_as(client, admin_user)
+    )
+    assert response.status_code == 404

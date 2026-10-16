@@ -5,7 +5,8 @@ row is claimed with ``FOR UPDATE SKIP LOCKED``, set ``sending`` and committed
 before the provider call, so a crash mid-send leaves it ``sending`` and it is
 never sent twice. A provider refusal puts it back in ``queued`` for another
 try after ``RETRY_AFTER``, up to ``MAX_ATTEMPTS``. Each email claim first
-checks the daily caps, so notification email never takes the share of the auth
+checks the daily caps, which count every row that may have gone out
+(:func:`possibly_sent_since`), so notification email never takes the share of the auth
 emails, which are sent inline and never wait here. Push has no cap.
 """
 
@@ -17,7 +18,7 @@ from datetime import UTC, datetime, timedelta
 from functools import partial
 from typing import TypedDict
 
-from sqlalchemy import ColumnElement, func, or_, select
+from sqlalchemy import ColumnElement, and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -33,7 +34,7 @@ from app.models.notification import (
 from app.models.user import User
 from app.services import email, push
 from app.services.notifications import has_verified_email, is_visible
-from app.services.preferences import channel_enabled
+from app.services.preferences import channel_enabled, email_unsubscribe_token
 
 logger = logging.getLogger(__name__)
 
@@ -44,11 +45,24 @@ STALE_SENDING_AFTER = timedelta(hours=1)
 QUEUED_EXPIRES_AFTER = timedelta(hours=48)
 
 
+def possibly_sent_since(model: type[DeliveryState], cutoff: datetime) -> ColumnElement[bool]:
+    """The rows of a queue that may have reached the provider since ``cutoff``: sent, or
+    claimed and left ``sending``, or failed stale out of ``sending``. A daily cap counts them
+    all, since the provider may have counted them too. A row failed by refusals never left."""
+    return or_(
+        and_(model.status == "sent", model.sent_at >= cutoff),
+        and_(
+            model.status.in_(("sending", "failed")),
+            model.attempts < MAX_ATTEMPTS,
+            model.claimed_at >= cutoff,
+        ),
+    )
+
+
 def _emails_sent_since(cutoff: datetime) -> tuple[ColumnElement[bool], ...]:
     return (
         NotificationDelivery.channel == "email",
-        NotificationDelivery.status == "sent",
-        NotificationDelivery.sent_at >= cutoff,
+        possibly_sent_since(NotificationDelivery, cutoff),
     )
 
 
@@ -153,8 +167,8 @@ def _organization_invite_accepted(n: Notification, to: str) -> email.Email:
     )
 
 
-def _organization_admin_inherited(n: Notification, to: str) -> email.Email:
-    return email.organization_admin_inherited_email(
+def _organization_manager_inherited(n: Notification, to: str) -> email.Email:
+    return email.organization_manager_inherited_email(
         to=to, slug=n.organization.slug, name=n.organization.name
     )
 
@@ -187,7 +201,7 @@ _EMAIL_BUILDERS: dict[NotificationKind, Callable[[Notification, str], email.Emai
     "ownership_transferred": _ownership_transferred,
     "organization_invite": _organization_invite,
     "organization_invite_accepted": _organization_invite_accepted,
-    "organization_admin_inherited": _organization_admin_inherited,
+    "organization_manager_inherited": _organization_manager_inherited,
     "re_approve_requested": lambda n, to: email.re_approve_requested_email(
         to=to, **_review_fields(n)
     ),
@@ -197,6 +211,12 @@ _EMAIL_BUILDERS: dict[NotificationKind, Callable[[Notification, str], email.Emai
     ),
     "review_request_declined": lambda n, to: email.review_request_declined_email(
         to=to, **_review_fields(n)
+    ),
+    "organization_approval_removed": lambda n, to: email.organization_approval_removed_email(
+        to=to,
+        organization=n.organization_name or "An organization",
+        event_id=str(n.event.id),
+        event_title=n.event.title,
     ),
 }
 
@@ -210,7 +230,12 @@ def _send_email(db: Session, row: NotificationDelivery, recipient: User) -> Deli
     if builder is None:
         logger.warning("notification email %s skipped: no builder for kind %r", row.id, n.kind)
         return "skipped"
-    return send_email(builder(n, recipient.email), what=f"notification email {row.id}")
+    token = email_unsubscribe_token(recipient.id, n.kind)
+    message = email.one_click_unsubscribe(
+        builder(n, recipient.email),
+        f"{settings.api_url.rstrip('/')}/notifications/unsubscribe?token={token}",
+    )
+    return send_email(message, what=f"notification email {row.id}")
 
 
 def send_email(message: email.Email, *, what: str) -> DeliveryOutcome:
@@ -300,10 +325,10 @@ def _organization_invite_accepted_push(n: Notification) -> push.PushMessage:
     )
 
 
-def _organization_admin_inherited_push(n: Notification) -> push.PushMessage:
+def _organization_manager_inherited_push(n: Notification) -> push.PushMessage:
     return push.PushMessage(
-        title=f"You are now an org-admin of {n.organization.name}",
-        body="The account of its last org-admin was removed.",
+        title=f"You are now an org manager of {n.organization.name}",
+        body="The account of its last org manager was removed.",
         path=_organization_path(n),
     )
 
@@ -354,11 +379,16 @@ _PUSH_BUILDERS: dict[NotificationKind, Callable[[Notification], push.PushMessage
     "ownership_transferred": _ownership_transferred_push,
     "organization_invite": _organization_invite_push,
     "organization_invite_accepted": _organization_invite_accepted_push,
-    "organization_admin_inherited": _organization_admin_inherited_push,
+    "organization_manager_inherited": _organization_manager_inherited_push,
     "re_approve_requested": _re_approve_requested_push,
     "approval_received": _approval_received_push,
     "review_request_received": _review_request_received_push,
     "review_request_declined": _review_request_declined_push,
+    "organization_approval_removed": lambda n: push.PushMessage(
+        title=f"{n.organization_name or 'An organization'} was removed from Vidit",
+        body=f"Its approval of {n.event.title} is gone.",
+        path=f"/events/{n.event.id}",
+    ),
 }
 
 
@@ -419,15 +449,21 @@ def deliver(
     what: str,
 ) -> None:
     """Run ``attempt`` for a row claimed ``sending`` and land its outcome. Any
-    other error counts as a refusal, so one bad row never stops a drain.
-    Shared by every queue the worker drains."""
+    other error counts as a refusal, so one bad row never stops a drain, except
+    after an outcome that may have reached the recipient: that row stays
+    ``sending`` and goes stale, so it is never sent twice. Shared by every
+    queue the worker drains."""
     model, row_id = type(row), row.id
+    outcome: DeliveryOutcome | None = None
     try:
-        _land(row, attempt())
+        outcome = attempt()
+        _land(row, outcome)
         db.commit()
     except Exception:  # noqa: BLE001
         logger.exception("%s %s raised", what, row_id)
         db.rollback()
+        if outcome in ("sent", "unknown"):
+            return
         fresh = db.get(model, row_id)
         if fresh is not None:
             _count_failure(fresh)

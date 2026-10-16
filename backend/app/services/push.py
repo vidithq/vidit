@@ -8,6 +8,7 @@ one, and a failure is logged by subscription id and status only.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import uuid
@@ -20,12 +21,13 @@ from cryptography.hazmat.primitives import serialization
 from py_vapid import Vapid, Vapid02
 from py_vapid.utils import b64urlencode
 from pywebpush import WebPushException, webpush
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.notification import DeliveryOutcome
-from app.models.push_subscription import PushSubscription
+from app.models.push_subscription import PushSubscription, RevokedPushEndpoint
 from app.models.user import User
 from app.schemas.push import PushSubscriptionCreate
 
@@ -38,6 +40,15 @@ PUSH_TIMEOUT_SECONDS = 10.0
 
 # The answers by which a push service says the subscription is gone for good.
 _GONE_STATUSES = frozenset({404, 410})
+
+# Devices per account: registering one more drops the oldest.
+MAX_DEVICES_PER_USER = 10
+# Definitive refusals in a row after which a device is dropped, as a gone one is.
+MAX_REFUSALS = 3
+# The answers by which a push service rejects this subscription itself (RFC 8030): a malformed
+# or unauthorized request. A rate limit, an oversized payload, a server error or a local error
+# says nothing about the device and counts toward nothing.
+_REJECTED_STATUSES = frozenset({400, 403})
 
 # Which device outcome names the row when the devices disagree.
 _ROW_OUTCOME_ORDER: tuple[DeliveryOutcome, ...] = ("sent", "unknown", "refused")
@@ -77,19 +88,38 @@ def public_key() -> str | None:
     return b64urlencode(raw)
 
 
+class DeviceRevokedError(Exception):
+    code = "device_revoked"
+
+
+def _endpoint_sha256(endpoint: str) -> str:
+    return hashlib.sha256(endpoint.encode()).hexdigest()
+
+
 def register(
     db: Session, *, user: User, body: PushSubscriptionCreate, user_agent: str | None
 ) -> PushSubscription:
     """Store this device for ``user``. The caller commits.
 
     Registering a known endpoint again refreshes its keys, and moves it to
-    ``user`` when the browser signed in to another account.
+    ``user`` when the browser signed in to another account. Past
+    :data:`MAX_DEVICES_PER_USER`, the oldest devices of ``user`` go. A ``resync`` of a device
+    ``user`` revoked raises :class:`DeviceRevokedError`; an explicit registration clears the
+    revocation.
     """
+    revoked = db.query(RevokedPushEndpoint).filter(
+        RevokedPushEndpoint.user_id == user.id,
+        RevokedPushEndpoint.endpoint_sha256 == _endpoint_sha256(body.endpoint),
+    )
+    if body.resync and revoked.first() is not None:
+        raise DeviceRevokedError("This device was revoked; enable push on it again")
+    revoked.delete(synchronize_session=False)
     values = {
         "user_id": user.id,
         "p256dh": body.keys.p256dh,
         "auth": body.keys.auth,
         "user_agent": user_agent[:512] if user_agent else None,
+        "refusals": 0,
     }
     stmt = (
         insert(PushSubscription)
@@ -98,6 +128,19 @@ def register(
         .returning(PushSubscription.id)
     )
     subscription_id = db.execute(stmt).scalar_one()
+    kept = (
+        select(PushSubscription.id)
+        .where(PushSubscription.user_id == user.id)
+        .order_by(PushSubscription.created_at.desc(), PushSubscription.id.desc())
+        .limit(MAX_DEVICES_PER_USER)
+    )
+    db.execute(
+        delete(PushSubscription).where(
+            PushSubscription.user_id == user.id,
+            PushSubscription.id != subscription_id,
+            PushSubscription.id.not_in(kept),
+        )
+    )
     return (
         db.query(PushSubscription)
         .filter(PushSubscription.id == subscription_id)
@@ -107,14 +150,45 @@ def register(
 
 
 def unregister(db: Session, *, user: User, subscription_id: uuid.UUID) -> bool:
-    """Drop one of ``user``'s devices; False when ``user`` has no such device.
-    The caller commits."""
-    deleted = (
+    """Revoke one of ``user``'s devices: drop it and remember its endpoint, so the browser
+    cannot bring it back by itself. False when ``user`` has no such device. The caller
+    commits."""
+    row = (
         db.query(PushSubscription)
         .filter(PushSubscription.id == subscription_id, PushSubscription.user_id == user.id)
-        .delete(synchronize_session=False)
+        .one_or_none()
     )
-    return deleted > 0
+    if row is None:
+        return False
+    db.execute(
+        insert(RevokedPushEndpoint)
+        .values(
+            user_id=user.id,
+            endpoint_sha256=_endpoint_sha256(row.endpoint),
+            revoked_at=datetime.now(UTC),
+        )
+        .on_conflict_do_nothing()
+    )
+    db.delete(row)
+    return True
+
+
+def list_devices(db: Session, *, user: User) -> list[PushSubscription]:
+    """``user``'s devices, newest first."""
+    return (
+        db.query(PushSubscription)
+        .filter(PushSubscription.user_id == user.id)
+        .order_by(PushSubscription.created_at.desc(), PushSubscription.id)
+        .all()
+    )
+
+
+def forget_devices(db: Session, *, user: User) -> None:
+    """Drop every device of ``user``, at a password change or reset, so a device registered
+    under the old password stops receiving pushes. The caller commits."""
+    db.query(PushSubscription).filter(PushSubscription.user_id == user.id).delete(
+        synchronize_session=False
+    )
 
 
 def has_device(db: Session, *, user_id: uuid.UUID) -> bool:
@@ -124,8 +198,11 @@ def has_device(db: Session, *, user_id: uuid.UUID) -> bool:
     )
 
 
-def _send_one(sub: PushSubscription, payload: str, vapid: Vapid02) -> DeliveryOutcome | None:
-    """One device's outcome; None when the push service says it is gone."""
+def _send_one(
+    sub: PushSubscription, payload: str, vapid: Vapid02
+) -> tuple[DeliveryOutcome | None, bool]:
+    """One device's outcome, None when the push service says it is gone, and whether the push
+    service rejected the subscription itself."""
     try:
         webpush(
             subscription_info={
@@ -143,24 +220,25 @@ def _send_one(sub: PushSubscription, payload: str, vapid: Vapid02) -> DeliveryOu
     except WebPushException as exc:
         status = exc.response.status_code if exc.response is not None else None
         if status in _GONE_STATUSES:
-            return None
+            return None, False
         logger.warning("push to subscription %s refused with status %s", sub.id, status)
-        return "refused"
+        return "refused", status in _REJECTED_STATUSES
     except requests.RequestException as exc:
         # The request may have reached the push service: never resend it.
         logger.warning("push to subscription %s outcome unknown: %s", sub.id, type(exc).__name__)
-        return "unknown"
+        return "unknown", False
     except Exception as exc:
         # Raised before any request left (a key that does not decode, say).
         logger.warning("push to subscription %s not sent: %s", sub.id, type(exc).__name__)
-        return "refused"
-    return "sent"
+        return "refused", False
+    return "sent", False
 
 
 def send(db: Session, *, user_id: uuid.UUID, message: PushMessage) -> DeliveryOutcome:
     """Push ``message`` to every device of ``user_id``. The caller commits.
 
-    A device the push service reports gone is deleted. The row outcome is
+    A device the push service reports gone is deleted, and so is one it rejects
+    (:data:`_REJECTED_STATUSES`) :data:`MAX_REFUSALS` times in a row. The row outcome is
     ``sent`` when any device took it, else ``unknown`` when any may have, else
     ``refused`` when any refused, else ``skipped`` (push is off here, or no
     device is left). A refused row is retried, so it never repeats a push a
@@ -173,11 +251,19 @@ def send(db: Session, *, user_id: uuid.UUID, message: PushMessage) -> DeliveryOu
     payload = json.dumps(asdict(message))
     outcomes: set[DeliveryOutcome] = set()
     for sub in subscriptions:
-        outcome = _send_one(sub, payload, vapid)
+        outcome, rejected = _send_one(sub, payload, vapid)
         if outcome is None:
             db.delete(sub)
             continue
         if outcome == "sent":
             sub.last_success_at = datetime.now(UTC)
+            sub.refusals = 0
+        elif rejected:
+            sub.refusals += 1
+            if sub.refusals >= MAX_REFUSALS:
+                logger.warning(
+                    "push subscription %s dropped after %s refusals", sub.id, MAX_REFUSALS
+                )
+                db.delete(sub)
         outcomes.add(outcome)
     return next((o for o in _ROW_OUTCOME_ORDER if o in outcomes), "skipped")

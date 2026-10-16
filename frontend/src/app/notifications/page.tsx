@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import {
   ArrowRightLeft,
   AtSign,
@@ -30,9 +30,8 @@ import {
   type Notification,
   type NotificationKind,
 } from "@/lib/notifications";
-import { ReapproveButton } from "@/components/event/ApprovalsSection";
 import { InviteAnswerButtons } from "@/components/event/GeolocatorCredit";
-import { ReviewRequestAnswer } from "@/components/event/ReviewRequestsSection";
+import { ReviewRequestDecline } from "@/components/event/ReviewRequestsSection";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LinkRow } from "@/components/ui/LinkRow";
@@ -50,11 +49,12 @@ const KIND_ICON: Record<NotificationKind, LucideIcon> = {
   ownership_transferred: ArrowRightLeft,
   organization_invite: Building2,
   organization_invite_accepted: UserCheck,
-  organization_admin_inherited: ShieldCheck,
+  organization_manager_inherited: ShieldCheck,
   re_approve_requested: RefreshCw,
   approval_received: BadgeCheck,
   review_request_received: ClipboardCheck,
   review_request_declined: ClipboardX,
+  organization_approval_removed: Building2,
 };
 
 function NotificationRows({
@@ -75,36 +75,28 @@ function NotificationRows({
           const { text, href } = describeNotification(n);
           return (
             <div key={n.id} className="space-y-2">
-              <LinkRow
-                icon={KIND_ICON[n.kind]}
-                label={`${NOTIFICATION_KIND_COPY[n.kind].label} · ${formatDate(n.created_at)}`}
-                value={text}
-                href={href}
-                external={false}
-              />
-              {/* The answer sits under the row, not in it: the row is one link. */}
+              {/* Decline sits beside the link, not in it: the row is one link. Approving
+                  happens on the event page only, after reading the event. */}
+              <div className="flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <LinkRow
+                    icon={KIND_ICON[n.kind]}
+                    label={`${NOTIFICATION_KIND_COPY[n.kind].label} · ${formatDate(n.created_at)}`}
+                    value={text}
+                    href={href}
+                    external={false}
+                  />
+                </div>
+                {n.review_request_id !== null && n.event && (
+                  <ReviewRequestDecline
+                    eventId={n.event.id}
+                    requestId={n.review_request_id}
+                    onAnswered={onChanged}
+                  />
+                )}
+              </div>
               {n.invite_pending && n.event && (
                 <InviteAnswerButtons eventId={n.event.id} onAnswered={onChanged} />
-              )}
-              {n.review_request_id !== null && n.event ? (
-                <ReviewRequestAnswer
-                  eventId={n.event.id}
-                  requestId={n.review_request_id}
-                  versionNo={n.reapprove_version}
-                  organization={n.organization}
-                  onAnswered={onChanged}
-                />
-              ) : (
-                n.reapprove_version !== null &&
-                n.event && (
-                  <ReapproveButton
-                    eventId={n.event.id}
-                    versionNo={n.reapprove_version}
-                    approvedVersion={n.approved_version}
-                    organization={n.organization}
-                    onApproved={onChanged}
-                  />
-                )
               )}
             </div>
           );
@@ -122,14 +114,18 @@ export default function NotificationsPage() {
   const { items, error, loading, loadingMore, hasMore, loadMore, reload } =
     useCursorList<Notification>(notificationsPath);
 
-  // The unread rows loaded so far, as one key, so a later page marks its own rows.
+  // The unread rows loaded so far, as one key, so a later page marks its own rows. Each id is
+  // sent once: a second page posts only its own rows.
   const shownUnread = items
     .filter((n) => n.read_at === null)
     .map((n) => n.id)
     .join(",");
+  const marked = useRef(new Set<string>());
   useEffect(() => {
-    if (!shownUnread) return;
-    markNotificationsRead(shownUnread.split(","))
+    const fresh = shownUnread ? shownUnread.split(",").filter((id) => !marked.current.has(id)) : [];
+    if (fresh.length === 0) return;
+    fresh.forEach((id) => marked.current.add(id));
+    markNotificationsRead(fresh)
       .then(refresh)
       .catch(() => {});
   }, [shownUnread, refresh]);

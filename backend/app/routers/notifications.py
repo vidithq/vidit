@@ -1,15 +1,21 @@
+from urllib.parse import quote
+
 from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.ratelimit import limiter
+from app.routers._errors import raise_typed_error
 from app.schemas.notification import (
     NotificationRead,
     NotificationReadUpdate,
     NotificationUnreadCount,
 )
 from app.services import notifications as notifications_service
+from app.services import preferences as preferences_service
+from app.services.email_layout import app_url
 from app.services.pagination import (
     MAX_PAGE_SIZE,
     decode_cursor,
@@ -18,6 +24,7 @@ from app.services.pagination import (
     page_size,
     take_page,
 )
+from app.services.unsubscribe_tokens import InvalidUnsubscribeTokenError
 
 router = APIRouter()
 
@@ -80,3 +87,41 @@ def mark_notifications_read(
     """Mark the listed notifications read. Ids that are not yours change nothing."""
     notifications_service.mark_read(db, user=current_user, ids=body.ids)
     db.commit()
+
+
+@router.get("/unsubscribe", status_code=status.HTTP_303_SEE_OTHER)
+@limiter.limit("30/minute")
+def unsubscribe_email_page(
+    request: Request,
+    token: str = Query(min_length=1, max_length=200),
+) -> RedirectResponse:
+    """Send a mail client that opens the ``List-Unsubscribe`` URL to the confirmation page.
+
+    Changes nothing: a mail scanner opens links too. The page posts the token back here once
+    the reader confirms.
+    """
+    return RedirectResponse(
+        app_url(f"/unsubscribe/notifications?token={quote(token, safe='')}"),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/unsubscribe", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("30/minute")
+def unsubscribe_email(
+    request: Request,
+    token: str = Query(min_length=1, max_length=200),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Turn off one kind of notification email, named by a signed token.
+
+    Needs no session: a mail client posts it one-click from the
+    ``List-Unsubscribe`` header. Idempotent; 400 on a token that does not
+    verify.
+    """
+    try:
+        preferences_service.unsubscribe_email(db, token)
+    except InvalidUnsubscribeTokenError as exc:
+        raise_typed_error(exc, {exc.code: 400})
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

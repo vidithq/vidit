@@ -14,8 +14,9 @@ from typing import Any
 
 from fastapi import HTTPException
 from geoalchemy2.functions import ST_MakeEnvelope, ST_Within
-from sqlalchemy import ColumnElement, Select, and_, func, or_, select
+from sqlalchemy import ColumnElement, Select, and_, func, or_, select, union
 from sqlalchemy.orm import Query as SAQuery
+from sqlalchemy.orm import aliased
 
 from app.models.conflict import Conflict
 from app.models.event import (
@@ -82,6 +83,23 @@ def credited_to(user_ids: Iterable[Any] | Select[Any]) -> ColumnElement[bool]:
         Event.owner_id.in_(user_ids),
         Event.geolocators.any(EventGeolocator.user_id.in_(user_ids)),
     )
+
+
+def published_credited_to(user_ids: Iterable[Any] | Select[Any]) -> ColumnElement[bool]:
+    """:func:`credited_to` narrowed to published work, as one IN over a UNION.
+
+    :func:`credited_to` ORs the owner leg with a correlated EXISTS, which keeps the planner off
+    both indexes. Here each leg is its own indexed lookup (``ix_events_owner_id`` and
+    ``ix_event_geolocators_user_created_at``) and the event ids meet in one IN. Reads that count
+    only published work use it; :func:`credited_to` stays for the reads that count detected
+    and requested rows too.
+    """
+    owned = aliased(Event)
+    credited = union(
+        select(owned.id).where(owned.owner_id.in_(user_ids)),
+        select(EventGeolocator.event_id).where(EventGeolocator.user_id.in_(user_ids)),
+    )
+    return and_(published_events(), Event.id.in_(credited))
 
 
 def collectable_events() -> ColumnElement[bool]:

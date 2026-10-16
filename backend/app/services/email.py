@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Literal
 
@@ -317,7 +317,6 @@ def content_report_email(
     ]
     if details:
         blocks += ["Details:", details]
-    blocks.append(f"The reported {target}: {target_link}")
     return _compose(
         to=to,
         subject=f"Vidit content report: {reason}",
@@ -325,6 +324,7 @@ def content_report_email(
             heading="New content report",
             blocks=blocks,
             action=Action("Resolve it in the admin console", admin_reports_link()),
+            note=f"The reported {target}: {target_link}",
         ),
     )
 
@@ -350,7 +350,10 @@ def registration_confirmation_email(*, to: str, link: str) -> Email:
 def _notification_email(
     *, to: str, subject: str, blocks: list[Block], action: Action, setting: str
 ) -> Email:
-    """A notification: what happened, a link to it, and the switch that sent it."""
+    """A notification: what happened, a link to it, and the switch that sent it. The sender adds
+    the one-click unsubscribe of the switch (:func:`one_click_unsubscribe`). ``setting`` is the
+    kind's label in Settings, mirrored by the frontend's lib/notifications
+    NOTIFICATION_KIND_COPY; change both."""
     return _compose(
         to=to,
         subject=subject,
@@ -358,10 +361,21 @@ def _notification_email(
             heading=subject,
             blocks=blocks,
             action=action,
-            note=f"You get this email because “{setting}” is on. Change it in your "
+            note=f"You get this email because email is on for “{setting}”. Change it in your "
             f"notification settings: {settings_url()}",
         ),
-        headers={"List-Unsubscribe": f"<{settings_url()}>"},
+    )
+
+
+def one_click_unsubscribe(message: Email, url: str) -> Email:
+    """``message`` with the RFC 8058 headers: a mail client posts ``url`` to unsubscribe."""
+    return replace(
+        message,
+        headers={
+            **message.headers,
+            "List-Unsubscribe": f"<{url}>",
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
     )
 
 
@@ -371,7 +385,7 @@ def request_fulfilled_email(*, to: str, actor: str, event_id: str, event_title: 
         subject=f"{actor} geolocated your request",
         blocks=[f"{actor} answered your request “{event_title}” with a geolocation."],
         action=Action("View the geolocation", event_link(event_id)),
-        setting="Request fulfilled by email",
+        setting="Request fulfilled",
     )
 
 
@@ -381,7 +395,7 @@ def new_follower_email(*, to: str, actor: str) -> Email:
         subject=f"{actor} follows you on Vidit",
         blocks=[f"{actor} now follows your work on Vidit."],
         action=Action("View their profile", app_url(f"/profile/{actor}")),
-        setting="New follower by email",
+        setting="New follower",
     )
 
 
@@ -394,7 +408,7 @@ def x_handle_request_approved_email(*, to: str) -> Email:
             "The Vidit bot and the archive import now credit posts from that handle to you."
         ],
         action=Action("Open your settings", settings_url()),
-        setting="X handle change approved by email",
+        setting="X handle change approved",
     )
 
 
@@ -407,7 +421,7 @@ def x_handle_request_declined_email(*, to: str) -> Email:
             "and you can send a new request from there."
         ],
         action=Action("Open your settings", settings_url()),
-        setting="X handle change declined by email",
+        setting="X handle change declined",
     )
 
 
@@ -420,7 +434,7 @@ def co_geolocator_invite_email(*, to: str, actor: str, event_id: str, event_titl
             "Accept or decline on the geolocation's page. Editing and closing stay with the owner."
         ],
         action=Action("View the invitation", event_link(event_id)),
-        setting="Geolocator invitation by email",
+        setting="Geolocator invitation",
     )
 
 
@@ -430,7 +444,7 @@ def co_geolocator_removed_email(*, to: str, actor: str, event_id: str, event_tit
         subject=f"{actor} removed you from a geolocation",
         blocks=[f"{actor} removed you from the geolocators of “{event_title}”."],
         action=Action("View the geolocation", event_link(event_id)),
-        setting="Credit removed by email",
+        setting="Credit removed",
     )
 
 
@@ -443,7 +457,22 @@ def ownership_transferred_email(*, to: str, event_id: str, event_title: str) -> 
             "You can edit, correct and close it."
         ],
         action=Action("View the geolocation", event_link(event_id)),
-        setting="Ownership transferred by email",
+        setting="Ownership transferred",
+    )
+
+
+def organization_approval_removed_email(
+    *, to: str, organization: str, event_id: str, event_title: str
+) -> Email:
+    return _notification_email(
+        to=to,
+        subject=f"{organization} was removed from Vidit",
+        blocks=[
+            f"{organization} was removed from Vidit, and its approval of “{event_title}” "
+            "went with it. The event and its other approvals are unchanged."
+        ],
+        action=Action("View the geolocation", event_link(event_id)),
+        setting="Organization approval removed",
     )
 
 
@@ -457,11 +486,11 @@ def organization_invite_email(*, to: str, actor: str, slug: str, name: str) -> E
         to=to,
         subject=f"{actor} invites you to join {name}",
         blocks=[
-            f"{actor}, an org-admin of {name}, invites you to join the organization on Vidit. "
+            f"{actor}, an org manager of {name}, invites you to join the organization on Vidit. "
             "Accept or decline on its page."
         ],
         action=Action("View the invitation", organization_link(slug)),
-        setting="Organization invite by email",
+        setting="Organization invite",
     )
 
 
@@ -471,21 +500,21 @@ def organization_invite_accepted_email(*, to: str, actor: str, slug: str, name: 
         subject=f"{actor} joined {name}",
         blocks=[f"{actor} accepted your invitation and is now a member of {name}."],
         action=Action("View the organization", organization_link(slug)),
-        setting="Invite accepted by email",
+        setting="Invite accepted",
     )
 
 
-def organization_admin_inherited_email(*, to: str, slug: str, name: str) -> Email:
+def organization_manager_inherited_email(*, to: str, slug: str, name: str) -> Email:
     return _notification_email(
         to=to,
-        subject=f"You are now an org-admin of {name}",
+        subject=f"You are now an org manager of {name}",
         blocks=[
-            f"The account of the last org-admin of {name} was removed, and you were its "
-            "earliest member, so you are now its org-admin. You can invite analysts, "
+            f"The account of the last org manager of {name} was removed, and you were its "
+            "earliest member, so you are now its org manager. You can invite analysts, "
             "change roles and edit its profile."
         ],
         action=Action("View the organization", organization_link(slug)),
-        setting="Now org-admin by email",
+        setting="Now org manager",
     )
 
 
@@ -502,7 +531,7 @@ def re_approve_requested_email(
             f"before it, so it no longer stands. See what changed and {again}."
         ],
         action=Action("Review the new version", event_link(event_id)),
-        setting="New version to approve by email",
+        setting="New version to approve",
     )
 
 
@@ -515,7 +544,7 @@ def approval_received_email(
         subject=f"{actor} approved your geolocation{on_behalf}",
         blocks=[f"{actor} approved the current version of “{event_title}”{on_behalf}."],
         action=Action("View the geolocation", event_link(event_id)),
-        setting="Approval received by email",
+        setting="Approval received",
     )
 
 
@@ -532,7 +561,7 @@ def review_request_received_email(
             f"version{as_target}, or decline the request, from the geolocation's page."
         ],
         action=Action("Review the geolocation", event_link(event_id)),
-        setting="Review request by email",
+        setting="Review request",
     )
 
 
@@ -545,7 +574,7 @@ def review_request_declined_email(
         subject=f"{organization or actor} declined to review your geolocation",
         blocks=[f"{actor} declined{on_behalf} your request to review “{event_title}”."],
         action=Action("View the geolocation", event_link(event_id)),
-        setting="Review request declined by email",
+        setting="Review request declined",
     )
 
 
@@ -560,8 +589,9 @@ def product_update_email(
     one_click_url: str,
 ) -> Email:
     """A major release announcement. The visible link opens the unsubscribe
-    page; the header URL takes the one-click POST of RFC 8058."""
-    return _compose(
+    page; the header URL takes the one-click POST of RFC 8058. ``blocks`` are an
+    admin's words, so a URL in them is a link."""
+    message = _compose(
         to=to,
         subject=f"Vidit {label}: {title}",
         content=Content(
@@ -570,9 +600,7 @@ def product_update_email(
             action=Action("See what is new", link_url) if link_url else None,
             note="You get this email because you asked for news about major Vidit releases. "
             f"Unsubscribe: {unsubscribe_url}",
+            link_blocks=True,
         ),
-        headers={
-            "List-Unsubscribe": f"<{one_click_url}>",
-            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-        },
     )
+    return one_click_unsubscribe(message, one_click_url)

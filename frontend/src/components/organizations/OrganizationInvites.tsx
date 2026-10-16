@@ -19,11 +19,11 @@ import { Select } from "@/components/ui/Input";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 
-/** The org-admin's invite control and the pending invites.
+/** The org manager's invite control and the pending invites.
  *
  * The picker lists only the analysts the server accepts: mutual follows of the viewer who are
  * neither members nor invited. The line under the heading says so, which is what explains an
- * analyst missing from the list. A site admin who is not an org-admin sees the pending invites
+ * analyst missing from the list. A site admin who is not an org manager sees the pending invites
  * without the picker (`canInvite`). */
 export function OrganizationInvites({
   slug,

@@ -143,7 +143,7 @@ describe("<ApprovalsSection>", () => {
     expect(await screen.findAllByRole("button", { name: "Revoke" })).toHaveLength(2);
   });
 
-  it("lets an org-admin approve as each organization they administer", async () => {
+  it("lets an org manager approve as each organization they manage", async () => {
     api.viewer = CY;
     const BELLINGCAT = { slug: "bellingcat", name: "Bellingcat", avatar_url: null };
     const OSINT = { slug: "osint-lab", name: "OSINT Lab", avatar_url: null };
@@ -151,7 +151,7 @@ describe("<ApprovalsSection>", () => {
       if (init?.method === "POST") return Promise.resolve(approval());
       if (path === "/users/cy/organizations") {
         return Promise.resolve([
-          { organization: BELLINGCAT, role: "admin", joined_at: "2026-10-01T00:00:00Z" },
+          { organization: BELLINGCAT, role: "manager", joined_at: "2026-10-01T00:00:00Z" },
           { organization: OSINT, role: "member", joined_at: "2026-10-01T00:00:00Z" },
         ]);
       }
@@ -170,13 +170,13 @@ describe("<ApprovalsSection>", () => {
     );
   });
 
-  it("signs an organization approval with its name and gives its org-admins revoke", async () => {
+  it("signs an organization approval with its name and gives its org managers revoke", async () => {
     api.viewer = CY;
     const BELLINGCAT = { slug: "bellingcat", name: "Bellingcat", avatar_url: null };
     api.apiFetch.mockImplementation((path: string) =>
       Promise.resolve(
         path === "/users/cy/organizations"
-          ? [{ organization: BELLINGCAT, role: "admin", joined_at: "2026-10-01T00:00:00Z" }]
+          ? [{ organization: BELLINGCAT, role: "manager", joined_at: "2026-10-01T00:00:00Z" }]
           : [approval({ organization: BELLINGCAT }), approval({ id: "a2", reviewer: ANA })],
       ),
     );
@@ -189,6 +189,15 @@ describe("<ApprovalsSection>", () => {
     expect(screen.getByRole("link", { name: "bo" })).toHaveAttribute("href", "/profile/bo");
     expect(await screen.findAllByRole("button", { name: "Revoke" })).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Approve as Bellingcat" })).toBeNull();
+  });
+
+  it("keeps an organization approval whose acting org manager was erased", async () => {
+    const BELLINGCAT = { slug: "bellingcat", name: "Bellingcat", avatar_url: null };
+    serve([approval({ organization: BELLINGCAT, reviewer: null })]);
+    render(<ApprovalsSection event={event} versionNo={2} live />);
+
+    expect(await screen.findByText("on behalf of Bellingcat")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Bellingcat" })).toBeInTheDocument();
   });
 
   it("shows a revoked approval with its public reason on a filed version", async () => {

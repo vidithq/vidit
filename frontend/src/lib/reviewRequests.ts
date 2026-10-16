@@ -12,6 +12,10 @@ type Author = components["schemas"]["AuthorRef"];
 /** Whom a review request asks: an analyst by username, or an organization by slug. */
 export type ReviewRequestTarget = { username: string } | { organization: string };
 
+/** The audience of an analyst or organization that never chose one.
+ *  Mirrors backend `user_preferences.REVIEW_REQUEST_AUDIENCE_DEFAULT`; change both. */
+export const REVIEW_REQUEST_AUDIENCE_DEFAULT: ReviewRequestAudience = "following";
+
 // Keyed by the generated audience values, so a value the backend adds fails the type-check.
 const AUDIENCE_LABELS: Record<ReviewRequestAudience, string> = {
   following: "People I follow",
@@ -30,10 +34,10 @@ function audienceOptions(labels: Record<ReviewRequestAudience, string>) {
 export const REVIEW_REQUEST_AUDIENCE_OPTIONS = audienceOptions(AUDIENCE_LABELS);
 
 /** The organization page's choices for who may send the organization a review request.
- *  `following` admits an analyst any org-admin follows. */
+ *  `following` admits an analyst any org manager follows. */
 export const ORGANIZATION_AUDIENCE_OPTIONS = audienceOptions({
   ...AUDIENCE_LABELS,
-  following: "People our org-admins follow",
+  following: "People our org managers follow",
 });
 
 /** Open requests on an event: every one for its geolocators, the reader's own otherwise. */
@@ -47,7 +51,7 @@ export function reviewRequestTargetsPath(eventId: string, query: string): string
   return `/events/${eventId}/review-request-targets?q=${encodeURIComponent(query)}`;
 }
 
-/** The open requests addressed to an organization (its org-admins and site admins). */
+/** The open requests addressed to an organization (its org managers and site admins). */
 export function organizationReviewRequestsPath(slug: string): string {
   return `/organizations/${encodeURIComponent(slug)}/review-requests`;
 }

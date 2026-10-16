@@ -39,8 +39,9 @@ interface UseProfileEditArgs {
   /** Route param: leaving for another profile exits edit mode. */
   username: string;
   profile: EditableProfile | null;
-  /** Refresh AuthContext so the sidebar and other surfaces pick up the new avatar and bio. */
-  refreshAuth: () => Promise<void>;
+  /** Refresh AuthContext so the sidebar and other surfaces pick up the new avatar and bio.
+   *  Omitted where the profile is not the reader's own account (an organization). */
+  refreshAuth?: () => Promise<void>;
   /** Re-fetch the profile so view mode reflects the saved values. */
   refetchProfile: () => void;
   /** Where a save writes; your own account when omitted. */
@@ -164,7 +165,7 @@ export function useProfileEdit({
         // Adopt the saved picture before leaving edit mode, so the header never shows the old one.
         if (avatarUrl !== undefined)
           setSavedAvatar({ username, url: avatarUrl });
-        await refreshAuth();
+        await refreshAuth?.();
         refetchProfile();
         dropStagedAvatar();
         setRemoveAvatar(false);

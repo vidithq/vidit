@@ -14,10 +14,11 @@ from app.models.approval import EventApproval
 from app.models.event import STATUS_CLOSED, Event, EventGeolocator
 from app.models.notification import Notification
 from app.models.user import User
+from app.services import approvals
 from app.services.auth import hash_password
 from app.services.geolocator_credit import JOINED_AS_GEOLOCATOR_REASON
 from tests.conftest import login_as
-from tests.events._helpers import _make_geo, client
+from tests.events._helpers import _make_geo, client, delete_user
 from tests.events.test_versions import _form, _save_version
 from tests.events.test_versions import _published as _published_with_floor
 
@@ -44,7 +45,7 @@ def make_user(db):
     db.expire_all()
     for user_id in made:
         db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
-        db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
+        delete_user(db, user_id)
     db.commit()
 
 
@@ -156,7 +157,18 @@ def test_a_closed_event_takes_no_approval_and_keeps_its_own(db, author, second_u
     response = _approve(geo, make_user())
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "invalid_state"
-    assert [a["reviewer"]["username"] for a in _listed(geo)] == [second_user.username]
+    # Readable, but no longer current: the claim it attests was closed.
+    assert [(a["reviewer"]["username"], a["current"]) for a in _listed(geo)] == [
+        (second_user.username, False)
+    ]
+
+
+def test_the_list_is_capped(db, author, make_user, monkeypatch):
+    monkeypatch.setattr(approvals, "MAX_APPROVALS_LISTED", 2)
+    geo = _published(db, author)
+    for _ in range(3):
+        assert _approve(geo, make_user()).status_code == 201
+    assert len(_listed(geo)) == 2
 
 
 def test_one_review_per_analyst_and_version(db, author, second_user):
@@ -282,6 +294,19 @@ def test_a_site_admin_revokes_any_approval_and_is_audited(db, author, second_use
         .one()
     )
     assert audit.target["approval_id"] == approval["id"]
+
+
+def test_a_site_admin_revokes_on_a_withheld_event_and_others_find_none(
+    db, author, second_user, admin_user
+):
+    geo = _published(db, author)
+    approval = _approve(geo, second_user).json()
+    geo.hidden_at = datetime.now(UTC)
+    db.commit()
+
+    assert _revoke(geo, approval["id"], second_user).status_code == 404
+    response = _revoke(geo, approval["id"], admin_user, reason="Taken down")
+    assert response.status_code == 200, response.text
 
 
 def test_revoking_an_approval_of_another_event_is_not_found(db, author, second_user):

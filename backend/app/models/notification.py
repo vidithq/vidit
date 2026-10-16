@@ -29,15 +29,17 @@ NotificationKind = Literal[
     "ownership_transferred",
     "organization_invite",
     "organization_invite_accepted",
-    "organization_admin_inherited",
+    "organization_manager_inherited",
     "re_approve_requested",
     "approval_received",
     "review_request_received",
     "review_request_declined",
+    "organization_approval_removed",
 ]
 
 # A delivery channel besides the in-app feed, which is always on.
 # ``ck_notification_deliveries_channel_valid`` pins it at the DB.
+# Mirrored by the frontend's lib/notifications NotificationChannel; change both.
 NotificationChannel = Literal["email", "push"]
 
 # The kind registry: every kind with its per-channel default. Analysts store
@@ -54,11 +56,12 @@ NOTIFICATION_KINDS: dict[NotificationKind, dict[NotificationChannel, bool]] = {
     "ownership_transferred": {"email": True, "push": True},
     "organization_invite": {"email": True, "push": True},
     "organization_invite_accepted": {"email": False, "push": False},
-    "organization_admin_inherited": {"email": True, "push": True},
+    "organization_manager_inherited": {"email": True, "push": True},
     "re_approve_requested": {"email": False, "push": False},
     "approval_received": {"email": False, "push": False},
     "review_request_received": {"email": True, "push": True},
     "review_request_declined": {"email": False, "push": False},
+    "organization_approval_removed": {"email": False, "push": False},
 }
 assert set(NOTIFICATION_KINDS) == set(get_args(NotificationKind))
 
@@ -89,6 +92,9 @@ class Notification(Base):
     organization_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True
     )
+    # The name of an organization the row speaks of once it is gone: an
+    # ``organization_approval_removed`` row outlives the organization it names.
+    organization_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
@@ -110,8 +116,9 @@ class Notification(Base):
             "'x_handle_request_approved', 'x_handle_request_declined', "
             "'co_geolocator_invite', 'co_geolocator_removed', 'ownership_transferred', "
             "'organization_invite', 'organization_invite_accepted', "
-            "'organization_admin_inherited', 're_approve_requested', 'approval_received', "
-            "'review_request_received', 'review_request_declined')",
+            "'organization_manager_inherited', 're_approve_requested', 'approval_received', "
+            "'review_request_received', 'review_request_declined', "
+            "'organization_approval_removed')",
             name="ck_notifications_kind_valid",
         ),
         # The feed walk, newest first per recipient.

@@ -21,10 +21,10 @@ from app.database import Base
 # in step).
 ApprovalVerdict = Literal["approve"]
 
-# Who revoked an approval: its reviewer, an org-admin of the organization it was placed for, or a
+# Who revoked an approval: its reviewer, an org manager of the organization it was placed for, or a
 # site admin. Stamped at revocation, since roles change later. ``ck_event_approvals_revoked_as_valid``
 # pins it at the DB (keep the two in step).
-ApprovalRevoker = Literal["reviewer", "organization_admin", "site_admin"]
+ApprovalRevoker = Literal["reviewer", "organization_manager", "site_admin"]
 
 
 class EventApproval(Base):
@@ -36,7 +36,8 @@ class EventApproval(Base):
     Revocation stamps the row and keeps it: the reason is public.
 
     With ``organization_id`` set, the approval is the organization's and
-    ``reviewer_id`` is the org-admin who placed it in its name. An analyst's own
+    ``reviewer_id`` is the org manager who placed it in its name, NULL once that
+    account is erased. An analyst's own
     approval and an approval they place for an organization are separate rows.
     """
 
@@ -47,9 +48,11 @@ class EventApproval(Base):
         ForeignKey("events.id", ondelete="CASCADE"), nullable=False
     )
     version_no: Mapped[int] = mapped_column(Integer, nullable=False)
-    # The analyst who placed it. CASCADE: an erased analyst's attestations go with the account.
-    reviewer_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    # The analyst who placed it. An analyst's own approval goes with their erased account
+    # (``admin.hard_delete_user`` deletes it first); an organization's stays the organization's,
+    # so SET NULL, and ``ck_event_approvals_reviewer`` keeps it on organization rows only.
+    reviewer_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     organization_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True
@@ -83,12 +86,16 @@ class EventApproval(Base):
             name="ck_event_approvals_revoke_reason",
         ),
         CheckConstraint(
-            "revoked_as IN ('reviewer', 'organization_admin', 'site_admin')",
+            "revoked_as IN ('reviewer', 'organization_manager', 'site_admin')",
             name="ck_event_approvals_revoked_as_valid",
         ),
         CheckConstraint(
             "(revoked_at IS NULL) = (revoked_as IS NULL)",
             name="ck_event_approvals_revoked_as",
+        ),
+        CheckConstraint(
+            "reviewer_id IS NOT NULL OR organization_id IS NOT NULL",
+            name="ck_event_approvals_reviewer",
         ),
         # One review per analyst and version, revoked included: with only the live
         # version open to a review, this is also one current approval per analyst
@@ -102,7 +109,7 @@ class EventApproval(Base):
             postgresql_where=text("organization_id IS NULL"),
         ),
         # One standing approval per organization and version: a revoked one can be
-        # placed again by another org-admin.
+        # placed again by another org manager.
         Index(
             "uq_event_approvals_organization",
             "event_id",

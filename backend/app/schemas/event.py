@@ -277,6 +277,9 @@ class EventRead(BaseModel):
     thumbnail: MediaRead | None
     tags: list[TagRead]
     conflicts: list[ConflictRead]
+    # True on ``GET /events/{id}`` when the signed-in reader holds a pending invitation to share
+    # the credit; false for anyone else and on write responses, which only the owner reads.
+    viewer_invite_pending: bool = False
 
     model_config = {"from_attributes": True}
 

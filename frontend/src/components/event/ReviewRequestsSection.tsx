@@ -4,11 +4,10 @@ import { useEffect, useState } from "react";
 
 import type { EventDetail } from "@/types";
 import { useAuth } from "@/contexts/AuthContext";
-import { useAdministeredOrganizations } from "@/hooks/useAdministeredOrganizations";
+import { useManagedOrganizations } from "@/hooks/useManagedOrganizations";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import { useMutation } from "@/hooks/useMutation";
-import { approveEvent, approveLabel } from "@/lib/approvals";
 import { formatDate } from "@/lib/format";
 import { organizationByline, type OrganizationRef } from "@/lib/organizations";
 import {
@@ -30,51 +29,31 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 
 /**
- * The target's answer to an open review request: the notification row and the event page both
- * render it. Approving covers `versionNo`, the live version, as the reader or for
- * `organization` when the request asks one, and resolves the request; without a `versionNo` only
- * Decline shows (the event page approves from its Approvals card).
+ * The target's answer to an open review request outside the Approvals card: Decline. The
+ * notification row, the event page and the organization page render it; approving happens in
+ * the event page's Approvals card, after reading the event.
  */
-export function ReviewRequestAnswer({
+export function ReviewRequestDecline({
   eventId,
   requestId,
-  versionNo,
-  organization = null,
   onAnswered,
 }: {
   eventId: string;
   requestId: string;
-  versionNo: number | null;
-  organization?: OrganizationRef | null;
   onAnswered: () => void;
 }) {
-  const answer = useMutation(
-    async (verb: "approve" | "decline") => {
-      if (verb === "approve" && versionNo !== null) {
-        await approveEvent(eventId, versionNo, undefined, organization?.slug);
-      } else await declineReviewRequest(eventId, requestId);
-    },
-    { fallback: "Failed to answer the review request", onSuccess: onAnswered },
-  );
+  const decline = useMutation(() => declineReviewRequest(eventId, requestId), {
+    fallback: "Failed to decline the review request",
+    onSuccess: onAnswered,
+  });
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        {versionNo !== null && (
-          <Button onClick={() => void answer.run("approve")} disabled={answer.loading}>
-            {approveLabel(versionNo, organization)}
-          </Button>
-        )}
-        <Button
-          variant="ghost"
-          onClick={() => void answer.run("decline")}
-          disabled={answer.loading}
-        >
-          Decline
-        </Button>
-      </div>
-      {answer.error && (
+      <Button variant="ghost" onClick={() => void decline.run()} disabled={decline.loading}>
+        Decline
+      </Button>
+      {decline.error && (
         <div className={FORM_ERROR_BANNER} role="alert">
-          {answer.error}
+          {decline.error}
         </div>
       )}
     </div>
@@ -125,8 +104,8 @@ function targetOptions(targets: ReviewRequestTargets | null): TargetOption[] {
   ];
 }
 
-/** The geolocator's picker: only analysts and organizations who would accept a request from the
- *  reader are listed. */
+/** The geolocator's picker: analysts who follow the reader, organizations an org manager of which
+ *  follows them, and an exact username or slug, whose request may still be refused. */
 function RequestReviewForm({ eventId, onSent }: { eventId: string; onSent: () => void }) {
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -176,9 +155,9 @@ function RequestReviewForm({ eventId, onSent }: { eventId: string; onSent: () =>
       ) : (
         targets.data && (
           <p className="text-xs text-neutral-500">
-            No analyst or organization to suggest. An analyst accepts requests from people they
-            follow, and an organization from people its org-admins follow, unless their settings
-            say otherwise.
+            No analyst or organization to suggest. Suggestions are analysts who follow you and
+            organizations whose org managers follow you. Type an exact username or slug to ask
+            someone else.
           </p>
         )
       )}
@@ -199,7 +178,7 @@ function RequestReviewForm({ eventId, onSent }: { eventId: string; onSent: () =>
 
 /**
  * Review requests on a published event. A geolocator sees the open requests and asks an analyst
- * or an organization to review the live version; an analyst asked, or an org-admin of an
+ * or an organization to review the live version; an analyst asked, or an org manager of an
  * organization asked, sees the request and can decline it, or approve from the Approvals card.
  * `refreshKey` changes when an approval elsewhere on the page may have resolved a request.
  */
@@ -211,7 +190,7 @@ export function ReviewRequestsSection({
   refreshKey: number;
 }) {
   const { user } = useAuth();
-  const administered = useAdministeredOrganizations();
+  const managed = useManagedOrganizations();
   const geolocator = canRequestReview(event, user?.id);
   const requests = useApiResource<ReviewRequest[]>(
     user && event.status === "geolocated" ? reviewRequestsPath(event.id) : null,
@@ -225,7 +204,7 @@ export function ReviewRequestsSection({
   const rows = requests.data ?? [];
   const mine = rows.filter((r) =>
     r.target_organization
-      ? administered.some((o) => o.slug === r.target_organization?.slug)
+      ? managed.some((o) => o.slug === r.target_organization?.slug)
       : r.target?.id === user?.id,
   );
   if (!geolocator && mine.length === 0) return null;
@@ -242,12 +221,7 @@ export function ReviewRequestsSection({
             {request.target_organization ? ` as ${request.target_organization.name}` : ""} in the
             Approvals card, or decline.
           </p>
-          <ReviewRequestAnswer
-            eventId={event.id}
-            requestId={request.id}
-            versionNo={null}
-            onAnswered={refetch}
-          />
+          <ReviewRequestDecline eventId={event.id} requestId={request.id} onAnswered={refetch} />
         </div>
       ))}
       {geolocator && (

@@ -9,18 +9,19 @@ from app.database import Base
 
 # Where a request stands. Value-domain source of truth for the column and the Read schema;
 # ``ck_review_requests_status_valid`` pins it at the DB (keep the two in step).
-ReviewRequestStatus = Literal["open", "approved", "declined"]
+ReviewRequestStatus = Literal["open", "approved", "declined", "withdrawn"]
 
 
 class ReviewRequest(Base):
     """A geolocator of an event asks an analyst or an organization to review it.
 
-    Open until the target approves the event (any version) or declines. The row stays once
-    resolved, so the requester sees the outcome. ``version_no`` is the live version when the
+    Open until the target approves the event (any version) or declines, or until the requester
+    loses their credit on the event, which withdraws it. The row stays once resolved, so the
+    requester sees the outcome and it still counts toward the daily cap. ``version_no`` is the live version when the
     request was sent.
 
     The target is one analyst (``target_user_id``) or one organization
-    (``target_organization_id``), never both: ``ck_review_requests_one_target``. Any org-admin of
+    (``target_organization_id``), never both: ``ck_review_requests_one_target``. Any org manager of
     the organization answers for it.
     """
 
@@ -57,7 +58,8 @@ class ReviewRequest(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('open', 'approved', 'declined')", name="ck_review_requests_status_valid"
+            "status IN ('open', 'approved', 'declined', 'withdrawn')",
+            name="ck_review_requests_status_valid",
         ),
         CheckConstraint(
             "(status = 'open') = (resolved_at IS NULL)", name="ck_review_requests_resolved"

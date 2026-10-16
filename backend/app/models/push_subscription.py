@@ -1,10 +1,28 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+
+
+class RevokedPushEndpoint(Base):
+    """A device its analyst revoked, by the SHA-256 of its endpoint, so a browser that still
+    holds the subscription cannot register it again by itself (``resync``). Enabling push on
+    that browser again clears the row. Only the hash is kept: the endpoint is a bearer URL."""
+
+    __tablename__ = "revoked_push_endpoints"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    endpoint_sha256: Mapped[str] = mapped_column(String(64), primary_key=True)
+    revoked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
 
 
 class PushSubscription(Base):
@@ -31,6 +49,10 @@ class PushSubscription(Base):
         nullable=False,
     )
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Refusals since the last accepted push; the device is dropped at ``push.MAX_REFUSALS``.
+    refusals: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
 
     __table_args__ = (
         UniqueConstraint("endpoint", name="uq_push_subscriptions_endpoint"),

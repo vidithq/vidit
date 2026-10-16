@@ -29,10 +29,11 @@ class OrganizationRead(BaseModel):
 
     ``viewer_role`` is the caller's role, null for a non-member or an anonymous
     caller. ``viewer_invited`` is true while the caller holds a pending invite.
-    ``viewer_can_manage`` is true for an org-admin or a site admin: it gates
+    ``viewer_can_manage`` is true for an org manager or a site admin: it gates
     the profile edit and the member management on the page.
     ``review_request_audience`` is who may send the organization a review
-    request, set by its org-admins.
+    request, set by its org managers: shown to them and to site admins only, null
+    for anyone else, so the setting is not read off the page.
     """
 
     id: uuid.UUID
@@ -44,21 +45,29 @@ class OrganizationRead(BaseModel):
     external_links: dict[str, str | None]
     created_at: datetime
     member_count: int
-    review_request_audience: ReviewRequestAudience
+    review_request_audience: ReviewRequestAudience | None
     viewer_role: OrganizationRole | None = None
     viewer_invited: bool = False
     viewer_can_manage: bool = False
 
 
 class AdminOrganizationRead(BaseModel):
-    """One row of ``GET /admin/organizations``. ``admin_count`` 0 flags an
-    organization left without a live org-admin."""
+    """One row of ``GET /admin/organizations``. ``manager_count`` 0 flags an
+    organization left without a live org manager."""
 
     slug: str
     name: str
     member_count: int
-    admin_count: int
+    manager_count: int
     created_at: datetime
+
+
+class OrganizationManagerAppoint(BaseModel):
+    """Body for ``POST /admin/organizations/{slug}/managers``: the analyst to make org manager."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    username: str = Field(min_length=1, max_length=50)
 
 
 class OrganizationMembershipRead(BaseModel):
@@ -70,7 +79,7 @@ class OrganizationMembershipRead(BaseModel):
 
 
 class OrganizationMemberRead(BaseModel):
-    """One member on the organization page, admins first."""
+    """One member on the organization page, org managers first."""
 
     user: AuthorRef
     role: OrganizationRole
@@ -78,7 +87,7 @@ class OrganizationMemberRead(BaseModel):
 
 
 class OrganizationInviteRead(BaseModel):
-    """One pending invite, for the org-admin's list."""
+    """One pending invite, for the org manager's list."""
 
     id: uuid.UUID
     user: AuthorRef
@@ -103,7 +112,7 @@ class OrganizationMemberUpdate(BaseModel):
 
 
 class OrganizationUpdate(UserUpdate):
-    """Body for ``PATCH /organizations/{slug}``: the fields an org-admin edits,
+    """Body for ``PATCH /organizations/{slug}``: the fields an org manager edits,
     under the rules of ``PATCH /users/me``, and who may send the organization a
     review request. ``name``, ``slug`` and ``x_handle`` stay with the site
     admin."""
@@ -114,14 +123,14 @@ class OrganizationUpdate(UserUpdate):
 class OrganizationCreate(OrganizationUpdate):
     """Body for ``POST /admin/organizations``.
 
-    ``admin_username`` names the first org-admin, who joins at once without an
+    ``manager_username`` names the first org manager, who joins at once without an
     invite.
     """
 
     name: str = Field(min_length=1, max_length=ORGANIZATION_NAME_MAX_LEN)
     slug: str
     x_handle: str | None = None
-    admin_username: str = Field(min_length=1, max_length=50)
+    manager_username: str = Field(min_length=1, max_length=50)
 
     @field_validator("name")
     @classmethod

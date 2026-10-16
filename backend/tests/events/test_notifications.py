@@ -132,11 +132,15 @@ def test_feed_hides_rows_of_deleted_or_hidden_events(db, author, second_user):
     assert _unread(author) == 2
 
 
-def test_feed_hides_rows_of_a_soft_deleted_actor(db, author, second_user, third_user):
+@pytest.mark.parametrize("gone", ["soft_deleted", "deactivated"])
+def test_feed_hides_rows_of_an_actor_who_is_gone(db, author, second_user, third_user, gone):
     _notify(db, recipient=author, actor=second_user)
     _notify(db, recipient=author, actor=third_user)
 
-    third_user.deleted_at = datetime.now(UTC)
+    if gone == "soft_deleted":
+        third_user.deleted_at = datetime.now(UTC)
+    else:
+        third_user.is_active = False
     db.commit()
 
     assert [item["actor"]["username"] for item in _feed(author)] == [second_user.username]

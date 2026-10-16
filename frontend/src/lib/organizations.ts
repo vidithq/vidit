@@ -20,7 +20,7 @@ export type OrganizationRef = components["schemas"]["OrganizationRef"];
 export const ADMIN_ORGANIZATIONS_PATH = "/admin/organizations";
 
 export const ROLE_LABEL: Record<OrganizationRole, string> = {
-  admin: "Org-admin",
+  manager: "Org manager",
   member: "Member",
 };
 
@@ -57,7 +57,7 @@ export function updateOrganization(
 
 export function setOrganizationReviewRequestAudience(
   slug: string,
-  audience: Organization["review_request_audience"],
+  audience: NonNullable<Organization["review_request_audience"]>,
 ): Promise<Organization> {
   return apiFetch<Organization>(organizationPath(slug), {
     method: "PATCH",
@@ -115,5 +115,21 @@ export function removeOrganizationMember(slug: string, username: string): Promis
   return apiFetch<void>(
     `${organizationPath(slug)}/members/${encodeURIComponent(username)}`,
     { method: "DELETE" },
+  );
+}
+
+/** A site admin deletes the organization with everything in its name. */
+export function deleteOrganization(slug: string): Promise<void> {
+  return apiFetch<void>(`${ADMIN_ORGANIZATIONS_PATH}/${encodeURIComponent(slug)}`, {
+    method: "DELETE",
+  });
+}
+
+/** A site admin makes the live analyst `username` an org manager of the organization, joining it
+ *  if needed: the way back for an organization left without one. */
+export function appointOrganizationManager(slug: string, username: string): Promise<OrganizationMember> {
+  return apiFetch<OrganizationMember>(
+    `${ADMIN_ORGANIZATIONS_PATH}/${encodeURIComponent(slug)}/managers`,
+    { method: "POST", body: JSON.stringify({ username }) },
   );
 }

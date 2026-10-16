@@ -15,16 +15,33 @@ export function notificationsPath(cursor: string | null): string {
     : NOTIFICATIONS_PATH;
 }
 
-/** Mark the rows the feed displayed read (one page of ids at most, as the backend caps it). */
-export function markNotificationsRead(ids: string[]): Promise<void> {
-  return apiFetch<void>(`${NOTIFICATIONS_PATH}/read`, {
-    method: "POST",
-    body: JSON.stringify({ ids }),
-  });
+/** A delivery channel of a notification kind, as a Settings switch names it.
+ *  Mirrors backend `models/notification.NotificationChannel`; change both. */
+export type NotificationChannel = "email" | "push";
+
+export const CHANNEL_LABEL: Record<NotificationChannel, string> = {
+  email: "by email",
+  push: "by push",
+};
+
+/** The most ids one `POST /notifications/read` takes.
+ *  Mirrors backend `schemas/notification` `MAX_PAGE_SIZE`; change both. */
+const MAX_READ_IDS = 100;
+
+/** Mark the rows the feed displayed read, in requests of at most `MAX_READ_IDS` ids. */
+export async function markNotificationsRead(ids: string[]): Promise<void> {
+  for (let i = 0; i < ids.length; i += MAX_READ_IDS) {
+    await apiFetch<void>(`${NOTIFICATIONS_PATH}/read`, {
+      method: "POST",
+      body: JSON.stringify({ ids: ids.slice(i, i + MAX_READ_IDS) }),
+    });
+  }
 }
 
 /** Per-kind copy for the feed and the settings rows. Keyed by the generated kind, so a kind
- *  the backend registers fails the type-check until it gets its wording here. */
+ *  the backend registers fails the type-check until it gets its wording here. Each `label` is
+ *  mirrored by the `setting` the backend's `services/email` notification builder names; change
+ *  both. */
 export const NOTIFICATION_KIND_COPY: Record<
   NotificationKind,
   { label: string; setting: string }
@@ -59,19 +76,19 @@ export const NOTIFICATION_KIND_COPY: Record<
   },
   organization_invite: {
     label: "Organization invite",
-    setting: "An org-admin invites you to join an organization.",
+    setting: "An org manager invites you to join an organization.",
   },
   organization_invite_accepted: {
     label: "Invite accepted",
     setting: "Someone accepts your invite to an organization.",
   },
-  organization_admin_inherited: {
-    label: "Now org-admin",
-    setting: "You become an org-admin because the last one left Vidit.",
+  organization_manager_inherited: {
+    label: "Now org manager",
+    setting: "You become an org manager because the last one left Vidit.",
   },
   re_approve_requested: {
     label: "New version to approve",
-    setting: "A geolocation you, or an organization you administer, approved gets a new version.",
+    setting: "A geolocation you, or an organization you manage, approved gets a new version.",
   },
   approval_received: {
     label: "Approval received",
@@ -79,11 +96,15 @@ export const NOTIFICATION_KIND_COPY: Record<
   },
   review_request_received: {
     label: "Review request",
-    setting: "Someone asks you, or an organization you administer, to review their geolocation.",
+    setting: "Someone asks you, or an organization you manage, to review their geolocation.",
   },
   review_request_declined: {
     label: "Review request declined",
     setting: "An analyst or an organization you asked declines to review your geolocation.",
+  },
+  organization_approval_removed: {
+    label: "Organization approval removed",
+    setting: "An organization that approved your geolocation is removed from Vidit.",
   },
 };
 
@@ -136,9 +157,9 @@ export function describeNotification(n: Notification): { text: string; href: str
         text: `${actor} joined ${organization}`,
         href: n.organization ? organizationPath(n.organization.slug) : "/notifications",
       };
-    case "organization_admin_inherited":
+    case "organization_manager_inherited":
       return {
-        text: `You are now an org-admin of ${organization}`,
+        text: `You are now an org manager of ${organization}`,
         href: n.organization ? organizationPath(n.organization.slug) : "/notifications",
       };
     // The four kinds below name an organization when the approval or the request is one.
@@ -162,5 +183,24 @@ export function describeNotification(n: Notification): { text: string; href: str
         text: `${actor} declined${n.organization ? ` for ${organization}` : ""} to review: ${title}`,
         href: eventHref,
       };
+    case "organization_approval_removed":
+      return {
+        text: `${n.organization_name ?? "An organization"} was removed from Vidit; its approval of ${title} is gone`,
+        href: eventHref,
+      };
   }
+}
+
+/** Turn off one kind of notification email, named by the signed token of its unsubscribe link.
+ *  Works without a session. */
+export function unsubscribeFromNotificationEmail(token: string): Promise<void> {
+  return apiFetch<void>(`${NOTIFICATIONS_PATH}/unsubscribe?token=${encodeURIComponent(token)}`, {
+    method: "POST",
+  });
+}
+
+/** The kind a notification unsubscribe token names (`<user>.<kind>.<signature>`), or null. */
+export function unsubscribeTokenKind(token: string): NotificationKind | null {
+  const kind = token.split(".")[1];
+  return kind && kind in NOTIFICATION_KIND_COPY ? (kind as NotificationKind) : null;
 }

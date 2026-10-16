@@ -30,6 +30,8 @@ from app.schemas.event import EventVersionRead
 from app.schemas.organization import (
     AdminOrganizationRead,
     OrganizationCreate,
+    OrganizationManagerAppoint,
+    OrganizationMemberRead,
     OrganizationRead,
 )
 from app.schemas.report import ContentReportList, ContentReportRead, ContentReportUpdate
@@ -182,7 +184,7 @@ def create_organization(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> OrganizationRead:
-    """Create an organization and name its first org-admin, who joins without an invite."""
+    """Create an organization and name its first org manager, who joins without an invite."""
     try:
         org = organizations_service.create_organization(db, actor=current_user, body=body)
     except organizations_service.OrganizationError as exc:
@@ -190,12 +192,51 @@ def create_organization(
     return organizations_service.build_read(db, org, viewer=current_user)
 
 
+@router.post(
+    "/organizations/{slug}/managers",
+    response_model=OrganizationMemberRead,
+    status_code=status.HTTP_201_CREATED,
+)
+@limiter.limit("30/hour")
+def appoint_organization_manager(
+    request: Request,
+    slug: str,
+    body: OrganizationManagerAppoint,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> OrganizationMemberRead:
+    """Make a live analyst an org manager of the organization, joining it if needed, with audit."""
+    try:
+        org = organizations_service.get_by_slug(db, slug, lock=True)
+        return organizations_service.appoint_manager(
+            db, actor=current_user, org=org, username=body.username
+        )
+    except organizations_service.OrganizationError as exc:
+        raise_typed_error(exc, organizations_service.ORGANIZATION_ERROR_STATUS)
+
+
+@router.delete("/organizations/{slug}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("30/hour")
+def delete_organization(
+    request: Request,
+    slug: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> Response:
+    """Delete an organization with its memberships, invites, review requests and approvals."""
+    try:
+        organizations_service.delete_organization(db, actor=current_user, slug=slug)
+    except organizations_service.OrganizationError as exc:
+        raise_typed_error(exc, organizations_service.ORGANIZATION_ERROR_STATUS)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/organizations", response_model=list[AdminOrganizationRead])
 def list_organizations(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> list[AdminOrganizationRead]:
-    """Every organization with its live member and org-admin counts, those without an org-admin first."""
+    """Every organization with its live member and org manager counts, those without an org manager first."""
     return organizations_service.list_for_admin(db)
 
 
@@ -338,7 +379,7 @@ def delete_user_admin(
                 media_count=result["media_count"],
             )
 
-        user, cascaded_geolocations = admin_service.soft_delete_user(
+        user, cascaded_geolocations, transferred = admin_service.soft_delete_user(
             db, actor_id=current_user.id, user_id=user_id
         )
     except admin_service.AdminError as exc:
@@ -350,6 +391,7 @@ def delete_user_admin(
         mode="soft",
         deleted_at=user.deleted_at,
         cascaded_geolocations=cascaded_geolocations,
+        transferred_events=transferred,
     )
 
 

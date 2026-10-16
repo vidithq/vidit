@@ -44,6 +44,7 @@ from app.services.notification_delivery import (
     RETRY_AFTER,
     STALE_SENDING_AFTER,
     deliver,
+    possibly_sent_since,
     send_email,
 )
 from app.services.notifications import has_verified_email
@@ -219,10 +220,7 @@ def list_updates(db: Session) -> list[ProductUpdateRead]:
 def _claim_next(db: Session, *, now: datetime) -> ProductUpdateDelivery | None:
     sent_today = (
         db.query(func.count(ProductUpdateDelivery.id))
-        .filter(
-            ProductUpdateDelivery.status == "sent",
-            ProductUpdateDelivery.sent_at >= now - CAP_WINDOW,
-        )
+        .filter(possibly_sent_since(ProductUpdateDelivery, now - CAP_WINDOW))
         .scalar()
         or 0
     )

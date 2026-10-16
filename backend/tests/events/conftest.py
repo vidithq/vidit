@@ -15,7 +15,7 @@ from app.models.event import Event, EventGeolocator
 from app.models.tag import Tag
 from app.models.user import User
 from app.services.auth import hash_password
-from tests.events._helpers import client
+from tests.events._helpers import client, delete_user
 
 
 @pytest.fixture(autouse=True)
@@ -49,7 +49,7 @@ def _delete_user_and_events(db, user_id) -> None:
     db.query(ContentReport).filter(ContentReport.event_id.is_(None)).delete(
         synchronize_session=False
     )
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
+    delete_user(db, user_id)
     db.commit()
 
 
@@ -96,7 +96,7 @@ def admin_user(db):
     yield user
     db.expire_all()
     db.query(AdminEvent).filter(AdminEvent.actor_id == user_id).delete(synchronize_session=False)
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
+    delete_user(db, user_id)
     db.commit()
 
 

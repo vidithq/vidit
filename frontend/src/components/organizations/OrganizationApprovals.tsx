@@ -12,8 +12,8 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 
-/** The approvals org-admins placed in the organization's name, newest first: the geolocation,
- *  then the approval row the event page shows (acting org-admin, state, note, revocation). */
+/** The approvals org managers placed in the organization's name, newest first: the geolocation,
+ *  then the approval row the event page shows (acting org manager, state, note, revocation). */
 export function OrganizationApprovals({ slug }: { slug: string }) {
   const buildPath = useCallback(
     (cursor: string | null) => organizationApprovalsPath(slug, cursor),

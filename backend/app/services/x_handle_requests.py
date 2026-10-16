@@ -10,6 +10,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session, contains_eager
 
 from app.models.user import User
@@ -77,6 +78,11 @@ def list_pending(db: Session) -> list[XHandleRequest]:
 
 
 def _pending_for_update(db: Session, request_id: uuid.UUID) -> XHandleRequest:
+    """Lock the requester's account row, then the pending request: the order :func:`submit`
+    takes, so a decision and a resubmission never wait on each other's lock."""
+    owner_id = db.scalar(select(XHandleRequest.user_id).where(XHandleRequest.id == request_id))
+    if owner_id is not None:
+        db.query(User.id).filter(User.id == owner_id).with_for_update().one_or_none()
     row = (
         db.query(XHandleRequest)
         .filter(XHandleRequest.id == request_id, XHandleRequest.status == "pending")

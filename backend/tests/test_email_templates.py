@@ -124,17 +124,74 @@ def test_user_text_is_escaped_in_html_and_verbatim_in_text():
     assert "Line one\nline two" in message.text
 
 
+_PHISH = "https://vidit-login.example/reset"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        pytest.param(
+            lambda: email.co_geolocator_invite_email(
+                to="a@example.com", actor="bo", event_id="e1", event_title=f"Log in at {_PHISH}"
+            ),
+            id="event title",
+        ),
+        pytest.param(
+            lambda: email.content_report_email(
+                to="mod@example.com",
+                target="event",
+                target_id="e1",
+                target_title=_PHISH,
+                target_link=email.event_link("e1"),
+                reason="spam",
+                details=f"See {_PHISH}",
+                reporter="anonymous",
+                created_at=datetime(2026, 10, 1, tzinfo=UTC),
+            ),
+            id="report details",
+        ),
+    ],
+)
+def test_a_url_in_user_text_is_never_a_link(message):
+    built = message()
+    assert not [href for href in _links(built.html).hrefs if "vidit-login" in href]
+    assert _PHISH in built.html
+    assert f"{BASE}/events/e1" in _links(built.html).hrefs
+
+
+def test_product_update_blocks_link_the_admins_urls():
+    built = email.product_update_email(
+        to="a@example.com",
+        label="1.0.0",
+        title="Collections",
+        blocks=[f"Read the guide at {BASE}/guide."],
+        link_url=None,
+        unsubscribe_url=f"{BASE}/unsubscribe?token=tok",
+        one_click_url="https://api.example.com/api/v1/product-updates/unsubscribe?token=tok",
+    )
+    assert f"{BASE}/guide." in _links(built.html).hrefs
+
+
 def test_password_changed_links_to_the_configured_frontend():
     message = email.password_changed_email(to="a@example.com")
     assert f"{BASE}/forgot-password" in message.text
     assert "https://vidit.app" not in message.text
 
 
+_ONE_CLICK = "https://api.example.com/api/v1/notifications/unsubscribe?token=tok"
+
+
 @pytest.mark.parametrize("name", ["request_fulfilled", "new_follower"])
-def test_notification_email_names_the_switch_and_carries_list_unsubscribe(name):
-    message = BUILDERS[name]()
-    assert message.headers == {"List-Unsubscribe": f"<{BASE}/settings>"}
+def test_notification_email_names_the_switch_and_takes_a_one_click_unsubscribe(name):
+    message = email.one_click_unsubscribe(BUILDERS[name](), _ONE_CLICK)
+    assert message.headers == {
+        "List-Unsubscribe": f"<{_ONE_CLICK}>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    }
     assert "notification settings" in message.text
+    # The kind's label in Settings, whatever layout shows the channel.
+    label = {"request_fulfilled": "Request fulfilled", "new_follower": "New follower"}[name]
+    assert f"email is on for “{label}”" in message.text
     assert "bo" in message.subject
 
 
@@ -155,7 +212,7 @@ def test_auth_email_carries_no_list_unsubscribe():
 
 def test_console_provider_prints_both_parts(monkeypatch, capsys):
     monkeypatch.setattr(settings, "email_provider", "console")
-    email.send(BUILDERS["request_fulfilled"]())
+    email.send(email.one_click_unsubscribe(BUILDERS["request_fulfilled"](), _ONE_CLICK))
     out = capsys.readouterr().out
     assert "View the geolocation:" in out
     assert "List-Unsubscribe:" in out
@@ -184,13 +241,13 @@ def test_resend_payload_carries_html_and_headers(monkeypatch):
         return httpx.Response(200, json={"id": "x"})
 
     _resend(monkeypatch, handler)
-    message = BUILDERS["new_follower"]()
+    message = email.one_click_unsubscribe(BUILDERS["new_follower"](), _ONE_CLICK)
     email.send(message)
 
     payload = json.loads(seen[0].content)
     assert payload["html"] == message.html
     assert payload["text"] == message.text
-    assert payload["headers"] == {"List-Unsubscribe": f"<{BASE}/settings>"}
+    assert payload["headers"] == dict(message.headers)
 
 
 def test_resend_refusal_is_a_rejection_and_transport_error_is_not(monkeypatch):

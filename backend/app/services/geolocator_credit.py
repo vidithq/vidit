@@ -16,11 +16,18 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from sqlalchemy import delete, func, select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models.approval import EventApproval
 from app.models.collection import Collection, CollectionEvent
-from app.models.event import STATUS_GEOLOCATED, Event, EventGeolocator, EventGeolocatorInvite
+from app.models.event import (
+    STATUS_GEOLOCATED,
+    Event,
+    EventGeolocator,
+    EventGeolocatorDeparture,
+    EventGeolocatorInvite,
+)
 from app.models.review_request import ReviewRequest
 from app.models.user import User
 from app.schemas.user import AuthorRef
@@ -117,6 +124,10 @@ def _invite_row(db: Session, event_id: uuid.UUID, user_id: uuid.UUID) -> EventGe
     return row
 
 
+def has_pending_invite(db: Session, *, event_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+    return db.get(EventGeolocatorInvite, (event_id, user_id)) is not None
+
+
 def list_invites(db: Session, *, geo: Event, viewer: User) -> list[EventGeolocatorInvite]:
     """The pending invitations on ``geo`` that ``viewer`` may see, oldest first.
 
@@ -152,13 +163,18 @@ def invite(db: Session, *, geo: Event, owner: User, username: str) -> EventGeolo
         raise AlreadyGeolocatorError("This analyst is already a geolocator of this event")
     if db.get(EventGeolocatorInvite, (geo.id, invitee.id)) is not None:
         raise AlreadyInvitedError("This analyst already has a pending invitation")
+    # Live analysts only: a banned co-geolocator or invitee prints on no byline.
     credited = db.scalar(
-        select(func.count()).select_from(EventGeolocator).where(EventGeolocator.event_id == geo.id)
+        select(func.count())
+        .select_from(EventGeolocator)
+        .join(User, User.id == EventGeolocator.user_id)
+        .where(EventGeolocator.event_id == geo.id, User.deleted_at.is_(None))
     )
     pending = db.scalar(
         select(func.count())
         .select_from(EventGeolocatorInvite)
-        .where(EventGeolocatorInvite.event_id == geo.id)
+        .join(User, User.id == EventGeolocatorInvite.user_id)
+        .where(EventGeolocatorInvite.event_id == geo.id, User.deleted_at.is_(None))
     )
     if (credited or 0) + (pending or 0) >= MAX_EVENT_GEOLOCATORS:
         raise TooManyGeolocatorsError(
@@ -244,7 +260,11 @@ def remove(db: Session, *, geo: Event, actor: User, username: str) -> None:
 
     The owner cannot leave (409 ``owner_cannot_leave``); anyone else removing someone else is
     403. A removed analyst's collections drop the event in the same transaction, since a
-    collection holds only credited work. The owner's removal notifies the analyst removed.
+    collection holds only credited work, and an ``event_geolocator_departures`` row records the
+    departure, so they never approve the event. The open review requests they sent about the
+    event are withdrawn, since only a geolocator asks for one; they keep counting toward the
+    daily cap. The owner's removal notifies the analyst
+    removed.
     """
     geo = _lock(db, geo.id)
     target = db.query(User).filter(User.username == username).first()
@@ -261,6 +281,20 @@ def remove(db: Session, *, geo: Event, actor: User, username: str) -> None:
         )
     )
     db.execute(
+        insert(EventGeolocatorDeparture)
+        .values(event_id=geo.id, user_id=target.id, created_at=datetime.now(UTC))
+        .on_conflict_do_nothing(index_elements=["event_id", "user_id"])
+    )
+    db.execute(
+        update(ReviewRequest)
+        .where(
+            ReviewRequest.event_id == geo.id,
+            ReviewRequest.requester_id == target.id,
+            ReviewRequest.status == "open",
+        )
+        .values(status="withdrawn", resolved_at=datetime.now(UTC))
+    )
+    db.execute(
         delete(CollectionEvent).where(
             CollectionEvent.event_id == geo.id,
             CollectionEvent.collection_id.in_(
@@ -272,20 +306,31 @@ def remove(db: Session, *, geo: Event, actor: User, username: str) -> None:
 
 
 def hand_over_owned_events(db: Session, *, owner: User, events: Sequence[Event]) -> set[uuid.UUID]:
-    """Pass each of ``events`` that another live analyst is credited on to the earliest of them.
+    """Pass each live one of ``events`` that another live analyst is credited on to the earliest
+    of them.
 
-    The erasure step of ``admin.hard_delete_user``: the heir becomes ``owner_id`` and receives
-    an ``ownership_transferred`` notification, which names no actor. A soft-deleted
-    co-geolocator is skipped. Returns the ids handed over; the caller deletes the rest. Does
-    not commit.
+    The step of ``admin.soft_delete_user`` and ``admin.hard_delete_user`` that keeps shared
+    work published: the heir becomes ``owner_id`` and receives an ``ownership_transferred``
+    notification, which names no actor. A soft-deleted co-geolocator is skipped. An event
+    soft-deleted with ``owner``'s own ban (its ``deleted_at`` is the owner's) counts as live and
+    is restored on hand-over; one soft-deleted on its own never passes, so the erasure purges it
+    with its media. Returns the ids handed over; the caller deletes or hides the rest. Does not
+    commit.
     """
-    if not events:
+    banned_with_owner = owner.deleted_at
+    live = [
+        geo
+        for geo in events
+        if geo.deleted_at is None
+        or (banned_with_owner is not None and geo.deleted_at == banned_with_owner)
+    ]
+    if not live:
         return set()
     heirs = db.execute(
         select(EventGeolocator.event_id, EventGeolocator.user_id)
         .join(User, User.id == EventGeolocator.user_id)
         .where(
-            EventGeolocator.event_id.in_([geo.id for geo in events]),
+            EventGeolocator.event_id.in_([geo.id for geo in live]),
             EventGeolocator.user_id != owner.id,
             User.deleted_at.is_(None),
         )
@@ -293,10 +338,11 @@ def hand_over_owned_events(db: Session, *, owner: User, events: Sequence[Event])
         .distinct(EventGeolocator.event_id)
     ).all()
     heir_by_event = {event_id: user_id for event_id, user_id in heirs}
-    for geo in events:
+    for geo in live:
         heir_id = heir_by_event.get(geo.id)
         if heir_id is None:
             continue
         geo.owner_id = heir_id
+        geo.deleted_at = None
         notifications.notify_ownership_transferred(db, event=geo, heir_id=heir_id)
     return set(heir_by_event)

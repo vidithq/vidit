@@ -2,15 +2,17 @@
 review it.
 
 The requester is one of the event's geolocators (its owner or an accepted co-geolocator). The
-target must be able to approve the event, so a geolocator of it cannot be asked, and an
-organization needs a live org-admin outside the event's geolocators. The target's
+target must be able to approve the event, so a current or former geolocator of it cannot be
+asked, and an organization needs a live org manager outside the event's current and former
+geolocators. The target's
 ``review_request_audience`` decides who may ask: analysts they follow (the default), everyone,
-or nobody. An organization's org-admins set its audience, and ``following`` there admits an
-analyst whom any live org-admin follows. A request is open until the target approves the event,
-any version (``approvals.approve`` resolves it), or declines it. Any org-admin answers for an
+or nobody. An organization's org managers set its audience, and ``following`` there admits an
+analyst whom any live org manager follows. A request is open until the target approves the event,
+any version (``approvals.approve`` resolves it), or declines it. Any org manager answers for an
 organization.
 
-There is one open request per requester, target and event, and a requester sends at most
+There is one open request per requester, target and event, a declined request is not sent
+again for :data:`DECLINE_COOLDOWN`, and a requester sends at most
 ``settings.review_request_daily_cap`` requests in a trailing 24 hours. Every write locks the event
 row first, as approvals do, so a request, its decline and an approval serialize.
 """
@@ -43,11 +45,14 @@ from app.schemas.review_request import (
 )
 from app.schemas.user import AuthorRef
 from app.services import notifications
-from app.services.approvals import is_geolocator
+from app.services.approvals import ever_credited, former_geolocator_ids, is_geolocator
 from app.services.event_filters import visible_events
-from app.services.organizations import is_organization_admin, live_admin_ids
+from app.services.organizations import is_organization_manager, live_manager_ids
 
 MAX_TARGET_SUGGESTIONS = 20
+# After a decline, the same requester waits this long before asking the same target about the
+# same event again.
+DECLINE_COOLDOWN = timedelta(days=7)
 
 
 class ReviewRequestError(Exception):
@@ -88,6 +93,10 @@ class AlreadyRequestedError(ReviewRequestError):
     code = "already_requested"
 
 
+class RecentlyDeclinedError(ReviewRequestError):
+    code = "recently_declined"
+
+
 class DailyCapReachedError(ReviewRequestError):
     code = "daily_cap_reached"
 
@@ -109,20 +118,16 @@ REVIEW_REQUEST_ERROR_STATUS: dict[str, int] = {
     "requests_not_accepted": 403,
     "already_approved": 409,
     "already_requested": 409,
+    "recently_declined": 409,
     "daily_cap_reached": 429,
     "review_request_not_found": 404,
     "already_resolved": 409,
 }
 
-# The refusal states the target's rule and nothing else.
-_REFUSAL: dict[str | None, str] = {
-    "following": "This analyst accepts review requests only from people they follow",
-    "nobody": "This analyst does not accept review requests",
-}
-_ORGANIZATION_REFUSAL: dict[str | None, str] = {
-    "following": "This organization accepts review requests only from people its org-admins follow",
-    "nobody": "This organization does not accept review requests",
-}
+# One answer for every audience that refuses, so a refusal never tells the requester which rule
+# the target chose.
+REFUSAL_MESSAGE = "This analyst or organization does not take review requests from you"
+_DECLINED_MESSAGE = "They declined your request for this event less than 7 days ago"
 
 _Requester = aliased(User)
 _Target = aliased(User)
@@ -139,44 +144,80 @@ def _audience() -> ColumnElement[str]:
     return func.coalesce(stored, REVIEW_REQUEST_AUDIENCE_DEFAULT)
 
 
+def _follows(requester_id: uuid.UUID) -> ColumnElement[bool]:
+    """The analyst in scope (``User``) follows ``requester_id``."""
+    return exists().where(Follow.follower_id == User.id, Follow.followed_id == requester_id)
+
+
+def _followed_by_an_admin(requester_id: uuid.UUID) -> ColumnElement[bool]:
+    """A live org manager of the organization in scope (``Organization``) follows
+    ``requester_id``."""
+    # Correlated by hand: two levels down, the manager subquery would otherwise list the managers of
+    # every organization.
+    return exists().where(
+        Follow.follower_id.in_(live_manager_ids(Organization.id).correlate(Organization)),
+        Follow.followed_id == requester_id,
+    )
+
+
 def accepts_requests_from(requester_id: uuid.UUID) -> ColumnElement[bool]:
     """The predicate for an analyst (``User``) whose audience admits ``requester_id``."""
     audience = _audience()
-    follows_requester = exists().where(
-        Follow.follower_id == User.id, Follow.followed_id == requester_id
-    )
-    return or_(audience == "everyone", and_(audience == "following", follows_requester))
+    return or_(audience == "everyone", and_(audience == "following", _follows(requester_id)))
 
 
 def organization_accepts_requests_from(requester_id: uuid.UUID) -> ColumnElement[bool]:
     """The predicate for an organization (``Organization``) whose audience admits
-    ``requester_id``: ``following`` admits an analyst whom any live org-admin follows."""
+    ``requester_id``: ``following`` admits an analyst whom any live org manager follows."""
     audience = Organization.review_request_audience
-    followed_by_an_admin = exists().where(
-        Follow.follower_id.in_(live_admin_ids(Organization.id)),
-        Follow.followed_id == requester_id,
+    return or_(
+        audience == "everyone",
+        and_(audience == "following", _followed_by_an_admin(requester_id)),
     )
-    return or_(audience == "everyone", and_(audience == "following", followed_by_an_admin))
+
+
+def _suggested_analyst(requester_id: uuid.UUID, q: str) -> ColumnElement[bool]:
+    """The analysts (``User``) the picker suggests to ``requester_id``: those who follow them and
+    take requests, and the one whose username is ``q``, whatever their audience. Listing an
+    ``everyone`` analyst who does not follow the requester would reveal their setting."""
+    return or_(
+        and_(_audience() != "nobody", _follows(requester_id)),
+        func.lower(User.username) == q.lower(),
+    )
+
+
+def _suggested_organization(requester_id: uuid.UUID, q: str) -> ColumnElement[bool]:
+    """The organizations (``Organization``) the picker suggests, on the rule of
+    :func:`_suggested_analyst`: one an org manager of follows the requester, or whose slug is
+    ``q``."""
+    return or_(
+        and_(
+            Organization.review_request_audience != "nobody",
+            _followed_by_an_admin(requester_id),
+        ),
+        func.lower(Organization.slug) == q.lower(),
+    )
 
 
 def _can_act_for(geo: Event) -> ColumnElement[bool]:
-    """The predicate for an organization (``Organization``) with a live org-admin outside the
-    geolocators of ``geo``, who can approve it in the organization's name."""
+    """The predicate for an organization (``Organization``) with a live org manager outside the
+    current and former geolocators of ``geo``, who can approve it in the organization's name."""
     return (
-        live_admin_ids(Organization.id)
+        live_manager_ids(Organization.id)
         .where(
             OrganizationMember.user_id != geo.owner_id,
             OrganizationMember.user_id.not_in(
                 select(EventGeolocator.user_id).where(EventGeolocator.event_id == geo.id)
             ),
+            OrganizationMember.user_id.not_in(former_geolocator_ids(geo.id)),
         )
         .exists()
     )
 
 
-def _administered_by(user_id: uuid.UUID):
+def _managed_by(user_id: uuid.UUID):
     return select(OrganizationMember.organization_id).where(
-        OrganizationMember.user_id == user_id, OrganizationMember.role == "admin"
+        OrganizationMember.user_id == user_id, OrganizationMember.role == "manager"
     )
 
 
@@ -233,7 +274,7 @@ def list_open(db: Session, *, geo: Event, viewer: User) -> list[ReviewRequest]:
     """The open requests on ``geo`` that ``viewer`` may see, oldest first.
 
     A geolocator sees every one; anyone else sees those addressed to them or to an organization
-    they are an org-admin of. A request whose requester or analyst target is soft-deleted is
+    they are an org manager of. A request whose requester or analyst target is soft-deleted is
     left out.
     """
     query = _open_query(db).filter(ReviewRequest.event_id == geo.id)
@@ -241,7 +282,7 @@ def list_open(db: Session, *, geo: Event, viewer: User) -> list[ReviewRequest]:
         query = query.filter(
             or_(
                 ReviewRequest.target_user_id == viewer.id,
-                ReviewRequest.target_organization_id.in_(_administered_by(viewer.id)),
+                ReviewRequest.target_organization_id.in_(_managed_by(viewer.id)),
             )
         )
     return query.order_by(ReviewRequest.created_at, ReviewRequest.id).all()
@@ -265,16 +306,30 @@ def build_organization_read(row: ReviewRequest) -> OrganizationReviewRequestRead
     )
 
 
+def _declined_recently(geo: Event, requester: User) -> ColumnElement[bool]:
+    """The requests ``requester`` sent about ``geo`` that were declined within
+    :data:`DECLINE_COOLDOWN`."""
+    return and_(
+        ReviewRequest.event_id == geo.id,
+        ReviewRequest.requester_id == requester.id,
+        ReviewRequest.status == "declined",
+        ReviewRequest.resolved_at >= datetime.now(UTC) - DECLINE_COOLDOWN,
+    )
+
+
 def _substring(query: str) -> str:
     return query.strip().replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
 
 
-def _eligible_analysts(db: Session, *, geo: Event, requester: User, q: str) -> list[User]:
+def _eligible_analysts(
+    db: Session, *, geo: Event, requester: User, q: str, exact: str
+) -> list[User]:
     stmt = select(User).where(
         User.deleted_at.is_(None),
         User.is_active.is_(True),
         User.id != geo.owner_id,
         User.id.not_in(select(EventGeolocator.user_id).where(EventGeolocator.event_id == geo.id)),
+        User.id.not_in(former_geolocator_ids(geo.id)),
         User.id.not_in(
             select(EventApproval.reviewer_id).where(
                 EventApproval.event_id == geo.id,
@@ -290,7 +345,12 @@ def _eligible_analysts(db: Session, *, geo: Event, requester: User, q: str) -> l
                 ReviewRequest.target_user_id.is_not(None),
             )
         ),
-        accepts_requests_from(requester.id),
+        User.id.not_in(
+            select(ReviewRequest.target_user_id).where(
+                _declined_recently(geo, requester), ReviewRequest.target_user_id.is_not(None)
+            )
+        ),
+        _suggested_analyst(requester.id, exact),
     )
     if q:
         stmt = stmt.where(User.username.ilike(f"%{q}%", escape="\\")).order_by(
@@ -300,7 +360,7 @@ def _eligible_analysts(db: Session, *, geo: Event, requester: User, q: str) -> l
 
 
 def _eligible_organizations(
-    db: Session, *, geo: Event, requester: User, q: str
+    db: Session, *, geo: Event, requester: User, q: str, exact: str
 ) -> list[Organization]:
     stmt = select(Organization).where(
         _can_act_for(geo),
@@ -320,7 +380,13 @@ def _eligible_organizations(
                 ReviewRequest.target_organization_id.is_not(None),
             )
         ),
-        organization_accepts_requests_from(requester.id),
+        Organization.id.not_in(
+            select(ReviewRequest.target_organization_id).where(
+                _declined_recently(geo, requester),
+                ReviewRequest.target_organization_id.is_not(None),
+            )
+        ),
+        _suggested_organization(requester.id, exact),
     )
     if q:
         pattern = f"%{q}%"
@@ -336,30 +402,39 @@ def _eligible_organizations(
 def eligible_targets(
     db: Session, *, geo: Event, requester: User, query: str
 ) -> ReviewRequestTargetList:
-    """The analysts and organizations ``requester`` can ask to review ``geo`` now.
+    """The analysts and organizations to suggest to ``requester`` for a review of ``geo``.
 
-    Analysts: live, outside the event's geolocators, whose audience admits ``requester``, who
-    have not reviewed the live version and hold no open request from ``requester`` on it.
-    ``query`` narrows by a case-insensitive substring of the username, prefix matches first.
-    Organizations: with a live org-admin outside the geolocators, whose audience admits
-    ``requester``, without a standing approval of the live version or an open request from
-    ``requester``, by name; ``query`` narrows by a substring of the name or the slug.
+    Analysts: live, outside the event's current and former geolocators, who have not reviewed
+    the live version and hold no open request from ``requester`` on it, and who follow
+    ``requester`` and take requests, or whose username is ``query``. ``query`` narrows by a
+    case-insensitive substring of the username, prefix matches first. Organizations: with a
+    live org manager outside the current and former geolocators, without a standing approval of
+    the live version or an open request from ``requester``, and an org manager of which follows
+    ``requester`` while it takes requests, or whose slug is ``query``, by name; ``query``
+    narrows by a substring of the name or the slug. An exact match may still refuse the
+    request, so the list never reveals an ``everyone`` audience.
     """
     _require_requester(db, geo=geo, requester=requester)
     q = _substring(query)
+    exact = query.strip()
     return ReviewRequestTargetList(
         analysts=[
             AuthorRef.model_validate(u)
-            for u in _eligible_analysts(db, geo=geo, requester=requester, q=q)
+            for u in _eligible_analysts(db, geo=geo, requester=requester, q=q, exact=exact)
         ],
         organizations=[
             OrganizationRef.model_validate(o)
-            for o in _eligible_organizations(db, geo=geo, requester=requester, q=q)
+            for o in _eligible_organizations(db, geo=geo, requester=requester, q=q, exact=exact)
         ],
     )
 
 
 def _check_daily_cap(db: Session, *, requester: User) -> None:
+    # Two requests on different events lock different event rows; this per-requester lock,
+    # held to the commit, keeps them from both counting under the cap.
+    db.execute(
+        select(func.pg_advisory_xact_lock(func.hashtext(f"review-request-cap:{requester.id}")))
+    )
     sent_today = db.scalar(
         select(func.count())
         .select_from(ReviewRequest)
@@ -382,14 +457,15 @@ def _check_analyst_target(db: Session, *, geo: Event, requester: User, username:
     )
     if target is None:
         raise TargetNotFoundError("No analyst with that username")
-    if is_geolocator(db, geo=geo, user_id=target.id):
-        raise TargetIsGeolocatorError("A geolocator of this event cannot review it")
+    if ever_credited(db, geo=geo, user_id=target.id):
+        raise TargetIsGeolocatorError(
+            "A geolocator of this event, current or former, cannot review it"
+        )
     admitted = db.scalar(
         select(accepts_requests_from(requester.id)).select_from(User).where(User.id == target.id)
     )
     if not admitted:
-        audience = db.scalar(select(_audience()).select_from(User).where(User.id == target.id))
-        raise RequestsNotAcceptedError(_REFUSAL.get(audience, _REFUSAL["nobody"]))
+        raise RequestsNotAcceptedError(REFUSAL_MESSAGE)
     reviewed = db.scalar(
         select(
             exists().where(
@@ -414,6 +490,14 @@ def _check_analyst_target(db: Session, *, geo: Event, requester: User, username:
     )
     if pending:
         raise AlreadyRequestedError("You already asked this analyst to review this event")
+    if db.scalar(
+        select(
+            exists().where(
+                _declined_recently(geo, requester), ReviewRequest.target_user_id == target.id
+            )
+        )
+    ):
+        raise RecentlyDeclinedError(_DECLINED_MESSAGE)
     return target
 
 
@@ -427,7 +511,8 @@ def _check_organization_target(
         select(_can_act_for(geo)).select_from(Organization).where(Organization.id == org.id)
     ):
         raise TargetIsGeolocatorError(
-            "No org-admin of this organization outside the geolocators of this event can review it"
+            "No org manager of this organization outside the current and former geolocators of this "
+            "event can review it"
         )
     admitted = db.scalar(
         select(organization_accepts_requests_from(requester.id))
@@ -435,9 +520,7 @@ def _check_organization_target(
         .where(Organization.id == org.id)
     )
     if not admitted:
-        raise RequestsNotAcceptedError(
-            _ORGANIZATION_REFUSAL.get(org.review_request_audience, _ORGANIZATION_REFUSAL["nobody"])
-        )
+        raise RequestsNotAcceptedError(REFUSAL_MESSAGE)
     approved = db.scalar(
         select(
             exists().where(
@@ -462,6 +545,15 @@ def _check_organization_target(
     )
     if pending:
         raise AlreadyRequestedError("You already asked this organization to review this event")
+    if db.scalar(
+        select(
+            exists().where(
+                _declined_recently(geo, requester),
+                ReviewRequest.target_organization_id == org.id,
+            )
+        )
+    ):
+        raise RecentlyDeclinedError(_DECLINED_MESSAGE)
     return org
 
 
@@ -474,14 +566,15 @@ def request_review(
     organization: str | None = None,
 ) -> ReviewRequest:
     """Ask the analyst ``username``, or the organization with slug ``organization``, to review
-    the live version of ``geo``, and notify the analyst or every live org-admin.
+    the live version of ``geo``, and notify the analyst or every live org manager.
 
     409 ``invalid_state`` off ``geolocated``; 403 ``not_a_geolocator`` when ``requester`` is
     not credited on the event; 404 ``user_not_found`` or ``organization_not_found``; 403
-    ``target_is_geolocator`` for a geolocator target, or an organization whose every live
-    org-admin is a geolocator; 403 ``requests_not_accepted`` when the target's audience refuses
+    ``target_is_geolocator`` for a current or former geolocator target, or an organization whose
+    every live org manager is one; 403 ``requests_not_accepted`` when the target's audience refuses
     ``requester``; 409 ``already_approved`` when the target approved the live version; 409
-    ``already_requested`` for a second open request; 429 ``daily_cap_reached`` past the daily
+    ``already_requested`` for a second open request; 409 ``recently_declined`` within
+    :data:`DECLINE_COOLDOWN` of the target declining the same request; 429 ``daily_cap_reached`` past the daily
     cap.
     """
     geo = _lock(db, geo.id)
@@ -495,7 +588,7 @@ def request_review(
             requester_id=requester.id,
             target_organization_id=org.id,
         )
-        recipient_ids = list(db.scalars(live_admin_ids(org.id)))
+        recipient_ids = list(db.scalars(live_manager_ids(org.id)))
         organization_id: uuid.UUID | None = org.id
     else:
         assert username is not None
@@ -523,7 +616,7 @@ def request_review(
 
 
 def decline(db: Session, *, geo: Event, request_id: uuid.UUID, user: User) -> ReviewRequest:
-    """Decline a request addressed to ``user``, or to an organization ``user`` is an org-admin
+    """Decline a request addressed to ``user``, or to an organization ``user`` is an org manager
     of, and tell the requester.
 
     404 ``review_request_not_found`` for an id that is not such a request on ``geo``; 409
@@ -539,7 +632,7 @@ def decline(db: Session, *, geo: Event, request_id: uuid.UUID, user: User) -> Re
         row.target_user_id == user.id
         or (
             row.target_organization_id is not None
-            and is_organization_admin(db, org_id=row.target_organization_id, user_id=user.id)
+            and is_organization_manager(db, org_id=row.target_organization_id, user_id=user.id)
         )
     )
     if row is None or not answerable:

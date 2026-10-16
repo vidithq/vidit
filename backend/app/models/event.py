@@ -118,6 +118,23 @@ class EventGeolocatorInvite(_EventAnalystPair, Base):
     )
 
 
+class EventGeolocatorDeparture(_EventAnalystPair, Base):
+    """An analyst who held credit on an event and lost it: the owner removed them, or they left.
+
+    Written by ``services/geolocator_credit.remove`` in the transaction that deletes the
+    ``event_geolocators`` row. ``created_at`` is the first departure; a later one leaves the row
+    as it is. A former geolocator is no more independent of the work than a current one, so
+    neither approves the event nor is asked to review it.
+    """
+
+    __tablename__ = "event_geolocator_departures"
+
+    __table_args__ = (
+        # Backs the cascade of an erased analyst.
+        Index("ix_event_geolocator_departures_user_id", "user_id"),
+    )
+
+
 class EventVersion(Base):
     """One superseded version of a published event, snapshotted at an edit.
 

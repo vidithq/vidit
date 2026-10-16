@@ -7,8 +7,10 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import event
 
 from app.config import settings
+from app.database import engine
 from app.models.event import STATUS_CLOSED, Event, EventGeolocator, EventGeolocatorInvite
 from app.models.follow import Follow
 from app.models.notification import Notification
@@ -17,8 +19,9 @@ from app.models.user import User
 from app.models.user_preferences import UserPreferences
 from app.services import email, notification_delivery
 from app.services.auth import hash_password
+from app.services.review_requests import REFUSAL_MESSAGE
 from tests.conftest import login_as
-from tests.events._helpers import _make_geo, client
+from tests.events._helpers import _make_geo, client, delete_user
 
 _EVENTS = "/api/v1/events"
 
@@ -47,7 +50,7 @@ def make_user(db):
     db.expire_all()
     for user_id in made:
         db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
-        db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
+        delete_user(db, user_id)
     db.commit()
 
 
@@ -102,6 +105,14 @@ def _kinds(db, user: User) -> list[tuple[str, uuid.UUID | None, uuid.UUID | None
     return [(r.kind, r.actor_id, r.event_id) for r in rows]
 
 
+def _age_declines(db, geo: Event) -> None:
+    """Move every decline on ``geo`` past the cooldown, so the same request can go again."""
+    db.query(ReviewRequest).filter(
+        ReviewRequest.event_id == geo.id, ReviewRequest.status == "declined"
+    ).update({"resolved_at": datetime.now(UTC) - timedelta(days=8)})
+    db.commit()
+
+
 def _feed(user: User) -> list[dict]:
     login_as(client, user)
     return client.get("/api/v1/notifications").json()
@@ -116,9 +127,7 @@ def test_by_default_only_analysts_the_target_follows_can_ask(db, author, make_us
     response = _request(geo, author, stranger)
     assert response.status_code == 403
     assert _code(response) == "requests_not_accepted"
-    assert response.json()["detail"]["message"] == (
-        "This analyst accepts review requests only from people they follow"
-    )
+    assert response.json()["detail"]["message"] == REFUSAL_MESSAGE
 
     follower_of_author = make_user()
     db.add(Follow(follower_id=author.id, followed_id=follower_of_author.id))
@@ -142,7 +151,7 @@ def test_nobody_admits_no_one_not_even_followed_analysts(db, author, make_user):
     assert response.status_code == 403
     assert response.json()["detail"] == {
         "code": "requests_not_accepted",
-        "message": "This analyst does not accept review requests",
+        "message": REFUSAL_MESSAGE,
     }
 
 
@@ -168,18 +177,24 @@ def test_the_audience_is_a_preference_the_target_sets(db, author, make_user):
     assert _request(geo, author, target).status_code == 201
 
 
-def test_the_picker_lists_only_analysts_who_would_accept(db, author, second_user, make_user):
+def test_the_picker_suggests_followers_and_never_reveals_an_open_audience(
+    db, author, second_user, make_user
+):
     geo = _published(db, author)
     friend = make_user(follows=author)
     open_door = make_user(audience="everyone")
-    make_user(audience="nobody", follows=author)
-    make_user()
+    closed = make_user(audience="nobody", follows=author)
+    stranger = make_user()
     co = make_user(audience="everyone")
     db.add(EventGeolocator(event_id=geo.id, user_id=co.id))
     db.commit()
 
     listed = set(_targets(geo, author))
-    assert {friend.username, open_door.username} <= listed
+    assert friend.username in listed
+    assert not {open_door.username, closed.username, stranger.username} & listed
+    # An exact username lists the analyst whatever their audience.
+    for exact in (open_door, closed, stranger):
+        assert _targets(geo, author, q=exact.username) == [exact.username]
     assert co.username not in listed
     assert author.username not in listed
     assert _targets(geo, author, q=friend.username[2:]) == [friend.username]
@@ -221,6 +236,25 @@ def test_a_geolocator_cannot_be_asked(db, author, make_user):
         assert _code(response) == "target_is_geolocator"
 
 
+@pytest.mark.parametrize("departure", ["left", "removed"])
+def test_a_former_geolocator_neither_approves_nor_is_asked(db, author, make_user, departure):
+    geo = _published(db, author)
+    former = make_user(audience="everyone")
+    db.add(EventGeolocator(event_id=geo.id, user_id=former.id))
+    db.commit()
+    leaver = former if departure == "left" else author
+    response = client.delete(
+        f"{_EVENTS}/{geo.id}/geolocators/{former.username}", headers=login_as(client, leaver)
+    )
+    assert response.status_code == 204, response.text
+
+    refused = _approve(geo, former, 1)
+    assert (refused.status_code, _code(refused)) == (403, "geolocator_cannot_approve")
+    asked = _request(geo, author, former)
+    assert (asked.status_code, _code(asked)) == (403, "target_is_geolocator")
+    assert former.username not in _targets(geo, author, q=former.username)
+
+
 def test_unknown_target_and_unpublished_event(db, author, make_user):
     geo = _published(db, author)
     response = _request(geo, author, "nobody-here")
@@ -258,7 +292,56 @@ def test_one_open_request_per_requester_target_and_event(db, author, make_user):
     assert _code(again) == "already_requested"
 
     assert _decline(geo, first.json()["id"], target).status_code == 200
+    _age_declines(db, geo)
     assert _request(geo, author, target).status_code == 201
+
+
+def test_only_the_newest_request_row_offers_decline(db, author, make_user):
+    geo = _published(db, author)
+    target = make_user(follows=author)
+    first = _request(geo, author, target).json()
+    assert _decline(geo, first["id"], target).status_code == 200
+    _age_declines(db, geo)
+    db.query(Notification).filter(Notification.user_id == target.id).update(
+        {"created_at": datetime.now(UTC) - timedelta(days=8)}
+    )
+    db.commit()
+    second = _request(geo, author, target).json()
+
+    rows = [n for n in _feed(target) if n["kind"] == "review_request_received"]
+    assert [n["review_request_id"] for n in rows] == [second["id"], None]
+
+
+def test_a_decline_stops_the_same_request_for_seven_days(db, author, make_user):
+    geo = _published(db, author)
+    target = make_user(follows=author)
+    first = _request(geo, author, target).json()
+    assert _decline(geo, first["id"], target).status_code == 200
+
+    again = _request(geo, author, target)
+    assert (again.status_code, _code(again)) == (409, "recently_declined")
+    assert target.username not in _targets(geo, author, q=target.username)
+
+    _age_declines(db, geo)
+    assert _request(geo, author, target).status_code == 201
+
+
+def test_the_daily_cap_count_runs_under_a_per_requester_lock(db, author, make_user):
+    geo = _published(db, author)
+    target = make_user(audience="everyone")
+    statements: list[str] = []
+
+    def record(_conn, _cursor, statement, _params, _context, _many):
+        statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        assert _request(geo, author, target).status_code == 201
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+    lock = next(i for i, s in enumerate(statements) if "pg_advisory_xact_lock" in s)
+    count = next(i for i, s in enumerate(statements) if "count(" in s and "review_requests" in s)
+    assert lock < count
 
 
 def test_the_daily_cap_counts_resolved_requests_too(db, author, make_user, monkeypatch):
@@ -388,6 +471,28 @@ def outbox(monkeypatch) -> list[email.Email]:
     return sent
 
 
+@pytest.mark.parametrize("departure", ["left", "removed"])
+def test_losing_credit_drops_the_requests_the_analyst_sent(db, author, make_user, departure):
+    geo = _published(db, author)
+    co = make_user()
+    db.add(EventGeolocator(event_id=geo.id, user_id=co.id))
+    db.commit()
+    target = make_user(audience="everyone")
+    assert _request(geo, co, target).status_code == 201
+    assert _request(geo, author, target).status_code == 201
+
+    leaver = co if departure == "left" else author
+    response = client.delete(
+        f"{_EVENTS}/{geo.id}/geolocators/{co.username}", headers=login_as(client, leaver)
+    )
+    assert response.status_code == 204, response.text
+
+    assert [r["requester"]["username"] for r in _open(geo, target)] == [author.username]
+    db.expire_all()
+    left = db.query(ReviewRequest).filter_by(event_id=geo.id, requester_id=co.id).one()
+    assert (left.status, left.resolved_at is not None) == ("withdrawn", True)
+
+
 def test_a_request_emails_the_target_and_a_decline_emails_only_on_opt_in(
     db, author, make_user, outbox
 ):
@@ -414,6 +519,7 @@ def test_a_request_emails_the_target_and_a_decline_emails_only_on_opt_in(
         )
     )
     db.commit()
+    _age_declines(db, geo)
     assert _request(geo, author, target).status_code == 201
     [again] = _open(geo, author)
     assert _decline(geo, again["id"], target).status_code == 200

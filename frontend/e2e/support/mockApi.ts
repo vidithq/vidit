@@ -83,7 +83,7 @@ const ROUTES: [RegExp, unknown][] = [
     new RegExp(`^/collections/${COLLECTION_ID}/events$`),
     [COLLECTED_EVENT, SECOND_COLLECTED_EVENT],
   ],
-  // The organization page as its org-admin reads it.
+  // The organization page as its org manager reads it.
   [new RegExp(`^/organizations/${ORGANIZATION_SLUG}$`), ORGANIZATION],
   [new RegExp(`^/organizations/${ORGANIZATION_SLUG}/members$`), ORGANIZATION_MEMBERS],
   [new RegExp(`^/organizations/${ORGANIZATION_SLUG}/invites$`), ORGANIZATION_INVITES],

@@ -22,16 +22,28 @@ import { usePalette } from "@/hooks/usePalette";
 import { PALETTES } from "@/lib/palette";
 import { useTheme } from "@/hooks/useTheme";
 import { useApiResource } from "@/hooks/useApiResource";
-import { NOTIFICATION_KIND_COPY } from "@/lib/notifications";
+import {
+  CHANNEL_LABEL,
+  NOTIFICATION_KIND_COPY,
+  type NotificationChannel,
+} from "@/lib/notifications";
+import { Smartphone } from "lucide-react";
+import { LinkRow } from "@/components/ui/LinkRow";
+import { formatDate } from "@/lib/format";
 import {
   disablePush,
   enablePush,
   PUSH_CONFIG_PATH,
+  PUSH_DEVICES_PATH,
   readPushState,
+  revokePushDevice,
+  thisPushDeviceId,
   type PushConfig,
+  type PushDevice as RegisteredDevice,
   type PushDeviceState,
 } from "@/lib/push";
 import {
+  REVIEW_REQUEST_AUDIENCE_DEFAULT,
   REVIEW_REQUEST_AUDIENCE_OPTIONS,
   type ReviewRequestAudience,
 } from "@/lib/reviewRequests";
@@ -45,9 +57,7 @@ import {
 
 const SAVE_FAILED = "Could not save to your account. Try again.";
 
-type Channel = "email" | "push";
 
-const CHANNEL_LABEL: Record<Channel, string> = { email: "by email", push: "by push" };
 
 const PUSH_STATE_LINE: Record<PushDeviceState, string> = {
   unsupported: "This browser cannot receive push notifications.",
@@ -61,7 +71,9 @@ const PUSH_STATE_LINE: Record<PushDeviceState, string> = {
 
 /** This device's push state and the control that turns it on or off. The kind switches below
  *  it apply to every device of the account. */
-function PushDevice() {
+/** `resyncKey` changes after a password change, which deleted every device on the server:
+ *  this browser registers again and the list reloads. */
+function PushDevice({ resyncKey }: { resyncKey: number }) {
   const config = useApiResource<PushConfig>(PUSH_CONFIG_PATH);
   const [state, setState] = useState<PushDeviceState | null>(null);
   const settled = config.data !== null || config.error !== null;
@@ -77,11 +89,47 @@ function PushDevice() {
       live = false;
     };
   }, [settled, config.data]);
+  const devices = useApiResource<RegisteredDevice[]>(PUSH_DEVICES_PATH);
+  const { refetch: refetchDevices } = devices;
+  const [thisId, setThisId] = useState<string | null>(null);
+  // Registering again names this browser's row in the list, and restores it after a password
+  // change made from this signed-in device.
+  useEffect(() => {
+    if (state !== "on") return;
+    let live = true;
+    thisPushDeviceId()
+      .then((id) => {
+        if (!live) return;
+        setThisId(id);
+        // A revoked device dropped its subscription: push is off here until enabled again.
+        if (id === null) setState("off");
+        refetchDevices();
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [state, refetchDevices, resyncKey]);
+  useEffect(() => {
+    if (resyncKey > 0) refetchDevices();
+  }, [resyncKey, refetchDevices]);
   const change = useMutation(
     (enable: boolean) =>
       enable && config.data?.public_key ? enablePush(config.data.public_key) : disablePush(),
-    { fallback: "Could not change push on this device. Try again.", onSuccess: setState }
+    {
+      fallback: "Could not change push on this device. Try again.",
+      onSuccess: (next) => {
+        setState(next);
+        if (next !== "on") setThisId(null);
+        refetchDevices();
+      },
+    }
   );
+  const revoke = useMutation((id: string) => revokePushDevice(id), {
+    fallback: "Could not revoke the device. Try again.",
+    onSuccess: refetchDevices,
+  });
+  const rows = Array.isArray(devices.data) ? devices.data : [];
 
   return (
     <div className="space-y-2 border-t border-neutral-800 pt-4">
@@ -90,7 +138,9 @@ function PushDevice() {
         {state ? PUSH_STATE_LINE[state] : "Checking this device..."} On iPhone and iPad, push
         works only after you add Vidit to the Home Screen and open it from there.
       </p>
-      {change.error && <div className={FORM_ERROR_BANNER}>{change.error}</div>}
+      {(change.error || revoke.error) && (
+        <div className={FORM_ERROR_BANNER}>{change.error ?? revoke.error}</div>
+      )}
       {(state === "off" || state === "on") && (
         <Button
           variant={state === "off" ? "primary" : "secondary"}
@@ -100,17 +150,37 @@ function PushDevice() {
           {state === "off" ? "Enable on this device" : "Turn off on this device"}
         </Button>
       )}
+      {rows.map((device) => (
+        <div key={device.id} className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <LinkRow
+              icon={Smartphone}
+              label={`${device.id === thisId ? "This device, added" : "Added"} ${formatDate(device.created_at)}`}
+              value={device.user_agent ?? "Unknown browser"}
+            />
+          </div>
+          <Button
+            variant="ghost"
+            disabled={revoke.loading || change.loading}
+            onClick={() =>
+              device.id === thisId ? change.run(false) : revoke.run(device.id)
+            }
+          >
+            Revoke
+          </Button>
+        </div>
+      ))}
     </div>
   );
 }
 
 /** One row per registered kind and channel, email first, then push. The backend drops an
  *  override equal to the default, so a switch moved back stores nothing. */
-function NotificationsCard() {
+function NotificationsCard({ pushResyncKey }: { pushResyncKey: number }) {
   const { data, error } = useApiResource<UserPreferences>(PREFERENCES_PATH);
   const [saved, setSaved] = useState<UserPreferences | null>(null);
   const toggle = useMutation(
-    (kind: keyof typeof NOTIFICATION_KIND_COPY, channel: Channel, on: boolean) =>
+    (kind: keyof typeof NOTIFICATION_KIND_COPY, channel: NotificationChannel, on: boolean) =>
       updatePreferences({ notifications: { [kind]: { [channel]: on } } }),
     { fallback: SAVE_FAILED, onSuccess: (prefs) => setSaved(prefs) }
   );
@@ -123,13 +193,14 @@ function NotificationsCard() {
     (value: ReviewRequestAudience) => updatePreferences({ review_request_audience: value }),
     { fallback: SAVE_FAILED, onSuccess: (prefs) => setSaved(prefs) }
   );
-  const currentAudience = (saved ?? data)?.review_request_audience ?? "following";
+  const currentAudience =
+    (saved ?? data)?.review_request_audience ?? REVIEW_REQUEST_AUDIENCE_DEFAULT;
   // Tolerates a missing or partial payload, and a kind this build has no wording for.
   const notifications = (saved ?? data)?.notifications;
   const rows = (Array.isArray(notifications) ? notifications : []).filter(
     (row) => row.kind in NOTIFICATION_KIND_COPY
   );
-  const switches = (channel: Channel) =>
+  const switches = (channel: NotificationChannel) =>
     rows.map((row, i) => {
       const copy = NOTIFICATION_KIND_COPY[row.kind];
       const on = row.channels?.[channel] ?? false;
@@ -182,7 +253,7 @@ function NotificationsCard() {
         onToggle={() => consent.run(!productUpdates)}
         className="border-t border-neutral-800 pt-4"
       />
-      <PushDevice />
+      <PushDevice resyncKey={pushResyncKey} />
       {switches("push")}
     </Card>
   );
@@ -195,6 +266,7 @@ export default function SettingsPage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [success, setSuccess] = useState(false);
+  const [passwordChanges, setPasswordChanges] = useState(0);
   const helpHidden = useHelpHidden();
   const palette = usePalette();
   const theme = useTheme();
@@ -220,6 +292,7 @@ export default function SettingsPage() {
         setNewPassword("");
         setConfirmPassword("");
         setSuccess(true);
+        setPasswordChanges((n) => n + 1);
       },
     }
   );
@@ -329,7 +402,7 @@ export default function SettingsPage() {
           </div>
         </Card>
 
-        <NotificationsCard />
+        <NotificationsCard pushResyncKey={passwordChanges} />
 
         <Card>
           <div className="space-y-1">
