@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ReviewRequest } from "@/lib/reviewRequests";
+import type { ApprovalRequest } from "@/lib/approvalRequests";
 import { eventDetail } from "@/test/eventDetail";
 
 const api = vi.hoisted(() => ({
@@ -18,7 +18,7 @@ vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: api.viewer }),
 }));
 
-import { ReviewRequestsSection } from "./ReviewRequestsSection";
+import { ApprovalRequestsSection } from "./ApprovalRequestsSection";
 
 const ANA = { id: "u1", username: "ana" };
 const BO = { id: "u2", username: "bo" };
@@ -26,7 +26,7 @@ const CY = { id: "u3", username: "cy" };
 
 const event = { ...eventDetail("e1", "Bridge strike"), version_no: 2, geolocators: [ANA] };
 
-const request = (over: Partial<ReviewRequest> = {}): ReviewRequest => ({
+const request = (over: Partial<ApprovalRequest> = {}): ApprovalRequest => ({
   id: "r1",
   event_id: "e1",
   version_no: 2,
@@ -42,7 +42,7 @@ const request = (over: Partial<ReviewRequest> = {}): ReviewRequest => ({
 const BELLINGCAT = { slug: "bellingcat", name: "Bellingcat", avatar_url: null };
 
 function serve(
-  rows: ReviewRequest[],
+  rows: ApprovalRequest[],
   targets: { analysts: (typeof CY)[]; organizations: (typeof BELLINGCAT)[] } = {
     analysts: [CY],
     organizations: [BELLINGCAT],
@@ -51,7 +51,7 @@ function serve(
 ) {
   api.apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
     if (init?.method === "POST") return Promise.resolve(request({ status: "declined" }));
-    if (path.includes("review-request-targets")) return Promise.resolve(targets);
+    if (path.includes("approval-request-targets")) return Promise.resolve(targets);
     if (path.endsWith("/organizations")) {
       return Promise.resolve(
         managed.map((organization) => ({
@@ -65,40 +65,40 @@ function serve(
   });
 }
 
-describe("<ReviewRequestsSection>", () => {
+describe("<ApprovalRequestsSection>", () => {
   beforeEach(() => {
     api.apiFetch.mockReset();
     api.viewer = null;
   });
 
-  it("lets a geolocator pick an eligible analyst and ask for a review", async () => {
+  it("lets a geolocator pick an eligible analyst and ask for approval", async () => {
     api.viewer = ANA;
     serve([request()]);
-    render(<ReviewRequestsSection event={event} refreshKey={0} />);
+    render(<ApprovalRequestsSection event={event} refreshKey={0} />);
 
     expect(await screen.findByText(/asked by ana/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Request a review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Request approval" }));
     fireEvent.click(await screen.findByRole("button", { name: "cy" }));
     fireEvent.click(screen.getByRole("button", { name: "Ask cy" }));
 
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/review-requests", {
+      expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/approval-requests", {
         method: "POST",
         body: JSON.stringify({ username: "cy" }),
       }),
     );
     // Sent: the form collapses back to its button.
-    expect(await screen.findByRole("button", { name: "Request a review" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Request approval" })).toBeInTheDocument();
   });
 
   it("keeps the request form collapsed until asked, and Cancel collapses it again", async () => {
     api.viewer = ANA;
     serve([]);
-    render(<ReviewRequestsSection event={event} refreshKey={0} />);
+    render(<ApprovalRequestsSection event={event} refreshKey={0} />);
 
     expect(await screen.findByText("No open requests.")).toBeInTheDocument();
     expect(screen.queryByLabelText(/Ask an analyst or an organization/)).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Request a review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Request approval" }));
     expect(screen.getByLabelText(/Ask an analyst or an organization/)).toHaveFocus();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByLabelText(/Ask an analyst or an organization/)).toBeNull();
@@ -107,18 +107,18 @@ describe("<ReviewRequestsSection>", () => {
   it("lets a geolocator ask an organization", async () => {
     api.viewer = ANA;
     serve([request({ target: null, target_organization: BELLINGCAT })]);
-    render(<ReviewRequestsSection event={event} refreshKey={0} />);
+    render(<ApprovalRequestsSection event={event} refreshKey={0} />);
 
     expect(await screen.findByRole("link", { name: "Bellingcat" })).toHaveAttribute(
       "href",
       "/organizations/bellingcat",
     );
-    fireEvent.click(screen.getByRole("button", { name: "Request a review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Request approval" }));
     fireEvent.click(await screen.findByRole("button", { name: "Bellingcat" }));
     fireEvent.click(screen.getByRole("button", { name: "Ask Bellingcat" }));
 
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/review-requests", {
+      expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/approval-requests", {
         method: "POST",
         body: JSON.stringify({ organization: "bellingcat" }),
       }),
@@ -128,25 +128,25 @@ describe("<ReviewRequestsSection>", () => {
   it("says so when no analyst or organization would accept a request", async () => {
     api.viewer = ANA;
     serve([], { analysts: [], organizations: [] });
-    render(<ReviewRequestsSection event={event} refreshKey={0} />);
+    render(<ApprovalRequestsSection event={event} refreshKey={0} />);
 
     expect(await screen.findByText("No open requests.")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Request a review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Request approval" }));
     expect(await screen.findByText(/No analyst or organization to suggest/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ask for a review" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Ask for approval" })).toBeDisabled();
   });
 
   it("lets the analyst asked decline", async () => {
     api.viewer = BO;
     serve([request()]);
-    render(<ReviewRequestsSection event={event} refreshKey={0} />);
+    render(<ApprovalRequestsSection event={event} refreshKey={0} />);
 
-    expect(await screen.findByText(/asks you to review this geolocation/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Request a review" })).toBeNull();
+    expect(await screen.findByText(/asks you to approve this geolocation/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Request approval" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Decline" }));
 
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/review-requests/r1/decline", {
+      expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/approval-requests/r1/decline", {
         method: "POST",
       }),
     );
@@ -155,12 +155,12 @@ describe("<ReviewRequestsSection>", () => {
   it("lets an org manager of the organization asked decline for it", async () => {
     api.viewer = CY;
     serve([request({ target: null, target_organization: BELLINGCAT })], undefined, [BELLINGCAT]);
-    render(<ReviewRequestsSection event={event} refreshKey={0} />);
+    render(<ApprovalRequestsSection event={event} refreshKey={0} />);
 
-    expect(await screen.findByText(/asks Bellingcat to review this geolocation/)).toBeInTheDocument();
+    expect(await screen.findByText(/asks Bellingcat to approve this geolocation/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Decline" }));
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/review-requests/r1/decline", {
+      expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/approval-requests/r1/decline", {
         method: "POST",
       }),
     );
@@ -169,7 +169,7 @@ describe("<ReviewRequestsSection>", () => {
   it("stays hidden for a reader neither credited nor asked", async () => {
     api.viewer = CY;
     serve([]);
-    const { container } = render(<ReviewRequestsSection event={event} refreshKey={0} />);
+    const { container } = render(<ApprovalRequestsSection event={event} refreshKey={0} />);
 
     await waitFor(() => expect(api.apiFetch).toHaveBeenCalled());
     expect(container).toBeEmptyDOMElement();

@@ -3,15 +3,15 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.models.review_request import ReviewRequestStatus
+from app.models.approval_request import ApprovalRequestStatus
 from app.schemas.notification import NotificationEventRef
 from app.schemas.organization import OrganizationRef
 from app.schemas.user import AuthorRef
 
 
-class ReviewRequestCreate(BaseModel):
-    """Body of ``POST /events/{id}/review-requests``: the analyst (``username``) or the
-    organization (``organization``, its slug) you ask to review the event. Exactly one."""
+class ApprovalRequestCreate(BaseModel):
+    """Body of ``POST /events/{id}/approval-requests``: the analyst (``username``) or the
+    organization (``organization``, its slug) you ask to approve the event. Exactly one."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -19,13 +19,13 @@ class ReviewRequestCreate(BaseModel):
     organization: str | None = Field(default=None, min_length=1, max_length=50)
 
     @model_validator(mode="after")
-    def _one_target(self) -> "ReviewRequestCreate":
+    def _one_target(self) -> "ApprovalRequestCreate":
         if (self.username is None) == (self.organization is None):
             raise ValueError("Name exactly one target: username or organization")
         return self
 
 
-class ReviewRequestRead(BaseModel):
+class ApprovalRequestRead(BaseModel):
     """One request that ``target`` (an analyst) or ``target_organization`` review an event;
     exactly one of the two is set. ``version_no`` is the live version when it was sent;
     approving any version resolves it."""
@@ -36,22 +36,22 @@ class ReviewRequestRead(BaseModel):
     requester: AuthorRef
     target: AuthorRef | None
     target_organization: OrganizationRef | None
-    status: ReviewRequestStatus
+    status: ApprovalRequestStatus
     created_at: datetime
     resolved_at: datetime | None
 
 
-class ReviewRequestTargetList(BaseModel):
-    """``GET /events/{id}/review-request-targets``: the analysts and the organizations you can
-    ask to review the event now."""
+class ApprovalRequestTargetList(BaseModel):
+    """``GET /events/{id}/approval-request-targets``: the analysts and the organizations you can
+    ask to approve the event now."""
 
     analysts: list[AuthorRef]
     organizations: list[OrganizationRef]
 
 
-class OrganizationReviewRequestRead(BaseModel):
+class OrganizationApprovalRequestRead(BaseModel):
     """One open request addressed to an organization, with the event it names, for
-    ``GET /organizations/{slug}/review-requests``."""
+    ``GET /organizations/{slug}/approval-requests``."""
 
     event: NotificationEventRef
-    request: ReviewRequestRead
+    request: ApprovalRequestRead

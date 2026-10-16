@@ -5,15 +5,15 @@ import Link from "next/link";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useMutation } from "@/hooks/useMutation";
 import { formatDate } from "@/lib/format";
-import { setOrganizationReviewRequestAudience, type Organization } from "@/lib/organizations";
+import { setOrganizationApprovalRequestAudience, type Organization } from "@/lib/organizations";
 import {
   ORGANIZATION_AUDIENCE_OPTIONS,
-  REVIEW_REQUEST_AUDIENCE_DEFAULT,
-  organizationReviewRequestsPath,
-  type OrganizationReviewRequest,
-  type ReviewRequestAudience,
-} from "@/lib/reviewRequests";
-import { ReviewRequestDecline } from "@/components/event/ReviewRequestsSection";
+  APPROVAL_REQUEST_AUDIENCE_DEFAULT,
+  organizationApprovalRequestsPath,
+  type OrganizationApprovalRequest,
+  type ApprovalRequestAudience,
+} from "@/lib/approvalRequests";
+import { ApprovalRequestDecline } from "@/components/event/ApprovalRequestsSection";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -22,24 +22,24 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 
 /**
- * The organization's review requests, for its org managers and site admins: who may send one (the
+ * The organization's approval requests, for its org managers and site admins: who may send one (the
  * organization's audience, which they set here), and the open requests, oldest first. An
  * org manager declines a request here, or approves it in the organization's name from the event
  * page. A site admin who is not an org manager reads the list without answering.
  */
-export function OrganizationReviewRequests({
+export function OrganizationApprovalRequests({
   org,
   onChanged,
 }: {
   org: Organization;
   onChanged: () => void;
 }) {
-  const requests = useApiResource<OrganizationReviewRequest[]>(
-    organizationReviewRequestsPath(org.slug),
+  const requests = useApiResource<OrganizationApprovalRequest[]>(
+    organizationApprovalRequestsPath(org.slug),
   );
   const audience = useMutation(
-    (value: ReviewRequestAudience) => setOrganizationReviewRequestAudience(org.slug, value),
-    { fallback: "Could not change who can send review requests", onSuccess: onChanged },
+    (value: ApprovalRequestAudience) => setOrganizationApprovalRequestAudience(org.slug, value),
+    { fallback: "Could not change who can send approval requests", onSuccess: onChanged },
   );
   const rows = requests.data ?? [];
   const canAnswer = org.viewer_role === "manager";
@@ -47,19 +47,19 @@ export function OrganizationReviewRequests({
 
   return (
     <Card as="section">
-      <SectionEyebrow title="Review requests" margin="none" />
+      <SectionEyebrow title="Approval requests" margin="none" />
       {/* Stacks below `sm`, where the three choices take the full column. */}
       <div className="flex max-sm:flex-col max-sm:items-stretch items-center justify-between gap-4">
         <div>
-          <p className="text-sm text-neutral-200">Accept review requests from</p>
+          <p className="text-sm text-neutral-200">Accept approval requests from</p>
           <p className="text-xs text-neutral-500">
-            Who can ask {org.name} to review their geolocation.
+            Who can ask {org.name} to approve their geolocation.
           </p>
         </div>
         <SegmentedControl
-          aria-label="Accept review requests from"
+          aria-label="Accept approval requests from"
           options={ORGANIZATION_AUDIENCE_OPTIONS}
-          value={org.review_request_audience ?? REVIEW_REQUEST_AUDIENCE_DEFAULT}
+          value={org.approval_request_audience ?? APPROVAL_REQUEST_AUDIENCE_DEFAULT}
           onChange={(value) => void audience.run(value)}
         />
       </div>
@@ -82,7 +82,7 @@ export function OrganizationReviewRequests({
                 {formatDate(request.created_at)}
               </p>
               {canAnswer && (
-                <ReviewRequestDecline
+                <ApprovalRequestDecline
                   eventId={event.id}
                   requestId={request.id}
                   onAnswered={requests.refetch}

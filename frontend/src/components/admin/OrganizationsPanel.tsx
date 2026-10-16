@@ -71,7 +71,7 @@ function AppointManager({ slug, onDone }: { slug: string; onDone: () => void }) 
 }
 
 /** Delete an organization: the site admin types its slug to confirm, since the delete takes
- *  its members, invites, review requests and every approval given in its name. */
+ *  its members, invites, approval requests and every approval given in its name. */
 function DeleteOrganization({ slug, onDone }: { slug: string; onDone: () => void }) {
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
@@ -89,7 +89,7 @@ function DeleteOrganization({ slug, onDone }: { slug: string; onDone: () => void
   return (
     <div className={`${WARNING_CALLOUT} w-full space-y-2 rounded-md px-3 py-2 text-xs`}>
       <p>
-        <strong>Deleting {slug} is irreversible.</strong> Its members, pending invites, review
+        <strong>Deleting {slug} is irreversible.</strong> Its members, pending invites, approval
         requests and every approval given in its name go with it; the owners of the events it
         approved are told. Type the slug to confirm.
       </p>

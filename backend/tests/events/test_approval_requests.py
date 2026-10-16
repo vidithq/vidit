@@ -1,4 +1,4 @@
-"""Review requests: the target's audience, who may send and receive one, the duplicate rule and
+"""Approval requests: the target's audience, who may send and receive one, the duplicate rule and
 the daily cap, resolution by an approval or a decline, and the notifications and feed rows."""
 
 from __future__ import annotations
@@ -11,15 +11,15 @@ from sqlalchemy import event
 
 from app.config import settings
 from app.database import engine
+from app.models.approval_request import ApprovalRequest
 from app.models.event import STATUS_CLOSED, Event, EventGeolocator, EventGeolocatorInvite
 from app.models.follow import Follow
 from app.models.notification import Notification
-from app.models.review_request import ReviewRequest
 from app.models.user import User
 from app.models.user_preferences import UserPreferences
 from app.services import email, notification_delivery
+from app.services.approval_requests import REFUSAL_MESSAGE
 from app.services.auth import hash_password
-from app.services.review_requests import REFUSAL_MESSAGE
 from tests.conftest import login_as
 from tests.events._helpers import _make_geo, client, delete_user
 
@@ -39,7 +39,7 @@ def make_user(db):
         db.add(user)
         db.flush()
         if audience is not None:
-            db.add(UserPreferences(user_id=user.id, review_request_audience=audience))
+            db.add(UserPreferences(user_id=user.id, approval_request_audience=audience))
         if follows is not None:
             db.add(Follow(follower_id=user.id, followed_id=follows.id))
         db.commit()
@@ -65,13 +65,15 @@ def _request(geo: Event, requester: User, target: User | str):
     headers = login_as(client, requester)
     username = target if isinstance(target, str) else target.username
     return client.post(
-        f"{_EVENTS}/{geo.id}/review-requests", json={"username": username}, headers=headers
+        f"{_EVENTS}/{geo.id}/approval-requests", json={"username": username}, headers=headers
     )
 
 
 def _decline(geo: Event, request_id: str, user: User):
     headers = login_as(client, user)
-    return client.post(f"{_EVENTS}/{geo.id}/review-requests/{request_id}/decline", headers=headers)
+    return client.post(
+        f"{_EVENTS}/{geo.id}/approval-requests/{request_id}/decline", headers=headers
+    )
 
 
 def _approve(geo: Event, reviewer: User, version_no: int):
@@ -83,14 +85,14 @@ def _approve(geo: Event, reviewer: User, version_no: int):
 
 def _open(geo: Event, viewer: User) -> list[dict]:
     login_as(client, viewer)
-    response = client.get(f"{_EVENTS}/{geo.id}/review-requests")
+    response = client.get(f"{_EVENTS}/{geo.id}/approval-requests")
     assert response.status_code == 200, response.text
     return response.json()
 
 
 def _targets(geo: Event, requester: User, q: str = "") -> list[str]:
     login_as(client, requester)
-    response = client.get(f"{_EVENTS}/{geo.id}/review-request-targets", params={"q": q})
+    response = client.get(f"{_EVENTS}/{geo.id}/approval-request-targets", params={"q": q})
     assert response.status_code == 200, response.text
     return [u["username"] for u in response.json()["analysts"]]
 
@@ -107,8 +109,8 @@ def _kinds(db, user: User) -> list[tuple[str, uuid.UUID | None, uuid.UUID | None
 
 def _age_declines(db, geo: Event) -> None:
     """Move every decline on ``geo`` past the cooldown, so the same request can go again."""
-    db.query(ReviewRequest).filter(
-        ReviewRequest.event_id == geo.id, ReviewRequest.status == "declined"
+    db.query(ApprovalRequest).filter(
+        ApprovalRequest.event_id == geo.id, ApprovalRequest.status == "declined"
     ).update({"resolved_at": datetime.now(UTC) - timedelta(days=8)})
     db.commit()
 
@@ -158,18 +160,20 @@ def test_nobody_admits_no_one_not_even_followed_analysts(db, author, make_user):
 def test_the_audience_is_a_preference_the_target_sets(db, author, make_user):
     target = make_user()
     headers = login_as(client, target)
-    assert client.get("/api/v1/users/me/preferences").json()["review_request_audience"] == (
+    assert client.get("/api/v1/users/me/preferences").json()["approval_request_audience"] == (
         "following"
     )
     response = client.patch(
         "/api/v1/users/me/preferences",
-        json={"review_request_audience": "everyone"},
+        json={"approval_request_audience": "everyone"},
         headers=headers,
     )
     assert response.status_code == 200, response.text
-    assert response.json()["review_request_audience"] == "everyone"
+    assert response.json()["approval_request_audience"] == "everyone"
     bad = client.patch(
-        "/api/v1/users/me/preferences", json={"review_request_audience": "friends"}, headers=headers
+        "/api/v1/users/me/preferences",
+        json={"approval_request_audience": "friends"},
+        headers=headers,
     )
     assert bad.status_code == 422
 
@@ -203,7 +207,7 @@ def test_the_picker_suggests_followers_and_never_reveals_an_open_audience(
     assert friend.username not in _targets(geo, author)
 
     login_as(client, second_user)
-    response = client.get(f"{_EVENTS}/{geo.id}/review-request-targets")
+    response = client.get(f"{_EVENTS}/{geo.id}/approval-request-targets")
     assert response.status_code == 403
     assert _code(response) == "not_a_geolocator"
 
@@ -308,8 +312,8 @@ def test_only_the_newest_request_row_offers_decline(db, author, make_user):
     db.commit()
     second = _request(geo, author, target).json()
 
-    rows = [n for n in _feed(target) if n["kind"] == "review_request_received"]
-    assert [n["review_request_id"] for n in rows] == [second["id"], None]
+    rows = [n for n in _feed(target) if n["kind"] == "approval_request_received"]
+    assert [n["approval_request_id"] for n in rows] == [second["id"], None]
 
 
 def test_a_decline_stops_the_same_request_for_seven_days(db, author, make_user):
@@ -340,12 +344,12 @@ def test_the_daily_cap_count_runs_under_a_per_requester_lock(db, author, make_us
     finally:
         event.remove(engine, "before_cursor_execute", record)
     lock = next(i for i, s in enumerate(statements) if "pg_advisory_xact_lock" in s)
-    count = next(i for i, s in enumerate(statements) if "count(" in s and "review_requests" in s)
+    count = next(i for i, s in enumerate(statements) if "count(" in s and "approval_requests" in s)
     assert lock < count
 
 
 def test_the_daily_cap_counts_resolved_requests_too(db, author, make_user, monkeypatch):
-    monkeypatch.setattr(settings, "review_request_daily_cap", 2)
+    monkeypatch.setattr(settings, "approval_request_daily_cap", 2)
     geo = _published(db, author)
     a, b, c = (make_user(audience="everyone") for _ in range(3))
     first = _request(geo, author, a)
@@ -357,8 +361,8 @@ def test_the_daily_cap_counts_resolved_requests_too(db, author, make_user, monke
     assert capped.status_code == 429
     assert _code(capped) == "daily_cap_reached"
 
-    db.query(ReviewRequest).filter(ReviewRequest.requester_id == author.id).update(
-        {ReviewRequest.created_at: datetime.now(UTC) - timedelta(days=1, minutes=1)}
+    db.query(ApprovalRequest).filter(ApprovalRequest.requester_id == author.id).update(
+        {ApprovalRequest.created_at: datetime.now(UTC) - timedelta(days=1, minutes=1)}
     )
     db.commit()
     assert _request(geo, author, c).status_code == 201
@@ -375,10 +379,10 @@ def test_a_request_notifies_the_target_and_shows_in_their_feed(db, author, make_
     assert created["version_no"] == 1
     assert created["target"]["username"] == target.username
 
-    assert _kinds(db, target) == [("review_request_received", author.id, geo.id)]
+    assert _kinds(db, target) == [("approval_request_received", author.id, geo.id)]
     [row] = _feed(target)
-    assert row["kind"] == "review_request_received"
-    assert row["review_request_id"] == created["id"]
+    assert row["kind"] == "approval_request_received"
+    assert row["approval_request_id"] == created["id"]
     assert row["reapprove_version"] == 1
 
 
@@ -399,14 +403,14 @@ def test_approving_resolves_the_request_and_tells_the_requester(db, author, make
     db.expire_all()
     statuses = {
         str(r.id): r.status
-        for r in db.query(ReviewRequest).filter(ReviewRequest.event_id == geo.id)
+        for r in db.query(ApprovalRequest).filter(ApprovalRequest.event_id == geo.id)
     }
     assert statuses == {by_owner["id"]: "approved", by_co["id"]: "approved"}
     assert _kinds(db, author) == [("approval_received", target.id, geo.id)]
     assert _kinds(db, co) == [("approval_received", target.id, geo.id)]
     assert _open(geo, author) == []
     [row, _] = _feed(target)
-    assert row["review_request_id"] is None
+    assert row["approval_request_id"] is None
     assert row["reapprove_version"] is None
 
 
@@ -428,9 +432,9 @@ def test_the_target_declines(db, author, second_user, make_user):
 
     assert _open(geo, author) == []
     [row] = _feed(target)
-    assert row["review_request_id"] is None
+    assert row["approval_request_id"] is None
     assert row["reapprove_version"] is None
-    assert _kinds(db, author) == [("review_request_declined", target.id, geo.id)]
+    assert _kinds(db, author) == [("approval_request_declined", target.id, geo.id)]
 
 
 def test_the_open_list_shows_geolocators_everything_and_targets_their_own(
@@ -458,7 +462,7 @@ def test_joining_the_geolocators_drops_requests_to_the_new_geolocator(db, author
     accepted = client.post(f"{_EVENTS}/{geo.id}/geolocator-invites/accept", headers=headers)
     assert accepted.status_code == 204, accepted.text
     db.expire_all()
-    assert db.query(ReviewRequest).filter(ReviewRequest.event_id == geo.id).count() == 0
+    assert db.query(ApprovalRequest).filter(ApprovalRequest.event_id == geo.id).count() == 0
 
 
 # ── Delivery ────────────────────────────────────────────────────────
@@ -489,7 +493,7 @@ def test_losing_credit_drops_the_requests_the_analyst_sent(db, author, make_user
 
     assert [r["requester"]["username"] for r in _open(geo, target)] == [author.username]
     db.expire_all()
-    left = db.query(ReviewRequest).filter_by(event_id=geo.id, requester_id=co.id).one()
+    left = db.query(ApprovalRequest).filter_by(event_id=geo.id, requester_id=co.id).one()
     assert (left.status, left.resolved_at is not None) == ("withdrawn", True)
 
 
@@ -515,7 +519,7 @@ def test_a_request_emails_the_target_and_a_decline_emails_only_on_opt_in(
 
     db.add(
         UserPreferences(
-            user_id=author.id, notification_overrides={"review_request_declined": {"email": True}}
+            user_id=author.id, notification_overrides={"approval_request_declined": {"email": True}}
         )
     )
     db.commit()
@@ -535,7 +539,7 @@ def test_push_messages_name_the_actor_and_open_the_event(db, author, make_user):
     assert _decline(geo, created["id"], target).status_code == 200
     db.expire_all()
     rows = db.query(Notification).filter(Notification.event_id == geo.id).all()
-    assert {r.kind for r in rows} == {"review_request_received", "review_request_declined"}
+    assert {r.kind for r in rows} == {"approval_request_received", "approval_request_declined"}
     for row in rows:
         message = notification_delivery._PUSH_BUILDERS[row.kind](row)
         assert row.actor.username in message.title

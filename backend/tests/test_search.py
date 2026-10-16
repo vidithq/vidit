@@ -1258,7 +1258,7 @@ def test_organization_hit_carries_public_fields_only(db, caller, seed_org):
     org = db.get(Organization, org_id)
     org.x_handle = f"x{uuid.uuid4().hex[:8]}"
     org.created_by_id = caller.id
-    org.review_request_audience = "nobody"
+    org.approval_request_audience = "nobody"
     db.commit()
     hit = _org_hits(caller, token)["organizations"][0]
     assert set(hit) == {

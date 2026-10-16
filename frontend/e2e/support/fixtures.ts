@@ -18,7 +18,7 @@ import type {
 } from "@/lib/organizations";
 import type { UserPreferences } from "@/lib/preferences";
 import type { PushConfig } from "@/lib/push";
-import type { OrganizationReviewRequest } from "@/lib/reviewRequests";
+import type { OrganizationApprovalRequest } from "@/lib/approvalRequests";
 import type { XHandleState } from "@/lib/xHandle";
 import type {
   Conflict,
@@ -296,7 +296,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
     },
   ],
   product_updates: false,
-  review_request_audience: "following",
+  approval_request_audience: "following",
 };
 
 /** A deployment that sends no push, so the settings page offers no enable button. */
@@ -331,7 +331,7 @@ export const ORGANIZATION: Organization = {
   external_links: { x: "osw", website: "https://example.org" },
   created_at: "2025-03-01T09:00:00Z",
   member_count: 2,
-  review_request_audience: "following",
+  approval_request_audience: "following",
   viewer_role: "manager",
   viewer_invited: false,
   viewer_can_manage: true,
@@ -435,7 +435,7 @@ export const ORGANIZATION_APPROVALS: OrganizationApproval[] = [
 ];
 
 /** One open request to the organization, which its org manager can decline. */
-export const ORGANIZATION_REVIEW_REQUESTS: OrganizationReviewRequest[] = [
+export const ORGANIZATION_APPROVAL_REQUESTS: OrganizationApprovalRequest[] = [
   {
     event: { id: EVENT_ID, title: EVENT.title },
     request: {

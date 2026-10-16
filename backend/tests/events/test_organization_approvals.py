@@ -1,7 +1,7 @@
-"""Organization approvals and organization review requests: who may approve in an
+"""Organization approvals and organization approval requests: who may approve in an
 organization's name, one standing approval per organization and version, the reset a new
 version brings and whom it notifies, revocation by an org manager or a site admin, the
-organization's review request audience, resolution and decline, the organization page's lists,
+organization's approval request audience, resolution and decline, the organization page's lists,
 and delivery."""
 
 from __future__ import annotations
@@ -13,19 +13,19 @@ import pytest
 
 from app.models.admin_event import AdminEvent
 from app.models.approval import EventApproval
+from app.models.approval_request import ApprovalRequest
 from app.models.event import Event, EventGeolocator
 from app.models.follow import Follow
 from app.models.notification import Notification, NotificationDelivery
 from app.models.organization import Organization, OrganizationInvite, OrganizationMember
-from app.models.review_request import ReviewRequest
 from app.models.user import User
 from app.services import email, notification_delivery, organizations
+from app.services.approval_requests import REFUSAL_MESSAGE
 from app.services.auth import hash_password
-from app.services.review_requests import REFUSAL_MESSAGE
 from tests._fixtures import TINY_JPEG
 from tests.conftest import login_as
 from tests.events._helpers import _make_geo, client, delete_user
-from tests.events.test_review_requests import _age_declines
+from tests.events.test_approval_requests import _age_declines
 from tests.events.test_versions import _form, _save_version
 from tests.events.test_versions import _published as _published_with_floor
 
@@ -65,7 +65,7 @@ def make_org(db):
         *, managers: list[User], members: list[User] = (), audience: str = "following"
     ) -> Organization:
         slug = f"org-{uuid.uuid4().hex[:8]}"
-        org = Organization(slug=slug, name=f"Org {slug}", review_request_audience=audience)
+        org = Organization(slug=slug, name=f"Org {slug}", approval_request_audience=audience)
         db.add(org)
         db.flush()
         for user in managers:
@@ -109,13 +109,15 @@ def _revoke(geo: Event, approval_id: str, user: User):
 def _ask(geo: Event, requester: User, org: Organization):
     headers = login_as(client, requester)
     return client.post(
-        f"{_EVENTS}/{geo.id}/review-requests", json={"organization": org.slug}, headers=headers
+        f"{_EVENTS}/{geo.id}/approval-requests", json={"organization": org.slug}, headers=headers
     )
 
 
 def _decline(geo: Event, request_id: str, user: User):
     headers = login_as(client, user)
-    return client.post(f"{_EVENTS}/{geo.id}/review-requests/{request_id}/decline", headers=headers)
+    return client.post(
+        f"{_EVENTS}/{geo.id}/approval-requests/{request_id}/decline", headers=headers
+    )
 
 
 def _code(response) -> str:
@@ -230,7 +232,7 @@ def test_org_managers_who_hold_credit_are_not_asked(db, author, make_user, make_
     assert _ask(geo, author, org).status_code == 201
     asked = (
         db.query(Notification.user_id)
-        .filter(Notification.kind == "review_request_received", Notification.event_id == geo.id)
+        .filter(Notification.kind == "approval_request_received", Notification.event_id == geo.id)
         .all()
     )
     assert [user_id for (user_id,) in asked] == [outsider.id]
@@ -431,7 +433,7 @@ def test_a_site_admin_revokes_an_organization_approval(db, author, admin_user, m
     assert audit.target["organization_id"] == str(org.id)
 
 
-# ── Review requests to an organization ──────────────────────────────
+# ── Approval requests to an organization ──────────────────────────────
 
 
 def test_following_admits_an_analyst_an_org_manager_follows(db, author, make_user, make_org):
@@ -456,22 +458,22 @@ def test_the_org_managers_set_the_audience(db, author, make_user, make_org):
 
     headers = login_as(client, member)
     patch = client.patch(
-        f"{_ORGS}/{org.slug}", json={"review_request_audience": "everyone"}, headers=headers
+        f"{_ORGS}/{org.slug}", json={"approval_request_audience": "everyone"}, headers=headers
     )
     assert patch.status_code == 403
 
     headers = login_as(client, manager)
     patch = client.patch(
-        f"{_ORGS}/{org.slug}", json={"review_request_audience": "everyone"}, headers=headers
+        f"{_ORGS}/{org.slug}", json={"approval_request_audience": "everyone"}, headers=headers
     )
     assert patch.status_code == 200, patch.text
-    assert patch.json()["review_request_audience"] == "everyone"
+    assert patch.json()["approval_request_audience"] == "everyone"
     assert _ask(geo, author, org).status_code == 201
 
     other = _published(db, author)
     headers = login_as(client, manager)
     patch = client.patch(
-        f"{_ORGS}/{org.slug}", json={"review_request_audience": "nobody"}, headers=headers
+        f"{_ORGS}/{org.slug}", json={"approval_request_audience": "nobody"}, headers=headers
     )
     assert patch.status_code == 200, patch.text
     db.add(Follow(follower_id=manager.id, followed_id=author.id))
@@ -495,7 +497,7 @@ def test_the_picker_suggests_organizations_without_revealing_their_audience(
 
     def picked(q: str = "") -> set[str]:
         login_as(client, author)
-        response = client.get(f"{_EVENTS}/{geo.id}/review-request-targets", params={"q": q})
+        response = client.get(f"{_EVENTS}/{geo.id}/approval-request-targets", params={"q": q})
         assert response.status_code == 200, response.text
         return {o["slug"] for o in response.json()["organizations"]}
 
@@ -533,26 +535,26 @@ def test_a_request_reaches_every_org_manager_and_an_approval_resolves_it(
     assert created.json()["target"] is None
     assert created.json()["target_organization"]["slug"] == org.slug
     for manager in (first, second):
-        [row] = _rows(db, manager, "review_request_received")
+        [row] = _rows(db, manager, "approval_request_received")
         assert (row.actor_id, row.organization_id) == (author.id, org.id)
-    assert _rows(db, member, "review_request_received") == []
+    assert _rows(db, member, "approval_request_received") == []
 
-    [row] = [n for n in _feed(second) if n["kind"] == "review_request_received"]
-    assert row["review_request_id"] == created.json()["id"]
+    [row] = [n for n in _feed(second) if n["kind"] == "approval_request_received"]
+    assert row["approval_request_id"] == created.json()["id"]
     assert row["reapprove_version"] == 1
 
     login_as(client, second)
-    [visible] = client.get(f"{_EVENTS}/{geo.id}/review-requests").json()
+    [visible] = client.get(f"{_EVENTS}/{geo.id}/approval-requests").json()
     assert visible["id"] == created.json()["id"]
     login_as(client, member)
-    assert client.get(f"{_EVENTS}/{geo.id}/review-requests").json() == []
+    assert client.get(f"{_EVENTS}/{geo.id}/approval-requests").json() == []
 
     duplicate = _ask(geo, author, org)
     assert _code(duplicate) == "already_requested"
 
     assert _approve(geo, first, org).status_code == 201
     db.expire_all()
-    assert db.get(ReviewRequest, uuid.UUID(created.json()["id"])).status == "approved"
+    assert db.get(ApprovalRequest, uuid.UUID(created.json()["id"])).status == "approved"
     [received] = _rows(db, author, "approval_received")
     assert received.organization_id == org.id
 
@@ -570,7 +572,7 @@ def test_any_org_manager_declines_for_the_organization(db, author, make_user, ma
     response = _decline(geo, request_id, second)
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "declined"
-    [declined] = _rows(db, author, "review_request_declined")
+    [declined] = _rows(db, author, "approval_request_declined")
     assert (declined.actor_id, declined.organization_id) == (second.id, org.id)
     assert _decline(geo, request_id, first).status_code == 409
 
@@ -596,9 +598,9 @@ def test_the_organization_page_lists_its_approvals_and_open_requests(
     assert row["approval"]["id"] == approval["id"]
 
     login_as(client, member)
-    assert client.get(f"{_ORGS}/{org.slug}/review-requests").status_code == 403
+    assert client.get(f"{_ORGS}/{org.slug}/approval-requests").status_code == 403
     login_as(client, manager)
-    [open_row] = client.get(f"{_ORGS}/{org.slug}/review-requests").json()
+    [open_row] = client.get(f"{_ORGS}/{org.slug}/approval-requests").json()
     assert open_row["event"]["id"] == str(asked.id)
     assert open_row["request"]["id"] == request_id
 
@@ -617,7 +619,7 @@ def test_organization_rows_name_the_organization_in_email_and_push(
     request_id = _ask(geo, author, org).json()["id"]
     notification_delivery.drain(db)
     [asked] = [m for m in sent if m.to == manager.email]
-    assert asked.subject == f"{author.username} asks {org.name} to review a geolocation"
+    assert asked.subject == f"{author.username} asks {org.name} to approve a geolocation"
 
     assert _decline(geo, request_id, manager).status_code == 200
     _age_declines(db, geo)
@@ -626,8 +628,8 @@ def test_organization_rows_name_the_organization_in_email_and_push(
     db.expire_all()
     rows = db.query(Notification).filter(Notification.event_id == geo.id).all()
     assert {r.kind for r in rows} == {
-        "review_request_received",
-        "review_request_declined",
+        "approval_request_received",
+        "approval_request_declined",
         "approval_received",
     }
     for row in rows:
@@ -686,7 +688,7 @@ def test_deleting_an_organization_removes_everything_in_its_name(
     assert db.get(Organization, org_id) is None
     assert db.query(OrganizationMember).filter_by(organization_id=org_id).count() == 0
     assert db.query(OrganizationInvite).filter_by(organization_id=org_id).count() == 0
-    assert db.query(ReviewRequest).filter_by(target_organization_id=org_id).count() == 0
+    assert db.query(ApprovalRequest).filter_by(target_organization_id=org_id).count() == 0
     assert db.query(EventApproval).filter_by(organization_id=org_id).count() == 0
     assert db.query(EventApproval).filter_by(event_id=first.id).count() == 1
 

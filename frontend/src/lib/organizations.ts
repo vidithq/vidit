@@ -59,13 +59,13 @@ export function updateOrganization(
   });
 }
 
-export function setOrganizationReviewRequestAudience(
+export function setOrganizationApprovalRequestAudience(
   slug: string,
-  audience: NonNullable<Organization["review_request_audience"]>,
+  audience: NonNullable<Organization["approval_request_audience"]>,
 ): Promise<Organization> {
   return apiFetch<Organization>(organizationPath(slug), {
     method: "PATCH",
-    body: JSON.stringify({ review_request_audience: audience }),
+    body: JSON.stringify({ approval_request_audience: audience }),
   });
 }
 

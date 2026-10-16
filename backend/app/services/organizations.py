@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.approval import EventApproval
+from app.models.approval_request import ApprovalRequest
 from app.models.event import Event
 from app.models.organization import (
     Organization,
@@ -22,7 +23,6 @@ from app.models.organization import (
     OrganizationMember,
     OrganizationRole,
 )
-from app.models.review_request import ReviewRequest
 from app.models.user import User
 from app.schemas.organization import (
     AdminOrganizationRead,
@@ -326,7 +326,7 @@ def delete_organization(db: Session, *, actor: User, slug: str) -> dict[str, obj
     (the router's guard).
 
     In one transaction, after locking the organization row: the approvals given in its name,
-    the review requests addressed to it, its pending invites, its memberships, then the row
+    the approval requests addressed to it, its pending invites, its memberships, then the row
     itself (the notifications naming it cascade with it). The owner of each event that loses a
     standing approval receives one ``organization_approval_removed`` notification per event.
     After the commit, the picture is swept from storage. 404 ``organization_not_found``.
@@ -347,8 +347,8 @@ def delete_organization(db: Session, *, actor: User, slug: str) -> dict[str, obj
         .delete(synchronize_session=False)
     )
     requests = (
-        db.query(ReviewRequest)
-        .filter(ReviewRequest.target_organization_id == org.id)
+        db.query(ApprovalRequest)
+        .filter(ApprovalRequest.target_organization_id == org.id)
         .delete(synchronize_session=False)
     )
     db.query(OrganizationInvite).filter(OrganizationInvite.organization_id == org.id).delete(
@@ -364,7 +364,7 @@ def delete_organization(db: Session, *, actor: User, slug: str) -> dict[str, obj
         "slug": org.slug,
         "name": org.name,
         "approvals_removed": approvals,
-        "review_requests_removed": requests,
+        "approval_requests_removed": requests,
         "members_removed": members,
     }
     name = org.name
@@ -380,10 +380,10 @@ def delete_organization(db: Session, *, actor: User, slug: str) -> dict[str, obj
 
 
 def apply_update(org: Organization, body: OrganizationUpdate) -> None:
-    """Apply the profile fields and the review request audience ``body`` sets."""
+    """Apply the profile fields and the approval request audience ``body`` sets."""
     apply_profile_update(org, body)
-    if body.review_request_audience is not None:
-        org.review_request_audience = body.review_request_audience
+    if body.approval_request_audience is not None:
+        org.approval_request_audience = body.approval_request_audience
 
 
 def build_read(db: Session, org: Organization, *, viewer: User | None) -> OrganizationRead:
@@ -413,7 +413,7 @@ def build_read(db: Session, org: Organization, *, viewer: User | None) -> Organi
         external_links=org.external_links or {},
         created_at=org.created_at,
         member_count=_live_members(db, org.id).count(),
-        review_request_audience=org.review_request_audience if can_manage else None,
+        approval_request_audience=org.approval_request_audience if can_manage else None,
         viewer_role=role,
         viewer_invited=invited,
         viewer_can_manage=can_manage,

@@ -470,13 +470,13 @@ describe("<ApprovalsCard>", () => {
     expect(screen.queryByRole("button", { name: "Approve as Bellingcat" })).toBeNull();
   });
 
-  it("holds the review requests of a published event", async () => {
+  it("holds the approval requests of a published event", async () => {
     api.viewer = ANA;
     serve([]);
     render(<Panel />);
 
-    expect(await screen.findByRole("heading", { name: "Review requests" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Request a review" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Approval requests" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Request approval" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
   });
 });

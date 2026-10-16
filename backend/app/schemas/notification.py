@@ -22,11 +22,11 @@ class NotificationRead(BaseModel):
     ``invite_pending`` is true on a ``co_geolocator_invite`` row whose
     invitation still waits for the reader's answer. ``reapprove_version`` is
     the live version a ``re_approve_requested`` row, or a
-    ``review_request_received`` row whose request is open, offers to approve,
+    ``approval_request_received`` row whose request is open, offers to approve,
     null when the reader cannot approve it now. ``approved_version`` is then,
     on a ``re_approve_requested`` row, the latest earlier version the reader's
-    approval still stands on, the base of the change list. ``review_request_id`` is the open request behind a
-    ``review_request_received`` row, null once it is resolved.
+    approval still stands on, the base of the change list. ``approval_request_id`` is the open request behind a
+    ``approval_request_received`` row, null once it is resolved.
     ``organization_name`` names the deleted organization on an
     ``organization_approval_removed`` row, and is null on every other kind."""
 
@@ -41,7 +41,7 @@ class NotificationRead(BaseModel):
     invite_pending: bool
     reapprove_version: int | None
     approved_version: int | None
-    review_request_id: uuid.UUID | None
+    approval_request_id: uuid.UUID | None
 
 
 class NotificationUnreadCount(BaseModel):

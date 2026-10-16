@@ -28,7 +28,7 @@ import { useProfileEdit } from "@/components/profile/useProfileEdit";
 import { OrganizationApprovals } from "@/components/organizations/OrganizationApprovals";
 import { OrganizationInvites } from "@/components/organizations/OrganizationInvites";
 import { OrganizationMembers } from "@/components/organizations/OrganizationMembers";
-import { OrganizationReviewRequests } from "@/components/organizations/OrganizationReviewRequests";
+import { OrganizationApprovalRequests } from "@/components/organizations/OrganizationApprovalRequests";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
@@ -36,7 +36,7 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
 /** An organization's public page: the analyst profile's header (name, picture, bio, links), then
  * the invite answer for an invited viewer, the members, the approvals placed in its name, and,
- * for org managers and site admins, its review requests and invites. Org managers and site admins
+ * for org managers and site admins, its approval requests and invites. Org managers and site admins
  * edit the bio, links and picture in place, as an analyst edits their profile. */
 export default function OrganizationPage() {
   const params = useParams();
@@ -129,7 +129,7 @@ export default function OrganizationPage() {
 
           <OrganizationApprovals slug={slug} />
 
-          {org.viewer_can_manage && <OrganizationReviewRequests org={org} onChanged={refetch} />}
+          {org.viewer_can_manage && <OrganizationApprovalRequests org={org} onChanged={refetch} />}
 
           {org.viewer_can_manage && (
             <OrganizationInvites slug={slug} canInvite={org.viewer_role === "manager"} />

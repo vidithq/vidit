@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.models.notification import NOTIFICATION_KINDS, NotificationChannel, NotificationKind
 from app.models.user import User
-from app.models.user_preferences import REVIEW_REQUEST_AUDIENCE_DEFAULT, UserPreferences
+from app.models.user_preferences import APPROVAL_REQUEST_AUDIENCE_DEFAULT, UserPreferences
 from app.schemas.preferences import (
     DISPLAY_DEFAULTS,
     DisplayPreferences,
@@ -80,8 +80,8 @@ def _build_read(row: UserPreferences | None, *, product_updates: bool) -> UserPr
         display_stored=DisplayPreferencesUpdate.model_validate(stored_display),
         notifications=notifications,
         product_updates=product_updates,
-        review_request_audience=(
-            row.review_request_audience if row is not None else REVIEW_REQUEST_AUDIENCE_DEFAULT
+        approval_request_audience=(
+            row.approval_request_audience if row is not None else APPROVAL_REQUEST_AUDIENCE_DEFAULT
         ),
     )
 
@@ -139,8 +139,8 @@ def update_preferences(
                 overrides.pop(kind, None)
         row.notification_overrides = overrides
 
-    if body.review_request_audience is not None:
-        row.review_request_audience = body.review_request_audience
+    if body.approval_request_audience is not None:
+        row.approval_request_audience = body.approval_request_audience
 
     if body.product_updates is True:
         product_update_consent.grant(db, user_id=user.id, source="settings", at=datetime.now(UTC))

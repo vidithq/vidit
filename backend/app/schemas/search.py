@@ -96,7 +96,7 @@ class SearchUserHit(BaseModel):
 
 
 class SearchOrganizationHit(BaseModel):
-    """Public fields only, the organization page's header: no review request
+    """Public fields only, the organization page's header: no approval request
     audience, no creator."""
 
     id: uuid.UUID

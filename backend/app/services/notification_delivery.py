@@ -181,7 +181,7 @@ class _ReviewFields(TypedDict):
 
 
 def _review_fields(n: Notification) -> _ReviewFields:
-    """The fields of an approval or review request row: the actor, the event, and the
+    """The fields of an approval or approval request row: the actor, the event, and the
     organization the row is about, when it names one."""
     return {
         "actor": n.actor.username,
@@ -206,10 +206,10 @@ _EMAIL_BUILDERS: dict[NotificationKind, Callable[[Notification, str], email.Emai
         to=to, **_review_fields(n)
     ),
     "approval_received": lambda n, to: email.approval_received_email(to=to, **_review_fields(n)),
-    "review_request_received": lambda n, to: email.review_request_received_email(
+    "approval_request_received": lambda n, to: email.approval_request_received_email(
         to=to, **_review_fields(n)
     ),
-    "review_request_declined": lambda n, to: email.review_request_declined_email(
+    "approval_request_declined": lambda n, to: email.approval_request_declined_email(
         to=to, **_review_fields(n)
     ),
     "organization_approval_removed": lambda n, to: email.organization_approval_removed_email(
@@ -351,19 +351,19 @@ def _approval_received_push(n: Notification) -> push.PushMessage:
     )
 
 
-def _review_request_received_push(n: Notification) -> push.PushMessage:
+def _approval_request_received_push(n: Notification) -> push.PushMessage:
     target = n.organization.name if n.organization is not None else "you"
     return push.PushMessage(
-        title=f"{n.actor.username} asks {target} to review a geolocation",
+        title=f"{n.actor.username} asks {target} to approve a geolocation",
         body=n.event.title,
         path=f"/events/{n.event.id}",
     )
 
 
-def _review_request_declined_push(n: Notification) -> push.PushMessage:
+def _approval_request_declined_push(n: Notification) -> push.PushMessage:
     decliner = n.organization.name if n.organization is not None else n.actor.username
     return push.PushMessage(
-        title=f"{decliner} declined to review your geolocation",
+        title=f"{decliner} declined to approve your geolocation",
         body=n.event.title,
         path=f"/events/{n.event.id}",
     )
@@ -382,8 +382,8 @@ _PUSH_BUILDERS: dict[NotificationKind, Callable[[Notification], push.PushMessage
     "organization_manager_inherited": _organization_manager_inherited_push,
     "re_approve_requested": _re_approve_requested_push,
     "approval_received": _approval_received_push,
-    "review_request_received": _review_request_received_push,
-    "review_request_declined": _review_request_declined_push,
+    "approval_request_received": _approval_request_received_push,
+    "approval_request_declined": _approval_request_declined_push,
     "organization_approval_removed": lambda n: push.PushMessage(
         title=f"{n.organization_name or 'An organization'} was removed from Vidit",
         body=f"Its approval of {n.event.title} is gone.",

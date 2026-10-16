@@ -6,7 +6,7 @@ import { expectNarrowViewportLayout } from "./support/narrowLayout";
 
 /**
  * The organization page as its org manager reads it: the header, the member rows
- * with their role controls, the approvals in its name, its review requests
+ * with their role controls, the approvals in its name, its approval requests
  * with the audience control, and the invite picker. A long name, a long
  * username and a bio carrying a URL are the content that would push a phone
  * column sideways.

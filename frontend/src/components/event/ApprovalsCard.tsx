@@ -22,7 +22,7 @@ import {
   approvalSigner,
   approvalTally,
 } from "@/components/event/Approvals";
-import { ReviewRequestsSection } from "@/components/event/ReviewRequestsSection";
+import { ApprovalRequestsSection } from "@/components/event/ApprovalRequestsSection";
 
 const HISTORY_ID = "approval-history";
 
@@ -75,7 +75,7 @@ function ApproveAction({
 /**
  * The published event's Approvals card: whether the live version stands approved, its current
  * approvals as stamps, the latest note, the outdated and revoked approvals behind one line,
- * **Approve** for a reader who may approve, and the review requests.
+ * **Approve** for a reader who may approve, and the approval requests.
  */
 export function ApprovalsCard({
   event,
@@ -166,7 +166,7 @@ export function ApprovalsCard({
             {approvals.error}
           </div>
         )}
-        <ReviewRequestsSection event={event} refreshKey={approvedCount} />
+        <ApprovalRequestsSection event={event} refreshKey={approvedCount} />
       </Card>
     </section>
   );

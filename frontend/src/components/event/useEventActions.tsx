@@ -37,7 +37,7 @@ import type { EventDetail } from "@/types";
  *    destroys a row: closing keeps it readable with its reason.
  *
  * On the event page of a published row the hook also returns the Approvals card (status,
- * approvals, Approve, review requests), which the page renders beside the body.
+ * approvals, Approve, approval requests), which the page renders beside the body.
  *
  * The hook returns nodes rather than rendering them because the header, the panels and the card
  * land in different slots. Called before a surface's early returns, with `event` null while the

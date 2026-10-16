@@ -26,7 +26,7 @@ import {
   ORGANIZATION_APPROVALS,
   ORGANIZATION_INVITES,
   ORGANIZATION_MEMBERS,
-  ORGANIZATION_REVIEW_REQUESTS,
+  ORGANIZATION_APPROVAL_REQUESTS,
   ORGANIZATION_SLUG,
   PUSH_OFF,
   ONE_PIXEL_PNG,
@@ -92,8 +92,8 @@ const ROUTES: [RegExp, unknown][] = [
   [new RegExp(`^/organizations/${ORGANIZATION_SLUG}/invites$`), ORGANIZATION_INVITES],
   [new RegExp(`^/organizations/${ORGANIZATION_SLUG}/approvals$`), ORGANIZATION_APPROVALS],
   [
-    new RegExp(`^/organizations/${ORGANIZATION_SLUG}/review-requests$`),
-    ORGANIZATION_REVIEW_REQUESTS,
+    new RegExp(`^/organizations/${ORGANIZATION_SLUG}/approval-requests$`),
+    ORGANIZATION_APPROVAL_REQUESTS,
   ],
   [
     new RegExp(`^/organizations/${ORGANIZATION_SLUG}/invite-candidates$`),

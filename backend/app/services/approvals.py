@@ -10,7 +10,7 @@ an approval never lands on a version its reviewer did not see.
 The event's geolocators (its owner and every credited co-geolocator) cannot approve it, neither
 as themselves nor for an organization, and neither can a former co-geolocator, removed or gone. Accepting a co-geolocator invitation revokes the
 invitee's approvals (``geolocator_credit.revoke_approvals_on_join``). An approval resolves every
-open review request its target (the analyst, or the organization) received for the event, and
+open approval request its target (the analyst, or the organization) received for the event, and
 the requesters hear of it as the owner does.
 """
 
@@ -23,6 +23,7 @@ from sqlalchemy import ColumnElement, Select, and_, or_, select, update
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.approval import ApprovalRevoker, EventApproval
+from app.models.approval_request import ApprovalRequest
 from app.models.event import (
     STATUS_GEOLOCATED,
     Event,
@@ -30,7 +31,6 @@ from app.models.event import (
     EventGeolocatorDeparture,
 )
 from app.models.organization import Organization
-from app.models.review_request import ReviewRequest
 from app.models.user import User
 from app.schemas.approval import ApprovalRead, OrganizationApprovalRead
 from app.schemas.notification import NotificationEventRef
@@ -116,7 +116,7 @@ def former_geolocator_ids(event_id: uuid.UUID) -> Select[tuple[uuid.UUID]]:
 
 def ever_credited(db: Session, *, geo: Event, user_id: uuid.UUID) -> bool:
     """Whether ``user_id`` holds or held credit on ``geo``: such an analyst neither approves it
-    nor is asked to review it."""
+    nor is asked to approve it."""
     return (
         is_geolocator(db, geo=geo, user_id=user_id)
         or db.get(EventGeolocatorDeparture, (geo.id, user_id)) is not None
@@ -226,7 +226,7 @@ def approve(
     organization: Organization | None = None,
 ) -> EventApproval:
     """Approve the live version of ``geo`` as ``reviewer``, or for ``organization`` with
-    ``reviewer`` as the acting org manager. Resolve the review requests that target received for
+    ``reviewer`` as the acting org manager. Resolve the approval requests that target received for
     the event, and notify the owner and those requesters.
 
     409 ``invalid_state`` off ``geolocated`` (a closed event keeps its approvals readable but
@@ -261,14 +261,14 @@ def approve(
         ).first()
         if taken is not None:
             raise AlreadyApprovedError("You already reviewed this version")
-        target = ReviewRequest.target_user_id == reviewer.id
+        target = ApprovalRequest.target_user_id == reviewer.id
     else:
         taken = same_version.filter(
             EventApproval.organization_id == organization.id, EventApproval.revoked_at.is_(None)
         ).first()
         if taken is not None:
             raise AlreadyApprovedError(f"{organization.name} already approved this version")
-        target = ReviewRequest.target_organization_id == organization.id
+        target = ApprovalRequest.target_organization_id == organization.id
     row = EventApproval(
         event_id=geo.id,
         version_no=version_no,
@@ -278,10 +278,10 @@ def approve(
     )
     db.add(row)
     requester_ids = db.scalars(
-        update(ReviewRequest)
-        .where(ReviewRequest.event_id == geo.id, target, ReviewRequest.status == "open")
+        update(ApprovalRequest)
+        .where(ApprovalRequest.event_id == geo.id, target, ApprovalRequest.status == "open")
         .values(status="approved", resolved_at=datetime.now(UTC))
-        .returning(ReviewRequest.requester_id)
+        .returning(ApprovalRequest.requester_id)
     ).all()
     notifications.notify_approval_received(
         db,

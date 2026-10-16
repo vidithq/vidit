@@ -52,7 +52,7 @@ function preferences(requestFulfilledEmail = true, productUpdates = false): User
       },
     ],
     product_updates: productUpdates,
-    review_request_audience: "following",
+    approval_request_audience: "following",
   };
 }
 
@@ -247,11 +247,11 @@ describe("SettingsPage", () => {
     expect(patchBodies()).toEqual([{ product_updates: true }]);
   });
 
-  it("saves who may send review requests", async () => {
+  it("saves who may send approval requests", async () => {
     api.apiFetch.mockImplementation((_path: string, init?: RequestInit) =>
       Promise.resolve(
         init?.method === "PATCH"
-          ? { ...preferences(), review_request_audience: "everyone" }
+          ? { ...preferences(), approval_request_audience: "everyone" }
           : preferences(),
       ),
     );
@@ -267,7 +267,7 @@ describe("SettingsPage", () => {
         "true",
       ),
     );
-    expect(patchBodies()).toEqual([{ review_request_audience: "everyone" }]);
+    expect(patchBodies()).toEqual([{ approval_request_audience: "everyone" }]);
   });
 
   it.each([[[]], [{}], [{ notifications: [{ kind: "retired_kind" }] }]])(

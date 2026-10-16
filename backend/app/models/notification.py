@@ -32,8 +32,8 @@ NotificationKind = Literal[
     "organization_manager_inherited",
     "re_approve_requested",
     "approval_received",
-    "review_request_received",
-    "review_request_declined",
+    "approval_request_received",
+    "approval_request_declined",
     "organization_approval_removed",
 ]
 
@@ -59,8 +59,8 @@ NOTIFICATION_KINDS: dict[NotificationKind, dict[NotificationChannel, bool]] = {
     "organization_manager_inherited": {"email": True, "push": True},
     "re_approve_requested": {"email": False, "push": False},
     "approval_received": {"email": False, "push": False},
-    "review_request_received": {"email": True, "push": True},
-    "review_request_declined": {"email": False, "push": False},
+    "approval_request_received": {"email": True, "push": True},
+    "approval_request_declined": {"email": False, "push": False},
     "organization_approval_removed": {"email": False, "push": False},
 }
 assert set(NOTIFICATION_KINDS) == set(get_args(NotificationKind))
@@ -117,7 +117,7 @@ class Notification(Base):
             "'co_geolocator_invite', 'co_geolocator_removed', 'ownership_transferred', "
             "'organization_invite', 'organization_invite_accepted', "
             "'organization_manager_inherited', 're_approve_requested', 'approval_received', "
-            "'review_request_received', 'review_request_declined', "
+            "'approval_request_received', 'approval_request_declined', "
             "'organization_approval_removed')",
             name="ck_notifications_kind_valid",
         ),

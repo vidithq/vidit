@@ -8,6 +8,7 @@ catch-all would shadow the literal-path GETs (``/points``,
 """
 
 from app.routers.events import (
+    approval_requests,
     approvals,
     batch,
     duplicates,
@@ -16,7 +17,6 @@ from app.routers.events import (
     import_tweet,
     item,
     read,
-    review_requests,
     write,
 )
 
@@ -29,6 +29,6 @@ routers = (
     batch.router,
     geolocators.router,
     approvals.router,
-    review_requests.router,
+    approval_requests.router,
     item.router,
 )

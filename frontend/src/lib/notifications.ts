@@ -94,13 +94,13 @@ export const NOTIFICATION_KIND_COPY: Record<
     label: "Approval received",
     setting: "Someone approves your geolocation, as themselves or for an organization.",
   },
-  review_request_received: {
-    label: "Review request",
-    setting: "Someone asks you, or an organization you manage, to review their geolocation.",
+  approval_request_received: {
+    label: "Approval request",
+    setting: "Someone asks you, or an organization you manage, to approve their geolocation.",
   },
-  review_request_declined: {
-    label: "Review request declined",
-    setting: "An analyst or an organization you asked declines to review your geolocation.",
+  approval_request_declined: {
+    label: "Approval request declined",
+    setting: "An analyst or an organization you asked declines to approve your geolocation.",
   },
   organization_approval_removed: {
     label: "Organization approval removed",
@@ -173,14 +173,14 @@ export function describeNotification(n: Notification): { text: string; href: str
         text: `${actor} approved your geolocation${n.organization ? ` for ${organization}` : ""}: ${title}`,
         href: eventHref,
       };
-    case "review_request_received":
+    case "approval_request_received":
       return {
-        text: `${actor} asked ${n.organization ? organization : "you"} to review: ${title}`,
+        text: `${actor} asked ${n.organization ? organization : "you"} to approve: ${title}`,
         href: eventHref,
       };
-    case "review_request_declined":
+    case "approval_request_declined":
       return {
-        text: `${actor} declined${n.organization ? ` for ${organization}` : ""} to review: ${title}`,
+        text: `${actor} declined${n.organization ? ` for ${organization}` : ""} to approve: ${title}`,
         href: eventHref,
       };
     case "organization_approval_removed":

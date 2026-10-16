@@ -37,7 +37,7 @@ const ORG: Organization = {
   external_links: { website: "https://example.org" },
   created_at: "2026-01-01T00:00:00Z",
   member_count: 2,
-  review_request_audience: "following",
+  approval_request_audience: "following",
   viewer_role: null,
   viewer_invited: false,
   viewer_can_manage: false,
@@ -95,7 +95,7 @@ function serve(org: Organization, members: OrganizationMember[] = MEMBERS) {
     if (path === "/organizations/osw/members") {
       return { data: members, error: null, loading: false, refetch };
     }
-    if (path === "/organizations/osw/review-requests") {
+    if (path === "/organizations/osw/approval-requests") {
       return { data: [OPEN_REQUEST], error: null, loading: false, refetch };
     }
     return { data: [], error: null, loading: false, refetch };
@@ -134,7 +134,7 @@ describe("OrganizationPage", () => {
     expect(screen.queryByRole("button", { name: /Remove|Leave|Make/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit profile" })).toBeNull();
     expect(screen.queryByText("Invites")).toBeNull();
-    expect(screen.queryByText("Review requests")).toBeNull();
+    expect(screen.queryByText("Approval requests")).toBeNull();
   });
 
   it("lists the approvals placed in the organization's name", async () => {
@@ -221,12 +221,12 @@ describe("OrganizationPage", () => {
     expect(refreshAuth).not.toHaveBeenCalled();
   });
 
-  it("gives an org manager the open review requests and the audience control", async () => {
+  it("gives an org manager the open approval requests and the audience control", async () => {
     signIn("lead");
     const refetch = serve({ ...ORG, viewer_role: "manager", viewer_can_manage: true });
     render(<OrganizationPage />);
 
-    expect(screen.getByText("Review requests")).toBeInTheDocument();
+    expect(screen.getByText("Approval requests")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Port fire" })).toHaveAttribute("href", "/events/e2");
     expect(screen.getByRole("button", { name: "Decline" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "People our org managers follow" })).toHaveAttribute(
@@ -238,7 +238,7 @@ describe("OrganizationPage", () => {
     await waitFor(() =>
       expect(apiFetch).toHaveBeenCalledWith("/organizations/osw", {
         method: "PATCH",
-        body: JSON.stringify({ review_request_audience: "everyone" }),
+        body: JSON.stringify({ approval_request_audience: "everyone" }),
       }),
     );
     await waitFor(() => expect(refetch).toHaveBeenCalled());
