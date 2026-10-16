@@ -241,4 +241,16 @@ describe("Sidebar drawer controls", () => {
       "true",
     );
   });
+
+  it("links the timeline and lights it on its page", () => {
+    viewer.pathname = "/timeline";
+    render(<Sidebar />);
+
+    const entry = screen.getByRole("link", { name: "Timeline" });
+    expect(entry).toHaveAttribute("href", "/timeline");
+    expect(entry).not.toHaveClass("text-neutral-400");
+    expect(screen.getByRole("link", { name: "Map" })).toHaveClass(
+      "text-neutral-400",
+    );
+  });
 });

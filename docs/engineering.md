@@ -459,6 +459,7 @@ Every other frontend copy of a backend rule or of the GitHub Project is hand-kep
 | `lib/collections.ts::COLLECTION_TITLE_MAX_LEN`, `COLLECTION_DESCRIPTION_MAX_LEN` | `models/event.TITLE_MAX_LENGTH`, `schemas/collection.DESCRIPTION_MAX_LENGTH` | server refuses typed text |
 | `lib/proof.tsx::htmlText` | `sanitize.html_text` | description counter disagrees with the server cap |
 | `lib/proof.tsx::proofImageSrcs`, `proofHasImage` | `sanitize.extract_image_srcs`, `events._require_proof_image` | form calls a proof ready that the server refuses |
+| `lib/cardTags.ts` `UNKNOWN_VALUE` | the `Unknown` row of `CAPTURE_SOURCE_TAGS` in the baseline migration (`alembic/versions/g5i7k9m1o3q5_baseline.py`) | timeline cards show a *Capture source: Unknown* pill |
 | `lib/collections.ts::COLLECTABLE_STATUSES` | `event_filters.collectable_events` | picker offers rows the add verb refuses (409) |
 | `components/event/useEventActions.tsx` credit controls on `geolocated` rows only | `geolocator_credit._require_published` | the Geolocators panel offers an invitation the API refuses (409) |
 | `lib/approvals.ts::canApprove` | `approvals.approve` (published only, never a geolocator, one review per analyst and version, one standing approval per organization and version) | the Approvals panel offers an approval the API refuses (403 or 409); the API's `viewer_can_approve` covers former geolocators, whom the event's credit no longer lists |

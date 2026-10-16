@@ -258,7 +258,7 @@ def test_hidden_event_absent_from_the_follow_timeline(db, author, second_user):
 
     response = client.get("/api/v1/timeline", headers=login_as(client, second_user))
     assert response.status_code == 200
-    ids = {row["id"] for row in response.json()["items"]}
+    ids = {row["id"] for row in response.json()}
     assert str(visible.id) in ids
     assert str(hidden.id) not in ids
 

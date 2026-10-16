@@ -27,6 +27,7 @@ import { errorMessage } from "@/lib/api";
 import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { useCursorList } from "@/hooks/useCursorList";
+import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { useMutation } from "@/hooks/useMutation";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import {
@@ -250,15 +251,10 @@ export function OnboardingPanel() {
     (cursor: string | null) => inviteCodesPath(cursor),
     [],
   );
-  const {
-    items: codes,
-    error: loadError,
-    loading,
-    loadingMore,
-    hasMore,
-    loadMore,
-    reload,
-  } = useCursorList<InviteCode>(buildPath);
+  const walk = useCursorList<InviteCode>(buildPath);
+  const { items: codes, loading, reload } = walk;
+  // A failed later page shows in the load-more row; only a failed first page leaves no rows.
+  const loadError = codes.length === 0 ? walk.error : null;
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [lastPurge, setLastPurge] = useState<AdminPurgeDetectedResponse | null>(
     null,
@@ -433,13 +429,7 @@ export function OnboardingPanel() {
         </table>
       </div>
 
-      {hasMore && (
-        <div className="flex justify-center">
-          <Button variant="secondary" onClick={loadMore} disabled={loadingMore}>
-            {loadingMore ? "Loading…" : "Load more"}
-          </Button>
-        </div>
-      )}
+      <LoadMoreRow walk={walk} />
 
       {managed && (
         <UserActionsCard

@@ -2181,10 +2181,12 @@ export interface paths {
         };
         /**
          * Get Timeline
-         * @description Geolocations authored by accounts the current user follows, newest first.
+         * @description Published geolocations and open requests, newest first.
          *
-         *     Empty when the user follows nobody (the frontend shows an empty state, not
-         *     a global feed). Offset-paged, capped at 100 rows per page.
+         *     ``scope=following`` (default) keeps the rows owned by analysts the
+         *     current user follows, and is empty when they follow nobody; ``scope=all``
+         *     keeps every row. Cursor-paged, capped at 100 rows; the ``Link: rel="next"``
+         *     cursor is present exactly when a next page holds a row.
          */
         get: operations["get_timeline_api_v1_timeline_get"];
         put?: never;
@@ -4833,6 +4835,49 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+        };
+        /**
+         * TimelineItemRead
+         * @description One timeline row: an event card plus when it entered the timeline.
+         *
+         *     ``status`` tells the two kinds apart, ``geolocated`` and ``requested``; ``owner`` is the
+         *     analyst credited (``services.social.get_timeline``).
+         */
+        TimelineItemRead: {
+            /** Before Closed Status */
+            before_closed_status: ("requested" | "detected" | "geolocated") | null;
+            /** Conflicts */
+            conflicts: components["schemas"]["ConflictRead"][];
+            event_coords: components["schemas"]["CoordsRead"] | null;
+            /** Event Date */
+            event_date: string | null;
+            /** Geolocators */
+            geolocators: components["schemas"]["AuthorRef"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Graphic */
+            is_graphic: boolean;
+            media: components["schemas"]["MediaRead"] | null;
+            owner: components["schemas"]["AuthorRef"];
+            /** Requested At */
+            requested_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "requested" | "detected" | "geolocated" | "closed";
+            /** Tags */
+            tags: components["schemas"]["TagRead"][];
+            /**
+             * Timeline At
+             * Format: date-time
+             */
+            timeline_at: string;
+            /** Title */
+            title: string;
         };
         /**
          * TweetImportRead
@@ -8769,8 +8814,10 @@ export interface operations {
     get_timeline_api_v1_timeline_get: {
         parameters: {
             query?: {
-                page?: number;
-                per_page?: number;
+                scope?: "following" | "all";
+                limit?: number;
+                /** @description Opaque cursor from a Link: rel=next header */
+                cursor?: string | null;
             };
             header?: never;
             path?: never;
@@ -8786,7 +8833,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedEvents"];
+                    "application/json": components["schemas"]["TimelineItemRead"][];
                 };
             };
             /** @description Validation Error */

@@ -1,20 +1,27 @@
 import uuid
+from datetime import datetime
+from typing import Literal
 
 from geoalchemy2.functions import ST_X, ST_Y
-from sqlalchemy import Select, and_, func, select
+from sqlalchemy import Row, Select, and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased, joinedload, selectinload
 
-from app.models.event import Event
+from app.models.event import Event, timeline_at
 from app.models.follow import Follow
 from app.models.user import User
 from app.services import notifications
 from app.services.event_filters import (
+    open_requests,
     published_credited_to,
+    published_events,
     visible_events,
 )
 from app.services.geolocator_credit import CREDIT_LOAD
+from app.services.pagination import keyset_before, take_page
 from app.services.thumbnails import thumbnail_media_criteria
+
+TimelineScope = Literal["following", "all"]
 
 
 def follow_user(db: Session, *, follower_id: uuid.UUID, followed_user: User) -> bool:
@@ -89,32 +96,38 @@ def get_timeline(
     db: Session,
     *,
     user_id: uuid.UUID,
-    page: int = 1,
-    per_page: int = 20,
-) -> dict:
-    """Page (by offset) through the published geolocations of followed users.
+    scope: TimelineScope,
+    size: int,
+    cursor: tuple[datetime, uuid.UUID] | None = None,
+) -> tuple[list[Row[tuple[Event, float | None, float | None, datetime]]], bool]:
+    """One page of the timeline, newest first, and whether a next page holds a row.
 
-    Filtered on :func:`services.event_filters.published_events`, the same set
-    the analyst's own profile feed serves.
+    The timeline carries two kinds of row, both credited to ``owner``: a geolocation an analyst
+    published (:func:`services.event_filters.published_events`) and a request an analyst has
+    open (:func:`services.event_filters.open_requests`). An open request's owner is its
+    requester: ownership moves only when a request is geolocated. ``scope="following"`` keeps
+    the rows owned by an analyst ``user_id`` follows; ``"all"`` keeps every row.
 
-    Returns ``{"items": [(geo, lat, lng), ...], "total": int}``, ordered by
-    ``created_at DESC, id DESC``: total and immutable, unlike the nullable,
-    editable ``event_date``, so a keyset cursor can key on it. Coordinates
-    come from the same SELECT to avoid an N+1.
+    Rows are ``(event, lat, lng, timeline_at)`` ordered by ``timeline_at DESC, id DESC``
+    (:func:`models.event.timeline_at`), a total order over both kinds, so a keyset walk
+    neither repeats nor skips a row.
     """
-    followed_ids_stmt = select(Follow.followed_id).where(Follow.follower_id == user_id)
-    followed_ids = list(db.execute(followed_ids_stmt).scalars().all())
+    if scope == "following":
+        followed = select(Follow.followed_id).where(Follow.follower_id == user_id)
+        rows = or_(
+            published_credited_to(followed),
+            and_(open_requests(), Event.owner_id.in_(followed)),
+        )
+    else:
+        rows = or_(published_events(), open_requests())
 
-    if not followed_ids:
-        return {"items": [], "total": 0}
-
-    where_clause = and_(published_credited_to(followed_ids), *visible_events())
-    total = db.query(func.count(Event.id)).filter(where_clause).scalar() or 0
-    window = (
+    key = timeline_at()
+    query = (
         db.query(
             Event,
             ST_Y(Event.event_coords).label("lat"),
             ST_X(Event.event_coords).label("lng"),
+            key.label("timeline_at"),
         )
         # Loader choice: see ``list_detections`` in ``routers/events/read.py``.
         .options(
@@ -124,9 +137,9 @@ def get_timeline(
             selectinload(Event.media.and_(thumbnail_media_criteria())),
             CREDIT_LOAD,
         )
-        .filter(where_clause)
-        .order_by(Event.created_at.desc(), Event.id.desc())
-        .offset((page - 1) * per_page)
-        .limit(per_page)
+        .filter(*visible_events(), rows)
     )
-    return {"items": window.all(), "total": total}
+    if cursor is not None:
+        query = query.filter(keyset_before(key, Event.id, cursor))
+    window = query.order_by(key.desc(), Event.id.desc()).limit(size + 1).all()
+    return take_page(window, size)

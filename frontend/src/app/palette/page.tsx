@@ -28,6 +28,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { CharCounter } from "@/components/ui/CharCounter";
 import { Pill } from "@/components/ui/Pill";
+import { cardTags } from "@/lib/cardTags";
 import {
   DiscordGlyph,
   GitHubGlyph,
@@ -60,6 +61,7 @@ import { FilterSection, chipSummary } from "@/components/ui/FilterSection";
 import { ToggleMatrix } from "@/components/ui/ToggleMatrix";
 import { ToggleRow } from "@/components/ui/ToggleRow";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { Avatar } from "@/components/ui/Avatar";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { AvatarStack } from "@/components/ui/AvatarStack";
@@ -526,7 +528,7 @@ export default function PalettePage() {
             <PaletteToggleMatrix />
           </Item>
 
-          <Item name="<Pill>" usage="One pill for the whole family (status, tag, filter, badge) at one size. `tone` = accent | secondary | neutral | danger, mirroring the <Button> tones (secondary is the accent outline, no fill). A static <span> by default; pass `onClick` and it becomes an interactive chip (a <button> that brightens on hover), the caller driving the tone off its active state. className merges via cn (caller wins on a conflicting utility); keep it to orthogonal extras, the size stays one.">
+          <Item name="<Pill>" usage="One pill for the whole family (status, tag, filter, badge) at one size. `tone` = accent | secondary | neutral | danger, mirroring the <Button> tones (secondary is the accent outline, no fill). A static <span> by default; pass `onClick` and it becomes an interactive chip (a <button> that brightens on hover), the caller driving the tone off its active state. `label` makes a key/value pill, the key muted before the value (`Conflict: Russo-Ukrainian war`), for a field whose name the value alone does not carry; lib/cardTags.ts keys a card's conflicts and capture sources and drops an Unknown value. className merges via cn (caller wins on a conflicting utility); keep it to orthogonal extras, the size stays one.">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] text-neutral-600 self-center w-12">static</span>
@@ -536,6 +538,12 @@ export default function PalettePage() {
                 <Pill tone="secondary">secondary</Pill>
                 <Pill tone="neutral">neutral</Pill>
                 <Pill tone="danger">danger</Pill>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] text-neutral-600 self-center w-12">keyed</span>
+                <Pill label="Conflict">Russo-Ukrainian war</Pill>
+                <Pill label="Capture source">Smartphone</Pill>
+                <Pill>airstrike</Pill>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] text-neutral-600 self-center w-12">chips</span>
@@ -570,7 +578,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SegmentedControl>" usage="Exclusive-choice bar: submit mode (single / bulk import), admin delete mode (soft / hard), the detections queue filter. tone=danger paints a destructive option's active state red; fullWidth stretches the track at every width, and below sm the track always stretches. A one-word label that needs a sentence takes a <FieldHelp> beside the bar, never hover text of its own.">
+          <Item name="<SegmentedControl>" usage="Exclusive-choice bar: submit mode (single / bulk import), admin delete mode (soft / hard), the detections queue filter, the timeline scope (following / all). tone=danger paints a destructive option's active state red; fullWidth stretches the track at every width, and below sm the track always stretches. A one-word label that needs a sentence takes a <FieldHelp> beside the bar, never hover text of its own.">
             <div className="space-y-3">
               <SegmentedControl
                 aria-label="Preview mode"
@@ -1411,6 +1419,22 @@ export default function PalettePage() {
             </div>
           </Item>
 
+          <Item name="<LoadMoreRow>" usage="The one foot of a useCursorList list (requests, timeline, version history, invite codes): Load more while a next page exists, a spinner while it loads, a failed page's message above Try again, nothing once the walk ends. `infinite` loads the next page as the row nears the viewport and pauses after a failure until the click.">
+            <div className="w-full space-y-4">
+              <Variant label="idle">
+                <LoadMoreRow walk={{ hasMore: true, loadingMore: false, loadMore: () => {}, error: null }} />
+              </Variant>
+              <Variant label="loading">
+                <LoadMoreRow walk={{ hasMore: true, loadingMore: true, loadMore: () => {}, error: null }} />
+              </Variant>
+              <Variant label="failed page">
+                <LoadMoreRow
+                  walk={{ hasMore: true, loadingMore: false, loadMore: () => {}, error: "API error 500" }}
+                />
+              </Variant>
+            </div>
+          </Item>
+
           <Item name="<CuratedTagsError>" usage="Submit & edit forms (curated tags failed to load)">
             <div className="w-full max-w-xl">
               <CuratedTagsError onRetry={() => {}} />
@@ -1431,17 +1455,20 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Composed views" />
 
-          <Item name="<EntityCard variant=feed>" usage="Feed (timeline), for all 3 types">
+          <Item name="<EntityCard variant=feed>" usage="Feed (timeline): title and status first, then the byline with named dates (`dates`: Event, then Published or Requested) and coordinates, the media, and the key/value tag row (`cardTags`)">
             <div className="w-full max-w-xl">
               <EntityCard
                 variant="feed"
                 detailHref="/events/demo"
                 title={MOCK_CARD_GEO.title}
-                badge={<StatusBadge status="detected" />}
+                badge={<StatusBadge status="geolocated" />}
                 author={MOCK_CARD_GEO.owner}
-                date={MOCK_CARD_GEO.event_date}
+                dates={[
+                  { label: "Event", date: MOCK_CARD_GEO.event_date },
+                  { label: "Published", date: "2026-05-11" },
+                ]}
                 coords={{ lat: 48.0159, lng: 37.8024 }}
-                tags={MOCK_CARD_GEO.tags}
+                tags={cardTags({ tags: MOCK_CARD_GEO.tags, conflicts: [] })}
               />
             </div>
           </Item>

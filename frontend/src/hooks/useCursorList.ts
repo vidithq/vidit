@@ -6,8 +6,9 @@ interface PagedResult<T> {
   /** Cursor of the next page, `null` once the walk is exhausted. */
   cursor: string | null;
   error: string | null;
-  // Which first-page path this result answers; a stale one must not leak into the new page.
-  path: string | null;
+  // Which walk this result answers. A path can come back (toggle away and back, or `reload`),
+  // so the path alone cannot tell a stale walk from the current one.
+  generation: number;
 }
 
 /** Rows of a payload that is the rows: the default for bare-array endpoints. Module-level so
@@ -25,6 +26,13 @@ const bareArray = (payload: unknown): unknown[] => payload as unknown[];
  * changes `loadMore`'s identity; memoize it anyway. `reload` refetches the first page and
  * drops the walk, for callers whose writes change the set. `rows` reads rows out of a wrapped
  * payload (`{items, total}`) and needs a stable identity: pass a module-level function.
+ *
+ * Each new path or `reload` starts a new walk: until its first page lands the hook reports
+ * `loading` with no rows and no cursor, and a page fetched for an earlier walk never appends.
+ *
+ * A failed `loadMore` keeps the rows and the cursor and sets `error`, so callers render the
+ * rows beside the message. Calling `loadMore` again retries the same page and clears `error`
+ * once it lands.
  */
 export function useCursorList<T, P = T[]>(
   buildPath: (cursor: string | null) => string,
@@ -42,15 +50,24 @@ export function useCursorList<T, P = T[]>(
     items: [],
     cursor: null,
     error: null,
-    path: null,
+    generation: -1,
   });
   const [loadingMore, setLoadingMore] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
-  // The in-flight `loadMore`, aborted by the first-page cleanup: its page belongs to the path
+  // The in-flight `loadMore`, aborted by the first-page cleanup: its page belongs to the walk
   // that minted its cursor.
   const moreRequest = useRef<AbortController | null>(null);
 
   const firstPath = buildPath(null);
+
+  // Adjusted during render, React's pattern for state that follows a prop: a new path or a
+  // reload bumps the generation before the first-page effect runs.
+  const walkKey = `${reloadToken}:${firstPath}`;
+  const [walk, setWalk] = useState({ key: walkKey, generation: 0 });
+  if (walk.key !== walkKey) {
+    setWalk({ key: walkKey, generation: walk.generation + 1 });
+  }
+  const generation = walk.generation;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -61,7 +78,7 @@ export function useCursorList<T, P = T[]>(
           items: rows(page.items),
           cursor: page.nextCursor,
           error: null,
-          path: firstPath,
+          generation,
         });
       })
       .catch((e: unknown) => {
@@ -70,7 +87,7 @@ export function useCursorList<T, P = T[]>(
           items: [],
           cursor: null,
           error: e instanceof Error ? e.message : "Request failed",
-          path: firstPath,
+          generation,
         });
       });
     return () => {
@@ -78,16 +95,15 @@ export function useCursorList<T, P = T[]>(
       moreRequest.current?.abort();
       moreRequest.current = null;
     };
-  }, [firstPath, reloadToken, rows]);
+  }, [firstPath, generation, rows]);
 
-  const fresh = result.path === firstPath ? result : null;
+  const fresh = result.generation === generation ? result : null;
   const cursor = fresh?.cursor ?? null;
 
   const loadMore = useCallback(() => {
     if (cursor === null || loadingMore) return;
-    // Captured now: if the query is rebuilt before the answer lands, rows from the old filters
-    // must not append to the new list.
-    const walk = firstPath;
+    // Captured now: if a new walk starts before the answer lands, its rows must not append.
+    const started = generation;
     const controller = new AbortController();
     moreRequest.current = controller;
     setLoadingMore(true);
@@ -96,19 +112,21 @@ export function useCursorList<T, P = T[]>(
         if (controller.signal.aborted) return;
         // Append, never replace: the walk is totally ordered.
         setResult((prev) =>
-          prev.path !== walk
+          prev.generation !== started
             ? prev
             : {
                 ...prev,
                 items: [...prev.items, ...rows(page.items)],
                 cursor: page.nextCursor,
+                // A retry that lands clears the failed page's message.
+                error: null,
               }
         );
       })
       .catch((e: unknown) => {
         if (controller.signal.aborted) return;
         setResult((prev) =>
-          prev.path !== walk
+          prev.generation !== started
             ? prev
             : {
                 ...prev,
@@ -122,7 +140,7 @@ export function useCursorList<T, P = T[]>(
         // the flag.
         setLoadingMore(false);
       });
-  }, [buildPath, cursor, firstPath, loadingMore, rows]);
+  }, [buildPath, cursor, generation, loadingMore, rows]);
 
   const reload = useCallback(() => setReloadToken((n) => n + 1), []);
 
