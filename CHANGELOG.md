@@ -24,7 +24,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
-- A profile shows the analyst's organizations as logos on the follower line, each linking to the organization and naming it with the analyst's role on hover or focus, so the coverage map opens the page ([#PRNUM](https://github.com/vidithq/vidit/pull/PRNUM)).
+- A profile shows the analyst's organizations as logos on the follower line, each linking to the organization and naming it with the analyst's role on hover or focus, so the coverage map opens the page ([#586](https://github.com/vidithq/vidit/pull/586)).
 - Settings lists each notification kind once, with an Email and a Push switch side by side, and closes the Push column with one reason when the server sends no push or your account has no push device ([#575](https://github.com/vidithq/vidit/pull/575)).
 
 ### Changed
