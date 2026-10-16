@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useParams } from "next/navigation";
 
 import type { EventDetail } from "@/types";
@@ -7,6 +8,7 @@ import { useApiResource } from "@/hooks/useApiResource";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { ApprovalsSection } from "@/components/event/ApprovalsSection";
 import { EventPageBody } from "@/components/event/EventPageBody";
+import { ReviewRequestsSection } from "@/components/event/ReviewRequestsSection";
 import { useEventActions } from "@/components/event/useEventActions";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { Pill } from "@/components/ui/Pill";
@@ -27,6 +29,7 @@ export default function EventPage() {
     surface: "event",
     onChanged: refetch,
   });
+  const [approvedCount, setApprovedCount] = useState(0);
 
   if (error)
     return (
@@ -57,7 +60,15 @@ export default function EventPage() {
         <EventPageBody geo={geo} />
 
         {hasPublishedRecord(geo) && (
-          <ApprovalsSection event={geo} versionNo={geo.version_no} live />
+          <>
+            <ReviewRequestsSection event={geo} refreshKey={approvedCount} />
+            <ApprovalsSection
+              event={geo}
+              versionNo={geo.version_no}
+              live
+              onApproved={() => setApprovedCount((n) => n + 1)}
+            />
+          </>
         )}
     </PageShell>
   );

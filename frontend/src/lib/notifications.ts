@@ -77,6 +77,14 @@ export const NOTIFICATION_KIND_COPY: Record<
     label: "Approval received",
     setting: "Someone approves your geolocation.",
   },
+  review_request_received: {
+    label: "Review request",
+    setting: "Someone asks you to review their geolocation.",
+  },
+  review_request_declined: {
+    label: "Review request declined",
+    setting: "An analyst you asked declines to review your geolocation.",
+  },
 };
 
 /** The feed row's sentence and destination. */
@@ -141,6 +149,16 @@ export function describeNotification(n: Notification): { text: string; href: str
     case "approval_received":
       return {
         text: `${actor} approved your geolocation: ${title}`,
+        href: eventHref,
+      };
+    case "review_request_received":
+      return {
+        text: `${actor} asked you to review: ${title}`,
+        href: eventHref,
+      };
+    case "review_request_declined":
+      return {
+        text: `${actor} declined to review: ${title}`,
         href: eventHref,
       };
   }

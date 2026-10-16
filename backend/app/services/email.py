@@ -512,6 +512,29 @@ def approval_received_email(*, to: str, actor: str, event_id: str, event_title: 
     )
 
 
+def review_request_received_email(*, to: str, actor: str, event_id: str, event_title: str) -> Email:
+    return _notification_email(
+        to=to,
+        subject=f"{actor} asks you to review a geolocation",
+        blocks=[
+            f"{actor} asks you to review “{event_title}”. Approve its current version, or "
+            "decline the request, from the geolocation's page."
+        ],
+        action=Action("Review the geolocation", event_link(event_id)),
+        setting="Review request by email",
+    )
+
+
+def review_request_declined_email(*, to: str, actor: str, event_id: str, event_title: str) -> Email:
+    return _notification_email(
+        to=to,
+        subject=f"{actor} declined to review your geolocation",
+        blocks=[f"{actor} declined your request to review “{event_title}”."],
+        action=Action("View the geolocation", event_link(event_id)),
+        setting="Review request declined by email",
+    )
+
+
 def product_update_email(
     *,
     to: str,

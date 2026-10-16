@@ -12,6 +12,7 @@ whenever that happened.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Collection
 from datetime import UTC, datetime
 from typing import NamedTuple
 
@@ -27,6 +28,7 @@ from app.models.notification import (
     NotificationKind,
 )
 from app.models.organization import OrganizationInvite
+from app.models.review_request import ReviewRequest
 from app.models.user import User
 from app.schemas.notification import NotificationEventRef, NotificationRead
 from app.schemas.organization import OrganizationRef
@@ -198,13 +200,47 @@ def notify_organization_admin_inherited(
     )
 
 
-def notify_approval_received(db: Session, *, event: Event, reviewer_id: uuid.UUID) -> None:
-    """Tell the owner of ``event`` that ``reviewer_id`` approved its live version."""
+def notify_approval_received(
+    db: Session,
+    *,
+    event: Event,
+    reviewer_id: uuid.UUID,
+    requester_ids: Collection[uuid.UUID] = (),
+) -> None:
+    """Tell the owner of ``event``, and every geolocator whose review request the approval
+    resolved (``requester_ids``), that ``reviewer_id`` approved its live version."""
+    for recipient_id in {event.owner_id, *requester_ids}:
+        _emit(
+            db,
+            recipient_id=recipient_id,
+            kind="approval_received",
+            actor_id=reviewer_id,
+            event_id=event.id,
+        )
+
+
+def notify_review_request_received(
+    db: Session, *, event: Event, requester_id: uuid.UUID, target_id: uuid.UUID
+) -> None:
+    """Tell ``target_id`` that ``requester_id`` asks them to review ``event``."""
     _emit(
         db,
-        recipient_id=event.owner_id,
-        kind="approval_received",
-        actor_id=reviewer_id,
+        recipient_id=target_id,
+        kind="review_request_received",
+        actor_id=requester_id,
+        event_id=event.id,
+    )
+
+
+def notify_review_request_declined(
+    db: Session, *, event: Event, requester_id: uuid.UUID, target_id: uuid.UUID
+) -> None:
+    """Tell ``requester_id`` that ``target_id`` declined to review ``event``."""
+    _emit(
+        db,
+        recipient_id=requester_id,
+        kind="review_request_declined",
+        actor_id=target_id,
         event_id=event.id,
     )
 
@@ -290,6 +326,31 @@ def pending_invites(db: Session, *, user: User, rows: list[Notification]) -> set
     )
 
 
+def open_review_requests(
+    db: Session, *, user: User, rows: list[Notification]
+) -> dict[tuple[uuid.UUID, uuid.UUID], uuid.UUID]:
+    """The open review request behind each of ``rows``' ``review_request_received`` rows, keyed
+    by ``(event_id, requester_id)``: there is one open request per requester, target and
+    event."""
+    event_ids = {r.event_id for r in rows if r.kind == "review_request_received" and r.event_id}
+    if not event_ids:
+        return {}
+    found = db.execute(
+        select(ReviewRequest.event_id, ReviewRequest.requester_id, ReviewRequest.id).where(
+            ReviewRequest.target_user_id == user.id,
+            ReviewRequest.status == "open",
+            ReviewRequest.event_id.in_(event_ids),
+        )
+    ).tuples()
+    return {(event_id, requester_id): request_id for event_id, requester_id, request_id in found}
+
+
+# The kinds whose feed row offers to approve the event's live version.
+_APPROVE_OFFER_KINDS: frozenset[NotificationKind] = frozenset(
+    {"re_approve_requested", "review_request_received"}
+)
+
+
 class ReapprovalOffer(NamedTuple):
     """What a re-approval row offers: the live version to approve, and the latest earlier
     version ``user``'s approval still stands on, the base of the change list."""
@@ -301,15 +362,16 @@ class ReapprovalOffer(NamedTuple):
 def reapproval_offers(
     db: Session, *, user: User, rows: list[Notification]
 ) -> dict[uuid.UUID, ReapprovalOffer]:
-    """The offer of each event among ``rows``' re-approval requests that ``user`` can approve
-    now: published, not credited to them, and not yet reviewed by them at the live version.
+    """The offer of each event among ``rows``' re-approval and review requests that ``user``
+    can approve now: published, not credited to them, and not yet reviewed by them at the live
+    version.
 
     Callers eager-load ``Notification.event``.
     """
     candidates = {
         r.event.id: r.event.version_no
         for r in rows
-        if r.kind == "re_approve_requested"
+        if r.kind in _APPROVE_OFFER_KINDS
         and r.event is not None
         and r.event.status == STATUS_GEOLOCATED
         and r.event.owner_id != user.id
@@ -344,13 +406,22 @@ def reapproval_offers(
 
 
 def build_read(
-    row: Notification, *, pending: set[uuid.UUID], offers: dict[uuid.UUID, ReapprovalOffer]
+    row: Notification,
+    *,
+    pending: set[uuid.UUID],
+    offers: dict[uuid.UUID, ReapprovalOffer],
+    review_requests: dict[tuple[uuid.UUID, uuid.UUID], uuid.UUID],
 ) -> NotificationRead:
-    offer = (
-        offers.get(row.event_id)
-        if row.kind == "re_approve_requested" and row.event_id is not None
+    review_request_id = (
+        review_requests.get((row.event_id, row.actor_id))
+        if row.kind == "review_request_received"
+        and row.event_id is not None
+        and row.actor_id is not None
         else None
     )
+    # A resolved review request offers nothing, though the event may still be approvable.
+    offers_approval = row.kind == "re_approve_requested" or review_request_id is not None
+    offer = offers.get(row.event_id) if offers_approval and row.event_id is not None else None
     return NotificationRead(
         id=row.id,
         kind=row.kind,
@@ -365,7 +436,12 @@ def build_read(
         read_at=row.read_at,
         invite_pending=row.kind == "co_geolocator_invite" and row.event_id in pending,
         reapprove_version=offer.live_version if offer is not None else None,
-        approved_version=offer.approved_version if offer is not None else None,
+        approved_version=(
+            offer.approved_version
+            if offer is not None and row.kind == "re_approve_requested"
+            else None
+        ),
+        review_request_id=review_request_id,
     )
 
 

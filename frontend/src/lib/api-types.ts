@@ -1553,6 +1553,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/events/{geolocation_id}/review-request-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Review Request Targets
+         * @description Analysts you can ask to review this event now (geolocators only).
+         */
+        get: operations["list_review_request_targets_api_v1_events__geolocation_id__review_request_targets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{geolocation_id}/review-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Review Requests
+         * @description Open review requests on this event: all of them for its geolocators, those addressed to
+         *     you otherwise.
+         */
+        get: operations["list_review_requests_api_v1_events__geolocation_id__review_requests_get"];
+        put?: never;
+        /**
+         * Create Review Request
+         * @description Ask an analyst to review the live version of a published event you geolocated.
+         */
+        post: operations["create_review_request_api_v1_events__geolocation_id__review_requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{geolocation_id}/review-requests/{request_id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline Review Request
+         * @description Decline a review request addressed to you.
+         */
+        post: operations["decline_review_request_api_v1_events__geolocation_id__review_requests__request_id__decline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events/{geolocation_id}/versions": {
         parameters: {
             query?: never;
@@ -3832,7 +3897,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_admin_inherited" | "re_approve_requested" | "approval_received";
+            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_admin_inherited" | "re_approve_requested" | "approval_received" | "review_request_received" | "review_request_declined";
         };
         /**
          * NotificationRead
@@ -3840,10 +3905,12 @@ export interface components {
          *     kind that names none; ``read_at`` is null until the feed has shown the row.
          *     ``invite_pending`` is true on a ``co_geolocator_invite`` row whose
          *     invitation still waits for the reader's answer. ``reapprove_version`` is
-         *     the live version a ``re_approve_requested`` row offers to approve, null
-         *     when the reader cannot approve it now. ``approved_version`` is then the
-         *     latest earlier version the reader's approval still stands on, the base of
-         *     the change list.
+         *     the live version a ``re_approve_requested`` row, or a
+         *     ``review_request_received`` row whose request is open, offers to approve,
+         *     null when the reader cannot approve it now. ``approved_version`` is then,
+         *     on a ``re_approve_requested`` row, the latest earlier version the reader's
+         *     approval still stands on, the base of the change list. ``review_request_id`` is the open request behind a
+         *     ``review_request_received`` row, null once it is resolved.
          */
         NotificationRead: {
             actor: components["schemas"]["AuthorRef"] | null;
@@ -3866,12 +3933,14 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_admin_inherited" | "re_approve_requested" | "approval_received";
+            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_admin_inherited" | "re_approve_requested" | "approval_received" | "review_request_received" | "review_request_declined";
             organization: components["schemas"]["OrganizationRef"] | null;
             /** Read At */
             read_at: string | null;
             /** Reapprove Version */
             reapprove_version: number | null;
+            /** Review Request Id */
+            review_request_id: string | null;
         };
         /**
          * NotificationReadUpdate
@@ -4332,6 +4401,47 @@ export interface components {
             /** Token */
             token: string;
         };
+        /**
+         * ReviewRequestCreate
+         * @description Body of ``POST /events/{id}/review-requests``: the analyst you ask to review the event.
+         */
+        ReviewRequestCreate: {
+            /** Username */
+            username: string;
+        };
+        /**
+         * ReviewRequestRead
+         * @description One request that ``target`` review an event. ``version_no`` is the live version when it
+         *     was sent; approving any version resolves it.
+         */
+        ReviewRequestRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            requester: components["schemas"]["AuthorRef"];
+            /** Resolved At */
+            resolved_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "approved" | "declined";
+            target: components["schemas"]["AuthorRef"];
+            /** Version No */
+            version_no: number;
+        };
         /** SearchEventHit */
         SearchEventHit: {
             /** Event Date */
@@ -4529,7 +4639,8 @@ export interface components {
          *     default. ``notifications`` lists every registered kind in registry order.
          *     ``product_updates`` is whether a consent to product update emails is
          *     current; it has no default to fall back to, since consent is never
-         *     presumed.
+         *     presumed. ``review_request_audience`` is who may send you a review
+         *     request.
          */
         UserPreferencesRead: {
             display: components["schemas"]["DisplayPreferences"];
@@ -4539,6 +4650,11 @@ export interface components {
             notifications: components["schemas"]["NotificationPreferenceRead"][];
             /** Product Updates */
             product_updates: boolean;
+            /**
+             * Review Request Audience
+             * @enum {string}
+             */
+            review_request_audience: "following" | "everyone" | "nobody";
         };
         /**
          * UserPreferencesUpdate
@@ -4557,6 +4673,8 @@ export interface components {
             } | null;
             /** Product Updates */
             product_updates?: boolean | null;
+            /** Review Request Audience */
+            review_request_audience?: ("following" | "everyone" | "nobody") | null;
         };
         /**
          * UserProfile
@@ -7235,6 +7353,146 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_review_request_targets_api_v1_events__geolocation_id__review_request_targets_get: {
+        parameters: {
+            query?: {
+                /** @description Narrows by a substring of the username */
+                q?: string;
+            };
+            header?: never;
+            path: {
+                geolocation_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthorRef"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_review_requests_api_v1_events__geolocation_id__review_requests_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRequestRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_review_request_api_v1_events__geolocation_id__review_requests_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewRequestCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRequestRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decline_review_request_api_v1_events__geolocation_id__review_requests__request_id__decline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+                request_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRequestRead"];
                 };
             };
             /** @description Validation Error */

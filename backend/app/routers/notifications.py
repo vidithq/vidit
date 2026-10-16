@@ -49,7 +49,13 @@ def list_notifications(
         response.headers["Link"] = next_link(request, encode_cursor(last.created_at, last.id))
     pending = notifications_service.pending_invites(db, user=current_user, rows=rows)
     offers = notifications_service.reapproval_offers(db, user=current_user, rows=rows)
-    return [notifications_service.build_read(row, pending=pending, offers=offers) for row in rows]
+    review_requests = notifications_service.open_review_requests(db, user=current_user, rows=rows)
+    return [
+        notifications_service.build_read(
+            row, pending=pending, offers=offers, review_requests=review_requests
+        )
+        for row in rows
+    ]
 
 
 @router.get("/unread-count", response_model=NotificationUnreadCount)

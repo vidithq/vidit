@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from app.models.approval import EventApproval
 from app.models.collection import Collection, CollectionEvent
 from app.models.event import STATUS_GEOLOCATED, Event, EventGeolocator, EventGeolocatorInvite
+from app.models.review_request import ReviewRequest
 from app.models.user import User
 from app.schemas.user import AuthorRef
 from app.services import notifications
@@ -183,7 +184,8 @@ def withdraw(db: Session, *, geo: Event, owner: User, username: str) -> None:
 
 
 def accept(db: Session, *, geo: Event, user: User) -> Event:
-    """Turn ``user``'s pending invitation into geolocator credit, in one transaction.
+    """Turn ``user``'s pending invitation into geolocator credit, in one transaction. The open
+    review requests asking ``user`` to review the event go, since a geolocator cannot approve it.
 
     404 ``invite_not_found`` without one; 409 ``invalid_state`` once the event left
     ``geolocated`` (the invitation stays, and declining it still works).
@@ -194,6 +196,13 @@ def accept(db: Session, *, geo: Event, user: User) -> Event:
     db.delete(invitation)
     db.add(EventGeolocator(event_id=geo.id, user_id=user.id))
     revoke_approvals_on_join(db, geo=geo, user=user)
+    db.execute(
+        delete(ReviewRequest).where(
+            ReviewRequest.event_id == geo.id,
+            ReviewRequest.target_user_id == user.id,
+            ReviewRequest.status == "open",
+        )
+    )
     db.commit()
     db.refresh(geo)
     return geo
