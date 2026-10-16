@@ -49,7 +49,7 @@ def published_events() -> ColumnElement[bool]:
 
     ``visible_events`` answers "may a reader see this row"; this answers "did this analyst
     stand behind it". The profile feed (:func:`routers.users.get_user_geolocations`), the
-    profile's ``geolocations_count`` and the timeline (:func:`services.social.get_timeline`)
+    profile's ``geolocations_count`` and the feed (:func:`services.social.get_feed`)
     all filter on it, so counts and rows agree.
 
     The other states are out:
@@ -105,8 +105,8 @@ def published_credited_to(user_ids: Iterable[Any] | Select[Any]) -> ColumnElemen
 def open_requests() -> ColumnElement[bool]:
     """The predicate for a request an analyst has open: ``requested``.
 
-    The request twin of :func:`published_events`, read by the timeline
-    (:func:`services.social.get_timeline`). A fulfilled request moves to
+    The request twin of :func:`published_events`, read by the feed
+    (:func:`services.social.get_feed`). A fulfilled request moves to
     :func:`published_events` and a withdrawn one (``closed`` off ``requested``) drops out.
     """
     return Event.status == STATUS_REQUESTED
@@ -313,6 +313,32 @@ def bbox_predicate(bounds: tuple[float, float, float, float]):
     )
 
 
+def taxonomy_predicates(
+    *,
+    conflict: list[str] | None = None,
+    capture_source: list[str] | None = None,
+    tag: list[str] | None = None,
+) -> list[ColumnElement[bool]]:
+    """The ``conflict``, ``capture_source`` and ``tag`` predicates, one per non-empty list.
+
+    Any-match (OR) within a list, all-match (AND) across lists. ``conflict`` matches the
+    ``conflicts`` referential (its own join, so a same-named free tag can't poison it);
+    ``capture_source`` pins the tag's category for the same reason; ``tag`` matches any category.
+    :func:`apply_filters` and the feed (:func:`services.social.get_feed`) both read them.
+    """
+    # ``.any(...)`` lowers to EXISTS, so it doesn't row-multiply like a JOIN.
+    predicates: list[ColumnElement[bool]] = []
+    if conflict:
+        predicates.append(Event.conflicts.any(Conflict.name.in_(conflict)))
+    if capture_source:
+        predicates.append(
+            Event.tags.any(and_(Tag.name.in_(capture_source), Tag.category == "capture_source"))
+        )
+    if tag:
+        predicates.append(Event.tags.any(Tag.name.in_(tag)))
+    return predicates
+
+
 def apply_filters(
     query: SAQuery,
     *,
@@ -340,10 +366,8 @@ def apply_filters(
     may carry an approximate guess and must not leak into the located catalog. Callers gate
     values through :func:`validate_status_filter`.
 
-    ``conflict``, ``capture_source`` and ``tag`` take lists of names: any-match (OR) within a
-    list, all-match (AND) across lists. ``conflict`` matches the ``conflicts`` referential (its
-    own join, so a same-named free tag can't poison it); ``capture_source`` pins the tag's
-    category for the same reason; ``tag`` matches any category.
+    ``conflict``, ``capture_source`` and ``tag`` take lists of names (see
+    :func:`taxonomy_predicates`).
 
     ``has_coords`` splits on ``event_coords``: ``True`` keeps rows with a point (a request's
     location guess), ``False`` the blind ones, ``None`` both.
@@ -353,15 +377,9 @@ def apply_filters(
     if status:
         query = query.filter(Event.status.in_(status))
 
-    if conflict:
-        # ``.any(...)`` lowers to EXISTS, so it doesn't row-multiply like a JOIN.
-        query = query.filter(Event.conflicts.any(Conflict.name.in_(conflict)))
-    if capture_source:
-        query = query.filter(
-            Event.tags.any(and_(Tag.name.in_(capture_source), Tag.category == "capture_source"))
-        )
-    if tag:
-        query = query.filter(Event.tags.any(Tag.name.in_(tag)))
+    query = query.filter(
+        *taxonomy_predicates(conflict=conflict, capture_source=capture_source, tag=tag)
+    )
 
     # Parse dates up front so a typo is a 422, not a Postgres ``InvalidDatetimeFormat`` 500.
     parsed_event_from = parse_optional_iso_date(event_date_from, field="event_date_from")

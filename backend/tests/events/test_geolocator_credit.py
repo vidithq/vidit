@@ -448,7 +448,7 @@ def test_published_credit_reads_match_through_the_geolocator_rows(db, author, se
     assert all(db.get(Event, event_id).status == "geolocated" for event_id in found)
 
 
-def test_followers_see_co_credited_work_in_their_timeline(db, author, second_user, make_user):
+def test_followers_see_co_credited_work_in_their_feed(db, author, second_user, make_user):
     geo = _published(db, author)
     _credit(db, geo, second_user)
     follower = make_user()
@@ -457,8 +457,8 @@ def test_followers_see_co_credited_work_in_their_timeline(db, author, second_use
         client.post(f"/api/v1/users/{second_user.username}/follow", headers=headers).status_code
         == 204
     )
-    timeline = client.get("/api/v1/timeline").json()
-    assert [item["id"] for item in timeline] == [str(geo.id)]
+    feed = client.get("/api/v1/feed").json()
+    assert [item["id"] for item in feed] == [str(geo.id)]
 
 
 def test_a_co_geolocator_collects_the_event(db, author, second_user, make_user):

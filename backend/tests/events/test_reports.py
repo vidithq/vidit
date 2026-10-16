@@ -250,13 +250,13 @@ def test_hidden_event_absent_from_the_profile_feed_and_count(db, author):
     assert profile.json()["geolocations_count"] == 1
 
 
-def test_hidden_event_absent_from_the_follow_timeline(db, author, second_user):
+def test_hidden_event_absent_from_the_follow_feed(db, author, second_user):
     visible = _make_geo(db, author=author)
     hidden = _make_geo(db, author=author, hidden=True)
     db.add(Follow(follower_id=second_user.id, followed_id=author.id))
     db.commit()
 
-    response = client.get("/api/v1/timeline", headers=login_as(client, second_user))
+    response = client.get("/api/v1/feed", headers=login_as(client, second_user))
     assert response.status_code == 200
     ids = {row["id"] for row in response.json()}
     assert str(visible.id) in ids

@@ -15,14 +15,14 @@ describe("safeNext", () => {
   });
 
   it("honours a same-origin path and preserves search + hash", () => {
-    expect(safeNext("/timeline")).toBe("/timeline");
+    expect(safeNext("/feed")).toBe("/feed");
     expect(safeNext("/events/abc?tab=proof#media")).toBe(
       "/events/abc?tab=proof#media"
     );
   });
 
   it("rejects values that do not start with a slash", () => {
-    expect(safeNext("timeline")).toBe("/map");
+    expect(safeNext("feed")).toBe("/map");
     expect(safeNext("https://evil.com/x")).toBe("/map");
     expect(safeNext("javascript:alert(1)")).toBe("/map");
   });
