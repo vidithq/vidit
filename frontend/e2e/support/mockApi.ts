@@ -81,6 +81,8 @@ const ROUTES: [RegExp, unknown][] = [
     new RegExp(`^/events/${EVENT_ID}/approvals$`),
     { items: EVENT_APPROVALS, viewer_can_approve: false },
   ],
+  // The owner's pending invitations, which the edit page's Geolocators card reads.
+  [new RegExp(`^/events/${EVENT_ID}/geolocator-invites$`), []],
   [
     new RegExp(`^/events/${SECOND_COLLECTED_EVENT_ID}$`),
     SECOND_COLLECTED_EVENT_DETAIL,

@@ -21,6 +21,10 @@ import {
   updateEventRequest,
 } from "@/lib/events";
 import type { EventDetail } from "@/types";
+import { Card } from "@/components/ui/Card";
+
+// Ties the rail's save button to the form in the main column.
+const REQUEST_FORM_ID = "request-edit-form";
 
 /**
  * Owner edit of an open request, the third shape of the one edit address.
@@ -28,6 +32,9 @@ import type { EventDetail } from "@/types";
  * A request is a question, not a vouched claim, so this write overwrites the row:
  * no version is filed, and the id, requester and bot provenance stay put. The
  * fields are the submit form's request fields, in the shared `EventFormFields`.
+ *
+ * The fields fill the main column; the save and the close sit in the right rail's
+ * actions card, as on the event edit form.
  *
  * The floor is the request floor: a title, the source, and the footage. Placing
  * a coordinate publishes nothing (the geolocate does, through
@@ -116,38 +123,48 @@ export function RequestEditForm({
   };
 
   return (
-    <PageShell back backFallback={redirectTo} title="Edit request" actions={actions}>
+    <PageShell
+      back
+      backFallback={redirectTo}
+      title="Edit request"
+      actions={actions}
+      rail={
+        <Card as="section">
+          <IncompleteFormNotice
+            key={form.validationAttempt}
+            missing={form.missingFields.map((m) => m.label)}
+          />
+          {saveMutation.error && (
+            <div className={FORM_ERROR_BANNER}>{saveMutation.error}</div>
+          )}
+
+          {/* No confirm step: the edit publishes nothing and files no version. */}
+          <Button type="submit" form={REQUEST_FORM_ID} variant="primary" disabled={busy}>
+            {busy ? "Saving…" : "Save request"}
+          </Button>
+
+          <CloseSection
+            eventId={geo.id}
+            status={geo.status}
+            disabled={busy}
+            onClosed={() => router.push(redirectTo)}
+          />
+        </Card>
+      }
+      railLabel="Actions"
+      narrowRail="below"
+    >
       {panels}
 
       {/* `noValidate`: IncompleteFormNotice owns required-field feedback. */}
-      <form onSubmit={attemptSave} className="space-y-6" noValidate>
+      <form id={REQUEST_FORM_ID} onSubmit={attemptSave} className="space-y-6" noValidate>
         <EventFormFields
           form={form}
           row={geo}
           showProvenance
           sourcePostedAtRequired={false}
         />
-
-        <IncompleteFormNotice
-          key={form.validationAttempt}
-          missing={form.missingFields.map((m) => m.label)}
-        />
-        {saveMutation.error && (
-          <div className={FORM_ERROR_BANNER}>{saveMutation.error}</div>
-        )}
-
-        {/* No confirm step: the edit publishes nothing and files no version. */}
-        <Button type="submit" variant="primary" disabled={busy}>
-          {busy ? "Saving…" : "Save request"}
-        </Button>
       </form>
-
-      <CloseSection
-        eventId={geo.id}
-        status={geo.status}
-        disabled={busy}
-        onClosed={() => router.push(redirectTo)}
-      />
     </PageShell>
   );
 }

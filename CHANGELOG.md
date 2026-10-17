@@ -29,6 +29,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- The edit page moves Save, the version note, Close and the geolocators into a sticky right rail beside the fields, under them on a phone; geolocator changes still apply right away and make no new version ([#593](https://github.com/vidithq/vidit/pull/593)).
 - An event page's header holds a version selector, Edit for the owner, a one-click Share and Report; an Approvals card beside the record shows the live approvals, close and credit move to the edit page, and icon buttons show their label on hover ([#583](https://github.com/vidithq/vidit/pull/583)).
 - On a wide screen the page column sits centred, the nav rail counted as part of the left margin, so the space left and right of the content is equal; every page still starts its title at the same x.
 - A profile shows the analyst's organizations as logos on the follower line, each linking to the organization and naming it with the analyst's role on hover or focus, so the coverage map opens the page ([#586](https://github.com/vidithq/vidit/pull/586)).

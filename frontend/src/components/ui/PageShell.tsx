@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -49,7 +56,7 @@ export function PageShell({
    *  while a rail shows and `reading` otherwise, which leaves the main column one width. */
   rail?: ReactNode;
   railLabel?: string;
-  narrowRail?: "stacked" | "hidden";
+  narrowRail?: ComponentProps<typeof PageWithRail>["narrow"];
   /** Keeps the header at the top of the viewport from `sm` up, with a bottom border once the
    *  page has scrolled. Below `sm` the header scrolls away, clear of the menu chip. */
   stickyHeader?: boolean;
