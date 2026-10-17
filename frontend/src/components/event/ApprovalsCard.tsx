@@ -26,7 +26,8 @@ import {
 import { ApprovalRequestsSection } from "@/components/event/ApprovalRequestsSection";
 
 // Stamps shown before the +N bubble, which shows the rest.
-const STAMPS_SHOWN = 5;
+// Two full rows in the 17.5rem rail card: 238px inside its padding holds seven 28px stamps 6px apart.
+const STAMP_SLOTS = 14;
 
 /** **Approve** for a reader who may approve the live version, expanding the approve form in
  *  place; **Cancel** collapses it again. */
@@ -105,7 +106,9 @@ export function ApprovalsCard({
             )}
             <ApprovalStamps
               approvals={standing}
-              max={showAll ? standing.length : STAMPS_SHOWN}
+              max={
+                showAll || standing.length <= STAMP_SLOTS ? standing.length : STAMP_SLOTS - 1
+              }
               onOverflow={() => setShowAll(true)}
               managed={managed}
               onRevoke={setRevoking}

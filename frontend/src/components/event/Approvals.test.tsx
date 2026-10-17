@@ -337,12 +337,25 @@ describe("<ApprovalsCard>", () => {
     expect(screen.queryByText(/outdated|revoked/i)).toBeNull();
   });
 
+  const reviews = (count: number) =>
+    Array.from({ length: count }, (_, i) =>
+      approval({ id: `a${i}`, reviewer: { id: `r${i}`, username: `r${i}` } }),
+    );
+
+  it("shows two rows of stamps in full rather than a +1 bubble", async () => {
+    serve(reviews(14));
+    render(<Panel />);
+
+    expect(await screen.findAllByRole("button", { name: /^Approved by/ })).toHaveLength(14);
+    expect(screen.queryByRole("button", { name: /more approvals/ })).toBeNull();
+  });
+
   it("shows every stamp from the overflow bubble", async () => {
-    serve(Array.from({ length: 7 }, (_, i) => approval({ id: `a${i}`, reviewer: { id: `r${i}`, username: `r${i}` } })));
+    serve(reviews(15));
     render(<Panel />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Show 2 more approvals" }));
-    expect(screen.getAllByRole("button", { name: /^Approved by/ })).toHaveLength(7);
+    expect(screen.getAllByRole("button", { name: /^Approved by/ })).toHaveLength(15);
   });
 
   it("stamps a closed event's approvals that stood when it closed", async () => {

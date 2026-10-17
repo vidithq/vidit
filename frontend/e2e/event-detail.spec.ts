@@ -70,14 +70,14 @@ test.describe("shared event link", () => {
     const mediaBox = await page.getByRole("heading", { name: "Source media" }).boundingBox();
     expect(cardBox!.y + cardBox!.height).toBeLessThanOrEqual(mediaBox!.y);
 
-    // Five stamps, oldest first, then a bubble for the rest.
+    // Two rows of stamps, oldest first, the bubble for the rest taking the last slot.
     const stamps = card.getByRole("list", { name: "Approved by" });
-    await expect(stamps.getByRole("button", { name: /^Approved by/ })).toHaveCount(5);
+    await expect(stamps.getByRole("button", { name: /^Approved by/ })).toHaveCount(13);
     const first = stamps.getByRole("button", {
       name: `Approved by ${EVENT_APPROVALS[0].reviewer!.username}`,
     });
     expect((await first.boundingBox())?.width).toBe(28);
-    await expectNarrowViewportLayout(page, stamps.getByRole("button", { name: "Show 2 more approvals" }));
+    await expectNarrowViewportLayout(page, stamps.getByRole("button", { name: "Show 3 more approvals" }));
 
 
     // A tap opens the stamp's card, which holds the note and the way to the profile.
@@ -88,7 +88,7 @@ test.describe("shared event link", () => {
     await expect(page.getByRole("dialog")).toHaveCount(0);
 
     // The bubble shows the rest of the stamps, which wrap inside the card.
-    await stamps.getByRole("button", { name: "Show 2 more approvals" }).click();
+    await stamps.getByRole("button", { name: "Show 3 more approvals" }).click();
     await expect(stamps.getByRole("button", { name: /^Approved by/ })).toHaveCount(
       EVENT_APPROVALS.length,
     );
