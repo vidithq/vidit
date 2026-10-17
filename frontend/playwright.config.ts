@@ -3,8 +3,9 @@ import { defineConfig, devices } from "@playwright/test";
 import { API_BASE_URL, APP_ORIGIN, APP_PORT } from "./e2e/support/environment";
 
 /**
- * Narrow-viewport smoke suite: four golden paths, each measured at the two
- * phone widths the app has to hold, with the backend mocked in the browser.
+ * Narrow-viewport smoke suite: the golden paths and the narrow pages, each
+ * measured at the two phone widths the app has to hold, with the backend mocked
+ * in the browser. A spec that needs a wide screen sets its own viewport.
  *
  * No screenshot comparison anywhere. The assertions are geometric (see
  * `e2e/support/narrowLayout.ts`), so they read the same on a laptop and on a

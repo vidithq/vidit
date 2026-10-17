@@ -9,7 +9,7 @@ Contributions that exist only to enable a competing hosted SaaS on top of this c
 ## Before you start
 
 - **Read the [vision](README.md#vision)** for the *why*, the issues of type Epic in the [GitHub Project](https://github.com/orgs/vidithq/projects/1) for the milestone ladder (one per Version value), and the [future considerations epic](https://github.com/vidithq/vidit/issues/535) for what's deferred.
-- **Browse the [GitHub Project](https://github.com/orgs/vidithq/projects/1)** to see open work. Each item is an issue in `vidithq/vidit` with a type (Feature, Debt, Task, Bug) and the project fields Status, Priority (P0 to P3), Version (v0.6 to v1.0, or Unscheduled), and Area. Shipped items move to [`CHANGELOG.md`](CHANGELOG.md).
+- **Browse the [GitHub Project](https://github.com/orgs/vidithq/projects/1)** to see open work. Each item is an issue in `vidithq/vidit` with a type (Feature, Debt, Task, Bug) and the project fields Status, Version (v0.6 to v1.0, or Unscheduled), and Area. Shipped items move to [`CHANGELOG.md`](CHANGELOG.md).
 - **Read [`AGENTS.md`](AGENTS.md)** for project conventions.
 
 For substantial work, file an issue first.
@@ -37,7 +37,7 @@ See [`README.md`](README.md#getting-started-local-dev) → *Getting started (loc
    Frontend, from `frontend/`: `npm test` (Vitest, colocated `*.test.ts(x)`), plus `npm run lint`, `npx tsc --noEmit`, `npm run build`, and `npm run test:e2e` (Playwright; run `npx playwright install chromium` once first). `make hygiene` runs the cross-cutting gates (`make help` lists them). What the Playwright suite measures and why jsdom cannot: [`docs/engineering.md`](docs/engineering.md#narrow-viewport-smoke-tests).
 4. **Update the docs in the same PR.** See [*Doc-sync rule*](#doc-sync-rule) below.
 5. **PR title is a Conventional Commit.** See *Commit conventions* below; the title is also checked in CI by [`.github/workflows/pr-title.yml`](.github/workflows/pr-title.yml).
-6. **CI must be green.** Every job of the `ci` workflow, the PR-title workflow, CodeQL, and the `DCO` status check (Probot app) must pass. [`docs/engineering.md`](docs/engineering.md#github-actions) lists the jobs.
+6. **CI must be green.** Every job of the `ci` workflow, the PR-title workflow, and the `DCO` status check (Probot app) must pass. CodeQL runs on every PR and reports to the Security tab but is not a required check. [`docs/engineering.md`](docs/engineering.md#github-actions) lists the jobs.
 7. **Sign off every commit.** See *Contributor sign-off* below.
 8. **Read touched docs cold before requesting review.** If anything misleads a new contributor, the PR isn't ready.
 
