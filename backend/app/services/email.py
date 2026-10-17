@@ -139,6 +139,17 @@ def send(email: Email) -> None:
     raise EmailSendError(f"unknown EMAIL_PROVIDER: {provider!r}")
 
 
+def send_best_effort(message: Email, *, what: str) -> None:
+    """Send ``message``, logging a failure instead of raising.
+
+    The log line names ``what`` and never the recipient address.
+    """
+    try:
+        send(message)
+    except EmailSendError as exc:
+        logger.warning("%s email send failed: %s", what, exc)
+
+
 def password_reset_email(*, to: str, link: str) -> Email:
     ttl = settings.password_reset_token_minutes
     return _compose(

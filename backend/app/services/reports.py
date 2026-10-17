@@ -126,22 +126,20 @@ def _notify_new_report(
     and swallowed. Takes plain values because the request's session is gone
     by then (an ORM row would be detached).
     """
-    try:
-        email.send(
-            email.content_report_email(
-                to=address,
-                target=target,
-                target_id=target_id,
-                target_title=target_title,
-                target_link=target_link,
-                reason=reason,
-                details=details,
-                reporter=reporter,
-                created_at=created_at,
-            )
-        )
-    except email.EmailSendError as exc:
-        logger.warning("content report notification send failed for report %s: %s", report_id, exc)
+    email.send_best_effort(
+        email.content_report_email(
+            to=address,
+            target=target,
+            target_id=target_id,
+            target_title=target_title,
+            target_link=target_link,
+            reason=reason,
+            details=details,
+            reporter=reporter,
+            created_at=created_at,
+        ),
+        what=f"content report notification for report {report_id}",
+    )
 
 
 class _ReportTarget(NamedTuple):

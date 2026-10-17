@@ -262,3 +262,12 @@ def test_resend_refusal_is_a_rejection_and_transport_error_is_not(monkeypatch):
     with pytest.raises(email.EmailSendError) as caught:
         email.send(BUILDERS["password_reset"]())
     assert not isinstance(caught.value, email.EmailRejectedError)
+
+
+def test_send_best_effort_swallows_and_logs_without_the_address(monkeypatch, caplog):
+    _resend(monkeypatch, lambda _req: httpx.Response(422))
+    message = email.registration_confirmation_email(to="a@example.com", link=f"{BASE}/x")
+    with caplog.at_level("WARNING", logger="app.services.email"):
+        email.send_best_effort(message, what="registration confirmation")
+    assert "registration confirmation email send failed" in caplog.text
+    assert "a@example.com" not in caplog.text
