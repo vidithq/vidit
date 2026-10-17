@@ -3,6 +3,7 @@ import { ArrowRight, Bot } from "lucide-react";
 
 import { ACCENT_SURFACE } from "@/components/ui/styles";
 import { Dot } from "@/components/ui/Dot";
+import { detectionsQueueHref } from "@/lib/routes";
 
 /** Own-profile entry into the detections list: the count of machine-`detected` geolocations
  * awaiting submission, linking to `/profile/{username}/detections`. The parent renders it only when
@@ -16,7 +17,7 @@ export function DetectionsEntry({
 }) {
   return (
     <Link
-      href={`/profile/${username}/detections`}
+      href={detectionsQueueHref(username)}
       className="group flex items-center justify-between gap-3 rounded-lg border border-orange-500/30 bg-orange-500/10 p-4 hover:bg-orange-500/15 transition-colors"
     >
       <div className="flex items-center gap-3">

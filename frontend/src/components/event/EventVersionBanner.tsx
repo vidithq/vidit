@@ -4,6 +4,7 @@ import type { EventVersionEntry } from "@/lib/events";
 import { formatDate } from "@/lib/format";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { TEXT_LINK, WARNING_CALLOUT } from "@/components/ui/styles";
+import { eventHref } from "@/lib/routes";
 
 /**
  * What a `/events/{id}/vN` page says first: this is not the record as it stands. Amber, the caution
@@ -33,7 +34,7 @@ export function EventVersionBanner({
         </>
       )}
       {version.createdAt && <> on {formatDate(version.createdAt)}</>}.{" "}
-      <Link href={`/events/${eventId}`} className={TEXT_LINK}>
+      <Link href={eventHref(eventId)} className={TEXT_LINK}>
         View the current version
       </Link>
       .

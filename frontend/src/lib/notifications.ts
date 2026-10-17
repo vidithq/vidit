@@ -2,6 +2,8 @@ import { apiFetch } from "./api";
 import type { components } from "./api-types";
 import { formatDate } from "./format";
 import { organizationPath } from "./organizations";
+import { withCursor } from "./pagination";
+import { eventHref, profileHref } from "./routes";
 
 export type Notification = components["schemas"]["NotificationRead"];
 export type NotificationKind = Notification["kind"];
@@ -11,9 +13,7 @@ export const NOTIFICATIONS_PATH = "/notifications";
 export const UNREAD_COUNT_PATH = "/notifications/unread-count";
 
 export function notificationsPath(cursor: string | null): string {
-  return cursor
-    ? `${NOTIFICATIONS_PATH}?cursor=${encodeURIComponent(cursor)}`
-    : NOTIFICATIONS_PATH;
+  return withCursor(NOTIFICATIONS_PATH, cursor);
 }
 
 /** A delivery channel of a notification kind, as the Settings column header names it.
@@ -158,18 +158,18 @@ export function notificationAvatar(
 export function describeNotification(n: Notification): { text: string; href: string } {
   const actor = n.actor?.username ?? "Someone";
   const title = n.event?.title ?? "";
-  const eventHref = n.event ? `/events/${n.event.id}` : "/notifications";
+  const toEvent = n.event ? eventHref(n.event.id) : "/notifications";
   const organization = n.organization?.name ?? "an organization";
   switch (n.kind) {
     case "request_fulfilled":
       return {
         text: `${actor} geolocated your request: ${title}`,
-        href: n.event ? `/events/${n.event.id}` : "/requests",
+        href: n.event ? eventHref(n.event.id) : "/requests",
       };
     case "new_follower":
       return {
         text: `${actor} followed you`,
-        href: n.actor ? `/profile/${n.actor.username}` : "/notifications",
+        href: n.actor ? profileHref(n.actor.username) : "/notifications",
       };
     case "x_handle_request_approved":
       return { text: "An admin linked the X handle you requested", href: "/settings" };
@@ -181,17 +181,17 @@ export function describeNotification(n: Notification): { text: string; href: str
     case "co_geolocator_invite":
       return {
         text: `${actor} invited you to share the credit of: ${title}`,
-        href: eventHref,
+        href: toEvent,
       };
     case "co_geolocator_removed":
       return {
         text: `${actor} removed you from the geolocators of: ${title}`,
-        href: eventHref,
+        href: toEvent,
       };
     case "ownership_transferred":
       return {
         text: `You now own: ${title}. Its previous owner's account was removed.`,
-        href: eventHref,
+        href: toEvent,
       };
     case "organization_invite":
       return {
@@ -212,32 +212,32 @@ export function describeNotification(n: Notification): { text: string; href: str
     case "re_approve_requested":
       return {
         text: `${actor} saved a new version of a geolocation ${n.organization ? organization : "you"} approved: ${title}`,
-        href: eventHref,
+        href: toEvent,
       };
     case "approval_received":
       return {
         text: `${actor} approved your geolocation${n.organization ? ` for ${organization}` : ""}: ${title}`,
-        href: eventHref,
+        href: toEvent,
       };
     case "approval_revoked":
       return {
         text: `The approval by ${n.organization ? organization : actor} of your geolocation was revoked: ${title}`,
-        href: eventHref,
+        href: toEvent,
       };
     case "approval_request_received":
       return {
         text: `${actor} asked ${n.organization ? organization : "you"} to approve: ${title}`,
-        href: eventHref,
+        href: toEvent,
       };
     case "approval_request_declined":
       return {
         text: `${actor} declined${n.organization ? ` for ${organization}` : ""} to approve: ${title}`,
-        href: eventHref,
+        href: toEvent,
       };
     case "organization_approval_removed":
       return {
         text: `${n.organization_name ?? "An organization"} was removed from Vidit; its approval of ${title} is gone`,
-        href: eventHref,
+        href: toEvent,
       };
   }
 }

@@ -18,6 +18,7 @@ import { Pill } from "@/components/ui/Pill";
 import { PageFrame } from "@/components/ui/PageFrame";
 import { buttonClasses } from "@/components/ui/Button";
 import DemoVideo from "@/components/landing/DemoVideo";
+import { staticPageMetadata } from "./_og/metadata";
 
 // Public landing at `vidit.app`, reachable without an account (see
 // `PUBLIC_EXACT` in `proxy.ts`); the app lives behind login at `/map`.
@@ -29,28 +30,12 @@ import DemoVideo from "@/components/landing/DemoVideo";
 // `openGraph` + `twitter` blocks render a rich summary_large_image card
 // instead of a bare text card. The image comes from the sibling
 // `opengraph-image.tsx` / `twitter-image.tsx` route files.
-export const metadata: Metadata = {
+export const metadata: Metadata = staticPageMetadata({
+  path: "/",
   title: "Vidit: archive and map conflict geolocations",
   description:
     "Vidit is the open source platform where OSINT/GEOINT analysts publish, archive and share geolocated events from armed conflicts.",
-  openGraph: {
-    type: "website",
-    url: "https://vidit.app",
-    siteName: "Vidit",
-    title: "Vidit: archive and map conflict geolocations",
-    description:
-      "Vidit is the open source platform where OSINT/GEOINT analysts publish, archive and share geolocated events from armed conflicts.",
-    locale: "en_US",
-  },
-  twitter: {
-    card: "summary_large_image",
-    site: "@vidithq",
-    creator: "@vidithq",
-    title: "Vidit: archive and map conflict geolocations",
-    description:
-      "Vidit is the open source platform where OSINT/GEOINT analysts publish, archive and share geolocated events from armed conflicts.",
-  },
-};
+});
 
 // Set NEXT_PUBLIC_DEMO_VIDEO_URL to an embed URL or a direct .mp4 to light
 // up the player (placeholder until then), so the video ships without a

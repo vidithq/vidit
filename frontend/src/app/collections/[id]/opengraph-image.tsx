@@ -12,9 +12,11 @@ import {
   OG_SIZE,
   OgBadge,
   OgCard,
+  OgNotFoundCard,
   ogFailedReadResponse,
   ogImageResponse,
 } from "../../_og/card";
+import { NOT_FOUND_LINE } from "../../_og/metadata";
 import { ogFetch, ogImageDataUri } from "../../_og/data";
 
 // `og:image` for `/collections/{id}`: the collection's mosaic as a share card.
@@ -124,21 +126,6 @@ function MosaicPanel({ tiles }: { tiles: MosaicTile[] }) {
   );
 }
 
-function NotFoundCard() {
-  return (
-    <OgCard>
-      <div style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
-        <div style={{ display: "flex", fontSize: "72px", color: OG_COLOR.text }}>
-          No collection here
-        </div>
-        <div style={{ display: "flex", marginTop: "20px", fontSize: "30px", color: OG_COLOR.muted }}>
-          This link points at nothing in the catalog.
-        </div>
-      </div>
-    </OgCard>
-  );
-}
-
 export default async function CollectionOpenGraphImage({
   params,
 }: {
@@ -148,7 +135,9 @@ export default async function CollectionOpenGraphImage({
   const read = await ogFetch<Collection>(`/collections/${encodeURIComponent(id)}`);
 
   if (read.status === "missing") {
-    return ogImageResponse(<NotFoundCard />);
+    return ogImageResponse(
+      <OgNotFoundCard title="No collection here" line={NOT_FOUND_LINE} />,
+    );
   }
   // A failed read says nothing about the link, so neither does the card.
   if (read.status === "failed") {

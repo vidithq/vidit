@@ -10,9 +10,11 @@ import {
   OG_SIZE,
   OgBadge,
   OgCard,
+  OgNotFoundCard,
   ogFailedReadResponse,
   ogImageResponse,
 } from "../../_og/card";
+import { NOT_FOUND_LINE } from "../../_og/metadata";
 import { OgMiniMap } from "../../_og/MiniMap";
 import { ogFetch } from "../../_og/data";
 
@@ -43,21 +45,6 @@ function EventBadges({ event }: { event: EventDetail }) {
   );
 }
 
-function NotFoundCard() {
-  return (
-    <OgCard>
-      <div style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
-        <div style={{ display: "flex", fontSize: "72px", color: OG_COLOR.text }}>
-          No event here
-        </div>
-        <div style={{ display: "flex", marginTop: "20px", fontSize: "30px", color: OG_COLOR.muted }}>
-          This link points at nothing in the catalog.
-        </div>
-      </div>
-    </OgCard>
-  );
-}
-
 export default async function EventOpenGraphImage({
   params,
 }: {
@@ -67,7 +54,9 @@ export default async function EventOpenGraphImage({
   const read = await ogFetch<EventDetail>(`/events/${encodeURIComponent(id)}`);
 
   if (read.status === "missing") {
-    return ogImageResponse(<NotFoundCard />);
+    return ogImageResponse(
+      <OgNotFoundCard title="No event here" line={NOT_FOUND_LINE} />,
+    );
   }
   // A failed read says nothing about the link, so neither does the card.
   if (read.status === "failed") {

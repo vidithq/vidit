@@ -1,5 +1,6 @@
 import { apiFetch } from "./api";
 import type { components } from "./api-types";
+import { withCursor } from "./pagination";
 
 export type InviteCodeStatus =
   components["schemas"]["AdminInviteCodeRead"]["status"];
@@ -8,15 +9,12 @@ export type InviteCodeStatus =
  *  redemption copies it onto the new account as its bot-attribution link. */
 export type InviteCode = components["schemas"]["AdminInviteCodeRead"];
 
-export interface CreateInviteCodeBody {
-  expires_in_days: number | null;
-  x_handle?: string | null;
-}
+export type CreateInviteCodeBody = components["schemas"]["AdminInviteCodeCreate"];
 
 /** `GET /admin/invite-codes` for one page; a path because the console reads it through
  *  `useCursorList`. */
 export function inviteCodesPath(cursor: string | null): string {
-  return `/admin/invite-codes${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`;
+  return withCursor("/admin/invite-codes", cursor);
 }
 
 export function createInviteCode(
@@ -63,14 +61,9 @@ export function setUserXHandle(
   });
 }
 
-export interface AdminEventDeleteResponse {
-  geolocation_id: string;
-  title: string;
-  mode: "soft" | "hard";
-  deleted_at: string | null;
-  /** Every file swept, source and proof roles alike. */
-  media_count: number;
-}
+/** `media_count` is every file swept, source and proof roles alike. */
+export type AdminEventDeleteResponse =
+  components["schemas"]["AdminEventDeleteResponse"];
 
 export function deleteEvent(
   id: string,

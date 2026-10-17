@@ -4,7 +4,6 @@ import { useParams } from "next/navigation";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
-import { useMutation } from "@/hooks/useMutation";
 import { formatDate } from "@/lib/format";
 import {
   answerOrganizationInvite,
@@ -29,10 +28,9 @@ import { OrganizationApprovals } from "@/components/organizations/OrganizationAp
 import { OrganizationInvites } from "@/components/organizations/OrganizationInvites";
 import { OrganizationMembers } from "@/components/organizations/OrganizationMembers";
 import { OrganizationApprovalRequests } from "@/components/organizations/OrganizationApprovalRequests";
-import { Button } from "@/components/ui/Button";
+import { InviteAnswerButtons } from "@/components/event/GeolocatorCredit";
 import { Card } from "@/components/ui/Card";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
 /** An organization's public page: the analyst profile's header (name, picture, bio, links), then
  * the members, the approvals placed in its name, its approval requests for members, and its
@@ -64,10 +62,6 @@ export default function OrganizationPage() {
     refetch();
     refetchMembers();
   };
-  const answer = useMutation(
-    (choice: "accept" | "decline") => answerOrganizationInvite(slug, choice),
-    { fallback: "Could not answer the invite", onSuccess: reload },
-  );
 
   if (authLoading) return <PageLoading />;
   if (error) return <PageError message={error} backHref="/map" />;
@@ -93,19 +87,10 @@ export default function OrganizationPage() {
             <p className="text-sm text-neutral-200">
               You are invited to join {org.name}.
             </p>
-            {answer.error && <div className={FORM_ERROR_BANNER}>{answer.error}</div>}
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={() => void answer.run("accept")} disabled={answer.loading}>
-                Accept
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => void answer.run("decline")}
-                disabled={answer.loading}
-              >
-                Decline
-              </Button>
-            </div>
+            <InviteAnswerButtons
+              answer={(choice) => answerOrganizationInvite(slug, choice)}
+              onAnswered={reload}
+            />
           </Card>
         ) : null
       }

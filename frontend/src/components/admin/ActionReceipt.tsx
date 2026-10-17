@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import type { AdminPurgeDetectedResponse } from "@/lib/admin";
 import { Pill } from "@/components/ui/Pill";
+import { countLabel } from "@/lib/format";
 
 /** Post-action receipt shared by the destructive admin panels (analyst delete, geolocation
  * delete): a quiet summary box with the hard/soft mode badge. Hard reads danger (red), soft is
@@ -42,11 +43,10 @@ export function PurgeReceipt({ purge }: { purge: AdminPurgeDetectedResponse }) {
       header={<span className="font-medium">{purge.username}</span>}
     >
       <div className="text-neutral-500">
-        {`Purged ${purge.deleted_events} detection${
-          purge.deleted_events === 1 ? "" : "s"
-        }, swept ${purge.media_count} storage object${
-          purge.media_count === 1 ? "" : "s"
-        }. Account untouched.`}
+        {`Purged ${countLabel(purge.deleted_events, "detection")}, swept ${countLabel(
+          purge.media_count,
+          "storage object",
+        )}. Account untouched.`}
       </div>
     </ActionReceipt>
   );

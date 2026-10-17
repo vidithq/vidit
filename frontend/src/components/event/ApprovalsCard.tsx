@@ -55,7 +55,7 @@ export function ApprovalsCard({
   const memberOf = useMemberOrganizations();
   const [showAll, setShowAll] = useState(false);
   const [approvedCount, setApprovedCount] = useState(0);
-  const incoming = useApprovalRequests(event, approvedCount);
+  const incoming = useApprovalRequests(event, memberOf, approvedCount);
   const rows = approvals.data?.items ?? [];
   // The live version's standing approvals: current, or, on a closed event, those that stood when
   // it closed.

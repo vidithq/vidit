@@ -9,11 +9,14 @@ import {
   useCallback,
   ReactNode,
 } from "react";
+import type { components } from "@/lib/api-types";
 import type { User } from "@/types";
 import { ApiError, apiFetch } from "@/lib/api";
 import { hasSessionCookie } from "@/lib/auth";
 import { clearDisplay } from "@/lib/preferences";
 import { forgetThisPushDevice } from "@/lib/push";
+
+type RegisterResponse = components["schemas"]["RegisterResponse"];
 
 interface AuthContextType {
   user: User | null;
@@ -27,7 +30,7 @@ interface AuthContextType {
     password: string,
     invite_code: string,
     product_updates: boolean
-  ) => Promise<{ status: string; email: string }>;
+  ) => Promise<RegisterResponse>;
   logout: () => Promise<void>;
   /** Re-pull the user from /auth/me (used by /confirm-registration after the session cookie is set). */
   refresh: () => Promise<void>;
@@ -102,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     invite_code: string,
     product_updates: boolean
   ) => {
-    return apiFetch<{ status: string; email: string }>("/auth/register", {
+    return apiFetch<RegisterResponse>("/auth/register", {
       method: "POST",
       body: JSON.stringify({ username, email, password, invite_code, product_updates }),
     });

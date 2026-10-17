@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import {
   ShieldCheck,
   Users,
@@ -19,28 +20,16 @@ import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { LinkRow } from "@/components/ui/LinkRow";
+import { staticPageMetadata } from "../_og/metadata";
 
 // Same openGraph + twitter shape as the landing; the root image files supply the image.
-export const metadata: Metadata = {
+export const metadata: Metadata = staticPageMetadata({
+  path: "/about",
   title: "About Vidit",
   description:
     "Commitments, funding, and privacy posture behind Vidit, the open OSINT/GEOINT platform for archiving and mapping conflict geolocations.",
-  openGraph: {
-    type: "website",
-    url: "https://vidit.app/about",
-    siteName: "Vidit",
-    title: "About Vidit",
-    description: "Commitments, funding, and privacy posture behind Vidit.",
-    locale: "en_US",
-  },
-  twitter: {
-    card: "summary_large_image",
-    site: "@vidithq",
-    creator: "@vidithq",
-    title: "About Vidit",
-    description: "Commitments, funding, and privacy posture behind Vidit.",
-  },
-};
+  shareDescription: "Commitments, funding, and privacy posture behind Vidit.",
+});
 
 const COMMITMENTS = [
   {
@@ -241,9 +230,11 @@ export default function AboutPage() {
             >
               hello@vidit.app
             </a>{" "}
-            from the address tied to the account, and we&apos;ll handle it. A
-            full legal terms-of-service and privacy policy will land before
-            open registration.
+            from the address tied to the account, and we&apos;ll handle it. The{" "}
+            <Link href="/privacy" className={TEXT_LINK}>
+              privacy policy
+            </Link>{" "}
+            lists the data Vidit stores and how long it keeps it.
           </p>
         </Section>
 

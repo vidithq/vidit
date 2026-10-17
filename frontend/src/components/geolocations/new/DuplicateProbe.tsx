@@ -10,6 +10,7 @@ import { LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "@/lib/coordinates";
 import { formatDate } from "@/lib/format";
 import type { PossibleDuplicate } from "@/types";
 import { WARNING_CALLOUT } from "@/components/ui/styles";
+import { eventHref } from "@/lib/routes";
 
 // "User paused typing" threshold.
 const DUPLICATE_PROBE_DEBOUNCE_MS = 500;
@@ -124,7 +125,7 @@ function DuplicateWarning({ hits }: { hits: PossibleDuplicate[] }) {
         {hits.map((hit) => (
           <li key={hit.id}>
             <Link
-              href={`/events/${hit.id}`}
+              href={eventHref(hit.id)}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center justify-between gap-3 px-3 py-2 bg-neutral-900/60 border border-neutral-700 rounded-md hover:border-orange-500/50 hover:bg-neutral-900 transition-colors"
@@ -134,7 +135,7 @@ function DuplicateWarning({ hits }: { hits: PossibleDuplicate[] }) {
                   {hit.title}
                 </p>
                 <p className="text-xs text-neutral-400">
-                  {hit.event_date ? `${formatDate(hit.event_date)} · ` : ""}@
+                  {hit.event_date ? `${formatDate(hit.event_date)} · ` : ""}
                   {hit.owner.username} · {formatDistance(hit.distance_m)}
                 </p>
               </div>

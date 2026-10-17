@@ -4,11 +4,12 @@ import type { PublicProfile, UserStats } from "@/lib/users";
 import {
   OG_CONTENT_TYPE,
   OG_SIZE,
+  OgNotFoundCard,
   ogFailedReadResponse,
   ogImageResponse,
 } from "../../_og/card";
 import { ogImageDataUri, ogFetch } from "../../_og/data";
-import { PortfolioCard, PortfolioNotFoundCard } from "../../_og/portfolio";
+import { PortfolioCard } from "../../_og/portfolio";
 
 // `og:image` for `/profile/{username}`: the analyst's portfolio as a share
 // card. Reads the same two public payloads the page itself renders from, in
@@ -39,7 +40,7 @@ export default async function ProfileOpenGraphImage({
 
   if (profileRead.status === "missing") {
     return ogImageResponse(
-      <PortfolioNotFoundCard
+      <OgNotFoundCard
         title="No analyst here"
         line={`${ogTruncate(username, 40)} has no profile on Vidit.`}
       />,

@@ -13,11 +13,12 @@ import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { useMutation } from "@/hooks/useMutation";
 import { detectionEditPath, importFromPost } from "@/lib/events";
 import type { TweetImportOutcome } from "@/types";
+import { countLabel } from "@/lib/format";
 
 function outcomeSummary(outcome: TweetImportOutcome): string {
   const parts: string[] = [];
   if (outcome.created.length > 0) {
-    parts.push(`${outcome.created.length} detection${outcome.created.length === 1 ? "" : "s"} created`);
+    parts.push(`${countLabel(outcome.created.length, "detection")} created`);
   }
   if (outcome.updated.length > 0) {
     parts.push(`${outcome.updated.length} updated`);

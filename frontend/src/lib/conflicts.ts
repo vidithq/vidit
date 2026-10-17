@@ -1,8 +1,7 @@
 import type { Conflict } from "@/types";
 
-// The conflict escape row's name. Hand-kept FE-BE mirror (backend: migration
-// `j2l4n6p8r0t2` `CONFLICT_ESCAPE_NAME`, `services/seed.py`
-// `CONFLICT_OTHER_NAME`); change together.
+// The conflict escape row's name. Mirrors backend
+// `alembic/versions/g5i7k9m1o3q5_baseline.py` `CONFLICT_ESCAPE_NAME`; change both.
 export const CONFLICT_OTHER_NAME = "Other";
 
 /**

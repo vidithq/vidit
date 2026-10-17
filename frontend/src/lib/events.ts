@@ -1,6 +1,7 @@
 import { apiFetch } from "./api";
 import type { components, operations } from "@/lib/api-types";
 import { archiveTooLarge } from "./archive";
+import { appendEventFilterParams, type EventFilterParams } from "./search";
 import { cleanNumber, inBounds } from "./coordinates";
 import { toDatetimeLocalUTC } from "./format";
 import { proofHasImage } from "./proof";
@@ -10,11 +11,12 @@ import type {
   ArchivedLink,
   EventDetail,
   EventVersion,
-  EventStatus,
   Media,
   TagCategory,
   TweetImportOutcome,
 } from "@/types";
+import { withCursor } from "./pagination";
+import { eventHref } from "./routes";
 
 /** A required field a create/edit form is still missing; `key` drives the in-form highlight. */
 export type MissingFieldKey =
@@ -57,20 +59,15 @@ const DETECTIONS_PER_PAGE = 10;
 const DETECTIONS_REVIEW_QUEUE = 100;
 
 /** Queue filter for `GET /events/detections`. Hand-written like `EventView` (the router
- *  takes a plain `str`). Mirrors `services/events.DETECTION_READINESS`; change both. */
+ *  takes a plain `str`). Mirrors `services/events/readiness.py` `DETECTION_READINESS`; change both. */
 export type DetectionReadiness = "all" | "ready" | "incomplete";
 
-/** Shape of `GET /events/detections`. Mirrors backend `PaginatedEventDetails`.
- *  `total` counts the set `readiness` selected; `ready_total` and `incomplete_total`
- *  count the whole queue under any filter. */
-export interface PaginatedEventDetails {
-  items: EventDetail[];
-  total: number;
-  page: number;
-  per_page: number;
-  ready_total: number;
-  incomplete_total: number;
-}
+/** Shape of `GET /events/detections`. `total` counts the set `readiness` selected;
+ *  `ready_total` and `incomplete_total` count the whole queue under any filter. */
+export type PaginatedEventDetails = Omit<
+  components["schemas"]["PaginatedEventDetails"],
+  "items"
+> & { items: EventDetail[] };
 
 export function detectionsPath(
   page = 1,
@@ -96,17 +93,9 @@ export function detectionEditPath(id: string, inQueue = false): string {
  *  `docs/data-model.md`. */
 export type EventView = "located" | "requested";
 
-export interface EventListParams {
+/** `hasCoords` `true` keeps rows with a location (a request's guess), `false` the blind ones. */
+export interface EventListParams extends EventFilterParams {
   view?: EventView;
-  /** One status or several (repeated `?status=`, any-match). */
-  status?: EventStatus | EventStatus[];
-  /** Repeated, any-match within a list and AND across lists. */
-  conflict?: string[];
-  captureSource?: string[];
-  tag?: string[];
-  author?: string;
-  /** `true` keeps rows with a location (a request's guess), `false` the blind ones. */
-  hasCoords?: boolean;
   sort?: EventListSort;
   limit?: number;
   /** Cursor of the next page, from a `Link: rel="next"` header. */
@@ -123,16 +112,7 @@ export type EventListSort = NonNullable<
 export function eventListPath(params: EventListParams = {}): string {
   const search = new URLSearchParams();
   if (params.view) search.set("view", params.view);
-  if (params.status) {
-    for (const status of [params.status].flat()) {
-      search.append("status", status);
-    }
-  }
-  params.conflict?.forEach((name) => search.append("conflict", name));
-  params.captureSource?.forEach((name) => search.append("capture_source", name));
-  params.tag?.forEach((name) => search.append("tag", name));
-  if (params.author) search.set("author", params.author);
-  if (params.hasCoords !== undefined) search.set("has_coords", String(params.hasCoords));
+  appendEventFilterParams(search, params);
   if (params.sort) search.set("sort", params.sort);
   if (params.limit !== undefined) search.set("limit", String(params.limit));
   if (params.cursor) search.set("cursor", params.cursor);
@@ -345,10 +325,7 @@ export function saveVersion(
 
 /** Cursor is the previous page's `Link: rel="next"` value, `null` for the first. */
 export function eventVersionsPath(id: string, cursor: string | null): string {
-  const params = new URLSearchParams();
-  if (cursor) params.set("cursor", cursor);
-  const query = params.toString();
-  return `/events/${id}/versions${query ? `?${query}` : ""}`;
+  return withCursor(`/events/${id}/versions`, cursor);
 }
 
 export function eventVersionPath(id: string, versionNo: number): string {
@@ -357,7 +334,7 @@ export function eventVersionPath(id: string, versionNo: number): string {
 
 /** Past versions only; the current one keeps `/events/{id}`. */
 export function eventVersionHref(id: string, versionNo: number): string {
-  return `/events/${id}/v${versionNo}`;
+  return `${eventHref(id)}/v${versionNo}`;
 }
 
 export function eventHistoryHref(id: string): string {

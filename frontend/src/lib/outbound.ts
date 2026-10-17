@@ -1,3 +1,4 @@
+import { parseHttp } from "./format";
 import { SNAPSHOT_HOSTS } from "./snapshots";
 
 /** Vidit's own domain: a link to it, or to a subdomain, stays in the app. */
@@ -21,17 +22,6 @@ const KNOWN_HOSTS: readonly string[] = [
   "railway.com",
   "aws.amazon.com",
 ];
-
-function parseHttp(href: string): URL | null {
-  let parsed: URL;
-  try {
-    parsed = new URL(href);
-  } catch {
-    return null;
-  }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
-  return parsed.hostname ? parsed : null;
-}
 
 /** The lowercase hostname of an http(s) URL, or null for anything else. */
 export function httpHostname(href: string): string | null {

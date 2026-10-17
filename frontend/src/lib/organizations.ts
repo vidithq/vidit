@@ -1,7 +1,8 @@
 import { apiFetch } from "./api";
 import type { components } from "./api-types";
-import type { UserProfileUpdate } from "./users";
-import type { ExternalLinks } from "@/types";
+import type { InviteAnswer } from "./geolocatorCredit";
+import type { AuthorRef, ExternalLinks } from "@/types";
+import { countLabel } from "./format";
 
 /** `GET /organizations/{slug}`, with `external_links` kept as the narrow per-platform shape. */
 export type Organization = Omit<
@@ -13,7 +14,8 @@ export type OrganizationInvite = components["schemas"]["OrganizationInviteRead"]
 export type OrganizationMembership = components["schemas"]["OrganizationMembershipRead"];
 export type OrganizationRole = OrganizationMember["role"];
 export type OrganizationCreate = components["schemas"]["OrganizationCreate"];
-export type InviteCandidate = components["schemas"]["AuthorRef"];
+export type OrganizationUpdate = components["schemas"]["OrganizationUpdate"];
+export type InviteCandidate = AuthorRef;
 export type AdminOrganization = components["schemas"]["AdminOrganizationRead"];
 export type OrganizationRef = components["schemas"]["OrganizationRef"];
 
@@ -30,7 +32,7 @@ export function organizationPath(slug: string): string {
 }
 
 export function memberCountLabel(count: number): string {
-  return `${count} member${count === 1 ? "" : "s"}`;
+  return countLabel(count, "member");
 }
 
 /** An organization as an `AuthorByline` name: its picture, its name, and a link to its page. */
@@ -51,21 +53,11 @@ export function createOrganization(body: OrganizationCreate): Promise<Organizati
 
 export function updateOrganization(
   slug: string,
-  body: UserProfileUpdate,
+  body: OrganizationUpdate,
 ): Promise<Organization> {
   return apiFetch<Organization>(organizationPath(slug), {
     method: "PATCH",
     body: JSON.stringify(body),
-  });
-}
-
-export function setOrganizationApprovalRequestAudience(
-  slug: string,
-  audience: NonNullable<Organization["approval_request_audience"]>,
-): Promise<Organization> {
-  return apiFetch<Organization>(organizationPath(slug), {
-    method: "PATCH",
-    body: JSON.stringify({ approval_request_audience: audience }),
   });
 }
 
@@ -98,7 +90,7 @@ export function cancelOrganizationInvite(slug: string, inviteId: string): Promis
 /** Answer your own pending invite. */
 export function answerOrganizationInvite(
   slug: string,
-  answer: "accept" | "decline",
+  answer: InviteAnswer,
 ): Promise<void> {
   return apiFetch<void>(`${organizationPath(slug)}/invite/${answer}`, { method: "POST" });
 }

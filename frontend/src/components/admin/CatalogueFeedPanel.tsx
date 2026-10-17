@@ -11,6 +11,7 @@ import { EntityCard } from "@/components/ui/EntityCard";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { creditProps } from "@/lib/geolocatorCredit";
+import { eventHref } from "@/lib/routes";
 
 /** How many catalogue rows the panel shows. */
 const RECENT_LIMIT = 10;
@@ -54,7 +55,7 @@ export function CatalogueFeedPanel() {
           {rows.map((row) => (
             <EntityCard
               key={row.id}
-              detailHref={`/events/${row.id}`}
+              detailHref={eventHref(row.id)}
               variant="compact"
               title={row.title}
               {...creditProps(row)}

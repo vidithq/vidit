@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
 import type { ArchivedLink, EventDetail } from "@/types";
-import { formatDate, formatInstant, safeHostname } from "@/lib/format";
+import { formatDate, formatInstant, pluralNoun, safeHostname } from "@/lib/format";
 import { formatCoordinates } from "@/lib/coordinates";
 import { conflictLabel } from "@/lib/conflicts";
 import { provenanceLabel } from "@/lib/events";
@@ -311,7 +311,7 @@ function SecondarySourcesRow({
             </>
           ) : (
             <>
-              {urls.length} more source{urls.length === 1 ? "" : "s"}
+              {urls.length} more {pluralNoun(urls.length, "source")}
               <ChevronDown size={12} />
             </>
           )}

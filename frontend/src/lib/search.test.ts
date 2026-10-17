@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appendApprovalFilters, approvalFiltersFromParams, splitHighlights } from "./search";
+import { appendEventFilterParams, readEventFilterParams, splitHighlights } from "./search";
 
 const STX = "";
 const ETX = "";
@@ -47,32 +47,62 @@ describe("splitHighlights", () => {
   });
 });
 
-describe("the approval filter keys", () => {
-  it("round-trip an analyst and an organization through a URL", () => {
-    const analyst = new URLSearchParams();
-    appendApprovalFilters(analyst, { approved: true, approvedBy: { kind: "analyst", username: "ana" } });
-    expect(analyst.toString()).toBe("approved=true&approved_by=ana");
-    expect(approvalFiltersFromParams(analyst)).toEqual({
+describe("the event filter keys", () => {
+  it("round-trip every filter through a URL", () => {
+    const params = new URLSearchParams();
+    appendEventFilterParams(params, {
+      statuses: ["geolocated"],
+      conflicts: ["Ukraine"],
+      captureSources: ["ground"],
+      tags: ["drone", "night"],
+      mediaTypes: ["video"],
+      author: " ana ",
       approved: true,
-      approvedBy: { kind: "analyst", username: "ana" },
+      approvedBy: { kind: "analyst", username: "bo" },
+      eventFrom: "2026-01-01",
+      eventTo: "",
+      addedFrom: "",
+      addedTo: "2026-02-01",
     });
+    expect(params.toString()).toBe(
+      "status=geolocated&conflict=Ukraine&capture_source=ground&tag=drone&tag=night&media=video" +
+        "&author=ana&approved=true&approved_by=bo&event_date_from=2026-01-01&submitted_to=2026-02-01",
+    );
+    expect(readEventFilterParams(params)).toEqual({
+      statuses: ["geolocated"],
+      conflicts: ["Ukraine"],
+      captureSources: ["ground"],
+      tags: ["drone", "night"],
+      mediaTypes: ["video"],
+      author: "ana",
+      approved: true,
+      approvedBy: { kind: "analyst", username: "bo" },
+      eventFrom: "2026-01-01",
+      eventTo: "",
+      addedFrom: "",
+      addedTo: "2026-02-01",
+    });
+  });
 
+  it("name an organization approver by its slug", () => {
     const org = new URLSearchParams();
-    appendApprovalFilters(org, {
-      approved: false,
+    appendEventFilterParams(org, {
       approvedBy: { kind: "organization", slug: "osw", name: "Open Source Watch" },
     });
     expect(org.toString()).toBe("approved_by_org=osw");
-    expect(approvalFiltersFromParams(org)).toEqual({
-      approved: false,
-      approvedBy: { kind: "organization", slug: "osw", name: "osw" },
+    expect(readEventFilterParams(org).approvedBy).toEqual({
+      kind: "organization",
+      slug: "osw",
+      name: "osw",
     });
   });
 
   it("drop a name the handle gate refuses", () => {
-    expect(approvalFiltersFromParams(new URLSearchParams("approved_by=a%25b"))).toEqual({
-      approved: false,
-      approvedBy: null,
-    });
+    const refused = new URLSearchParams();
+    appendEventFilterParams(refused, { author: "a%b" });
+    expect(refused.toString()).toBe("");
+    const read = readEventFilterParams(new URLSearchParams("author=a%25b&approved_by=a%25b"));
+    expect(read.author).toBe("");
+    expect(read.approvedBy).toBeNull();
   });
 });

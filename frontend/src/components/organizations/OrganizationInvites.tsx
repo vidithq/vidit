@@ -25,6 +25,7 @@ import { Card } from "@/components/ui/Card";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
+import { profileHref } from "@/lib/routes";
 
 /** The org manager's invite control and the pending invites.
  *
@@ -126,7 +127,7 @@ export function OrganizationInvites({ slug }: { slug: string }) {
                     {invite.invited_by ? ` by ${invite.invited_by.username}` : ""}
                   </span>
                 }
-                href={`/profile/${invite.user.username}`}
+                href={profileHref(invite.user.username)}
                 external={false}
                 action={
                   <Button

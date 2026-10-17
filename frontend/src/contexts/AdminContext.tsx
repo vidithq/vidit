@@ -4,6 +4,7 @@ import { createContext, useContext, type ReactNode } from "react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
+import type { components } from "@/lib/api-types";
 
 interface AdminValue {
   isAdmin: boolean;
@@ -18,7 +19,7 @@ const AdminContext = createContext<AdminValue>({ isAdmin: false, loading: false 
  *  the role. A refused probe (403 for an analyst who is not an admin) reads as not an admin. */
 export function AdminProvider({ children }: { children: ReactNode }) {
   const { user, loading: authLoading } = useAuth();
-  const probe = useApiResource<{ is_admin: boolean }>(user ? "/admin/me" : null);
+  const probe = useApiResource<components["schemas"]["AdminMeResponse"]>(user ? "/admin/me" : null);
   return (
     <AdminContext.Provider
       value={{ isAdmin: probe.data?.is_admin === true, loading: authLoading || probe.loading }}

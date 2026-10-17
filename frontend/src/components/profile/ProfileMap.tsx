@@ -11,6 +11,7 @@ import { hasFiniteCoords, pointsBounds } from "@/components/map/bounds";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { WORLD_BOUNDS, toBboxParam } from "@/lib/viewport";
+import { eventHref } from "@/lib/routes";
 
 // Dynamic import as on the map and event pages: MapLibre touches `window` at module scope, so it never server-renders.
 const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
@@ -69,7 +70,7 @@ export function ProfileMap({ username }: { username: string }) {
         <Map
           points={points}
           fitBounds={bounds}
-          onPointClick={(id) => router.push(`/events/${id}`)}
+          onPointClick={(id) => router.push(eventHref(id))}
           embedded
         />
       </div>

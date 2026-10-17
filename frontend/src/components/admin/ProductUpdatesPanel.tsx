@@ -15,7 +15,7 @@ import {
 import { useApiResource } from "@/hooks/useApiResource";
 import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
-import { pluralNoun } from "@/lib/format";
+import { countLabel } from "@/lib/format";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import {
   FORM_ERROR_BANNER,
@@ -28,11 +28,11 @@ import { Card } from "@/components/ui/Card";
 import { Input, Textarea } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
 
-const EMPTY: ProductUpdateDraft = { label: "", title: "", body: "", link_url: "" };
+// Mirrors backend schemas/product_update.py; change both.
+const PRODUCT_UPDATE_TITLE_MAX_LEN = 120;
+const PRODUCT_UPDATE_BODY_MAX_LEN = 5000;
 
-function plural(count: number, noun: string): string {
-  return `${count} ${pluralNoun(count, noun)}`;
-}
+const EMPTY: ProductUpdateDraft = { label: "", title: "", body: "", link_url: "" };
 
 function draftBody(draft: ProductUpdateDraft): ProductUpdateDraft {
   return { ...draft, link_url: draft.link_url?.trim() ? draft.link_url.trim() : null };
@@ -81,7 +81,7 @@ export function ProductUpdatesPanel() {
   const send = useMutation(() => sendProductUpdate(draftBody(draft)), {
     fallback: "Send failed",
     onSuccess: (sent) => {
-      setNotice(`Release ${sent.label} queued for ${plural(sent.recipient_count, "analyst")}.`);
+      setNotice(`Release ${sent.label} queued for ${countLabel(sent.recipient_count, "analyst")}.`);
       setDraft(EMPTY);
       setPreview(null);
       history.refetch();
@@ -133,7 +133,7 @@ export function ProductUpdatesPanel() {
           <Input
             id="pu-title"
             value={draft.title}
-            maxLength={120}
+            maxLength={PRODUCT_UPDATE_TITLE_MAX_LEN}
             onChange={(e) => edit("title")(e.target.value)}
             className="mt-1"
           />
@@ -146,7 +146,7 @@ export function ProductUpdatesPanel() {
         <Textarea
           id="pu-body"
           rows={8}
-          maxLength={5000}
+          maxLength={PRODUCT_UPDATE_BODY_MAX_LEN}
           value={draft.body}
           onChange={(e) => edit("body")(e.target.value)}
           className="mt-1"
@@ -200,9 +200,9 @@ export function ProductUpdatesPanel() {
             className="w-full h-[28rem] rounded-md border border-neutral-700 bg-white"
           />
           <p className="text-xs text-neutral-400">
-            {`${plural(preview.recipients, "analyst")} opted in. At ${preview.daily_cap} a day, ` +
+            {`${countLabel(preview.recipients, "analyst")} opted in. At ${preview.daily_cap} a day, ` +
               `${preview.batch_size} per worker pass, the send takes ` +
-              `${plural(preview.days, "day")}.`}
+              `${countLabel(preview.days, "day")}.`}
           </p>
           {confirm.armed && (
             <div className={`px-3 py-2 rounded-md text-xs ${WARNING_CALLOUT}`}>
@@ -219,7 +219,7 @@ export function ProductUpdatesPanel() {
               ? "Queueing…"
               : confirm.armed
                 ? "Confirm"
-                : `Send to ${plural(preview.recipients, "analyst")}`}
+                : `Send to ${countLabel(preview.recipients, "analyst")}`}
           </Button>
         </div>
       )}

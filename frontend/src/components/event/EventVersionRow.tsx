@@ -6,6 +6,7 @@ import { formatDate } from "@/lib/format";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Pill } from "@/components/ui/Pill";
 import { TAPPABLE_HOVER } from "@/components/ui/styles";
+import { eventHref } from "@/lib/routes";
 
 /** What this version did to the record, in the event page's words. Version 1 was published, not
  * edited, so it says so; an impossible comparison (a redacted version on either side) says nothing
@@ -40,7 +41,7 @@ export function EventVersionRow({
     >
       {/* Stretched link: nothing inside the row competes for the click, so badges and byline sit under it. */}
       <Link
-        href={version.current ? `/events/${eventId}` : eventVersionHref(eventId, version.number)}
+        href={version.current ? eventHref(eventId) : eventVersionHref(eventId, version.number)}
         aria-label={`Version ${version.number}`}
         className="absolute inset-0 z-10 rounded-[inherit]"
       />

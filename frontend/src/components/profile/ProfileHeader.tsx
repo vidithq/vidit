@@ -3,7 +3,7 @@
 import { Fragment, type ReactNode } from "react";
 import { Pencil } from "lucide-react";
 
-import { formatDate } from "@/lib/format";
+import { countLabel, formatDate } from "@/lib/format";
 import { splitLinks } from "@/lib/outbound";
 import type { OrganizationMembership } from "@/lib/organizations";
 import type { PublicProfile } from "@/lib/users";
@@ -71,7 +71,7 @@ export function ProfileIdentity({
     <IdentityLines
       bio={profile.bio}
       segments={[
-        `${profile.followers_count} follower${profile.followers_count === 1 ? "" : "s"}`,
+        countLabel(profile.followers_count, "follower"),
         `${profile.following_count} following`,
         `Member since ${formatDate(profile.created_at)}`,
         ...(organizations?.length

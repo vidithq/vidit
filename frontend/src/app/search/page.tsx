@@ -15,23 +15,20 @@ import { CollectionCard } from "@/components/collections/CollectionCard";
 import { CollectionIcon } from "@/lib/collections";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import {
-  AUTHOR_FILTER_RE,
-  appendApprovalFilters,
-  approvalFiltersFromParams,
+  appendEventFilterParams,
+  readEventFilterParams,
   search,
   splitHighlights,
 } from "@/lib/search";
 import { Avatar } from "@/components/ui/Avatar";
 import { EntityCard } from "@/components/ui/EntityCard";
 import type {
-  Conflict,
   SearchRequestHit,
   SearchEventHit,
   SearchOrganizationHit,
   SearchResponse,
   SearchType,
   SearchUserHit,
-  Tag,
 } from "@/types";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -57,7 +54,6 @@ import {
   type EventFilterValues,
 } from "@/components/filters/EventFilterSections";
 import { FilterBar } from "@/components/filters/FilterBar";
-import { useApiResource } from "@/hooks/useApiResource";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 
 import { META_LINE, TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
@@ -67,6 +63,9 @@ import {
 } from "@/components/ui/SegmentedControl";
 import { creditProps } from "@/lib/geolocatorCredit";
 import { memberCountLabel, organizationPath } from "@/lib/organizations";
+import { countLabel } from "@/lib/format";
+import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
+import { eventHref, profileHref } from "@/lib/routes";
 
 const ICON = { size: 13, strokeWidth: 1.8, className: "max-sm:hidden" } as const;
 
@@ -130,31 +129,15 @@ function SearchPageBody() {
   // The URL is the source of truth so shared links land in the same view; inputs bind to local
   // state so typing isn't gated on URL round-trips.
   const initialQ = searchParams.get("q") ?? "";
+  const { eventFrom, eventTo, addedFrom, addedTo, ...read } = readEventFilterParams(searchParams);
   const initialValues: EventFilterValues = {
+    ...read,
     // Only the vocabulary the panel offers: a crafted `?status=` the chips can't represent is dropped.
-    statuses: searchParams
-      .getAll("status")
-      .filter((s) => STATUS_FILTER_OPTIONS.some(([value]) => value === s)),
-    conflicts: searchParams.getAll("conflict"),
-    captureSources: searchParams.getAll("capture_source"),
-    tags: searchParams.getAll("tag"),
-    mediaTypes: searchParams.getAll("media"),
+    statuses: read.statuses.filter((s) => STATUS_FILTER_OPTIONS.some(([value]) => value === s)),
     // The search groups serve no location-guess predicate, so the panel never offers it here.
     locationGuess: [],
-    // A crafted URL can carry anything; the shared gate keeps an ineligible value from 422ing
-    // every fetch.
-    author: (() => {
-      const raw = searchParams.get("author") ?? "";
-      return AUTHOR_FILTER_RE.test(raw) ? raw : "";
-    })(),
-    ...approvalFiltersFromParams(searchParams),
   };
-  const initialDates: DateWindows = {
-    eventFrom: searchParams.get("event_date_from") ?? "",
-    eventTo: searchParams.get("event_date_to") ?? "",
-    addedFrom: searchParams.get("submitted_from") ?? "",
-    addedTo: searchParams.get("submitted_to") ?? "",
-  };
+  const initialDates: DateWindows = { eventFrom, eventTo, addedFrom, addedTo };
   const arrivedFiltered = hasAnyFilter(initialValues, initialDates);
   // A filtered link without a type (the profile's "Show more") lands on Events: filters are
   // event predicates.
@@ -173,9 +156,7 @@ function SearchPageBody() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Same pickers as the map: the live taxonomy + the used-conflict list.
-  const { data: tagsData } = useApiResource<Tag[]>("/tags");
-  const { data: conflictsData } = useApiResource<Conflict[]>("/conflicts?used=true");
+  const { tags, conflicts } = useFilterVocabulary();
 
   const onPatch: EventFilterPatch = (patch) => setValues((v) => ({ ...v, ...patch }));
   const clearFilters = () => {
@@ -218,8 +199,8 @@ function SearchPageBody() {
   ) =>
     filterSections && (
       <EventFilterSections
-        tags={tagsData ?? []}
-        conflicts={conflictsData ?? []}
+        tags={tags}
+        conflicts={conflicts}
         values={panel.values}
         onPatch={(patch) =>
           setPanel({ ...panel, values: { ...panel.values, ...patch } })
@@ -285,17 +266,7 @@ function SearchPageBody() {
       const params = new URLSearchParams();
       if (queryInput) params.set("q", queryInput);
       if (typeFilter !== "all") params.set("type", typeFilter);
-      if (values.author.trim()) params.set("author", values.author.trim());
-      values.statuses.forEach((n) => params.append("status", n));
-      values.conflicts.forEach((n) => params.append("conflict", n));
-      values.captureSources.forEach((n) => params.append("capture_source", n));
-      values.tags.forEach((n) => params.append("tag", n));
-      values.mediaTypes.forEach((n) => params.append("media", n));
-      appendApprovalFilters(params, values);
-      if (dates.eventFrom) params.set("event_date_from", dates.eventFrom);
-      if (dates.eventTo) params.set("event_date_to", dates.eventTo);
-      if (dates.addedFrom) params.set("submitted_from", dates.addedFrom);
-      if (dates.addedTo) params.set("submitted_to", dates.addedTo);
+      appendEventFilterParams(params, { ...values, ...dates });
       const qs = params.toString();
       router.replace(qs ? `/search?${qs}` : "/search");
     },
@@ -318,22 +289,7 @@ function SearchPageBody() {
     const requestId = ++latestRequestId.current;
     setLoading(true);
     setError(null);
-    search({
-      q,
-      type: typeFilter,
-      author: v.author.trim() || undefined,
-      status: v.statuses,
-      conflict: v.conflicts,
-      captureSource: v.captureSources,
-      tag: v.tags,
-      media: v.mediaTypes,
-      approved: v.approved,
-      approvedBy: v.approvedBy,
-      eventDateFrom: d.eventFrom || undefined,
-      eventDateTo: d.eventTo || undefined,
-      submittedFrom: d.addedFrom || undefined,
-      submittedTo: d.addedTo || undefined,
-    })
+    search({ q, type: typeFilter, ...v, ...d })
       .then((response) => {
         // Stale response (a newer request started): drop it.
         if (requestId !== latestRequestId.current) return;
@@ -435,7 +391,7 @@ function SearchPageBody() {
               {loading
                 ? "Searching…"
                 : results
-                  ? `${totalHits} result${totalHits === 1 ? "" : "s"}${activeQuery.trim() ? " for " : ""}`
+                  ? `${countLabel(totalHits, "result")}${activeQuery.trim() ? " for " : ""}`
                   : null}
               {!loading && results && activeQuery.trim() && (
                 <span className="text-neutral-300 font-medium">
@@ -632,7 +588,7 @@ function EventResult({ hit }: { hit: SearchEventHit }) {
   return (
     <EntityCard
       variant="compact"
-      detailHref={`/events/${hit.id}`}
+      detailHref={eventHref(hit.id)}
       title={<Highlighted value={hit.title_highlight} />}
       titleText={hit.title}
       badge={<StatusBadge status={hit.status} />}
@@ -704,7 +660,7 @@ function ProfileResult({
 function UserResult({ hit }: { hit: SearchUserHit }) {
   return (
     <ProfileResult
-      href={`/profile/${hit.username}`}
+      href={profileHref(hit.username)}
       avatarUrl={hit.avatar_url}
       avatarName={hit.username}
       name={<Highlighted value={hit.username_highlight} />}

@@ -16,6 +16,7 @@ import {
   type CollectionDescription,
 } from "@/lib/collections";
 import type { EventDetail } from "@/types";
+import { eventHref, profileHref } from "@/lib/routes";
 
 /**
  * Opens a collection. `?event=<id>` puts that event in the picker's first
@@ -45,8 +46,8 @@ function NewCollectionPageBody() {
 
   // Where both exits land: the event being shelved, else the reader's profile.
   const origin = eventId
-    ? `/events/${encodeURIComponent(eventId)}`
-    : `/profile/${encodeURIComponent(user?.username ?? "")}`;
+    ? eventHref(eventId)
+    : profileHref(user?.username ?? "");
 
   const create = useMutation(
     // One request: picked events ride the create, so a refusal on any of them shows here.

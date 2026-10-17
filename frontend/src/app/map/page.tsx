@@ -3,10 +3,10 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { filterPointsByStatus } from "@/types";
-import type { Conflict, MapPoint, EventDetail, Tag } from "@/types";
+import type { MapPoint, EventDetail } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { apiFetch } from "@/lib/api";
-import { AUTHOR_FILTER_RE, appendApprovalFilters } from "@/lib/search";
+import { appendEventFilterParams } from "@/lib/search";
 import {
   VIEWPORT_DEBOUNCE_MS,
   boundsContain,
@@ -17,6 +17,7 @@ import {
 import { DetailSidePanel } from "@/components/map/DetailSidePanel";
 import { FilterPanel } from "@/components/map/FilterPanel";
 import { useMapState } from "@/contexts/MapStateContext";
+import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
 
 const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
 
@@ -38,11 +39,7 @@ export default function HomePage() {
   // The padded region those points cover; a viewport inside it needs no request.
   const coveredRef = useRef<MapBounds | null>(null);
   const boundsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { data: tagsData } = useApiResource<Tag[]>("/tags");
-  const tags = tagsData ?? [];
-  // Only conflicts carried by at least one live event, not the whole referential.
-  const { data: conflictsData } = useApiResource<Conflict[]>("/conflicts?used=true");
-  const conflicts = conflictsData ?? [];
+  const { tags, conflicts } = useFilterVocabulary();
   // Keyed on the selection in context, so returning to the map re-reads it.
   const detail = useApiResource<EventDetail>(
     selectedId ? `/events/${selectedId}` : null,
@@ -58,15 +55,12 @@ export default function HomePage() {
     const params = new URLSearchParams();
     // Required: the endpoint 422s without it, and the viewport bounds the payload.
     params.set("bbox", bbox);
-    // OR within a bucket, AND across buckets (`routers/events::_apply_filters`).
-    filters.conflicts.forEach((c) => params.append("conflict", c));
-    filters.captureSources.forEach((s) => params.append("capture_source", s));
-    filters.tags.forEach((t) => params.append("tag", t));
-    filters.mediaTypes.forEach((m) => params.append("media", m));
-    // The shared gate keeps a stale ineligible Author value from 422ing the fetch.
-    const cleanAuthor = filters.author.trim();
-    if (AUTHOR_FILTER_RE.test(cleanAuthor)) params.set("author", cleanAuthor);
-    appendApprovalFilters(params, {
+    appendEventFilterParams(params, {
+      conflicts: filters.conflicts,
+      captureSources: filters.captureSources,
+      tags: filters.tags,
+      mediaTypes: filters.mediaTypes,
+      author: filters.author,
       approved: filters.approved,
       approvedBy: filters.approvedBy,
     });

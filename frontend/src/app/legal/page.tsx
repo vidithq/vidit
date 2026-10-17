@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { OutboundLink } from "@/components/ui/OutboundLink";
+import { staticPageMetadata } from "../_og/metadata";
 
 // Public legal notice (see `PUBLIC_PREFIXES` in `proxy.ts`). The publisher is non-professional under LCEN article
 // 6-III-2, so only the hosting providers are named, plus a contact address; the maintainer's identity is held by the hosts.
@@ -14,25 +15,11 @@ const TITLE = "Legal notice";
 const DESCRIPTION =
   "Publisher, hosting providers and contact for Vidit, an open OSINT geolocation platform.";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = staticPageMetadata({
+  path: "/legal",
   title: TITLE,
   description: DESCRIPTION,
-  openGraph: {
-    type: "website",
-    url: "https://vidit.app/legal",
-    siteName: "Vidit",
-    title: TITLE,
-    description: DESCRIPTION,
-    locale: "en_US",
-  },
-  twitter: {
-    card: "summary_large_image",
-    site: "@vidithq",
-    creator: "@vidithq",
-    title: TITLE,
-    description: DESCRIPTION,
-  },
-};
+});
 
 const CONTACT_EMAIL = "support@vidit.app";
 

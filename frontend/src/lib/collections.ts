@@ -3,7 +3,7 @@ import { Layers } from "lucide-react";
 import { apiFetch, apiFetchPage } from "./api";
 import type { components } from "./api-types";
 import { eventListPath, type ContentReport } from "./events";
-import { formatDate } from "./format";
+import { countLabel, formatDate } from "./format";
 import { search } from "./search";
 import type {
   EventDetail,
@@ -12,6 +12,7 @@ import type {
   MapPoint,
   SearchEventHit,
 } from "@/types";
+import { withCursor } from "./pagination";
 
 /** The collections surface: routes, the hand-kept caps, and the meta line and item pins
  *  every collection surface prints. */
@@ -80,8 +81,7 @@ export function collectionEventsPath(
   id: string,
   cursor: string | null,
 ): string {
-  const base = `/collections/${encodeURIComponent(id)}/events`;
-  return cursor === null ? base : `${base}?cursor=${encodeURIComponent(cursor)}`;
+  return withCursor(`/collections/${encodeURIComponent(id)}/events`, cursor);
 }
 
 /** The collection's page opened on a 1-based `?step=`. */
@@ -153,7 +153,7 @@ export function pickerBrowsePath(
 ): string {
   return eventListPath({
     view: "located",
-    status: COLLECTABLE_STATUSES,
+    statuses: COLLECTABLE_STATUSES,
     author: username,
     limit: PICKER_ROW_LIMIT,
     cursor,
@@ -199,7 +199,7 @@ export async function searchPickableEvents(
     q,
     type: "event",
     author: username,
-    status: COLLECTABLE_STATUSES,
+    statuses: COLLECTABLE_STATUSES,
     limit: PICKER_ROW_LIMIT,
   });
   return {
@@ -276,7 +276,7 @@ export function removeEventFromCollection(
 
 /** One phrasing for the page meta line, the profile card and the panel row. */
 export function eventCountLabel(count: number): string {
-  return `${count} event${count === 1 ? "" : "s"}`;
+  return countLabel(count, "event");
 }
 
 /** The meta line the page and profile card print: the count (zero included), then the span

@@ -1,13 +1,13 @@
 import { apiFetch } from "./api";
 import type { components } from "./api-types";
 import { creditedAuthors } from "./geolocatorCredit";
+import type { AuthorRef as Author } from "@/types";
 
 export type ApprovalRequest = components["schemas"]["ApprovalRequestRead"];
 export type ApprovalRequestTargets = components["schemas"]["ApprovalRequestTargetList"];
 export type OrganizationApprovalRequest = components["schemas"]["OrganizationApprovalRequestRead"];
 export type ApprovalRequestAudience =
   components["schemas"]["UserPreferencesRead"]["approval_request_audience"];
-type Author = components["schemas"]["AuthorRef"];
 
 /** Whom an approval request asks: an analyst by username, or an organization by slug. */
 export type ApprovalRequestTarget = { username: string } | { organization: string };

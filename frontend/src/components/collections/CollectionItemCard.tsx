@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { EntityCard } from "@/components/ui/EntityCard";
 import type { PickableEvent } from "@/lib/collections";
+import { eventHref } from "@/lib/routes";
 
 /**
  * One event as a collection surface renders it: the catalogue's compact card with
@@ -49,6 +50,6 @@ export function CollectionItemCard({
       selectLabel={`Read this collection from ${item.title}`}
     />
   ) : (
-    <EntityCard {...slots} detailHref={`/events/${item.id}`} />
+    <EntityCard {...slots} detailHref={eventHref(item.id)} />
   );
 }

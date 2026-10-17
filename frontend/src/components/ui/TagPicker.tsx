@@ -17,6 +17,7 @@ import { FieldHelp } from "@/components/ui/FieldHelp";
 import { FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
 import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
+import { pluralNoun } from "@/lib/format";
 
 // Mirrors `schemas/tag.py` `TagCreate.name` (the `String(100)` cap); change both.
 const TAG_NAME_MAX_LEN = 100;
@@ -259,7 +260,7 @@ export function ConflictTypeahead({
       {q === "" && visible.length > 0 && searchableBeyondDefault > 0 && (
         <p className="text-xs text-neutral-500">
           {searchableBeyondDefault} more{includeEnded ? "" : " ongoing"}{" "}
-          conflict{searchableBeyondDefault === 1 ? "" : "s"}, type to search.
+          {pluralNoun(searchableBeyondDefault, "conflict")}, type to search.
         </p>
       )}
     </div>
