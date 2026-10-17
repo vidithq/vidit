@@ -45,7 +45,13 @@ from app.schemas.notification import NotificationEventRef
 from app.schemas.organization import OrganizationRef
 from app.schemas.user import AuthorRef
 from app.services import notifications
-from app.services.approvals import ever_credited, former_geolocator_ids, is_geolocator
+from app.services.approvals import (
+    closed_organization_ids,
+    closed_reviewer_ids,
+    ever_credited,
+    former_geolocator_ids,
+    is_geolocator,
+)
 from app.services.event_filters import visible_events
 from app.services.organizations import is_organization_manager, live_manager_ids
 
@@ -330,13 +336,7 @@ def _eligible_analysts(
         User.id != geo.owner_id,
         User.id.not_in(select(EventGeolocator.user_id).where(EventGeolocator.event_id == geo.id)),
         User.id.not_in(former_geolocator_ids(geo.id)),
-        User.id.not_in(
-            select(EventApproval.reviewer_id).where(
-                EventApproval.event_id == geo.id,
-                EventApproval.version_no == geo.version_no,
-                EventApproval.organization_id.is_(None),
-            )
-        ),
+        User.id.not_in(closed_reviewer_ids(geo)),
         User.id.not_in(
             select(ApprovalRequest.target_user_id).where(
                 ApprovalRequest.event_id == geo.id,
@@ -364,14 +364,7 @@ def _eligible_organizations(
 ) -> list[Organization]:
     stmt = select(Organization).where(
         _can_act_for(geo),
-        Organization.id.not_in(
-            select(EventApproval.organization_id).where(
-                EventApproval.event_id == geo.id,
-                EventApproval.version_no == geo.version_no,
-                EventApproval.organization_id.is_not(None),
-                EventApproval.revoked_at.is_(None),
-            )
-        ),
+        Organization.id.not_in(closed_organization_ids(geo)),
         Organization.id.not_in(
             select(ApprovalRequest.target_organization_id).where(
                 ApprovalRequest.event_id == geo.id,
@@ -499,14 +492,7 @@ def _check_analyst_target(
     if not admitted:
         raise RequestsNotAcceptedError(REFUSAL_MESSAGE)
     reviewed = db.scalar(
-        select(
-            exists().where(
-                EventApproval.event_id == geo.id,
-                EventApproval.version_no == geo.version_no,
-                EventApproval.reviewer_id == target.id,
-                EventApproval.organization_id.is_(None),
-            )
-        )
+        select(exists(closed_reviewer_ids(geo).where(EventApproval.reviewer_id == target.id)))
     )
     if reviewed:
         raise TargetAlreadyReviewedError("This analyst already reviewed the live version")
@@ -554,14 +540,7 @@ def _check_organization_target(
     if not admitted:
         raise RequestsNotAcceptedError(REFUSAL_MESSAGE)
     approved = db.scalar(
-        select(
-            exists().where(
-                EventApproval.event_id == geo.id,
-                EventApproval.version_no == geo.version_no,
-                EventApproval.organization_id == org.id,
-                EventApproval.revoked_at.is_(None),
-            )
-        )
+        select(exists(closed_organization_ids(geo).where(EventApproval.organization_id == org.id)))
     )
     if approved:
         raise TargetAlreadyReviewedError("This organization already approved the live version")

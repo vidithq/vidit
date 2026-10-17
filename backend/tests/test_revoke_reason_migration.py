@@ -5,6 +5,8 @@ import os
 import subprocess
 import sys
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import psycopg2
@@ -34,10 +36,10 @@ def _alembic(url: str, command: str, revision: str) -> None:
     )
 
 
-@pytest.fixture
-def pre_migration_db():
-    """A throwaway database migrated to the revision before ``32730fceee8a``."""
-    name = f"{_db_name(settings.database_url)}_revoke_reason"
+@contextmanager
+def throwaway_db(suffix: str, revision: str) -> Iterator[str]:
+    """A throwaway database migrated to ``revision``, dropped afterwards."""
+    name = f"{_db_name(settings.database_url)}_{suffix}"
     url = _swap_db(settings.database_url, name)
     admin = _admin_conn(settings.database_url)
     try:
@@ -46,12 +48,19 @@ def pre_migration_db():
             cur.execute(f'CREATE DATABASE "{name}"')
         with psycopg2.connect(url) as conn, conn.cursor() as cur:
             cur.execute("CREATE EXTENSION IF NOT EXISTS postgis")
-        _alembic(url, "upgrade", migration.down_revision)
+        _alembic(url, "upgrade", revision)
         yield url
     finally:
         with admin.cursor() as cur:
             cur.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
         admin.close()
+
+
+@pytest.fixture
+def pre_migration_db():
+    """A throwaway database migrated to the revision before ``32730fceee8a``."""
+    with throwaway_db("revoke_reason", migration.down_revision) as url:
+        yield url
 
 
 def _insert_approval(cur, event: str, reviewer: str, *, revoked: bool, reason: str | None) -> str:
@@ -66,20 +75,25 @@ def _insert_approval(cur, event: str, reviewer: str, *, revoked: bool, reason: s
     return approval
 
 
-def test_upgrade_allows_a_revocation_without_reason_and_downgrade_fills_one(pre_migration_db):
+def seed_event(cur) -> tuple[str, str, str, str]:
+    """Three analysts and an event the first owns: ``(owner, reviewer, other, event)``."""
     owner, reviewer, other, event = (str(uuid.uuid4()) for _ in range(4))
-    with psycopg2.connect(pre_migration_db) as conn, conn.cursor() as cur:
-        for user, name in ((owner, "o"), (reviewer, "r"), (other, "x")):
-            cur.execute(
-                "INSERT INTO users (id, username, is_active, created_at) "
-                "VALUES (%s, %s, true, now())",
-                (user, name),
-            )
+    for user, name in ((owner, "o"), (reviewer, "r"), (other, "x")):
         cur.execute(
-            "INSERT INTO events (id, owner_id, title, proof, status, created_at, updated_at) "
-            "VALUES (%s, %s, 't', '', 'detected', now(), now())",
-            (event, owner),
+            "INSERT INTO users (id, username, is_active, created_at) VALUES (%s, %s, true, now())",
+            (user, name),
         )
+    cur.execute(
+        "INSERT INTO events (id, owner_id, title, proof, status, created_at, updated_at) "
+        "VALUES (%s, %s, 't', '', 'detected', now(), now())",
+        (event, owner),
+    )
+    return owner, reviewer, other, event
+
+
+def test_upgrade_allows_a_revocation_without_reason_and_downgrade_fills_one(pre_migration_db):
+    with psycopg2.connect(pre_migration_db) as conn, conn.cursor() as cur:
+        owner, reviewer, other, event = seed_event(cur)
         kept = _insert_approval(cur, event, reviewer, revoked=True, reason="Wrong bridge")
         cur.execute("SAVEPOINT s")
         with pytest.raises(psycopg2.errors.CheckViolation):

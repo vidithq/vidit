@@ -1487,7 +1487,7 @@ An approval is a dated attestation that one version of a published event holds. 
 
 - **Who approves.** Any signed-in analyst except the event's current and former geolocators: its owner, every analyst credited through [shared credit](#shared-credit), and every analyst who left the credit or was removed from it. The analyst who opened a fulfilled request is not a geolocator, so they may approve it. A closed event takes no new approval and keeps the ones it has.
 - **Organization approvals.** An org manager of an [organization](#organizations) approves in its name by sending the organization's slug. The approval records the org manager as its `reviewer`. An org manager who is or was a geolocator of the event cannot approve it for any organization. A member who is not an org manager cannot approve in the organization's name.
-- **One review per analyst and version.** An analyst reviews a version once. A revoked approval still counts, so its reviewer cannot approve that version again. An organization holds one standing approval per version: after a revocation, an org manager can approve that version again. An analyst's own approval and the one they place for an organization are separate.
+- **One standing approval per analyst and version.** An analyst holds at most one standing approval of a version. After revoking their own approval, the reviewer can approve the version again, and the revoked row stays as history beside the new one. A revocation by a site admin, or the one written when the reviewer joined the geolocators, closes the version to them (409 `reapproval_refused`). An organization holds one standing approval per version: after an org manager revokes it, an org manager can approve that version again; after a site admin revokes it, the organization cannot. An analyst's own approval and the one they place for an organization are separate.
 - **Re-approval.** Each new version writes a `re_approve_requested` [notification](#notifications) for every analyst whose approval of the superseded version stood, and for every live org manager of an organization whose approval of it stood, with the organization on the row. A revoked approval asks nothing.
 - **Revocation.** The reviewer revokes their own approval. An org manager of the organization revokes any approval placed in its name; a reviewer who is no longer an org manager of it cannot. A site admin revokes any approval, which writes an `approval_revoked` audit row. The reason is optional and public. A revoked approval keeps its row, its version and its reason, and `revoked_as` names the role that revoked it, never the person. The owner receives an `approval_revoked` [notification](#notifications), and the `approval_received` notifications of that approval leave every feed.
 - **Joining the geolocators.** Accepting a [co-geolocator invitation](#post-eventsidgeolocator-invitesaccept) revokes every standing approval the invitee gave the event, on every version and for every organization, with the reason "Joined the geolocators of this event".
@@ -1564,7 +1564,7 @@ Approve the live version of a published event, as yourself or for an organizatio
 |------|------|
 | 403 | `geolocator_cannot_approve`: you are or were a geolocator of the event. `not_organization_manager`: you are not an org manager of `organization` |
 | 404 | `organization_not_found`: no organization has that slug. Also an unknown, soft-deleted or withheld event |
-| 409 | `invalid_state`: the event is not `geolocated`. `version_mismatch`: `version_no` is not the live version; reload the event. `already_approved`: you already reviewed this version, or the organization's approval of it stands |
+| 409 | `invalid_state`: the event is not `geolocated`. `version_mismatch`: `version_no` is not the live version; reload the event. `already_approved`: your approval of this version, or the organization's, stands. `reapproval_refused`: a site admin revoked that approval of this version, or it was revoked when you joined the geolocators |
 | 422 | `version_no` missing or below 1, or `note` over 280 characters |
 
 ---
@@ -1646,7 +1646,7 @@ flowchart LR
 A geolocator of a published event asks an analyst or an [organization](#organizations) to approve its live version. The request lands in the notifications of the analyst, or of every live org manager of the organization, and stays open until the target approves the event or declines the request.
 
 - **Who asks.** A geolocator of the event: its owner or an accepted co-geolocator. The event must be `geolocated`.
-- **Who is asked.** An analyst who can approve the event: not one of its current or former geolocators, and not someone who already reviewed the live version. An organization with a live org manager outside the event's current and former geolocators, whose approval of the live version does not stand.
+- **Who is asked.** An analyst who can approve the event: not one of its current or former geolocators, whose approval of the live version does not stand and was not revoked by someone else. An organization with a live org manager outside the event's current and former geolocators, whose approval of the live version does not stand and was not revoked by a site admin.
 - **The audience.** The analyst asked decides who may send them requests, with `approval_request_audience` in [`PATCH /users/me/preferences`](#patch-usersmepreferences). `following`, the default, admits the analysts they follow; following them does not count. `everyone` admits any signed-in analyst. `nobody` admits no one. An organization's org managers set the same value for the organization with [`PATCH /organizations/{slug}`](#patch-organizationsslug), where `following` admits an analyst whom any live org manager follows. A refused request returns 403 `requests_not_accepted` with one message for every audience, so the refusal never tells you which rule the target chose.
 - **Limits.** One open request per requester, target and event. After the target declines, the same requester cannot ask the same target about the same event for 7 days (409 `recently_declined`). A requester sends at most `APPROVAL_REQUEST_DAILY_CAP` requests (default 20) in a trailing 24 hours, resolved ones included, so declining and asking again does not lift the cap.
 - **Resolution.** An approval of the event, on any version, resolves every open request its target received for the event: an analyst's own approval resolves the requests to that analyst, and an organization's approval the requests to the organization. Each requester receives an `approval_received` notification. The analyst asked, or any org manager of the organization asked, declines the request, and the requester receives a `approval_request_declined` notification naming the org manager and the organization. Accepting a [co-geolocator invitation](#post-eventsidgeolocator-invitesaccept) deletes the open requests addressed to the new geolocator.
@@ -1690,7 +1690,7 @@ The open approval requests on the event, oldest first. A geolocator of the event
 
 ### `GET /events/{id}/approval-request-targets` 🔒
 
-The analysts and organizations to suggest for approval of the event, at most 20 of each. Analysts: live, outside the event's current and former geolocators, who have not reviewed the live version, hold no open request from you on it and declined none in the last 7 days, and who follow you and take requests, or whose username is `q` exactly. Organizations: with a live org manager outside the current and former geolocators, without a standing approval of the live version, an open request from you on it or one it declined in the last 7 days, and followed by one of its org managers while it takes requests, or whose slug is `q` exactly; by name. The list never reveals an `everyone` audience: an exact match is listed whatever its audience, and asking it may still return `requests_not_accepted`. When `q` is the exact username of a live analyst, or else the exact slug of an organization, that the list leaves out, `refusal` holds the reason the request would get (a geolocator, already approved, already asked, or declined in the last 7 days); otherwise it is `null`. The audience is never a `refusal`.
+The analysts and organizations to suggest for approval of the event, at most 20 of each. Analysts: live, outside the event's current and former geolocators, whose approval of the live version neither stands nor was revoked by someone else, hold no open request from you on it and declined none in the last 7 days, and who follow you and take requests, or whose username is `q` exactly. Organizations: with a live org manager outside the current and former geolocators, without a standing approval of the live version, an open request from you on it or one it declined in the last 7 days, and followed by one of its org managers while it takes requests, or whose slug is `q` exactly; by name. The list never reveals an `everyone` audience: an exact match is listed whatever its audience, and asking it may still return `requests_not_accepted`. When `q` is the exact username of a live analyst, or else the exact slug of an organization, that the list leaves out, `refusal` holds the reason the request would get (a geolocator, already approved, already asked, or declined in the last 7 days); otherwise it is `null`. The audience is never a `refusal`.
 
 **Query params:** `q`, up to 50 characters: a case-insensitive substring of the username, prefix matches first, or of the organization's name or slug.
 
@@ -1718,7 +1718,7 @@ Ask an analyst or an organization to approve the live version of the event.
 |------|------|
 | 403 | `not_a_geolocator`: you are not a geolocator of the event. `target_is_geolocator`: the analyst is a geolocator of the event, or every live org manager of the organization is. `requests_not_accepted`: the target's audience does not admit you |
 | 404 | `user_not_found`: no live analyst with that username. `organization_not_found`: no organization has that slug. Also an unknown, soft-deleted or withheld event |
-| 409 | `invalid_state`: the event is not `geolocated`. `already_approved`: the analyst reviewed the live version, or the organization's approval of it stands. `already_requested`: you have an open request to this target on this event. `recently_declined`: this target declined your request on this event less than 7 days ago |
+| 409 | `invalid_state`: the event is not `geolocated`. `already_approved`: the analyst's or the organization's approval of the live version stands, or a revocation by someone else closed the version to them. `already_requested`: you have an open request to this target on this event. `recently_declined`: this target declined your request on this event less than 7 days ago |
 | 429 | `daily_cap_reached`: you sent the daily cap of requests |
 
 ---
@@ -2587,7 +2587,7 @@ flowchart LR
   read["`**POST /notifications/read**
   ids: the rows the feed showed`"]:::shared
   delete["`**DELETE /notifications/{id}**
-  one of your rows and its deliveries`"]:::shared
+  one of your rows and its unsent deliveries`"]:::shared
   readat[("`**notifications.read_at**
   per row; NULL is unread`")]:::store
   queue[("`**notification_deliveries**
@@ -2703,7 +2703,7 @@ Mark the listed notifications read by setting their `read_at`. Only your own row
 
 ### `DELETE /notifications/{id}` 🔒
 
-Delete one of your notifications. Its `notification_deliveries` rows go with it, so a queued email or push for it is never sent. The row leaves the feed and the unread count.
+Delete one of your notifications. Its `queued` and `skipped` delivery rows go with it, so a queued email or push for it is never sent. A delivery that may have reached the provider (`sending`, `sent` or `failed`) stays with a NULL `notification_id`, so the daily email cap keeps counting it. The row leaves the feed and the unread count.
 
 **Response 204:** no body.
 

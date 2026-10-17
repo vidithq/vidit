@@ -846,7 +846,7 @@ An analyst's attestation, or an organization's through one of its org managers, 
 | `revoke_reason` | `TEXT` | nullable. The optional public reason. `ck_event_approvals_revoke_reason` keeps it NULL while `revoked_at` is NULL; a revoked approval may carry none. |
 | `revoked_as` | `VARCHAR(20)` | nullable, CHECK in `('reviewer', 'organization_manager', 'site_admin')` (constraint `ck_event_approvals_revoked_as_valid`). The role the revoker acted in, stamped at revocation because roles change later. `ck_event_approvals_revoked_as` sets it exactly when `revoked_at` is set. `ApprovalRevoker` in [`models/approval.py`](../backend/app/models/approval.py) lists the same values. |
 
-`uq_event_approvals_analyst`: unique partial index on `(event_id, version_no, reviewer_id) WHERE organization_id IS NULL`. One review per analyst and version. Only the live version takes a new approval, so this also allows one current approval per analyst and event. A revoked row keeps its place, so its reviewer cannot approve that version again. The leading `(event_id, version_no)` serves the per-version read.
+`uq_event_approvals_analyst`: unique partial index on `(event_id, version_no, reviewer_id) WHERE organization_id IS NULL AND revoked_at IS NULL`. One standing approval per analyst and version. Only the live version takes a new approval, so this also allows one current approval per analyst and event. A revoked row stays as history; whether its reviewer may approve the version again is the service's rule (`services/approvals.closes_review`). The leading `(event_id, version_no)` serves the per-version read.
 
 `uq_event_approvals_organization`: unique partial index on `(event_id, version_no, organization_id) WHERE organization_id IS NOT NULL AND revoked_at IS NULL`. One standing approval per organization and version; after a revocation another org manager can approve the version again. An analyst's own approval and the approval they place for an organization are separate rows.
 
@@ -1024,7 +1024,7 @@ The delivery queue for notifications: one row per notification and channel, drai
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
-| `notification_id` | `UUID` | FK → `notifications.id` ON DELETE CASCADE, NOT NULL |
+| `notification_id` | `UUID` | FK → `notifications.id` ON DELETE SET NULL, nullable. Deleting a notification deletes its `queued` and `skipped` rows first; the rows that may have reached the provider stay with NULL here, so the daily email cap keeps counting them. |
 | `channel` | `VARCHAR(20)` | NOT NULL, CHECK in `('email', 'push')` (constraint `ck_notification_deliveries_channel_valid`). UNIQUE with `notification_id` (constraint `uq_notification_deliveries_channel`). |
 | `status` | `VARCHAR(10)` | NOT NULL, default `queued`, CHECK in `('queued', 'sending', 'sent', 'failed', 'skipped')` (constraint `ck_notification_deliveries_status_valid`). See the lifecycle below. |
 | `attempts` | `INTEGER` | NOT NULL, default `0`. Provider refusals so far. The third sets `failed`. |

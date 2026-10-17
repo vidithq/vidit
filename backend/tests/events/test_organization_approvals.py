@@ -424,6 +424,9 @@ def test_a_site_admin_revokes_an_organization_approval(db, author, admin_user, m
 
     response = _revoke(geo, approval["id"], admin_user)
     assert response.json()["revoked_as"] == "site_admin"
+    refused = _approve(geo, acting, org)
+    assert refused.status_code == 409
+    assert _code(refused) == "reapproval_refused"
     db.expire_all()
     audit = (
         db.query(AdminEvent)

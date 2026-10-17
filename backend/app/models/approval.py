@@ -26,6 +26,10 @@ ApprovalVerdict = Literal["approve"]
 # pins it at the DB (keep the two in step).
 ApprovalRevoker = Literal["reviewer", "organization_manager", "site_admin"]
 
+# The reason stamped on the approvals of an analyst who joins an event's geolocators
+# (``services/geolocator_credit.revoke_approvals_on_join``).
+JOINED_AS_GEOLOCATOR_REASON = "Joined the geolocators of this event"
+
 
 class EventApproval(Base):
     """A dated attestation that one version of a published event holds.
@@ -97,16 +101,18 @@ class EventApproval(Base):
             "reviewer_id IS NOT NULL OR organization_id IS NOT NULL",
             name="ck_event_approvals_reviewer",
         ),
-        # One review per analyst and version, revoked included: with only the live
-        # version open to a review, this is also one current approval per analyst
-        # and event. The leading pair serves the per-version read.
+        # One standing approval per analyst and version: with only the live version
+        # open to a review, this is also one current approval per analyst and event.
+        # A self-revoked one stays as history beside a new one
+        # (``services/approvals.closes_review``). The leading pair serves the
+        # per-version read.
         Index(
             "uq_event_approvals_analyst",
             "event_id",
             "version_no",
             "reviewer_id",
             unique=True,
-            postgresql_where=text("organization_id IS NULL"),
+            postgresql_where=text("organization_id IS NULL AND revoked_at IS NULL"),
         ),
         # One standing approval per organization and version: a revoked one can be
         # placed again by another org manager.

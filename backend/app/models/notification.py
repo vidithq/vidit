@@ -196,8 +196,10 @@ class NotificationDelivery(DeliveryState, Base):
 
     __tablename__ = "notification_deliveries"
 
-    notification_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("notifications.id", ondelete="CASCADE"), nullable=False
+    # SET NULL: a deleted notification leaves its sent rows behind for the daily
+    # email cap (``services/notifications.delete`` removes the unsent ones).
+    notification_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("notifications.id", ondelete="SET NULL"), nullable=True
     )
     channel: Mapped[NotificationChannel] = mapped_column(String(20), nullable=False)
 

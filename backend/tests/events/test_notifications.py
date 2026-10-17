@@ -11,6 +11,7 @@ import pytest
 from app.models.event import Event
 from app.models.notification import Notification, NotificationDelivery
 from app.models.user import User
+from app.services import notification_delivery
 from app.services.auth import hash_password
 from tests.conftest import login_as
 from tests.events._helpers import client
@@ -204,18 +205,23 @@ def _delete(user: User, notification_id: uuid.UUID):
     return client.delete(f"{_FEED}/{notification_id}", headers=headers)
 
 
-def test_delete_removes_the_row_and_its_deliveries(db, author, second_user):
+def test_delete_drops_unsent_deliveries_and_keeps_sent_ones(db, author, second_user):
     row = _notify(db, recipient=author, actor=second_user)
     kept = _notify(db, recipient=author, actor=second_user)
-    db.add(NotificationDelivery(notification_id=row.id, channel="email"))
-    db.add(NotificationDelivery(notification_id=row.id, channel="push", status="sent"))
+    queued = NotificationDelivery(notification_id=row.id, channel="push")
+    sent = NotificationDelivery(
+        notification_id=row.id, channel="email", status="sent", sent_at=datetime.now(UTC)
+    )
+    db.add_all([queued, sent])
     db.commit()
-    row_id = row.id
+    row_id, queued_id, sent_id = row.id, queued.id, sent.id
 
     assert _delete(author, row_id).status_code == 204
     assert [r.id for r in _rows(db, author)] == [kept.id]
-    assert db.query(NotificationDelivery).filter_by(notification_id=row_id).count() == 0
+    assert db.get(NotificationDelivery, queued_id) is None
+    assert db.get(NotificationDelivery, sent_id).notification_id is None
     assert _unread(author) == 1
+    assert notification_delivery._emails_sent_count(db, now=datetime.now(UTC)) == 1
 
 
 def test_delete_answers_404_for_another_analysts_row(db, author, second_user):

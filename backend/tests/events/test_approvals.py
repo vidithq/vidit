@@ -10,13 +10,12 @@ from datetime import UTC, datetime
 import pytest
 
 from app.models.admin_event import AdminEvent
-from app.models.approval import EventApproval
+from app.models.approval import JOINED_AS_GEOLOCATOR_REASON, EventApproval
 from app.models.event import STATUS_CLOSED, Event, EventGeolocator
 from app.models.notification import Notification
 from app.models.user import User
 from app.services import approvals, notification_delivery
 from app.services.auth import hash_password
-from app.services.geolocator_credit import JOINED_AS_GEOLOCATOR_REASON
 from tests.conftest import login_as
 from tests.events._helpers import _make_geo, client, delete_user
 from tests.events.test_versions import _form, _save_version
@@ -200,15 +199,41 @@ def test_the_list_is_capped(db, author, make_user, monkeypatch):
     assert [a["id"] for a in _listed(geo)] == placed[1:]
 
 
-def test_one_review_per_analyst_and_version(db, author, second_user):
+def test_one_standing_approval_per_analyst_and_version(db, author, second_user):
     geo = _published(db, author)
-    first = _approve(geo, second_user).json()
+    _approve(geo, second_user).json()
     again = _approve(geo, second_user)
     assert again.status_code == 409
     assert again.json()["detail"]["code"] == "already_approved"
 
-    assert _revoke(geo, first["id"], second_user).status_code == 200
+
+def test_a_reviewer_who_revoked_their_own_approval_approves_again(db, author, second_user):
+    geo = _published(db, author)
+    first = _approve(geo, second_user).json()
+    assert _revoke(geo, first["id"], second_user, reason=None).status_code == 200
+    assert _may_approve(geo, second_user) is True
+
+    again = _approve(geo, second_user)
+    assert again.status_code == 201, again.text
+    assert again.json()["id"] != first["id"]
+    listed = _listed(geo)
+    assert [(a["id"], a["revoked_at"] is None) for a in listed] == [
+        (first["id"], False),
+        (again.json()["id"], True),
+    ]
     assert _approve(geo, second_user).json()["detail"]["code"] == "already_approved"
+
+
+def test_a_revocation_by_a_site_admin_closes_the_version_to_the_reviewer(
+    db, author, second_user, admin_user
+):
+    geo = _published(db, author)
+    approval = _approve(geo, second_user).json()
+    assert _revoke(geo, approval["id"], admin_user).status_code == 200
+
+    refused = _approve(geo, second_user)
+    assert refused.status_code == 409
+    assert refused.json()["detail"]["code"] == "reapproval_refused"
 
 
 def test_a_soft_deleted_reviewer_is_left_out(db, author, second_user):

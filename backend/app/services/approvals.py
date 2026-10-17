@@ -9,7 +9,9 @@ an approval never lands on a version its reviewer did not see.
 
 The event's geolocators (its owner and every credited co-geolocator) cannot approve it, neither
 as themselves nor for an organization, and neither can a former co-geolocator, removed or gone. Accepting a co-geolocator invitation revokes the
-invitee's approvals (``geolocator_credit.revoke_approvals_on_join``). An approval resolves every
+invitee's approvals (``geolocator_credit.revoke_approvals_on_join``). A reviewer who revoked their
+own approval may approve that version again in a new row; a revocation by anyone else closes the
+version to them (:func:`closes_review`). An approval resolves every
 open approval request its target (the analyst, or the organization) received for the event, and
 the requesters hear of it as the owner does.
 """
@@ -22,7 +24,7 @@ from datetime import UTC, datetime
 from sqlalchemy import ColumnElement, Select, and_, or_, select, update
 from sqlalchemy.orm import Session, joinedload
 
-from app.models.approval import ApprovalRevoker, EventApproval
+from app.models.approval import JOINED_AS_GEOLOCATOR_REASON, ApprovalRevoker, EventApproval
 from app.models.approval_request import ApprovalRequest
 from app.models.event import (
     STATUS_GEOLOCATED,
@@ -65,6 +67,10 @@ class AlreadyApprovedError(ApprovalError):
     code = "already_approved"
 
 
+class ReapprovalRefusedError(ApprovalError):
+    code = "reapproval_refused"
+
+
 class ApprovalNotFoundError(ApprovalError):
     code = "approval_not_found"
 
@@ -90,6 +96,7 @@ APPROVAL_ERROR_STATUS: dict[str, int] = {
     "version_mismatch": 409,
     "geolocator_cannot_approve": 403,
     "already_approved": 409,
+    "reapproval_refused": 409,
     "approval_not_found": 404,
     "already_revoked": 409,
     "revoke_forbidden": 403,
@@ -131,6 +138,42 @@ def may_approve(db: Session, *, geo: Event, user: User | None) -> bool:
         user is not None
         and geo.status == STATUS_GEOLOCATED
         and not ever_credited(db, geo=geo, user_id=user.id)
+    )
+
+
+def closes_review(*, organization: bool) -> ColumnElement[bool]:
+    """The reviews (``EventApproval``) that close their version to another review by the same
+    analyst, or for the same organization: one that stands, or one revoked by anyone but its own
+    side. An analyst's self-revoke reopens the version, unless it was the revocation stamped when
+    they joined the geolocators. An organization's approval revoked by one of its org managers
+    reopens it; one revoked by a site admin does not. Mirrored by the frontend's
+    lib/approvals.closesReview; change both."""
+    if organization:
+        return or_(EventApproval.revoked_at.is_(None), EventApproval.revoked_as == "site_admin")
+    return or_(
+        EventApproval.revoked_at.is_(None),
+        EventApproval.revoked_as != "reviewer",
+        EventApproval.revoke_reason == JOINED_AS_GEOLOCATOR_REASON,
+    )
+
+
+def closed_reviewer_ids(geo: Event) -> Select[tuple[uuid.UUID | None]]:
+    """The analysts the live version of ``geo`` is closed to as reviewers (:func:`closes_review`)."""
+    return select(EventApproval.reviewer_id).where(
+        EventApproval.event_id == geo.id,
+        EventApproval.version_no == geo.version_no,
+        EventApproval.organization_id.is_(None),
+        closes_review(organization=False),
+    )
+
+
+def closed_organization_ids(geo: Event) -> Select[tuple[uuid.UUID | None]]:
+    """The organizations the live version of ``geo`` is closed to (:func:`closes_review`)."""
+    return select(EventApproval.organization_id).where(
+        EventApproval.event_id == geo.id,
+        EventApproval.version_no == geo.version_no,
+        EventApproval.organization_id.is_not(None),
+        closes_review(organization=True),
     )
 
 
@@ -233,8 +276,9 @@ def approve(
     takes no new one); 403 ``not_organization_manager`` when ``reviewer`` is not an org manager of
     ``organization``; 403 ``geolocator_cannot_approve`` for a current or former geolocator of the event; 409
     ``version_mismatch`` when ``version_no`` is not the live version; 409 ``already_approved``
-    when ``reviewer`` already reviewed that version, revoked or not, or when the approval
-    ``organization`` gave it stands.
+    when the approval ``reviewer``, or ``organization``, gave that version stands; 409
+    ``reapproval_refused`` when a revocation closed the version to them (:func:`closes_review`).
+    A self-revoked approval stays as history beside the new row.
     """
     geo = _lock(db, geo.id)
     # Mirrored by the frontend's lib/approvals.canApprove; change both.
@@ -252,23 +296,29 @@ def approve(
         raise VersionMismatchError(
             f"This event is at version {geo.version_no}; reload it before approving"
         )
-    same_version = db.query(EventApproval.id).filter(
+    same_version = db.query(EventApproval).filter(
         EventApproval.event_id == geo.id, EventApproval.version_no == version_no
     )
     if organization is None:
-        # Mirrored by the frontend's lib/approvals.ownApprovalOnLive; change both.
-        taken = same_version.filter(
+        # Mirrored by the frontend's lib/approvals.canApprove; change both.
+        mine = same_version.filter(
             EventApproval.reviewer_id == reviewer.id, EventApproval.organization_id.is_(None)
-        ).first()
-        if taken is not None:
-            raise AlreadyApprovedError("You already reviewed this version")
+        )
+        if mine.filter(EventApproval.revoked_at.is_(None)).first() is not None:
+            raise AlreadyApprovedError("You already approved this version")
+        if mine.filter(closes_review(organization=False)).first() is not None:
+            raise ReapprovalRefusedError(
+                "Your approval of this version was revoked; you cannot approve it again"
+            )
         target = ApprovalRequest.target_user_id == reviewer.id
     else:
-        taken = same_version.filter(
-            EventApproval.organization_id == organization.id, EventApproval.revoked_at.is_(None)
-        ).first()
-        if taken is not None:
+        theirs = same_version.filter(EventApproval.organization_id == organization.id)
+        if theirs.filter(EventApproval.revoked_at.is_(None)).first() is not None:
             raise AlreadyApprovedError(f"{organization.name} already approved this version")
+        if theirs.filter(closes_review(organization=True)).first() is not None:
+            raise ReapprovalRefusedError(
+                f"A site admin revoked {organization.name}'s approval of this version"
+            )
         target = ApprovalRequest.target_organization_id == organization.id
     row = EventApproval(
         event_id=geo.id,

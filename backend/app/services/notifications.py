@@ -773,14 +773,25 @@ def unread_count(db: Session, *, user: User) -> int:
 
 
 def delete(db: Session, *, user: User, notification_id: uuid.UUID) -> bool:
-    """Delete one row ``user`` owns; False when no such row is theirs. Its
-    ``notification_deliveries`` rows go with it (``ON DELETE CASCADE``)."""
-    deleted = (
-        db.query(Notification)
+    """Delete one row ``user`` owns; False when no such row is theirs. Its deliveries that never
+    left go with it; a row that may have reached the provider stays, its ``notification_id``
+    set NULL, so the daily email cap keeps counting it."""
+    owned = (
+        db.query(Notification.id)
         .filter(Notification.id == notification_id, Notification.user_id == user.id)
-        .delete(synchronize_session=False)
+        .with_for_update()
+        .first()
     )
-    return deleted > 0
+    if owned is None:
+        return False
+    db.query(NotificationDelivery).filter(
+        NotificationDelivery.notification_id == notification_id,
+        NotificationDelivery.status.in_(("queued", "skipped")),
+    ).delete(synchronize_session=False)
+    db.query(Notification).filter(Notification.id == notification_id).delete(
+        synchronize_session=False
+    )
+    return True
 
 
 def mark_read(db: Session, *, user: User, ids: list[uuid.UUID]) -> None:
