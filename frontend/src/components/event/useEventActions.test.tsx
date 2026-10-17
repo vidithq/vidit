@@ -281,19 +281,21 @@ describe("panels the header opens", () => {
 });
 
 describe("the version selector", () => {
-  it("names the version on screen and lists every version newest first, then the full history", () => {
+  it("names the version on screen and lists every version newest first, then the history", () => {
     renderAs(null, { status: "geolocated", surface: "event", versionNo: 3 });
     const trigger = within(header()).getByRole("button", { name: "v3: choose a version" });
     expect(trigger).toHaveTextContent("v3");
     fireEvent.click(trigger);
 
     const items = within(screen.getByRole("menu", { name: "Versions" })).getAllByRole("menuitem");
-    expect(items.map((item) => [item.textContent, item.getAttribute("href")])).toEqual([
-      ["Version 3 Current", "/events/e1"],
-      ["Version 2", "/events/e1/v2"],
-      ["Version 1", "/events/e1/v1"],
-      ["Full history", "/events/e1/history"],
+    const name = (item: HTMLElement) => item.getAttribute("aria-label") ?? item.textContent;
+    expect(items.map((item) => [name(item), item.getAttribute("href")])).toEqual([
+      ["v3", "/events/e1"],
+      ["v2", "/events/e1/v2"],
+      ["v1", "/events/e1/v1"],
+      ["History", "/events/e1/history"],
     ]);
+    expect(items[3]).toHaveTextContent("");
     expect(items[0]).toHaveAttribute("aria-current", "page");
     expect(items[0]).toHaveFocus();
   });

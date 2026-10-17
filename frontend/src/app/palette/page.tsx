@@ -516,18 +516,29 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<ActionMenu>" usage="A trigger that opens a short list of links (role=menu): the event header's version selector (v2 with a chevron: every version newest first, then Full history). The trigger is the ghost button, label as its aria-label and tooltip: icon-only by default, or `text` printed before the icon, in which case label starts with that text. menuLabel names the list when it differs from the trigger. Each item is a link with an optional icon, a muted `meta` word after the label (Current), and `current` for the link to the page on screen (the active-row paint plus aria-current, focused when the menu opens). A click or Enter opens on the current item (or the first), ArrowUp on the trigger opens on the last; arrows, Home and End move, Space or Enter follows a link, Escape closes and returns focus to the trigger, Tab or an outside click closes. The list opens under the trigger aligned to its right edge, shifts sideways to stay 8px inside the viewport, and scrolls past 20rem.">
-            <Variant label="printed text (the version selector)">
+          <Item name="<ActionMenu>" usage="A trigger that opens a short list of links (role=menu): the event header's version selector (v2 with a chevron: every version newest first as v3, v2, v1, then History as its icon). The trigger is the ghost button, label as its aria-label and tooltip: icon-only by default, or `text` printed before the icon, in which case label starts with that text. menuLabel names the list when it differs from the trigger. Each item is a link with an optional icon and `current` for the link to the page on screen (the active-row paint plus aria-current, focused when the menu opens); `iconOnly` prints the icon alone, with the label as its accessible name and a Tooltip, for a list too narrow to print it. A click or Enter opens on the current item (or the first), ArrowUp on the trigger opens on the last; arrows, Home and End move, Space or Enter follows a link, Escape closes and returns focus to the trigger, Tab or an outside click closes. The list opens under the trigger aligned to its right edge, 14rem wide, shifts sideways to stay 8px inside the viewport, and scrolls past 20rem. `matchTriggerWidth` (off by default) makes it exactly as wide as the trigger, for a compact picker.">
+            <Variant label="default width">
+              <ActionMenu
+                label="Open the list"
+                icon={<ChevronDown size={14} />}
+                items={[
+                  { key: "one", label: "First link", href: "/palette", current: true },
+                  { key: "two", label: "Second link", href: "/palette" },
+                ]}
+              />
+            </Variant>
+            <Variant label="matchTriggerWidth (the version selector)">
               <ActionMenu
                 label="v2: choose a version"
                 text="v2"
                 icon={<ChevronDown size={14} />}
                 menuLabel="Versions"
+                matchTriggerWidth
                 items={[
-                  { key: "v3", label: "Version 3", meta: "Current", href: "/palette" },
-                  { key: "v2", label: "Version 2", href: "/palette", current: true },
-                  { key: "v1", label: "Version 1", href: "/palette" },
-                  { key: "history", label: "Full history", icon: <History size={14} />, href: "/palette" },
+                  { key: "v3", label: "v3", href: "/palette" },
+                  { key: "v2", label: "v2", href: "/palette", current: true },
+                  { key: "v1", label: "v1", href: "/palette" },
+                  { key: "history", label: "History", icon: <History size={14} />, href: "/palette", iconOnly: true },
                 ]}
               />
             </Variant>

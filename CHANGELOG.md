@@ -6,6 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- The version selector opens a compact list as wide as its button: v2, v1, then History as an icon ([#595](https://github.com/vidithq/vidit/pull/595)).
 - The request page holds Geolocate in an Actions card in the right rail, after the request on a phone; Edit, Share and Report stay in the header ([#595](https://github.com/vidithq/vidit/pull/595)).
 - The submit page holds its requirement lists and publish actions in a right rail, as the edit page does, and on a phone they follow the fields ([#595](https://github.com/vidithq/vidit/pull/595)).
 - The map, search and feed filter by approval: approved only, or approved by an analyst or an organization, on the live version ([#595](https://github.com/vidithq/vidit/pull/595)).
