@@ -516,22 +516,20 @@ def suggest_authors(db: Session, *, query: str, limit: int = 8) -> list[str]:
     Case-insensitive substring, prefix matches first then alphabetical. Scoped
     to live users credited on at least one live event: all the filter can
     match, and it keeps this anonymous endpoint from enumerating accounts. ``query``
-    is gated by ``AUTHOR_FILTER_PATTERN`` at the router; ``_`` is escaped
-    because it is allowed there but is a LIKE wildcard.
+    is gated by ``AUTHOR_FILTER_PATTERN`` at the router.
     """
     q = query.strip()
     if not q:
         return []
-    like = q.replace("_", r"\_")
     has_live_event = db.query(Event.id).filter(credited_to([User.id]), *visible_events()).exists()
     rows = (
         db.query(User.username)
         .filter(
             User.deleted_at.is_(None),
-            User.username.ilike(f"%{like}%", escape="\\"),
+            User.username.icontains(q, autoescape=True),
             has_live_event,
         )
-        .order_by(User.username.ilike(f"{like}%", escape="\\").desc(), User.username)
+        .order_by(User.username.istartswith(q, autoescape=True).desc(), User.username)
         .limit(limit)
         .all()
     )

@@ -86,17 +86,12 @@ def _send_password_changed_notification_best_effort(*, user_id: uuid.UUID, to: s
     """Send the change-password heads-up email but never raise.
 
     The credential is already written, so a Resend outage must not fail the
-    rotation. Logs ``user_id`` not the address, to avoid widening where the
-    user to address mapping leaks.
+    rotation.
     """
-    try:
-        email.send(email.password_changed_email(to=to))
-    except email.EmailSendError as exc:
-        logger.warning(
-            "password changed notification send failed for user_id=%s: %s",
-            user_id,
-            exc,
-        )
+    email.send_best_effort(
+        email.password_changed_email(to=to),
+        what=f"password changed notification for user_id={user_id}",
+    )
 
 
 def _send_registration_confirmation_best_effort(*, to: str, raw_token: str) -> None:
@@ -104,11 +99,10 @@ def _send_registration_confirmation_best_effort(*, to: str, raw_token: str) -> N
 
     The pending row already exists; the user can request a resend.
     """
-    try:
-        link = _build_link("/confirm-registration", raw_token)
-        email.send(email.registration_confirmation_email(to=to, link=link))
-    except email.EmailSendError as exc:
-        logger.warning("registration confirmation email send failed for %s: %s", to, exc)
+    link = _build_link("/confirm-registration", raw_token)
+    email.send_best_effort(
+        email.registration_confirmation_email(to=to, link=link), what="registration confirmation"
+    )
 
 
 # ── Registration: pre-creation flow ──────────────────────────────────────
@@ -374,11 +368,11 @@ def _process_forgot_password(user_id, email_address: str) -> None:
         )
         db.commit()
 
-        try:
-            link = _build_link("/reset-password", raw_token)
-            email.send(email.password_reset_email(to=email_address, link=link))
-        except email.EmailSendError as exc:
-            logger.warning("password reset email send failed for user_id=%s: %s", user.id, exc)
+        link = _build_link("/reset-password", raw_token)
+        email.send_best_effort(
+            email.password_reset_email(to=email_address, link=link),
+            what=f"password reset for user_id={user.id}",
+        )
     finally:
         db.close()
 

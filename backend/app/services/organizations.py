@@ -34,11 +34,10 @@ from app.schemas.organization import (
     OrganizationRef,
     OrganizationUpdate,
 )
-from app.schemas.user import AuthorRef
 from app.services import admin as admin_service
 from app.services import notifications, social
 from app.services.storage import avatar_key_of, sweep_keys
-from app.services.users import apply_profile_update
+from app.services.users import apply_profile_update, get_live_by_username, x_handle_holder
 
 
 class OrganizationError(Exception):
@@ -124,7 +123,7 @@ def get_by_slug(db: Session, slug: str, *, lock: bool = False) -> Organization:
 
 
 def _live_user(db: Session, username: str) -> User:
-    user = db.query(User).filter(User.username == username, User.deleted_at.is_(None)).first()
+    user = get_live_by_username(db, username)
     if user is None:
         raise UserNotFoundError("User not found")
     return user
@@ -178,6 +177,14 @@ def _can_manage(db: Session, org: Organization, user: User) -> bool:
 def require_manager(db: Session, org: Organization, user: User) -> None:
     if not _can_manage(db, org, user):
         raise NotOrganizationManagerError("Only an org manager can do this")
+
+
+def get_managed(db: Session, slug: str, user: User, *, lock: bool = False) -> Organization:
+    """The organization ``slug`` names, for an org manager of it or a site admin
+    (:func:`require_manager`)."""
+    org = get_by_slug(db, slug, lock=lock)
+    require_manager(db, org, user)
+    return org
 
 
 def require_member(db: Session, org: Organization, user: User) -> None:
@@ -271,17 +278,10 @@ def create_organization(db: Session, *, actor: User, body: OrganizationCreate) -
     first_manager = _live_user(db, body.manager_username)
     if db.query(Organization.id).filter(Organization.slug == body.slug).first() is not None:
         raise SlugTakenError("An organization already uses this slug")
-    if (
-        body.x_handle is not None
-        and db.query(Organization.id).filter(Organization.x_handle == body.x_handle).first()
-        is not None
-    ):
+    holder = x_handle_holder(db, body.x_handle) if body.x_handle is not None else None
+    if holder == "organization":
         raise XHandleConflictError("X handle already linked to another organization")
-    # Analysts and organizations share one X handle namespace.
-    if (
-        body.x_handle is not None
-        and db.query(User.id).filter(User.x_handle == body.x_handle).first() is not None
-    ):
+    if holder == "analyst":
         raise XHandleConflictError("X handle already linked to an analyst")
 
     org = Organization(
@@ -337,9 +337,7 @@ def appoint_manager(
     )
     db.commit()
     db.refresh(member)
-    return OrganizationMemberRead(
-        user=AuthorRef.model_validate(user), role=member.role, joined_at=member.joined_at
-    )
+    return OrganizationMemberRead.model_validate(member)
 
 
 def delete_organization(db: Session, *, actor: User, slug: str) -> dict[str, object]:
@@ -456,12 +454,7 @@ def list_members(db: Session, org: Organization) -> list[OrganizationMemberRead]
         )
         .all()
     )
-    return [
-        OrganizationMemberRead(
-            user=AuthorRef.model_validate(row.user), role=row.role, joined_at=row.joined_at
-        )
-        for row in rows
-    ]
+    return [OrganizationMemberRead.model_validate(row) for row in rows]
 
 
 def list_memberships(db: Session, user: User) -> list[OrganizationMembershipRead]:
@@ -534,16 +527,7 @@ def list_invites(db: Session, org: Organization) -> list[OrganizationInviteRead]
         .order_by(OrganizationInvite.created_at.desc())
         .all()
     )
-    return [build_invite_read(row) for row in rows]
-
-
-def build_invite_read(row: OrganizationInvite) -> OrganizationInviteRead:
-    return OrganizationInviteRead(
-        id=row.id,
-        user=AuthorRef.model_validate(row.user),
-        invited_by=AuthorRef.model_validate(row.invited_by) if row.invited_by else None,
-        created_at=row.created_at,
-    )
+    return [OrganizationInviteRead.model_validate(row) for row in rows]
 
 
 def cancel_invite(db: Session, org: Organization, *, invite_id: uuid.UUID) -> None:
@@ -590,6 +574,7 @@ def _member_or_404(db: Session, org: Organization, username: str) -> Organizatio
     return member
 
 
+# Mirrored by frontend OrganizationMembers.tsx lastManager; change both.
 def _guard_last_manager(db: Session, org: Organization, member: OrganizationMember) -> None:
     if member.role == "manager" and _live_manager_count(db, org.id) <= 1:
         raise LastManagerError("The last org manager cannot leave or be demoted")
@@ -603,9 +588,7 @@ def change_role(
     if role == "member":
         _guard_last_manager(db, org, member)
     member.role = role
-    return OrganizationMemberRead(
-        user=AuthorRef.model_validate(member.user), role=member.role, joined_at=member.joined_at
-    )
+    return OrganizationMemberRead.model_validate(member)
 
 
 def remove_member(db: Session, org: Organization, *, actor: User, username: str) -> None:

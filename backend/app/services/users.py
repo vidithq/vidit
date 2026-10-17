@@ -1,4 +1,5 @@
-"""Profile writes shared by an analyst's own account and an organization.
+"""Profile writes shared by an analyst's own account and an organization, and the X handle
+namespace they share.
 
 Setting an avatar is ordered: store the image, point the column at it, commit,
 then sweep the old object (see :func:`app.services.storage.sweep_keys`).
@@ -7,11 +8,13 @@ then sweep the old object (see :func:`app.services.storage.sweep_keys`).
 from __future__ import annotations
 
 import uuid
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
+from app.models.organization import Organization
+from app.models.user import User
 from app.schemas.user import UserUpdate
 from app.services.storage import (
     avatar_key_of,
@@ -41,6 +44,28 @@ class ProfileOwner(Protocol):
     bio: str | None
     avatar_url: str | None
     external_links: dict[str, Any]
+
+
+def get_live_by_username(db: Session, username: str) -> User | None:
+    """The account named ``username``, unless it is soft-deleted."""
+    return db.query(User).filter(User.username == username, User.deleted_at.is_(None)).first()
+
+
+def x_handle_holder(
+    db: Session, x_handle: str, *, exclude_user_id: uuid.UUID | None = None
+) -> Literal["analyst", "organization"] | None:
+    """Who already carries ``x_handle``, if anyone. Analysts and organizations share one
+    namespace, so the bot never credits a handle to two owners; no database constraint spans the
+    two tables, so every write checks here. Soft-deleted users count: ``users.x_handle`` is
+    UNIQUE across every row."""
+    analyst = db.query(User.id).filter(User.x_handle == x_handle)
+    if exclude_user_id is not None:
+        analyst = analyst.filter(User.id != exclude_user_id)
+    if analyst.first() is not None:
+        return "analyst"
+    if db.query(Organization.id).filter(Organization.x_handle == x_handle).first() is not None:
+        return "organization"
+    return None
 
 
 def apply_profile_update(owner: ProfileOwner, body: UserUpdate) -> None:

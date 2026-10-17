@@ -13,7 +13,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base
+from app.database import Base, literal_check
 
 # Why a viewer flagged an event or collection. ``illegal_content`` is the legal
 # escalation; ``graphic_not_flagged`` is footage of death, injury or human
@@ -90,15 +90,12 @@ class ContentReport(Base):
     collection = relationship("Collection")
 
     __table_args__ = (
-        # Pin the value domains at the DB. Mirrors ``ContentReportReason`` /
-        # ``ContentReportResolution``; keep them in step.
-        CheckConstraint(
-            "reason IN ('illegal_content', 'graphic_not_flagged', 'copyright', 'privacy', 'other')",
-            name="ck_content_reports_reason_valid",
-        ),
-        CheckConstraint(
-            "resolution IS NULL OR resolution IN ('marked_graphic', 'hidden', 'dismissed')",
-            name="ck_content_reports_resolution_valid",
+        literal_check("reason", ContentReportReason, "ck_content_reports_reason_valid"),
+        literal_check(
+            "resolution",
+            ContentReportResolution,
+            "ck_content_reports_resolution_valid",
+            nullable=True,
         ),
         # Verdict and timestamp travel together, so "open" is a single-column test.
         CheckConstraint(

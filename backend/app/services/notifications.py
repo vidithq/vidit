@@ -26,8 +26,6 @@ from app.models.approval import EventApproval
 from app.models.approval_request import ApprovalRequest, ApprovalRequestStatus
 from app.models.event import (
     Event,
-    EventGeolocator,
-    EventGeolocatorDeparture,
 )
 from app.models.notification import (
     Notification,
@@ -45,7 +43,7 @@ from app.schemas.notification import (
 from app.schemas.organization import OrganizationRef
 from app.schemas.user import AuthorRef
 from app.services import push
-from app.services.event_filters import visible_events
+from app.services.event_filters import ever_credited_ids, visible_events
 from app.services.pagination import keyset_before
 from app.services.preferences import channel_enabled
 
@@ -319,20 +317,6 @@ def notify_approval_revoked(db: Session, *, event: Event, approval: EventApprova
     )
 
 
-def _ever_credited_ids(db: Session, event: Event) -> set[uuid.UUID]:
-    """The analysts who hold or held credit on ``event``: none of them approves it, so none is
-    asked to on an organization's behalf."""
-    current = db.scalars(
-        select(EventGeolocator.user_id).where(EventGeolocator.event_id == event.id)
-    )
-    former = db.scalars(
-        select(EventGeolocatorDeparture.user_id).where(
-            EventGeolocatorDeparture.event_id == event.id
-        )
-    )
-    return {event.owner_id, *current, *former}
-
-
 def notify_approval_request_received(
     db: Session,
     *,
@@ -343,7 +327,9 @@ def notify_approval_request_received(
 ) -> None:
     """Tell the target that ``requester_id`` asks them to approve ``event``: one analyst, or the
     members of ``organization_id`` who never held credit on it."""
-    credited = _ever_credited_ids(db, event) if organization_id is not None else set()
+    credited = (
+        set(db.scalars(ever_credited_ids(event.id))) if organization_id is not None else set()
+    )
     for recipient_id in set(recipient_ids) - credited:
         _emit(
             db,
@@ -403,7 +389,7 @@ def notify_re_approve_requested(
                 (member_id, organization_id)
                 for member_id in db.scalars(live_member_ids(organization_id))
             )
-    credited = _ever_credited_ids(db, event)
+    credited = set(db.scalars(ever_credited_ids(event.id)))
     recipients = [(r, org) for r, org in recipients if org is None or r not in credited]
     for recipient_id, organization_id in recipients:
         _emit(
@@ -450,7 +436,7 @@ def list_feed(
     cursor: tuple[datetime, uuid.UUID] | None,
 ) -> list[Notification]:
     """One window of the feed, newest first, over-fetched by one row for
-    ``take_page``."""
+    ``pagination.paged``."""
     query = _visible_rows(db, user).options(
         contains_eager(Notification.event),
         contains_eager(Notification.actor.of_type(_Actor)),

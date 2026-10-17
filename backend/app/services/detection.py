@@ -41,6 +41,7 @@ from app.models.event import (
 )
 from app.models.media import Media, MediaRole
 from app.models.user import User
+from app.services.event_filters import lock_event
 from app.services.events import (
     ImportProvenance,
     build_source_link_rows,
@@ -498,7 +499,7 @@ async def _upsert_one(
     resolved = media_resolution.items
     # Re-read under a lock and re-run the matrix, as ``events.geolocate`` does: the owner may
     # have published, rejected or been taken down since the unlocked read.
-    db.query(Event).filter(Event.id == row.id).populate_existing().with_for_update().one()
+    lock_event(db, row.id)
     if _row_disposition(row) != "upsert":
         db.rollback()  # drop the lock; a scan of unchanged rows must not hoard them
         return False

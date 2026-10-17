@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session, aliased, joinedload
 from app.config import settings
 from app.models.approval import EventApproval
 from app.models.approval_request import ApprovalRequest
-from app.models.event import STATUS_GEOLOCATED, Event, EventGeolocator
+from app.models.event import STATUS_GEOLOCATED, Event
 from app.models.follow import Follow
 from app.models.organization import Organization, OrganizationMember
 from app.models.user import User
@@ -49,11 +49,11 @@ from app.services.approvals import (
     closed_organization_ids,
     closed_reviewer_ids,
     ever_credited,
-    former_geolocator_ids,
     is_geolocator,
 )
-from app.services.event_filters import visible_events
+from app.services.event_filters import ever_credited_ids, lock_event, visible_events
 from app.services.organizations import is_organization_member, live_manager_ids, live_member_ids
+from app.services.users import get_live_by_username
 
 MAX_TARGET_SUGGESTIONS = 20
 # After a decline, the same requester waits this long before asking the same target about the
@@ -211,11 +211,7 @@ def _can_act_for(geo: Event) -> ColumnElement[bool]:
     return (
         live_member_ids(Organization.id)
         .where(
-            OrganizationMember.user_id != geo.owner_id,
-            OrganizationMember.user_id.not_in(
-                select(EventGeolocator.user_id).where(EventGeolocator.event_id == geo.id)
-            ),
-            OrganizationMember.user_id.not_in(former_geolocator_ids(geo.id)),
+            OrganizationMember.user_id.not_in(ever_credited_ids(geo.id)),
         )
         .exists()
     )
@@ -223,10 +219,6 @@ def _can_act_for(geo: Event) -> ColumnElement[bool]:
 
 def _member_of(user_id: uuid.UUID):
     return select(OrganizationMember.organization_id).where(OrganizationMember.user_id == user_id)
-
-
-def _lock(db: Session, event_id: uuid.UUID) -> Event:
-    return db.query(Event).filter(Event.id == event_id).populate_existing().with_for_update().one()
 
 
 def _require_requester(db: Session, *, geo: Event, requester: User) -> None:
@@ -310,19 +302,27 @@ def build_organization_read(row: ApprovalRequest) -> OrganizationApprovalRequest
     )
 
 
-def _declined_recently(geo: Event, requester: User) -> ColumnElement[bool]:
-    """The requests ``requester`` sent about ``geo`` that were declined within
-    :data:`DECLINE_COOLDOWN`."""
-    return and_(
+def _asked(geo: Event, requester: User, to: ColumnElement[bool]) -> ColumnElement[bool]:
+    """``requester`` holds an open request about ``geo`` to the target ``to`` matches. ``to``
+    compares a target column with a value, or with the correlated row in scope."""
+    return exists().where(
+        ApprovalRequest.event_id == geo.id,
+        ApprovalRequest.requester_id == requester.id,
+        ApprovalRequest.status == "open",
+        to,
+    )
+
+
+def _declined_recently(geo: Event, requester: User, to: ColumnElement[bool]) -> ColumnElement[bool]:
+    """The target ``to`` matches declined a request ``requester`` sent about ``geo`` within
+    :data:`DECLINE_COOLDOWN`. ``to`` as in :func:`_asked`."""
+    return exists().where(
         ApprovalRequest.event_id == geo.id,
         ApprovalRequest.requester_id == requester.id,
         ApprovalRequest.status == "declined",
         ApprovalRequest.resolved_at >= datetime.now(UTC) - DECLINE_COOLDOWN,
+        to,
     )
-
-
-def _substring(query: str) -> str:
-    return query.strip().replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
 
 
 def _eligible_analysts(
@@ -331,28 +331,15 @@ def _eligible_analysts(
     stmt = select(User).where(
         User.deleted_at.is_(None),
         User.is_active.is_(True),
-        User.id != geo.owner_id,
-        User.id.not_in(select(EventGeolocator.user_id).where(EventGeolocator.event_id == geo.id)),
-        User.id.not_in(former_geolocator_ids(geo.id)),
+        User.id.not_in(ever_credited_ids(geo.id)),
         User.id.not_in(closed_reviewer_ids(geo)),
-        User.id.not_in(
-            select(ApprovalRequest.target_user_id).where(
-                ApprovalRequest.event_id == geo.id,
-                ApprovalRequest.requester_id == requester.id,
-                ApprovalRequest.status == "open",
-                ApprovalRequest.target_user_id.is_not(None),
-            )
-        ),
-        User.id.not_in(
-            select(ApprovalRequest.target_user_id).where(
-                _declined_recently(geo, requester), ApprovalRequest.target_user_id.is_not(None)
-            )
-        ),
+        ~_asked(geo, requester, ApprovalRequest.target_user_id == User.id),
+        ~_declined_recently(geo, requester, ApprovalRequest.target_user_id == User.id),
         _suggested_analyst(requester.id, exact),
     )
     if q:
-        stmt = stmt.where(User.username.ilike(f"%{q}%", escape="\\")).order_by(
-            User.username.ilike(f"{q}%", escape="\\").desc()
+        stmt = stmt.where(User.username.icontains(q, autoescape=True)).order_by(
+            User.username.istartswith(q, autoescape=True).desc()
         )
     return list(db.scalars(stmt.order_by(User.username).limit(MAX_TARGET_SUGGESTIONS)))
 
@@ -363,28 +350,17 @@ def _eligible_organizations(
     stmt = select(Organization).where(
         _can_act_for(geo),
         Organization.id.not_in(closed_organization_ids(geo)),
-        Organization.id.not_in(
-            select(ApprovalRequest.target_organization_id).where(
-                ApprovalRequest.event_id == geo.id,
-                ApprovalRequest.requester_id == requester.id,
-                ApprovalRequest.status == "open",
-                ApprovalRequest.target_organization_id.is_not(None),
-            )
-        ),
-        Organization.id.not_in(
-            select(ApprovalRequest.target_organization_id).where(
-                _declined_recently(geo, requester),
-                ApprovalRequest.target_organization_id.is_not(None),
-            )
+        ~_asked(geo, requester, ApprovalRequest.target_organization_id == Organization.id),
+        ~_declined_recently(
+            geo, requester, ApprovalRequest.target_organization_id == Organization.id
         ),
         _suggested_organization(requester.id, exact),
     )
     if q:
-        pattern = f"%{q}%"
         stmt = stmt.where(
             or_(
-                Organization.name.ilike(pattern, escape="\\"),
-                Organization.slug.ilike(pattern, escape="\\"),
+                Organization.name.icontains(q, autoescape=True),
+                Organization.slug.icontains(q, autoescape=True),
             )
         )
     return list(db.scalars(stmt.order_by(Organization.name).limit(MAX_TARGET_SUGGESTIONS)))
@@ -406,10 +382,9 @@ def eligible_targets(
     request, so the list never reveals an ``everyone`` audience.
     """
     _require_requester(db, geo=geo, requester=requester)
-    q = _substring(query)
     exact = query.strip()
-    analysts = _eligible_analysts(db, geo=geo, requester=requester, q=q, exact=exact)
-    organizations = _eligible_organizations(db, geo=geo, requester=requester, q=q, exact=exact)
+    analysts = _eligible_analysts(db, geo=geo, requester=requester, q=exact, exact=exact)
+    organizations = _eligible_organizations(db, geo=geo, requester=requester, q=exact, exact=exact)
     listed = {u.username.lower() for u in analysts} | {o.slug.lower() for o in organizations}
     return ApprovalRequestTargetList(
         analysts=[AuthorRef.model_validate(u) for u in analysts],
@@ -473,12 +448,8 @@ def _check_daily_cap(db: Session, *, requester: User) -> None:
 def _check_analyst_target(
     db: Session, *, geo: Event, requester: User, username: str, check_audience: bool = True
 ) -> User:
-    target = (
-        db.query(User)
-        .filter(User.username == username, User.deleted_at.is_(None), User.is_active.is_(True))
-        .first()
-    )
-    if target is None:
+    target = get_live_by_username(db, username)
+    if target is None or not target.is_active:
         raise TargetNotFoundError("No analyst with that username")
     if ever_credited(db, geo=geo, user_id=target.id):
         raise TargetIsGeolocatorError(
@@ -494,25 +465,10 @@ def _check_analyst_target(
     )
     if reviewed:
         raise TargetAlreadyReviewedError("This analyst already reviewed the live version")
-    pending = db.scalar(
-        select(
-            exists().where(
-                ApprovalRequest.event_id == geo.id,
-                ApprovalRequest.requester_id == requester.id,
-                ApprovalRequest.target_user_id == target.id,
-                ApprovalRequest.status == "open",
-            )
-        )
-    )
-    if pending:
+    to = ApprovalRequest.target_user_id == target.id
+    if db.scalar(select(_asked(geo, requester, to))):
         raise AlreadyRequestedError("You already asked this analyst to approve this event")
-    if db.scalar(
-        select(
-            exists().where(
-                _declined_recently(geo, requester), ApprovalRequest.target_user_id == target.id
-            )
-        )
-    ):
+    if db.scalar(select(_declined_recently(geo, requester, to))):
         raise RecentlyDeclinedError(_DECLINED_MESSAGE)
     return target
 
@@ -542,26 +498,10 @@ def _check_organization_target(
     )
     if approved:
         raise TargetAlreadyReviewedError("This organization already approved the live version")
-    pending = db.scalar(
-        select(
-            exists().where(
-                ApprovalRequest.event_id == geo.id,
-                ApprovalRequest.requester_id == requester.id,
-                ApprovalRequest.target_organization_id == org.id,
-                ApprovalRequest.status == "open",
-            )
-        )
-    )
-    if pending:
+    to = ApprovalRequest.target_organization_id == org.id
+    if db.scalar(select(_asked(geo, requester, to))):
         raise AlreadyRequestedError("You already asked this organization to approve this event")
-    if db.scalar(
-        select(
-            exists().where(
-                _declined_recently(geo, requester),
-                ApprovalRequest.target_organization_id == org.id,
-            )
-        )
-    ):
+    if db.scalar(select(_declined_recently(geo, requester, to))):
         raise RecentlyDeclinedError(_DECLINED_MESSAGE)
     return org
 
@@ -586,7 +526,7 @@ def request_approval(
     :data:`DECLINE_COOLDOWN` of the target declining the same request; 429 ``daily_cap_reached`` past the daily
     cap.
     """
-    geo = _lock(db, geo.id)
+    geo = lock_event(db, geo.id)
     _require_requester(db, geo=geo, requester=requester)
     if organization is not None:
         org = _check_organization_target(db, geo=geo, requester=requester, slug=organization)
@@ -629,9 +569,9 @@ def decline(db: Session, *, geo: Event, request_id: uuid.UUID, user: User) -> Ap
     and tell the requester.
 
     404 ``approval_request_not_found`` for an id that is not such a request on ``geo``; 409
-    ``already_resolved`` once it is approved or declined.
+    ``already_resolved`` once it is approved, declined or withdrawn.
     """
-    geo = _lock(db, geo.id)
+    geo = lock_event(db, geo.id)
     row = (
         db.query(ApprovalRequest)
         .filter(ApprovalRequest.id == request_id, ApprovalRequest.event_id == geo.id)

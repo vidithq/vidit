@@ -11,8 +11,8 @@ from app.services.event_filters import AUTHOR_FILTER_PATTERN
 from app.services.pagination import (
     decode_cursor,
     encode_cursor,
-    next_link,
     page_size,
+    paged,
 )
 from app.services.social import FeedKind, FeedScope
 
@@ -40,15 +40,15 @@ def get_feed(
 ) -> list[FeedItemRead]:
     """Published geolocations and open requests, newest first.
 
-    ``scope=following`` (default) keeps the rows owned by analysts the
-    current user follows, and is empty when they follow nobody; ``scope=all``
-    keeps every row. ``kind``, ``conflict``, ``capture_source``, ``tag``,
-    ``approved``, ``approved_by`` and ``approved_by_org`` narrow the rows as on
-    ``GET /events``. Cursor-paged, capped at 100 rows; the
+    ``scope=following`` (default) keeps the geolocations credited to analysts
+    the current user follows and the requests they own, and is empty when they
+    follow nobody; ``scope=all`` keeps every row. ``kind``, ``conflict``,
+    ``capture_source``, ``tag``, ``approved``, ``approved_by`` and
+    ``approved_by_org`` narrow the rows as on ``GET /events``. Cursor-paged, capped at 100 rows; the
     ``Link: rel="next"`` cursor is present exactly when a next page holds a row.
     """
     size = page_size(limit)
-    rows, has_next = social.get_feed(
+    window = social.get_feed(
         db,
         user_id=current_user.id,
         scope=scope,
@@ -62,9 +62,7 @@ def get_feed(
         approved_by=approved_by,
         approved_by_org=approved_by_org,
     )
-    if has_next:
-        last, _, _, last_at = rows[-1]
-        response.headers["Link"] = next_link(request, encode_cursor(last_at, last.id))
+    rows = paged(request, response, window, size, lambda r: encode_cursor(r[3], r[0].id))
     return [
         FeedItemRead(**build_event_list(geo, lat=lat, lng=lng).model_dump(), feed_at=at)
         for geo, lat, lng, at in rows

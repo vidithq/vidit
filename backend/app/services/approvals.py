@@ -32,7 +32,6 @@ from app.models.event import (
     STATUS_GEOLOCATED,
     Event,
     EventGeolocator,
-    EventGeolocatorDeparture,
 )
 from app.models.organization import Organization
 from app.models.user import User
@@ -42,7 +41,7 @@ from app.schemas.organization import OrganizationRef
 from app.schemas.user import AuthorRef
 from app.services import notifications
 from app.services.admin import log_admin_event
-from app.services.event_filters import visible_events
+from app.services.event_filters import ever_credited_ids, lock_event, visible_events
 from app.services.organizations import is_organization_member
 from app.services.pagination import keyset_before
 
@@ -85,10 +84,6 @@ class RevokeForbiddenError(ApprovalError):
     code = "revoke_forbidden"
 
 
-class OrganizationNotFoundError(ApprovalError):
-    code = "organization_not_found"
-
-
 class NotOrganizationMemberError(ApprovalError):
     code = "not_organization_member"
 
@@ -102,13 +97,8 @@ APPROVAL_ERROR_STATUS: dict[str, int] = {
     "approval_not_found": 404,
     "already_revoked": 409,
     "revoke_forbidden": 403,
-    "organization_not_found": 404,
     "not_organization_member": 403,
 }
-
-
-def _lock(db: Session, event_id: uuid.UUID) -> Event:
-    return db.query(Event).filter(Event.id == event_id).populate_existing().with_for_update().one()
 
 
 def is_geolocator(db: Session, *, geo: Event, user_id: uuid.UUID) -> bool:
@@ -116,20 +106,9 @@ def is_geolocator(db: Session, *, geo: Event, user_id: uuid.UUID) -> bool:
     return geo.owner_id == user_id or db.get(EventGeolocator, (geo.id, user_id)) is not None
 
 
-def former_geolocator_ids(event_id: uuid.UUID) -> Select[tuple[uuid.UUID]]:
-    """The analysts who held credit on the event and lost it."""
-    return select(EventGeolocatorDeparture.user_id).where(
-        EventGeolocatorDeparture.event_id == event_id
-    )
-
-
 def ever_credited(db: Session, *, geo: Event, user_id: uuid.UUID) -> bool:
-    """Whether ``user_id`` holds or held credit on ``geo``: such an analyst neither approves it
-    nor is asked to approve it."""
-    return (
-        is_geolocator(db, geo=geo, user_id=user_id)
-        or db.get(EventGeolocatorDeparture, (geo.id, user_id)) is not None
-    )
+    """Whether ``user_id`` is in :func:`services.event_filters.ever_credited_ids` for ``geo``."""
+    return user_id in db.scalars(ever_credited_ids(geo.id)).all()
 
 
 def may_approve(db: Session, *, geo: Event, user: User | None) -> bool:
@@ -209,14 +188,6 @@ def build_read(row: EventApproval, *, live_version: int) -> ApprovalRead:
     )
 
 
-def resolve_organization(db: Session, slug: str) -> Organization:
-    """The organization an approval is placed for, or 404 ``organization_not_found``."""
-    org = db.query(Organization).filter(Organization.slug == slug).first()
-    if org is None:
-        raise OrganizationNotFoundError("Organization not found")
-    return org
-
-
 # One read returns at most this many reviews: far past any event's reviewers on one version,
 # while bounding the read of an event approved over many versions.
 MAX_APPROVALS_LISTED = 500
@@ -282,7 +253,7 @@ def approve(
     ``reapproval_refused`` when a revocation closed the version to them (:func:`closes_review`).
     A self-revoked approval stays as history beside the new row.
     """
-    geo = _lock(db, geo.id)
+    geo = lock_event(db, geo.id)
     # Mirrored by the frontend's lib/approvals.canApprove; change both.
     if geo.status != STATUS_GEOLOCATED:
         raise EventNotApprovableError("Only a published geolocation can be approved")
@@ -380,7 +351,7 @@ def revoke(
     403 ``revoke_forbidden``. 404 ``approval_not_found`` for an id that is not an approval of
     ``geo``; 409 ``already_revoked`` for one already revoked.
     """
-    geo = _lock(db, geo.id)
+    geo = lock_event(db, geo.id)
     row = (
         db.query(EventApproval)
         .options(joinedload(EventApproval.reviewer), joinedload(EventApproval.organization))
@@ -425,7 +396,7 @@ def list_for_organization(
     cursor: tuple[datetime, uuid.UUID] | None,
 ) -> list[EventApproval]:
     """One window of the approvals placed for ``org``, newest first, over-fetched by one row for
-    ``take_page``. An approval of an event a public reader cannot see is left out; every other
+    ``pagination.paged``. An approval of an event a public reader cannot see is left out; every other
     stays whatever became of the member who placed it, as on the event page."""
     query = (
         db.query(EventApproval)

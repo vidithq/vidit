@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, aliased, joinedload, selectinload
 from app.models.event import Event, feed_at
 from app.models.follow import Follow
 from app.models.user import User
+from app.schemas.user import UserProfile
 from app.services import notifications
 from app.services.event_filters import (
     approval_predicates,
@@ -20,7 +21,7 @@ from app.services.event_filters import (
     visible_events,
 )
 from app.services.geolocator_credit import CREDIT_LOAD
-from app.services.pagination import keyset_before, take_page
+from app.services.pagination import keyset_before
 from app.services.thumbnails import thumbnail_media_criteria
 
 FeedScope = Literal["following", "all"]
@@ -109,14 +110,15 @@ def get_feed(
     approved: bool = False,
     approved_by: str | None = None,
     approved_by_org: str | None = None,
-) -> tuple[list[Row[tuple[Event, float | None, float | None, datetime]]], bool]:
-    """One page of the feed, newest first, and whether a next page holds a row.
+) -> list[Row[tuple[Event, float | None, float | None, datetime]]]:
+    """One window of the feed, newest first, over-fetched by one row for ``pagination.paged``.
 
-    The feed carries two kinds of row, both credited to ``owner``: a geolocation an analyst
-    published (:func:`services.event_filters.published_events`) and a request an analyst has
-    open (:func:`services.event_filters.open_requests`). An open request's owner is its
-    requester: ownership moves only when a request is geolocated. ``scope="following"`` keeps
-    the rows owned by an analyst ``user_id`` follows; ``"all"`` keeps every row.
+    The feed carries two kinds of row: a geolocation an analyst published
+    (:func:`services.event_filters.published_events`) and a request an analyst has open
+    (:func:`services.event_filters.open_requests`). An open request's owner is its requester:
+    ownership moves only when a request is geolocated. ``scope="following"`` keeps the
+    geolocations credited to an analyst ``user_id`` follows (owner or co-geolocator) and the
+    requests such an analyst owns; ``"all"`` keeps every row.
 
     ``kind`` keeps the named kinds (both when empty). ``conflict``, ``capture_source`` and ``tag``
     narrow through :func:`services.event_filters.taxonomy_predicates`, and ``approved``,
@@ -168,5 +170,68 @@ def get_feed(
     )
     if cursor is not None:
         query = query.filter(keyset_before(key, Event.id, cursor))
-    window = query.order_by(key.desc(), Event.id.desc()).limit(size + 1).all()
-    return take_page(window, size)
+    return query.order_by(key.desc(), Event.id.desc()).limit(size + 1).all()
+
+
+def build_profile(db: Session, user: User, *, viewer: User | None) -> UserProfile:
+    """The public profile of ``user`` as ``viewer`` reads it.
+
+    ``geolocations_count`` counts the published work credited to them, the set
+    :func:`list_published_geolocations` serves, not everything they own: counting detections made
+    the page contradict itself. The wider ``geolocated`` + ``detected`` figure is
+    ``total_events`` on ``GET /users/{username}/stats``.
+    """
+    geolocations_count = (
+        db.query(Event).filter(published_credited_to([user.id]), *visible_events()).count()
+    )
+    followers_count = db.query(Follow).filter(Follow.followed_id == user.id).count()
+    following_count = db.query(Follow).filter(Follow.follower_id == user.id).count()
+    following = (
+        viewer is not None
+        and viewer.id != user.id
+        and is_following(db, follower_id=viewer.id, followed_id=user.id)
+    )
+    return UserProfile(
+        id=user.id,
+        username=user.username,
+        bio=user.bio,
+        avatar_url=user.avatar_url,
+        external_links=user.external_links or {},
+        created_at=user.created_at,
+        geolocations_count=geolocations_count,
+        followers_count=followers_count,
+        following_count=following_count,
+        is_following=following,
+    )
+
+
+def list_published_geolocations(
+    db: Session, *, user_id: uuid.UUID, page: int, per_page: int
+) -> tuple[list[Row[tuple[Event, float | None, float | None]]], int]:
+    """One offset page of the published geolocations credited to ``user_id``, newest event date
+    first, and their total."""
+    credited_and_published = (published_credited_to([user_id]), *visible_events())
+    total = db.query(Event).filter(*credited_and_published).count()
+    rows = (
+        db.query(
+            Event,
+            ST_Y(Event.event_coords).label("lat"),
+            ST_X(Event.event_coords).label("lng"),
+        )
+        # Loader choice: see ``list_detections`` in ``routers/events/read.py``.
+        .options(
+            joinedload(Event.owner),
+            selectinload(Event.tags),
+            selectinload(Event.conflicts),
+            selectinload(Event.media.and_(thumbnail_media_criteria())),
+            CREDIT_LOAD,
+        )
+        .filter(*credited_and_published)
+        # ``event_date`` is neither unique nor non-null, so ties could repeat or
+        # skip rows across OFFSET pages; ``created_at, id`` makes it total.
+        .order_by(Event.event_date.desc(), Event.created_at.desc(), Event.id.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+    return rows, total

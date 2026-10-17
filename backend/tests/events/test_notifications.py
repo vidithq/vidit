@@ -14,7 +14,7 @@ from app.models.user import User
 from app.services import notification_delivery
 from app.services.auth import hash_password
 from tests.conftest import login_as
-from tests.events._helpers import client
+from tests.events._helpers import client, notifications_of
 from tests.events.test_requests import _geolocate_fulfilment, _make_request
 
 _FEED = "/api/v1/notifications"
@@ -25,13 +25,6 @@ _READ = "/api/v1/notifications/read"
 def _rows(db, user: User) -> list[Notification]:
     db.expire_all()
     return db.query(Notification).filter(Notification.user_id == user.id).all()
-
-
-def _feed(user: User) -> list[dict]:
-    login_as(client, user)
-    response = client.get(_FEED)
-    assert response.status_code == 200, response.text
-    return response.json()
 
 
 def _unread(user: User) -> int:
@@ -82,7 +75,7 @@ def test_fulfilment_by_another_analyst_notifies_the_requester(
     ]
     assert _rows(db, second_user) == []
 
-    items = _feed(author)
+    items = notifications_of(author)
     assert len(items) == 1
     assert items[0]["kind"] == "request_fulfilled"
     assert items[0]["actor"]["username"] == second_user.username
@@ -109,7 +102,7 @@ def test_follow_notifies_once_per_follower(db, author, second_user):
     assert [(r.kind, r.actor_id, r.event_id) for r in rows] == [
         ("new_follower", second_user.id, None)
     ]
-    assert _feed(author)[0]["event"] is None
+    assert notifications_of(author)[0]["event"] is None
 
 
 def test_feed_hides_rows_of_deleted_or_hidden_events(db, author, second_user):
@@ -125,7 +118,7 @@ def test_feed_hides_rows_of_deleted_or_hidden_events(db, author, second_user):
     hidden.hidden_at = datetime.now(UTC)
     db.commit()
 
-    assert [item["event"]["id"] for item in _feed(author)] == [str(kept.id)]
+    assert [item["event"]["id"] for item in notifications_of(author)] == [str(kept.id)]
     assert _unread(author) == 1
 
     hidden.hidden_at = None
@@ -144,7 +137,9 @@ def test_feed_hides_rows_of_an_actor_who_is_gone(db, author, second_user, third_
         third_user.is_active = False
     db.commit()
 
-    assert [item["actor"]["username"] for item in _feed(author)] == [second_user.username]
+    assert [item["actor"]["username"] for item in notifications_of(author)] == [
+        second_user.username
+    ]
     assert _unread(author) == 1
 
 
@@ -170,7 +165,7 @@ def test_read_marks_only_the_rows_shown(db, author, second_user):
 
     assert _mark(author, older).status_code == 204
     assert _unread(author) == 1
-    feed = _feed(author)
+    feed = notifications_of(author)
     assert [item["id"] for item in feed] == [str(newer.id), str(older.id)]
     assert feed[0]["read_at"] is None
     assert feed[1]["read_at"] is not None
@@ -248,7 +243,7 @@ def test_feed_pages_with_a_cursor(db, author, second_user):
 
 def test_feed_is_private_to_the_recipient(db, author, second_user):
     _notify(db, recipient=author, actor=second_user)
-    assert _feed(second_user) == []
+    assert notifications_of(second_user) == []
     client.cookies.clear()
     assert client.get(_FEED).status_code == 401
     assert client.get(_UNREAD).status_code == 401

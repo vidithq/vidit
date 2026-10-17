@@ -94,7 +94,6 @@ days  # schemas/product_update.py ProductUpdatePreview
 queued  # schemas/product_update.py ProductUpdateProgress, filled by keyword
 sending  # schemas/product_update.py ProductUpdateProgress, filled by keyword
 sent  # schemas/product_update.py ProductUpdateProgress, filled by keyword
-revoked_by_admin  # schemas/approval.py ApprovalRead
 approval_request_status  # schemas/notification.py NotificationRead
 start_year  # models/conflict.py + schemas/conflict.py ConflictRead (wire field)
 end_year  # models/conflict.py + schemas/conflict.py ConflictRead (wire field)

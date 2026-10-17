@@ -21,7 +21,6 @@ from app.models.event import (
 )
 from app.models.invite_code import InviteCode
 from app.models.media import Media
-from app.models.organization import Organization
 from app.models.user import User
 from app.schemas.admin import (
     AdminDetectionStatsRead,
@@ -37,8 +36,9 @@ from app.services.evidence_intake import (
     orphaned_source_media,
     prune_unreferenced_proof_media,
 )
-from app.services.pagination import keyset_before, take_page
+from app.services.pagination import keyset_before
 from app.services.storage import avatar_key_of, sweep_keys
+from app.services.users import x_handle_holder
 
 
 class AdminError(Exception):
@@ -175,17 +175,11 @@ def serialize_invite_code(db: Session, invite: InviteCode) -> AdminInviteCodeRea
 def _assert_x_handle_free(
     db: Session, x_handle: str, *, exclude_user_id: uuid.UUID | None = None
 ) -> None:
-    """Raise the typed conflict when any user row or organization already carries the handle.
-
-    Soft-deleted rows count too: ``users.x_handle`` is UNIQUE across every row. Analysts and
-    organizations share one namespace, so the bot never credits a handle to two owners.
-    """
-    query = db.query(User).filter(User.x_handle == x_handle)
-    if exclude_user_id is not None:
-        query = query.filter(User.id != exclude_user_id)
-    if query.first() is not None:
+    """Raise the typed conflict when :func:`services.users.x_handle_holder` names a holder."""
+    holder = x_handle_holder(db, x_handle, exclude_user_id=exclude_user_id)
+    if holder == "analyst":
         raise XHandleConflictError("x_handle is already linked to another account")
-    if db.query(Organization.id).filter(Organization.x_handle == x_handle).first() is not None:
+    if holder == "organization":
         raise XHandleConflictError("x_handle is already linked to an organization")
 
 
@@ -244,8 +238,9 @@ def list_invite_codes(
     *,
     limit: int,
     cursor: tuple[datetime, uuid.UUID] | None = None,
-) -> tuple[list[InviteCode], bool]:
-    """One page of invite codes, newest first, plus whether another follows.
+) -> list[InviteCode]:
+    """One window of invite codes, newest first, over-fetched by one row for
+    ``pagination.paged``.
 
     No status filtering: an admin needs revoked and expired rows to remember what was issued.
     Paged on the ``created_at DESC, id DESC`` keyset, since only an unused code's row ever
@@ -258,7 +253,7 @@ def list_invite_codes(
     )
     if cursor is not None:
         query = query.filter(keyset_before(InviteCode.created_at, InviteCode.id, cursor))
-    return take_page(query.limit(limit + 1).all(), limit)
+    return query.limit(limit + 1).all()
 
 
 def revoke_invite_code(
@@ -322,12 +317,14 @@ def search_users(db: Session, *, query: str, limit: int = 20) -> list[User]:
     cleaned = query.strip()
     if not cleaned:
         return []
-    pattern = f"%{cleaned}%"
     return (
         db.query(User)
         .filter(
             User.deleted_at.is_(None),
-            or_(User.username.ilike(pattern), User.email.ilike(pattern)),
+            or_(
+                User.username.icontains(cleaned, autoescape=True),
+                User.email.icontains(cleaned, autoescape=True),
+            ),
         )
         .order_by(User.username.asc())
         .limit(limit)

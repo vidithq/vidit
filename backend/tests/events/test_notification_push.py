@@ -511,13 +511,13 @@ def test_sent_pushes_do_not_count_against_the_email_cap(
     assert [m.to for m in outbox] == [second_user.email]
 
 
-def test_every_kind_that_can_push_has_a_builder():
+def test_every_kind_that_can_push_has_copy():
     """A kind an analyst can switch on for push needs a message to send."""
     pushable = {kind for kind, channels in NOTIFICATION_KINDS.items() if "push" in channels}
-    assert pushable - set(notification_delivery._PUSH_BUILDERS) == set()
+    assert pushable - set(notification_delivery._COPY) == set()
 
 
-def test_a_kind_without_a_push_builder_is_skipped_and_the_drain_goes_on(
+def test_a_kind_without_copy_is_skipped_and_the_drain_goes_on(
     db, author, second_user, admin_user, conflict, capture_source_tag, vapid, services, monkeypatch
 ):
     _register(author)
@@ -529,9 +529,9 @@ def test_a_kind_without_a_push_builder_is_skipped_and_the_drain_goes_on(
     headers = login_as(client, admin_user)
     response = client.post(f"/api/v1/users/{author.username}/follow", headers=headers)
     assert response.status_code == 204, response.text
-    builders = dict(notification_delivery._PUSH_BUILDERS)
-    del builders["request_fulfilled"]
-    monkeypatch.setattr(notification_delivery, "_PUSH_BUILDERS", builders)
+    copy = dict(notification_delivery._COPY)
+    del copy["request_fulfilled"]
+    monkeypatch.setattr(notification_delivery, "_COPY", copy)
 
     notification_delivery.drain(db)
 

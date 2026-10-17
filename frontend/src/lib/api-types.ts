@@ -1357,7 +1357,7 @@ export interface paths {
         put?: never;
         /**
          * Decline Approval Request
-         * @description Decline an approval request addressed to you, or to an organization you manage.
+         * @description Decline an approval request addressed to you, or to an organization you belong to.
          */
         post: operations["decline_approval_request_api_v1_events__geolocation_id__approval_requests__request_id__decline_post"];
         delete?: never;
@@ -1744,11 +1744,11 @@ export interface paths {
          * Get Feed
          * @description Published geolocations and open requests, newest first.
          *
-         *     ``scope=following`` (default) keeps the rows owned by analysts the
-         *     current user follows, and is empty when they follow nobody; ``scope=all``
-         *     keeps every row. ``kind``, ``conflict``, ``capture_source``, ``tag``,
-         *     ``approved``, ``approved_by`` and ``approved_by_org`` narrow the rows as on
-         *     ``GET /events``. Cursor-paged, capped at 100 rows; the
+         *     ``scope=following`` (default) keeps the geolocations credited to analysts
+         *     the current user follows and the requests they own, and is empty when they
+         *     follow nobody; ``scope=all`` keeps every row. ``kind``, ``conflict``,
+         *     ``capture_source``, ``tag``, ``approved``, ``approved_by`` and
+         *     ``approved_by_org`` narrow the rows as on ``GET /events``. Cursor-paged, capped at 100 rows; the
          *     ``Link: rel="next"`` cursor is present exactly when a next page holds a row.
          */
         get: operations["get_feed_api_v1_feed_get"];
@@ -1893,7 +1893,7 @@ export interface paths {
         /**
          * Update Organization
          * @description Edit an organization's bio, links and approval request audience. Org managers and site
-         *     managers only.
+         *     admins only.
          */
         patch: operations["update_organization_api_v1_organizations__slug__patch"];
         trace?: never;
@@ -4402,7 +4402,8 @@ export interface components {
         };
         /**
          * OrganizationRef
-         * @description Compact organization handle for a notification row.
+         * @description Compact organization handle embedded in an approval, an approval request, a notification
+         *     or a membership row.
          */
         OrganizationRef: {
             /** Avatar Url */
@@ -4415,7 +4416,7 @@ export interface components {
         /**
          * OrganizationUpdate
          * @description Body for ``PATCH /organizations/{slug}``: the fields an org manager edits,
-         *     under the rules of ``PATCH /users/me``, and who may send the organization a
+         *     under the rules of ``PATCH /users/me``, and who may send the organization an
          *     approval request. ``name``, ``slug`` and ``x_handle`` stay with the site
          *     admin.
          */

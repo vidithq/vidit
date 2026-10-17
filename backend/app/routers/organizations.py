@@ -29,9 +29,8 @@ from app.services.pagination import (
     MAX_PAGE_SIZE,
     decode_cursor,
     encode_cursor,
-    next_link,
     page_size,
-    take_page,
+    paged,
 )
 
 router = APIRouter()
@@ -98,10 +97,7 @@ def list_organization_approvals(
         limit=size,
         cursor=decode_cursor(cursor) if cursor is not None else None,
     )
-    rows, has_next = take_page(window, size)
-    if has_next:
-        last = rows[-1]
-        response.headers["Link"] = next_link(request, encode_cursor(last.created_at, last.id))
+    rows = paged(request, response, window, size, lambda r: encode_cursor(r.created_at, r.id))
     return [approvals_service.build_organization_read(row) for row in rows]
 
 
@@ -132,10 +128,9 @@ def update_organization(
     current_user: User = Depends(get_current_user),
 ) -> OrganizationRead:
     """Edit an organization's bio, links and approval request audience. Org managers and site
-    managers only."""
+    admins only."""
     with _typed_errors():
-        org = organizations_service.get_by_slug(db, slug)
-        organizations_service.require_manager(db, org, current_user)
+        org = organizations_service.get_managed(db, slug, current_user)
     organizations_service.apply_update(org, body)
     db.commit()
     db.refresh(org)
@@ -153,8 +148,7 @@ def set_organization_avatar(
 ) -> OrganizationRead:
     """Replace an organization's picture, under the rules of ``PUT /users/me/avatar``."""
     with _typed_errors():
-        org = organizations_service.get_by_slug(db, slug)
-        organizations_service.require_manager(db, org, current_user)
+        org = organizations_service.get_managed(db, slug, current_user)
         org = asyncio.run(users_service.set_avatar(db, owner=org, file=file))
     return organizations_service.build_read(db, org, viewer=current_user)
 
@@ -169,8 +163,7 @@ def delete_organization_avatar(
 ) -> OrganizationRead:
     """Drop an organization's picture."""
     with _typed_errors():
-        org = organizations_service.get_by_slug(db, slug)
-        organizations_service.require_manager(db, org, current_user)
+        org = organizations_service.get_managed(db, slug, current_user)
     org = users_service.clear_avatar(db, owner=org)
     return organizations_service.build_read(db, org, viewer=current_user)
 
@@ -185,8 +178,7 @@ def list_organization_invites(
 ) -> list[OrganizationInviteRead]:
     """Pending invites, newest first. Org managers and site admins only."""
     with _typed_errors():
-        org = organizations_service.get_by_slug(db, slug)
-        organizations_service.require_manager(db, org, current_user)
+        org = organizations_service.get_managed(db, slug, current_user)
     return organizations_service.list_invites(db, org)
 
 
@@ -200,8 +192,7 @@ def list_invite_candidates(
 ) -> list[User]:
     """The analysts you may invite: in mutual follow with you, neither member nor invited."""
     with _typed_errors():
-        org = organizations_service.get_by_slug(db, slug)
-        organizations_service.require_manager(db, org, current_user)
+        org = organizations_service.get_managed(db, slug, current_user)
     return organizations_service.invite_candidates(db, org, inviter=current_user)
 
 
@@ -224,7 +215,7 @@ def create_organization_invite(
         row = organizations_service.invite(db, org, inviter=current_user, username=body.username)
     db.commit()
     db.refresh(row)
-    return organizations_service.build_invite_read(row)
+    return OrganizationInviteRead.model_validate(row)
 
 
 @router.delete("/{slug}/invites/{invite_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -238,8 +229,7 @@ def cancel_organization_invite(
 ) -> None:
     """Withdraw a pending invite. Org managers and site admins only."""
     with _typed_errors():
-        org = organizations_service.get_by_slug(db, slug)
-        organizations_service.require_manager(db, org, current_user)
+        org = organizations_service.get_managed(db, slug, current_user)
         organizations_service.cancel_invite(db, org, invite_id=invite_id)
     db.commit()
 
@@ -286,8 +276,7 @@ def update_organization_member(
 ) -> OrganizationMemberRead:
     """Change a member's role. Org managers and site admins only; the last org manager keeps the role."""
     with _typed_errors():
-        org = organizations_service.get_by_slug(db, slug, lock=True)
-        organizations_service.require_manager(db, org, current_user)
+        org = organizations_service.get_managed(db, slug, current_user, lock=True)
         result = organizations_service.change_role(db, org, username=username, role=body.role)
     db.commit()
     return result

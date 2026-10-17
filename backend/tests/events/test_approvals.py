@@ -17,7 +17,13 @@ from app.models.user import User
 from app.services import approvals, notification_delivery
 from app.services.auth import hash_password
 from tests.conftest import login_as
-from tests.events._helpers import _make_geo, client, delete_user
+from tests.events._helpers import (
+    approve,
+    client,
+    delete_user,
+    notifications_of,
+    published_geo,
+)
 from tests.events.test_versions import _form, _save_version
 from tests.events.test_versions import _published as _published_with_floor
 
@@ -46,22 +52,6 @@ def make_user(db):
         db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
         delete_user(db, user_id)
     db.commit()
-
-
-def _published(db, owner: User, **kw) -> Event:
-    geo = _make_geo(db, author=owner, **kw)
-    db.add(EventGeolocator(event_id=geo.id, user_id=owner.id))
-    db.commit()
-    return geo
-
-
-def _approve(geo: Event, user: User, version_no: int = 1, **body):
-    headers = login_as(client, user)
-    return client.post(
-        f"{_EVENTS}/{geo.id}/approvals",
-        json={"version_no": version_no, **body},
-        headers=headers,
-    )
 
 
 def _revoke(geo: Event, approval_id: str, user: User, reason: str | None = "Wrong building"):
@@ -97,17 +87,12 @@ def _kinds(db, user: User) -> list[tuple[str, uuid.UUID | None, uuid.UUID | None
     return [(r.kind, r.actor_id, r.event_id) for r in rows]
 
 
-def _feed(user: User) -> list[dict]:
-    login_as(client, user)
-    return client.get("/api/v1/notifications").json()
-
-
 # ── Who may approve ──────────────────────────────────────────────────
 
 
 def test_an_analyst_approves_and_the_owner_is_notified(db, author, second_user):
-    geo = _published(db, author)
-    response = _approve(geo, second_user, note="  Matches the skyline.  ")
+    geo = published_geo(db, author)
+    response = approve(geo, second_user, note="  Matches the skyline.  ")
     assert response.status_code == 201, response.text
     body = response.json()
     assert body["version_no"] == 1
@@ -121,25 +106,25 @@ def test_an_analyst_approves_and_the_owner_is_notified(db, author, second_user):
 
 
 def test_the_analyst_who_requested_a_fulfilled_event_may_approve_it(db, author, second_user):
-    geo = _published(db, author)
+    geo = published_geo(db, author)
     geo.requested_by_id = second_user.id
     db.commit()
-    assert _approve(geo, second_user).status_code == 201
+    assert approve(geo, second_user).status_code == 201
 
 
 def test_geolocators_cannot_approve(db, author, second_user):
-    geo = _published(db, author)
+    geo = published_geo(db, author)
     db.add(EventGeolocator(event_id=geo.id, user_id=second_user.id))
     db.commit()
     for user in (author, second_user):
-        response = _approve(geo, user)
+        response = approve(geo, user)
         assert response.status_code == 403, response.text
         assert response.json()["detail"]["code"] == "geolocator_cannot_approve"
     assert _listed(geo) == []
 
 
 def test_the_list_says_whether_the_caller_may_approve(db, author, second_user, make_user):
-    geo = _published(db, author)
+    geo = published_geo(db, author)
     assert _may_approve(geo, second_user) is True
     assert _may_approve(geo, author) is False
     assert _may_approve(geo, None) is False
@@ -154,36 +139,36 @@ def test_the_list_says_whether_the_caller_may_approve(db, author, second_user, m
     assert left.status_code == 204, left.text
     assert _may_approve(geo, former) is False
 
-    assert _approve(geo, second_user).status_code == 201
+    assert approve(geo, second_user).status_code == 201
     assert _may_approve(geo, second_user) is True
 
 
 def test_approving_needs_a_session(db, author):
-    geo = _published(db, author)
+    geo = published_geo(db, author)
     client.cookies.clear()
     response = client.post(f"{_EVENTS}/{geo.id}/approvals", json={"version_no": 1})
     assert response.status_code == 401
 
 
 def test_approval_binds_to_the_version_the_reviewer_read(db, author, second_user):
-    geo = _published(db, author)
+    geo = published_geo(db, author)
     geo.version_no = 3
     db.commit()
-    response = _approve(geo, second_user, version_no=2)
+    response = approve(geo, second_user, version_no=2)
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "version_mismatch"
-    assert _approve(geo, second_user, version_no=3).status_code == 201
+    assert approve(geo, second_user, version_no=3).status_code == 201
 
 
 def test_a_closed_event_takes_no_approval_and_keeps_its_own(db, author, second_user, make_user):
-    geo = _published(db, author)
-    assert _approve(geo, second_user).status_code == 201
+    geo = published_geo(db, author)
+    assert approve(geo, second_user).status_code == 201
     geo.status = STATUS_CLOSED
     geo.closed_at = datetime.now(UTC)
     geo.before_closed_status = "geolocated"
     db.commit()
 
-    response = _approve(geo, make_user())
+    response = approve(geo, make_user())
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "invalid_state"
     # Readable, but no longer current: the claim it attests was closed.
@@ -194,26 +179,26 @@ def test_a_closed_event_takes_no_approval_and_keeps_its_own(db, author, second_u
 
 def test_the_list_is_capped(db, author, make_user, monkeypatch):
     monkeypatch.setattr(approvals, "MAX_APPROVALS_LISTED", 2)
-    geo = _published(db, author)
-    placed = [_approve(geo, make_user()).json()["id"] for _ in range(3)]
+    geo = published_geo(db, author)
+    placed = [approve(geo, make_user()).json()["id"] for _ in range(3)]
     assert [a["id"] for a in _listed(geo)] == placed[1:]
 
 
 def test_one_standing_approval_per_analyst_and_version(db, author, second_user):
-    geo = _published(db, author)
-    _approve(geo, second_user).json()
-    again = _approve(geo, second_user)
+    geo = published_geo(db, author)
+    approve(geo, second_user).json()
+    again = approve(geo, second_user)
     assert again.status_code == 409
     assert again.json()["detail"]["code"] == "already_approved"
 
 
 def test_a_reviewer_who_revoked_their_own_approval_approves_again(db, author, second_user):
-    geo = _published(db, author)
-    first = _approve(geo, second_user).json()
+    geo = published_geo(db, author)
+    first = approve(geo, second_user).json()
     assert _revoke(geo, first["id"], second_user, reason=None).status_code == 200
     assert _may_approve(geo, second_user) is True
 
-    again = _approve(geo, second_user)
+    again = approve(geo, second_user)
     assert again.status_code == 201, again.text
     assert again.json()["id"] != first["id"]
     listed = _listed(geo)
@@ -221,24 +206,24 @@ def test_a_reviewer_who_revoked_their_own_approval_approves_again(db, author, se
         (first["id"], False),
         (again.json()["id"], True),
     ]
-    assert _approve(geo, second_user).json()["detail"]["code"] == "already_approved"
+    assert approve(geo, second_user).json()["detail"]["code"] == "already_approved"
 
 
 def test_a_revocation_by_a_site_admin_closes_the_version_to_the_reviewer(
     db, author, second_user, admin_user
 ):
-    geo = _published(db, author)
-    approval = _approve(geo, second_user).json()
+    geo = published_geo(db, author)
+    approval = approve(geo, second_user).json()
     assert _revoke(geo, approval["id"], admin_user).status_code == 200
 
-    refused = _approve(geo, second_user)
+    refused = approve(geo, second_user)
     assert refused.status_code == 409
     assert refused.json()["detail"]["code"] == "reapproval_refused"
 
 
 def test_a_soft_deleted_reviewer_is_left_out(db, author, second_user):
-    geo = _published(db, author)
-    assert _approve(geo, second_user).status_code == 201
+    geo = published_geo(db, author)
+    assert approve(geo, second_user).status_code == 201
     second_user.deleted_at = datetime.now(UTC)
     db.commit()
     assert _listed(geo) == []
@@ -252,8 +237,8 @@ def test_a_new_version_resets_approvals_and_asks_reviewers_again(
 ):
     geo = _published_with_floor(db, author, conflict, capture_source_tag)
     third = make_user()
-    kept = _approve(geo, second_user).json()
-    revoked = _approve(geo, third).json()
+    kept = approve(geo, second_user).json()
+    revoked = approve(geo, third).json()
     assert _revoke(geo, revoked["id"], third).status_code == 200
 
     response = _save_version(geo.id, author, data=_form(conflict, capture_source_tag))
@@ -266,10 +251,10 @@ def test_a_new_version_resets_approvals_and_asks_reviewers_again(
 
     assert _kinds(db, second_user) == [("re_approve_requested", author.id, geo.id)]
     assert _kinds(db, third) == []
-    feed = _feed(second_user)
+    feed = notifications_of(second_user)
     assert [n["kind"] for n in feed] == ["re_approve_requested"]
 
-    assert _approve(geo, second_user, version_no=2).status_code == 201
+    assert approve(geo, second_user, version_no=2).status_code == 201
     assert [a["current"] for a in _listed(geo)] == [True]
 
     client.cookies.clear()
@@ -292,7 +277,7 @@ def test_an_archive_only_save_resets_approvals_too(
     assert (
         _save_version(geo.id, author, data=_form(conflict, capture_source_tag)).status_code == 200
     )
-    assert _approve(geo, second_user, version_no=2).status_code == 201
+    assert approve(geo, second_user, version_no=2).status_code == 201
 
     wayback = f"https://web.archive.org/web/20260811120000/{geo.source_url}"
     response = _save_version(
@@ -310,8 +295,8 @@ def test_an_archive_only_save_resets_approvals_too(
 
 
 def test_the_reviewer_revokes_with_a_public_reason(db, author, second_user, make_user):
-    geo = _published(db, author)
-    approval = _approve(geo, second_user).json()
+    geo = published_geo(db, author)
+    approval = approve(geo, second_user).json()
 
     outsider = _revoke(geo, approval["id"], make_user())
     assert outsider.status_code == 403
@@ -339,8 +324,8 @@ def test_the_reviewer_revokes_with_a_public_reason(db, author, second_user, make
 
 @pytest.mark.parametrize("reason", [None, "   "])
 def test_the_reason_is_optional_and_a_blank_one_is_stored_as_null(db, author, second_user, reason):
-    geo = _published(db, author)
-    approval = _approve(geo, second_user).json()
+    geo = published_geo(db, author)
+    approval = approve(geo, second_user).json()
 
     response = _revoke(geo, approval["id"], second_user, reason=reason)
     assert response.status_code == 200, response.text
@@ -352,13 +337,13 @@ def test_the_reason_is_optional_and_a_blank_one_is_stored_as_null(db, author, se
 
 
 def test_a_revoke_notifies_the_owner_and_hides_the_approval_notice(db, author, second_user):
-    geo = _published(db, author)
-    approval = _approve(geo, second_user).json()
-    assert [n["kind"] for n in _feed(author)] == ["approval_received"]
+    geo = published_geo(db, author)
+    approval = approve(geo, second_user).json()
+    assert [n["kind"] for n in notifications_of(author)] == ["approval_received"]
 
     assert _revoke(geo, approval["id"], second_user, reason=None).status_code == 200
 
-    feed = _feed(author)
+    feed = notifications_of(author)
     assert [(n["kind"], n["actor"]["id"]) for n in feed] == [
         ("approval_revoked", str(second_user.id))
     ]
@@ -369,9 +354,9 @@ def test_a_revoke_notifies_the_owner_and_hides_the_approval_notice(db, author, s
     assert not db.query(Notification).filter_by(user_id=second_user.id).count()
 
     [row] = db.query(Notification).filter_by(user_id=author.id, kind="approval_revoked").all()
-    built = notification_delivery._EMAIL_BUILDERS["approval_revoked"](row, "probe@example.com")
+    built = notification_delivery._email_for(row, "probe@example.com")
     assert second_user.username in built.subject
-    message = notification_delivery._PUSH_BUILDERS["approval_revoked"](row)
+    message = notification_delivery._push_for(row)
     assert message.path == f"/events/{geo.id}"
 
 
@@ -379,14 +364,14 @@ def test_a_revoke_hides_only_the_notice_of_the_revoked_approval(
     db, author, second_user, conflict, capture_source_tag
 ):
     geo = _published_with_floor(db, author, conflict, capture_source_tag)
-    first = _approve(geo, second_user).json()
+    first = approve(geo, second_user).json()
     saved = _save_version(geo.id, author, data=_form(conflict, capture_source_tag))
     assert saved.status_code == 200, saved.text
-    second = _approve(geo, second_user, version_no=2).json()
+    second = approve(geo, second_user, version_no=2).json()
 
     assert _revoke(geo, first["id"], second_user).status_code == 200
 
-    received = [n for n in _feed(author) if n["kind"] == "approval_received"]
+    received = [n for n in notifications_of(author) if n["kind"] == "approval_received"]
     assert len(received) == 1
     db.expire_all()
     [shown] = (
@@ -399,8 +384,8 @@ def test_a_revoke_hides_only_the_notice_of_the_revoked_approval(
 
 
 def test_a_site_admin_revokes_any_approval_and_is_audited(db, author, second_user, admin_user):
-    geo = _published(db, author)
-    approval = _approve(geo, second_user).json()
+    geo = published_geo(db, author)
+    approval = approve(geo, second_user).json()
 
     response = _revoke(geo, approval["id"], admin_user, reason="Sockpuppet account")
     assert response.status_code == 200, response.text
@@ -418,8 +403,8 @@ def test_a_site_admin_revokes_any_approval_and_is_audited(db, author, second_use
 def test_a_site_admin_revokes_on_a_withheld_event_and_others_find_none(
     db, author, second_user, admin_user
 ):
-    geo = _published(db, author)
-    approval = _approve(geo, second_user).json()
+    geo = published_geo(db, author)
+    approval = approve(geo, second_user).json()
     geo.hidden_at = datetime.now(UTC)
     db.commit()
 
@@ -429,9 +414,9 @@ def test_a_site_admin_revokes_on_a_withheld_event_and_others_find_none(
 
 
 def test_revoking_an_approval_of_another_event_is_not_found(db, author, second_user):
-    geo = _published(db, author)
-    other = _published(db, author)
-    approval = _approve(geo, second_user).json()
+    geo = published_geo(db, author)
+    other = published_geo(db, author)
+    approval = approve(geo, second_user).json()
     response = _revoke(other, approval["id"], second_user)
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "approval_not_found"
@@ -441,8 +426,8 @@ def test_revoking_an_approval_of_another_event_is_not_found(db, author, second_u
 
 
 def test_joining_the_geolocators_revokes_the_invitees_approvals(db, author, second_user):
-    geo = _published(db, author)
-    assert _approve(geo, second_user).status_code == 201
+    geo = published_geo(db, author)
+    assert approve(geo, second_user).status_code == 201
     headers = login_as(client, author)
     invited = client.post(
         f"{_EVENTS}/{geo.id}/geolocator-invites",

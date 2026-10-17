@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.models.event import STATUS_REQUESTED, DetectedVia, Event
 from app.models.user import User
 from app.services import source_archive
+from app.services.event_filters import lock_event
 from app.services.evidence_intake import attach_evidence_and_commit, collect_media_keys
 from app.services.permissions import ensure_owner
 from app.services.storage import sweep_keys
@@ -219,8 +220,7 @@ async def update_request(
     :class:`TooManySourceLinksError` (400), :class:`TooManyFilesError` (422),
     and the shared file-validation errors.
     """
-    # ``populate_existing()`` makes the re-read real, not the router's stale object.
-    geo = db.query(Event).filter(Event.id == geo.id).populate_existing().with_for_update().one()
+    geo = lock_event(db, geo.id)
     ensure_owner(geo, current_user)
     if geo.status != STATUS_REQUESTED:
         raise EventStateError("Only an open request can be edited")

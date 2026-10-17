@@ -92,6 +92,7 @@ def safe_storage_extension(content_type: str | None) -> str:
 
 LOCAL_STORAGE_MOUNT_PATH = "/local-storage"
 LOCAL_DEV_BASE_URL = "http://localhost:8000"
+# Mirrored by frontend lib/proof.tsx LOCAL_STORAGE_URL_PREFIX; change both.
 LOCAL_STORAGE_URL_PREFIX = f"{LOCAL_DEV_BASE_URL}{LOCAL_STORAGE_MOUNT_PATH}"
 
 # Dev/CI stand-in for the S3 POST-policy target (``main.py``, local backend only).

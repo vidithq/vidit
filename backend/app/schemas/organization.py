@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.organization import OrganizationRole
 from app.models.user_preferences import ApprovalRequestAudience
+from app.schemas import UsernameRef
 from app.schemas.admin import normalize_x_handle
 from app.schemas.user import AuthorRef, UserUpdate
 
@@ -15,7 +16,8 @@ ORGANIZATION_NAME_MAX_LEN = 100
 
 
 class OrganizationRef(BaseModel):
-    """Compact organization handle for a notification row."""
+    """Compact organization handle embedded in an approval, an approval request, a notification
+    or a membership row."""
 
     slug: str
     name: str
@@ -68,7 +70,7 @@ class OrganizationManagerAppoint(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    username: str = Field(min_length=1, max_length=50)
+    username: UsernameRef
 
 
 class OrganizationMembershipRead(BaseModel):
@@ -86,6 +88,8 @@ class OrganizationMemberRead(BaseModel):
     role: OrganizationRole
     joined_at: datetime
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class OrganizationInviteRead(BaseModel):
     """One pending invite, for the org manager's list."""
@@ -95,13 +99,15 @@ class OrganizationInviteRead(BaseModel):
     invited_by: AuthorRef | None
     created_at: datetime
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class OrganizationInviteCreate(BaseModel):
     """Body for ``POST /organizations/{slug}/invites``."""
 
     model_config = ConfigDict(extra="forbid")
 
-    username: str = Field(min_length=1, max_length=50)
+    username: UsernameRef
 
 
 class OrganizationMemberUpdate(BaseModel):
@@ -114,7 +120,7 @@ class OrganizationMemberUpdate(BaseModel):
 
 class OrganizationUpdate(UserUpdate):
     """Body for ``PATCH /organizations/{slug}``: the fields an org manager edits,
-    under the rules of ``PATCH /users/me``, and who may send the organization a
+    under the rules of ``PATCH /users/me``, and who may send the organization an
     approval request. ``name``, ``slug`` and ``x_handle`` stay with the site
     admin."""
 
@@ -131,7 +137,7 @@ class OrganizationCreate(OrganizationUpdate):
     name: str = Field(min_length=1, max_length=ORGANIZATION_NAME_MAX_LEN)
     slug: str
     x_handle: str | None = None
-    manager_username: str = Field(min_length=1, max_length=50)
+    manager_username: UsernameRef
 
     @field_validator("name")
     @classmethod

@@ -32,7 +32,9 @@ from app.models.event import (
 from app.models.user import User
 from app.schemas.user import AuthorRef
 from app.services import notifications
+from app.services.event_filters import lock_event
 from app.services.permissions import ensure_owner
+from app.services.users import get_live_by_username
 
 # Every relationship ``build_event_read`` and ``build_event_list`` read for the credit line.
 CREDIT_LOAD = selectinload(Event.geolocators).joinedload(EventGeolocator.user)
@@ -100,18 +102,10 @@ def live_geolocators(geo: Event) -> list[AuthorRef]:
     return [AuthorRef.model_validate(g.user) for g in geo.geolocators if g.user.deleted_at is None]
 
 
-def _lock(db: Session, event_id: uuid.UUID) -> Event:
-    return db.query(Event).filter(Event.id == event_id).populate_existing().with_for_update().one()
-
-
 def _require_published(geo: Event) -> None:
     # Mirrored by the frontend's useEventActions (credit controls on geolocated only); change both.
     if geo.status != STATUS_GEOLOCATED:
         raise EventNotPublishedError("Only a published geolocation shares its credit")
-
-
-def _user_by_username(db: Session, username: str) -> User | None:
-    return db.query(User).filter(User.username == username, User.deleted_at.is_(None)).first()
 
 
 def _invite_row(db: Session, event_id: uuid.UUID, user_id: uuid.UUID) -> EventGeolocatorInvite:
@@ -150,10 +144,10 @@ def invite(db: Session, *, geo: Event, owner: User, username: str) -> EventGeolo
     409 ``already_geolocator``; a pending invitation 409 ``already_invited``; past
     :data:`MAX_EVENT_GEOLOCATORS` 409 ``too_many_geolocators``.
     """
-    geo = _lock(db, geo.id)
+    geo = lock_event(db, geo.id)
     ensure_owner(geo, owner)
     _require_published(geo)
-    invitee = _user_by_username(db, username)
+    invitee = get_live_by_username(db, username)
     if invitee is None:
         raise InviteeNotFoundError("No analyst with that username")
     if db.get(EventGeolocator, (geo.id, invitee.id)) is not None or invitee.id == geo.owner_id:
@@ -187,9 +181,9 @@ def invite(db: Session, *, geo: Event, owner: User, username: str) -> EventGeolo
 
 def withdraw(db: Session, *, geo: Event, owner: User, username: str) -> None:
     """Withdraw the owner's pending invitation of ``username`` (404 ``invite_not_found``)."""
-    geo = _lock(db, geo.id)
+    geo = lock_event(db, geo.id)
     ensure_owner(geo, owner)
-    invitee = _user_by_username(db, username)
+    invitee = get_live_by_username(db, username)
     if invitee is None:
         raise InviteNotFoundError("No pending invitation")
     db.delete(_invite_row(db, geo.id, invitee.id))
@@ -203,7 +197,7 @@ def accept(db: Session, *, geo: Event, user: User) -> Event:
     404 ``invite_not_found`` without one; 409 ``invalid_state`` once the event left
     ``geolocated`` (the invitation stays, and declining it still works).
     """
-    geo = _lock(db, geo.id)
+    geo = lock_event(db, geo.id)
     invitation = _invite_row(db, geo.id, user.id)
     _require_published(geo)
     db.delete(invitation)
@@ -223,7 +217,7 @@ def accept(db: Session, *, geo: Event, user: User) -> Event:
 
 def decline(db: Session, *, geo: Event, user: User) -> None:
     """Drop ``user``'s pending invitation (404 ``invite_not_found``)."""
-    geo = _lock(db, geo.id)
+    geo = lock_event(db, geo.id)
     db.delete(_invite_row(db, geo.id, user.id))
     db.commit()
 
@@ -263,7 +257,7 @@ def remove(db: Session, *, geo: Event, actor: User, username: str) -> None:
     daily cap. The owner's removal notifies the analyst
     removed.
     """
-    geo = _lock(db, geo.id)
+    geo = lock_event(db, geo.id)
     target = db.query(User).filter(User.username == username).first()
     if target is None or db.get(EventGeolocator, (geo.id, target.id)) is None:
         raise GeolocatorNotFoundError("This analyst is not a geolocator of this event")

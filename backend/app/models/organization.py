@@ -3,7 +3,6 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from sqlalchemy import (
-    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -15,7 +14,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base
+from app.database import Base, literal_check
 from app.models.user_preferences import APPROVAL_REQUEST_AUDIENCE_DEFAULT, ApprovalRequestAudience
 
 # Value-domain source of truth for a member's role: the ORM column, the Read
@@ -64,9 +63,10 @@ class Organization(Base):
     )
 
     __table_args__ = (
-        CheckConstraint(
-            "approval_request_audience IN ('following', 'everyone', 'nobody')",
-            name="ck_organizations_approval_request_audience",
+        literal_check(
+            "approval_request_audience",
+            ApprovalRequestAudience,
+            "ck_organizations_approval_request_audience",
         ),
     )
 
@@ -94,7 +94,7 @@ class OrganizationMember(Base):
     organization = relationship("Organization")
 
     __table_args__ = (
-        CheckConstraint("role IN ('manager', 'member')", name="ck_organization_members_role_valid"),
+        literal_check("role", OrganizationRole, "ck_organization_members_role_valid"),
         Index("ix_organization_members_user_id", "user_id"),
     )
 

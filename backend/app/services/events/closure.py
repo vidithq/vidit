@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.cache import points_cache
 from app.models.event import STATUS_CLOSED, BeforeClosedStatus, Event
 from app.models.user import User
+from app.services.event_filters import lock_event
 from app.services.permissions import ensure_owner
 
 from .errors import EventStateError
@@ -36,9 +37,7 @@ def close(db: Session, *, geo: Event, current_user: User, close_reason: str) -> 
     """
     # Lock the row like ``geolocate`` and ``save_version``, so a concurrent
     # geolocate or version save lands wholly before or after this close.
-    # ``populate_existing`` refreshes the identity-mapped row from the locked
-    # SELECT before the owner and status re-checks.
-    geo = db.query(Event).filter(Event.id == geo.id).populate_existing().with_for_update().one()
+    geo = lock_event(db, geo.id)
     ensure_owner(geo, current_user)
     if geo.status == STATUS_CLOSED:
         raise EventStateError("This event is already closed")

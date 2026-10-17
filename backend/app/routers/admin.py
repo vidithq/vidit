@@ -46,8 +46,8 @@ from app.services.pagination import (
     MAX_PAGE_SIZE,
     decode_cursor,
     encode_cursor,
-    next_link,
     page_size,
+    paged,
 )
 
 router = APIRouter()
@@ -120,14 +120,12 @@ def list_invite_codes(
 ) -> list[AdminInviteCodeRead]:
     """Invite codes, newest first, capped at 100 per page (``Link: rel="next"`` cursor)."""
     size = page_size(limit)
-    rows, has_next = admin_service.list_invite_codes(
+    window = admin_service.list_invite_codes(
         db,
         limit=size,
         cursor=decode_cursor(cursor) if cursor is not None else None,
     )
-    if has_next:
-        last = rows[-1]
-        response.headers["Link"] = next_link(request, encode_cursor(last.created_at, last.id))
+    rows = paged(request, response, window, size, lambda r: encode_cursor(r.created_at, r.id))
     return admin_service.serialize_invite_codes(db, rows)
 
 
@@ -636,14 +634,12 @@ def maintenance_reap_auth_tokens(
     current_user: User = Depends(require_admin),
 ) -> AdminMaintenanceResponse:
     """Drop expired and old-consumed auth_tokens rows."""
-    result = maintenance_service.reap_auth_tokens(db)
-    admin_service.log_admin_event(
+    result = maintenance_service.run_logged(
         db,
         actor_id=current_user.id,
         action="maintenance_reap_auth_tokens",
-        target=result,
+        job=maintenance_service.reap_auth_tokens,
     )
-    db.commit()
     return AdminMaintenanceResponse(**result)
 
 
@@ -656,14 +652,12 @@ def maintenance_reap_pending_registrations(
 ) -> AdminMaintenanceResponse:
     """Drop expired ``pending_registrations`` rows. The create path sweeps
     inline, so this mostly clears abandoned signups."""
-    result = registration_service.reap_pending_registrations(db)
-    admin_service.log_admin_event(
+    result = maintenance_service.run_logged(
         db,
         actor_id=current_user.id,
         action="maintenance_reap_pending_registrations",
-        target=result,
+        job=registration_service.reap_pending_registrations,
     )
-    db.commit()
     return AdminMaintenanceResponse(**result)
 
 
@@ -680,12 +674,10 @@ def maintenance_send_completion_digests(
     queue. One provider round-trip per analyst, capped at
     ``maintenance.COMPLETION_DIGEST_LIMIT`` addresses; a provider failure on
     one is counted, not raised."""
-    result = maintenance_service.send_completion_digests(db)
-    admin_service.log_admin_event(
+    result = maintenance_service.run_logged(
         db,
         actor_id=current_user.id,
         action="maintenance_send_completion_digests",
-        target=result,
+        job=maintenance_service.send_completion_digests,
     )
-    db.commit()
     return AdminMaintenanceResponse(**result)

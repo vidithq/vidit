@@ -50,9 +50,8 @@ from app.services.pagination import (
     encode_cursor,
     keyset_after,
     keyset_before,
-    next_link,
     page_size,
-    take_page,
+    paged,
 )
 from app.services.thumbnails import thumbnail_media_criteria
 
@@ -305,17 +304,13 @@ def list_events(
             else keyset_before(Event.created_at, Event.id, after)
         )
 
-    # One row past the page decides whether a ``Link: rel="next"`` goes out.
     window = id_query.order_by(*order).limit(size + 1).all()
-    keys, has_next = take_page(window, size)
+    keys = paged(request, response, window, size, lambda k: encode_cursor(k.created_at, k.id))
 
     if not keys:
         return []
 
     ids = [key.id for key in keys]
-    if has_next:
-        last = keys[-1]
-        response.headers["Link"] = next_link(request, encode_cursor(last.created_at, last.id))
 
     # Step 2: full objects + coordinates in one query
     rows = (

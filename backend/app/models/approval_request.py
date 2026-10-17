@@ -5,7 +5,7 @@ from typing import Literal
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base
+from app.database import Base, literal_check
 
 # Where a request stands. Value-domain source of truth for the column and the Read schema;
 # ``ck_approval_requests_status_valid`` pins it at the DB (keep the two in step).
@@ -57,10 +57,7 @@ class ApprovalRequest(Base):
     event = relationship("Event")
 
     __table_args__ = (
-        CheckConstraint(
-            "status IN ('open', 'approved', 'declined', 'withdrawn')",
-            name="ck_approval_requests_status_valid",
-        ),
+        literal_check("status", ApprovalRequestStatus, "ck_approval_requests_status_valid"),
         CheckConstraint(
             "(status = 'open') = (resolved_at IS NULL)", name="ck_approval_requests_resolved"
         ),

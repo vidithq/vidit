@@ -280,7 +280,8 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
     _finish(db, job, status="done")
     if owner.email is None:
         return
-    _send_best_effort(
+    # The durable outcome is the job row: a mailer outage must not fail or re-run the import.
+    email.send_best_effort(
         email.archive_import_complete_email(
             to=owner.email,
             created=job.created_count,
@@ -289,7 +290,8 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
             failed=job.failed_count,
             warnings=outcome.warnings,
             detections_link=email.detections_link(owner.username),
-        )
+        ),
+        what="archive import complete",
     )
 
 
@@ -320,15 +322,9 @@ def _notify_failure_best_effort(db: Session, job: ArchiveImportJob) -> None:
     owner = db.get(User, job.owner_id)
     if owner is None or owner.deleted_at is not None or owner.email is None:
         return
-    _send_best_effort(email.archive_import_failed_email(to=owner.email))
-
-
-def _send_best_effort(message: email.Email) -> None:
-    # The durable outcome is the job row: a mailer outage must not fail or re-run the import.
-    try:
-        email.send(message)
-    except email.EmailSendError as exc:
-        logger.warning("archive import email send failed: %s", exc)
+    email.send_best_effort(
+        email.archive_import_failed_email(to=owner.email), what="archive import failed"
+    )
 
 
 async def run_once(db: Session) -> int:

@@ -1,4 +1,5 @@
-"""Shared ``client``, the ``_make_geo`` row factory and the ``proof_*`` multipart helpers."""
+"""Shared ``client``, the ``_make_geo`` row factory, the published-event, approval and
+notification helpers, and the ``proof_*`` multipart helpers."""
 
 from __future__ import annotations
 
@@ -18,12 +19,14 @@ from app.models.event import (
     STATUS_GEOLOCATED,
     STATUS_REQUESTED,
     Event,
+    EventGeolocator,
 )
 from app.models.notification import NotificationDelivery
 from app.models.tag import Tag
 from app.models.user import User
 from app.services.events import build_source_link_rows
 from tests._fixtures import TINY_JPEG
+from tests.conftest import login_as
 
 client = TestClient(app)
 
@@ -134,3 +137,27 @@ def proof_form_field(filename: str = "proof-1.jpg") -> str:
 
 def proof_file_part(filename: str = "proof-1.jpg") -> tuple[str, tuple[str, bytes, str]]:
     return ("proof_files", (filename, TINY_JPEG, "image/jpeg"))
+
+
+def published_geo(db, owner: User, **kw) -> Event:
+    """A geolocated event ``owner`` holds the owner credit row of, as a published event does."""
+    geo = _make_geo(db, author=owner, **kw)
+    db.add(EventGeolocator(event_id=geo.id, user_id=owner.id))
+    db.commit()
+    return geo
+
+
+def approve(geo: Event, user: User, version_no: int = 1, **body):
+    """``POST /events/{id}/approvals`` as ``user``; ``body`` adds ``note`` or ``organization``."""
+    return client.post(
+        f"/api/v1/events/{geo.id}/approvals",
+        json={"version_no": version_no, **body},
+        headers=login_as(client, user),
+    )
+
+
+def notifications_of(user: User) -> list[dict]:
+    login_as(client, user)
+    response = client.get("/api/v1/notifications")
+    assert response.status_code == 200, response.text
+    return response.json()

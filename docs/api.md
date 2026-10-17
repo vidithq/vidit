@@ -3129,7 +3129,7 @@ Drop the invite-code row. Active, expired and revoked codes all delete, provided
 
 ### `GET /admin/users?q=<query>` 🛡️
 
-Case-insensitive substring match on username or email. Empty `q` returns `[]`. Capped at 20 rows.
+Case-insensitive substring match on username or email. `%` and `_` match themselves, not any characters. Empty `q` returns `[]`. Capped at 20 rows.
 
 **Response 200:** an array of `AdminUserRead`.
 ```json

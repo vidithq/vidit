@@ -2,10 +2,10 @@ import uuid
 from datetime import UTC, datetime
 from typing import Literal
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text, text
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base
+from app.database import Base, literal_check
 
 # Media kind domain. Value-domain source of truth for the column, the Read
 # schema, the tweet-import ``kind`` field and the generated frontend type.
@@ -48,8 +48,7 @@ class Media(Base):
     event = relationship("Event", back_populates="media")
 
     __table_args__ = (
-        # Mirror of ``MediaRole``; keep the two in step.
-        CheckConstraint("role IN ('source', 'proof')", name="ck_media_role_valid"),
+        literal_check("role", MediaRole, "ck_media_role_valid"),
         # Partial index on the populated cohort: "every row with this hash".
         Index("ix_media_sha256", "sha256", postgresql_where="sha256 IS NOT NULL"),
         # At most one source media per event.

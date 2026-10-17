@@ -26,7 +26,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base
+from app.database import Base, literal_check
 
 # Lifecycle status (value-domain source of truth: the ORM column, the Read
 # schemas and the generated frontend type derive from it).
@@ -412,17 +412,8 @@ class Event(Base):
             " OR (status <> 'closed' AND before_closed_status IS NULL)",
             name="ck_events_before_closed_status",
         ),
-        # Pin the ``status`` domain at the DB. Mirror of ``EventStatus``; keep
-        # the two in step.
-        CheckConstraint(
-            "status IN ('requested', 'detected', 'geolocated', 'closed')",
-            name="ck_events_status_valid",
-        ),
-        # Same for ``DetectedVia``; NULL is in-domain. Keep the two in step.
-        CheckConstraint(
-            "detected_via IS NULL OR detected_via IN ('bot', 'paste', 'archive')",
-            name="ck_events_detected_via_valid",
-        ),
+        literal_check("status", EventStatus, "ck_events_status_valid"),
+        literal_check("detected_via", DetectedVia, "ck_events_detected_via_valid", nullable=True),
         # Open requests / detections / geolocations, newest first.
         Index("ix_events_status_created_at", "status", "created_at"),
         # Backs the re-import match on an owner's rows by source post. Partial:
