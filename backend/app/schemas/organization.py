@@ -87,6 +87,8 @@ class OrganizationMemberRead(BaseModel):
     role: OrganizationRole
     joined_at: datetime
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class OrganizationInviteRead(BaseModel):
     """One pending invite, for the org manager's list."""
@@ -95,6 +97,8 @@ class OrganizationInviteRead(BaseModel):
     user: AuthorRef
     invited_by: AuthorRef | None
     created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OrganizationInviteCreate(BaseModel):
