@@ -28,6 +28,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 ### Changed
 
 - An event page's header holds a version selector, Edit for the owner, a one-click Share and Report; an Approvals card beside the record shows the live approvals, close and credit move to the edit page, and icon buttons show their label on hover ([#583](https://github.com/vidithq/vidit/pull/583)).
+- On a wide screen the page column sits centred, the nav rail counted as part of the left margin, so the space left and right of the content is equal; every page still starts its title at the same x.
 - A profile shows the analyst's organizations as logos on the follower line, each linking to the organization and naming it with the analyst's role on hover or focus, so the coverage map opens the page ([#586](https://github.com/vidithq/vidit/pull/586)).
 - App pages share one container, left-aligned after the sidebar: a page keeps its reading width, and a page with a right rail widens to hold it beside the same main column ([#588](https://github.com/vidithq/vidit/pull/588)).
 - The timeline is now the feed: the page moves from `/timeline` to `/feed` (the old address redirects), the sidebar entry is "Feed", and `GET /timeline` becomes `GET /feed` with `feed_at` in place of `timeline_at` ([#585](https://github.com/vidithq/vidit/pull/585)).
