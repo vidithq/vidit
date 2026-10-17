@@ -27,6 +27,7 @@ import {
 } from "@/components/filters/EventFilterSections";
 import { FilterBar } from "@/components/filters/FilterBar";
 import { cardTags } from "@/lib/cardTags";
+import { appendApprovalFilters } from "@/lib/search";
 import { creditProps } from "@/lib/geolocatorCredit";
 import type { PublicProfile } from "@/lib/users";
 import type { components, operations } from "@/lib/api-types";
@@ -56,6 +57,7 @@ const FEED_SECTIONS: ReadonlyArray<EventFilterSectionName> = [
   "conflict",
   "capture_source",
   "tags",
+  "approval",
 ];
 
 interface FeedFilters {
@@ -96,6 +98,7 @@ export default function FeedPage() {
       filters.values.conflicts.forEach((n) => search.append("conflict", n));
       filters.values.captureSources.forEach((n) => search.append("capture_source", n));
       filters.values.tags.forEach((n) => search.append("tag", n));
+      appendApprovalFilters(search, filters.values);
       if (cursor) search.set("cursor", cursor);
       return `/feed?${search}`;
     },

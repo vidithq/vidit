@@ -14,10 +14,11 @@ from typing import Any
 
 from fastapi import HTTPException
 from geoalchemy2.functions import ST_MakeEnvelope, ST_Within
-from sqlalchemy import ColumnElement, Select, and_, func, or_, select, union
+from sqlalchemy import ColumnElement, Select, and_, exists, func, or_, select, union
 from sqlalchemy.orm import Query as SAQuery
 from sqlalchemy.orm import aliased
 
+from app.models.approval import EventApproval
 from app.models.conflict import Conflict
 from app.models.event import (
     STATUS_CLOSED,
@@ -28,6 +29,7 @@ from app.models.event import (
     EventGeolocator,
 )
 from app.models.media import Media
+from app.models.organization import Organization
 from app.models.tag import Tag
 from app.models.user import User
 
@@ -339,6 +341,62 @@ def taxonomy_predicates(
     return predicates
 
 
+def _standing_approval(*criteria: ColumnElement[bool]) -> ColumnElement[bool]:
+    """An approval matching ``criteria`` that stands on the live version of a published event:
+    the reviews ``services/approvals.build_read`` marks ``current``."""
+    return and_(
+        Event.status == STATUS_GEOLOCATED,
+        exists().where(
+            EventApproval.event_id == Event.id,
+            EventApproval.version_no == Event.version_no,
+            EventApproval.revoked_at.is_(None),
+            *criteria,
+        ),
+    )
+
+
+def approval_predicates(
+    *,
+    approved: bool = False,
+    approved_by: str | None = None,
+    approved_by_org: str | None = None,
+) -> list[ColumnElement[bool]]:
+    """The ``approved``, ``approved_by`` and ``approved_by_org`` predicates, one per set value.
+
+    ``approved`` keeps an event whose live version holds a standing approval, an analyst's or an
+    organization's; ``approved_by`` one the analyst the username names approved as themselves;
+    ``approved_by_org`` one the organization the slug names approved. Each leg pins
+    ``organization_id`` so the lookup stays on the partial unique index of its kind
+    (``uq_event_approvals_analyst``, ``uq_event_approvals_organization``). Callers gate the two
+    names through :data:`AUTHOR_FILTER_PATTERN`. :func:`apply_filters` and the feed both read them.
+    """
+    analyst = EventApproval.organization_id.is_(None)
+    organization = EventApproval.organization_id.is_not(None)
+    predicates: list[ColumnElement[bool]] = []
+    if approved:
+        predicates.append(or_(_standing_approval(analyst), _standing_approval(organization)))
+    if approved_by:
+        predicates.append(
+            _standing_approval(
+                analyst,
+                EventApproval.reviewer_id.in_(
+                    select(User.id).where(owner_username_matches(approved_by))
+                ),
+            )
+        )
+    if approved_by_org:
+        predicates.append(
+            _standing_approval(
+                EventApproval.organization_id.in_(
+                    select(Organization.id).where(
+                        func.lower(Organization.slug) == approved_by_org.lower()
+                    )
+                )
+            )
+        )
+    return predicates
+
+
 def apply_filters(
     query: SAQuery,
     *,
@@ -353,6 +411,9 @@ def apply_filters(
     submitted_to: str | None = None,
     author: str | None = None,
     media: list[str] | None = None,
+    approved: bool = False,
+    approved_by: str | None = None,
+    approved_by_org: str | None = None,
     bbox: str | None = None,
     has_coords: bool | None = None,
 ) -> SAQuery:
@@ -368,6 +429,9 @@ def apply_filters(
 
     ``conflict``, ``capture_source`` and ``tag`` take lists of names (see
     :func:`taxonomy_predicates`).
+
+    ``approved``, ``approved_by`` and ``approved_by_org`` keep approved events (see
+    :func:`approval_predicates`).
 
     ``has_coords`` splits on ``event_coords``: ``True`` keeps rows with a point (a request's
     location guess), ``False`` the blind ones, ``None`` both.
@@ -405,6 +469,12 @@ def apply_filters(
         # EXISTS, so an event with several attachments isn't row-multiplied.
         query = query.filter(Event.media.any(Media.media_type.in_(media)))
 
+    query = query.filter(
+        *approval_predicates(
+            approved=approved, approved_by=approved_by, approved_by_org=approved_by_org
+        )
+    )
+
     if bbox:
         query = query.filter(bbox_predicate(parse_bbox(bbox)))
 
@@ -433,6 +503,9 @@ class EventFilters:
     submitted_to: str | None = None
     author: str | None = None
     media: list[str] | None = None
+    approved: bool = False
+    approved_by: str | None = None
+    approved_by_org: str | None = None
 
     def apply(self, query: SAQuery, *, view: str) -> SAQuery:
         return apply_filters(

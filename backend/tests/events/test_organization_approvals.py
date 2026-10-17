@@ -729,3 +729,51 @@ def test_deleting_an_unknown_organization_is_not_found(admin_user):
         "/api/v1/admin/organizations/no-such-org", headers=login_as(client, admin_user)
     )
     assert response.status_code == 404
+
+
+def _listed(**params) -> set[str]:
+    response = client.get(_EVENTS, params=params)
+    assert response.status_code == 200, response.text
+    return {row["id"] for row in response.json()}
+
+
+def test_approval_filters_keep_standing_approvals_on_the_live_version(db, make_user, make_org):
+    """``approved`` and ``approved_by`` keep a standing approval on the live version only: a
+    revoked one and one on an outdated version drop out. ``approved_by_org`` reads the
+    organization's approval, and ``approved_by`` does not match what an analyst placed for it."""
+    owner, analyst, manager = make_user(), make_user(), make_user()
+    org = make_org(managers=[manager])
+    standing, revoked, outdated, by_org, unapproved = (_published(db, owner) for _ in range(5))
+    assert _approve(standing, analyst).status_code == 201
+    approval = _approve(revoked, analyst).json()
+    assert _revoke(revoked, approval["id"], analyst).status_code == 200
+    assert _approve(outdated, analyst).status_code == 201
+    outdated.version_no = 2
+    db.commit()
+    assert _approve(by_org, manager, org).status_code == 201
+
+    assert _listed(author=owner.username, approved="true") == {str(standing.id), str(by_org.id)}
+    assert _listed(approved_by=analyst.username.upper()) == {str(standing.id)}
+    assert _listed(approved_by=manager.username) == set()
+    assert _listed(approved_by_org=org.slug) == {str(by_org.id)}
+    assert str(unapproved.id) not in _listed(author=owner.username, approved="true")
+
+    search = client.get(
+        "/api/v1/search", params={"q": "", "type": "event", "approved_by_org": org.slug}
+    ).json()
+    assert [hit["id"] for hit in search["geolocations"]] == [str(by_org.id)]
+    points = client.get(
+        f"{_EVENTS}/points", params={"bbox": "-90,-180,90,180", "approved_by": analyst.username}
+    ).json()
+    assert [row[0] for row in points] == [str(standing.id)]
+    feed = client.get(
+        "/api/v1/feed",
+        params={"scope": "all", "approved_by_org": org.slug},
+        headers=login_as(client, analyst),
+    ).json()
+    assert [item["id"] for item in feed] == [str(by_org.id)]
+
+
+def test_approval_filters_refuse_a_name_outside_the_handle_charset():
+    assert client.get(_EVENTS, params={"approved_by": "a%b"}).status_code == 422
+    assert client.get(_EVENTS, params={"approved_by_org": "a b"}).status_code == 422

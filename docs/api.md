@@ -642,6 +642,9 @@ List one lifecycle view, newest or oldest first, as `EventList` cards (no full p
 | `event_date_from` / `event_date_to` | date (YYYY-MM-DD) | Inclusive event-date range. Malformed values return 422. |
 | `submitted_from` / `submitted_to` | date (YYYY-MM-DD) | Inclusive submission-date range. Malformed values return 422. |
 | `author` | string | Exact, case-insensitive match on the username of any analyst the event credits: its owner or one of its [geolocators](#shared-credit) (pick real handles via [`GET /search/authors`](#get-searchauthors)). Restricted to `[A-Za-z0-9_-]{1,50}`; any other character returns 422. |
+| `approved` | bool | `true` keeps a `geolocated` event whose live version holds a standing approval (not revoked), an analyst's or an organization's. An approval of an earlier version does not count. See [Approvals](#approvals). |
+| `approved_by` | string | Keeps a `geolocated` event that the analyst with this username (exact, case-insensitive) approved as themselves on its live version, with the approval standing. An approval they placed for an organization does not count. Same `[A-Za-z0-9_-]{1,50}` rule as `author`. |
+| `approved_by_org` | string | Keeps a `geolocated` event that the organization with this slug approved on its live version, with the approval standing. Same character rule. |
 | `has_coords` | bool | `true` keeps rows with an `event_coords` point (on the `requested` view, a request carrying a location guess); `false` keeps rows without one. Omit it for both. |
 | `sort` | string | `newest` (default) orders by `created_at DESC, id DESC`; `oldest` orders by `created_at ASC, id ASC`. Both orders are total, so a cursor walk serves every row once. Anything else → 422. |
 | `limit` | int | Rows per page. See [Pagination](#pagination). |
@@ -696,12 +699,12 @@ Compact `[id, lat, lng, event_date, added_date, detected]` tuples for client-sid
 |-------|------|-------------|
 | `bbox` | string, **required** | Same shape and validation as on `GET /events`. Missing, empty, or malformed → 422. A box crossing the antimeridian is not modeled; widen it to the full longitude range. |
 | `media` | string (repeatable) | `?media=image&media=video` matches an event carrying any attachment of a listed type. Values outside `image` / `video` → 422. |
-| `conflict`, `capture_source`, `tag`, `event_date_from`, `event_date_to`, `submitted_from`, `submitted_to`, `author` | | Same semantics as on [`GET /events`](#get-events). |
+| `conflict`, `capture_source`, `tag`, `event_date_from`, `event_date_to`, `submitted_from`, `submitted_to`, `author`, `approved`, `approved_by`, `approved_by_org` | | Same semantics as on [`GET /events`](#get-events). |
 
 | Status | Meaning |
 |--------|---------|
 | 200 | Points inside `bbox` |
-| 422 | `bbox` missing or malformed, a malformed date filter, or a `media` / `author` value outside its domain |
+| 422 | `bbox` missing or malformed, a malformed date filter, or a `media`, `author`, `approved_by` or `approved_by_org` value outside its domain |
 
 **Response 200:**
 ```json
@@ -1749,7 +1752,7 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
 | `q` | string | Free-text query. |
 | `type` | enum | `all` (default), `event` (both event groups), `geolocation`, `request`, `collection`, `user`, or `organization`. Anything else → 422. |
 | `limit` | int | Per-group cap. 1 ≤ `limit` ≤ 50, default 20. |
-| *filter set* | | The event filters of [`GET /events`](#get-events): `status`, `conflict`, `capture_source`, `tag`, `media` (repeatable), `event_date_from` / `event_date_to`, `submitted_from` / `submitted_to`, `author`. They scope the two event groups; a `status` value a group's view can't contain empties that group. |
+| *filter set* | | The event filters of [`GET /events`](#get-events): `status`, `conflict`, `capture_source`, `tag`, `media` (repeatable), `event_date_from` / `event_date_to`, `submitted_from` / `submitted_to`, `author`, `approved`, `approved_by`, `approved_by_org`. They scope the two event groups; a `status` value a group's view can't contain empties that group. |
 
 **Rules.**
 
@@ -2971,6 +2974,7 @@ A detection, a retraction and a withdrawn request are in neither kind. A soft-de
 | `scope` | string | `following` (default) keeps the geolocations crediting an analyst you follow and the requests one of them opened, and is empty when you follow nobody. `all` keeps every row. Anything else returns 422. |
 | `kind` | string (repeatable) | `geolocation` or `request` keeps that kind of row. Both, or none, keep both. Anything else returns 422. |
 | `conflict`, `capture_source`, `tag` | string (repeatable) | Same semantics as on [`GET /events`](#get-events). |
+| `approved`, `approved_by`, `approved_by_org` | | Same semantics as on [`GET /events`](#get-events). |
 | `limit` | int | Rows per page, default 10. See [Pagination](#pagination). |
 | `cursor` | string | Opaque cursor from the previous page's `Link: rel="next"` header. See [Pagination](#pagination). |
 

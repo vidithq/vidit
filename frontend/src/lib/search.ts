@@ -23,6 +23,8 @@ export function search(opts: {
   eventDateTo?: string;
   submittedFrom?: string;
   submittedTo?: string;
+  approved?: boolean;
+  approvedBy?: Account | null;
 }): Promise<SearchResponse> {
   const params = new URLSearchParams({
     q: opts.q,
@@ -39,7 +41,67 @@ export function search(opts: {
   if (opts.eventDateTo) params.set("event_date_to", opts.eventDateTo);
   if (opts.submittedFrom) params.set("submitted_from", opts.submittedFrom);
   if (opts.submittedTo) params.set("submitted_to", opts.submittedTo);
+  appendApprovalFilters(params, {
+    approved: !!opts.approved,
+    approvedBy: opts.approvedBy ?? null,
+  });
   return apiFetch<SearchResponse>(`/search?${params.toString()}`);
+}
+
+/** The approval filter values: `approved`, and the account `approvedBy` names. */
+export interface ApprovalFilters {
+  approved: boolean;
+  approvedBy: Account | null;
+}
+
+/** Set the approval filter keys of `services/event_filters.approval_predicates`: `approved`, and
+ *  `approved_by` (a username) or `approved_by_org` (a slug) for the picked account. The search
+ *  page's URL and every listing request share the keys. */
+export function appendApprovalFilters(params: URLSearchParams, filters: ApprovalFilters): void {
+  if (filters.approved) params.set("approved", "true");
+  const by = filters.approvedBy;
+  if (by?.kind === "analyst") params.set("approved_by", by.username);
+  else if (by) params.set("approved_by_org", by.slug);
+}
+
+/** Read the approval filter keys back from a URL. A name the `AUTHOR_FILTER_RE` gate refuses is
+ *  dropped, and an organization read from a slug carries the slug as its name. */
+export function approvalFiltersFromParams(params: {
+  get(name: string): string | null;
+}): ApprovalFilters {
+  const username = params.get("approved_by") ?? "";
+  const slug = params.get("approved_by_org") ?? "";
+  let approvedBy: Account | null = null;
+  if (AUTHOR_FILTER_RE.test(username)) approvedBy = { kind: "analyst", username };
+  else if (AUTHOR_FILTER_RE.test(slug)) approvedBy = { kind: "organization", slug, name: slug };
+  return { approved: params.get("approved") === "true", approvedBy };
+}
+
+// Per group: the picker shows a short list, the rest is a longer query away.
+const APPROVER_SUGGESTIONS = 5;
+
+/** Analysts and organizations for the Approved by filter, through the `user` and `organization`
+ *  groups of `GET /search`. */
+export async function suggestApprovers(q: string): Promise<Account[]> {
+  const trimmed = q.trim();
+  if (!trimmed) return [];
+  const [users, organizations] = await Promise.all([
+    search({ q: trimmed, type: "user", limit: APPROVER_SUGGESTIONS }),
+    search({ q: trimmed, type: "organization", limit: APPROVER_SUGGESTIONS }),
+  ]);
+  return [
+    ...users.users.map((u): Account => ({
+      kind: "analyst",
+      username: u.username,
+      avatar_url: u.avatar_url,
+    })),
+    ...organizations.organizations.map((o): Account => ({
+      kind: "organization",
+      slug: o.slug,
+      name: o.name,
+      avatar_url: o.avatar_url,
+    })),
+  ];
 }
 
 /** A `/search` URL scoped to one analyst: the profile's one entry into the filtered catalogue

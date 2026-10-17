@@ -124,6 +124,10 @@ export const FIELD_HELP = {
     text: "An approval covers one version. When the event gets a new version, approvers are asked to approve again.",
     label: "What does an approval cover?",
   },
+  approval_filter: {
+    text: "Keeps the events whose current version holds an approval nobody revoked: any approval, or the one an analyst or an organization gave. An approval of an earlier version does not count.",
+    label: "Which approvals count?",
+  },
   last_org_manager: {
     text: "The last org manager cannot leave, be removed or become a member. Make another member org manager first.",
     label: "Why can the last org manager not leave?",

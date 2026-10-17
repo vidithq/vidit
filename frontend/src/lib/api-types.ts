@@ -1746,8 +1746,9 @@ export interface paths {
          *
          *     ``scope=following`` (default) keeps the rows owned by analysts the
          *     current user follows, and is empty when they follow nobody; ``scope=all``
-         *     keeps every row. ``kind``, ``conflict``, ``capture_source`` and ``tag``
-         *     narrow the rows as on ``GET /events``. Cursor-paged, capped at 100 rows; the
+         *     keeps every row. ``kind``, ``conflict``, ``capture_source``, ``tag``,
+         *     ``approved``, ``approved_by`` and ``approved_by_org`` narrow the rows as on
+         *     ``GET /events``. Cursor-paged, capped at 100 rows; the
          *     ``Link: rel="next"`` cursor is present exactly when a next page holds a row.
          */
         get: operations["get_feed_api_v1_feed_get"];
@@ -6844,6 +6845,10 @@ export interface operations {
                 submitted_from?: string | null;
                 submitted_to?: string | null;
                 author?: string | null;
+                /** @description true: approved on the live version */
+                approved?: boolean;
+                approved_by?: string | null;
+                approved_by_org?: string | null;
                 /** @description true: with a location; false: without */
                 has_coords?: boolean | null;
                 sort?: "newest" | "oldest";
@@ -7130,6 +7135,9 @@ export interface operations {
                 submitted_to?: string | null;
                 author?: string | null;
                 media?: string[] | null;
+                approved?: boolean;
+                approved_by?: string | null;
+                approved_by_org?: string | null;
             };
             header?: never;
             path?: never;
@@ -8011,6 +8019,9 @@ export interface operations {
                 conflict?: string[] | null;
                 capture_source?: string[] | null;
                 tag?: string[] | null;
+                approved?: boolean;
+                approved_by?: string | null;
+                approved_by_org?: string | null;
             };
             header?: never;
             path?: never;
@@ -8785,6 +8796,12 @@ export interface operations {
                 /** @description Scope the event groups to this owner username (exact, case-insensitive) */
                 author?: string | null;
                 media?: string[] | null;
+                /** @description Keep events approved on their live version */
+                approved?: boolean;
+                /** @description Keep events this analyst approved on their live version (username) */
+                approved_by?: string | null;
+                /** @description Keep events this organization approved on their live version (slug) */
+                approved_by_org?: string | null;
             };
             header?: never;
             path?: never;

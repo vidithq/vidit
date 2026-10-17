@@ -7,6 +7,7 @@ from app.ratelimit import authenticated_read_quota, limiter
 from app.routers.events._common import build_event_list
 from app.schemas.event import FeedItemRead
 from app.services import social
+from app.services.event_filters import AUTHOR_FILTER_PATTERN
 from app.services.pagination import (
     decode_cursor,
     encode_cursor,
@@ -31,6 +32,9 @@ def get_feed(
     conflict: list[str] | None = Query(None),
     capture_source: list[str] | None = Query(None),
     tag: list[str] | None = Query(None),
+    approved: bool = Query(False),
+    approved_by: str | None = Query(None, pattern=AUTHOR_FILTER_PATTERN),
+    approved_by_org: str | None = Query(None, pattern=AUTHOR_FILTER_PATTERN),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[FeedItemRead]:
@@ -38,8 +42,9 @@ def get_feed(
 
     ``scope=following`` (default) keeps the rows owned by analysts the
     current user follows, and is empty when they follow nobody; ``scope=all``
-    keeps every row. ``kind``, ``conflict``, ``capture_source`` and ``tag``
-    narrow the rows as on ``GET /events``. Cursor-paged, capped at 100 rows; the
+    keeps every row. ``kind``, ``conflict``, ``capture_source``, ``tag``,
+    ``approved``, ``approved_by`` and ``approved_by_org`` narrow the rows as on
+    ``GET /events``. Cursor-paged, capped at 100 rows; the
     ``Link: rel="next"`` cursor is present exactly when a next page holds a row.
     """
     size = page_size(limit)
@@ -53,6 +58,9 @@ def get_feed(
         conflict=conflict,
         capture_source=capture_source,
         tag=tag,
+        approved=approved,
+        approved_by=approved_by,
+        approved_by_org=approved_by_org,
     )
     if has_next:
         last, _, _, last_at = rows[-1]

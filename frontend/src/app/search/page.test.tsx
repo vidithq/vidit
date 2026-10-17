@@ -309,3 +309,42 @@ describe("the search page's filter rail", () => {
     expect(screen.queryByRole("button", { name: "Filters" })).not.toBeInTheDocument();
   });
 });
+
+describe("the approval filters on the search page", () => {
+  it("reads them off the URL, sends them, shows their pills and writes them back", async () => {
+    searchParams = new URLSearchParams("type=event&approved=true&approved_by_org=kakhovka-watch");
+    search.mockResolvedValue(response({ type: "event", query: "", geolocations: [eventHit()] }));
+
+    render(<SearchPage />);
+
+    await waitFor(() =>
+      expect(search).toHaveBeenCalledWith(
+        expect.objectContaining({
+          approved: true,
+          approvedBy: { kind: "organization", slug: "kakhovka-watch", name: "kakhovka-watch" },
+        }),
+      ),
+    );
+    expect(screen.getAllByText("Approved by kakhovka-watch").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Filters (2)" })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(replace).toHaveBeenCalledWith(
+        "/search?type=event&approved=true&approved_by_org=kakhovka-watch",
+      ),
+    );
+  });
+
+  it("commits Approved only from the panel into the URL", async () => {
+    searchParams = new URLSearchParams("q=kakhovka&type=event");
+    search.mockResolvedValue(response({ type: "event", geolocations: [eventHit()] }));
+
+    render(<SearchPage />);
+    const rail = await screen.findByRole("complementary", { name: "Filters" });
+    fireEvent.click(within(rail).getByRole("button", { name: "Toggle Approvals" }));
+    fireEvent.click(within(rail).getByRole("button", { name: "Approved only" }));
+
+    await waitFor(() =>
+      expect(replace).toHaveBeenCalledWith("/search?q=kakhovka&type=event&approved=true"),
+    );
+  });
+});

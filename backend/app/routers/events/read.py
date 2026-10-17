@@ -71,6 +71,9 @@ def _build_points_cache_key(
     submitted_to: str | None,
     author: str | None,
     media: list[str] | None = None,
+    approved: bool = False,
+    approved_by: str | None = None,
+    approved_by_org: str | None = None,
 ) -> str:
     """Hash the filter tuple into a collision-safe ``points_cache`` key.
 
@@ -96,6 +99,9 @@ def _build_points_cache_key(
             submitted_to,
             author,
             sorted(media) if media else None,
+            approved,
+            approved_by.lower() if approved_by else None,
+            approved_by_org.lower() if approved_by_org else None,
         ]
     )
     return f"points:{hashlib.sha256(payload).hexdigest()}"
@@ -120,6 +126,9 @@ def list_points(
     author: str | None = Query(None, pattern=AUTHOR_FILTER_PATTERN),
     # Multi-value; an event matches if it has any attachment of a listed type.
     media: list[str] | None = Query(None),
+    approved: bool = False,
+    approved_by: str | None = Query(None, pattern=AUTHOR_FILTER_PATTERN),
+    approved_by_org: str | None = Query(None, pattern=AUTHOR_FILTER_PATTERN),
     db: Session = Depends(get_db),
 ):
     """Return the map's events inside ``bbox`` as a compact array:
@@ -149,6 +158,9 @@ def list_points(
         submitted_to=submitted_to,
         author=author,
         media=media,
+        approved=approved,
+        approved_by=approved_by,
+        approved_by_org=approved_by_org,
     )
 
     cached_bytes = points_cache.get(cache_key)
@@ -178,6 +190,9 @@ def list_points(
         submitted_to=submitted_to,
         author=author,
         media=media,
+        approved=approved,
+        approved_by=approved_by,
+        approved_by_org=approved_by_org,
     )
     # Map-only narrowing: a closed detection stays on the list but leaves the
     # map, and a pin needs a coordinate inside the viewport.
@@ -229,6 +244,9 @@ def list_events(
     submitted_from: str | None = None,
     submitted_to: str | None = None,
     author: str | None = Query(None, pattern=AUTHOR_FILTER_PATTERN),
+    approved: bool = Query(False, description="true: approved on the live version"),
+    approved_by: str | None = Query(None, pattern=AUTHOR_FILTER_PATTERN),
+    approved_by_org: str | None = Query(None, pattern=AUTHOR_FILTER_PATTERN),
     has_coords: bool | None = Query(None, description="true: with a location; false: without"),
     sort: EventListSort = Query("newest"),
     limit: int = Query(MAX_PAGE_SIZE, ge=1),
@@ -266,6 +284,9 @@ def list_events(
         submitted_from=submitted_from,
         submitted_to=submitted_to,
         author=author,
+        approved=approved,
+        approved_by=approved_by,
+        approved_by_org=approved_by_org,
         bbox=bbox,
         has_coords=has_coords,
     )

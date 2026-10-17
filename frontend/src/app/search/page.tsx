@@ -14,7 +14,13 @@ import { Building2, MapPin, Search as SearchIcon, Users } from "lucide-react";
 import { CollectionCard } from "@/components/collections/CollectionCard";
 import { CollectionIcon } from "@/lib/collections";
 import { StatusBadge } from "@/components/event/StatusBadge";
-import { AUTHOR_FILTER_RE, search, splitHighlights } from "@/lib/search";
+import {
+  AUTHOR_FILTER_RE,
+  appendApprovalFilters,
+  approvalFiltersFromParams,
+  search,
+  splitHighlights,
+} from "@/lib/search";
 import { Avatar } from "@/components/ui/Avatar";
 import { EntityCard } from "@/components/ui/EntityCard";
 import type {
@@ -88,7 +94,8 @@ const EVENT_TYPES: ReadonlyArray<SearchType> = ["event", "geolocation", "request
 
 // The requests group serves status `requested` only, so on the legacy request scope both
 // status chips could only empty the result. A URL-carried status still shows as a removable pill.
-const REQUEST_SECTIONS = ALL_FILTER_SECTIONS.filter((s) => s !== "status");
+// Approvals stay off too: a request carries none.
+const REQUEST_SECTIONS = ALL_FILTER_SECTIONS.filter((s) => s !== "status" && s !== "approval");
 
 // The backend narrows collections on `author` and empties the group on every other event
 // predicate, so that scope offers the Author section alone.
@@ -140,6 +147,7 @@ function SearchPageBody() {
       const raw = searchParams.get("author") ?? "";
       return AUTHOR_FILTER_RE.test(raw) ? raw : "";
     })(),
+    ...approvalFiltersFromParams(searchParams),
   };
   const initialDates: DateWindows = {
     eventFrom: searchParams.get("event_date_from") ?? "",
@@ -283,6 +291,7 @@ function SearchPageBody() {
       values.captureSources.forEach((n) => params.append("capture_source", n));
       values.tags.forEach((n) => params.append("tag", n));
       values.mediaTypes.forEach((n) => params.append("media", n));
+      appendApprovalFilters(params, values);
       if (dates.eventFrom) params.set("event_date_from", dates.eventFrom);
       if (dates.eventTo) params.set("event_date_to", dates.eventTo);
       if (dates.addedFrom) params.set("submitted_from", dates.addedFrom);
@@ -318,6 +327,8 @@ function SearchPageBody() {
       captureSource: v.captureSources,
       tag: v.tags,
       media: v.mediaTypes,
+      approved: v.approved,
+      approvedBy: v.approvedBy,
       eventDateFrom: d.eventFrom || undefined,
       eventDateTo: d.eventTo || undefined,
       submittedFrom: d.addedFrom || undefined,

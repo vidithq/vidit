@@ -1,11 +1,17 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 
-import { AUTHOR_FILTER_RE, suggestAuthors } from "@/lib/search";
+import {
+  AUTHOR_FILTER_RE,
+  suggestApprovers,
+  suggestAuthors,
+  type ApprovalFilters,
+} from "@/lib/search";
 
 import type { Conflict, Tag } from "@/types";
 import type { ActiveFilter } from "@/components/ui/ActiveFilterPills";
+import { FORM_LABEL } from "@/components/ui/form-styles";
 import { TAP_STEP } from "@/components/ui/Button";
 import { ChipBucket } from "@/components/ui/ChipBucket";
 import { AccountPicker, accountName, analystAccount } from "@/components/ui/AccountPicker";
@@ -20,7 +26,7 @@ import type { Concept } from "@/lib/fieldHelp";
 /**
  * The event filter panel, shared by the map overlay, the search page, the Requests board and the
  * feed: one component owns the section list (the surface's lead sections, Status, Conflict, Capture
- * source, Source media, Location guess, the surface's date sections, Tags, Author), so a vocabulary
+ * source, Source media, Location guess, the surface's date sections, Tags, Author, Approvals), so a vocabulary
  * change lands on all four. Surfaces differ in their injected sections (`leadSections`,
  * `dateSections`) and in `sections`, the subset they offer (the search page's Collections group is
  * narrowed by `author` alone, and only the board offers Location guess).
@@ -31,7 +37,7 @@ import type { Concept } from "@/lib/fieldHelp";
  */
 
 /** The common event filter values (the server vocabulary minus the surface-specific date windows). */
-export interface EventFilterValues {
+export interface EventFilterValues extends ApprovalFilters {
   statuses: string[];
   conflicts: string[];
   captureSources: string[];
@@ -50,6 +56,8 @@ export const EMPTY_EVENT_FILTERS: EventFilterValues = {
   mediaTypes: [],
   locationGuess: [],
   author: "",
+  approved: false,
+  approvedBy: null,
 };
 
 export type EventFilterPatch = (patch: Partial<EventFilterValues>) => void;
@@ -62,7 +70,8 @@ export type EventFilterSectionName =
   | "source_media"
   | "location_guess"
   | "tags"
-  | "author";
+  | "author"
+  | "approval";
 
 /** The default stack in render order. `location_guess` is opt-in: only `GET /events` serves it. */
 export const ALL_FILTER_SECTIONS: ReadonlyArray<EventFilterSectionName> = [
@@ -72,6 +81,7 @@ export const ALL_FILTER_SECTIONS: ReadonlyArray<EventFilterSectionName> = [
   "source_media",
   "tags",
   "author",
+  "approval",
 ];
 
 /** The two date windows both surfaces carry, whatever drives them. Empty string = open at that edge. */
@@ -143,6 +153,8 @@ const statusLabel = (value: string) => STATUS_FILTER_LABELS[value] ?? value;
 
 const capitalize = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
+const APPROVED_ONLY = "approved";
+
 /** The removable-pill entries for the common values; surfaces append their date-window entries.
  * The author is not a pill: its chip lives in the Author section. Surfaces count it on top of
  * these entries. */
@@ -183,6 +195,18 @@ export function buildActiveFilterPills(
       label: locationGuessLabel(n),
       onRemove: () => drop("locationGuess", n),
     })),
+    ...(values.approved
+      ? [{ key: "approved", label: "Approved", onRemove: () => onPatch({ approved: false }) }]
+      : []),
+    ...(values.approvedBy
+      ? [
+          {
+            key: "approved-by",
+            label: `Approved by ${accountName(values.approvedBy)}`,
+            onRemove: () => onPatch({ approvedBy: null }),
+          },
+        ]
+      : []),
   ];
 }
 
@@ -229,6 +253,8 @@ export function countActiveFilters(
     values.mediaTypes.length +
     values.locationGuess.length +
     (values.author.trim() ? 1 : 0) +
+    (values.approved ? 1 : 0) +
+    (values.approvedBy ? 1 : 0) +
     (eventWindowActive(windows) ? 1 : 0) +
     (addedWindowActive(windows) ? 1 : 0)
   );
@@ -260,6 +286,7 @@ export function EventFilterSections({
   sections?: ReadonlyArray<EventFilterSectionName>;
 }) {
   const offers = (name: EventFilterSectionName) => sections.includes(name);
+  const approvedById = useId();
   const [showAllTags, setShowAllTags] = useState(false);
   // The server's author filter is an exact match, so a typed fragment becomes a handle through
   // the typeahead; an ineligible draft is not committed, instead of 422ing.
@@ -278,6 +305,7 @@ export function EventFilterSections({
     "Location guess": values.locationGuess.length > 0,
     Tags: values.tags.length > 0,
     Author: !!values.author.trim(),
+    Approvals: values.approved || !!values.approvedBy,
     ...Object.fromEntries(
       [...leadSections, ...dateSections].map((s) => [s.title, s.active])
     ),
@@ -460,6 +488,49 @@ export function EventFilterSections({
         </FilterSection>
       )}
 
+      {offers("approval") && (
+        <FilterSection
+          title="Approvals"
+          concept="approval_filter"
+          summary={
+            values.approvedBy
+              ? accountName(values.approvedBy)
+              : values.approved
+                ? "Approved"
+                : "Any"
+          }
+          active={isActive.Approvals}
+          open={!!openSections["Approvals"]}
+          onToggle={() => toggleSection("Approvals")}
+        >
+          <div className="space-y-2">
+            <ChipBucket
+              options={[{ id: APPROVED_ONLY, name: APPROVED_ONLY, label: "Approved only" }]}
+              selected={values.approved ? [APPROVED_ONLY] : []}
+              onToggle={() => onPatch({ approved: !values.approved })}
+            />
+            <label htmlFor={approvedById} className={FORM_LABEL}>
+              Approved by
+            </label>
+            <AccountPicker
+              id={approvedById}
+              search={suggestApprovers}
+              minQueryLength={2}
+              selected={values.approvedBy}
+              onSelect={(account) => onPatch({ approvedBy: account })}
+              onSubmitText={(name) => {
+                if (AUTHOR_FILTER_RE.test(name)) {
+                  onPatch({ approvedBy: analystAccount({ username: name }) });
+                }
+              }}
+              onClear={() => onPatch({ approvedBy: null })}
+              placeholder="Type an analyst or organization…"
+              emptyText="No analyst or organization matches"
+              className="sm:text-[11px]"
+            />
+          </div>
+        </FilterSection>
+      )}
     </div>
   );
 }
