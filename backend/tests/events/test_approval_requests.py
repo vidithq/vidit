@@ -283,6 +283,25 @@ def test_an_analyst_who_reviewed_the_live_version_is_not_asked(db, author, make_
     assert _code(response) == "already_approved"
 
 
+def test_an_exact_match_left_out_of_the_targets_carries_its_refusal(db, author, make_user):
+    geo = _published(db, author)
+    reviewer = make_user(audience="nobody")
+    assert _approve(geo, reviewer, 1).status_code == 201
+    login_as(client, author)
+    path = f"{_EVENTS}/{geo.id}/approval-request-targets"
+
+    body = client.get(path, params={"q": reviewer.username.upper()}).json()
+    assert body["analysts"] == []
+    # The audience is never the reason: an exact match is listed whatever its audience.
+    assert body["refusal"] == "This analyst already reviewed the live version"
+
+    stranger = make_user(audience="nobody")
+    body = client.get(path, params={"q": stranger.username}).json()
+    assert [u["username"] for u in body["analysts"]] == [stranger.username]
+    assert body["refusal"] is None
+    assert client.get(path, params={"q": "nobody-here"}).json()["refusal"] is None
+
+
 # ── Duplicates and the daily cap ────────────────────────────────────
 
 
@@ -298,22 +317,6 @@ def test_one_open_request_per_requester_target_and_event(db, author, make_user):
     assert _decline(geo, first.json()["id"], target).status_code == 200
     _age_declines(db, geo)
     assert _request(geo, author, target).status_code == 201
-
-
-def test_only_the_newest_request_row_offers_decline(db, author, make_user):
-    geo = _published(db, author)
-    target = make_user(follows=author)
-    first = _request(geo, author, target).json()
-    assert _decline(geo, first["id"], target).status_code == 200
-    _age_declines(db, geo)
-    db.query(Notification).filter(Notification.user_id == target.id).update(
-        {"created_at": datetime.now(UTC) - timedelta(days=8)}
-    )
-    db.commit()
-    second = _request(geo, author, target).json()
-
-    rows = [n for n in _feed(target) if n["kind"] == "approval_request_received"]
-    assert [n["approval_request_id"] for n in rows] == [second["id"], None]
 
 
 def test_a_decline_stops_the_same_request_for_seven_days(db, author, make_user):
@@ -382,8 +385,6 @@ def test_a_request_notifies_the_target_and_shows_in_their_feed(db, author, make_
     assert _kinds(db, target) == [("approval_request_received", author.id, geo.id)]
     [row] = _feed(target)
     assert row["kind"] == "approval_request_received"
-    assert row["approval_request_id"] == created["id"]
-    assert row["reapprove_version"] == 1
 
 
 def test_approving_resolves_the_request_and_tells_the_requester(db, author, make_user):
@@ -409,9 +410,8 @@ def test_approving_resolves_the_request_and_tells_the_requester(db, author, make
     assert _kinds(db, author) == [("approval_received", target.id, geo.id)]
     assert _kinds(db, co) == [("approval_received", target.id, geo.id)]
     assert _open(geo, author) == []
-    [row, _] = _feed(target)
-    assert row["approval_request_id"] is None
-    assert row["reapprove_version"] is None
+    rows = _feed(target)
+    assert [r["approval_request_status"] for r in rows] == ["approved", "approved"]
 
 
 def test_the_target_declines(db, author, second_user, make_user):
@@ -432,9 +432,22 @@ def test_the_target_declines(db, author, second_user, make_user):
 
     assert _open(geo, author) == []
     [row] = _feed(target)
-    assert row["approval_request_id"] is None
-    assert row["reapprove_version"] is None
+    assert row["approval_request_status"] == "declined"
     assert _kinds(db, author) == [("approval_request_declined", target.id, geo.id)]
+
+
+def test_only_the_newest_row_of_a_request_reports_its_answer(db, author, make_user):
+    geo = _published(db, author)
+    target = make_user(audience="everyone")
+    first = _request(geo, author, target).json()
+    assert _decline(geo, first["id"], target).status_code == 200
+    _age_declines(db, geo)
+    second = _request(geo, author, target)
+    assert second.status_code == 201, second.text
+
+    newest, older = _feed(target)
+    assert newest["approval_request_status"] is None
+    assert older["approval_request_status"] is None
 
 
 def test_the_open_list_shows_geolocators_everything_and_targets_their_own(

@@ -1,6 +1,14 @@
 "use client";
 
-import { useSyncExternalStore, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ComponentProps,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -22,6 +30,7 @@ export function PageShell({
   rail,
   railLabel,
   narrowRail,
+  headerInColumn = false,
   children,
 }: {
   title: ReactNode;
@@ -39,7 +48,10 @@ export function PageShell({
    *  while a rail shows and `reading` otherwise, which leaves the main column one width. */
   rail?: ReactNode;
   railLabel?: string;
-  narrowRail?: "stacked" | "hidden";
+  narrowRail?: ComponentProps<typeof PageWithRail>["narrow"];
+  /** Puts the header (and `controls`) at the top of the main column, beside the rail, so the rail's
+   *  first block sits top right level with the title. Below `lg` the header comes before the rail. */
+  headerInColumn?: boolean;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -63,24 +75,29 @@ export function PageShell({
       <ArrowLeft size={18} />
     </Button>
   );
-  return (
-    // `max-sm:pt-16` (64px) clears the off-canvas rail's chip (about 55px).
-    <PageFrame
-      column={rail ? "wide" : "reading"}
-      className="pt-10 max-sm:pt-16 pb-16 space-y-6"
-    >
-      <header className="relative">
-        {back && (
-          // `right-full` parks the button outside the header's left edge, so the
-          // title's x is the same with or without it. That gutter exists from
-          // `lg` up; below it the button would sit under the fixed sidebar. From
-          // `sm` to `lg` it sits in flow above the title (`flex`, since `size-9`
-          // fixes the width). `-ml-2` takes back 8 of the glyph's 9px inset.
-          // Below `sm` the chip copy takes over.
-          renderBack(
-            "max-sm:hidden flex -ml-2 mb-1 lg:inline-flex lg:absolute lg:right-full lg:top-1.5 lg:mr-3 lg:mb-0 lg:ml-0",
-          )
-        )}
+  const inColumn = headerInColumn && rail !== undefined;
+  // A rail under a full-width header rests below it. Its sticky `top` is that resting top, so it
+  // never moves when the page scrolls; the header's height is only known once it renders.
+  const measureHeader = !inColumn && rail !== undefined;
+  const headerRef = useRef<HTMLDivElement>(null);
+  const [headerHeight, setHeaderHeight] = useState<number>();
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!measureHeader || !el) return;
+    const observer = new ResizeObserver(() => setHeaderHeight(el.offsetHeight));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [measureHeader]);
+  // The frame's `pt-10`, plus the header and the `space-y-6` gap under it when it sits above the rail.
+  const railTop = {
+    "--rail-top":
+      measureHeader && headerHeight !== undefined
+        ? `calc(2.5rem + ${headerHeight}px + 1.5rem)`
+        : "2.5rem",
+  } as CSSProperties;
+  const header = (
+    <div ref={headerRef} className="space-y-6">
+      <header>
         {/* Phone only: portaled into the chip's back slot, which lives inside a
             `sm:hidden` chip. */}
         {back && phoneBackSlot && createPortal(renderBack(""), phoneBackSlot)}
@@ -105,13 +122,41 @@ export function PageShell({
       {controls && (
         <div className="flex flex-wrap items-center justify-between gap-2">{controls}</div>
       )}
-      {rail === undefined ? (
-        children
-      ) : (
-        <PageWithRail rail={rail} railLabel={railLabel} narrow={narrowRail}>
-          {children}
-        </PageWithRail>
-      )}
+    </div>
+  );
+  return (
+    // `max-sm:pt-16` (64px) clears the off-canvas rail's chip (about 55px). `pt-10` is also the
+    // sticky `top` of the back arrow and of a rail beside the header (`PageWithRail`), so neither
+    // moves when the page scrolls.
+    <PageFrame column={rail ? "wide" : "reading"} className="pt-10 max-sm:pt-16 pb-16">
+      <div className="relative space-y-6" style={railTop}>
+        {back && (
+          // From `lg` up the back arrow sits in the gutter left of the column (`right-full`), so
+          // the title's x is the same with or without it; below `lg` that gutter would sit under
+          // the fixed sidebar. The track spans the page's height and lets clicks through, so the
+          // arrow can stick at the top of the viewport. `pt-1.5` levels it with the title. From
+          // `sm` to `lg` it sits in flow above the title (`flex`, since `size-9` fixes the width).
+          // `-ml-2` takes back 8 of the glyph's 9px inset. Below `sm` the chip copy takes over.
+          <div className="max-sm:hidden mb-1 lg:absolute lg:inset-y-0 lg:right-full lg:mr-3 lg:mb-0 lg:pointer-events-none">
+            <div className="lg:sticky lg:top-10 lg:pt-1.5">
+              {renderBack("flex -ml-2 lg:ml-0 lg:pointer-events-auto")}
+            </div>
+          </div>
+        )}
+        {!inColumn && header}
+        {rail === undefined ? (
+          children
+        ) : (
+          <PageWithRail
+            rail={rail}
+            railLabel={railLabel}
+            narrow={narrowRail}
+            header={inColumn ? header : undefined}
+          >
+            {children}
+          </PageWithRail>
+        )}
+      </div>
     </PageFrame>
   );
 }

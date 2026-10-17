@@ -1383,7 +1383,7 @@ export interface paths {
         /**
          * Approve Event
          * @description Approve the live version of a published geolocation you are not credited on, as
-         *     yourself or, as its org manager, for an organization.
+         *     yourself or, as one of its members, for an organization.
          */
         post: operations["approve_event_api_v1_events__geolocation_id__approvals_post"];
         delete?: never;
@@ -1403,8 +1403,8 @@ export interface paths {
         put?: never;
         /**
          * Revoke Approval
-         * @description Revoke an approval with a public reason: your own, your organization's as its org manager,
-         *     or any as a site admin.
+         * @description Revoke an approval: your own, your organization's as one of its members, or any as a site
+         *     admin.
          */
         post: operations["revoke_approval_api_v1_events__geolocation_id__approvals__approval_id__revoke_post"];
         delete?: never;
@@ -1746,8 +1746,9 @@ export interface paths {
          *
          *     ``scope=following`` (default) keeps the rows owned by analysts the
          *     current user follows, and is empty when they follow nobody; ``scope=all``
-         *     keeps every row. ``kind``, ``conflict``, ``capture_source`` and ``tag``
-         *     narrow the rows as on ``GET /events``. Cursor-paged, capped at 100 rows; the
+         *     keeps every row. ``kind``, ``conflict``, ``capture_source``, ``tag``,
+         *     ``approved``, ``approved_by`` and ``approved_by_org`` narrow the rows as on
+         *     ``GET /events``. Cursor-paged, capped at 100 rows; the
          *     ``Link: rel="next"`` cursor is present exactly when a next page holds a row.
          */
         get: operations["get_feed_api_v1_feed_get"];
@@ -1852,6 +1853,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/notifications/{notification_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Notification
+         * @description Delete one of your notifications. 404 when it is not yours.
+         */
+        delete: operations["delete_notification_api_v1_notifications__notification_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{slug}": {
         parameters: {
             query?: never;
@@ -1886,8 +1907,8 @@ export interface paths {
         };
         /**
          * List Organization Approval Requests
-         * @description Open approval requests addressed to the organization, oldest first. Org managers and site
-         *     managers only.
+         * @description Open approval requests addressed to the organization, oldest first. Members and site
+         *     admins only.
          */
         get: operations["list_organization_approval_requests_api_v1_organizations__slug__approval_requests_get"];
         put?: never;
@@ -2283,7 +2304,7 @@ export interface paths {
         };
         /**
          * Get Push Config
-         * @description The key a browser subscribes to push with; null when push is off here.
+         * @description The key a browser subscribes to push with; null on a development server without VAPID keys.
          */
         get: operations["get_push_config_api_v1_users_me_push_config_get"];
         put?: never;
@@ -2945,7 +2966,8 @@ export interface components {
         /**
          * ApprovalCreate
          * @description Body of ``POST /events/{id}/approvals``: the version you read, an optional note, and the
-         *     slug of the organization you approve for as its org manager (your own approval without it).
+         *     slug of the organization you approve for as one of its members (your own approval without
+         *     it).
          */
         ApprovalCreate: {
             /** Note */
@@ -2973,11 +2995,11 @@ export interface components {
          * @description One review of one version of an event.
          *
          *     ``organization`` is the organization the review was placed for, with
-         *     ``reviewer`` the org manager who placed it; null for an analyst's own review.
+         *     ``reviewer`` the member who placed it; null for an analyst's own review.
          *     ``reviewer`` is null on an organization's review once the account of the
-         *     org manager who placed it is erased: the review stays the organization's.
+         *     member who placed it is erased: the review stays the organization's.
          *     ``current`` is true while the review covers the live version and is not
-         *     revoked. ``revoked_as`` says who revoked it: the reviewer, an org manager of
+         *     revoked. ``revoked_as`` says who revoked it: the reviewer, another member of
          *     the organization, or a site admin.
          */
         ApprovalRead: {
@@ -3000,7 +3022,7 @@ export interface components {
             /** Revoke Reason */
             revoke_reason: string | null;
             /** Revoked As */
-            revoked_as: ("reviewer" | "organization_manager" | "site_admin") | null;
+            revoked_as: ("reviewer" | "organization_member" | "site_admin") | null;
             /** Revoked At */
             revoked_at: string | null;
             /**
@@ -3060,21 +3082,25 @@ export interface components {
         /**
          * ApprovalRequestTargetList
          * @description ``GET /events/{id}/approval-request-targets``: the analysts and the organizations you can
-         *     ask to approve the event now.
+         *     ask to approve the event now, and ``refusal``, why the account whose username or slug is
+         *     ``q`` is left out.
          */
         ApprovalRequestTargetList: {
             /** Analysts */
             analysts: components["schemas"]["AuthorRef"][];
             /** Organizations */
             organizations: components["schemas"]["OrganizationRef"][];
+            /** Refusal */
+            refusal: string | null;
         };
         /**
          * ApprovalRevoke
-         * @description Body of ``POST /events/{id}/approvals/{approval_id}/revoke``. The reason is public.
+         * @description Optional body of ``POST /events/{id}/approvals/{approval_id}/revoke``: a public reason,
+         *     stored as null when blank.
          */
         ApprovalRevoke: {
             /** Reason */
-            reason: string;
+            reason?: string | null;
         };
         /**
          * ArchiveImportEnqueue
@@ -4149,29 +4175,21 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_manager_inherited" | "re_approve_requested" | "approval_received" | "approval_request_received" | "approval_request_declined" | "organization_approval_removed";
+            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_manager_inherited" | "re_approve_requested" | "approval_received" | "approval_revoked" | "approval_request_received" | "approval_request_declined" | "organization_approval_removed";
         };
         /**
          * NotificationRead
          * @description One feed row. ``actor``, ``event`` and ``organization`` are null on a
          *     kind that names none; ``read_at`` is null until the feed has shown the row.
-         *     ``invite_pending`` is true on a ``co_geolocator_invite`` row whose
-         *     invitation still waits for the reader's answer. ``reapprove_version`` is
-         *     the live version a ``re_approve_requested`` row, or a
-         *     ``approval_request_received`` row whose request is open, offers to approve,
-         *     null when the reader cannot approve it now. ``approved_version`` is then,
-         *     on a ``re_approve_requested`` row, the latest earlier version the reader's
-         *     approval still stands on, the base of the change list. ``approval_request_id`` is the open request behind a
-         *     ``approval_request_received`` row, null once it is resolved.
+         *     ``approval_request_status`` is ``approved`` or ``declined`` on the newest
+         *     ``approval_request_received`` row of a request that was answered.
          *     ``organization_name`` names the deleted organization on an
          *     ``organization_approval_removed`` row, and is null on every other kind.
          */
         NotificationRead: {
             actor: components["schemas"]["AuthorRef"] | null;
-            /** Approval Request Id */
-            approval_request_id: string | null;
-            /** Approved Version */
-            approved_version: number | null;
+            /** Approval Request Status */
+            approval_request_status?: ("approved" | "declined") | null;
             /**
              * Created At
              * Format: date-time
@@ -4183,20 +4201,16 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Invite Pending */
-            invite_pending: boolean;
             /**
              * Kind
              * @enum {string}
              */
-            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_manager_inherited" | "re_approve_requested" | "approval_received" | "approval_request_received" | "approval_request_declined" | "organization_approval_removed";
+            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_manager_inherited" | "re_approve_requested" | "approval_received" | "approval_revoked" | "approval_request_received" | "approval_request_declined" | "organization_approval_removed";
             organization: components["schemas"]["OrganizationRef"] | null;
             /** Organization Name */
             organization_name?: string | null;
             /** Read At */
             read_at: string | null;
-            /** Reapprove Version */
-            reapprove_version: number | null;
         };
         /**
          * NotificationReadUpdate
@@ -4214,7 +4228,7 @@ export interface components {
         };
         /**
          * OrganizationApprovalRead
-         * @description One approval an org manager placed in an organization's name, with the event it covers,
+         * @description One approval a member placed in an organization's name, with the event it covers,
          *     for ``GET /organizations/{slug}/approvals``.
          */
         OrganizationApprovalRead: {
@@ -4337,11 +4351,12 @@ export interface components {
          *
          *     ``viewer_role`` is the caller's role, null for a non-member or an anonymous
          *     caller. ``viewer_invited`` is true while the caller holds a pending invite.
-         *     ``viewer_can_manage`` is true for an org manager or a site admin: it gates
-         *     the profile edit and the member management on the page.
+         *     ``viewer_can_manage`` is true for an org manager only, a site admin included
+         *     only when they are one: it gates the profile edit and the member management
+         *     on the page.
          *     ``approval_request_audience`` is who may send the organization an approval
-         *     request, set by its org managers: shown to them and to site admins only, null
-         *     for anyone else, so the setting is not read off the page.
+         *     request, set by its org managers: shown to them only, null for anyone else,
+         *     so the setting is not read off the page.
          */
         OrganizationRead: {
             /** Approval Request Audience */
@@ -6816,6 +6831,10 @@ export interface operations {
                 submitted_from?: string | null;
                 submitted_to?: string | null;
                 author?: string | null;
+                /** @description true: approved on the live version */
+                approved?: boolean;
+                approved_by?: string | null;
+                approved_by_org?: string | null;
                 /** @description true: with a location; false: without */
                 has_coords?: boolean | null;
                 sort?: "newest" | "oldest";
@@ -7102,6 +7121,9 @@ export interface operations {
                 submitted_to?: string | null;
                 author?: string | null;
                 media?: string[] | null;
+                approved?: boolean;
+                approved_by?: string | null;
+                approved_by_org?: string | null;
             };
             header?: never;
             path?: never;
@@ -7461,9 +7483,9 @@ export interface operations {
                 vidit_session?: string | null;
             };
         };
-        requestBody: {
+        requestBody?: {
             content: {
-                "application/json": components["schemas"]["ApprovalRevoke"];
+                "application/json": components["schemas"]["ApprovalRevoke"] | null;
             };
         };
         responses: {
@@ -7983,6 +8005,9 @@ export interface operations {
                 conflict?: string[] | null;
                 capture_source?: string[] | null;
                 tag?: string[] | null;
+                approved?: boolean;
+                approved_by?: string | null;
+                approved_by_org?: string | null;
             };
             header?: never;
             path?: never;
@@ -8150,6 +8175,37 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_notification_api_v1_notifications__notification_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notification_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -8726,6 +8782,12 @@ export interface operations {
                 /** @description Scope the event groups to this owner username (exact, case-insensitive) */
                 author?: string | null;
                 media?: string[] | null;
+                /** @description Keep events approved on their live version */
+                approved?: boolean;
+                /** @description Keep events this analyst approved on their live version (username) */
+                approved_by?: string | null;
+                /** @description Keep events this organization approved on their live version (slug) */
+                approved_by_org?: string | null;
             };
             header?: never;
             path?: never;

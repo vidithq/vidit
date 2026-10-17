@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // jsdom cannot mount the map canvas (WebGL); it and the proof editor (its own test) keep a marker.
@@ -191,9 +191,14 @@ async function submitDetection() {
   fireEvent.click(await screen.findByRole("button", { name: "Confirm submit" }));
 }
 
+/** True when `later` comes after `earlier` in document order. */
+function follows(earlier: Element, later: Element): boolean {
+  return !!(earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING);
+}
+
 /** Close the detection on screen, through its confirm-with-reason panel. */
 function closeDetection(reason: string) {
-  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  fireEvent.click(screen.getByRole("button", { name: "Close this detection" }));
   fireEvent.change(screen.getByLabelText(/Close reason/), {
     target: { value: reason },
   });
@@ -227,7 +232,7 @@ describe("the detection edit surface", () => {
     expect(screen.queryByText("Requested from")).toBeNull();
   });
 
-  it("renders the form under a bare title, with Submit alone at the foot", () => {
+  it("renders the form under a bare title, with Submit then Close in the actions rail", () => {
     render(<EditEventPage />);
 
     expect(
@@ -235,16 +240,16 @@ describe("the detection edit surface", () => {
     ).toBeInTheDocument();
     // No description line under the title: the fields say what they are.
     expect(screen.queryByText(/Submitting publishes the event/)).toBeNull();
-    // The flow action stands alone at the foot: no Cancel, no Close.
-    const submit = screen.getByRole("button", { name: "Submit" });
-    expect(submit).toBeInTheDocument();
+    // The rail holds the actions and follows the fields; no Cancel, and no Close in the header.
+    const rail = screen.getByRole("complementary", { name: "Actions" });
+    const submit = within(rail).getByRole("button", { name: "Submit" });
     expect(screen.queryByRole("link", { name: "Cancel" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
+    expect(follows(document.getElementById("event-edit-form")!, submit)).toBe(true);
 
-    // Close is a plain button in the action area, not behind a disclosure.
-    const close = screen.getByRole("button", { name: "Close" });
-    expect(
-      close.compareDocumentPosition(submit) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    // Close sits under Submit as a plain button, not behind a disclosure.
+    const close = within(rail).getByRole("button", { name: "Close this detection" });
+    expect(follows(submit, close)).toBe(true);
     expect(screen.queryByRole("menuitem")).toBeNull();
     expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
   });
@@ -433,17 +438,25 @@ describe("editing a published geolocation", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText(/no longer be edited/)).toBeNull();
     expect(screen.getByRole("button", { name: "Save version 2" })).toBeInTheDocument();
-    // Neither header verb belongs here: the row is not skippable, and its close sits at the foot.
+    // Neither detection verb belongs here: the row is not skippable, and its close is named for the row.
     expect(screen.queryByRole("button", { name: "Submit" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
   });
 
-  it("holds the geolocators, then the close at the foot of the page", () => {
+  it("holds the note, the save, the close, then the geolocators in the rail", () => {
     render(<EditEventPage />);
 
-    const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
-    expect(headings.slice(-2)).toEqual(["Geolocators", "Close this geolocation"]);
-    expect(screen.getByLabelText("Invite a geolocator")).toBeInTheDocument();
+    const rail = screen.getByRole("complementary", { name: "Actions and geolocators" });
+    const note = within(rail).getByRole("textbox", { name: "Version note" });
+    const save = within(rail).getByRole("button", { name: "Save version 2" });
+    const close = within(rail).getByRole("button", { name: "Close this geolocation" });
+    const credit = within(rail).getByRole("heading", { name: /^Geolocators/ });
+    expect(follows(note, save) && follows(save, close) && follows(close, credit)).toBe(true);
+    expect(within(rail).getByLabelText("Invite a geolocator")).toBeInTheDocument();
+    // How shared credit works, changes applying on click with no new version, is the title's help.
+    expect(
+      within(credit).getByRole("button", { name: "How does shared credit work?" })
+    ).toBeInTheDocument();
   });
 
   it("closes the geolocation behind its reason, then lands on the event", async () => {
@@ -603,12 +616,15 @@ describe("editing an open request", () => {
     expect(
       screen.getByRole("button", { name: "Save request" })
     ).toBeInTheDocument();
+    const rail = screen.getByRole("complementary", { name: "Actions" });
+    expect(within(rail).getByRole("button", { name: "Save request" })).toBeInTheDocument();
+    expect(within(rail).getByRole("button", { name: "Close this request" })).toBeInTheDocument();
     // A request files no version and is answered through the submit form, so neither published verb applies.
     expect(screen.queryByRole("button", { name: /Save version/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Submit" })).toBeNull();
   });
 
-  it("closes the request from the foot of the page, then lands on the request", async () => {
+  it("closes the request from the actions rail, then lands on the request", async () => {
     closeMock.mockResolvedValue(requestFixture({ status: "closed" }));
     render(<EditEventPage />);
 

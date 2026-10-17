@@ -2,12 +2,16 @@ import { expect, test } from "@playwright/test";
 
 import { ORGANIZATION_SLUG } from "./support/fixtures";
 import { grantSession, mockApi } from "./support/mockApi";
-import { expectNarrowViewportLayout } from "./support/narrowLayout";
+import {
+  expectControlInsideViewport,
+  expectNarrowViewportLayout,
+  expectNoHorizontalOverflow,
+} from "./support/narrowLayout";
 
 /**
  * The organization page as its org manager reads it: the header, the member rows
  * with their role controls, the approvals in its name, its approval requests
- * with the audience control, and the invite picker. A long name, a long
+ * with the audience control, and the invite picker, opened. A long name, a long
  * username and a bio carrying a URL are the content that would push a phone
  * column sideways.
  */
@@ -22,5 +26,11 @@ test.describe("organization", () => {
     await expect(page.getByRole("button", { name: "Make org manager" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Decline" })).toBeVisible();
     await expect(page.getByRole("button", { name: "People our org managers follow" })).toBeVisible();
+
+    await page.getByLabel("Analyst").click();
+    await expectControlInsideViewport(page, page.getByRole("listbox"));
+    await expectNoHorizontalOverflow(page);
+    await page.getByRole("option", { name: "mutual", exact: true }).click();
+    await expect(page.getByRole("button", { name: "mutual", exact: true })).toBeVisible();
   });
 });

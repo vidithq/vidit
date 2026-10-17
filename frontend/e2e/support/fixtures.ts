@@ -10,7 +10,7 @@
 import type { components } from "@/lib/api-types";
 import type { Approval, OrganizationApproval } from "@/lib/approvals";
 import type { Collection } from "@/lib/collections";
-import type { UnreadCount } from "@/lib/notifications";
+import type { Notification, UnreadCount } from "@/lib/notifications";
 import type {
   InviteCandidate,
   Organization,
@@ -320,8 +320,10 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   approval_request_audience: "following",
 };
 
-/** A deployment that sends no push, so the settings page offers no enable button. */
-export const PUSH_OFF: PushConfig = { public_key: null };
+/** The push key every deployment serves: a public example key, never used to send. */
+export const PUSH_CONFIG: PushConfig = {
+  public_key: "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U",
+};
 
 /** A bound handle and a declined change request: the Account card's longest state, with
  *  the admin's reason printed in full. */
@@ -377,6 +379,11 @@ export const ORGANIZATION_MEMBERS: OrganizationMember[] = [
 
 export const INVITE_CANDIDATES: InviteCandidate[] = [
   { id: "99999999-9999-4999-8999-999999999992", username: "mutual", avatar_url: null },
+  {
+    id: "99999999-9999-4999-8999-999999999995",
+    username: "a_mutual_follow_with_a_username_long_enough_to_wr",
+    avatar_url: null,
+  },
 ];
 
 export const ORGANIZATION_INVITES: OrganizationInvite[] = [
@@ -390,6 +397,34 @@ export const ORGANIZATION_INVITES: OrganizationInvite[] = [
 
 /** Nothing unread, as the sidebar's notification row reads it. */
 export const NO_UNREAD: UnreadCount = { count: 0 };
+
+const LONG_EVENT_TITLE =
+  "Strike on the fuel depot north of the river crossing, seen from the eastern ridge at dusk";
+
+/** The notification feed: an open approval request and an
+ *  answered one, both naming a long event title a phone must not squeeze. */
+export const NOTIFICATION_FEED: Notification[] = [
+  {
+    id: "4b0d6c1e-0000-4000-8000-000000000001",
+    kind: "approval_request_received",
+    created_at: "2026-10-16T09:00:00Z",
+    actor: { id: "4b0d6c1e-0000-4000-8000-0000000000a1", username: "maya", avatar_url: null },
+    event: { id: EVENT_ID, title: LONG_EVENT_TITLE },
+    organization: null,
+    read_at: "2026-10-16T10:00:00Z",
+    approval_request_status: null,
+  },
+  {
+    id: "4b0d6c1e-0000-4000-8000-000000000002",
+    kind: "approval_request_received",
+    created_at: "2026-10-15T09:00:00Z",
+    actor: { id: "4b0d6c1e-0000-4000-8000-0000000000a2", username: "jules", avatar_url: null },
+    event: { id: EVENT_ID, title: LONG_EVENT_TITLE },
+    organization: null,
+    read_at: "2026-10-15T10:00:00Z",
+    approval_request_status: "declined",
+  },
+];
 
 const ORGANIZATION_REF = { slug: ORGANIZATION_SLUG, name: ORGANIZATION.name, avatar_url: null };
 
@@ -443,8 +478,8 @@ const SECOND_REVIEWER = {
 };
 
 /** The live version's approvals on the shared event: one standing review with a note long
- *  enough to wrap, one the organization's long name signs, and five more, so the header stamps
- *  fold into a `+N` bubble and the Approvals panel is measured at phone widths. */
+ *  enough to wrap, one the organization's long name signs, and fourteen more, so the card's two
+ *  rows of stamps fold into a `+N` bubble and the Approvals panel is measured at phone widths. */
 export const EVENT_APPROVALS: Approval[] = [
   {
     id: "66666666-6666-4666-8666-666666666661",
@@ -472,13 +507,13 @@ export const EVENT_APPROVALS: Approval[] = [
     revoked_as: null,
     organization: ORGANIZATION_REF,
   },
-  ...[3, 4, 5, 6, 7].map(
+  ...Array.from({ length: 14 }, (_, i) => i + 3).map(
     (n): Approval => ({
-      id: `66666666-6666-4666-8666-66666666666${n}`,
+      id: `66666666-6666-4666-8666-6666666666${String(n).padStart(2, "6")}`,
       version_no: 1,
       verdict: "approve",
       reviewer: {
-        id: `77777777-7777-4777-8777-77777777777${n}`,
+        id: `77777777-7777-4777-8777-7777777777${String(n).padStart(2, "7")}`,
         username: `reviewer_${n}`,
         avatar_url: null,
       },

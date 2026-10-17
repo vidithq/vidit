@@ -83,8 +83,8 @@ class Settings(BaseSettings):
 
     # Web Push (services/push.py). The private key is the base64url raw P-256
     # key; the public key browsers subscribe with derives from it. The subject
-    # is a `mailto:` or `https:` contact the push services can reach. Both empty
-    # turns push off.
+    # is a `mailto:` or `https:` contact the push services can reach. A
+    # deployment requires both; outside one, both empty turns push off.
     vapid_private_key: str = ""
     vapid_subject: str = ""
 
@@ -232,6 +232,11 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_vapid_config(self) -> "Settings":
+        if self.cookie_secure and not (self.vapid_private_key and self.vapid_subject):
+            raise ValueError(
+                "VAPID_PRIVATE_KEY and VAPID_SUBJECT must be set when COOKIE_SECURE is true: "
+                "a deployment always sends push notifications."
+            )
         if bool(self.vapid_private_key) != bool(self.vapid_subject):
             raise ValueError(
                 "VAPID_PRIVATE_KEY and VAPID_SUBJECT must be set together; "

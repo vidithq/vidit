@@ -19,7 +19,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.models.approval import EventApproval
+from app.models.approval import JOINED_AS_GEOLOCATOR_REASON, EventApproval
 from app.models.approval_request import ApprovalRequest
 from app.models.collection import Collection, CollectionEvent
 from app.models.event import (
@@ -39,9 +39,6 @@ CREDIT_LOAD = selectinload(Event.geolocators).joinedload(EventGeolocator.user)
 
 # Geolocators plus pending invitations, per event. Bounds the byline every card prints.
 MAX_EVENT_GEOLOCATORS = 10
-
-# The public reason on an approval its reviewer gave up by joining the event's geolocators.
-JOINED_AS_GEOLOCATOR_REASON = "Joined the geolocators of this event"
 
 
 class GeolocatorCreditError(Exception):

@@ -12,13 +12,15 @@ import { cn } from "@/lib/cn";
 // Why the side padding steps at `sm`: docs/design.md, Page chrome.
 //
 // `column` picks the width. `wide` and `reading` are the app container every
-// `PageShell` page shares, left-aligned right after the rail, so the content's
-// left edge sits at one x on every page. `lg:pl-18` keeps a gutter left of the
-// title wide enough for PageShell's back arrow, which parks there from `lg` up.
-// `wide` holds up to `max-w-6xl` of content, for a page with a right rail.
-// `reading` holds 53rem, the content width the centred column leaves inside its
-// `sm:px-6`, so a page without a rail keeps its line length. `center` is the
-// landing's centred `max-w-4xl` column.
+// `PageShell` page shares. From `lg` up, `COLUMN_GUTTER` centres a `max-w-6xl`
+// column on the screen with the rail counted in the left margin: half the box
+// inside the rail, less half the column and half the 3.5rem rail. `reading`
+// takes the same gutter, so the content's left edge sits at one x on every
+// page. The gutter never drops below 4.5rem (`pl-18`), the room PageShell's
+// back arrow parks in from `lg` up. `wide` holds up to `max-w-6xl` of content,
+// for a page with a right rail. `reading` holds 53rem, the content width the
+// centred column leaves inside its `sm:px-6`, so a page without a rail keeps
+// its line length. `center` is the landing's centred `max-w-4xl` column.
 
 // The display cutout's horizontal insets, applied once for every route.
 // `app/layout.tsx` exports `viewportFit: "cover"`, so in landscape on a notched
@@ -35,6 +37,11 @@ const MIN_HEIGHT = "min-h-dvh";
 
 const COLUMN_WIDTH = { wide: "max-w-6xl", reading: "max-w-[53rem]" } as const;
 
+// A percentage padding resolves against the box inside the rail and the safe
+// insets, not `100vw`, which counts a classic scrollbar and would shift the
+// column off centre.
+const COLUMN_GUTTER = "lg:pl-[max(4.5rem,calc(50%-var(--container-6xl)/2-1.75rem))]";
+
 export function PageFrame({
   children,
   className = "",
@@ -48,7 +55,7 @@ export function PageFrame({
     <div className={`${MIN_HEIGHT} sm:pl-14`}>
       <div className={SAFE_SIDES}>
         {column !== "center" ? (
-          <div className="px-4 sm:px-6 lg:pl-18">
+          <div className={`px-4 sm:px-6 ${COLUMN_GUTTER}`}>
             <div className={cn(COLUMN_WIDTH[column], className)}>{children}</div>
           </div>
         ) : (

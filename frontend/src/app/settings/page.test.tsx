@@ -159,22 +159,15 @@ describe("SettingsPage", () => {
     );
   });
 
-  it("closes the push column with one reason when the server sends no push", async () => {
-    push.readPushState.mockResolvedValue("unavailable" satisfies PushDeviceState);
+  it("always shows the push column, with the iPhone note", async () => {
+    push.readPushState.mockResolvedValue("off" satisfies PushDeviceState);
     serveDevices([PHONE]);
     render(<SettingsPage />);
 
-    const reason = "This Vidit server does not send push notifications.";
-    await waitFor(() =>
-      expect(screen.getByRole("switch", { name: "New follower, Push" })).toBeDisabled(),
-    );
-    expect(screen.getByRole("switch", { name: "Request fulfilled, Push" })).toBeDisabled();
-    expect(screen.getByRole("switch", { name: "New follower, Push" })).toHaveAccessibleDescription(
-      new RegExp(reason),
-    );
-    expect(screen.getAllByText(new RegExp(reason))).toHaveLength(1);
-    expect(screen.getByRole("switch", { name: "New follower, Email" })).toBeEnabled();
+    expect(await screen.findByRole("button", { name: "Enable on this device" })).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "New follower, Push" })).toBeEnabled();
     expect(screen.getByText(/add Vidit to the Home Screen/)).toBeInTheDocument();
+    expect(screen.queryByText(/does not send push/)).toBeNull();
   });
 
   it("closes the push column when the account has no push device", async () => {

@@ -69,7 +69,6 @@ const NO_PUSH_DEVICE =
 const PUSH_STATE_LINE: Record<PushDeviceState, string> = {
   unsupported: "This browser cannot receive push notifications.",
   "needs-home-screen": "Add Vidit to your Home Screen to receive push notifications here.",
-  unavailable: "This Vidit server does not send push notifications.",
   denied:
     "Notifications are blocked for Vidit in this browser. Allow them in the site settings, then reload this page.",
   off: "Push notifications are off on this device.",
@@ -77,25 +76,23 @@ const PUSH_STATE_LINE: Record<PushDeviceState, string> = {
 };
 
 /** This device's push state, the control that turns it on or off, and the account's devices.
- *  The kind switches above apply to every device of the account, so `onPushReason` closes the
- *  push column only when no device can receive push: the server sends none, or the account
- *  has no device. The matrix prints that reason, so the state line here omits it.
+ *  The kind switches above apply to every device of the account, so `onPushColumn` closes the
+ *  push column with its reason when the account has no device. The matrix prints that reason,
+ *  so the state line here omits it.
  *  `resyncKey` changes after a password change, which deleted every device on the server:
  *  this browser registers again and the list reloads. */
 function PushDevice({
   resyncKey,
-  onPushReason,
+  onPushColumn,
 }: {
   resyncKey: number;
-  onPushReason: (reason: string | null) => void;
+  onPushColumn: (reason: string | null) => void;
 }) {
   const config = useApiResource<PushConfig>(PUSH_CONFIG_PATH);
   const [state, setState] = useState<PushDeviceState | null>(null);
-  const settled = config.data !== null || config.error !== null;
   useEffect(() => {
-    if (!settled) return;
     let live = true;
-    readPushState(config.data ?? undefined)
+    readPushState()
       .catch((): PushDeviceState => "unsupported")
       .then((next) => {
         if (live) setState(next);
@@ -103,7 +100,7 @@ function PushDevice({
     return () => {
       live = false;
     };
-  }, [settled, config.data]);
+  }, []);
   const devices = useApiResource<RegisteredDevice[]>(PUSH_DEVICES_PATH);
   const { refetch: refetchDevices } = devices;
   const [thisId, setThisId] = useState<string | null>(null);
@@ -130,7 +127,7 @@ function PushDevice({
   }, [resyncKey, refetchDevices]);
   const change = useMutation(
     (enable: boolean) =>
-      enable && config.data?.public_key ? enablePush(config.data.public_key) : disablePush(),
+      enable ? enablePush(config.data?.public_key ?? "") : disablePush(),
     {
       fallback: "Could not change push on this device. Try again.",
       onSuccess: (next) => {
@@ -145,22 +142,16 @@ function PushDevice({
     onSuccess: refetchDevices,
   });
   const rows = Array.isArray(devices.data) ? devices.data : [];
-  const pushReason =
-    state === "unavailable"
-      ? PUSH_STATE_LINE.unavailable
-      : Array.isArray(devices.data) && rows.length === 0
-        ? NO_PUSH_DEVICE
-        : null;
-  useEffect(() => onPushReason(pushReason), [pushReason, onPushReason]);
-  const stateLine =
-    state === null ? "Checking this device..." : state === "unavailable" ? "" : PUSH_STATE_LINE[state];
+  const pushReason = Array.isArray(devices.data) && rows.length === 0 ? NO_PUSH_DEVICE : null;
+  useEffect(() => onPushColumn(pushReason), [pushReason, onPushColumn]);
+  const stateLine = state === null ? "Checking this device..." : PUSH_STATE_LINE[state];
 
   return (
     <div className="space-y-2 border-t border-neutral-800 pt-4">
       <SectionEyebrow title="Push notifications" as="h3" margin="none" />
       <p className="text-xs text-neutral-500">
-        {stateLine && `${stateLine} `}On iPhone and iPad, push
-        works only after you add Vidit to the Home Screen and open it from there.
+        {stateLine} On iPhone and iPad, push works only after you add Vidit to the Home Screen and
+        open it from there.
       </p>
       {(change.error || revoke.error) && (
         <div className={FORM_ERROR_BANNER}>{change.error ?? revoke.error}</div>
@@ -281,7 +272,7 @@ function NotificationsCard({ pushResyncKey }: { pushResyncKey: number }) {
         onToggle={() => consent.run(!productUpdates)}
         className="border-t border-neutral-800 pt-4"
       />
-      <PushDevice resyncKey={pushResyncKey} onPushReason={setPushReason} />
+      <PushDevice resyncKey={pushResyncKey} onPushColumn={setPushReason} />
     </Card>
   );
 }

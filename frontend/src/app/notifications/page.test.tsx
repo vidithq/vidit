@@ -14,6 +14,8 @@ vi.mock("@/lib/api", () => ({
   apiFetch: api.apiFetch,
   apiFetchPage: api.apiFetchPage,
   ApiError: class extends Error {},
+  errorMessage: (err: unknown, fallback = "Something went wrong.") =>
+    err instanceof Error ? err.message : fallback,
 }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
@@ -35,10 +37,6 @@ const fulfilled: Notification = {
   event: { id: "e1", title: "Strike on the depot" },
   organization: null,
   read_at: null,
-  invite_pending: false,
-  reapprove_version: null,
-  approved_version: null,
-  approval_request_id: null,
 };
 const follower: Notification = {
   id: "n1",
@@ -48,10 +46,6 @@ const follower: Notification = {
   event: null,
   organization: null,
   read_at: "2026-10-11T09:00:00Z",
-  invite_pending: false,
-  reapprove_version: null,
-  approved_version: null,
-  approval_request_id: null,
 };
 const orgInvite: Notification = {
   id: "n3",
@@ -61,10 +55,6 @@ const orgInvite: Notification = {
   event: null,
   organization: { slug: "osw", name: "Open Source Watch", avatar_url: null },
   read_at: null,
-  invite_pending: false,
-  reapprove_version: null,
-  approved_version: null,
-  approval_request_id: null,
 };
 
 function serve(items: Notification[]) {
@@ -142,33 +132,73 @@ describe("NotificationsPage", () => {
     expect(api.apiFetch).not.toHaveBeenCalled();
   });
 
-  it("answers a pending geolocator invitation from its row, then reloads the feed", async () => {
+  it("offers no action: an invitation or a request row only links to where you answer it", async () => {
     const invite: Notification = {
       ...follower,
       id: "n3",
       kind: "co_geolocator_invite",
       event: { id: "e9", title: "Bridge strike" },
-      invite_pending: true,
     };
-    serve([invite, { ...invite, id: "n4", invite_pending: false }]);
+    const asked: Notification = {
+      ...follower,
+      id: "n7",
+      kind: "approval_request_received",
+      event: { id: "e8", title: "Bridge strike" },
+    };
+    serve([invite, asked, orgInvite]);
     render(<NotificationsPage />);
 
     expect(
-      await screen.findAllByRole("link", {
-        name: /cy invited you to share the credit of: Bridge strike/,
-      }),
-    ).toHaveLength(2);
-    // Only the row still waiting for an answer carries the buttons.
-    expect(screen.getAllByRole("button", { name: "Accept" })).toHaveLength(1);
+      await screen.findByRole("link", { name: /cy invited you to share the credit of: Bridge strike/ }),
+    ).toHaveAttribute("href", "/events/e9");
+    expect(screen.getByRole("link", { name: /cy asked you to approve: Bridge strike/ })).toHaveAttribute(
+      "href",
+      "/events/e8",
+    );
+    expect(screen.getByRole("link", { name: /bo invited you to join Open Source Watch/ })).toHaveAttribute(
+      "href",
+      "/organizations/osw",
+    );
+    expect(screen.queryByRole("button", { name: /Accept|Decline|Approve/ })).toBeNull();
+  });
+
+  it("reads the sentence in the neutral colour, with the arrow and the trash inside the block", async () => {
+    serve([follower]);
+    render(<NotificationsPage />);
+
+    const link = await screen.findByRole("link", { name: /cy followed you/ });
+    expect(screen.getByText("cy followed you")).toHaveClass("text-neutral-200");
+    const block = link.parentElement!;
+    const trash = screen.getByRole("button", { name: "Delete notification" });
+    const arrow = block.querySelector("svg.lucide-arrow-right")!;
+    expect(block).toContainElement(trash);
+    expect(link.contains(trash)).toBe(false);
+    expect(trash.compareDocumentPosition(arrow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("deletes a row from its own delete button, then reloads the feed and the dot", async () => {
+    serve([follower]);
+    render(<NotificationsPage />);
+
+    await screen.findByRole("link", { name: /cy followed you/ });
     const loads = api.apiFetchPage.mock.calls.length;
-    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete notification" }));
 
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/events/e9/geolocator-invites/accept", {
-        method: "POST",
-      }),
+      expect(api.apiFetch).toHaveBeenCalledWith("/notifications/n1", { method: "DELETE" }),
     );
     await waitFor(() => expect(api.apiFetchPage.mock.calls.length).toBeGreaterThan(loads));
+    expect(api.refresh).toHaveBeenCalled();
+  });
+
+  it("keeps the row and says so when the delete fails", async () => {
+    serve([follower]);
+    api.apiFetch.mockRejectedValue(new Error("boom"));
+    render(<NotificationsPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Delete notification" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /cy followed you/ })).toBeInTheDocument();
   });
 
   it("offers no approval: re-approval and review rows link to the event page", async () => {
@@ -178,8 +208,6 @@ describe("NotificationsPage", () => {
       id: "n5",
       kind: "re_approve_requested",
       event: { id: "e7", title: "Depot fire" },
-      reapprove_version: 3,
-      approved_version: 2,
     };
     const asked: Notification = {
       ...follower,
@@ -187,8 +215,6 @@ describe("NotificationsPage", () => {
       kind: "approval_request_received",
       event: { id: "e8", title: "Bridge strike" },
       organization,
-      reapprove_version: 2,
-      approval_request_id: "r1",
     };
     serve([reapprove, asked]);
     render(<NotificationsPage />);
@@ -204,34 +230,81 @@ describe("NotificationsPage", () => {
     expect(screen.queryByRole("button", { name: /Approve/ })).toBeNull();
   });
 
-  it("declines an open approval request from its row, and offers nothing once it is resolved", async () => {
+  it("labels an answered approval request with how it ended", async () => {
     const asked: Notification = {
       ...follower,
-      id: "n7",
+      id: "n9",
       kind: "approval_request_received",
       event: { id: "e8", title: "Bridge strike" },
-      reapprove_version: 2,
-      approval_request_id: "r1",
+      approval_request_status: "approved",
     };
-    serve([asked, { ...asked, id: "n8", reapprove_version: null, approval_request_id: null }]);
+    serve([asked, { ...asked, id: "n10", approval_request_status: "declined" }]);
     render(<NotificationsPage />);
 
     const links = await screen.findAllByRole("link", {
       name: /cy asked you to approve: Bridge strike/,
     });
-    expect(links).toHaveLength(2);
-    const decline = screen.getByRole("button", { name: "Decline" });
-    // In the row: beside the link it answers, inside the same wrapper.
-    expect(links[0].parentElement?.parentElement).toContainElement(decline);
-    const loads = api.apiFetchPage.mock.calls.length;
-    fireEvent.click(decline);
+    expect(links[0]).toHaveTextContent(/Approval request · .* · Approved/);
+    expect(links[1]).toHaveTextContent(/Approval request · .* · Declined/);
+    expect(screen.queryByRole("button", { name: "Decline" })).toBeNull();
+  });
 
-    await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/events/e8/approval-requests/r1/decline", {
-        method: "POST",
+  it("tells the owner an approval was revoked, naming the organization when it is one", async () => {
+    const revoked: Notification = {
+      ...follower,
+      id: "n11",
+      kind: "approval_revoked",
+      event: { id: "e8", title: "Bridge strike" },
+    };
+    const organization = { slug: "osw", name: "Open Source Watch", avatar_url: null };
+    serve([revoked, { ...revoked, id: "n12", actor: null, organization }]);
+    render(<NotificationsPage />);
+
+    expect(
+      await screen.findByRole("link", {
+        name: /The approval by cy of your geolocation was revoked: Bridge strike/,
       }),
-    );
-    await waitFor(() => expect(api.apiFetchPage.mock.calls.length).toBeGreaterThan(loads));
+    ).toHaveAttribute("href", "/events/e8");
+    expect(
+      screen.getByRole("link", {
+        name: /The approval by Open Source Watch of your geolocation was revoked: Bridge strike/,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("leads each row with who is behind it: a picture, a logo, or the kind's icon", async () => {
+    const approved: Notification = {
+      ...fulfilled,
+      id: "n21",
+      kind: "approval_received",
+      actor: { id: "u2", username: "bo", avatar_url: "https://cdn.test/bo.png" },
+      organization: { slug: "osw", name: "Open Source Watch", avatar_url: "https://cdn.test/osw.png" },
+    };
+    const system: Notification = {
+      ...fulfilled,
+      id: "n22",
+      kind: "x_handle_request_approved",
+      actor: null,
+      event: null,
+    };
+    serve([
+      { ...follower, actor: { id: "u3", username: "cy", avatar_url: "https://cdn.test/cy.png" } },
+      approved,
+      system,
+    ]);
+    render(<NotificationsPage />);
+
+    const analyst = await screen.findByRole("link", { name: /cy followed you/ });
+    expect(analyst.querySelector("img")).toHaveAttribute("src", "https://cdn.test/cy.png");
+    expect(analyst.querySelector("img")!.parentElement).toHaveClass("rounded-full");
+
+    const organization = screen.getByRole("link", { name: /bo approved your geolocation for Open Source Watch/ });
+    expect(organization.querySelector("img")).toHaveAttribute("src", "https://cdn.test/osw.png");
+    expect(organization.querySelector("img")!.parentElement).toHaveClass("rounded-md");
+
+    const fallback = screen.getByRole("link", { name: /linked the X handle/ });
+    expect(fallback.querySelector("img")).toBeNull();
+    expect(fallback.querySelector("svg.lucide-at-sign")).not.toBeNull();
   });
 
   it("explains the empty feed", async () => {

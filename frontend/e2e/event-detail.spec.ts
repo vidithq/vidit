@@ -19,7 +19,7 @@ async function withoutWebShare(page: Page): Promise<void> {
 }
 
 test.describe("shared event link", () => {
-  test("holds the version, Share and Report in the header on a narrow column", async ({
+  test("holds the version, Share and Report under the title on a narrow column", async ({
     page,
     context,
   }) => {
@@ -33,15 +33,24 @@ test.describe("shared event link", () => {
     // What a reader who followed a link acts on: passing the record on again.
     const share = page.getByRole("button", { name: "Share", exact: true });
     await expectNarrowViewportLayout(page, share);
+    const titleBox = (await page.getByRole("heading", { level: 1 }).boundingBox())!;
+    const cardBox = (await page.getByRole("region", { name: "Approvals" }).boundingBox())!;
+    const shareBox = (await share.boundingBox())!;
+    expect(shareBox.y).toBeGreaterThan(titleBox.y);
+    expect(shareBox.y + shareBox.height).toBeLessThanOrEqual(cardBox.y);
 
-    // A signed-out reader has no primary action, and the stamps left the header.
+    // A signed-out reader has no primary action, and the stamps stay in the Approvals card.
     await expect(page.getByRole("link", { name: /^Edit/ })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /^Approve\b/ })).toHaveCount(0);
 
     // The version selector names the version on screen and lists the versions plus the history.
     await page.getByRole("button", { name: "v1: choose a version" }).click();
-    await expect(page.getByRole("menuitem")).toHaveText(["Version 1 Current", "Full history"]);
-    await expectControlInsideViewport(page, page.getByRole("menuitem", { name: "Full history" }));
+    const items = page.getByRole("menuitem");
+    await expect(items).toHaveCount(2);
+    await expect(items.nth(0)).toHaveAccessibleName("v1");
+    await expect(items.nth(0)).toHaveAttribute("aria-current", "page");
+    await expect(items.nth(1)).toHaveAccessibleName("History");
+    await expectControlInsideViewport(page, page.getByRole("menuitem", { name: "History" }));
     await page.keyboard.press("Escape");
 
     // One click copies the link: no menu, the confirmation only for screen readers.
@@ -52,7 +61,7 @@ test.describe("shared event link", () => {
       `${new URL(page.url()).origin}/events/${EVENT_ID}`,
     );
 
-    // No menu remains in the header: a reader's report flag sits beside Share.
+    // No menu: a reader's report flag sits beside Share.
     await expect(page.getByRole("button", { name: "More actions" })).toHaveCount(0);
     const report = page.getByRole("button", { name: "Report" });
     await expectNarrowViewportLayout(page, report);
@@ -70,28 +79,48 @@ test.describe("shared event link", () => {
     const mediaBox = await page.getByRole("heading", { name: "Source media" }).boundingBox();
     expect(cardBox!.y + cardBox!.height).toBeLessThanOrEqual(mediaBox!.y);
 
-    // Five stamps, oldest first, then a bubble for the rest.
+    // Two rows of stamps, oldest first, each a link to its signer's page, the bubble for the
+    // rest taking the last slot.
     const stamps = card.getByRole("list", { name: "Approved by" });
-    await expect(stamps.getByRole("button", { name: /^Approved by/ })).toHaveCount(5);
-    const first = stamps.getByRole("button", {
-      name: `Approved by ${EVENT_APPROVALS[0].reviewer!.username}`,
-    });
+    await expect(stamps.getByRole("link")).toHaveCount(13);
+    const username = EVENT_APPROVALS[0].reviewer!.username;
+    const first = stamps.getByRole("link", { name: username, exact: true });
+    await expect(first).toHaveAttribute("href", `/profile/${username}`);
     expect((await first.boundingBox())?.width).toBe(28);
-    await expectNarrowViewportLayout(page, stamps.getByRole("button", { name: "Show 2 more approvals" }));
-
-
-    // A tap opens the stamp's card, which holds the note and the way to the profile.
-    await first.click();
-    await expect(page.getByRole("dialog").getByText(EVENT_APPROVALS[0].note!)).toBeVisible();
-    await expectNarrowViewportLayout(page, page.getByRole("link", { name: "View profile" }));
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expectNarrowViewportLayout(page, stamps.getByRole("button", { name: "Show 3 more approvals" }));
+    await expect(page.getByText(EVENT_APPROVALS[0].note!)).toHaveCount(0);
 
     // The bubble shows the rest of the stamps, which wrap inside the card.
-    await stamps.getByRole("button", { name: "Show 2 more approvals" }).click();
-    await expect(stamps.getByRole("button", { name: /^Approved by/ })).toHaveCount(
-      EVENT_APPROVALS.length,
+    await stamps.getByRole("button", { name: "Show 3 more approvals" }).click();
+    await expect(stamps.getByRole("link")).toHaveCount(EVENT_APPROVALS.length);
+    await expectNarrowViewportLayout(page, stamps.getByRole("link").last());
+  });
+
+  test("puts the actions top right in the sticky rail, the title scrolling with the column", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1512, height: 900 });
+    await mockApi(page);
+    await page.goto(`/events/${EVENT_ID}`);
+
+    const title = page.getByRole("heading", { level: 1 });
+    const rail = page.getByRole("complementary", { name: "Actions and approvals" });
+    const share = rail.getByRole("button", { name: "Share", exact: true });
+    await expect(share).toBeVisible();
+    await expect(rail).toHaveCSS("position", "sticky");
+
+    const titleBox = (await title.boundingBox())!;
+    const railBox = (await rail.boundingBox())!;
+    expect(railBox.x).toBeGreaterThan(titleBox.x);
+    expect(Math.abs(railBox.y - titleBox.y)).toBeLessThan(12);
+    const reportBox = (await rail.getByRole("button", { name: "Report" }).boundingBox())!;
+    expect(railBox.x + railBox.width - (reportBox.x + reportBox.width)).toBeLessThan(2);
+    expect(reportBox.y).toBeLessThan(
+      (await rail.getByRole("region", { name: "Approvals" }).boundingBox())!.y,
     );
-    await expectNarrowViewportLayout(page, stamps.getByRole("button", { name: /^Approved by/ }).last());
+
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect(title).not.toBeInViewport();
+    await expect(share).toBeInViewport();
   });
 });

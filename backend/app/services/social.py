@@ -12,6 +12,7 @@ from app.models.follow import Follow
 from app.models.user import User
 from app.services import notifications
 from app.services.event_filters import (
+    approval_predicates,
     open_requests,
     published_credited_to,
     published_events,
@@ -105,6 +106,9 @@ def get_feed(
     conflict: list[str] | None = None,
     capture_source: list[str] | None = None,
     tag: list[str] | None = None,
+    approved: bool = False,
+    approved_by: str | None = None,
+    approved_by_org: str | None = None,
 ) -> tuple[list[Row[tuple[Event, float | None, float | None, datetime]]], bool]:
     """One page of the feed, newest first, and whether a next page holds a row.
 
@@ -115,7 +119,9 @@ def get_feed(
     the rows owned by an analyst ``user_id`` follows; ``"all"`` keeps every row.
 
     ``kind`` keeps the named kinds (both when empty). ``conflict``, ``capture_source`` and ``tag``
-    narrow through :func:`services.event_filters.taxonomy_predicates`, as on ``GET /events``.
+    narrow through :func:`services.event_filters.taxonomy_predicates`, and ``approved``,
+    ``approved_by`` and ``approved_by_org`` through
+    :func:`services.event_filters.approval_predicates`, as on ``GET /events``.
 
     Rows are ``(event, lat, lng, feed_at)`` ordered by ``feed_at DESC, id DESC``
     (:func:`models.event.feed_at`), a total order over both kinds, so a keyset walk
@@ -155,6 +161,9 @@ def get_feed(
             *visible_events(),
             or_(*legs),
             *taxonomy_predicates(conflict=conflict, capture_source=capture_source, tag=tag),
+            *approval_predicates(
+                approved=approved, approved_by=approved_by, approved_by_org=approved_by_org
+            ),
         )
     )
     if cursor is not None:

@@ -32,6 +32,7 @@ NotificationKind = Literal[
     "organization_manager_inherited",
     "re_approve_requested",
     "approval_received",
+    "approval_revoked",
     "approval_request_received",
     "approval_request_declined",
     "organization_approval_removed",
@@ -59,6 +60,7 @@ NOTIFICATION_KINDS: dict[NotificationKind, dict[NotificationChannel, bool]] = {
     "organization_manager_inherited": {"email": True, "push": True},
     "re_approve_requested": {"email": False, "push": False},
     "approval_received": {"email": False, "push": False},
+    "approval_revoked": {"email": False, "push": False},
     "approval_request_received": {"email": True, "push": True},
     "approval_request_declined": {"email": False, "push": False},
     "organization_approval_removed": {"email": False, "push": False},
@@ -95,6 +97,11 @@ class Notification(Base):
     # The name of an organization the row speaks of once it is gone: an
     # ``organization_approval_removed`` row outlives the organization it names.
     organization_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # The approval an ``approval_received`` row reports: the feed hides the row once it is
+    # revoked.
+    approval_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("event_approvals.id", ondelete="CASCADE"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
@@ -109,6 +116,7 @@ class Notification(Base):
     actor = relationship("User", foreign_keys=[actor_id])
     event = relationship("Event")
     organization = relationship("Organization")
+    approval = relationship("EventApproval")
 
     __table_args__ = (
         CheckConstraint(
@@ -117,7 +125,7 @@ class Notification(Base):
             "'co_geolocator_invite', 'co_geolocator_removed', 'ownership_transferred', "
             "'organization_invite', 'organization_invite_accepted', "
             "'organization_manager_inherited', 're_approve_requested', 'approval_received', "
-            "'approval_request_received', 'approval_request_declined', "
+            "'approval_revoked', 'approval_request_received', 'approval_request_declined', "
             "'organization_approval_removed')",
             name="ck_notifications_kind_valid",
         ),
@@ -129,10 +137,15 @@ class Notification(Base):
             "user_id",
             postgresql_where=text("read_at IS NULL"),
         ),
-        # Back the cascades of a hard-deleted actor, event or organization.
+        # Back the cascades of a hard-deleted actor, event, organization or approval.
         Index("ix_notifications_actor_id", "actor_id"),
         Index("ix_notifications_event_id", "event_id"),
         Index("ix_notifications_organization_id", "organization_id"),
+        Index(
+            "ix_notifications_approval_id",
+            "approval_id",
+            postgresql_where=text("approval_id IS NOT NULL"),
+        ),
     )
 
 
@@ -183,8 +196,10 @@ class NotificationDelivery(DeliveryState, Base):
 
     __tablename__ = "notification_deliveries"
 
-    notification_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("notifications.id", ondelete="CASCADE"), nullable=False
+    # SET NULL: a deleted notification leaves its sent rows behind for the daily
+    # email cap (``services/notifications.delete`` removes the unsent ones).
+    notification_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("notifications.id", ondelete="SET NULL"), nullable=True
     )
     channel: Mapped[NotificationChannel] = mapped_column(String(20), nullable=False)
 

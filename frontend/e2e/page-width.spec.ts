@@ -4,8 +4,9 @@ import { EVENT_ID } from "./support/fixtures";
 import { grantSession, mockApi } from "./support/mockApi";
 
 /**
- * Every `PageShell` page shares one left-aligned container: the title starts
- * at one x on every page. A page without a rail keeps the 53rem reading width;
+ * Every `PageShell` page shares one container: the title starts at one x on
+ * every page, and from `lg` up a `max-w-6xl` column sits centred on the screen,
+ * the nav rail counted in the left margin. A page without a rail keeps the 53rem reading width;
  * a page with a rail gives the main column the same width beside a 17.5rem
  * rail once the screen holds both.
  */
@@ -33,6 +34,20 @@ test.describe("page width", () => {
     for (const x of xs) expect(x, `title x across ${paths.join(", ")}`).toBe(xs[0]);
   });
 
+  test("centres the wide column on the screen", async ({ page }) => {
+    for (const width of [1512, 1920]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/feed");
+      const title = page.getByRole("heading", { level: 1 });
+      await expect(title).toBeVisible();
+      const { left, right, viewport } = await title.evaluate((el) => {
+        const box = el.closest("header")!.parentElement!.getBoundingClientRect();
+        return { left: box.left, right: box.right, viewport: document.documentElement.clientWidth };
+      });
+      expect(left, `left margin at ${width}px`).toBe(viewport - right);
+    }
+  });
+
   test("keeps the reading width without a rail and beside one", async ({ page }) => {
     await page.goto("/settings");
     const title = page.getByRole("heading", { level: 1 });
@@ -50,5 +65,50 @@ test.describe("page width", () => {
     );
     expect((await rail.boundingBox())!.width).toBe(RAIL_PX);
     expect(mainWidth).toBe(READING_PX);
+  });
+});
+
+/** From `lg` up the back arrow and the right rail stick at their resting place. */
+test.describe("sticky chrome", () => {
+  test.beforeEach(async ({ context, page }) => {
+    await page.setViewportSize({ width: 1512, height: 600 });
+    await grantSession(context);
+    await mockApi(page);
+  });
+
+  async function scrollBy(page: Page, y: number): Promise<void> {
+    await page.evaluate((dy) => window.scrollBy(0, dy), y);
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  }
+
+  test("keeps the back arrow in the gutter and the rail in place", async ({ page }) => {
+    await page.goto(`/events/${EVENT_ID}`);
+    const back = page.getByRole("button", { name: "Back" });
+    const rail = page.getByRole("complementary", { name: "Actions and approvals" });
+    await expect(back).toBeVisible();
+    await expect(rail).toBeVisible();
+    const backAtRest = (await back.boundingBox())!;
+    const railAtRest = (await rail.boundingBox())!;
+
+    await scrollBy(page, 40);
+    expect((await rail.boundingBox())!.y).toBe(railAtRest.y);
+    expect((await back.boundingBox())!.y).toBe(backAtRest.y);
+
+    await scrollBy(page, 400);
+    await expect(back).toBeInViewport();
+    const backScrolled = (await back.boundingBox())!;
+    expect(backScrolled.x).toBe(backAtRest.x);
+    expect(backScrolled.y).toBe(backAtRest.y);
+  });
+
+  test("keeps a rail under the header in place", async ({ page }) => {
+    await page.goto("/feed");
+    const rail = page.getByRole("complementary", { name: "Filters" });
+    await expect(rail).toBeVisible();
+    await expect(rail).toHaveCSS("position", "sticky");
+    const railAtRest = (await rail.boundingBox())!;
+
+    await scrollBy(page, 40);
+    expect((await rail.boundingBox())!.y).toBe(railAtRest.y);
   });
 });

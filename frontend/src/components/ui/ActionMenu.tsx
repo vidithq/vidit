@@ -13,6 +13,7 @@ import Link from "next/link";
 
 import { cn } from "@/lib/cn";
 import { Button } from "./Button";
+import { Tooltip } from "./Tooltip";
 import { ACCENT_SURFACE, TOOLTIP_SURFACE } from "./styles";
 
 export interface ActionMenuItem {
@@ -22,8 +23,9 @@ export interface ActionMenuItem {
   icon?: ReactNode;
   /** The link to the page on screen (`aria-current`), which the menu focuses when it opens. */
   current?: boolean;
-  /** A muted word after the label, such as *Current*. */
-  meta?: string;
+  /** Shows the icon alone, with `label` as the accessible name and a tooltip, for a list too
+   *  narrow to print it. */
+  iconOnly?: boolean;
 }
 
 const ITEM =
@@ -39,7 +41,8 @@ function itemNodes(menu: HTMLElement): HTMLElement[] {
  * A trigger button that opens a short list of links (`role="menu"`). Arrow keys, Home and End
  * move between items; Escape closes and returns focus to the trigger; Tab or an outside click
  * closes. The menu opens under the trigger, aligned to its right edge, and shifts sideways when
- * that would cross the viewport. A long list scrolls inside the menu.
+ * that would cross the viewport; with `matchTriggerWidth` it is exactly as wide as the trigger. A
+ * long list scrolls inside the menu.
  */
 export function ActionMenu({
   label,
@@ -47,6 +50,7 @@ export function ActionMenu({
   text,
   menuLabel = label,
   items,
+  matchTriggerWidth = false,
 }: {
   /** The trigger's accessible name and tooltip. With `text`, it starts with that text. */
   label: string;
@@ -56,6 +60,8 @@ export function ActionMenu({
   /** The list's accessible name; the trigger's when unset. */
   menuLabel?: string;
   items: ActionMenuItem[];
+  /** Spans the list over the trigger's width, for a compact picker. */
+  matchTriggerWidth?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const menuId = useId();
@@ -158,31 +164,35 @@ export function ActionMenu({
           aria-label={menuLabel}
           onKeyDown={onMenuKeyDown}
           className={cn(
-            "absolute right-0 top-full z-50 mt-1 max-h-80 w-56 max-w-[calc(100vw-2rem)] space-y-0.5 overflow-y-auto rounded-md p-1",
+            "absolute right-0 top-full z-50 mt-1 max-h-80 space-y-0.5 overflow-y-auto rounded-md p-1",
+            matchTriggerWidth ? "left-0" : "w-56 max-w-[calc(100vw-2rem)]",
             TOOLTIP_SURFACE,
           )}
         >
-          {items.map((item) => (
-            <Link
-              key={item.key}
-              href={item.href}
-              role="menuitem"
-              tabIndex={-1}
-              aria-current={item.current ? "page" : undefined}
-              className={cn(ITEM, item.current && ACCENT_SURFACE)}
-              onClick={() => close(false)}
-            >
-              {item.icon}
-              {item.label}
-              {/* The space keeps the accessible name two words ("Version 3 Current"). */}
-              {item.meta && " "}
-              {item.meta && (
-                <span className="ml-auto text-[11px] font-normal text-neutral-500">
-                  {item.meta}
-                </span>
-              )}
-            </Link>
-          ))}
+          {items.map((item) => {
+            const link = (
+              <Link
+                key={item.key}
+                href={item.href}
+                role="menuitem"
+                tabIndex={-1}
+                aria-current={item.current ? "page" : undefined}
+                aria-label={item.iconOnly ? item.label : undefined}
+                className={cn(ITEM, item.iconOnly && "justify-center", item.current && ACCENT_SURFACE)}
+                onClick={() => close(false)}
+              >
+                {item.icon}
+                {!item.iconOnly && item.label}
+              </Link>
+            );
+            return item.iconOnly ? (
+              <Tooltip key={item.key} label={item.label}>
+                {link}
+              </Tooltip>
+            ) : (
+              link
+            );
+          })}
         </div>
       )}
     </div>

@@ -96,9 +96,53 @@ export const FIELD_HELP = {
     text: "Optional. One line on what you changed and why, kept with the version this edit replaces so a reader can follow the correction.",
     label: "What is the version note?",
   },
+  geolocators: {
+    text: "An invited analyst is credited once they accept. Editing and closing stay with the owner. Invites, withdrawals and removals apply right away and do not create a new version.",
+    label: "How does shared credit work?",
+  },
+  close_geolocation: {
+    text: "Closing takes this geolocation back. It stays readable, with your reason beside it.",
+    label: "What does closing do?",
+  },
+  close_detection: {
+    text: "Closing takes this detection back. It stays readable, with your reason beside it.",
+    label: "What does closing do?",
+  },
+  close_request: {
+    text: "Closing takes this request back. It stays readable, with your reason beside it.",
+    label: "What does closing do?",
+  },
+  close_reason: {
+    text: "The reason stays publicly visible next to the closed badge.",
+    label: "Who sees the close reason?",
+  },
   action_submit: {
     text: "Submits this detection: your edits are saved and it becomes Geolocated (a person stands behind it). It becomes public, and from then on every change you make is kept as a new version, the source link and the source media included. Give it a full read first, then click Submit twice to confirm.",
     label: "What does Submit do?",
+  },
+  submit_request: {
+    text: "Add these to post a request: other analysts can then locate the footage for you.",
+    label: "What does a request need?",
+  },
+  submit_geolocation_extra: {
+    text: "Add these on top of the request fields to publish a full geolocation, with your coordinates and proof.",
+    label: "What does a geolocation need?",
+  },
+  submit_geolocation: {
+    text: "Add these to publish your geolocation. The request supplies the source media, and you become the owner of the event.",
+    label: "What does the geolocation need?",
+  },
+  geolocate_request: {
+    text: "Opens the submit page with this request's footage and source filled in. Publishing your geolocation answers the request, and you become the owner of the event.",
+    label: "What does Geolocate do?",
+  },
+  approval_version: {
+    text: "An approval covers one version. When the event gets a new version, approvers are asked to approve again.",
+    label: "What does an approval cover?",
+  },
+  approval_filter: {
+    text: "Keeps the events whose current version holds an approval nobody revoked: any approval, or the one an analyst or an organization gave. An approval of an earlier version does not count.",
+    label: "Which approvals count?",
   },
   last_org_manager: {
     text: "The last org manager cannot leave, be removed or become a member. Make another member org manager first.",

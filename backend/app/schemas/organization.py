@@ -29,11 +29,12 @@ class OrganizationRead(BaseModel):
 
     ``viewer_role`` is the caller's role, null for a non-member or an anonymous
     caller. ``viewer_invited`` is true while the caller holds a pending invite.
-    ``viewer_can_manage`` is true for an org manager or a site admin: it gates
-    the profile edit and the member management on the page.
+    ``viewer_can_manage`` is true for an org manager only, a site admin included
+    only when they are one: it gates the profile edit and the member management
+    on the page.
     ``approval_request_audience`` is who may send the organization an approval
-    request, set by its org managers: shown to them and to site admins only, null
-    for anyone else, so the setting is not read off the page.
+    request, set by its org managers: shown to them only, null for anyone else,
+    so the setting is not read off the page.
     """
 
     id: uuid.UUID

@@ -8,13 +8,14 @@ import {
 
 const NONE: OrganizationRef[] = [];
 
-/** The organizations the signed-in analyst is an org manager of, the ones they act for (approve,
- *  answer an approval request, revoke an approval). Empty while loading and when signed out. */
-export function useManagedOrganizations(): OrganizationRef[] {
+/** The organizations the signed-in analyst is a member of, the ones they act for (approve, revoke
+ *  its approval, answer its approval requests), whatever their role. Empty while loading and when
+ *  signed out. Mirrors backend organizations.is_organization_member; change both. */
+export function useMemberOrganizations(): OrganizationRef[] {
   const { user } = useAuth();
   const { data } = useApiResource<OrganizationMembership[]>(
     user ? userOrganizationsPath(user.username) : null,
   );
   if (!data) return NONE;
-  return data.filter((m) => m.role === "manager").map((m) => m.organization);
+  return data.map((m) => m.organization);
 }

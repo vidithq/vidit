@@ -271,7 +271,7 @@ describe("FeedPage", () => {
 
     const card = container.querySelector("article")!;
     const heading = card.querySelector("h2")!;
-    const byline = within(card).getByText("by", { exact: false });
+    const byline = card.querySelector("a[href^='/profile/']")!;
     expect(heading.compareDocumentPosition(byline) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     expect(within(card).getByText("Event 25 Aug 2009")).toBeInTheDocument();

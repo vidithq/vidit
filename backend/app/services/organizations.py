@@ -67,6 +67,10 @@ class NotOrganizationManagerError(OrganizationError):
     code = "not_organization_manager"
 
 
+class NotOrganizationMemberError(OrganizationError):
+    code = "not_organization_member"
+
+
 class NotMutualFollowError(OrganizationError):
     code = "not_mutual_follow"
 
@@ -99,6 +103,7 @@ ORGANIZATION_ERROR_STATUS: dict[str, int] = {
     "invite_not_found": 404,
     "member_not_found": 404,
     "not_organization_manager": 403,
+    "not_organization_member": 403,
     "not_mutual_follow": 403,
     "slug_taken": 409,
     "x_handle_conflict": 409,
@@ -134,25 +139,35 @@ def _membership(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> Organizat
 
 
 def is_organization_manager(db: Session, *, org_id: uuid.UUID, user_id: uuid.UUID) -> bool:
-    """The one role predicate: whether ``user_id`` may act in the organization's name."""
+    """Whether ``user_id`` holds the membership powers: invite, remove, promote, and set the
+    organization's approval request audience."""
     member = _membership(db, org_id, user_id)
     return member is not None and member.role == "manager"
+
+
+def is_organization_member(db: Session, *, org_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+    """Whether ``user_id`` acts in the organization's name: any member approves, revokes its
+    approvals and answers its approval requests."""
+    return _membership(db, org_id, user_id) is not None
+
+
+def live_member_ids(
+    org_id: uuid.UUID | ColumnExpressionArgument[uuid.UUID],
+) -> Select[tuple[uuid.UUID]]:
+    """The live members of ``org_id``, the analysts who act in its name. ``org_id`` may be a
+    column, to correlate with an outer query."""
+    return (
+        select(OrganizationMember.user_id)
+        .join(User, User.id == OrganizationMember.user_id)
+        .where(OrganizationMember.organization_id == org_id, User.deleted_at.is_(None))
+    )
 
 
 def live_manager_ids(
     org_id: uuid.UUID | ColumnExpressionArgument[uuid.UUID],
 ) -> Select[tuple[uuid.UUID]]:
-    """The live org managers of ``org_id``, the analysts who act in its name. ``org_id`` may be a
-    column, to correlate with an outer query."""
-    return (
-        select(OrganizationMember.user_id)
-        .join(User, User.id == OrganizationMember.user_id)
-        .where(
-            OrganizationMember.organization_id == org_id,
-            OrganizationMember.role == "manager",
-            User.deleted_at.is_(None),
-        )
-    )
+    """The live org managers of ``org_id`` (:func:`live_member_ids` narrowed to the role)."""
+    return live_member_ids(org_id).where(OrganizationMember.role == "manager")
 
 
 def _can_manage(db: Session, org: Organization, user: User) -> bool:
@@ -163,6 +178,12 @@ def _can_manage(db: Session, org: Organization, user: User) -> bool:
 def require_manager(db: Session, org: Organization, user: User) -> None:
     if not _can_manage(db, org, user):
         raise NotOrganizationManagerError("Only an org manager can do this")
+
+
+def require_member(db: Session, org: Organization, user: User) -> None:
+    """Members act in the organization's name; a site admin reads what they read."""
+    if not (user.is_admin or is_organization_member(db, org_id=org.id, user_id=user.id)):
+        raise NotOrganizationMemberError("Only a member of the organization can do this")
 
 
 def _live_manager_count(db: Session, org_id: uuid.UUID) -> int:
@@ -387,6 +408,9 @@ def apply_update(org: Organization, body: OrganizationUpdate) -> None:
 
 
 def build_read(db: Session, org: Organization, *, viewer: User | None) -> OrganizationRead:
+    """The organization as ``viewer`` reads it. The ``viewer_*`` flags follow the viewer's own
+    membership: a site admin's manager powers (:func:`require_manager`) serve the admin panel,
+    so they do not raise ``viewer_can_manage``."""
     role: OrganizationRole | None = None
     invited = False
     can_manage = False
@@ -402,7 +426,7 @@ def build_read(db: Session, org: Organization, *, viewer: User | None) -> Organi
             .first()
             is not None
         )
-        can_manage = viewer.is_admin or role == "manager"
+        can_manage = role == "manager"
     return OrganizationRead(
         id=org.id,
         slug=org.slug,

@@ -132,7 +132,7 @@ def get_push_config(
     request: Request,
     current_user: User = Depends(get_current_user),
 ) -> PushConfigRead:
-    """The key a browser subscribes to push with; null when push is off here."""
+    """The key a browser subscribes to push with; null on a development server without VAPID keys."""
     return PushConfigRead(public_key=push_service.public_key())
 
 

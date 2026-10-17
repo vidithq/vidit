@@ -80,27 +80,26 @@ describe("push", () => {
 
   it("asks an iPhone browser tab to add the site to the Home Screen", async () => {
     setUserAgent("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)");
-    expect(await readPushState({ public_key: KEY })).toBe("needs-home-screen");
+    expect(await readPushState()).toBe("needs-home-screen");
   });
 
   it("calls a desktop browser without the Push API unsupported", async () => {
     setUserAgent("Mozilla/5.0 (X11; Linux x86_64)");
-    expect(await readPushState({ public_key: KEY })).toBe("unsupported");
+    expect(await readPushState()).toBe("unsupported");
   });
 
-  it("reads unavailable, denied, off and on", async () => {
+  it("reads denied, off and on", async () => {
     installBrowser();
-    expect(await readPushState({ public_key: null })).toBe("unavailable");
-    expect(await readPushState({ public_key: KEY })).toBe("off");
+    expect(await readPushState()).toBe("off");
 
     installBrowser({ permission: "denied" });
-    expect(await readPushState({ public_key: KEY })).toBe("denied");
+    expect(await readPushState()).toBe("denied");
 
     installBrowser({ permission: "granted" });
-    expect(await readPushState({ public_key: KEY })).toBe("off");
+    expect(await readPushState()).toBe("off");
 
     installBrowser({ permission: "granted", subscription: fakeSubscription() });
-    expect(await readPushState({ public_key: KEY })).toBe("on");
+    expect(await readPushState()).toBe("on");
   });
 
   it("enables: permission, service worker, subscription, then the server row", async () => {

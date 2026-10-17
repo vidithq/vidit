@@ -12,7 +12,6 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button } from "@/components/ui/Button";
 import { EventDetailBody } from "@/components/event/EventDetailBody";
-import { useEventActions } from "@/components/event/useEventActions";
 import { creditProps } from "@/lib/geolocatorCredit";
 
 /** Where the panel sits. `overlay`: a card over the full-screen map page (a bottom sheet below
@@ -56,11 +55,7 @@ export function DetailSidePanel({
   header,
   placement = "overlay",
 }: DetailSidePanelProps) {
-  // The panel takes no tier: it previews a row whose page is one click away, and acting from a
-  // preview would put the same controls in two places. The call stays because the grammar decides
-  // that. Called before the loading branch (hooks); `detail` is null until the row lands.
   const { data: detail, error, loading, refetch } = resource;
-  const { actions, panels } = useEventActions({ event: detail, surface: "panel" });
 
   const overlaid = placement === "overlay";
 
@@ -132,18 +127,10 @@ export function DetailSidePanel({
                 <ArrowRight size={14} className="ml-1 inline align-[-2px]" />
               </Link>
             </h2>
-            {/* Byline alone under the title; anything the grammar returns rides this row (none today). */}
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-xs text-neutral-400">
-                <AuthorByline {...creditProps(detail)} size="xs" avatar />
-              </p>
-              {actions && (
-                <div className="flex items-center gap-3 shrink-0">{actions}</div>
-              )}
-            </div>
+            <p className="text-xs text-neutral-400">
+              <AuthorByline {...creditProps(detail)} size="xs" avatar />
+            </p>
           </div>
-
-          {panels}
 
           <EventDetailBody geo={detail} variant="panel" />
         </div>

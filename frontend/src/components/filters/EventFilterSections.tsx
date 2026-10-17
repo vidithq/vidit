@@ -1,15 +1,20 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 
-import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
-import { AUTHOR_FILTER_RE, suggestAuthors } from "@/lib/search";
+import {
+  AUTHOR_FILTER_RE,
+  suggestApprovers,
+  suggestAuthors,
+  type ApprovalFilters,
+} from "@/lib/search";
 
 import type { Conflict, Tag } from "@/types";
 import type { ActiveFilter } from "@/components/ui/ActiveFilterPills";
+import { FORM_LABEL } from "@/components/ui/form-styles";
 import { TAP_STEP } from "@/components/ui/Button";
 import { ChipBucket } from "@/components/ui/ChipBucket";
-import { Input } from "@/components/ui/Input";
+import { AccountPicker, accountName, analystAccount } from "@/components/ui/AccountPicker";
 import {
   FilterSection,
   chipSummary,
@@ -21,7 +26,7 @@ import type { Concept } from "@/lib/fieldHelp";
 /**
  * The event filter panel, shared by the map overlay, the search page, the Requests board and the
  * feed: one component owns the section list (the surface's lead sections, Status, Conflict, Capture
- * source, Source media, Location guess, the surface's date sections, Tags, Author), so a vocabulary
+ * source, Source media, Location guess, the surface's date sections, Tags, Author, Approvals), so a vocabulary
  * change lands on all four. Surfaces differ in their injected sections (`leadSections`,
  * `dateSections`) and in `sections`, the subset they offer (the search page's Collections group is
  * narrowed by `author` alone, and only the board offers Location guess).
@@ -32,7 +37,7 @@ import type { Concept } from "@/lib/fieldHelp";
  */
 
 /** The common event filter values (the server vocabulary minus the surface-specific date windows). */
-export interface EventFilterValues {
+export interface EventFilterValues extends ApprovalFilters {
   statuses: string[];
   conflicts: string[];
   captureSources: string[];
@@ -51,6 +56,8 @@ export const EMPTY_EVENT_FILTERS: EventFilterValues = {
   mediaTypes: [],
   locationGuess: [],
   author: "",
+  approved: false,
+  approvedBy: null,
 };
 
 export type EventFilterPatch = (patch: Partial<EventFilterValues>) => void;
@@ -63,7 +70,8 @@ export type EventFilterSectionName =
   | "source_media"
   | "location_guess"
   | "tags"
-  | "author";
+  | "author"
+  | "approval";
 
 /** The default stack in render order. `location_guess` is opt-in: only `GET /events` serves it. */
 export const ALL_FILTER_SECTIONS: ReadonlyArray<EventFilterSectionName> = [
@@ -73,6 +81,7 @@ export const ALL_FILTER_SECTIONS: ReadonlyArray<EventFilterSectionName> = [
   "source_media",
   "tags",
   "author",
+  "approval",
 ];
 
 /** The two date windows both surfaces carry, whatever drives them. Empty string = open at that edge. */
@@ -101,9 +110,6 @@ export interface InjectedSection {
   active: boolean;
   children: ReactNode;
 }
-
-// Author typeahead debounce: not a fetch per keystroke, but up by the time typing stops.
-const AUTHOR_SUGGEST_DEBOUNCE_MS = 250;
 
 // The free-tag bucket is unbounded: show this many, the rest behind "Show all". Selected tags past
 // the cut always show.
@@ -147,6 +153,8 @@ const statusLabel = (value: string) => STATUS_FILTER_LABELS[value] ?? value;
 
 const capitalize = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
+const APPROVED_ONLY = "approved";
+
 /** The removable-pill entries for the common values; surfaces append their date-window entries.
  * The author is not a pill: its chip lives in the Author section. Surfaces count it on top of
  * these entries. */
@@ -187,6 +195,18 @@ export function buildActiveFilterPills(
       label: locationGuessLabel(n),
       onRemove: () => drop("locationGuess", n),
     })),
+    ...(values.approved
+      ? [{ key: "approved", label: "Approved", onRemove: () => onPatch({ approved: false }) }]
+      : []),
+    ...(values.approvedBy
+      ? [
+          {
+            key: "approved-by",
+            label: `Approved by ${accountName(values.approvedBy)}`,
+            onRemove: () => onPatch({ approvedBy: null }),
+          },
+        ]
+      : []),
   ];
 }
 
@@ -233,6 +253,8 @@ export function countActiveFilters(
     values.mediaTypes.length +
     values.locationGuess.length +
     (values.author.trim() ? 1 : 0) +
+    (values.approved ? 1 : 0) +
+    (values.approvedBy ? 1 : 0) +
     (eventWindowActive(windows) ? 1 : 0) +
     (addedWindowActive(windows) ? 1 : 0)
   );
@@ -264,47 +286,15 @@ export function EventFilterSections({
   sections?: ReadonlyArray<EventFilterSectionName>;
 }) {
   const offers = (name: EventFilterSectionName) => sections.includes(name);
+  const approvedById = useId();
   const [showAllTags, setShowAllTags] = useState(false);
-  // The author input is commit-style, like a tag chip: typing stays local and fetches usernames to
-  // pick from (the server filter is an exact match, so a fragment must become a handle); the
-  // committed value renders as a removable chip. Live-filtering per keystroke refetched on every
-  // letter and flashed partial pills.
-  const [authorDraft, setAuthorDraft] = useState("");
-  const [authorSuggestions, setAuthorSuggestions] = useState<string[]>([]);
+  // The server's author filter is an exact match, so a typed fragment becomes a handle through
+  // the typeahead; an ineligible draft is not committed, instead of 422ing.
   const commitAuthor = (name: string) => {
-    const v = name.trim();
-    // Same gate as the server's ?author= pattern: an ineligible draft is not committed, instead of 422ing.
-    if (!AUTHOR_FILTER_RE.test(v)) return;
-    onPatch({ author: v });
-    setAuthorDraft("");
-    setAuthorSuggestions([]);
+    if (AUTHOR_FILTER_RE.test(name)) onPatch({ author: name });
   };
+  const author = values.author.trim();
 
-  // Debounced typeahead over usernames. An ineligible draft (under two characters or rejected by
-  // the ?author= gate) clears the list instead of 422ing; the clear is immediate, only the fetch waits.
-  const authorQuery = authorDraft.trim();
-  const canSuggest = authorQuery.length >= 2 && AUTHOR_FILTER_RE.test(authorQuery);
-  useEffect(() => {
-    if (!canSuggest) setAuthorSuggestions([]);
-  }, [canSuggest, authorQuery]);
-  useDebouncedEffect(
-    () => {
-      if (!canSuggest) return;
-      let cancelled = false;
-      suggestAuthors(authorQuery)
-        .then((authors) => {
-          if (!cancelled) setAuthorSuggestions(authors);
-        })
-        .catch(() => {
-          if (!cancelled) setAuthorSuggestions([]);
-        });
-      return () => {
-        cancelled = true;
-      };
-    },
-    [authorQuery, canSuggest],
-    AUTHOR_SUGGEST_DEBOUNCE_MS,
-  );
   // Accordion open-state lives here so a re-render never resets it. Every section starts collapsed
   // except one holding an active value, so the reader sees what is applied.
   const isActive: Record<string, boolean> = {
@@ -315,6 +305,7 @@ export function EventFilterSections({
     "Location guess": values.locationGuess.length > 0,
     Tags: values.tags.length > 0,
     Author: !!values.author.trim(),
+    Approvals: values.approved || !!values.approvedBy,
     ...Object.fromEntries(
       [...leadSections, ...dateSections].map((s) => [s.title, s.active])
     ),
@@ -482,47 +473,64 @@ export function EventFilterSections({
           open={!!openSections["Author"]}
           onToggle={() => toggleSection("Author")}
         >
-          <div className="space-y-2">
-            {values.author.trim() && (
-              <div className="flex flex-wrap gap-1.5">
-                <Pill
-                  tone="accent"
-                  title="Remove the author filter"
-                  onClick={() => onPatch({ author: "" })}
-                >
-                  {values.author.trim()}
-                </Pill>
-              </div>
-            )}
-            <Input
-              type="text"
-              value={authorDraft}
-              onChange={(e) => setAuthorDraft(e.target.value)}
-              // Enter commits the top suggestion when one is up, else the raw draft. No blur commit: clicking
-              // away mid-typing must not apply a partial username.
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  commitAuthor(authorSuggestions[0] ?? authorDraft);
-                }
-              }}
-              placeholder="Type a username…"
-              aria-label="Author username"
-              className="bg-neutral-800 sm:text-[11px]"
-            />
-            {authorSuggestions.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {authorSuggestions.map((name) => (
-                  <Pill key={name} onClick={() => commitAuthor(name)}>
-                    {name}
-                  </Pill>
-                ))}
-              </div>
-            )}
-          </div>
+          <AccountPicker
+            search={suggestAuthors}
+            minQueryLength={2}
+            selected={author ? analystAccount({ username: author }) : null}
+            onSelect={(account) => commitAuthor(accountName(account))}
+            onSubmitText={commitAuthor}
+            onClear={() => onPatch({ author: "" })}
+            placeholder="Type a username…"
+            aria-label="Author username"
+            emptyText="No analyst matches"
+            className="sm:text-[11px]"
+          />
         </FilterSection>
       )}
 
+      {offers("approval") && (
+        <FilterSection
+          title="Approvals"
+          concept="approval_filter"
+          summary={
+            values.approvedBy
+              ? accountName(values.approvedBy)
+              : values.approved
+                ? "Approved"
+                : "Any"
+          }
+          active={isActive.Approvals}
+          open={!!openSections["Approvals"]}
+          onToggle={() => toggleSection("Approvals")}
+        >
+          <div className="space-y-2">
+            <ChipBucket
+              options={[{ id: APPROVED_ONLY, name: APPROVED_ONLY, label: "Approved only" }]}
+              selected={values.approved ? [APPROVED_ONLY] : []}
+              onToggle={() => onPatch({ approved: !values.approved })}
+            />
+            <label htmlFor={approvedById} className={FORM_LABEL}>
+              Approved by
+            </label>
+            <AccountPicker
+              id={approvedById}
+              search={suggestApprovers}
+              minQueryLength={2}
+              selected={values.approvedBy}
+              onSelect={(account) => onPatch({ approvedBy: account })}
+              onSubmitText={(name) => {
+                if (AUTHOR_FILTER_RE.test(name)) {
+                  onPatch({ approvedBy: analystAccount({ username: name }) });
+                }
+              }}
+              onClear={() => onPatch({ approvedBy: null })}
+              placeholder="Type an analyst or organization…"
+              emptyText="No analyst or organization matches"
+              className="sm:text-[11px]"
+            />
+          </div>
+        </FilterSection>
+      )}
     </div>
   );
 }

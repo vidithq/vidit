@@ -4,8 +4,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { Conflict, Tag } from "@/types";
 
 import {
+  EMPTY_DATE_WINDOWS,
   EMPTY_EVENT_FILTERS,
   EventFilterSections,
+  buildActiveFilterPills,
+  countActiveFilters,
   type EventFilterValues,
 } from "./EventFilterSections";
 
@@ -33,7 +36,14 @@ describe("<EventFilterSections>", () => {
   it("starts every section collapsed when no filter is set", () => {
     renderPanel();
 
-    for (const name of ["Status", "Conflict", "Capture source", "Source media", "Author"]) {
+    for (const name of [
+      "Status",
+      "Conflict",
+      "Capture source",
+      "Source media",
+      "Author",
+      "Approvals",
+    ]) {
       expect(header(name)).toHaveAttribute("aria-expanded", "false");
     }
     expect(screen.queryByRole("button", { name: "Drone" })).not.toBeInTheDocument();
@@ -73,5 +83,71 @@ describe("<EventFilterSections>", () => {
 
     fireEvent.click(header("Conflict"));
     expect(header("Conflict")).toHaveAttribute("aria-expanded", "true");
+  });
+});
+
+describe("the Approvals section", () => {
+  const approvedByOrg: EventFilterValues = {
+    ...EMPTY_EVENT_FILTERS,
+    approved: true,
+    approvedBy: { kind: "organization", slug: "osw", name: "Open Source Watch" },
+  };
+
+  it("opens on an active value and toggles Approved only", () => {
+    const onPatch = vi.fn();
+    render(
+      <EventFilterSections
+        tags={TAGS}
+        conflicts={CONFLICTS}
+        values={{ ...EMPTY_EVENT_FILTERS, approved: true }}
+        onPatch={onPatch}
+      />,
+    );
+
+    expect(header("Approvals")).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Approved only" }));
+    expect(onPatch).toHaveBeenCalledWith({ approved: false });
+  });
+
+  it("commits a typed username as an analyst approver", () => {
+    const onPatch = vi.fn();
+    render(
+      <EventFilterSections
+        tags={TAGS}
+        conflicts={CONFLICTS}
+        values={EMPTY_EVENT_FILTERS}
+        onPatch={onPatch}
+      />,
+    );
+
+    fireEvent.click(header("Approvals"));
+    const field = screen.getByLabelText("Approved by");
+    fireEvent.change(field, { target: { value: "ana" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(onPatch).toHaveBeenCalledWith({
+      approvedBy: { kind: "analyst", username: "ana", avatar_url: undefined },
+    });
+  });
+
+  it("counts both values and gives each a removable pill", () => {
+    const onPatch = vi.fn();
+    expect(countActiveFilters(approvedByOrg, EMPTY_DATE_WINDOWS)).toBe(2);
+    const pills = buildActiveFilterPills(approvedByOrg, onPatch);
+    expect(pills.map((p) => p.label)).toEqual(["Approved", "Approved by Open Source Watch"]);
+    pills[1].onRemove();
+    expect(onPatch).toHaveBeenCalledWith({ approvedBy: null });
+  });
+
+  it("is left out where the surface does not offer it", () => {
+    render(
+      <EventFilterSections
+        tags={TAGS}
+        conflicts={CONFLICTS}
+        values={EMPTY_EVENT_FILTERS}
+        onPatch={vi.fn()}
+        sections={["author"]}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Approvals" })).not.toBeInTheDocument();
   });
 });

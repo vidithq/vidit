@@ -24,7 +24,7 @@ vi.mock("@/contexts/DetectionsContext", () => ({
 vi.mock("@/contexts/NotificationsContext", () => ({
   useUnreadNotifications: () => ({ unread: viewer.unread, refresh: () => {} }),
 }));
-vi.mock("@/hooks/useAdmin", () => ({
+vi.mock("@/contexts/AdminContext", () => ({
   useAdmin: () => ({ isAdmin: false, loading: false }),
 }));
 vi.mock("next/navigation", () => ({ usePathname: () => viewer.pathname }));

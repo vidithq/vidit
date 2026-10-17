@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Organization, OrganizationMember } from "@/lib/organizations";
@@ -88,6 +88,13 @@ const OPEN_REQUEST = {
   },
 };
 
+const INVITE = {
+  id: "i1",
+  user: { id: "u4", username: "dee", avatar_url: null },
+  invited_by: { id: "u1", username: "lead", avatar_url: null },
+  created_at: "2026-10-15T09:00:00Z",
+};
+
 function serve(org: Organization, members: OrganizationMember[] = MEMBERS) {
   const refetch = vi.fn();
   useApiResource.mockImplementation((path: string | null) => {
@@ -97,6 +104,9 @@ function serve(org: Organization, members: OrganizationMember[] = MEMBERS) {
     }
     if (path === "/organizations/osw/approval-requests") {
       return { data: [OPEN_REQUEST], error: null, loading: false, refetch };
+    }
+    if (path === "/organizations/osw/invites") {
+      return { data: [INVITE], error: null, loading: false, refetch };
     }
     return { data: [], error: null, loading: false, refetch };
   });
@@ -120,6 +130,7 @@ function signIn(username: string | null) {
 describe("OrganizationPage", () => {
   beforeEach(() => {
     apiFetch.mockReset().mockResolvedValue(undefined);
+    useApiResource.mockClear();
   });
 
   it("shows a visitor the profile and the members, with no controls", () => {
@@ -129,8 +140,10 @@ describe("OrganizationPage", () => {
 
     expect(screen.getByRole("heading", { name: "Open Source Watch" })).toBeInTheDocument();
     expect(screen.getByText("2 members")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "lead" })).toHaveAttribute("href", "/profile/lead");
-    expect(screen.getByText("Org manager")).toBeInTheDocument();
+    const lead = screen.getByRole("link", { name: /^lead/ });
+    expect(lead).toHaveAttribute("href", "/profile/lead");
+    expect(within(lead).getByText("Org manager")).toBeInTheDocument();
+    expect(within(lead).getByText(/^Joined/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Remove|Leave|Make/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit profile" })).toBeNull();
     expect(screen.queryByText("Invites")).toBeNull();
@@ -142,20 +155,20 @@ describe("OrganizationPage", () => {
     serve(ORG);
     render(<OrganizationPage />);
 
-    expect(await screen.findByRole("link", { name: "Bridge strike" })).toHaveAttribute(
-      "href",
-      "/events/e1",
-    );
-    expect(screen.getByText("Skyline matches")).toBeInTheDocument();
-    expect(screen.getByText("Current")).toBeInTheDocument();
+    const row = await screen.findByRole("link", { name: /^Bridge strike/ });
+    expect(row).toHaveAttribute("href", "/events/e1");
+    expect(within(row).getByText(/^v2 · by lead on/)).toBeInTheDocument();
+    expect(within(row).getByText("Current")).toBeInTheDocument();
+    expect(screen.queryByText("Skyline matches")).toBeNull();
   });
 
-  it("lets an invited analyst accept", async () => {
+  it("lets an invited analyst accept from the rail", async () => {
     signIn("bo");
     const refetch = serve({ ...ORG, viewer_invited: true });
     render(<OrganizationPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+    const rail = screen.getByRole("complementary", { name: "Invitation" });
+    fireEvent.click(within(rail).getByRole("button", { name: "Accept" }));
     await waitFor(() =>
       expect(apiFetch).toHaveBeenCalledWith("/organizations/osw/invite/accept", {
         method: "POST",
@@ -178,11 +191,30 @@ describe("OrganizationPage", () => {
     serve({ ...ORG, viewer_role: "manager", viewer_can_manage: true });
     render(<OrganizationPage />);
 
-    expect(screen.getByRole("button", { name: "Make org manager" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Remove" })).toBeInTheDocument();
+    const makeManager = screen.getByRole("button", { name: "Make org manager" });
+    expect(makeManager.closest("a")).toBeNull();
+    expect(screen.getByRole("button", { name: "Remove" }).closest("a")).toBeNull();
     expect(screen.getByText("Invites")).toBeInTheDocument();
-    expect(screen.getByLabelText("Analyst")).toBeDisabled();
+    fireEvent.focus(screen.getByLabelText("Analyst"));
+    expect(screen.getByText("No mutual follow to invite")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Invite" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Edit profile" })).toBeInTheDocument();
+  });
+
+  it("lists pending invites as rows to the invitee's profile, Withdraw outside the link", async () => {
+    signIn("lead");
+    serve({ ...ORG, viewer_role: "manager", viewer_can_manage: true });
+    render(<OrganizationPage />);
+
+    const invite = screen.getByRole("link", { name: /^dee/ });
+    expect(invite).toHaveAttribute("href", "/profile/dee");
+    expect(within(invite).getByText(/^Invited .* by lead$/)).toBeInTheDocument();
+    const withdraw = screen.getByRole("button", { name: "Withdraw" });
+    expect(withdraw.closest("a")).toBeNull();
+    fireEvent.click(withdraw);
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith("/organizations/osw/invites/i1", { method: "DELETE" }),
+    );
   });
 
   it("offers the last org manager neither leave nor demotion, and says why", () => {
@@ -227,8 +259,10 @@ describe("OrganizationPage", () => {
     render(<OrganizationPage />);
 
     expect(screen.getByText("Approval requests")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Port fire" })).toHaveAttribute("href", "/events/e2");
-    expect(screen.getByRole("button", { name: "Decline" })).toBeInTheDocument();
+    const request = screen.getByRole("link", { name: /^Port fire/ });
+    expect(request).toHaveAttribute("href", "/events/e2");
+    expect(within(request).getByText(/asked by cy on/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Decline" }).closest("a")).toBeNull();
     expect(screen.getByRole("button", { name: "People our org managers follow" })).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -244,12 +278,27 @@ describe("OrganizationPage", () => {
     await waitFor(() => expect(refetch).toHaveBeenCalled());
   });
 
-  it("shows a site admin the requests without the answer", () => {
-    signIn("mod");
-    serve({ ...ORG, viewer_can_manage: true });
+  it("gives a member the open approval requests with Decline, without the audience control", () => {
+    signIn("ana");
+    serve({ ...ORG, viewer_role: "member" });
     render(<OrganizationPage />);
 
-    expect(screen.getByRole("link", { name: "Port fire" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Decline" })).toBeNull();
+    expect(screen.getByRole("link", { name: /^Port fire/ })).toHaveAttribute("href", "/events/e2");
+    expect(screen.getByRole("button", { name: "Decline" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Everyone" })).toBeNull();
+  });
+
+  it("shows a site admin who is not a member no role controls, requests or invites", () => {
+    signIn("mod");
+    serve(ORG);
+    render(<OrganizationPage />);
+
+    expect(screen.getByRole("link", { name: /^lead/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Remove|Leave|Make/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit profile" })).toBeNull();
+    expect(screen.queryByText("Approval requests")).toBeNull();
+    expect(screen.queryByText("Invites")).toBeNull();
+    expect(useApiResource).not.toHaveBeenCalledWith("/organizations/osw/approval-requests");
+    expect(useApiResource).not.toHaveBeenCalledWith("/organizations/osw/invites");
   });
 });

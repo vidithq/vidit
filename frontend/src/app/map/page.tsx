@@ -6,7 +6,7 @@ import { filterPointsByStatus } from "@/types";
 import type { Conflict, MapPoint, EventDetail, Tag } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { apiFetch } from "@/lib/api";
-import { AUTHOR_FILTER_RE } from "@/lib/search";
+import { AUTHOR_FILTER_RE, appendApprovalFilters } from "@/lib/search";
 import {
   VIEWPORT_DEBOUNCE_MS,
   boundsContain,
@@ -66,6 +66,10 @@ export default function HomePage() {
     // The shared gate keeps a stale ineligible Author value from 422ing the fetch.
     const cleanAuthor = filters.author.trim();
     if (AUTHOR_FILTER_RE.test(cleanAuthor)) params.set("author", cleanAuthor);
+    appendApprovalFilters(params, {
+      approved: filters.approved,
+      approvedBy: filters.approvedBy,
+    });
 
     setLoading(true);
     apiFetch<MapPoint[]>(`/events/points?${params.toString()}`, {
@@ -88,6 +92,8 @@ export default function HomePage() {
     filters.tags,
     filters.mediaTypes,
     filters.author,
+    filters.approved,
+    filters.approvedBy,
   ]);
 
   useEffect(() => {

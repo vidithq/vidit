@@ -574,6 +574,7 @@ _DOCUMENTED_LIMITS = [
         "user",
         {"json": {"ids": [str(_MISSING_ID)]}},
     ),
+    _Case("delete", f"/api/v1/notifications/{_MISSING_ID}", 60),
     # The create stores a row per request; the other probes 404 after the limiter.
     _Case(
         "post",

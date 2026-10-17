@@ -5,12 +5,14 @@ import {
   ArrowRightLeft,
   AtSign,
   BadgeCheck,
+  BadgeX,
   Building2,
   CircleCheck,
   ClipboardCheck,
   ClipboardX,
   RefreshCw,
   ShieldCheck,
+  Trash2,
   UserCheck,
   UserMinus,
   UserPlus,
@@ -20,18 +22,19 @@ import {
 
 import { useUnreadNotifications } from "@/contexts/NotificationsContext";
 import { useCursorList } from "@/hooks/useCursorList";
+import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
-import { formatDate } from "@/lib/format";
 import {
-  NOTIFICATION_KIND_COPY,
+  deleteNotification,
   describeNotification,
   markNotificationsRead,
+  notificationAvatar,
+  notificationLabel,
   notificationsPath,
   type Notification,
   type NotificationKind,
 } from "@/lib/notifications";
-import { InviteAnswerButtons } from "@/components/event/GeolocatorCredit";
-import { ApprovalRequestDecline } from "@/components/event/ApprovalRequestsSection";
+import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LinkRow } from "@/components/ui/LinkRow";
@@ -52,10 +55,62 @@ const KIND_ICON: Record<NotificationKind, LucideIcon> = {
   organization_manager_inherited: ShieldCheck,
   re_approve_requested: RefreshCw,
   approval_received: BadgeCheck,
+  approval_revoked: BadgeX,
   approval_request_received: ClipboardCheck,
   approval_request_declined: ClipboardX,
   organization_approval_removed: Building2,
 };
+
+function NotificationRow({ n, onChanged }: { n: Notification; onChanged: () => void }) {
+  const { text, href } = describeNotification(n);
+  const avatar = notificationAvatar(n);
+  const remove = useMutation(() => deleteNotification(n.id), {
+    fallback: "Failed to delete the notification",
+    onSuccess: onChanged,
+  });
+  return (
+    <div className="space-y-2">
+      <LinkRow
+        variant="arrow"
+        icon={KIND_ICON[n.kind]}
+        leading={
+          avatar && (
+            // Decorative: the sentence beside it names the analyst or the organization.
+            <Avatar
+              src={avatar.avatarUrl}
+              username={avatar.name}
+              size="size-7"
+              shape={avatar.shape}
+              decorative
+            />
+          )
+        }
+        label={notificationLabel(n)}
+        value={text}
+        href={href}
+        external={false}
+        action={
+          <Button
+            icon
+            variant="dangerGhost"
+            className="text-neutral-500 hover:text-red-400"
+            aria-label="Delete notification"
+            title="Delete"
+            onClick={() => void remove.run()}
+            disabled={remove.loading}
+          >
+            <Trash2 size={14} />
+          </Button>
+        }
+      />
+      {remove.error && (
+        <div className={FORM_ERROR_BANNER} role="alert">
+          {remove.error}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function NotificationRows({
   title,
@@ -71,36 +126,9 @@ function NotificationRows({
     <section>
       <SectionEyebrow title={title} />
       <div className="space-y-2">
-        {rows.map((n) => {
-          const { text, href } = describeNotification(n);
-          return (
-            <div key={n.id} className="space-y-2">
-              {/* Decline sits beside the link, not in it: the row is one link. Approving
-                  happens on the event page only, after reading the event. */}
-              <div className="flex items-center gap-2">
-                <div className="min-w-0 flex-1">
-                  <LinkRow
-                    icon={KIND_ICON[n.kind]}
-                    label={`${NOTIFICATION_KIND_COPY[n.kind].label} · ${formatDate(n.created_at)}`}
-                    value={text}
-                    href={href}
-                    external={false}
-                  />
-                </div>
-                {n.approval_request_id !== null && n.event && (
-                  <ApprovalRequestDecline
-                    eventId={n.event.id}
-                    requestId={n.approval_request_id}
-                    onAnswered={onChanged}
-                  />
-                )}
-              </div>
-              {n.invite_pending && n.event && (
-                <InviteAnswerButtons eventId={n.event.id} onAnswered={onChanged} />
-              )}
-            </div>
-          );
-        })}
+        {rows.map((n) => (
+          <NotificationRow key={n.id} n={n} onChanged={onChanged} />
+        ))}
       </div>
     </section>
   );
@@ -132,6 +160,11 @@ export default function NotificationsPage() {
 
   if (authLoading || !user) return <PageLoading />;
 
+  const changed = () => {
+    reload();
+    refresh();
+  };
+
   return (
     <PageShell title="Notifications">
       {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
@@ -148,12 +181,12 @@ export default function NotificationsPage() {
           <NotificationRows
             title="New"
             rows={items.filter((n) => n.read_at === null)}
-            onChanged={reload}
+            onChanged={changed}
           />
           <NotificationRows
             title="Earlier"
             rows={items.filter((n) => n.read_at !== null)}
-            onChanged={reload}
+            onChanged={changed}
           />
           {hasMore && (
             <div className="flex justify-center">

@@ -1,6 +1,7 @@
+import uuid
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -54,17 +55,8 @@ def list_notifications(
     if has_next:
         last = rows[-1]
         response.headers["Link"] = next_link(request, encode_cursor(last.created_at, last.id))
-    pending = notifications_service.pending_invites(db, user=current_user, rows=rows)
-    offers = notifications_service.reapproval_offers(db, user=current_user, rows=rows)
-    approval_requests = notifications_service.open_approval_requests(
-        db, user=current_user, rows=rows
-    )
-    return [
-        notifications_service.build_read(
-            row, pending=pending, offers=offers, approval_requests=approval_requests
-        )
-        for row in rows
-    ]
+    answered = notifications_service.answered_approval_requests(db, user=current_user, rows=rows)
+    return [notifications_service.build_read(row, answered=answered) for row in rows]
 
 
 @router.get("/unread-count", response_model=NotificationUnreadCount)
@@ -88,6 +80,20 @@ def mark_notifications_read(
 ) -> None:
     """Mark the listed notifications read. Ids that are not yours change nothing."""
     notifications_service.mark_read(db, user=current_user, ids=body.ids)
+    db.commit()
+
+
+@router.delete("/{notification_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("60/minute")
+def delete_notification(
+    request: Request,
+    notification_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    """Delete one of your notifications. 404 when it is not yours."""
+    if not notifications_service.delete(db, user=current_user, notification_id=notification_id):
+        raise HTTPException(status_code=404, detail="Notification not found")
     db.commit()
 
 

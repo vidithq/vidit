@@ -6,12 +6,14 @@ import { MapPin, SquarePen, Users } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
+import { cn } from "@/lib/cn";
 import { allApprovalsPath, type ApprovalList } from "@/lib/approvals";
 import { COLLECTABLE_STATUSES, CollectionIcon } from "@/lib/collections";
 import { hasPublishedRecord } from "@/lib/events";
 import { AddToCollectionPanel } from "@/components/collections/AddToCollectionPanel";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { FieldHelp } from "@/components/ui/FieldHelp";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { ACCENT_SURFACE } from "@/components/ui/styles";
@@ -23,37 +25,34 @@ import { useReportContent } from "@/components/report/useReportContent";
 import type { EventDetail } from "@/types";
 
 /**
- * The header of one event, assembled once so no surface hand-assembles a row and controls can't
- * drift between them. Left to right, in the surface's top-right slot (`docs/design.md`, Event
- * header and Approvals card):
+ * The controls of one event, assembled once so no surface hand-assembles a row and controls can't
+ * drift between them. They live in the page's right rail (`docs/design.md`, Event actions and
+ * Approvals card), as a row of icon controls, left to right:
  *
  * 1. **The version selector**, on the event page of a published row.
- * 2. **Geolocate**, filled, on the request page.
- * 3. **Edit**, an icon, for the owner. Closing and the geolocators live on the edit page.
- * 4. **Share**.
- * 5. **Add to collection** for the owner and every co-geolocator, and **Geolocators** for a
- *    co-geolocator (where they leave). Each opens a panel under the header.
- * 6. **Report** for every reader but the owner.
+ * 2. **Edit**, an icon, for the owner. Closing and the geolocators live on the edit page.
+ * 3. **Share**.
+ * 4. **Add to collection** for the owner and every co-geolocator, and **Geolocators** for a
+ *    co-geolocator (where they leave). Each opens a panel at the top of the main column.
+ * 5. **Report** for every reader but the owner.
  *
- * On the event page of a published row the hook also returns the Approvals card (status,
- * approvals, Approve, approval requests), which the page renders beside the body.
+ * On the event page the rail is that row, then a pending geolocator invitation, then the Approvals
+ * card of a published row (status, approvals, Approve, approval requests). On the request page it
+ * is the Actions card: the row, then **Geolocate** on an open request.
  *
- * The hook returns nodes rather than rendering them because the header, the panels and the card
- * land in different slots. Called before a surface's early returns, with `event` null while the
- * row loads, so hook order is stable.
+ * The hook returns nodes rather than rendering them because the rail and the panels land in
+ * different slots. Called before a surface's early returns, with `event` null while the row
+ * loads, so hook order is stable.
  */
 
-/** Which surface is asking, which is what selects the controls. */
-export type ActionSurface = "event" | "request" | "panel" | "edit";
+/** Which detail page is asking, which is what selects the controls. */
+export type ActionSurface = "event" | "request";
 
-// One flag per control family per surface. The map panel and edit form render nothing (the panel
-// previews a row whose page is one click away; a form's own submit is its action, and sharing a
-// record mid-rewrite acts on something other than what is on screen).
-//
-// `utilities` is Share and Report, which any reader of the record may use. `flow` is geolocating
-// an open request. `edit` is the owner's way to the edit page. `collect` shelves the row on one
-// of the reader's collections. `history` (the version selector), `credit` and `approvals` (the
-// Approvals card) belong to the event page, the one surface serving the published record.
+// One flag per control family per surface. `utilities` is Share and Report, which any reader of
+// the record may use. `flow` is geolocating an open request. `edit` is the owner's way to the edit
+// page. `collect` shelves the row on one of the reader's collections. `history` (the version
+// selector), `credit` and `approvals` (the Approvals card) belong to the event page, the one
+// surface serving the published record.
 const TIERS: Record<
   ActionSurface,
   {
@@ -68,8 +67,6 @@ const TIERS: Record<
 > = {
   event:   { flow: false, edit: true,  collect: true,  history: true,  utilities: true,  credit: true,  approvals: true },
   request: { flow: true,  edit: true,  collect: false, history: false, utilities: true,  credit: false, approvals: false },
-  panel:   { flow: false, edit: false, collect: false, history: false, utilities: false, credit: false, approvals: false },
-  edit:    { flow: false, edit: false, collect: false, history: false, utilities: false, credit: false, approvals: false },
 };
 
 const COLLECT_PANEL_ID = "add-to-collection-panel";
@@ -85,17 +82,15 @@ export interface EventActionsOptions {
 }
 
 export interface EventActions {
-  /** The header controls, for the surface's top-right slot. */
-  actions: ReactNode;
-  /** The panels the header's toggles open, for the body under the header. */
+  /** The panels the rail's toggles open, for the top of the main column. */
   panels: ReactNode;
-  /** The Approvals card, on the event page of a published row only. */
-  approvalsCard: ReactNode;
+  /** The page's right rail. */
+  rail: ReactNode;
 }
 
-/** A panel a header toggle opens. It mounts when opened and takes focus then, so a keyboard or
+/** A panel a rail toggle opens. It mounts when opened and takes focus then, so a keyboard or
  *  screen reader user lands in it rather than back on the toggle. */
-function HeaderPanel({ id, children }: { id: string; children: ReactNode }) {
+function TogglePanel({ id, children }: { id: string; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => ref.current?.focus(), []);
   return (
@@ -132,7 +127,9 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
     setCrediting(false);
   }, [event?.id]);
 
-  if (!event || !tiers) return { actions: null, panels: null, approvalsCard: null };
+  if (!event || !tiers) {
+    return { panels: null, rail: null };
+  }
 
   const isOpenRequest = event.status === "requested";
   // The owner edits an open request (overwriting it), a detection, or a published geolocation
@@ -175,16 +172,6 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
         selected={event.version_no}
       />
     ),
-    tiers.flow && isOpenRequest && (
-      <Link
-        key="geolocate"
-        href={`/submit?request_id=${event.id}`}
-        className={buttonClasses("primary")}
-      >
-        <MapPin size={14} />
-        Geolocate
-      </Link>
-    ),
     canEdit && (
       // A published record is corrected by adding a version, a request is overwritten: the
       // tooltip says which, so "Edit" never reads as an in-place rewrite of a published record.
@@ -215,49 +202,75 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
     canReport && <Fragment key="report">{report.trigger}</Fragment>,
   ].filter(Boolean);
 
-  // A surface with nothing to offer gets nothing rather than an empty row: the wrapper is an item
-  // in the host's cluster, so an empty one prints a gap beside the host's own controls.
-  // `flex-wrap` plus `justify-end`: the row breaks into right-aligned lines instead of pushing the
-  // header sideways (PageShell caps the cluster at the header width).
-  const actions =
-    controls.length === 0 ? null : (
-      <div className="flex flex-wrap items-center justify-end gap-1.5">{controls}</div>
+  const row = (className?: string) =>
+    controls.length > 0 && (
+      <div
+        role="group"
+        aria-label="Event actions"
+        className={cn("flex flex-wrap items-center gap-1.5", className)}
+      >
+        {controls}
+      </div>
     );
 
+  const eventRail = (
+    <div className="space-y-4">
+      {row("lg:justify-end")}
+      {invited && (
+        <GeolocatorInviteCard
+          event={event}
+          onAnswered={() => {
+            setAnsweredFor(event.id);
+            onChanged?.();
+          }}
+        />
+      )}
+      {showsApprovals && <ApprovalsCard event={event} approvals={approvals} />}
+    </div>
+  );
+
+  const geolocate = tiers.flow && isOpenRequest && (
+    <span className="inline-flex items-center gap-1.5">
+      <Link href={`/submit?request_id=${event.id}`} className={buttonClasses("primary")}>
+        <MapPin size={14} />
+        Geolocate
+      </Link>
+      <FieldHelp concept="geolocate_request" />
+    </span>
+  );
+  const requestRail =
+    controls.length > 0 || geolocate ? (
+      <Card as="section">
+        <SectionEyebrow title="Actions" margin="none" />
+        {row()}
+        {geolocate}
+      </Card>
+    ) : null;
+
   return {
-    actions,
-    // The panels open directly under the header. They stack rather than replace each other: each
-    // is its own titled card.
+    // The panels open at the top of the main column, beside the rail's row. They stack rather
+    // than replace each other: each is its own titled card.
     panels: (
       <>
-        {invited && (
-          <GeolocatorInviteCard
-            event={event}
-            onAnswered={() => {
-              setAnsweredFor(event.id);
-              onChanged?.();
-            }}
-          />
-        )}
         {canSeeCredit && crediting && (
-          <HeaderPanel id={CREDIT_PANEL_ID}>
+          <TogglePanel id={CREDIT_PANEL_ID}>
             <Card as="section">
-              <SectionEyebrow title="Geolocators" margin="none" />
+              <SectionEyebrow title="Geolocators" concept="geolocators" margin="none" />
               <GeolocatorsPanel event={event} onChanged={() => onChanged?.()} />
             </Card>
-          </HeaderPanel>
+          </TogglePanel>
         )}
         {canCollect && collecting && (
-          <HeaderPanel id={COLLECT_PANEL_ID}>
+          <TogglePanel id={COLLECT_PANEL_ID}>
             <Card as="section">
               <SectionEyebrow title="Add to collection" margin="none" />
               <AddToCollectionPanel eventId={event.id} />
             </Card>
-          </HeaderPanel>
+          </TogglePanel>
         )}
-        {canReport && report.panel && <HeaderPanel id={REPORT_PANEL_ID}>{report.panel}</HeaderPanel>}
+        {canReport && report.panel && <TogglePanel id={REPORT_PANEL_ID}>{report.panel}</TogglePanel>}
       </>
     ),
-    approvalsCard: showsApprovals ? <ApprovalsCard event={event} approvals={approvals} /> : null,
+    rail: surface === "event" ? eventRail : requestRail,
   };
 }

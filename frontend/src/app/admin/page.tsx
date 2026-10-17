@@ -4,7 +4,7 @@ import { notFound, useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 import { useAuth } from "@/contexts/AuthContext";
-import { useAdmin } from "@/hooks/useAdmin";
+import { useAdmin } from "@/contexts/AdminContext";
 import { DetectionStatsPanel } from "@/components/admin/DetectionStatsPanel";
 import { EventDeletePanel } from "@/components/admin/EventDeletePanel";
 import { EventModerationPanel } from "@/components/admin/EventModerationPanel";

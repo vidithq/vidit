@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { Building2 } from "lucide-react";
 
 import { useApiResource } from "@/hooks/useApiResource";
 import { useMutation } from "@/hooks/useMutation";
@@ -10,13 +11,22 @@ import {
   appointOrganizationManager,
   createOrganization,
   deleteOrganization,
+  memberCountLabel,
   organizationPath,
   type AdminOrganization,
   type Organization,
 } from "@/lib/organizations";
+import { searchUsers } from "@/lib/admin";
+import {
+  AccountPicker,
+  accountName,
+  analystAccount,
+  type Account,
+} from "@/components/ui/AccountPicker";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Textarea } from "@/components/ui/Input";
+import { LinkRow } from "@/components/ui/LinkRow";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { TEXT_LINK, WARNING_CALLOUT } from "@/components/ui/styles";
@@ -29,17 +39,51 @@ import {
 const EMPTY = { name: "", slug: "", x_handle: "", manager_username: "", bio: "" };
 type Draft = typeof EMPTY;
 
-const FIELDS: { key: Exclude<keyof Draft, "bio">; label: string; placeholder: string }[] = [
+const FIELDS: {
+  key: Exclude<keyof Draft, "bio" | "manager_username">;
+  label: string;
+  placeholder: string;
+}[] = [
   { key: "name", label: "Name", placeholder: "Open Source Watch" },
   { key: "slug", label: "Slug (the URL, fixed once set)", placeholder: "open-source-watch" },
   { key: "x_handle", label: "X handle (verified by you)", placeholder: "@handle" },
-  { key: "manager_username", label: "First org manager (username)", placeholder: "username" },
 ];
+
+const searchAnalysts = (query: string) => searchUsers(query).then((users) => users.map(analystAccount));
+
+/** A site admin's pick of one analyst by username: the admin user search, or an exact username
+ *  typed and committed with Enter. */
+function ManagerPicker({
+  id,
+  label,
+  username,
+  onChange,
+}: {
+  id?: string;
+  label?: string;
+  username: string;
+  onChange: (username: string) => void;
+}) {
+  return (
+    <AccountPicker
+      id={id}
+      aria-label={label}
+      search={searchAnalysts}
+      minQueryLength={1}
+      selected={username ? analystAccount({ username }) : null}
+      onSelect={(account) => onChange(accountName(account))}
+      onSubmitText={onChange}
+      onClear={() => onChange("")}
+      placeholder="username"
+      emptyText="No analyst matches. Press Enter to use this exact username."
+    />
+  );
+}
 
 /** A flagged organization's way back: name a live analyst its org manager. */
 function AppointManager({ slug, onDone }: { slug: string; onDone: () => void }) {
   const [username, setUsername] = useState("");
-  const appoint = useMutation(() => appointOrganizationManager(slug, username.trim()), {
+  const appoint = useMutation(() => appointOrganizationManager(slug, username), {
     fallback: "Could not name the org manager",
     onSuccess: () => {
       setUsername("");
@@ -54,15 +98,14 @@ function AppointManager({ slug, onDone }: { slug: string; onDone: () => void }) 
         void appoint.run();
       }}
     >
-      <Input
-        variant="compact"
-        aria-label={`New org manager of ${slug} (username)`}
-        value={username}
-        onChange={(e) => setUsername(e.target.value)}
-        placeholder="username"
-        className="min-w-0 flex-1"
-      />
-      <Button type="submit" variant="secondary" disabled={!username.trim() || appoint.loading}>
+      <div className="min-w-0 flex-1">
+        <ManagerPicker
+          label={`New org manager of ${slug} (username)`}
+          username={username}
+          onChange={setUsername}
+        />
+      </div>
+      <Button type="submit" variant="secondary" disabled={!username || appoint.loading}>
         Name org manager
       </Button>
       {appoint.error && <div className={`${FORM_ERROR_BANNER} w-full`}>{appoint.error}</div>}
@@ -70,22 +113,22 @@ function AppointManager({ slug, onDone }: { slug: string; onDone: () => void }) 
   );
 }
 
-/** Delete an organization: the site admin types its slug to confirm, since the delete takes
+/** Confirm deleting an organization: the site admin types its slug, since the delete takes
  *  its members, invites, approval requests and every approval given in its name. */
-function DeleteOrganization({ slug, onDone }: { slug: string; onDone: () => void }) {
-  const [open, setOpen] = useState(false);
+function DeleteOrganization({
+  slug,
+  onCancel,
+  onDone,
+}: {
+  slug: string;
+  onCancel: () => void;
+  onDone: () => void;
+}) {
   const [typed, setTyped] = useState("");
   const remove = useMutation(() => deleteOrganization(slug), {
     fallback: "Could not delete the organization",
     onSuccess: onDone,
   });
-  if (!open) {
-    return (
-      <Button variant="dangerGhost" onClick={() => setOpen(true)}>
-        Delete
-      </Button>
-    );
-  }
   return (
     <div className={`${WARNING_CALLOUT} w-full space-y-2 rounded-md px-3 py-2 text-xs`}>
       <p>
@@ -109,18 +152,51 @@ function DeleteOrganization({ slug, onDone }: { slug: string; onDone: () => void
         >
           {remove.loading ? "Deleting…" : "Delete organization"}
         </Button>
-        <Button
-          variant="ghost"
-          onClick={() => {
-            setOpen(false);
-            setTyped("");
-          }}
-        >
+        <Button variant="ghost" onClick={onCancel}>
           Cancel
         </Button>
       </div>
       {remove.error && <div className={FORM_ERROR_BANNER}>{remove.error}</div>}
     </div>
+  );
+}
+
+/** One organization: a row to its page with its member count, Delete in the row, and below it
+ *  the delete confirmation once opened and, when it has no org manager, the field to name one. */
+function OrganizationRow({ org, onChanged }: { org: AdminOrganization; onChanged: () => void }) {
+  const [deleting, setDeleting] = useState(false);
+  const orphan = org.manager_count === 0;
+  return (
+    <li className="space-y-2">
+      <LinkRow
+        variant="arrow"
+        icon={Building2}
+        value={org.name}
+        meta={
+          <>
+            <span>{memberCountLabel(org.member_count)}</span>
+            {orphan && <Pill tone="danger">No org manager</Pill>}
+          </>
+        }
+        href={organizationPath(org.slug)}
+        external={false}
+        action={
+          !deleting && (
+            <Button variant="dangerGhost" onClick={() => setDeleting(true)}>
+              Delete
+            </Button>
+          )
+        }
+      />
+      {orphan && <AppointManager slug={org.slug} onDone={onChanged} />}
+      {deleting && (
+        <DeleteOrganization
+          slug={org.slug}
+          onCancel={() => setDeleting(false)}
+          onDone={onChanged}
+        />
+      )}
+    </li>
   );
 }
 
@@ -189,6 +265,18 @@ export function OrganizationsPanel() {
               />
             </div>
           ))}
+          <div>
+            <label className={FORM_LABEL} htmlFor="org-manager_username">
+              First org manager (username)
+            </label>
+            <div className="mt-1">
+              <ManagerPicker
+                id="org-manager_username"
+                username={draft.manager_username}
+                onChange={(manager_username) => setDraft((d) => ({ ...d, manager_username }))}
+              />
+            </div>
+          </div>
         </div>
         <div>
           <label className={FORM_LABEL} htmlFor="org-bio">
@@ -219,23 +307,9 @@ export function OrganizationsPanel() {
 
       {list.error && <div className={FORM_ERROR_BANNER}>{list.error}</div>}
       {list.data && list.data.length > 0 && (
-        <ul className="space-y-1.5 text-sm">
+        <ul className="space-y-2">
           {list.data.map((org) => (
-            <li key={org.slug} className="flex flex-wrap items-center gap-2">
-              <Link href={organizationPath(org.slug)} className={TEXT_LINK}>
-                {org.name}
-              </Link>
-              <span className="text-xs text-neutral-500">
-                {org.member_count} member{org.member_count === 1 ? "" : "s"}
-              </span>
-              {org.manager_count === 0 && (
-                <>
-                  <Pill tone="danger">No org manager</Pill>
-                  <AppointManager slug={org.slug} onDone={list.refetch} />
-                </>
-              )}
-              <DeleteOrganization slug={org.slug} onDone={list.refetch} />
-            </li>
+            <OrganizationRow key={org.slug} org={org} onChanged={list.refetch} />
           ))}
         </ul>
       )}

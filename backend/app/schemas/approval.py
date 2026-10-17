@@ -8,14 +8,14 @@ from app.schemas.notification import NotificationEventRef
 from app.schemas.organization import OrganizationRef
 from app.schemas.user import AuthorRef
 
-# Mirrored by the frontend's lib/approvals.APPROVAL_NOTE_MAX_LEN; change both.
 APPROVAL_NOTE_MAX_LENGTH = 280
 REVOKE_REASON_MAX_LENGTH = 2000
 
 
 class ApprovalCreate(BaseModel):
     """Body of ``POST /events/{id}/approvals``: the version you read, an optional note, and the
-    slug of the organization you approve for as its org manager (your own approval without it)."""
+    slug of the organization you approve for as one of its members (your own approval without
+    it)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -32,30 +32,30 @@ class ApprovalCreate(BaseModel):
 
 
 class ApprovalRevoke(BaseModel):
-    """Body of ``POST /events/{id}/approvals/{approval_id}/revoke``. The reason is public."""
+    """Optional body of ``POST /events/{id}/approvals/{approval_id}/revoke``: a public reason,
+    stored as null when blank."""
 
     model_config = ConfigDict(extra="forbid")
 
-    reason: str = Field(min_length=1, max_length=REVOKE_REASON_MAX_LENGTH)
+    reason: str | None = Field(default=None, max_length=REVOKE_REASON_MAX_LENGTH)
 
     @field_validator("reason")
     @classmethod
-    def _not_blank(cls, value: str) -> str:
-        stripped = value.strip()
-        if not stripped:
-            raise ValueError("A reason is required")
-        return stripped
+    def _blank_is_none(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
 
 
 class ApprovalRead(BaseModel):
     """One review of one version of an event.
 
     ``organization`` is the organization the review was placed for, with
-    ``reviewer`` the org manager who placed it; null for an analyst's own review.
+    ``reviewer`` the member who placed it; null for an analyst's own review.
     ``reviewer`` is null on an organization's review once the account of the
-    org manager who placed it is erased: the review stays the organization's.
+    member who placed it is erased: the review stays the organization's.
     ``current`` is true while the review covers the live version and is not
-    revoked. ``revoked_as`` says who revoked it: the reviewer, an org manager of
+    revoked. ``revoked_as`` says who revoked it: the reviewer, another member of
     the organization, or a site admin.
     """
 
@@ -83,7 +83,7 @@ class ApprovalList(BaseModel):
 
 
 class OrganizationApprovalRead(BaseModel):
-    """One approval an org manager placed in an organization's name, with the event it covers,
+    """One approval a member placed in an organization's name, with the event it covers,
     for ``GET /organizations/{slug}/approvals``."""
 
     event: NotificationEventRef

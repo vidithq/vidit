@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { splitHighlights } from "./search";
+import { appendApprovalFilters, approvalFiltersFromParams, splitHighlights } from "./search";
 
 const STX = "";
 const ETX = "";
@@ -44,5 +44,35 @@ describe("splitHighlights", () => {
     expect(splitHighlights("[[HL]]not a highlight[[/HL]]")).toEqual([
       { text: "[[HL]]not a highlight[[/HL]]", highlighted: false },
     ]);
+  });
+});
+
+describe("the approval filter keys", () => {
+  it("round-trip an analyst and an organization through a URL", () => {
+    const analyst = new URLSearchParams();
+    appendApprovalFilters(analyst, { approved: true, approvedBy: { kind: "analyst", username: "ana" } });
+    expect(analyst.toString()).toBe("approved=true&approved_by=ana");
+    expect(approvalFiltersFromParams(analyst)).toEqual({
+      approved: true,
+      approvedBy: { kind: "analyst", username: "ana" },
+    });
+
+    const org = new URLSearchParams();
+    appendApprovalFilters(org, {
+      approved: false,
+      approvedBy: { kind: "organization", slug: "osw", name: "Open Source Watch" },
+    });
+    expect(org.toString()).toBe("approved_by_org=osw");
+    expect(approvalFiltersFromParams(org)).toEqual({
+      approved: false,
+      approvedBy: { kind: "organization", slug: "osw", name: "osw" },
+    });
+  });
+
+  it("drop a name the handle gate refuses", () => {
+    expect(approvalFiltersFromParams(new URLSearchParams("approved_by=a%25b"))).toEqual({
+      approved: false,
+      approvedBy: null,
+    });
   });
 });

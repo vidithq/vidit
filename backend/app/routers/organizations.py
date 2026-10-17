@@ -113,11 +113,11 @@ def list_organization_approval_requests(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[OrganizationApprovalRequestRead]:
-    """Open approval requests addressed to the organization, oldest first. Org managers and site
-    managers only."""
+    """Open approval requests addressed to the organization, oldest first. Members and site
+    admins only."""
     with _typed_errors():
         org = organizations_service.get_by_slug(db, slug)
-        organizations_service.require_manager(db, org, current_user)
+        organizations_service.require_member(db, org, current_user)
     rows = approval_requests_service.list_open_for_organization(db, org=org)
     return [approval_requests_service.build_organization_read(row) for row in rows]
 

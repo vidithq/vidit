@@ -17,20 +17,17 @@ from __future__ import annotations
 import uuid
 from collections.abc import Collection
 from datetime import UTC, datetime, timedelta
-from typing import NamedTuple
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Query, Session, aliased, contains_eager, joinedload
 
 from app.config import settings
 from app.models.approval import EventApproval
-from app.models.approval_request import ApprovalRequest
+from app.models.approval_request import ApprovalRequest, ApprovalRequestStatus
 from app.models.event import (
-    STATUS_GEOLOCATED,
     Event,
     EventGeolocator,
     EventGeolocatorDeparture,
-    EventGeolocatorInvite,
 )
 from app.models.notification import (
     Notification,
@@ -38,9 +35,13 @@ from app.models.notification import (
     NotificationDelivery,
     NotificationKind,
 )
-from app.models.organization import OrganizationInvite, OrganizationMember
+from app.models.organization import OrganizationInvite
 from app.models.user import User
-from app.schemas.notification import NotificationEventRef, NotificationRead
+from app.schemas.notification import (
+    ApprovalRequestOutcome,
+    NotificationEventRef,
+    NotificationRead,
+)
 from app.schemas.organization import OrganizationRef
 from app.schemas.user import AuthorRef
 from app.services import push
@@ -49,6 +50,7 @@ from app.services.pagination import keyset_before
 from app.services.preferences import channel_enabled
 
 _Actor = aliased(User)
+_Approval = aliased(EventApproval)
 
 ACTOR_EMAIL_WINDOW = timedelta(hours=24)
 # An invitation withdrawn and sent again inside this window raises no second notification: the
@@ -88,6 +90,7 @@ def _emit(
     event_id: uuid.UUID | None = None,
     organization_id: uuid.UUID | None = None,
     organization_name: str | None = None,
+    approval: EventApproval | None = None,
 ) -> None:
     if actor_id == recipient_id:
         return
@@ -98,6 +101,7 @@ def _emit(
         event_id=event_id,
         organization_id=organization_id,
         organization_name=organization_name,
+        approval=approval,
     )
     db.add(row)
     recipient = db.get(User, recipient_id)
@@ -284,22 +288,35 @@ def notify_approval_received(
     db: Session,
     *,
     event: Event,
-    reviewer_id: uuid.UUID,
-    organization_id: uuid.UUID | None = None,
+    approval: EventApproval,
     requester_ids: Collection[uuid.UUID] = (),
 ) -> None:
     """Tell the owner of ``event``, and every geolocator whose approval request the approval
-    resolved (``requester_ids``), that ``reviewer_id`` approved its live version, for
-    ``organization_id`` when set."""
+    resolved (``requester_ids``), that ``approval``'s reviewer approved its live version, for its
+    organization when set. Each row points at ``approval`` and hides once it is revoked."""
     for recipient_id in {event.owner_id, *requester_ids}:
         _emit(
             db,
             recipient_id=recipient_id,
             kind="approval_received",
-            actor_id=reviewer_id,
+            actor_id=approval.reviewer_id,
             event_id=event.id,
-            organization_id=organization_id,
+            organization_id=approval.organization_id,
+            approval=approval,
         )
+
+
+def notify_approval_revoked(db: Session, *, event: Event, approval: EventApproval) -> None:
+    """Tell the owner of ``event`` that ``approval`` was revoked. The row names the approval's
+    reviewer and organization, never who revoked it."""
+    _emit(
+        db,
+        recipient_id=event.owner_id,
+        kind="approval_revoked",
+        actor_id=approval.reviewer_id,
+        event_id=event.id,
+        organization_id=approval.organization_id,
+    )
 
 
 def _ever_credited_ids(db: Session, event: Event) -> set[uuid.UUID]:
@@ -325,7 +342,7 @@ def notify_approval_request_received(
     organization_id: uuid.UUID | None = None,
 ) -> None:
     """Tell the target that ``requester_id`` asks them to approve ``event``: one analyst, or the
-    org managers of ``organization_id`` who never held credit on it."""
+    members of ``organization_id`` who never held credit on it."""
     credited = _ever_credited_ids(db, event) if organization_id is not None else set()
     for recipient_id in set(recipient_ids) - credited:
         _emit(
@@ -362,13 +379,13 @@ def notify_re_approve_requested(
     db: Session, *, event: Event, editor_id: uuid.UUID, superseded_version: int
 ) -> None:
     """Ask every analyst whose own approval of ``superseded_version`` stood to review the new
-    one, and every live org manager outside the event's current and former geolocators of an
+    one, and every live member outside the event's current and former geolocators of an
     organization whose approval of it stood.
 
     A revoked approval asks nothing.
     """
     # Imported here: services/organizations imports this module.
-    from app.services.organizations import live_manager_ids
+    from app.services.organizations import live_member_ids
 
     recipients: list[tuple[uuid.UUID, uuid.UUID | None]] = []
     for reviewer_id, organization_id in db.execute(
@@ -383,8 +400,8 @@ def notify_re_approve_requested(
             recipients.append((reviewer_id, None))
         else:
             recipients.extend(
-                (manager_id, organization_id)
-                for manager_id in db.scalars(live_manager_ids(organization_id))
+                (member_id, organization_id)
+                for member_id in db.scalars(live_member_ids(organization_id))
             )
     credited = _ever_credited_ids(db, event)
     recipients = [(r, org) for r, org in recipients if org is None or r not in credited]
@@ -400,12 +417,14 @@ def notify_re_approve_requested(
 
 
 def _visible_rows(db: Session, user: User) -> Query[Notification]:
-    """``user``'s rows whose event and actor a reader may still see: the actor is neither
-    soft-deleted nor deactivated, the rule the drain applies to the recipient."""
+    """``user``'s rows whose event and actor a reader may still see, and whose approval stands:
+    the actor is neither soft-deleted nor deactivated, the rule the drain applies to the
+    recipient, and an ``approval_received`` row hides once its approval is revoked."""
     return (
         db.query(Notification)
         .outerjoin(Event, Notification.event_id == Event.id)
         .outerjoin(_Actor, Notification.actor_id == _Actor.id)
+        .outerjoin(_Approval, Notification.approval_id == _Approval.id)
         .filter(
             Notification.user_id == user.id,
             or_(Notification.event_id.is_(None), and_(*visible_events())),
@@ -413,6 +432,7 @@ def _visible_rows(db: Session, user: User) -> Query[Notification]:
                 Notification.actor_id.is_(None),
                 and_(_Actor.deleted_at.is_(None), _Actor.is_active.is_(True)),
             ),
+            or_(Notification.approval_id.is_(None), _Approval.revoked_at.is_(None)),
         )
     )
 
@@ -449,8 +469,8 @@ def _newest_rows(
     db: Session, *, user: User, kind: NotificationKind, rows: list[Notification], by: tuple
 ) -> set[uuid.UUID]:
     """The ids of ``user``'s newest ``kind`` row per key ``by``, over the whole feed, for the
-    events ``rows`` name. Only the newest row of a key answers: an older one stands for an
-    invitation or a request already answered."""
+    events ``rows`` name. Only the newest row of a key answers: an older one stands for a request
+    already answered."""
     event_ids = {r.event_id for r in rows if r.kind == kind and r.event_id}
     if not event_ids:
         return set()
@@ -468,80 +488,40 @@ def _newest_rows(
     )
 
 
-def pending_invites(db: Session, *, user: User, rows: list[Notification]) -> set[uuid.UUID]:
-    """The ``co_geolocator_invite`` rows among ``rows`` that offer an answer: the newest row of
-    an event whose invitation still waits for ``user``."""
-    newest = _newest_rows(
-        db, user=user, kind="co_geolocator_invite", rows=rows, by=(Notification.event_id,)
-    )
-    if not newest:
-        return set()
-    waiting = set(
-        db.scalars(
-            select(EventGeolocatorInvite.event_id).where(
-                EventGeolocatorInvite.user_id == user.id,
-                EventGeolocatorInvite.event_id.in_(
-                    {r.event_id for r in rows if r.id in newest and r.event_id}
-                ),
-            )
-        )
-    )
-    return {r.id for r in rows if r.id in newest and r.event_id in waiting}
-
-
-def _managed(db: Session, *, user: User, rows: list[Notification]) -> set[uuid.UUID]:
-    """The organizations named by ``rows`` that ``user`` is an org manager of now."""
-    org_ids = {r.organization_id for r in rows if r.organization_id is not None}
-    if not org_ids:
-        return set()
-    return set(
-        db.scalars(
-            select(OrganizationMember.organization_id).where(
-                OrganizationMember.user_id == user.id,
-                OrganizationMember.role == "manager",
-                OrganizationMember.organization_id.in_(org_ids),
-            )
-        )
-    )
-
-
 # An approval request's key in the feed: the event, the requester, and the organization it targets
 # (None for one addressed to the reader). There is one open request per requester, target and
 # event.
 RequestKey = tuple[uuid.UUID, uuid.UUID, uuid.UUID | None]
 
 
-def open_approval_requests(
+def answered_approval_requests(
     db: Session, *, user: User, rows: list[Notification]
-) -> dict[uuid.UUID, uuid.UUID]:
-    """The open approval request behind each of ``rows``' ``approval_request_received`` rows, by
-    notification id: one addressed to ``user``, or to an organization ``user`` is an org manager
-    of now. Only the newest row of a key carries it; an older one stands for a request already
-    answered."""
+) -> dict[uuid.UUID, ApprovalRequestOutcome]:
+    """The outcome, ``approved`` or ``declined``, of the request behind each of ``rows``'
+    ``approval_request_received`` rows, by notification id. Only the newest row of a key carries
+    it, read off the newest request of that key; an older row stands for an earlier request."""
     received = [r for r in rows if r.kind == "approval_request_received" and r.event_id]
     if not received:
         return {}
-    event_ids = {r.event_id for r in received}
-    org_ids = _managed(db, user=user, rows=received)
-    found = db.execute(
+    org_ids = {r.organization_id for r in received if r.organization_id is not None}
+    latest: dict[RequestKey, ApprovalRequestStatus] = {}
+    for event_id, requester_id, org_id, status in db.execute(
         select(
             ApprovalRequest.event_id,
             ApprovalRequest.requester_id,
             ApprovalRequest.target_organization_id,
-            ApprovalRequest.id,
-        ).where(
+            ApprovalRequest.status,
+        )
+        .where(
             or_(
                 ApprovalRequest.target_user_id == user.id,
                 ApprovalRequest.target_organization_id.in_(org_ids),
             ),
-            ApprovalRequest.status == "open",
-            ApprovalRequest.event_id.in_(event_ids),
+            ApprovalRequest.event_id.in_({r.event_id for r in received}),
         )
-    ).tuples()
-    by_key: dict[RequestKey, uuid.UUID] = {
-        (event_id, requester_id, org_id): request_id
-        for event_id, requester_id, org_id, request_id in found
-    }
+        .order_by(ApprovalRequest.created_at, ApprovalRequest.id)
+    ).tuples():
+        latest[(event_id, requester_id, org_id)] = status
     newest = _newest_rows(
         db,
         user=user,
@@ -549,125 +529,19 @@ def open_approval_requests(
         rows=received,
         by=(Notification.event_id, Notification.actor_id, Notification.organization_id),
     )
-    return {
-        r.id: request_id
-        for r in received
-        if r.id in newest
-        and r.actor_id is not None
-        and r.event_id is not None
-        and (request_id := by_key.get((r.event_id, r.actor_id, r.organization_id))) is not None
-    }
-
-
-# The kinds whose feed row offers to approve the event's live version.
-_APPROVE_OFFER_KINDS: frozenset[NotificationKind] = frozenset(
-    {"re_approve_requested", "approval_request_received"}
-)
-
-# An approval offer's key: the event, and the organization the reader would approve for (None
-# for their own approval).
-OfferKey = tuple[uuid.UUID, uuid.UUID | None]
-
-
-class ReapprovalOffer(NamedTuple):
-    """What a re-approval row offers: the live version to approve, and the latest earlier
-    version the approval (the reader's own, or the organization's) still stands on, the base of
-    the change list."""
-
-    live_version: int
-    approved_version: int | None
-
-
-def reapproval_offers(
-    db: Session, *, user: User, rows: list[Notification]
-) -> dict[OfferKey, ReapprovalOffer]:
-    """The offer of each event among ``rows``' re-approval and approval requests that ``user``
-    can approve now, as themselves or for the organization the row names: published, never
-    credited to them, and not yet approved at the live version (by them, or by the organization,
-    which they must still manage).
-
-    Callers eager-load ``Notification.event``.
-    """
-    managed = _managed(db, user=user, rows=rows)
-    candidates: dict[OfferKey, int] = {
-        (r.event.id, r.organization_id): r.event.version_no
-        for r in rows
-        if r.kind in _APPROVE_OFFER_KINDS
-        and r.event is not None
-        and r.event.status == STATUS_GEOLOCATED
-        and r.event.owner_id != user.id
-        and (r.organization_id is None or r.organization_id in managed)
-    }
-    if not candidates:
-        return {}
-    event_ids = {event_id for event_id, _ in candidates}
-    credited = set(
-        db.scalars(
-            select(EventGeolocator.event_id).where(
-                EventGeolocator.user_id == user.id,
-                EventGeolocator.event_id.in_(event_ids),
-            )
-        )
-    ) | set(
-        db.scalars(
-            select(EventGeolocatorDeparture.event_id).where(
-                EventGeolocatorDeparture.user_id == user.id,
-                EventGeolocatorDeparture.event_id.in_(event_ids),
-            )
-        )
-    )
-    blocked: set[OfferKey] = set()
-    standing: dict[OfferKey, int] = {}
-    for event_id, org_id, version, revoked_at in db.execute(
-        select(
-            EventApproval.event_id,
-            EventApproval.organization_id,
-            EventApproval.version_no,
-            EventApproval.revoked_at,
-        ).where(
-            EventApproval.event_id.in_(event_ids),
-            or_(
-                and_(
-                    EventApproval.reviewer_id == user.id,
-                    EventApproval.organization_id.is_(None),
-                ),
-                EventApproval.organization_id.in_(managed),
-            ),
-        )
-    ).tuples():
-        key = (event_id, org_id)
-        live = candidates.get(key)
-        if live is None:
+    answered: dict[uuid.UUID, ApprovalRequestOutcome] = {}
+    for r in received:
+        if r.id not in newest or r.event_id is None or r.actor_id is None:
             continue
-        # An analyst reviews a version once, revoked included; an organization's revoked
-        # approval can be placed again.
-        if version == live and (org_id is None or revoked_at is None):
-            blocked.add(key)
-        # Mirrored by the frontend's lib/approvals.standingApprovalBefore; change both.
-        if revoked_at is None and version < live:
-            standing[key] = max(version, standing.get(key, 0))
-    return {
-        key: ReapprovalOffer(version, standing.get(key))
-        for key, version in candidates.items()
-        if key[0] not in credited and key not in blocked
-    }
+        outcome = latest.get((r.event_id, r.actor_id, r.organization_id))
+        if outcome == "approved" or outcome == "declined":
+            answered[r.id] = outcome
+    return answered
 
 
 def build_read(
-    row: Notification,
-    *,
-    pending: set[uuid.UUID],
-    offers: dict[OfferKey, ReapprovalOffer],
-    approval_requests: dict[uuid.UUID, uuid.UUID],
+    row: Notification, *, answered: dict[uuid.UUID, ApprovalRequestOutcome]
 ) -> NotificationRead:
-    approval_request_id = approval_requests.get(row.id)
-    # A resolved approval request offers nothing, though the event may still be approvable.
-    offers_approval = row.kind == "re_approve_requested" or approval_request_id is not None
-    offer = (
-        offers.get((row.event_id, row.organization_id))
-        if offers_approval and row.event_id is not None
-        else None
-    )
     return NotificationRead(
         id=row.id,
         kind=row.kind,
@@ -681,14 +555,7 @@ def build_read(
         ),
         organization_name=row.organization_name,
         read_at=row.read_at,
-        invite_pending=row.id in pending,
-        reapprove_version=offer.live_version if offer is not None else None,
-        approved_version=(
-            offer.approved_version
-            if offer is not None and row.kind == "re_approve_requested"
-            else None
-        ),
-        approval_request_id=approval_request_id,
+        approval_request_status=answered.get(row.id),
     )
 
 
@@ -700,6 +567,28 @@ def unread_count(db: Session, *, user: User) -> int:
         .scalar()
         or 0
     )
+
+
+def delete(db: Session, *, user: User, notification_id: uuid.UUID) -> bool:
+    """Delete one row ``user`` owns; False when no such row is theirs. Its deliveries that never
+    left go with it; a row that may have reached the provider stays, its ``notification_id``
+    set NULL, so the daily email cap keeps counting it."""
+    owned = (
+        db.query(Notification.id)
+        .filter(Notification.id == notification_id, Notification.user_id == user.id)
+        .with_for_update()
+        .first()
+    )
+    if owned is None:
+        return False
+    db.query(NotificationDelivery).filter(
+        NotificationDelivery.notification_id == notification_id,
+        NotificationDelivery.status.in_(("queued", "skipped")),
+    ).delete(synchronize_session=False)
+    db.query(Notification).filter(Notification.id == notification_id).delete(
+        synchronize_session=False
+    )
+    return True
 
 
 def mark_read(db: Session, *, user: User, ids: list[uuid.UUID]) -> None:

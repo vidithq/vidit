@@ -6,6 +6,8 @@ import { notFound } from "next/navigation";
 import {
   Archive,
   AtSign,
+  ClipboardCheck,
+  UserPlus,
   BookOpen,
   Bot,
   Camera,
@@ -21,12 +23,14 @@ import {
   MessageCircle,
   Search as SearchIcon,
   Swords,
+  Trash2,
   Upload,
   X,
 } from "lucide-react";
 
 import type { Conflict, EventDetail, EventStatus, Media, Tag } from "@/types";
 import { PageShell } from "@/components/ui/PageShell";
+import { AccountPicker, type Account } from "@/components/ui/AccountPicker";
 import { ActionMenu } from "@/components/ui/ActionMenu";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -448,7 +452,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="TOOLTIP_SURFACE" usage="The bubble of an anchored popover (usePinnedPopover): the FieldHelp explanation, the AvatarStack card, the ActionMenu list and the Tooltip bubble. Colour only; callers add rounded-md, padding and text size.">
+          <Item name="TOOLTIP_SURFACE" usage="The bubble of an anchored popover (usePinnedPopover): the FieldHelp explanation, the ActionMenu list and the Tooltip bubble. Colour only; callers add rounded-md, padding and text size.">
             <span className={`inline-block rounded-md px-2 py-1 text-xs ${TOOLTIP_SURFACE}`}>
               maya
             </span>
@@ -515,18 +519,29 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<ActionMenu>" usage="A trigger that opens a short list of links (role=menu): the event header's version selector (v2 with a chevron: every version newest first, then Full history). The trigger is the ghost button, label as its aria-label and tooltip: icon-only by default, or `text` printed before the icon, in which case label starts with that text. menuLabel names the list when it differs from the trigger. Each item is a link with an optional icon, a muted `meta` word after the label (Current), and `current` for the link to the page on screen (the active-row paint plus aria-current, focused when the menu opens). A click or Enter opens on the current item (or the first), ArrowUp on the trigger opens on the last; arrows, Home and End move, Space or Enter follows a link, Escape closes and returns focus to the trigger, Tab or an outside click closes. The list opens under the trigger aligned to its right edge, shifts sideways to stay 8px inside the viewport, and scrolls past 20rem.">
-            <Variant label="printed text (the version selector)">
+          <Item name="<ActionMenu>" usage="A trigger that opens a short list of links (role=menu): the event header's version selector (v2 with a chevron: every version newest first as v3, v2, v1, then History as its icon). The trigger is the ghost button, label as its aria-label and tooltip: icon-only by default, or `text` printed before the icon, in which case label starts with that text. menuLabel names the list when it differs from the trigger. Each item is a link with an optional icon and `current` for the link to the page on screen (the active-row paint plus aria-current, focused when the menu opens); `iconOnly` prints the icon alone, with the label as its accessible name and a Tooltip, for a list too narrow to print it. A click or Enter opens on the current item (or the first), ArrowUp on the trigger opens on the last; arrows, Home and End move, Space or Enter follows a link, Escape closes and returns focus to the trigger, Tab or an outside click closes. The list opens under the trigger aligned to its right edge, 14rem wide, shifts sideways to stay 8px inside the viewport, and scrolls past 20rem. `matchTriggerWidth` (off by default) makes it exactly as wide as the trigger, for a compact picker.">
+            <Variant label="default width">
+              <ActionMenu
+                label="Open the list"
+                icon={<ChevronDown size={14} />}
+                items={[
+                  { key: "one", label: "First link", href: "/palette", current: true },
+                  { key: "two", label: "Second link", href: "/palette" },
+                ]}
+              />
+            </Variant>
+            <Variant label="matchTriggerWidth (the version selector)">
               <ActionMenu
                 label="v2: choose a version"
                 text="v2"
                 icon={<ChevronDown size={14} />}
                 menuLabel="Versions"
+                matchTriggerWidth
                 items={[
-                  { key: "v3", label: "Version 3", meta: "Current", href: "/palette" },
-                  { key: "v2", label: "Version 2", href: "/palette", current: true },
-                  { key: "v1", label: "Version 1", href: "/palette" },
-                  { key: "history", label: "Full history", icon: <History size={14} />, href: "/palette" },
+                  { key: "v3", label: "v3", href: "/palette" },
+                  { key: "v2", label: "v2", href: "/palette", current: true },
+                  { key: "v1", label: "v1", href: "/palette" },
+                  { key: "history", label: "History", icon: <History size={14} />, href: "/palette", iconOnly: true },
                 ]}
               />
             </Variant>
@@ -845,7 +860,7 @@ export default function PalettePage() {
 
           <Item
             name="<FieldHelp>"
-            usage="The one explanation hover text in the app (the AvatarStack card describes an approval, never a concept): a `?` on a label, a section heading, a filter bar or an icon group, whose bubble carries the concept's sentence from the lib/fieldHelp.ts registry (a native title attribute is never used). Registry-only: every instance of a concept reads the same words, so the `?` takes the concept key and nothing else."
+            usage="The one explanation hover text in the app: a `?` on a label, a section heading, a filter bar or an icon group, whose bubble carries the concept's sentence from the lib/fieldHelp.ts registry (a native title attribute is never used). Registry-only: every instance of a concept reads the same words, so the `?` takes the concept key and nothing else."
           >
             <span className="inline-flex items-center gap-1 text-sm text-neutral-300">
               Coordinates <FieldHelp concept="coordinates" />
@@ -865,6 +880,10 @@ export default function PalettePage() {
                 setSelectedConflictIds={setTpConflictSel}
               />
             </div>
+          </Item>
+
+          <Item name="<AccountPicker>" usage="The one way to pick an analyst or an organization: a combobox field (role=combobox over a role=listbox) whose rows show the picture (a circle for an analyst, a rounded square for an organization), the name and, for an organization, its slug muted. `options` filters a local list by name and handle; `search` runs the caller's request 250ms after typing stops, once the query holds `minQueryLength` characters, and a `note` it returns (why an exact match is left out) shows as a muted row. Loading, a failed search and `emptyText` are muted rows too. ArrowUp and ArrowDown move and wrap, Enter takes the highlighted row or hands the typed text to `onSubmitText` when no row is up (an exact username), Escape, Tab or an outside click closes. With `selected`, the pick shows as an accent chip that `onClear` removes; without it, the field empties after each pick. The list spans the field's width and scrolls past 15rem. Consumers: the approval request, the search Author filter, the co-geolocator invite, the organization invite and the admin org manager fields.">
+            <PaletteAccountPicker />
           </Item>
         </section>
 
@@ -906,37 +925,27 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<AvatarStack>" usage="The approval stamps in the event page's Approvals card: an overlapping row of 28px pictures, oldest first. An organization (variant=organization) takes the rounded square, an analyst the circle; each picture is a button with its own accessible name (label, such as Approved by maya). Hover or focus opens the item's renderCard in a TOOLTIP_SURFACE card (usePinnedPopover); a click or a tap pins it and moves focus to its first link. Escape, or tabbing past either end of the card, closes it and returns focus to the row; the card holds while focus is inside it. The card carries the way on (the event page's card: picture, name, Version N · date, the note, on behalf of an organization, View profile or View organization). At most max (5 by default) show; the rest fold into a +N bubble, a button when onOverflow is set (the Approvals card expands its full approval list) and plain text otherwise. Renders nothing for an empty list.">
+          <Item name="<AvatarStack>" usage="A row of 28px pictures: the approval stamps in the event page's Approvals card and the organization logos in a profile header, oldest first, overlapping by default; spacing=gap sets them apart and wraps them onto further lines (the Approvals card). An organization (variant=organization) takes the rounded square, an analyst the circle. Each picture is a link to its href (the profile or the organization's page) named by its label, which a <Tooltip> shows on hover or keyboard focus (the handle on a stamp, the role on a logo). At most max (5 by default) show; the rest fold into a +N bubble, a button when onOverflow is set (the Approvals card expands its full approval list) and plain text otherwise. Renders nothing for an empty list.">
             <Variant label="analysts and an organization, max=3 with onOverflow (+N opens the panel)">
               <AvatarStack
                 label="Approved by"
                 max={3}
                 onOverflow={() => {}}
                 overflowLabel={(hidden) => `Show ${hidden} more approvals`}
-                items={[
-                  { name: "maya", variant: "analyst" as const },
-                  { name: "Open Source Watch", variant: "organization" as const },
-                  { name: "bo", variant: "analyst" as const },
-                  { name: "cy", variant: "analyst" as const },
-                  { name: "dee", variant: "analyst" as const },
-                ].map(({ name, variant }) => ({
-                  key: name,
-                  name,
-                  variant,
-                  label: `Approved by ${name}`,
-                  renderCard: () => (
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium text-neutral-100">{name}</p>
-                      <p className="text-neutral-500">Version 2 · 14 Mar 2026</p>
-                      <Link href="/palette" className={TEXT_LINK}>
-                        {variant === "organization" ? "View organization" : "View profile"}
-                      </Link>
-                    </div>
-                  ),
-                }))}
+                items={paletteApprovalStamps(PALETTE_APPROVERS.slice(0, 5))}
               />
             </Variant>
-            <Variant label="href set: each picture is a link and its card a tooltip (the profile header's organization logos)">
+            <Variant label="spacing=gap: pictures set apart, wrapping onto a second line (the event page's Approvals card)">
+              <div className="w-56">
+                <AvatarStack
+                  label="Approved by"
+                  max={PALETTE_APPROVERS.length}
+                  spacing="gap"
+                  items={paletteApprovalStamps(PALETTE_APPROVERS)}
+                />
+              </div>
+            </Variant>
+            <Variant label="organization logos with role labels (the profile header)">
               <AvatarStack
                 label="Organizations"
                 items={[
@@ -948,18 +957,12 @@ export default function PalettePage() {
                   variant: "organization" as const,
                   label: `${role} of ${name}`,
                   href: "/palette",
-                  renderCard: () => (
-                    <>
-                      <span className="block font-medium text-neutral-100">{name}</span>
-                      <span className="block text-neutral-500">{role}</span>
-                    </>
-                  ),
                 }))}
               />
             </Variant>
           </Item>
 
-          <Item name="<AuthorByline>" usage="The 'by user' assembly: detail-page subtitles, map panel header, detail body Author row. size=xs for the dense panel; prefix=false when the slot's label already says Author; avatar leads with the profile picture on the detail-page signature slots. coAuthors credits more analysts after the lead (the geolocators an event shares, from creditProps), joined by creditSeparator: ana, bo and cy. link=false drops the anchor for a slot that is already one click (a version-history row under its stretched link), where a nested link is a target the mouse and the keyboard disagree about. A name with its own href links there instead of a profile: organizationByline turns an organization into one (its picture, its name, its page), as on an organization's approval and an approval request to it.">
+          <Item name="<AuthorByline>" usage="The 'by user' assembly: detail-page subtitles, map panel header, detail body Author row. size=xs for the dense panel; prefix=false when the slot's label already says Author; avatar leads with the profile picture on the detail-page signature slots. coAuthors credits more analysts after the lead (the geolocators an event shares, from creditProps), each as its picture and name side by side, with no visible separator; a screen reader hears ana, bo and cy. coAuthorsAs=avatars keeps the lead as picture and name and shows each co-author as a picture alone, linked, named by its handle and showing it in a Tooltip: the feed and list cards and the event page header. link=false drops the anchor for a slot that is already one click (a version-history row under its stretched link), where a nested link is a target the mouse and the keyboard disagree about. A name with its own href links there instead of a profile: organizationByline turns an organization into one (its picture, its name, its page), as on an organization's approval and an approval request to it.">
             <Variant label="avatar (detail-page signature)">
               <span className="text-sm text-neutral-400">
                 <AuthorByline author={MOCK_DETAIL.owner} avatar />
@@ -980,6 +983,16 @@ export default function PalettePage() {
                 <AuthorByline
                   author={MOCK_DETAIL.owner}
                   coAuthors={[{ username: "bo" }, { username: "cy" }]}
+                  avatar
+                />
+              </span>
+            </Variant>
+            <Variant label='coAuthorsAs="avatars" (feed cards, event header)'>
+              <span className="text-sm text-neutral-400">
+                <AuthorByline
+                  author={MOCK_DETAIL.owner}
+                  coAuthors={[{ username: "bo" }, { username: "cy" }]}
+                  coAuthorsAs="avatars"
                   avatar
                 />
               </span>
@@ -1393,12 +1406,60 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<LinkRow>" usage="Stay in touch and Guides (About), and each row of the Notifications feed (kind and date as the label, the sentence as the value). The profile's linked accounts are icon buttons instead. The trailing ↗ marks external only: an in-app href routes through next/link, a mailto stays a plain <a>, and neither takes the glyph.">
+          <Item name="<LinkRow>" usage="Stay in touch and Guides (About), and each row of the Notifications feed (kind and date as the label, the sentence as the value). The profile's linked accounts are icon buttons instead. The trailing ↗ marks external only: an in-app href routes through next/link, a mailto stays a plain <a>, and neither takes the glyph. `leading` (opt-in) shows a node in place of the icon: the feed passes the picture of who is behind the row (an analyst's circle, an organization's square logo), and `icon` stays the fallback when the row has no one behind it. `variant` arrow (opt-in, the feed's rows and every list on the organization page and the admin Organizations panel): neutral value that wraps, an orange ArrowRight at the right edge, the link stretched over the block (hover and focus light the border and the arrow), and `action` inside the block left of the arrow, above the link; when the value and the action do not fit on one line, the action and the arrow wrap to a second line. `label` is optional. `meta` (arrow only) is a muted line under the value (date, version, who, a role or state pill), inside the link, so it never holds a link.">
             <div className="w-full max-w-md space-y-2">
               <LinkRow icon={AtSign} label="X / Twitter" value="@vidithq" href="https://x.com/vidithq" />
               <LinkRow icon={BookOpen} label="How Vidit works" value="/guide" href="/guide" external={false} />
               <LinkRow icon={Mail} label="Email" value="hello@vidit.app" href="mailto:hello@vidit.app" external={false} />
               <LinkRow icon={MessageCircle} label="Discord" value="a-handle (unresolved)" />
+              <LinkRow
+                icon={UserPlus}
+                leading={<Avatar username="maya" size="size-7" decorative />}
+                label="New follower · Oct 12"
+                value="maya followed you"
+                href="/palette"
+                external={false}
+              />
+              <LinkRow
+                variant="arrow"
+                icon={ClipboardCheck}
+                leading={<Avatar username="maya" size="size-7" decorative />}
+                label="Approval request · Oct 12"
+                value="maya asked you to approve: Strike on the fuel depot north of the river crossing"
+                href="/palette"
+                external={false}
+                action={
+                  <Button
+                    icon
+                    variant="dangerGhost"
+                    className="text-neutral-500 hover:text-red-400"
+                    aria-label="Delete notification"
+                    title="Delete"
+                  >
+                    <Trash2 size={14} />
+                  </Button>
+                }
+              />
+              <LinkRow
+                variant="arrow"
+                icon={UserPlus}
+                leading={<Avatar username="maya" size="size-7" decorative />}
+                value="maya"
+                meta={
+                  <>
+                    <Pill tone="accent">Org manager</Pill>
+                    <span>Joined Oct 12</span>
+                  </>
+                }
+                href="/palette"
+                external={false}
+                action={
+                  <>
+                    <Button variant="ghost">Make member</Button>
+                    <Button variant="danger">Remove</Button>
+                  </>
+                }
+              />
             </div>
           </Item>
 
@@ -1487,21 +1548,39 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<PageWithRail>" usage="A main column plus a sticky 17.5rem right rail from lg up. PageShell composes it from its rail prop and widens its column to max-w-6xl, so the main column keeps the 53rem reading width: the filter rail of the feed, the Requests board and search. The rail scrolls on its own once taller than the viewport. Below lg it stacks above the column (narrow=&quot;stacked&quot;) or leaves the page (narrow=&quot;hidden&quot;, where FilterBar's Filters (N) button opens the same panel full screen). No rail: one full-width column.">
-            <div className="w-full">
-              <PageWithRail
-                railLabel="Example rail"
-                rail={
+          <Item name="<PageWithRail>" usage="A main column plus a sticky 17.5rem right rail from lg up. PageShell composes it from its rail prop and widens its column to max-w-6xl, so the main column keeps the 53rem reading width: the filter rail of the feed, the Requests board and search, the edit page's actions and geolocators. `header` heads the main column beside the rail rather than above both (PageShell's headerInColumn: the event, version, request and organization pages, whose rail opens top right with the page's actions), and comes first below lg, so a stacked rail lands under the title. The rail sticks at its resting top, so it never moves when the page scrolls, and scrolls on its own once taller than the viewport. Below lg it stacks above the column (narrow=&quot;stacked&quot;), below it (narrow=&quot;below&quot;, the edit page, so Save follows the fields) or leaves the page (narrow=&quot;hidden&quot;, where FilterBar's Filters (N) button opens the same panel full screen). No rail: one full-width column.">
+            <div className="w-full space-y-4">
+              <Variant label="rail beside the column">
+                <PageWithRail
+                  railLabel="Example rail"
+                  rail={
+                    <Card>
+                      <p className="text-xs text-neutral-300">Rail</p>
+                    </Card>
+                  }
+                >
                   <Card>
-                    <p className="text-xs text-neutral-300">Rail</p>
+                    <p className="text-xs text-neutral-300">Main column</p>
+                    <p className="text-xs text-neutral-500">Stacks under the rail below lg.</p>
                   </Card>
-                }
-              >
-                <Card>
-                  <p className="text-xs text-neutral-300">Main column</p>
-                  <p className="text-xs text-neutral-500">Stacks under the rail below lg.</p>
-                </Card>
-              </PageWithRail>
+                </PageWithRail>
+              </Variant>
+              <Variant label="header in the column">
+                <PageWithRail
+                  railLabel="Example rail with header"
+                  header={<p className="text-sm text-neutral-100">Title and byline</p>}
+                  rail={
+                    <Card>
+                      <p className="text-xs text-neutral-300">Actions, level with the title</p>
+                    </Card>
+                  }
+                >
+                  <Card>
+                    <p className="text-xs text-neutral-300">Main column</p>
+                    <p className="text-xs text-neutral-500">Below lg: title, rail, column.</p>
+                  </Card>
+                </PageWithRail>
+              </Variant>
             </div>
           </Item>
 
@@ -1686,7 +1765,7 @@ export default function PalettePage() {
               <li><span className="font-mono text-neutral-400">BetaBanner</span>: a {"<Pill tone=\"accent\">"} in a <code>position: fixed</code> wrapper, already visible bottom-right from <code>sm</code> up; below <code>sm</code> the same pill rides the nav drawer via {"<BetaBanner inline>"}</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span>: the primary nav, auth/route-driven, always on screen. Two shapes: a fixed rail on the left edge from <code>sm</code> up (glyphs, or glyphs plus labels once expanded), and below <code>sm</code> a floating chip in the top-left corner that opens the same rail as a drawer over the page</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span> chip and drawer: the rail&apos;s own phone shape, rendered by that component rather than a <code>components/ui/</code> primitive, so there is nothing here to reuse. The chip&apos;s open control is a deliberate one-off too: a 44px neutral thumb target, which {"<Button icon>"} does not offer (36px, accent or red)</li>
-              <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page: one left-aligned container on every app page, 53rem reading width without a rail and max-w-6xl with one (PageShell&apos;s <code>rail</code>); PageShell&apos;s <code>controls</code> slot puts a view&apos;s segmented control under the title, left-aligned (the feed scope, the Requests sort, the submit mode); <span className="font-mono text-neutral-400">PageCenter</span> (from PageFrame) is the one centred full-screen block, on the same rail inset</li>
+              <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page: one container on every app page, its left edge at one x and a max-w-6xl column centred on the screen from lg up, 53rem reading width without a rail and max-w-6xl with one (PageShell&apos;s <code>rail</code>); PageShell&apos;s <code>controls</code> slot puts a view&apos;s segmented control under the title, left-aligned (the feed scope, the Requests sort, the submit mode); PageShell&apos;s <code>headerInColumn</code> puts the header (back, title, byline) at the top of the main column beside the rail, so the rail opens top right with the page&apos;s actions (the event, version, request and organization pages); PageShell&apos;s <code>back</code> arrow parks in the gutter left of the title from lg up and sticks there at the top of the viewport while the page scrolls, level with the rail; <span className="font-mono text-neutral-400">PageCenter</span> (from PageFrame) is the one centred full-screen block, on the same rail inset</li>
             </ul>
           </Item>
         </section>
@@ -1701,6 +1780,28 @@ export default function PalettePage() {
 // show the same media. The URL is the app's own OG image: extensionless, so
 // `displayUrlsFor` finds no sibling to derive and every size resolves to it (a
 // real backend row has `_hero` / `_thumb` siblings, which this demo has not).
+const PALETTE_APPROVERS = [
+  { name: "maya", variant: "analyst" },
+  { name: "Open Source Watch", variant: "organization" },
+  { name: "bo", variant: "analyst" },
+  { name: "cy", variant: "analyst" },
+  { name: "dee", variant: "analyst" },
+  { name: "Sahel Desk", variant: "organization" },
+  { name: "eli", variant: "analyst" },
+  { name: "fay", variant: "analyst" },
+  { name: "gus", variant: "analyst" },
+] as const;
+
+function paletteApprovalStamps(approvers: readonly (typeof PALETTE_APPROVERS)[number][]) {
+  return approvers.map(({ name, variant }) => ({
+    key: name,
+    name,
+    variant,
+    label: name,
+    href: "/palette",
+  }));
+}
+
 const PALETTE_MEDIA: Media = {
   id: "palette-demo",
   role: "source",
@@ -1770,6 +1871,40 @@ function PaletteActiveFilterPills() {
   );
 }
 
+const PALETTE_ACCOUNTS: Account[] = [
+  { kind: "analyst", username: "ana-demo" },
+  { kind: "analyst", username: "bo-demo" },
+  { kind: "organization", slug: "open-source-watch", name: "Open Source Watch" },
+];
+
+function PaletteAccountPicker() {
+  const [picked, setPicked] = useState<Account | null>(null);
+  return (
+    <div className="grid w-full max-w-2xl gap-4 sm:grid-cols-2">
+      <Variant label="field resets after a pick">
+        <AccountPicker
+          aria-label="Pick an account"
+          options={PALETTE_ACCOUNTS}
+          onSelect={() => undefined}
+          placeholder="Search analysts and organizations"
+          emptyText="No analyst or organization matches"
+        />
+      </Variant>
+      <Variant label="selected shows as a chip">
+        <AccountPicker
+          aria-label="Pick an account to keep"
+          options={PALETTE_ACCOUNTS}
+          selected={picked}
+          onSelect={setPicked}
+          onClear={() => setPicked(null)}
+          placeholder="Pick an analyst"
+          emptyText="No analyst or organization matches"
+        />
+      </Variant>
+    </div>
+  );
+}
+
 function PaletteFilterSection() {
   const [open, setOpen] = useState(true);
   const [selected, setSelected] = useState<string[]>(["Drone"]);
@@ -1829,7 +1964,7 @@ function PaletteToggleMatrix() {
             label: "Geolocator invitation",
             description: "Someone invites you to share the credit.",
             on: on.invite,
-            disabled: { push: "This Vidit server does not send push notifications." },
+            disabled: { push: "No device of yours receives push yet." },
           },
           { id: "credit", label: "Credit removed", description: "An owner removes you.", on: on.credit },
         ]}

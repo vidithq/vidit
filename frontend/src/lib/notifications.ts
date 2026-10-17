@@ -1,5 +1,6 @@
 import { apiFetch } from "./api";
 import type { components } from "./api-types";
+import { formatDate } from "./format";
 import { organizationPath } from "./organizations";
 
 export type Notification = components["schemas"]["NotificationRead"];
@@ -36,6 +37,11 @@ export async function markNotificationsRead(ids: string[]): Promise<void> {
       body: JSON.stringify({ ids: ids.slice(i, i + MAX_READ_IDS) }),
     });
   }
+}
+
+/** Delete one of your notifications. */
+export function deleteNotification(id: string): Promise<void> {
+  return apiFetch<void>(`${NOTIFICATIONS_PATH}/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 /** Per-kind copy for the feed and the settings rows. Keyed by the generated kind, so a kind
@@ -94,6 +100,10 @@ export const NOTIFICATION_KIND_COPY: Record<
     label: "Approval received",
     setting: "Someone approves your geolocation, as themselves or for an organization.",
   },
+  approval_revoked: {
+    label: "Approval revoked",
+    setting: "An approval of your geolocation is revoked.",
+  },
   approval_request_received: {
     label: "Approval request",
     setting: "Someone asks you, or an organization you manage, to approve their geolocation.",
@@ -108,7 +118,43 @@ export const NOTIFICATION_KIND_COPY: Record<
   },
 };
 
+const REQUEST_OUTCOME_LABEL: Record<NonNullable<Notification["approval_request_status"]>, string> =
+  {
+    approved: "Approved",
+    declined: "Declined",
+  };
+
+/** The feed row's label: the kind, the date, and how an answered approval request ended. */
+export function notificationLabel(n: Notification): string {
+  const parts = [NOTIFICATION_KIND_COPY[n.kind].label, formatDate(n.created_at)];
+  if (n.approval_request_status) parts.push(REQUEST_OUTCOME_LABEL[n.approval_request_status]);
+  return parts.join(" · ");
+}
+
 /** The feed row's sentence and destination. */
+// The kinds where an organization, not the member on the row, is the one acting: its approval
+// landed, was revoked, or it declined a request.
+const ORGANIZATION_ACTS: ReadonlySet<NotificationKind> = new Set([
+  "approval_received",
+  "approval_revoked",
+  "approval_request_declined",
+]);
+
+/** The picture of who is behind a row: the organization's logo where the organization acts, else
+ *  the actor's picture. Null when the row has no actor (a system kind, an erased account), so the
+ *  feed falls back to the kind's icon. */
+export function notificationAvatar(
+  n: Notification,
+): { name: string; avatarUrl: string | null; shape: "circle" | "square" } | null {
+  if (n.organization && ORGANIZATION_ACTS.has(n.kind)) {
+    return { name: n.organization.name, avatarUrl: n.organization.avatar_url ?? null, shape: "square" };
+  }
+  if (n.actor) {
+    return { name: n.actor.username, avatarUrl: n.actor.avatar_url ?? null, shape: "circle" };
+  }
+  return null;
+}
+
 export function describeNotification(n: Notification): { text: string; href: string } {
   const actor = n.actor?.username ?? "Someone";
   const title = n.event?.title ?? "";
@@ -171,6 +217,11 @@ export function describeNotification(n: Notification): { text: string; href: str
     case "approval_received":
       return {
         text: `${actor} approved your geolocation${n.organization ? ` for ${organization}` : ""}: ${title}`,
+        href: eventHref,
+      };
+    case "approval_revoked":
+      return {
+        text: `The approval by ${n.organization ? organization : actor} of your geolocation was revoked: ${title}`,
         href: eventHref,
       };
     case "approval_request_received":

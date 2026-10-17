@@ -19,9 +19,8 @@ import { FORM_ERROR_BANNER, LABEL_TEXT } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Button } from "@/components/ui/Button";
-import { closeActionLabel, CloseEventForm, CloseSection } from "@/components/event/CloseEventForm";
+import { CloseSection } from "@/components/event/CloseEventForm";
 import { GeolocatorsPanel } from "@/components/event/GeolocatorCredit";
-import { useEventActions } from "@/components/event/useEventActions";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
@@ -40,8 +39,8 @@ import {
 } from "@/lib/events";
 import type { EventDetail } from "@/types";
 
-// Ties Close to the reason panel it opens, which is not its DOM sibling.
-const CLOSE_PANEL_ID = "close-detection-form";
+// Ties the rail's submit button and version note to the form in the main column.
+const EDIT_FORM_ID = "event-edit-form";
 
 /**
  * Owner edit of one event, in two shapes.
@@ -58,6 +57,10 @@ const CLOSE_PANEL_ID = "close-detection-form";
  * Built like the create form: `EventFormFields`, `useEventForm`, `MediaManager`.
  * State is seeded from props (the form mounts after the row loaded), so the proof
  * editor gets its `initialContent` on first paint.
+ *
+ * The fields fill the main column. The right rail holds the actions card (the
+ * version note, the save, its banners and the close) and, on a published row,
+ * the geolocators, whose changes apply on click and never make a version.
  *
  * With `queue` set the header gains the position and a Skip, and a finished
  * detection hands over to the next one.
@@ -85,14 +88,6 @@ export function EventEditForm({
   // Read off the row so the page and the form cannot disagree about the mode.
   const editingPublished = geo.status === "geolocated";
   const finish = queue?.onAdvance ?? (() => router.push(redirectTo));
-
-  // No action tier on this surface (the grammar in `useEventActions` decides);
-  // the call stays for the slot the panels land in.
-  const { actions, panels } = useEventActions({ event: geo, surface: "edit" });
-
-  // Only opens the inline `CloseEventForm` (the confirm step). Close sits beside
-  // Skip, not in the `⋯` menu: working a detection has three verbs.
-  const [closing, setClosing] = useState(false);
 
   const form = useEventForm(geo);
 
@@ -288,54 +283,93 @@ export function EventEditForm({
       backFallback={redirectTo}
       title={editingPublished ? "Edit geolocation" : "Submit detection"}
       actions={
-        // Verbs that dispose of the detection. A published event has none.
-        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
-          {queue && (
-            <>
-              <span className={LABEL_TEXT}>{queue.position}</span>
-              <Button variant="secondary" onClick={queue.onAdvance} disabled={busy}>
-                Skip
-              </Button>
-            </>
-          )}
-          {!editingPublished && (
-            <Button
-              variant="danger"
-              onClick={() => setClosing(true)}
-              disabled={busy || closing}
-              aria-controls={CLOSE_PANEL_ID}
-              aria-expanded={closing}
-            >
-              Close
+        // The review pass's own chrome. A plain edit has none.
+        queue && (
+          <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
+            <span className={LABEL_TEXT}>{queue.position}</span>
+            <Button variant="secondary" onClick={queue.onAdvance} disabled={busy}>
+              Skip
             </Button>
-          )}
-          {actions}
-        </div>
+          </div>
+        )
       }
-    >
-      {panels}
-
-      {/* The reason panel Close opens. */}
-      {closing && (
-        <div id={CLOSE_PANEL_ID}>
+      rail={
+        <div className="space-y-6">
           <Card as="section">
-            <SectionEyebrow title={closeActionLabel(geo.status)} margin="none" />
-            <CloseEventForm
+            {/* Optional, never part of the floor. */}
+            {editingPublished && (
+              <div className="space-y-2">
+                <SectionHeading title="Version note" concept="version_note" />
+                <Input
+                  id="version_note"
+                  form={EDIT_FORM_ID}
+                  type="text"
+                  value={editNote}
+                  maxLength={VERSION_NOTE_MAX_LEN}
+                  onChange={(e) => setEditNote(e.target.value)}
+                  placeholder="What changed, and why"
+                  aria-label="Version note"
+                />
+              </div>
+            )}
+
+            <IncompleteFormNotice
+              key={form.validationAttempt}
+              missing={form.missingFields.map((m) => m.label)}
+            />
+            {actionError && <div className={FORM_ERROR_BANNER}>{actionError}</div>}
+
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="inline-flex items-center gap-1.5">
+                <Button
+                  ref={submitButtonRef}
+                  type="submit"
+                  form={EDIT_FORM_ID}
+                  variant="primary"
+                  disabled={busy}
+                  className={submitArmed ? ARMED_RING : ""}
+                  title={submitArmed ? CONFIRM_SENTENCE : undefined}
+                >
+                  {/* Labels stack in one grid cell so arming never resizes the button. */}
+                  <span className="grid">
+                    <span aria-hidden className="col-start-1 row-start-1 invisible">
+                      {widestLabel}
+                    </span>
+                    <span className="col-start-1 row-start-1">{submitLabel}</span>
+                  </span>
+                </Button>
+                {!editingPublished && <FieldHelp concept="action_submit" />}
+              </span>
+              {/* Announces the armed state to screen readers. */}
+              <span className="sr-only" role="status" aria-live="polite">
+                {submitArmed ? CONFIRM_SENTENCE : ""}
+              </span>
+            </div>
+
+            <CloseSection
               eventId={geo.id}
               status={geo.status}
               disabled={busy}
               onClosed={() => {
-                refreshDetectionCount();
+                if (!editingPublished) refreshDetectionCount();
                 finish();
               }}
-              onCancel={() => setClosing(false)}
             />
           </Card>
-        </div>
-      )}
 
+          {editingPublished && (
+            <Card as="section">
+              <SectionEyebrow title="Geolocators" concept="geolocators" margin="none" />
+              <GeolocatorsPanel event={geo} onChanged={() => onCreditChanged?.()} />
+            </Card>
+          )}
+        </div>
+      }
+      railLabel={editingPublished ? "Actions and geolocators" : "Actions"}
+      narrowRail="below"
+    >
       {/* `noValidate`: IncompleteFormNotice owns required-field feedback. */}
-      <form onSubmit={attemptSubmit} className="space-y-6" noValidate>
+      <form id={EDIT_FORM_ID} onSubmit={attemptSubmit} className="space-y-6" noValidate>
         <EventFormFields
           form={form}
           row={geo}
@@ -346,67 +380,7 @@ export function EventEditForm({
             editingPublished ? setDetectedFromSnapshotUrl : undefined
           }
         />
-
-        {/* Optional, never part of the floor. */}
-        {editingPublished && (
-          <Card as="section">
-            <SectionHeading title="Version note" concept="version_note" />
-            <Input
-              id="version_note"
-              type="text"
-              value={editNote}
-              maxLength={VERSION_NOTE_MAX_LEN}
-              onChange={(e) => setEditNote(e.target.value)}
-              placeholder="What changed, and why"
-              aria-label="Version note"
-            />
-          </Card>
-        )}
-
-        <IncompleteFormNotice
-          key={form.validationAttempt}
-          missing={form.missingFields.map((m) => m.label)}
-        />
-        {actionError && <div className={FORM_ERROR_BANNER}>{actionError}</div>}
-
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="inline-flex items-center gap-1.5">
-            <Button
-              ref={submitButtonRef}
-              type="submit"
-              variant="primary"
-              disabled={busy}
-              className={submitArmed ? ARMED_RING : ""}
-              title={submitArmed ? CONFIRM_SENTENCE : undefined}
-            >
-              {/* Labels stack in one grid cell so arming never resizes the button. */}
-              <span className="grid">
-                <span aria-hidden className="col-start-1 row-start-1 invisible">
-                  {widestLabel}
-                </span>
-                <span className="col-start-1 row-start-1">{submitLabel}</span>
-              </span>
-            </Button>
-            {!editingPublished && <FieldHelp concept="action_submit" />}
-          </span>
-          {/* Announces the armed state to screen readers. */}
-          <span className="sr-only" role="status" aria-live="polite">
-            {submitArmed ? CONFIRM_SENTENCE : ""}
-          </span>
-        </div>
       </form>
-
-      {/* Owner management of a published geolocation, after the fields and outside the form,
-          since the geolocators panel holds a form of its own. A detection closes from the header. */}
-      {editingPublished && (
-        <>
-          <Card as="section">
-            <SectionEyebrow title="Geolocators" margin="none" />
-            <GeolocatorsPanel event={geo} onChanged={() => onCreditChanged?.()} />
-          </Card>
-          <CloseSection eventId={geo.id} status={geo.status} disabled={busy} onClosed={finish} />
-        </>
-      )}
     </PageShell>
   );
 }

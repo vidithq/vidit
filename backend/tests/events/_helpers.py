@@ -19,6 +19,7 @@ from app.models.event import (
     STATUS_REQUESTED,
     Event,
 )
+from app.models.notification import NotificationDelivery
 from app.models.tag import Tag
 from app.models.user import User
 from app.services.events import build_source_link_rows
@@ -34,6 +35,11 @@ def delete_user(db, user_id: uuid.UUID) -> None:
         EventApproval.reviewer_id == user_id, EventApproval.organization_id.is_(None)
     ).delete(synchronize_session=False)
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
+    # A sent delivery outlives its notification for the daily cap: reap the orphans so one
+    # test's sends do not count against the next test's cap.
+    db.query(NotificationDelivery).filter(NotificationDelivery.notification_id.is_(None)).delete(
+        synchronize_session=False
+    )
 
 
 # ``/events/points`` requires a ``bbox``; tests not about it pass the whole globe.

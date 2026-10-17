@@ -58,6 +58,17 @@ def search(
         description="Scope the event groups to this owner username (exact, case-insensitive)",
     ),
     media: list[str] | None = Query(None),
+    approved: bool = Query(False, description="Keep events approved on their live version"),
+    approved_by: str | None = Query(
+        None,
+        pattern=AUTHOR_FILTER_PATTERN,
+        description="Keep events this analyst approved on their live version (username)",
+    ),
+    approved_by_org: str | None = Query(
+        None,
+        pattern=AUTHOR_FILTER_PATTERN,
+        description="Keep events this organization approved on their live version (slug)",
+    ),
     db: Session = Depends(get_db),
 ) -> SearchResponse:
     """Grouped FTS across the five result groups.
@@ -93,6 +104,9 @@ def search(
         submitted_to=submitted_to,
         author=author,
         media=media,
+        approved=approved,
+        approved_by=approved_by,
+        approved_by_org=approved_by_org,
     )
     grouped = search_service.search_all(db, query=q, types=types, limit=limit, filters=filters)
 

@@ -6,6 +6,17 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- Every list on the organization page and the admin Organizations panel is a row of blocks with neutral text, a muted meta line and an orange arrow, its controls inside the row; a member or invitee row opens the profile ([#595](https://github.com/vidithq/vidit/pull/595)).
+- From `lg` up the back arrow sticks in the gutter left of the title while the page scrolls, and the right rail sticks at its resting top, so neither moves ([#595](https://github.com/vidithq/vidit/pull/595)).
+- A notification only links to where you act, the event or organization page; a geolocator invitation sits atop the event page's rail, and each row has neutral text, an orange arrow and its delete button inside ([#595](https://github.com/vidithq/vidit/pull/595)).
+- Each notification leads with the picture of the analyst behind it, or the organization's logo where the organization acts; a row with no one behind it keeps its icon ([#595](https://github.com/vidithq/vidit/pull/595)).
+- Every member of an organization approves in its name, revokes its approval with one Revoke as click, hears of its approval requests and answers them; org managers keep inviting, removing and promoting ([#595](https://github.com/vidithq/vidit/pull/595)).
+- The version selector opens a compact list as wide as its button: v2, v1, then History as an icon ([#595](https://github.com/vidithq/vidit/pull/595)).
+- The request page holds Geolocate in an Actions card in the right rail, after the request on a phone; Edit, Share and Report stay in the header ([#595](https://github.com/vidithq/vidit/pull/595)).
+- The submit page holds its requirement lists and publish actions in a right rail, as the edit page does, and on a phone they follow the fields ([#595](https://github.com/vidithq/vidit/pull/595)).
+- The map, search and feed filter by approval: approved only, or approved by an analyst or an organization, on the live version ([#595](https://github.com/vidithq/vidit/pull/595)).
+- The event page keeps its header (back, title, byline, version selector, Share, Edit and Report) at the top of the screen while you scroll, from tablet width up ([#591](https://github.com/vidithq/vidit/pull/591)).
+- One account picker, with pictures and keyboard navigation, picks analysts and organizations in approval requests, the Author filter, co-geolocator and organization invites and admin fields; a left-out exact match says why ([#592](https://github.com/vidithq/vidit/pull/592)).
 - A site admin can delete an organization from the admin panel after typing its slug; its memberships, invites, approval requests and approvals go with it, and each event owner who loses its approval is notified ([#576](https://github.com/vidithq/vidit/pull/576)).
 - An org manager approves and revokes approvals in an organization's name, a geolocator can ask an organization for approval, which any org manager answers, and the organization page lists its approvals and open requests ([#574](https://github.com/vidithq/vidit/pull/574)).
 - Feed, Requests and search filters sit in a sticky right rail, or a Filters button on a phone; the feed filters by kind, conflict, capture source and tags, with its Following / All control under the title ([#588](https://github.com/vidithq/vidit/pull/588)).
@@ -27,11 +38,28 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- Outside the admin page a site admin sees what their own role allows: the organization page shows role controls, invites and approval requests only to its members and org managers, and `viewer_can_manage` follows the org manager role alone ([#595](https://github.com/vidithq/vidit/pull/595)).
+- The event and request pages hold their actions in the right rail, top right beside the title and under it on a phone, and the organization page holds an invitation's Accept and Decline there; the title and byline scroll with the page ([#595](https://github.com/vidithq/vidit/pull/595)).
+- The edit page moves Save, the version note, Close and the geolocators into a sticky right rail beside the fields, under them on a phone; geolocator changes still apply right away and make no new version ([#593](https://github.com/vidithq/vidit/pull/593)).
 - An event page's header holds a version selector, Edit for the owner, a one-click Share and Report; an Approvals card beside the record shows the live approvals, close and credit move to the edit page, and icon buttons show their label on hover ([#583](https://github.com/vidithq/vidit/pull/583)).
+- On a wide screen the page column sits centred, the nav rail counted as part of the left margin, so the space left and right of the content is equal; every page still starts its title at the same x.
 - A profile shows the analyst's organizations as logos on the follower line, each linking to the organization and naming it with the analyst's role on hover or focus, so the coverage map opens the page ([#586](https://github.com/vidithq/vidit/pull/586)).
 - App pages share one container, left-aligned after the sidebar: a page keeps its reading width, and a page with a right rail widens to hold it beside the same main column ([#588](https://github.com/vidithq/vidit/pull/588)).
 - The timeline is now the feed: the page moves from `/timeline` to `/feed` (the old address redirects), the sidebar entry is "Feed", and `GET /timeline` becomes `GET /feed` with `feed_at` in place of `timeline_at` ([#585](https://github.com/vidithq/vidit/pull/585)).
 - Settings lists each notification kind once, with an Email and a Push switch side by side, and closes the Push column with one reason when the server sends no push or your account has no push device ([#575](https://github.com/vidithq/vidit/pull/575)).
+- The Approvals card sets its approver pictures apart in two rows of up to seven before a +N bubble, and its title explains in a tooltip that an approval covers one version; an incoming approval request reads as one line above Approve, with Decline beside it.
+- Approvals are simpler: Approve approves in one click with no note, each stamp links to the reviewer's profile or the organization's page with the handle in a tooltip, and once your approval stands a Revoke button takes Approve's place, asking for no reason.
+- Revoking an approval no longer needs a reason (the API still takes an optional one), the event owner gets a notification when an approval of their event is revoked, and the revoked approval's notice leaves the feed.
+- A reviewer whose approval of the live version a site admin revoked reads why they cannot approve it again, and a stale version error offers Reload.
+- Notification rows put Decline below the row so a phone keeps the event title readable, and an answered approval request shows Approved or Declined.
+- The app checks admin status once per session instead of once per component.
+- Push notifications are always on: the API refuses to start in a deployment without `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT`, `make env` writes a development key pair, and Settings always shows the Push column.
+- A reviewer who revoked their own approval can approve that version again, and Revoke takes one click. Approve buttons carry a stamp icon.
+- Deleting a notification keeps its sent delivery rows (with no notification) so the daily email cap still counts them, and drops only the unsent ones.
+- The edit page's explanatory sentences (what closing does, who sees the close reason, how shared credit works) move into `?` tooltips.
+- Feed and list cards and the event page header show the owner as a picture and a name and each co-geolocator as a picture with the handle in a tooltip; the feed card's separate author circle is gone.
+- A credit line with several analysts shows each one as a picture and a name side by side, with no "and" or comma, on event pages, cards and the Approvals card's request line.
+- Each notification has a delete button that removes it from your feed, with its queued email or push (`DELETE /notifications/{id}`).
 
 ### Changed
 

@@ -17,7 +17,7 @@ import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 
 /**
  * One filed version at `/events/{id}/vN`: the canonical body fed the version's
- * snapshot, read-only. The header carries the version selector and no action
+ * snapshot, read-only. The rail carries the version selector and no action
  * (those act on the record). Three
  * reads: the event, the version, and the version below (it holds the edit's
  * byline and date).
@@ -67,9 +67,13 @@ export default function EventVersionPage() {
       back
       title={version.view?.title ?? geo.title}
       subtitle={<AuthorByline author={geo.owner} avatar />}
-      actions={
-        <VersionSelector eventId={geo.id} liveVersion={geo.version_no} selected={number} />
+      rail={
+        <div className="flex lg:justify-end">
+          <VersionSelector eventId={geo.id} liveVersion={geo.version_no} selected={number} />
+        </div>
       }
+      railLabel="Versions"
+      headerInColumn
     >
       <EventVersionBanner eventId={geo.id} version={version} total={geo.version_no} />
       {version.view ? (
