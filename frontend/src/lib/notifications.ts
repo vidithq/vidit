@@ -1,5 +1,6 @@
 import { apiFetch } from "./api";
 import type { components } from "./api-types";
+import { formatDate } from "./format";
 import { organizationPath } from "./organizations";
 
 export type Notification = components["schemas"]["NotificationRead"];
@@ -94,6 +95,10 @@ export const NOTIFICATION_KIND_COPY: Record<
     label: "Approval received",
     setting: "Someone approves your geolocation, as themselves or for an organization.",
   },
+  approval_revoked: {
+    label: "Approval revoked",
+    setting: "An approval of your geolocation is revoked.",
+  },
   approval_request_received: {
     label: "Approval request",
     setting: "Someone asks you, or an organization you manage, to approve their geolocation.",
@@ -107,6 +112,19 @@ export const NOTIFICATION_KIND_COPY: Record<
     setting: "An organization that approved your geolocation is removed from Vidit.",
   },
 };
+
+const REQUEST_OUTCOME_LABEL: Record<NonNullable<Notification["approval_request_status"]>, string> =
+  {
+    approved: "Approved",
+    declined: "Declined",
+  };
+
+/** The feed row's label: the kind, the date, and how an answered approval request ended. */
+export function notificationLabel(n: Notification): string {
+  const parts = [NOTIFICATION_KIND_COPY[n.kind].label, formatDate(n.created_at)];
+  if (n.approval_request_status) parts.push(REQUEST_OUTCOME_LABEL[n.approval_request_status]);
+  return parts.join(" · ");
+}
 
 /** The feed row's sentence and destination. */
 export function describeNotification(n: Notification): { text: string; href: string } {
@@ -171,6 +189,11 @@ export function describeNotification(n: Notification): { text: string; href: str
     case "approval_received":
       return {
         text: `${actor} approved your geolocation${n.organization ? ` for ${organization}` : ""}: ${title}`,
+        href: eventHref,
+      };
+    case "approval_revoked":
+      return {
+        text: `The approval by ${n.organization ? organization : actor} of your geolocation was revoked: ${title}`,
         href: eventHref,
       };
     case "approval_request_received":

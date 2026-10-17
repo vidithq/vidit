@@ -448,7 +448,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="TOOLTIP_SURFACE" usage="The bubble of an anchored popover (usePinnedPopover): the FieldHelp explanation, the AvatarStack card, the ActionMenu list and the Tooltip bubble. Colour only; callers add rounded-md, padding and text size.">
+          <Item name="TOOLTIP_SURFACE" usage="The bubble of an anchored popover (usePinnedPopover): the FieldHelp explanation, the ActionMenu list and the Tooltip bubble. Colour only; callers add rounded-md, padding and text size.">
             <span className={`inline-block rounded-md px-2 py-1 text-xs ${TOOLTIP_SURFACE}`}>
               maya
             </span>
@@ -845,7 +845,7 @@ export default function PalettePage() {
 
           <Item
             name="<FieldHelp>"
-            usage="The one explanation hover text in the app (the AvatarStack card describes an approval, never a concept): a `?` on a label, a section heading, a filter bar or an icon group, whose bubble carries the concept's sentence from the lib/fieldHelp.ts registry (a native title attribute is never used). Registry-only: every instance of a concept reads the same words, so the `?` takes the concept key and nothing else."
+            usage="The one explanation hover text in the app: a `?` on a label, a section heading, a filter bar or an icon group, whose bubble carries the concept's sentence from the lib/fieldHelp.ts registry (a native title attribute is never used). Registry-only: every instance of a concept reads the same words, so the `?` takes the concept key and nothing else."
           >
             <span className="inline-flex items-center gap-1 text-sm text-neutral-300">
               Coordinates <FieldHelp concept="coordinates" />
@@ -906,7 +906,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<AvatarStack>" usage="The approval stamps in the event page's Approvals card: a row of 28px pictures, oldest first, overlapping by default; spacing=gap sets them apart and wraps them onto further lines (the Approvals card). An organization (variant=organization) takes the rounded square, an analyst the circle; each picture is a button with its own accessible name (label, such as Approved by maya). Hover or focus opens the item's renderCard in a TOOLTIP_SURFACE card (usePinnedPopover); a click or a tap pins it and moves focus to its first link. Escape, or tabbing past either end of the card, closes it and returns focus to the row; the card holds while focus is inside it. The card carries the way on (the event page's card: picture, name, Version N · date, the note, on behalf of an organization, View profile or View organization). At most max (5 by default) show; the rest fold into a +N bubble, a button when onOverflow is set (the Approvals card expands its full approval list) and plain text otherwise. Renders nothing for an empty list.">
+          <Item name="<AvatarStack>" usage="A row of 28px pictures: the approval stamps in the event page's Approvals card and the organization logos in a profile header, oldest first, overlapping by default; spacing=gap sets them apart and wraps them onto further lines (the Approvals card). An organization (variant=organization) takes the rounded square, an analyst the circle. Each picture is a link to its href (the profile or the organization's page) named by its label, which a <Tooltip> shows on hover or keyboard focus (the handle on a stamp, the role on a logo). At most max (5 by default) show; the rest fold into a +N bubble, a button when onOverflow is set (the Approvals card expands its full approval list) and plain text otherwise. Renders nothing for an empty list.">
             <Variant label="analysts and an organization, max=3 with onOverflow (+N opens the panel)">
               <AvatarStack
                 label="Approved by"
@@ -926,7 +926,7 @@ export default function PalettePage() {
                 />
               </div>
             </Variant>
-            <Variant label="href set: each picture is a link and its card a tooltip (the profile header's organization logos)">
+            <Variant label="organization logos with role labels (the profile header)">
               <AvatarStack
                 label="Organizations"
                 items={[
@@ -938,12 +938,6 @@ export default function PalettePage() {
                   variant: "organization" as const,
                   label: `${role} of ${name}`,
                   href: "/palette",
-                  renderCard: () => (
-                    <>
-                      <span className="block font-medium text-neutral-100">{name}</span>
-                      <span className="block text-neutral-500">{role}</span>
-                    </>
-                  ),
                 }))}
               />
             </Variant>
@@ -1708,16 +1702,8 @@ function paletteApprovalStamps(approvers: readonly (typeof PALETTE_APPROVERS)[nu
     key: name,
     name,
     variant,
-    label: `Approved by ${name}`,
-    renderCard: () => (
-      <div className="space-y-2">
-        <p className="text-sm font-medium text-neutral-100">{name}</p>
-        <p className="text-neutral-500">Version 2 · 14 Mar 2026</p>
-        <Link href="/palette" className={TEXT_LINK}>
-          {variant === "organization" ? "View organization" : "View profile"}
-        </Link>
-      </div>
-    ),
+    label: name,
+    href: "/palette",
   }));
 }
 

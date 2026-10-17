@@ -183,7 +183,7 @@ describe("the event header per reader", () => {
   it("carries no menu, no close, no stamps and no approve control in the header", async () => {
     api.approvals = [stamp("a1", "maya")];
     renderAs(OWNER, { status: "geolocated", surface: "event" });
-    await screen.findByRole("button", { name: "Approved by maya" });
+    await screen.findByRole("link", { name: "maya" });
     expect(within(header()).queryByRole("button", { name: "More actions" })).toBeNull();
     expect(within(header()).queryByRole("button", { name: /^Close/ })).toBeNull();
     expect(within(header()).queryByRole("list", { name: "Approved by" })).toBeNull();

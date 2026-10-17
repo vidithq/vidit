@@ -256,6 +256,7 @@ def approve(
         EventApproval.event_id == geo.id, EventApproval.version_no == version_no
     )
     if organization is None:
+        # Mirrored by the frontend's lib/approvals.ownApprovalOnLive; change both.
         taken = same_version.filter(
             EventApproval.reviewer_id == reviewer.id, EventApproval.organization_id.is_(None)
         ).first()
@@ -283,13 +284,7 @@ def approve(
         .values(status="approved", resolved_at=datetime.now(UTC))
         .returning(ApprovalRequest.requester_id)
     ).all()
-    notifications.notify_approval_received(
-        db,
-        event=geo,
-        reviewer_id=reviewer.id,
-        organization_id=organization.id if organization is not None else None,
-        requester_ids=requester_ids,
-    )
+    notifications.notify_approval_received(db, event=geo, approval=row, requester_ids=requester_ids)
     db.commit()
     db.refresh(row)
     return row
@@ -300,8 +295,7 @@ def _revoker_role(db: Session, row: EventApproval, actor: User) -> ApprovalRevok
 
     An analyst's approval: its reviewer, then a site admin. An organization's approval: its
     current org managers (its reviewer among them), then a site admin. A reviewer who is no longer
-    an org manager no longer acts in the organization's name. Mirrored by the frontend's
-    Approvals.tsx Revoke control; change both.
+    an org manager no longer acts in the organization's name.
     """
     if row.organization_id is None:
         if row.reviewer_id == actor.id:
@@ -318,9 +312,14 @@ def _revoker_role(db: Session, row: EventApproval, actor: User) -> ApprovalRevok
 
 
 def revoke(
-    db: Session, *, geo: Event, approval_id: uuid.UUID, actor: User, reason: str
+    db: Session,
+    *,
+    geo: Event,
+    approval_id: uuid.UUID,
+    actor: User,
+    reason: str | None = None,
 ) -> EventApproval:
-    """Revoke one approval of ``geo`` with a public ``reason``.
+    """Revoke one approval of ``geo``, with an optional public ``reason``, and notify the owner.
 
     The reviewer revokes their own; an org manager revokes any approval placed for their
     organization; a site admin revokes any, which writes an ``admin_events`` row. Anyone else is
@@ -343,6 +342,7 @@ def revoke(
     row.revoked_by_id = actor.id
     row.revoke_reason = reason
     row.revoked_as = role
+    notifications.notify_approval_revoked(db, event=geo, approval=row)
     if role == "site_admin":
         log_admin_event(
             db,
@@ -371,8 +371,8 @@ def list_for_organization(
     cursor: tuple[datetime, uuid.UUID] | None,
 ) -> list[EventApproval]:
     """One window of the approvals placed for ``org``, newest first, over-fetched by one row for
-    ``take_page``. An event a public reader cannot see, and an approval whose reviewer is
-    soft-deleted, are left out, as on the event page."""
+    ``take_page``. An approval of an event a public reader cannot see is left out; every other
+    stays whatever became of the org manager who placed it, as on the event page."""
     query = (
         db.query(EventApproval)
         .join(Event, and_(Event.id == EventApproval.event_id, *visible_events()))

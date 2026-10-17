@@ -94,16 +94,20 @@ def revoke_approval(
     request: Request,
     geolocation_id: uuid.UUID,
     approval_id: uuid.UUID,
-    body: ApprovalRevoke,
+    body: ApprovalRevoke | None = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ApprovalRead:
-    """Revoke an approval with a public reason: your own, your organization's as its org manager,
-    or any as a site admin."""
+    """Revoke an approval: your own, your organization's as its org manager, or any as a site
+    admin."""
     geo = resolve_readable_event(db, geolocation_id, current_user)
     try:
         row = approvals.revoke(
-            db, geo=geo, approval_id=approval_id, actor=current_user, reason=body.reason
+            db,
+            geo=geo,
+            approval_id=approval_id,
+            actor=current_user,
+            reason=body.reason if body is not None else None,
         )
     except ApprovalError as exc:
         _raise(exc)

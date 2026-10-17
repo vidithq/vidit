@@ -146,8 +146,8 @@ describe("OrganizationPage", () => {
       "href",
       "/events/e1",
     );
-    expect(screen.getByText("Skyline matches")).toBeInTheDocument();
     expect(screen.getByText("Current")).toBeInTheDocument();
+    expect(screen.queryByText("Skyline matches")).toBeNull();
   });
 
   it("lets an invited analyst accept", async () => {

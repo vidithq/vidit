@@ -8,7 +8,6 @@ from app.schemas.notification import NotificationEventRef
 from app.schemas.organization import OrganizationRef
 from app.schemas.user import AuthorRef
 
-# Mirrored by the frontend's lib/approvals.APPROVAL_NOTE_MAX_LEN; change both.
 APPROVAL_NOTE_MAX_LENGTH = 280
 REVOKE_REASON_MAX_LENGTH = 2000
 
@@ -32,19 +31,19 @@ class ApprovalCreate(BaseModel):
 
 
 class ApprovalRevoke(BaseModel):
-    """Body of ``POST /events/{id}/approvals/{approval_id}/revoke``. The reason is public."""
+    """Optional body of ``POST /events/{id}/approvals/{approval_id}/revoke``: a public reason,
+    stored as null when blank."""
 
     model_config = ConfigDict(extra="forbid")
 
-    reason: str = Field(min_length=1, max_length=REVOKE_REASON_MAX_LENGTH)
+    reason: str | None = Field(default=None, max_length=REVOKE_REASON_MAX_LENGTH)
 
     @field_validator("reason")
     @classmethod
-    def _not_blank(cls, value: str) -> str:
-        stripped = value.strip()
-        if not stripped:
-            raise ValueError("A reason is required")
-        return stripped
+    def _blank_is_none(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
 
 
 class ApprovalRead(BaseModel):

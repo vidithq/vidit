@@ -1,26 +1,26 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useManagedOrganizations } from "@/hooks/useManagedOrganizations";
 import type { ApiResource } from "@/hooks/useApiResource";
 import {
-  approveOptions,
+  REVOKED_NOTICE,
+  approvedNotice,
+  cannotApproveAgainLine,
+  ownApprovalOnLive,
   standingApprovalBefore,
-  type Approval,
   type ApprovalList,
 } from "@/lib/approvals";
-import type { OrganizationRef } from "@/lib/organizations";
 import type { EventDetail } from "@/types";
-import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
+import { FORM_ERROR_BANNER, FORM_SUCCESS_BANNER } from "@/components/ui/form-styles";
 import {
   ApprovalStamps,
-  ApproveForm,
-  RevokeForm,
+  ApproveButtons,
+  RevokeOwnApproval,
   YourOutdatedApproval,
 } from "@/components/event/Approvals";
 import {
@@ -33,55 +33,14 @@ import {
 // Two full rows in the 17.5rem rail card: 238px inside its padding holds seven 28px stamps 6px apart.
 const STAMP_SLOTS = 14;
 
-/** **Approve** for a reader who may approve the live version, expanding the approve form in
- *  place; **Cancel** collapses it again. `beside` sits next to **Approve** while it is closed. */
-function ApproveAction({
-  event,
-  approvals,
-  managed,
-  onApproved,
-  beside,
-}: {
-  event: EventDetail;
-  approvals: ApprovalList;
-  managed: OrganizationRef[];
-  onApproved: () => void;
-  beside?: ReactNode;
-}) {
-  const { user } = useAuth();
-  const [open, setOpen] = useState(false);
-  const { eligible, organizations } = approveOptions(event, approvals, managed, user?.id);
-  const mayApprove = eligible || organizations.length > 0;
-  if (!open || !mayApprove) {
-    if (!mayApprove && !beside) return null;
-    return (
-      <div className="flex flex-wrap items-center gap-2">
-        {mayApprove && (
-          <Button variant="secondary" onClick={() => setOpen(true)}>
-            Approve
-          </Button>
-        )}
-        {beside}
-      </div>
-    );
-  }
-  return (
-    <ApproveForm
-      event={event}
-      approvals={approvals}
-      managed={managed}
-      onApproved={onApproved}
-      onCancel={() => setOpen(false)}
-    />
-  );
-}
-
 /**
  * The published event's Approvals card, about the live version only: its standing approvals as
- * stamps, whose cards hold each note and offer **Revoke** to whoever may revoke, or *No approvals
- * yet*; the reader's own outdated approval with what changed since; **Approve** for a reader who
- * may approve, with who asked the reader for approval and **Decline** beside it; and a
- * geolocator's approval requests. Outdated and revoked approvals are read on each
+ * stamps that link to each signer's page, or *No approvals yet*; a confirmation once the reader
+ * approves or revokes; the reader's own outdated approval with what changed since; **Approve**
+ * (and **Approve as <organization>**) for a reader who may approve, with who asked the reader
+ * for approval and **Decline** beside it; **Revoke** in its place once the reader's own approval
+ * of the live version stands, or why the reader cannot approve this version again once it was
+ * revoked; and a geolocator's approval requests. Outdated and revoked approvals are read on each
  * version's page.
  */
 export function ApprovalsCard({
@@ -95,7 +54,7 @@ export function ApprovalsCard({
   const { user } = useAuth();
   const managed = useManagedOrganizations();
   const [showAll, setShowAll] = useState(false);
-  const [revoking, setRevoking] = useState<Approval | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [approvedCount, setApprovedCount] = useState(0);
   const incoming = useApprovalRequests(event, approvedCount);
   const rows = approvals.data?.items ?? [];
@@ -106,6 +65,7 @@ export function ApprovalsCard({
     rows.filter((a) => !a.organization && a.reviewer?.id === user?.id),
     event.version_no,
   );
+  const own = ownApprovalOnLive(rows, event.version_no, user?.id);
 
   return (
     <section aria-label="Approvals">
@@ -122,43 +82,48 @@ export function ApprovalsCard({
                 showAll || standing.length <= STAMP_SLOTS ? standing.length : STAMP_SLOTS - 1
               }
               onOverflow={() => setShowAll(true)}
-              managed={managed}
-              onRevoke={setRevoking}
             />
-            {revoking && (
-              <RevokeForm
-                key={revoking.id}
-                eventId={event.id}
-                approval={revoking}
-                onRevoked={() => {
-                  setRevoking(null);
-                  approvals.refetch();
-                }}
-                onCancel={() => setRevoking(null)}
-              />
+            {notice && (
+              <div className={FORM_SUCCESS_BANNER} role="status">
+                {notice}
+              </div>
             )}
             {outdatedOwn !== null && (
               <YourOutdatedApproval event={event} approvedVersion={outdatedOwn} />
             )}
             {incoming.mine.length > 0 && <IncomingRequests requests={incoming.mine} />}
-            <ApproveAction
-              event={event}
-              approvals={approvals.data}
-              managed={managed}
-              onApproved={() => {
-                approvals.refetch();
-                setApprovedCount((n) => n + 1);
-              }}
-              beside={
-                incoming.mine.length > 0 && (
-                  <DeclineRequests
-                    eventId={event.id}
-                    requests={incoming.mine}
-                    onAnswered={incoming.requests.refetch}
-                  />
-                )
-              }
-            />
+            {own?.revoked_at && approvals.data.viewer_can_approve && (
+              <p className="text-xs text-neutral-500">{cannotApproveAgainLine(own)}</p>
+            )}
+            <div className="flex flex-wrap items-center gap-2 empty:hidden">
+              {own && !own.revoked_at && (
+                <RevokeOwnApproval
+                  eventId={event.id}
+                  approval={own}
+                  onRevoked={() => {
+                    setNotice(REVOKED_NOTICE);
+                    approvals.refetch();
+                  }}
+                />
+              )}
+              <ApproveButtons
+                event={event}
+                approvals={approvals.data}
+                managed={managed}
+                onApproved={(approval) => {
+                  setNotice(approvedNotice(approval));
+                  approvals.refetch();
+                  setApprovedCount((n) => n + 1);
+                }}
+              />
+              {incoming.mine.length > 0 && (
+                <DeclineRequests
+                  eventId={event.id}
+                  requests={incoming.mine}
+                  onAnswered={incoming.requests.refetch}
+                />
+              )}
+            </div>
           </div>
         )}
         {approvals.error && (

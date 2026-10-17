@@ -10,7 +10,7 @@
 import type { components } from "@/lib/api-types";
 import type { Approval, OrganizationApproval } from "@/lib/approvals";
 import type { Collection } from "@/lib/collections";
-import type { UnreadCount } from "@/lib/notifications";
+import type { Notification, UnreadCount } from "@/lib/notifications";
 import type {
   InviteCandidate,
   Organization,
@@ -390,6 +390,42 @@ export const ORGANIZATION_INVITES: OrganizationInvite[] = [
 
 /** Nothing unread, as the sidebar's notification row reads it. */
 export const NO_UNREAD: UnreadCount = { count: 0 };
+
+const LONG_EVENT_TITLE =
+  "Strike on the fuel depot north of the river crossing, seen from the eastern ridge at dusk";
+
+/** The notification feed: an open approval request, whose row carries Decline, and an
+ *  answered one, both naming a long event title a phone must not squeeze. */
+export const NOTIFICATION_FEED: Notification[] = [
+  {
+    id: "4b0d6c1e-0000-4000-8000-000000000001",
+    kind: "approval_request_received",
+    created_at: "2026-10-16T09:00:00Z",
+    actor: { id: "4b0d6c1e-0000-4000-8000-0000000000a1", username: "maya", avatar_url: null },
+    event: { id: EVENT_ID, title: LONG_EVENT_TITLE },
+    organization: null,
+    read_at: "2026-10-16T10:00:00Z",
+    invite_pending: false,
+    reapprove_version: 1,
+    approved_version: null,
+    approval_request_id: "4b0d6c1e-0000-4000-8000-0000000000b1",
+    approval_request_status: null,
+  },
+  {
+    id: "4b0d6c1e-0000-4000-8000-000000000002",
+    kind: "approval_request_received",
+    created_at: "2026-10-15T09:00:00Z",
+    actor: { id: "4b0d6c1e-0000-4000-8000-0000000000a2", username: "jules", avatar_url: null },
+    event: { id: EVENT_ID, title: LONG_EVENT_TITLE },
+    organization: null,
+    read_at: "2026-10-15T10:00:00Z",
+    invite_pending: false,
+    reapprove_version: null,
+    approved_version: null,
+    approval_request_id: null,
+    approval_request_status: "declined",
+  },
+];
 
 const ORGANIZATION_REF = { slug: ORGANIZATION_SLUG, name: ORGANIZATION.name, avatar_url: null };
 

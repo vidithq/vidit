@@ -409,9 +409,10 @@ def test_approving_resolves_the_request_and_tells_the_requester(db, author, make
     assert _kinds(db, author) == [("approval_received", target.id, geo.id)]
     assert _kinds(db, co) == [("approval_received", target.id, geo.id)]
     assert _open(geo, author) == []
-    [row, _] = _feed(target)
-    assert row["approval_request_id"] is None
-    assert row["reapprove_version"] is None
+    rows = _feed(target)
+    assert [r["approval_request_id"] for r in rows] == [None, None]
+    assert [r["reapprove_version"] for r in rows] == [None, None]
+    assert [r["approval_request_status"] for r in rows] == ["approved", "approved"]
 
 
 def test_the_target_declines(db, author, second_user, make_user):
@@ -434,7 +435,23 @@ def test_the_target_declines(db, author, second_user, make_user):
     [row] = _feed(target)
     assert row["approval_request_id"] is None
     assert row["reapprove_version"] is None
+    assert row["approval_request_status"] == "declined"
     assert _kinds(db, author) == [("approval_request_declined", target.id, geo.id)]
+
+
+def test_only_the_newest_row_of_a_request_reports_its_answer(db, author, make_user):
+    geo = _published(db, author)
+    target = make_user(audience="everyone")
+    first = _request(geo, author, target).json()
+    assert _decline(geo, first["id"], target).status_code == 200
+    _age_declines(db, geo)
+    second = _request(geo, author, target)
+    assert second.status_code == 201, second.text
+
+    newest, older = _feed(target)
+    assert newest["approval_request_id"] == second.json()["id"]
+    assert newest["approval_request_status"] is None
+    assert older["approval_request_status"] is None
 
 
 def test_the_open_list_shows_geolocators_everything_and_targets_their_own(

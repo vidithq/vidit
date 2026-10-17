@@ -29,8 +29,10 @@ test.describe("profile", () => {
       );
     }
 
-    await manager.focus();
-    await expect(page.getByRole("tooltip")).toContainText("Org manager");
+    await manager.hover();
+    await expect(
+      page.getByText(`Org manager of ${managed.organization.name}`, { exact: true }),
+    ).toBeVisible();
     await expect(page.getByText("Organizations", { exact: true })).toHaveCount(0);
   });
 });

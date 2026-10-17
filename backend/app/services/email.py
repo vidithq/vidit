@@ -548,6 +548,16 @@ def approval_received_email(
     )
 
 
+def approval_revoked_email(*, to: str, signer: str, event_id: str, event_title: str) -> Email:
+    return _notification_email(
+        to=to,
+        subject=f"The approval by {signer} of your geolocation was revoked",
+        blocks=[f"The approval by {signer} of “{event_title}” was revoked. It no longer stands."],
+        action=Action("View the geolocation", event_link(event_id)),
+        setting="Approval revoked",
+    )
+
+
 def approval_request_received_email(
     *, to: str, actor: str, event_id: str, event_title: str, organization: str | None = None
 ) -> Email:

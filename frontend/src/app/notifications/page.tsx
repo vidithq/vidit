@@ -5,6 +5,7 @@ import {
   ArrowRightLeft,
   AtSign,
   BadgeCheck,
+  BadgeX,
   Building2,
   CircleCheck,
   ClipboardCheck,
@@ -21,11 +22,10 @@ import {
 import { useUnreadNotifications } from "@/contexts/NotificationsContext";
 import { useCursorList } from "@/hooks/useCursorList";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
-import { formatDate } from "@/lib/format";
 import {
-  NOTIFICATION_KIND_COPY,
   describeNotification,
   markNotificationsRead,
+  notificationLabel,
   notificationsPath,
   type Notification,
   type NotificationKind,
@@ -52,6 +52,7 @@ const KIND_ICON: Record<NotificationKind, LucideIcon> = {
   organization_manager_inherited: ShieldCheck,
   re_approve_requested: RefreshCw,
   approval_received: BadgeCheck,
+  approval_revoked: BadgeX,
   approval_request_received: ClipboardCheck,
   approval_request_declined: ClipboardX,
   organization_approval_removed: Building2,
@@ -75,26 +76,23 @@ function NotificationRows({
           const { text, href } = describeNotification(n);
           return (
             <div key={n.id} className="space-y-2">
-              {/* Decline sits beside the link, not in it: the row is one link. Approving
-                  happens on the event page only, after reading the event. */}
-              <div className="flex items-center gap-2">
-                <div className="min-w-0 flex-1">
-                  <LinkRow
-                    icon={KIND_ICON[n.kind]}
-                    label={`${NOTIFICATION_KIND_COPY[n.kind].label} · ${formatDate(n.created_at)}`}
-                    value={text}
-                    href={href}
-                    external={false}
-                  />
-                </div>
-                {n.approval_request_id !== null && n.event && (
-                  <ApprovalRequestDecline
-                    eventId={n.event.id}
-                    requestId={n.approval_request_id}
-                    onAnswered={onChanged}
-                  />
-                )}
-              </div>
+              {/* Decline sits below the link, not in it or beside it: the row is one link, and
+                  beside it a phone would squeeze the title. Approving happens on the event page
+                  only, after reading the event. */}
+              <LinkRow
+                icon={KIND_ICON[n.kind]}
+                label={notificationLabel(n)}
+                value={text}
+                href={href}
+                external={false}
+              />
+              {n.approval_request_id !== null && n.event && (
+                <ApprovalRequestDecline
+                  eventId={n.event.id}
+                  requestId={n.approval_request_id}
+                  onAnswered={onChanged}
+                />
+              )}
               {n.invite_pending && n.event && (
                 <InviteAnswerButtons eventId={n.event.id} onAnswered={onChanged} />
               )}

@@ -24,7 +24,7 @@ from sqlalchemy.orm import Query, Session, aliased, contains_eager, joinedload
 
 from app.config import settings
 from app.models.approval import EventApproval
-from app.models.approval_request import ApprovalRequest
+from app.models.approval_request import ApprovalRequest, ApprovalRequestStatus
 from app.models.event import (
     STATUS_GEOLOCATED,
     Event,
@@ -40,7 +40,11 @@ from app.models.notification import (
 )
 from app.models.organization import OrganizationInvite, OrganizationMember
 from app.models.user import User
-from app.schemas.notification import NotificationEventRef, NotificationRead
+from app.schemas.notification import (
+    ApprovalRequestOutcome,
+    NotificationEventRef,
+    NotificationRead,
+)
 from app.schemas.organization import OrganizationRef
 from app.schemas.user import AuthorRef
 from app.services import push
@@ -49,6 +53,7 @@ from app.services.pagination import keyset_before
 from app.services.preferences import channel_enabled
 
 _Actor = aliased(User)
+_Approval = aliased(EventApproval)
 
 ACTOR_EMAIL_WINDOW = timedelta(hours=24)
 # An invitation withdrawn and sent again inside this window raises no second notification: the
@@ -88,6 +93,7 @@ def _emit(
     event_id: uuid.UUID | None = None,
     organization_id: uuid.UUID | None = None,
     organization_name: str | None = None,
+    approval: EventApproval | None = None,
 ) -> None:
     if actor_id == recipient_id:
         return
@@ -98,6 +104,7 @@ def _emit(
         event_id=event_id,
         organization_id=organization_id,
         organization_name=organization_name,
+        approval=approval,
     )
     db.add(row)
     recipient = db.get(User, recipient_id)
@@ -284,22 +291,35 @@ def notify_approval_received(
     db: Session,
     *,
     event: Event,
-    reviewer_id: uuid.UUID,
-    organization_id: uuid.UUID | None = None,
+    approval: EventApproval,
     requester_ids: Collection[uuid.UUID] = (),
 ) -> None:
     """Tell the owner of ``event``, and every geolocator whose approval request the approval
-    resolved (``requester_ids``), that ``reviewer_id`` approved its live version, for
-    ``organization_id`` when set."""
+    resolved (``requester_ids``), that ``approval``'s reviewer approved its live version, for its
+    organization when set. Each row points at ``approval`` and hides once it is revoked."""
     for recipient_id in {event.owner_id, *requester_ids}:
         _emit(
             db,
             recipient_id=recipient_id,
             kind="approval_received",
-            actor_id=reviewer_id,
+            actor_id=approval.reviewer_id,
             event_id=event.id,
-            organization_id=organization_id,
+            organization_id=approval.organization_id,
+            approval=approval,
         )
+
+
+def notify_approval_revoked(db: Session, *, event: Event, approval: EventApproval) -> None:
+    """Tell the owner of ``event`` that ``approval`` was revoked. The row names the approval's
+    reviewer and organization, never who revoked it."""
+    _emit(
+        db,
+        recipient_id=event.owner_id,
+        kind="approval_revoked",
+        actor_id=approval.reviewer_id,
+        event_id=event.id,
+        organization_id=approval.organization_id,
+    )
 
 
 def _ever_credited_ids(db: Session, event: Event) -> set[uuid.UUID]:
@@ -400,12 +420,14 @@ def notify_re_approve_requested(
 
 
 def _visible_rows(db: Session, user: User) -> Query[Notification]:
-    """``user``'s rows whose event and actor a reader may still see: the actor is neither
-    soft-deleted nor deactivated, the rule the drain applies to the recipient."""
+    """``user``'s rows whose event and actor a reader may still see, and whose approval stands:
+    the actor is neither soft-deleted nor deactivated, the rule the drain applies to the
+    recipient, and an ``approval_received`` row hides once its approval is revoked."""
     return (
         db.query(Notification)
         .outerjoin(Event, Notification.event_id == Event.id)
         .outerjoin(_Actor, Notification.actor_id == _Actor.id)
+        .outerjoin(_Approval, Notification.approval_id == _Approval.id)
         .filter(
             Notification.user_id == user.id,
             or_(Notification.event_id.is_(None), and_(*visible_events())),
@@ -413,6 +435,7 @@ def _visible_rows(db: Session, user: User) -> Query[Notification]:
                 Notification.actor_id.is_(None),
                 and_(_Actor.deleted_at.is_(None), _Actor.is_active.is_(True)),
             ),
+            or_(Notification.approval_id.is_(None), _Approval.revoked_at.is_(None)),
         )
     )
 
@@ -559,6 +582,51 @@ def open_approval_requests(
     }
 
 
+def answered_approval_requests(
+    db: Session, *, user: User, rows: list[Notification]
+) -> dict[uuid.UUID, ApprovalRequestOutcome]:
+    """The outcome, ``approved`` or ``declined``, of the request behind each of ``rows``'
+    ``approval_request_received`` rows, by notification id. Only the newest row of a key carries
+    it, read off the newest request of that key; an older row stands for an earlier request."""
+    received = [r for r in rows if r.kind == "approval_request_received" and r.event_id]
+    if not received:
+        return {}
+    org_ids = {r.organization_id for r in received if r.organization_id is not None}
+    latest: dict[RequestKey, ApprovalRequestStatus] = {}
+    for event_id, requester_id, org_id, status in db.execute(
+        select(
+            ApprovalRequest.event_id,
+            ApprovalRequest.requester_id,
+            ApprovalRequest.target_organization_id,
+            ApprovalRequest.status,
+        )
+        .where(
+            or_(
+                ApprovalRequest.target_user_id == user.id,
+                ApprovalRequest.target_organization_id.in_(org_ids),
+            ),
+            ApprovalRequest.event_id.in_({r.event_id for r in received}),
+        )
+        .order_by(ApprovalRequest.created_at, ApprovalRequest.id)
+    ).tuples():
+        latest[(event_id, requester_id, org_id)] = status
+    newest = _newest_rows(
+        db,
+        user=user,
+        kind="approval_request_received",
+        rows=received,
+        by=(Notification.event_id, Notification.actor_id, Notification.organization_id),
+    )
+    answered: dict[uuid.UUID, ApprovalRequestOutcome] = {}
+    for r in received:
+        if r.id not in newest or r.event_id is None or r.actor_id is None:
+            continue
+        outcome = latest.get((r.event_id, r.actor_id, r.organization_id))
+        if outcome == "approved" or outcome == "declined":
+            answered[r.id] = outcome
+    return answered
+
+
 # The kinds whose feed row offers to approve the event's live version.
 _APPROVE_OFFER_KINDS: frozenset[NotificationKind] = frozenset(
     {"re_approve_requested", "approval_request_received"}
@@ -659,6 +727,7 @@ def build_read(
     pending: set[uuid.UUID],
     offers: dict[OfferKey, ReapprovalOffer],
     approval_requests: dict[uuid.UUID, uuid.UUID],
+    answered: dict[uuid.UUID, ApprovalRequestOutcome],
 ) -> NotificationRead:
     approval_request_id = approval_requests.get(row.id)
     # A resolved approval request offers nothing, though the event may still be approvable.
@@ -689,6 +758,7 @@ def build_read(
             else None
         ),
         approval_request_id=approval_request_id,
+        approval_request_status=answered.get(row.id),
     )
 
 

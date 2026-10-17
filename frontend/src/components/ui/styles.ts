@@ -68,7 +68,6 @@ export const WARNING_CALLOUT =
   "border border-amber-500/30 bg-amber-500/10 text-amber-200";
 
 // The bubble of an anchored popover (`usePinnedPopover`): the `?` explanation in <FieldHelp>, the
-// approval card a picture in <AvatarStack> opens, the <ActionMenu> list and the <Tooltip> bubble.
-// Colour only.
+// <ActionMenu> list and the <Tooltip> bubble. Colour only.
 export const TOOLTIP_SURFACE =
   "bg-neutral-800 border border-neutral-700 text-neutral-300 shadow-lg";
