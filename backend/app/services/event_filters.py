@@ -1,4 +1,5 @@
-"""The standard event filter set, shared by every surface that lists events.
+"""The standard event filter set, shared by every surface that lists events, and
+:func:`lock_event`, the row lock every event write takes.
 
 `/events`, `/events/points` and `/search` accept the same filter vocabulary, single-sourced here
 so the surfaces cannot drift. The bbox, media and status validators raise ``HTTPException(422)``
@@ -7,6 +8,7 @@ directly: they are the input boundary for query parameters. Date parsing lives h
 """
 
 import math
+import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass, fields
 from datetime import date, timedelta
@@ -14,9 +16,9 @@ from typing import Any
 
 from fastapi import HTTPException
 from geoalchemy2.functions import ST_MakeEnvelope, ST_Within
-from sqlalchemy import ColumnElement, Select, and_, exists, func, or_, select, union
+from sqlalchemy import ColumnElement, CompoundSelect, Select, and_, exists, func, or_, select, union
 from sqlalchemy.orm import Query as SAQuery
-from sqlalchemy.orm import aliased
+from sqlalchemy.orm import Session, aliased
 
 from app.models.approval import EventApproval
 from app.models.conflict import Conflict
@@ -27,11 +29,22 @@ from app.models.event import (
     STATUS_REQUESTED,
     Event,
     EventGeolocator,
+    EventGeolocatorDeparture,
 )
 from app.models.media import Media
 from app.models.organization import Organization
 from app.models.tag import Tag
 from app.models.user import User
+
+
+def lock_event(db: Session, event_id: uuid.UUID) -> Event:
+    """Re-read the event under ``SELECT ... FOR UPDATE``, so concurrent writes to it serialize.
+
+    ``populate_existing()`` is load-bearing: the caller usually loaded the row already, and
+    without it the locked SELECT returns the stale identity-mapped object, so a loser re-checks
+    a pre-lock ``status``.
+    """
+    return db.query(Event).filter(Event.id == event_id).populate_existing().with_for_update().one()
 
 
 def visible_events() -> tuple[ColumnElement[bool], ColumnElement[bool]]:
@@ -84,6 +97,18 @@ def credited_to(user_ids: Iterable[Any] | Select[Any]) -> ColumnElement[bool]:
     return or_(
         Event.owner_id.in_(user_ids),
         Event.geolocators.any(EventGeolocator.user_id.in_(user_ids)),
+    )
+
+
+def ever_credited_ids(event_id: uuid.UUID) -> CompoundSelect:
+    """The analysts who hold or held credit on the event: its owner, its co-geolocators and those
+    who lost credit (``event_geolocator_departures``). None of them approves it or is asked to."""
+    return union(
+        select(Event.owner_id).where(Event.id == event_id),
+        select(EventGeolocator.user_id).where(EventGeolocator.event_id == event_id),
+        select(EventGeolocatorDeparture.user_id).where(
+            EventGeolocatorDeparture.event_id == event_id
+        ),
     )
 
 

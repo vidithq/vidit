@@ -13,6 +13,7 @@ from app.cache import points_cache
 from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, STATUS_REQUESTED, Event
 from app.models.user import User
 from app.services import notifications, source_archive
+from app.services.event_filters import lock_event
 from app.services.evidence_intake import attach_evidence_and_commit, collect_media_keys
 from app.services.permissions import ensure_owner
 from app.services.storage import sweep_keys
@@ -106,10 +107,8 @@ async def geolocate(
     :class:`TooManyFilesError` (422) past the one-source cap, or a
     file-validation error.
     """
-    # ``populate_existing()`` is load-bearing: the router already loaded this
-    # row, so without it the locked SELECT reuses the stale object and the
-    # loser reads a pre-lock ``status`` and double-fulfils.
-    geo = db.query(Event).filter(Event.id == geo.id).populate_existing().with_for_update().one()
+    # The re-read under lock stops a concurrent loser from double-fulfilling.
+    geo = lock_event(db, geo.id)
     if geo.status not in (STATUS_REQUESTED, STATUS_DETECTED):
         raise EventStateError("Only requested or detected events can be geolocated")
     if geo.status == STATUS_DETECTED:

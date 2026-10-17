@@ -32,7 +32,6 @@ from app.models.event import (
     STATUS_GEOLOCATED,
     Event,
     EventGeolocator,
-    EventGeolocatorDeparture,
 )
 from app.models.organization import Organization
 from app.models.user import User
@@ -42,7 +41,7 @@ from app.schemas.organization import OrganizationRef
 from app.schemas.user import AuthorRef
 from app.services import notifications
 from app.services.admin import log_admin_event
-from app.services.event_filters import visible_events
+from app.services.event_filters import ever_credited_ids, lock_event, visible_events
 from app.services.organizations import is_organization_member
 from app.services.pagination import keyset_before
 
@@ -107,29 +106,14 @@ APPROVAL_ERROR_STATUS: dict[str, int] = {
 }
 
 
-def _lock(db: Session, event_id: uuid.UUID) -> Event:
-    return db.query(Event).filter(Event.id == event_id).populate_existing().with_for_update().one()
-
-
 def is_geolocator(db: Session, *, geo: Event, user_id: uuid.UUID) -> bool:
     """Whether ``user_id`` is credited on ``geo``: its owner or an accepted co-geolocator."""
     return geo.owner_id == user_id or db.get(EventGeolocator, (geo.id, user_id)) is not None
 
 
-def former_geolocator_ids(event_id: uuid.UUID) -> Select[tuple[uuid.UUID]]:
-    """The analysts who held credit on the event and lost it."""
-    return select(EventGeolocatorDeparture.user_id).where(
-        EventGeolocatorDeparture.event_id == event_id
-    )
-
-
 def ever_credited(db: Session, *, geo: Event, user_id: uuid.UUID) -> bool:
-    """Whether ``user_id`` holds or held credit on ``geo``: such an analyst neither approves it
-    nor is asked to approve it."""
-    return (
-        is_geolocator(db, geo=geo, user_id=user_id)
-        or db.get(EventGeolocatorDeparture, (geo.id, user_id)) is not None
-    )
+    """Whether ``user_id`` is in :func:`services.event_filters.ever_credited_ids` for ``geo``."""
+    return user_id in db.scalars(ever_credited_ids(geo.id)).all()
 
 
 def may_approve(db: Session, *, geo: Event, user: User | None) -> bool:
@@ -282,7 +266,7 @@ def approve(
     ``reapproval_refused`` when a revocation closed the version to them (:func:`closes_review`).
     A self-revoked approval stays as history beside the new row.
     """
-    geo = _lock(db, geo.id)
+    geo = lock_event(db, geo.id)
     # Mirrored by the frontend's lib/approvals.canApprove; change both.
     if geo.status != STATUS_GEOLOCATED:
         raise EventNotApprovableError("Only a published geolocation can be approved")
@@ -380,7 +364,7 @@ def revoke(
     403 ``revoke_forbidden``. 404 ``approval_not_found`` for an id that is not an approval of
     ``geo``; 409 ``already_revoked`` for one already revoked.
     """
-    geo = _lock(db, geo.id)
+    geo = lock_event(db, geo.id)
     row = (
         db.query(EventApproval)
         .options(joinedload(EventApproval.reviewer), joinedload(EventApproval.organization))

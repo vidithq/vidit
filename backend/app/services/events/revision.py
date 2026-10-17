@@ -13,6 +13,7 @@ from app.cache import points_cache
 from app.models.event import STATUS_GEOLOCATED, Event
 from app.models.user import User
 from app.services import source_archive, versions
+from app.services.event_filters import lock_event
 from app.services.evidence_intake import attach_evidence_and_commit
 from app.services.permissions import ensure_owner
 
@@ -122,9 +123,8 @@ async def save_version(
     and the shared file-validation errors.
     """
     # Same lock as ``geolocate`` and ``close``: concurrent edits take their
-    # ``version_no`` in a defined order. ``populate_existing()`` makes the
-    # re-read real, since the router already loaded this row.
-    geo = db.query(Event).filter(Event.id == geo.id).populate_existing().with_for_update().one()
+    # ``version_no`` in a defined order.
+    geo = lock_event(db, geo.id)
     ensure_owner(geo, current_user)
     if geo.status != STATUS_GEOLOCATED:
         raise EventStateError("Only a geolocated event can be edited")

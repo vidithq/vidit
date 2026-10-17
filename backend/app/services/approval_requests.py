@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session, aliased, joinedload
 from app.config import settings
 from app.models.approval import EventApproval
 from app.models.approval_request import ApprovalRequest
-from app.models.event import STATUS_GEOLOCATED, Event, EventGeolocator
+from app.models.event import STATUS_GEOLOCATED, Event
 from app.models.follow import Follow
 from app.models.organization import Organization, OrganizationMember
 from app.models.user import User
@@ -49,10 +49,9 @@ from app.services.approvals import (
     closed_organization_ids,
     closed_reviewer_ids,
     ever_credited,
-    former_geolocator_ids,
     is_geolocator,
 )
-from app.services.event_filters import visible_events
+from app.services.event_filters import ever_credited_ids, lock_event, visible_events
 from app.services.organizations import is_organization_member, live_manager_ids, live_member_ids
 
 MAX_TARGET_SUGGESTIONS = 20
@@ -211,11 +210,7 @@ def _can_act_for(geo: Event) -> ColumnElement[bool]:
     return (
         live_member_ids(Organization.id)
         .where(
-            OrganizationMember.user_id != geo.owner_id,
-            OrganizationMember.user_id.not_in(
-                select(EventGeolocator.user_id).where(EventGeolocator.event_id == geo.id)
-            ),
-            OrganizationMember.user_id.not_in(former_geolocator_ids(geo.id)),
+            OrganizationMember.user_id.not_in(ever_credited_ids(geo.id)),
         )
         .exists()
     )
@@ -223,10 +218,6 @@ def _can_act_for(geo: Event) -> ColumnElement[bool]:
 
 def _member_of(user_id: uuid.UUID):
     return select(OrganizationMember.organization_id).where(OrganizationMember.user_id == user_id)
-
-
-def _lock(db: Session, event_id: uuid.UUID) -> Event:
-    return db.query(Event).filter(Event.id == event_id).populate_existing().with_for_update().one()
 
 
 def _require_requester(db: Session, *, geo: Event, requester: User) -> None:
@@ -327,9 +318,7 @@ def _eligible_analysts(
     stmt = select(User).where(
         User.deleted_at.is_(None),
         User.is_active.is_(True),
-        User.id != geo.owner_id,
-        User.id.not_in(select(EventGeolocator.user_id).where(EventGeolocator.event_id == geo.id)),
-        User.id.not_in(former_geolocator_ids(geo.id)),
+        User.id.not_in(ever_credited_ids(geo.id)),
         User.id.not_in(closed_reviewer_ids(geo)),
         User.id.not_in(
             select(ApprovalRequest.target_user_id).where(
@@ -580,7 +569,7 @@ def request_approval(
     :data:`DECLINE_COOLDOWN` of the target declining the same request; 429 ``daily_cap_reached`` past the daily
     cap.
     """
-    geo = _lock(db, geo.id)
+    geo = lock_event(db, geo.id)
     _require_requester(db, geo=geo, requester=requester)
     if organization is not None:
         org = _check_organization_target(db, geo=geo, requester=requester, slug=organization)
@@ -625,7 +614,7 @@ def decline(db: Session, *, geo: Event, request_id: uuid.UUID, user: User) -> Ap
     404 ``approval_request_not_found`` for an id that is not such a request on ``geo``; 409
     ``already_resolved`` once it is approved, declined or withdrawn.
     """
-    geo = _lock(db, geo.id)
+    geo = lock_event(db, geo.id)
     row = (
         db.query(ApprovalRequest)
         .filter(ApprovalRequest.id == request_id, ApprovalRequest.event_id == geo.id)
