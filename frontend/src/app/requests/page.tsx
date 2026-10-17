@@ -73,12 +73,9 @@ export default function RequestsPage() {
   const buildPath = useCallback(
     (cursor: string | null) =>
       eventListPath({
+        ...values,
         view: "requested",
-        status: "requested",
-        conflict: values.conflicts,
-        captureSource: values.captureSources,
-        tag: values.tags,
-        author: values.author.trim() || undefined,
+        statuses: ["requested"],
         hasCoords: hasCoordsFilter(values.locationGuess),
         sort,
         cursor,

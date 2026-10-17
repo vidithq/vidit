@@ -1,6 +1,7 @@
 import { apiFetch } from "./api";
 import type { components, operations } from "@/lib/api-types";
 import { archiveTooLarge } from "./archive";
+import { appendEventFilterParams, type EventFilterParams } from "./search";
 import { cleanNumber, inBounds } from "./coordinates";
 import { toDatetimeLocalUTC } from "./format";
 import { proofHasImage } from "./proof";
@@ -10,7 +11,6 @@ import type {
   ArchivedLink,
   EventDetail,
   EventVersion,
-  EventStatus,
   Media,
   TagCategory,
   TweetImportOutcome,
@@ -91,17 +91,9 @@ export function detectionEditPath(id: string, inQueue = false): string {
  *  `docs/data-model.md`. */
 export type EventView = "located" | "requested";
 
-export interface EventListParams {
+/** `hasCoords` `true` keeps rows with a location (a request's guess), `false` the blind ones. */
+export interface EventListParams extends EventFilterParams {
   view?: EventView;
-  /** One status or several (repeated `?status=`, any-match). */
-  status?: EventStatus | EventStatus[];
-  /** Repeated, any-match within a list and AND across lists. */
-  conflict?: string[];
-  captureSource?: string[];
-  tag?: string[];
-  author?: string;
-  /** `true` keeps rows with a location (a request's guess), `false` the blind ones. */
-  hasCoords?: boolean;
   sort?: EventListSort;
   limit?: number;
   /** Cursor of the next page, from a `Link: rel="next"` header. */
@@ -118,16 +110,7 @@ export type EventListSort = NonNullable<
 export function eventListPath(params: EventListParams = {}): string {
   const search = new URLSearchParams();
   if (params.view) search.set("view", params.view);
-  if (params.status) {
-    for (const status of [params.status].flat()) {
-      search.append("status", status);
-    }
-  }
-  params.conflict?.forEach((name) => search.append("conflict", name));
-  params.captureSource?.forEach((name) => search.append("capture_source", name));
-  params.tag?.forEach((name) => search.append("tag", name));
-  if (params.author) search.set("author", params.author);
-  if (params.hasCoords !== undefined) search.set("has_coords", String(params.hasCoords));
+  appendEventFilterParams(search, params);
   if (params.sort) search.set("sort", params.sort);
   if (params.limit !== undefined) search.set("limit", String(params.limit));
   if (params.cursor) search.set("cursor", params.cursor);

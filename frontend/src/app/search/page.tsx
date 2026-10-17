@@ -15,9 +15,8 @@ import { CollectionCard } from "@/components/collections/CollectionCard";
 import { CollectionIcon } from "@/lib/collections";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import {
-  AUTHOR_FILTER_RE,
-  appendApprovalFilters,
-  approvalFiltersFromParams,
+  appendEventFilterParams,
+  readEventFilterParams,
   search,
   splitHighlights,
 } from "@/lib/search";
@@ -130,31 +129,15 @@ function SearchPageBody() {
   // The URL is the source of truth so shared links land in the same view; inputs bind to local
   // state so typing isn't gated on URL round-trips.
   const initialQ = searchParams.get("q") ?? "";
+  const { eventFrom, eventTo, addedFrom, addedTo, ...read } = readEventFilterParams(searchParams);
   const initialValues: EventFilterValues = {
+    ...read,
     // Only the vocabulary the panel offers: a crafted `?status=` the chips can't represent is dropped.
-    statuses: searchParams
-      .getAll("status")
-      .filter((s) => STATUS_FILTER_OPTIONS.some(([value]) => value === s)),
-    conflicts: searchParams.getAll("conflict"),
-    captureSources: searchParams.getAll("capture_source"),
-    tags: searchParams.getAll("tag"),
-    mediaTypes: searchParams.getAll("media"),
+    statuses: read.statuses.filter((s) => STATUS_FILTER_OPTIONS.some(([value]) => value === s)),
     // The search groups serve no location-guess predicate, so the panel never offers it here.
     locationGuess: [],
-    // A crafted URL can carry anything; the shared gate keeps an ineligible value from 422ing
-    // every fetch.
-    author: (() => {
-      const raw = searchParams.get("author") ?? "";
-      return AUTHOR_FILTER_RE.test(raw) ? raw : "";
-    })(),
-    ...approvalFiltersFromParams(searchParams),
   };
-  const initialDates: DateWindows = {
-    eventFrom: searchParams.get("event_date_from") ?? "",
-    eventTo: searchParams.get("event_date_to") ?? "",
-    addedFrom: searchParams.get("submitted_from") ?? "",
-    addedTo: searchParams.get("submitted_to") ?? "",
-  };
+  const initialDates: DateWindows = { eventFrom, eventTo, addedFrom, addedTo };
   const arrivedFiltered = hasAnyFilter(initialValues, initialDates);
   // A filtered link without a type (the profile's "Show more") lands on Events: filters are
   // event predicates.
@@ -285,17 +268,7 @@ function SearchPageBody() {
       const params = new URLSearchParams();
       if (queryInput) params.set("q", queryInput);
       if (typeFilter !== "all") params.set("type", typeFilter);
-      if (values.author.trim()) params.set("author", values.author.trim());
-      values.statuses.forEach((n) => params.append("status", n));
-      values.conflicts.forEach((n) => params.append("conflict", n));
-      values.captureSources.forEach((n) => params.append("capture_source", n));
-      values.tags.forEach((n) => params.append("tag", n));
-      values.mediaTypes.forEach((n) => params.append("media", n));
-      appendApprovalFilters(params, values);
-      if (dates.eventFrom) params.set("event_date_from", dates.eventFrom);
-      if (dates.eventTo) params.set("event_date_to", dates.eventTo);
-      if (dates.addedFrom) params.set("submitted_from", dates.addedFrom);
-      if (dates.addedTo) params.set("submitted_to", dates.addedTo);
+      appendEventFilterParams(params, { ...values, ...dates });
       const qs = params.toString();
       router.replace(qs ? `/search?${qs}` : "/search");
     },
@@ -318,22 +291,7 @@ function SearchPageBody() {
     const requestId = ++latestRequestId.current;
     setLoading(true);
     setError(null);
-    search({
-      q,
-      type: typeFilter,
-      author: v.author.trim() || undefined,
-      status: v.statuses,
-      conflict: v.conflicts,
-      captureSource: v.captureSources,
-      tag: v.tags,
-      media: v.mediaTypes,
-      approved: v.approved,
-      approvedBy: v.approvedBy,
-      eventDateFrom: d.eventFrom || undefined,
-      eventDateTo: d.eventTo || undefined,
-      submittedFrom: d.addedFrom || undefined,
-      submittedTo: d.addedTo || undefined,
-    })
+    search({ q, type: typeFilter, ...v, ...d })
       .then((response) => {
         // Stale response (a newer request started): drop it.
         if (requestId !== latestRequestId.current) return;

@@ -6,46 +6,18 @@ import type {
   SearchType,
 } from "@/types";
 
-/** `GET /search`. Debouncing is the caller's job; the endpoint short-circuits empty queries. */
-export function search(opts: {
-  q: string;
-  type?: SearchType;
-  limit?: number;
-  /** The standard event filter set (as /events and /events/points); scopes the two event
-   *  groups and empties the users group. With an empty `q` and any filter the backend browses
-   *  the filtered view (the profile's "Show more"). */
-  author?: string;
-  status?: string[];
-  conflict?: string[];
-  captureSource?: string[];
-  tag?: string[];
-  media?: string[];
-  eventDateFrom?: string;
-  eventDateTo?: string;
-  submittedFrom?: string;
-  submittedTo?: string;
-  approved?: boolean;
-  approvedBy?: Account | null;
-}): Promise<SearchResponse> {
+/** `GET /search`. Debouncing is the caller's job; the endpoint short-circuits empty queries. The
+ *  event filters scope the two event groups and empty the users group. With an empty `q` and any
+ *  filter the backend browses the filtered view (the profile's "Show more"). */
+export function search(
+  opts: { q: string; type?: SearchType; limit?: number } & EventFilterParams,
+): Promise<SearchResponse> {
   const params = new URLSearchParams({
     q: opts.q,
     type: opts.type ?? "all",
     limit: String(opts.limit ?? 20),
   });
-  if (opts.author) params.set("author", opts.author);
-  opts.status?.forEach((n) => params.append("status", n));
-  opts.conflict?.forEach((n) => params.append("conflict", n));
-  opts.captureSource?.forEach((n) => params.append("capture_source", n));
-  opts.tag?.forEach((n) => params.append("tag", n));
-  opts.media?.forEach((n) => params.append("media", n));
-  if (opts.eventDateFrom) params.set("event_date_from", opts.eventDateFrom);
-  if (opts.eventDateTo) params.set("event_date_to", opts.eventDateTo);
-  if (opts.submittedFrom) params.set("submitted_from", opts.submittedFrom);
-  if (opts.submittedTo) params.set("submitted_to", opts.submittedTo);
-  appendApprovalFilters(params, {
-    approved: !!opts.approved,
-    approvedBy: opts.approvedBy ?? null,
-  });
+  appendEventFilterParams(params, opts);
   return apiFetch<SearchResponse>(`/search?${params.toString()}`);
 }
 
@@ -55,27 +27,74 @@ export interface ApprovalFilters {
   approvedBy: Account | null;
 }
 
-/** Set the approval filter keys of `services/event_filters.approval_predicates`: `approved`, and
- *  `approved_by` (a username) or `approved_by_org` (a slug) for the picked account. The search
- *  page's URL and every listing request share the keys. */
-export function appendApprovalFilters(params: URLSearchParams, filters: ApprovalFilters): void {
-  if (filters.approved) params.set("approved", "true");
-  const by = filters.approvedBy;
-  if (by?.kind === "analyst") params.set("approved_by", by.username);
-  else if (by) params.set("approved_by_org", by.slug);
+/** The event filter set of `services/event_filters`, shared by `GET /events`, `/events/points`,
+ *  `/feed` and `/search`. A surface passes the fields it offers; an empty field sets no key. The
+ *  date fields are the `DateWindows` names, so a surface spreads its windows in. */
+export interface EventFilterParams extends Partial<ApprovalFilters> {
+  statuses?: string[];
+  conflicts?: string[];
+  captureSources?: string[];
+  tags?: string[];
+  mediaTypes?: string[];
+  author?: string;
+  hasCoords?: boolean;
+  eventFrom?: string;
+  eventTo?: string;
+  addedFrom?: string;
+  addedTo?: string;
 }
 
-/** Read the approval filter keys back from a URL. A name the `AUTHOR_FILTER_RE` gate refuses is
- *  dropped, and an organization read from a slug carries the slug as its name. */
-export function approvalFiltersFromParams(params: {
+/** Set the event filter keys on a request, or on the search page's URL. A list repeats its key
+ *  (any-match within a list, AND across lists). An author the `AUTHOR_FILTER_RE` gate refuses is
+ *  dropped rather than sent to a 422. The approval keys are those of
+ *  `services/event_filters.approval_predicates`: `approved_by` names an analyst, `approved_by_org`
+ *  an organization. */
+export function appendEventFilterParams(params: URLSearchParams, f: EventFilterParams): void {
+  f.statuses?.forEach((v) => params.append("status", v));
+  f.conflicts?.forEach((v) => params.append("conflict", v));
+  f.captureSources?.forEach((v) => params.append("capture_source", v));
+  f.tags?.forEach((v) => params.append("tag", v));
+  f.mediaTypes?.forEach((v) => params.append("media", v));
+  const author = f.author?.trim();
+  if (author && AUTHOR_FILTER_RE.test(author)) params.set("author", author);
+  if (f.hasCoords !== undefined) params.set("has_coords", String(f.hasCoords));
+  if (f.approved) params.set("approved", "true");
+  const by = f.approvedBy;
+  if (by?.kind === "analyst") params.set("approved_by", by.username);
+  else if (by) params.set("approved_by_org", by.slug);
+  if (f.eventFrom) params.set("event_date_from", f.eventFrom);
+  if (f.eventTo) params.set("event_date_to", f.eventTo);
+  if (f.addedFrom) params.set("submitted_from", f.addedFrom);
+  if (f.addedTo) params.set("submitted_to", f.addedTo);
+}
+
+/** Read the event filter keys back from a URL, the inverse of `appendEventFilterParams`. A name the
+ *  `AUTHOR_FILTER_RE` gate refuses is dropped, so a crafted URL cannot 422 every fetch, and an
+ *  organization read from a slug carries the slug as its name. */
+export function readEventFilterParams(params: {
   get(name: string): string | null;
-}): ApprovalFilters {
+  getAll(name: string): string[];
+}): Required<Omit<EventFilterParams, "hasCoords" | "approvedBy">> & ApprovalFilters {
+  const author = params.get("author") ?? "";
   const username = params.get("approved_by") ?? "";
   const slug = params.get("approved_by_org") ?? "";
   let approvedBy: Account | null = null;
   if (AUTHOR_FILTER_RE.test(username)) approvedBy = { kind: "analyst", username };
   else if (AUTHOR_FILTER_RE.test(slug)) approvedBy = { kind: "organization", slug, name: slug };
-  return { approved: params.get("approved") === "true", approvedBy };
+  return {
+    statuses: params.getAll("status"),
+    conflicts: params.getAll("conflict"),
+    captureSources: params.getAll("capture_source"),
+    tags: params.getAll("tag"),
+    mediaTypes: params.getAll("media"),
+    author: AUTHOR_FILTER_RE.test(author) ? author : "",
+    approved: params.get("approved") === "true",
+    approvedBy,
+    eventFrom: params.get("event_date_from") ?? "",
+    eventTo: params.get("event_date_to") ?? "",
+    addedFrom: params.get("submitted_from") ?? "",
+    addedTo: params.get("submitted_to") ?? "",
+  };
 }
 
 // Per group: the picker shows a short list, the rest is a longer query away.

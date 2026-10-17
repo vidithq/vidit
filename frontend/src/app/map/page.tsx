@@ -6,7 +6,7 @@ import { filterPointsByStatus } from "@/types";
 import type { Conflict, MapPoint, EventDetail, Tag } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { apiFetch } from "@/lib/api";
-import { AUTHOR_FILTER_RE, appendApprovalFilters } from "@/lib/search";
+import { appendEventFilterParams } from "@/lib/search";
 import {
   VIEWPORT_DEBOUNCE_MS,
   boundsContain,
@@ -58,15 +58,12 @@ export default function HomePage() {
     const params = new URLSearchParams();
     // Required: the endpoint 422s without it, and the viewport bounds the payload.
     params.set("bbox", bbox);
-    // OR within a bucket, AND across buckets (`routers/events::_apply_filters`).
-    filters.conflicts.forEach((c) => params.append("conflict", c));
-    filters.captureSources.forEach((s) => params.append("capture_source", s));
-    filters.tags.forEach((t) => params.append("tag", t));
-    filters.mediaTypes.forEach((m) => params.append("media", m));
-    // The shared gate keeps a stale ineligible Author value from 422ing the fetch.
-    const cleanAuthor = filters.author.trim();
-    if (AUTHOR_FILTER_RE.test(cleanAuthor)) params.set("author", cleanAuthor);
-    appendApprovalFilters(params, {
+    appendEventFilterParams(params, {
+      conflicts: filters.conflicts,
+      captureSources: filters.captureSources,
+      tags: filters.tags,
+      mediaTypes: filters.mediaTypes,
+      author: filters.author,
       approved: filters.approved,
       approvedBy: filters.approvedBy,
     });
