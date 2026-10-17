@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
 
@@ -15,12 +15,15 @@ export function PageWithRail({
   rail,
   railLabel,
   narrow = "stacked",
+  topOffset = 0,
   children,
 }: {
   rail?: ReactNode;
   /** Accessible name of the rail's `aside` landmark. */
   railLabel?: string;
   narrow?: "stacked" | "hidden";
+  /** Height in px of a sticky header above the rail, which the rail sticks under. */
+  topOffset?: number;
   children: ReactNode;
 }) {
   return (
@@ -33,8 +36,9 @@ export function PageWithRail({
       {rail && (
         <aside
           aria-label={railLabel}
+          style={{ "--rail-top": `${topOffset}px` } as CSSProperties}
           className={cn(
-            "min-w-0 lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1 lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto",
+            "min-w-0 lg:sticky lg:top-[calc(var(--rail-top)+1.5rem)] lg:col-start-2 lg:row-start-1 lg:max-h-[calc(100dvh-var(--rail-top)-3rem)] lg:overflow-y-auto",
             narrow === "hidden" && "max-lg:hidden",
           )}
         >

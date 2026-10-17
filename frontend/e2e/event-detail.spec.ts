@@ -94,4 +94,31 @@ test.describe("shared event link", () => {
     );
     await expectNarrowViewportLayout(page, stamps.getByRole("button", { name: /^Approved by/ }).last());
   });
+
+  test("keeps the header on screen above the rail once the page scrolls", async ({ page }) => {
+    await page.setViewportSize({ width: 1512, height: 900 });
+    await mockApi(page);
+    await page.goto(`/events/${EVENT_ID}`);
+
+    const header = page.locator("header").filter({ has: page.getByRole("heading", { level: 1 }) });
+    const rail = page.getByRole("complementary", { name: "Approvals" });
+    await expect(rail).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+
+    const headerBox = (await header.boundingBox())!;
+    expect(headerBox.y).toBe(0);
+    await expect(header.getByRole("button", { name: "Share", exact: true })).toBeInViewport();
+    expect((await rail.boundingBox())!.y).toBeGreaterThanOrEqual(headerBox.y + headerBox.height);
+  });
+
+  test("lets the header scroll away under the phone chip", async ({ page }) => {
+    await mockApi(page);
+    await page.goto(`/events/${EVENT_ID}`);
+
+    const title = page.getByRole("heading", { level: 1 });
+    await expect(title).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect(title).not.toBeInViewport();
+  });
 });
