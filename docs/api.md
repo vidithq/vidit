@@ -116,7 +116,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/events/{id}/geolocators/{username}` | 🔒 | Remove a co-geolocator (owner), or leave as one |
 | GET | `/events/{id}/approvals` | 🌐 | The approvals of one version (the live one by default), of every version (`all_versions=true`), or one analyst's across versions |
 | POST | `/events/{id}/approvals` | 🔒 | Approve the live version of a published event you are not credited on, as yourself or for an organization you manage |
-| POST | `/events/{id}/approvals/{approval_id}/revoke` | 🔒 | Revoke an approval, with an optional public reason: your own, your organization's as its org manager, or any as a site admin |
+| POST | `/events/{id}/approvals/{approval_id}/revoke` | 🔒 | Revoke an approval, with an optional public reason: your own, your organization's as one of its members, or any as a site admin |
 | GET | `/events/{id}/approval-requests` | 🔒 | Open approval requests: all for the event's geolocators, yours and your organizations' otherwise |
 | GET | `/events/{id}/approval-request-targets` | 🔒 | The analysts and organizations you can ask to approve the event now, geolocators only |
 | POST | `/events/{id}/approval-requests` | 🔒 | Ask an analyst or an organization to approve a published event you geolocated |
@@ -167,7 +167,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/organizations/{slug}` | 🌐 | An organization's public profile |
 | GET | `/organizations/{slug}/members` | 🌐 | Its members, org managers first |
 | GET | `/organizations/{slug}/approvals` | 🌐 | The approvals placed in its name, newest first |
-| GET | `/organizations/{slug}/approval-requests` | 🔒 | The open approval requests addressed to it (managers) |
+| GET | `/organizations/{slug}/approval-requests` | 🔒 | The open approval requests addressed to it (members) |
 | PATCH | `/organizations/{slug}` | 🔒 | Edit its bio, links and approval request audience (managers) |
 | PUT/DELETE | `/organizations/{slug}/avatar` | 🔒 | Replace or drop its picture (managers) |
 | GET | `/organizations/{slug}/invites` | 🔒 | Pending invites (managers) |
@@ -1142,7 +1142,7 @@ Correct a published event. Owner only, and only while `geolocated`. The write fi
 
 **Archived copies.** `source_snapshot_url`, `detected_from_snapshot_url` and `secondary_snapshot_urls` archive a link without changing it. Each lands in the version this call produces, and a save whose only change is a copy files a version like any other. `detected_from_snapshot_url` on a row with no provenance link is `original_url_not_on_event`. See [`archival.md`](archival.md).
 
-**Approvals.** The new version ends every current [approval](#approvals) of the event, and the same transaction writes a `re_approve_requested` notification for each analyst whose approval stood and for each live org manager of an organization whose approval stood.
+**Approvals.** The new version ends every current [approval](#approvals) of the event, and the same transaction writes a `re_approve_requested` notification for each analyst whose approval stood and for each live member of an organization whose approval stood.
 
 Rules specific to this path:
 
@@ -1458,7 +1458,7 @@ flowchart LR
   version_no: the version you read
   organization: the slug you approve for`"]:::spec
   revokeep["`**POST /events/{id}/approvals/{approval_id}/revoke**
-  the reviewer, an org manager or a site admin`"]:::spec
+  the reviewer, a member of the organization or a site admin`"]:::spec
   edit["`**POST /events/{id}/versions**
   any saved version, archive-only included`"]:::spec
   accept["`**POST /events/{id}/geolocator-invites/accept**`"]:::spec
@@ -1476,7 +1476,7 @@ flowchart LR
   revoked["`**approval_revoked**
   to the owner`"]:::shared
   again["`**re_approve_requested**
-  to each reviewer, and each org manager of an organization, whose approval stood`"]:::shared
+  to each reviewer, and each member of an organization, whose approval stood`"]:::shared
 
   approve --> place --> rows
   place --> received
@@ -1489,10 +1489,10 @@ flowchart LR
 An approval is a dated attestation that one version of a published event holds. It binds to the pair `(event_id, version_no)` and is **current** while that version is the event's live version and nobody revoked it. Saving a new version ends every current approval of the event without changing its row, an archive-only save included. The approval stays readable on the version it covered, and the live version shows none until someone approves it again.
 
 - **Who approves.** Any signed-in analyst except the event's current and former geolocators: its owner, every analyst credited through [shared credit](#shared-credit), and every analyst who left the credit or was removed from it. The analyst who opened a fulfilled request is not a geolocator, so they may approve it. A closed event takes no new approval and keeps the ones it has.
-- **Organization approvals.** An org manager of an [organization](#organizations) approves in its name by sending the organization's slug. The approval records the org manager as its `reviewer`. An org manager who is or was a geolocator of the event cannot approve it for any organization. A member who is not an org manager cannot approve in the organization's name.
+- **Organization approvals.** Any member of an [organization](#organizations), whatever their role, approves in its name by sending the organization's slug. The approval records the member as its `reviewer`. A member who is or was a geolocator of the event cannot approve it for any organization. An analyst outside the organization cannot approve in its name. A member who leaves or is removed leaves the organization's past approvals as they are.
 - **One standing approval per analyst and version.** An analyst holds at most one standing approval of a version. After revoking their own approval, the reviewer can approve the version again, and the revoked row stays as history beside the new one. A revocation by a site admin, or the one written when the reviewer joined the geolocators, closes the version to them (409 `reapproval_refused`). An organization holds one standing approval per version: after an org manager revokes it, an org manager can approve that version again; after a site admin revokes it, the organization cannot. An analyst's own approval and the one they place for an organization are separate.
-- **Re-approval.** Each new version writes a `re_approve_requested` [notification](#notifications) for every analyst whose approval of the superseded version stood, and for every live org manager of an organization whose approval of it stood, with the organization on the row. A revoked approval asks nothing.
-- **Revocation.** The reviewer revokes their own approval. An org manager of the organization revokes any approval placed in its name; a reviewer who is no longer an org manager of it cannot. A site admin revokes any approval, which writes an `approval_revoked` audit row. The reason is optional and public. A revoked approval keeps its row, its version and its reason, and `revoked_as` names the role that revoked it, never the person. The owner receives an `approval_revoked` [notification](#notifications), and the `approval_received` notifications of that approval leave every feed.
+- **Re-approval.** Each new version writes a `re_approve_requested` [notification](#notifications) for every analyst whose approval of the superseded version stood, and for every live member of an organization whose approval of it stood, with the organization on the row. A revoked approval asks nothing.
+- **Revocation.** The reviewer revokes their own approval. Any member of the organization revokes any approval placed in its name, and the organization can approve the version again afterwards; a reviewer who left the organization cannot revoke it. Only a site admin's revocation closes the version to the organization. A site admin revokes any approval, which writes an `approval_revoked` audit row. The reason is optional and public. A revoked approval keeps its row, its version and its reason, and `revoked_as` names the role that revoked it, never the person. The owner receives an `approval_revoked` [notification](#notifications), and the `approval_received` notifications of that approval leave every feed.
 - **Joining the geolocators.** Accepting a [co-geolocator invitation](#post-eventsidgeolocator-invitesaccept) revokes every standing approval the invitee gave the event, on every version and for every organization, with the reason "Joined the geolocators of this event".
 
 Every write locks the event row first, so an approval, a revocation and a new version on the same event serialize.
@@ -1517,13 +1517,13 @@ Every write locks the event row first, so an approval, a revocation and a new ve
 | Field | Meaning |
 |---|---|
 | `verdict` | Always `approve` |
-| `reviewer` | The analyst who approved; for an organization's approval, the org manager who placed it, or `null` once that account is soft-deleted or erased, since the approval stays the organization's |
+| `reviewer` | The analyst who approved; for an organization's approval, the member who placed it, or `null` once that account is soft-deleted or erased, since the approval stays the organization's |
 | `organization` | The organization the approval speaks for, `null` for an analyst's own approval |
 | `note` | The reviewer's optional note, at most 280 characters; `null` when none was left |
 | `current` | `true` while `version_no` is the live version of a `geolocated` event and the approval is not revoked; a closed event keeps its approvals, none current |
 | `revoked_at` | `null` until the approval is revoked, then when |
 | `revoke_reason` | The public reason given at revocation; `null` when none was given, and always `null` on an approval that is not revoked |
-| `revoked_as` | `null` until revoked, then the role that revoked it: `reviewer`, `organization_manager` or `site_admin` |
+| `revoked_as` | `null` until revoked, then the role that revoked it: `reviewer`, `organization_member` (another member of the organization) or `site_admin` |
 
 ### `GET /events/{id}/approvals`
 
@@ -1558,14 +1558,14 @@ The approvals of the event, revoked ones included, ordered by version and then o
 
 Approve the live version of a published event, as yourself or for an organization you manage.
 
-**Body:** `{ "version_no": 2, "note": "Skyline and road junction match.", "organization": "open-source-watch" }`. `version_no` is the version you read. `note` is optional, at most 280 characters; a blank note is stored as `null`. `organization` is optional: the slug of the organization you approve for as its org manager.
+**Body:** `{ "version_no": 2, "note": "Skyline and road junction match.", "organization": "open-source-watch" }`. `version_no` is the version you read. `note` is optional, at most 280 characters; a blank note is stored as `null`. `organization` is optional: the slug of an organization you are a member of, to approve in its name.
 
 **Response 201:** the new approval. It resolves every open [approval request](#approval-requests) its target received for the event: you, or the organization. The owner, and each geolocator whose request it resolves, receives an `approval_received` notification, with the organization on the row for an organization's approval.
 
 **Errors:**
 | Code | Case |
 |------|------|
-| 403 | `geolocator_cannot_approve`: you are or were a geolocator of the event. `not_organization_manager`: you are not an org manager of `organization` |
+| 403 | `geolocator_cannot_approve`: you are or were a geolocator of the event. `not_organization_member`: you are not a member of `organization` |
 | 404 | `organization_not_found`: no organization has that slug. Also an unknown, soft-deleted or withheld event |
 | 409 | `invalid_state`: the event is not `geolocated`. `version_mismatch`: `version_no` is not the live version; reload the event. `already_approved`: your approval of this version, or the organization's, stands. `reapproval_refused`: a site admin revoked that approval of this version, or it was revoked when you joined the geolocators |
 | 422 | `version_no` missing or below 1, or `note` over 280 characters |
@@ -1574,7 +1574,7 @@ Approve the live version of a published event, as yourself or for an organizatio
 
 ### `POST /events/{id}/approvals/{approval_id}/revoke` 🔒
 
-Revoke an approval of the event. The reviewer revokes their own; an org manager revokes any approval placed for their organization; a site admin revokes any, on a withheld event too, which answers 404 to everyone else.
+Revoke an approval of the event. The reviewer revokes their own; a member revokes any approval placed for their organization; a site admin revokes any, on a withheld event too, which answers 404 to everyone else.
 
 **Body (optional):** `{ "reason": "The shadows point the other way." }`. The body and `reason` are optional; `reason` is at most 2000 characters, surrounding whitespace is stripped, and a blank reason is stored as `null`. A reason is public.
 
@@ -1583,7 +1583,7 @@ Revoke an approval of the event. The reviewer revokes their own; an org manager 
 **Errors:**
 | Code | Case |
 |------|------|
-| 403 | `revoke_forbidden`: you are not the reviewer, not an org manager of the organization the approval speaks for, and not a site admin |
+| 403 | `revoke_forbidden`: you are not the reviewer, not a member of the organization the approval speaks for, and not a site admin |
 | 404 | `approval_not_found`: no approval with that id on this event. Also an unknown, soft-deleted or withheld event |
 | 409 | `already_revoked` |
 | 422 | `reason` over 2000 characters |
@@ -1613,9 +1613,9 @@ flowchart LR
   targets["`**GET /events/{id}/approval-request-targets**
   the picker`"]:::spec
   approve["`**POST /events/{id}/approvals**
-  by the analyst asked, or an org manager for the organization`"]:::spec
+  by the analyst asked, or a member for the organization`"]:::spec
   declineep["`**POST /events/{id}/approval-requests/{request_id}/decline**
-  the analyst asked, or any org manager`"]:::spec
+  the analyst asked, or any member`"]:::spec
   audience[("`**user_preferences.approval_request_audience**
   **organizations.approval_request_audience**
   following, everyone or nobody`")]:::store
@@ -1629,7 +1629,7 @@ flowchart LR
   rows[("`**approval_requests**
   open, approved, declined or withdrawn`")]:::store
   received["`**approval_request_received**
-  to the analyst asked, or every org manager`"]:::shared
+  to the analyst asked, or every member`"]:::shared
   approved["`**approval_received**
   to the owner and each requester`"]:::shared
   declined["`**approval_request_declined**
@@ -1646,10 +1646,10 @@ flowchart LR
   decline --> declined
 ```
 
-A geolocator of a published event asks an analyst or an [organization](#organizations) to approve its live version. The request lands in the notifications of the analyst, or of every live org manager of the organization, and stays open until the target approves the event or declines the request.
+A geolocator of a published event asks an analyst or an [organization](#organizations) to approve its live version. The request lands in the notifications of the analyst, or of every live member of the organization, and stays open until the target approves the event or declines the request.
 
 - **Who asks.** A geolocator of the event: its owner or an accepted co-geolocator. The event must be `geolocated`.
-- **Who is asked.** An analyst who can approve the event: not one of its current or former geolocators, whose approval of the live version does not stand and was not revoked by someone else. An organization with a live org manager outside the event's current and former geolocators, whose approval of the live version does not stand and was not revoked by a site admin.
+- **Who is asked.** An analyst who can approve the event: not one of its current or former geolocators, whose approval of the live version does not stand and was not revoked by someone else. An organization with a live member outside the event's current and former geolocators, whose approval of the live version does not stand and was not revoked by a site admin.
 - **The audience.** The analyst asked decides who may send them requests, with `approval_request_audience` in [`PATCH /users/me/preferences`](#patch-usersmepreferences). `following`, the default, admits the analysts they follow; following them does not count. `everyone` admits any signed-in analyst. `nobody` admits no one. An organization's org managers set the same value for the organization with [`PATCH /organizations/{slug}`](#patch-organizationsslug), where `following` admits an analyst whom any live org manager follows. A refused request returns 403 `requests_not_accepted` with one message for every audience, so the refusal never tells you which rule the target chose.
 - **Limits.** One open request per requester, target and event. After the target declines, the same requester cannot ask the same target about the same event for 7 days (409 `recently_declined`). A requester sends at most `APPROVAL_REQUEST_DAILY_CAP` requests (default 20) in a trailing 24 hours, resolved ones included, so declining and asking again does not lift the cap.
 - **Resolution.** An approval of the event, on any version, resolves every open request its target received for the event: an analyst's own approval resolves the requests to that analyst, and an organization's approval the requests to the organization. Each requester receives an `approval_received` notification. The analyst asked, or any org manager of the organization asked, declines the request, and the requester receives a `approval_request_declined` notification naming the org manager and the organization. Accepting a [co-geolocator invitation](#post-eventsidgeolocator-invitesaccept) deletes the open requests addressed to the new geolocator.
@@ -1680,7 +1680,7 @@ Every write locks the event row first, so a request, a decline and an approval o
 
 ### `GET /events/{id}/approval-requests` 🔒
 
-The open approval requests on the event, oldest first. A geolocator of the event sees every one; anyone else sees those addressed to them or to an organization they are an org manager of. A request whose requester or analyst asked is soft-deleted is left out.
+The open approval requests on the event, oldest first. A geolocator of the event sees every one; anyone else sees those addressed to them or to an organization they are a member of. A request whose requester or analyst asked is soft-deleted is left out.
 
 **Response 200:** a list of approval request shapes.
 
@@ -1714,12 +1714,12 @@ Ask an analyst or an organization to approve the live version of the event.
 
 **Body:** `{ "username": "bo" }` for an analyst, or `{ "organization": "open-source-watch" }` for an organization. Exactly one of the two; both or neither is a 422.
 
-**Response 201:** the new request. The analyst asked, or every live org manager of the organization asked, receives a `approval_request_received` notification, with the organization on the row.
+**Response 201:** the new request. The analyst asked, or every live member of the organization asked, receives a `approval_request_received` notification, with the organization on the row. Each email counts toward the requester's per-actor daily email cap, so a request to a large organization reaches the remaining members through the feed and push alone once the cap is reached.
 
 **Errors:**
 | Code | Case |
 |------|------|
-| 403 | `not_a_geolocator`: you are not a geolocator of the event. `target_is_geolocator`: the analyst is a geolocator of the event, or every live org manager of the organization is. `requests_not_accepted`: the target's audience does not admit you |
+| 403 | `not_a_geolocator`: you are not a geolocator of the event. `target_is_geolocator`: the analyst is a geolocator of the event, or every live member of the organization is. `requests_not_accepted`: the target's audience does not admit you |
 | 404 | `user_not_found`: no live analyst with that username. `organization_not_found`: no organization has that slug. Also an unknown, soft-deleted or withheld event |
 | 409 | `invalid_state`: the event is not `geolocated`. `already_approved`: the analyst's or the organization's approval of the live version stands, or a revocation by someone else closed the version to them. `already_requested`: you have an open request to this target on this event. `recently_declined`: this target declined your request on this event less than 7 days ago |
 | 429 | `daily_cap_reached`: you sent the daily cap of requests |
@@ -1728,14 +1728,14 @@ Ask an analyst or an organization to approve the live version of the event.
 
 ### `POST /events/{id}/approval-requests/{request_id}/decline` 🔒
 
-Decline an approval request addressed to you, or to an organization you are an org manager of.
+Decline an approval request addressed to you, or to an organization you are a member of.
 
 **Response 200:** the declined request. The requester receives a `approval_request_declined` notification.
 
 **Errors:**
 | Code | Case |
 |------|------|
-| 404 | `approval_request_not_found`: no request with that id on this event addressed to you or to an organization you are an org manager of. Also an unknown, soft-deleted or withheld event |
+| 404 | `approval_request_not_found`: no request with that id on this event addressed to you or to an organization you are a member of. Also an unknown, soft-deleted or withheld event |
 | 409 | `already_resolved`: the request is already approved or declined |
 
 ---
@@ -2634,11 +2634,11 @@ When your push switch for the kind is on and you registered at least one device,
 | `organization_invite` | An org manager invites you to an [organization](#organizations) | the org manager | null | the organization |
 | `organization_invite_accepted` | An analyst accepts your organization invite | the new member | null | the organization |
 | `organization_manager_inherited` | You become org manager because the last one's account was removed | null | null | the organization |
-| `re_approve_requested` | The owner saves a new version of an event whose superseded version you, or an organization you are an org manager of, approved; an org manager who holds or held credit on the event is not asked | the owner | the event | the organization, or null for your own approval |
+| `re_approve_requested` | The owner saves a new version of an event whose superseded version you, or an organization you are a member of, approved; a member who holds or held credit on the event is not asked | the owner | the event | the organization, or null for your own approval |
 | `approval_received` | An analyst approves your event, or an event whose review you requested, as themselves or for an organization; hidden once that approval is revoked | the reviewer | the event | the organization, or null |
 | `approval_revoked` | An approval of your event is revoked through [`POST /events/{id}/approvals/{approval_id}/revoke`](#post-eventsidapprovalsapproval_idrevoke); email and push are off by default | the approval's reviewer, or null on an organization's approval whose reviewer's account is erased | the event | the organization, or null |
-| `approval_request_received` | A geolocator asks you, or an organization you are an org manager of, to approve their event; an org manager who holds or held credit on the event is not asked | the requester | the event | the organization asked, or null |
-| `approval_request_declined` | The analyst or the organization you asked declines to approve your event | the analyst asked, or the org manager who declined | the event | the organization asked, or null |
+| `approval_request_received` | A geolocator asks you, or an organization you are a member of, to approve their event; a member who holds or held credit on the event is not asked | the requester | the event | the organization asked, or null |
+| `approval_request_declined` | The analyst or the organization you asked declines to approve your event | the analyst asked, or the member who declined | the event | the organization asked, or null |
 | `organization_approval_removed` | A site admin deletes an organization whose standing approval your event held; one row per event | null | the event | null; `organization_name` names it |
 
 A declined or withdrawn organization invite writes no row. `organization` is `{ "slug", "name", "avatar_url" }`. `organization_name` is set on an `organization_approval_removed` row only, since the organization it names no longer exists.
@@ -2673,7 +2673,7 @@ Your notifications, newest first. Cursor-paged; [Pagination](#pagination) gives 
 
 `invite_pending` is `true` on the newest `co_geolocator_invite` row of an event whose invitation still waits for your answer, and `false` on every other row, an older invitation row of the same event included. The feed page shows the accept and decline controls on that row.
 
-`reapprove_version` is set on a `re_approve_requested` row, and on a `approval_request_received` row whose request is open, when you can approve the event now: it is `geolocated`, you are not one of its current or former geolocators, and you have not reviewed its live version. On a row that names an organization, the approval is the organization's: you must still be its org manager, and its approval of the live version must not stand. It holds the live version number. The feed page offers no approve control: approving happens on the event page with [`POST /events/{id}/approvals`](#post-eventsidapprovals). It is `null` on every other row.
+`reapprove_version` is set on a `re_approve_requested` row, and on a `approval_request_received` row whose request is open, when you can approve the event now: it is `geolocated`, you are not one of its current or former geolocators, and you have not reviewed its live version. On a row that names an organization, the approval is the organization's: you must still be one of its members, and its approval of the live version must not stand. It holds the live version number. The feed page offers no approve control: approving happens on the event page with [`POST /events/{id}/approvals`](#post-eventsidapprovals). It is `null` on every other row.
 
 `approved_version` is set beside `reapprove_version` on a `re_approve_requested` row: the latest earlier version your unrevoked approval stands on, or the organization's on a row that names one, or `null` when none does. The event page's Approvals card lists the fields that changed between that version and the live event.
 
@@ -2780,8 +2780,8 @@ flowchart LR
 An organization is a collective with its own public profile. [`data-model.md`](data-model.md#organizations) describes the storage. On the wire:
 
 - **Creation:** a site admin creates each organization and names its first org manager, who joins without an invite.
-- **Roles:** `manager` (an org manager) and `member`. The role gates acting in the organization's name: placing and revoking its [approvals](#approvals) and answering its [approval requests](#approval-requests).
-- **Approvals and approval requests:** the organization page lists the approvals placed in its name ([`GET /organizations/{slug}/approvals`](#get-organizationsslugapprovals)) and, for managers, the open approval requests addressed to it ([`GET /organizations/{slug}/approval-requests`](#get-organizationsslugapproval-requests) 🔒). Its org managers choose who may send it a request with `approval_request_audience`.
+- **Roles:** `manager` (an org manager) and `member`. The role gates the membership powers: inviting, removing and promoting members, and setting the approval request audience. Every member, whatever the role, acts in the organization's name: placing and revoking its [approvals](#approvals) and answering its [approval requests](#approval-requests).
+- **Approvals and approval requests:** the organization page lists the approvals placed in its name ([`GET /organizations/{slug}/approvals`](#get-organizationsslugapprovals)) and, for its members, the open approval requests addressed to it ([`GET /organizations/{slug}/approval-requests`](#get-organizationsslugapproval-requests) 🔒). Its org managers choose who may send it a request with `approval_request_audience`.
 - **Managers:** an org manager manages their organization: profile edit, pending invites, role changes and removals. A site admin manages any organization the same way. Only an org manager invites.
 - **Entry:** by invitation only. An org manager invites an analyst who follows them and whom they follow, and the invitee accepts or declines.
 - **Leaving:** a member leaves with `DELETE /organizations/{slug}/members/{their username}`. The last live org manager can neither leave, be removed, nor be demoted: promote another member first.
@@ -2797,6 +2797,7 @@ Organization errors use the typed envelope:
 | `member_not_found` | 404 | The analyst is not a member |
 | `invite_not_found` | 404 | No pending invite matches |
 | `not_organization_manager` | 403 | The caller is not an org manager (or, where allowed, a site admin) |
+| `not_organization_member` | 403 | The caller is not a member of the organization (or, where allowed, a site admin) |
 | `not_mutual_follow` | 403 | The invitee and the inviting org manager do not follow each other |
 | `already_member` | 409 | The invitee already belongs to the organization |
 | `already_invited` | 409 | The invitee already holds a pending invite |
@@ -2849,7 +2850,7 @@ The approvals placed in the organization's name, newest first, revoked ones incl
 
 ### `GET /organizations/{slug}/approval-requests` 🔒
 
-The open [approval requests](#approval-requests) addressed to the organization, oldest first, on events a public reader can see. Managers only.
+The open [approval requests](#approval-requests) addressed to the organization, oldest first, on events a public reader can see. Members and site admins only; anyone else receives 403 `not_organization_member`.
 
 **Response 200:** a list of `{ "event": { "id", "title" }, "request": ApprovalRequestRead }`, with the [approval request shape](#approval-requests).
 

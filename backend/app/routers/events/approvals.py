@@ -67,7 +67,7 @@ def approve_event(
     db: Session = Depends(get_db),
 ) -> ApprovalRead:
     """Approve the live version of a published geolocation you are not credited on, as
-    yourself or, as its org manager, for an organization."""
+    yourself or, as one of its members, for an organization."""
     geo = resolve_live_event(db, geolocation_id)
     try:
         organization = (
@@ -98,7 +98,7 @@ def revoke_approval(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ApprovalRead:
-    """Revoke an approval: your own, your organization's as its org manager, or any as a site
+    """Revoke an approval: your own, your organization's as one of its members, or any as a site
     admin."""
     geo = resolve_readable_event(db, geolocation_id, current_user)
     try:

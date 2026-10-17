@@ -31,7 +31,7 @@ export function organizationApprovalsPath(slug: string, cursor: string | null): 
 // Keyed by the generated revoker values, so a value the backend adds fails the type-check.
 const REVOKED_BY: Record<Revoker, string> = {
   reviewer: "Revoked",
-  organization_manager: "Revoked by an org manager",
+  organization_member: "Revoked by a member of the organization",
   site_admin: "Revoked by a site admin",
 };
 
@@ -57,8 +57,8 @@ export function changesSince(current: EventDetail, approved: EventVersion): stri
   return changedFields(current, snapshotToEventView(current, approved));
 }
 
-/** Approve `versionNo`, the version the reader has on screen, as the reader or, as its
- *  org manager, for the organization `organization` (a slug); the backend answers 409 when the
+/** Approve `versionNo`, the version the reader has on screen, as the reader or, as one of its
+ *  members, for the organization `organization` (a slug); the backend answers 409 when the
  *  live version moved on since. */
 export function approveEvent(
   eventId: string,
@@ -87,6 +87,21 @@ function ownOnLive(rows: Approval[], liveVersion: number, userId: string | undef
   if (!userId) return [];
   return rows.filter(
     (a) => !a.organization && a.reviewer?.id === userId && a.version_no === liveVersion,
+  );
+}
+
+/** The standing approval `organization` (a slug) gave the live version, or null: any of its
+ *  members revokes it. Mirrors backend services/approvals._revoker_role; change both. */
+export function organizationApprovalOnLive(
+  rows: Approval[],
+  liveVersion: number,
+  organization: string,
+): Approval | null {
+  return (
+    rows.find(
+      (a) =>
+        a.organization?.slug === organization && a.version_no === liveVersion && !a.revoked_at,
+    ) ?? null
   );
 }
 
@@ -122,7 +137,7 @@ export function cannotApproveAgainLine(approval: Approval): string {
 }
 
 /** Whether `userId` may approve the live version of `event`, given its reviews: as themselves,
- *  or, with `organization` (a slug of an organization they manage), in its name.
+ *  or, with `organization` (a slug of an organization they are a member of), in its name.
  *  Mirrors backend services/approvals.approve (published only, never a geolocator, no review of
  *  the version that `closesReview`); change both. */
 export function canApprove(
@@ -142,18 +157,18 @@ export function canApprove(
 }
 
 /** What the reader may approve on the live version: as themselves (`eligible`), and for which of
- *  the organizations they manage. Nothing when the server says the reader cannot approve, since
- *  it knows departed geolocators the event's credit no longer lists. */
+ *  the organizations they are a member of. Nothing when the server says the reader cannot
+ *  approve, since it knows departed geolocators the event's credit no longer lists. */
 export function approveOptions(
   event: { status: string; version_no: number; owner: Author; geolocators: Author[] },
   approvals: ApprovalList,
-  managed: OrganizationRef[],
+  memberOf: OrganizationRef[],
   userId: string | undefined,
 ): { eligible: boolean; organizations: OrganizationRef[] } {
   if (!approvals.viewer_can_approve) return { eligible: false, organizations: [] };
   const live = approvals.items.filter((a) => a.version_no === event.version_no);
   return {
     eligible: canApprove(event, userId, live),
-    organizations: managed.filter((o) => canApprove(event, userId, live, o.slug)),
+    organizations: memberOf.filter((o) => canApprove(event, userId, live, o.slug)),
   };
 }

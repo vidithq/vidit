@@ -237,7 +237,7 @@ erDiagram
         UUID id PK
         UUID event_id FK
         INT version_no "the version attested"
-        UUID reviewer_id FK "the analyst, or the acting org manager; nullable"
+        UUID reviewer_id FK "the analyst, or the acting member; nullable"
         UUID organization_id FK "nullable, the organization approving"
         VARCHAR verdict "approve"
         TEXT note "nullable"
@@ -245,7 +245,7 @@ erDiagram
         TIMESTAMPTZ revoked_at "nullable"
         UUID revoked_by_id FK "nullable"
         TEXT revoke_reason "nullable, public, optional"
-        VARCHAR revoked_as "nullable: reviewer, organization_manager, site_admin"
+        VARCHAR revoked_as "nullable: reviewer, organization_member, site_admin"
     }
 
     approval_requests {
@@ -829,26 +829,26 @@ Composite PK: `(event_id, user_id)`. Its leading `event_id` serves the eligibili
 
 ### `event_approvals`
 
-An analyst's attestation, or an organization's through one of its org managers, that one version of a published event holds, written through [`/events/{id}/approvals`](api.md#approvals). A row is current while `version_no` equals `events.version_no` and `revoked_at` is NULL, so a new version ends it without a write and the row stays readable on the version it covered. Revocation stamps the row; nothing deletes it short of the event's, the reviewer's or the organization's hard delete.
+An analyst's attestation, or an organization's through any of its members, that one version of a published event holds, written through [`/events/{id}/approvals`](api.md#approvals). A row is current while `version_no` equals `events.version_no` and `revoked_at` is NULL, so a new version ends it without a write and the row stays readable on the version it covered. Revocation stamps the row; nothing deletes it short of the event's, the reviewer's or the organization's hard delete.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, NOT NULL |
 | `version_no` | `INTEGER` | NOT NULL. The live `events.version_no` when the approval was placed. |
-| `reviewer_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The analyst who approved: for an organization's approval, the org manager who placed it. An erasure deletes the analyst's own approvals first ([`admin.hard_delete_user`](../backend/app/services/admin.py)), so only an organization's approval loses its reviewer; `ck_event_approvals_reviewer` refuses a NULL reviewer on a row without an organization. |
+| `reviewer_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The analyst who approved: for an organization's approval, the member who placed it. An erasure deletes the analyst's own approvals first ([`admin.hard_delete_user`](../backend/app/services/admin.py)), so only an organization's approval loses its reviewer; `ck_event_approvals_reviewer` refuses a NULL reviewer on a row without an organization. |
 | `organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, nullable. The organization the approval speaks for; NULL for an analyst's own approval. |
 | `verdict` | `VARCHAR(20)` | NOT NULL, default `'approve'`, CHECK in `('approve')` (constraint `ck_event_approvals_verdict_valid`). `ApprovalVerdict` in [`models/approval.py`](../backend/app/models/approval.py) lists the same values. |
 | `note` | `TEXT` | nullable. The reviewer's note; the API caps it at 280 characters. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
-| `revoked_at` | `TIMESTAMPTZ` | nullable. Set when the reviewer, an org manager of the organization, a site admin, or a co-geolocator acceptance revokes the approval. |
+| `revoked_at` | `TIMESTAMPTZ` | nullable. Set when the reviewer, a member of the organization, a site admin, or a co-geolocator acceptance revokes the approval. |
 | `revoked_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. Who revoked it. |
 | `revoke_reason` | `TEXT` | nullable. The optional public reason. `ck_event_approvals_revoke_reason` keeps it NULL while `revoked_at` is NULL; a revoked approval may carry none. |
-| `revoked_as` | `VARCHAR(20)` | nullable, CHECK in `('reviewer', 'organization_manager', 'site_admin')` (constraint `ck_event_approvals_revoked_as_valid`). The role the revoker acted in, stamped at revocation because roles change later. `ck_event_approvals_revoked_as` sets it exactly when `revoked_at` is set. `ApprovalRevoker` in [`models/approval.py`](../backend/app/models/approval.py) lists the same values. |
+| `revoked_as` | `VARCHAR(20)` | nullable, CHECK in `('reviewer', 'organization_member', 'site_admin')` (constraint `ck_event_approvals_revoked_as_valid`). The role the revoker acted in, stamped at revocation because roles change later. `ck_event_approvals_revoked_as` sets it exactly when `revoked_at` is set. `ApprovalRevoker` in [`models/approval.py`](../backend/app/models/approval.py) lists the same values. |
 
 `uq_event_approvals_analyst`: unique partial index on `(event_id, version_no, reviewer_id) WHERE organization_id IS NULL AND revoked_at IS NULL`. One standing approval per analyst and version. Only the live version takes a new approval, so this also allows one current approval per analyst and event. A revoked row stays as history; whether its reviewer may approve the version again is the service's rule (`services/approvals.closes_review`). The leading `(event_id, version_no)` serves the per-version read.
 
-`uq_event_approvals_organization`: unique partial index on `(event_id, version_no, organization_id) WHERE organization_id IS NOT NULL AND revoked_at IS NULL`. One standing approval per organization and version; after a revocation another org manager can approve the version again. An analyst's own approval and the approval they place for an organization are separate rows.
+`uq_event_approvals_organization`: unique partial index on `(event_id, version_no, organization_id) WHERE organization_id IS NOT NULL AND revoked_at IS NULL`. One standing approval per organization and version; after a revocation by one of its members, any member can approve the version again. An analyst's own approval and the approval they place for an organization are separate rows.
 
 **Indexes:**
 - `ix_event_approvals_reviewer_id` on `(reviewer_id)`. Backs the delete and the SET NULL when a reviewer's account is erased.
@@ -1164,7 +1164,7 @@ One analyst's membership in one organization. An analyst can belong to several o
 |--------|------|-------------|
 | `organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, NOT NULL |
 | `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL |
-| `role` | `VARCHAR(20)` | NOT NULL, CHECK in `('manager', 'member')` (constraint `ck_organization_members_role_valid`). `manager` is an org manager. |
+| `role` | `VARCHAR(20)` | NOT NULL, CHECK in `('manager', 'member')` (constraint `ck_organization_members_role_valid`). `manager` is an org manager, who holds the membership powers. Every member acts in the organization's name on approvals and approval requests. |
 | `joined_at` | `TIMESTAMPTZ` | NOT NULL |
 
 Composite PK: `(organization_id, user_id)`, so an analyst holds one role per organization. `ix_organization_members_user_id` on `(user_id)` backs the list of an analyst's organizations.

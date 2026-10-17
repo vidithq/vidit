@@ -65,7 +65,7 @@ function serve(
       return Promise.resolve(
         managed.map((organization) => ({
           organization,
-          role: "manager",
+          role: "member",
           joined_at: "2026-10-01T00:00:00Z",
         })),
       );
@@ -213,7 +213,7 @@ describe("<ApprovalRequestsSection>", () => {
     );
   });
 
-  it("lets an org manager of the organization asked decline for it", async () => {
+  it("lets a member of the organization asked decline for it", async () => {
     api.viewer = CY;
     serve([request({ target: null, target_organization: BELLINGCAT })], undefined, [BELLINGCAT]);
     render(<Requests />);

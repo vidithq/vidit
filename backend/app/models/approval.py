@@ -21,10 +21,10 @@ from app.database import Base
 # in step).
 ApprovalVerdict = Literal["approve"]
 
-# Who revoked an approval: its reviewer, an org manager of the organization it was placed for, or a
-# site admin. Stamped at revocation, since roles change later. ``ck_event_approvals_revoked_as_valid``
-# pins it at the DB (keep the two in step).
-ApprovalRevoker = Literal["reviewer", "organization_manager", "site_admin"]
+# Who revoked an approval: its reviewer, another member of the organization it was placed for, or
+# a site admin. Stamped at revocation, since memberships change later.
+# ``ck_event_approvals_revoked_as_valid`` pins it at the DB (keep the two in step).
+ApprovalRevoker = Literal["reviewer", "organization_member", "site_admin"]
 
 # The reason stamped on the approvals of an analyst who joins an event's geolocators
 # (``services/geolocator_credit.revoke_approvals_on_join``).
@@ -40,7 +40,7 @@ class EventApproval(Base):
     Revocation stamps the row and keeps it, with an optional public reason.
 
     With ``organization_id`` set, the approval is the organization's and
-    ``reviewer_id`` is the org manager who placed it in its name, NULL once that
+    ``reviewer_id`` is the member who placed it in its name, NULL once that
     account is erased. An analyst's own
     approval and an approval they place for an organization are separate rows.
     """
@@ -90,7 +90,7 @@ class EventApproval(Base):
             name="ck_event_approvals_revoke_reason",
         ),
         CheckConstraint(
-            "revoked_as IN ('reviewer', 'organization_manager', 'site_admin')",
+            "revoked_as IN ('reviewer', 'organization_member', 'site_admin')",
             name="ck_event_approvals_revoked_as_valid",
         ),
         CheckConstraint(
@@ -115,7 +115,7 @@ class EventApproval(Base):
             postgresql_where=text("organization_id IS NULL AND revoked_at IS NULL"),
         ),
         # One standing approval per organization and version: a revoked one can be
-        # placed again by another org manager.
+        # placed again by any member.
         Index(
             "uq_event_approvals_organization",
             "event_id",

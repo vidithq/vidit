@@ -242,7 +242,7 @@ describe("<ApprovalsCard>", () => {
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
   });
 
-  it("offers an org manager Approve as the organization again after an org manager revoked it", async () => {
+  it("offers a member Approve as the organization again after a member revoked it", async () => {
     api.viewer = CY;
     serve(
       [
@@ -250,12 +250,12 @@ describe("<ApprovalsCard>", () => {
           organization: BELLINGCAT,
           current: false,
           revoked_at: "2026-10-16T09:00:00Z",
-          revoked_as: "organization_manager",
+          revoked_as: "organization_member",
         }),
       ],
       {
         "/users/cy/organizations": [
-          { organization: BELLINGCAT, role: "manager", joined_at: "2026-10-01T00:00:00Z" },
+          { organization: BELLINGCAT, role: "member", joined_at: "2026-10-01T00:00:00Z" },
         ],
       },
     );
@@ -413,19 +413,19 @@ describe("<ApprovalsCard>", () => {
     expect(await screen.findByRole("button", { name: "Approve" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Revoke" })).toBeNull();
   });
-  it("lets an org manager approve as each organization they manage", async () => {
+  it("lets a member approve as each organization they belong to, whatever their role", async () => {
     api.viewer = CY;
     const OSINT = { slug: "osint-lab", name: "OSINT Lab", avatar_url: null };
     serve([], {
       "/users/cy/organizations": [
-        { organization: BELLINGCAT, role: "manager", joined_at: "2026-10-01T00:00:00Z" },
-        { organization: OSINT, role: "member", joined_at: "2026-10-01T00:00:00Z" },
+        { organization: BELLINGCAT, role: "member", joined_at: "2026-10-01T00:00:00Z" },
+        { organization: OSINT, role: "manager", joined_at: "2026-10-01T00:00:00Z" },
       ],
     });
     render(<Panel />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Approve as Bellingcat" }));
-    expect(screen.queryByRole("button", { name: "Approve as OSINT Lab" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Approve as OSINT Lab" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
     await waitFor(() =>
       expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/approvals", {
@@ -435,11 +435,11 @@ describe("<ApprovalsCard>", () => {
     );
   });
 
-  it("gives an org manager no revoke control for their organization's approval", async () => {
+  it("turns Approve as the organization into Revoke as it, one click, for any member", async () => {
     api.viewer = CY;
     serve([approval({ organization: BELLINGCAT }), approval({ id: "a2", reviewer: ANA })], {
       "/users/cy/organizations": [
-        { organization: BELLINGCAT, role: "manager", joined_at: "2026-10-01T00:00:00Z" },
+        { organization: BELLINGCAT, role: "member", joined_at: "2026-10-01T00:00:00Z" },
       ],
     });
     render(<Panel />);
@@ -448,6 +448,21 @@ describe("<ApprovalsCard>", () => {
     expect(await screen.findByRole("button", { name: "Approve" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Revoke" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Approve as Bellingcat" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Revoke as Bellingcat" }));
+    await waitFor(() =>
+      expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/approvals/a1/revoke", {
+        method: "POST",
+      }),
+    );
+  });
+
+  it("gives a reader outside the organization no Revoke as it", async () => {
+    api.viewer = CY;
+    serve([approval({ organization: BELLINGCAT })]);
+    render(<Panel />);
+
+    expect(await screen.findByRole("button", { name: "Approve" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Revoke/ })).toBeNull();
   });
   it("holds the approval requests of a published event", async () => {
     api.viewer = ANA;

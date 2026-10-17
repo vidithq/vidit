@@ -22,10 +22,10 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 
 /**
- * The organization's approval requests, for its org managers and site admins: who may send one (the
- * organization's audience, which they set here), and the open requests, oldest first. An
- * org manager declines a request here, or approves it in the organization's name from the event
- * page. A site admin who is not an org manager reads the list without answering.
+ * The organization's approval requests, for its members and site admins: the open requests, oldest
+ * first, and, for its org managers and site admins, who may send one (the organization's audience,
+ * which they set here). Any member declines a request here, or approves it in the organization's
+ * name from the event page. A site admin who is not a member reads the list without answering.
  */
 export function OrganizationApprovalRequests({
   org,
@@ -42,27 +42,29 @@ export function OrganizationApprovalRequests({
     { fallback: "Could not change who can send approval requests", onSuccess: onChanged },
   );
   const rows = requests.data ?? [];
-  const canAnswer = org.viewer_role === "manager";
+  const canAnswer = org.viewer_role !== null && org.viewer_role !== undefined;
   const error = audience.error ?? requests.error;
 
   return (
     <Card as="section">
       <SectionEyebrow title="Approval requests" margin="none" />
       {/* Stacks below `sm`, where the three choices take the full column. */}
-      <div className="flex max-sm:flex-col max-sm:items-stretch items-center justify-between gap-4">
-        <div>
-          <p className="text-sm text-neutral-200">Accept approval requests from</p>
-          <p className="text-xs text-neutral-500">
-            Who can ask {org.name} to approve their geolocation.
-          </p>
+      {org.viewer_can_manage && (
+        <div className="flex max-sm:flex-col max-sm:items-stretch items-center justify-between gap-4">
+          <div>
+            <p className="text-sm text-neutral-200">Accept approval requests from</p>
+            <p className="text-xs text-neutral-500">
+              Who can ask {org.name} to approve their geolocation.
+            </p>
+          </div>
+          <SegmentedControl
+            aria-label="Accept approval requests from"
+            options={ORGANIZATION_AUDIENCE_OPTIONS}
+            value={org.approval_request_audience ?? APPROVAL_REQUEST_AUDIENCE_DEFAULT}
+            onChange={(value) => void audience.run(value)}
+          />
         </div>
-        <SegmentedControl
-          aria-label="Accept approval requests from"
-          options={ORGANIZATION_AUDIENCE_OPTIONS}
-          value={org.approval_request_audience ?? APPROVAL_REQUEST_AUDIENCE_DEFAULT}
-          onChange={(value) => void audience.run(value)}
-        />
-      </div>
+      )}
       {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
       {requests.data && rows.length === 0 && (
         <p className="text-sm text-neutral-500">No open requests.</p>

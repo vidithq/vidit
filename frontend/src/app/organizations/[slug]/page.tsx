@@ -129,7 +129,9 @@ export default function OrganizationPage() {
 
           <OrganizationApprovals slug={slug} />
 
-          {org.viewer_can_manage && <OrganizationApprovalRequests org={org} onChanged={refetch} />}
+          {(org.viewer_role || org.viewer_can_manage) && (
+            <OrganizationApprovalRequests org={org} onChanged={refetch} />
+          )}
 
           {org.viewer_can_manage && (
             <OrganizationInvites slug={slug} canInvite={org.viewer_role === "manager"} />

@@ -345,7 +345,7 @@ def notify_approval_request_received(
     organization_id: uuid.UUID | None = None,
 ) -> None:
     """Tell the target that ``requester_id`` asks them to approve ``event``: one analyst, or the
-    org managers of ``organization_id`` who never held credit on it."""
+    members of ``organization_id`` who never held credit on it."""
     credited = _ever_credited_ids(db, event) if organization_id is not None else set()
     for recipient_id in set(recipient_ids) - credited:
         _emit(
@@ -382,13 +382,13 @@ def notify_re_approve_requested(
     db: Session, *, event: Event, editor_id: uuid.UUID, superseded_version: int
 ) -> None:
     """Ask every analyst whose own approval of ``superseded_version`` stood to review the new
-    one, and every live org manager outside the event's current and former geolocators of an
+    one, and every live member outside the event's current and former geolocators of an
     organization whose approval of it stood.
 
     A revoked approval asks nothing.
     """
     # Imported here: services/organizations imports this module.
-    from app.services.organizations import live_manager_ids
+    from app.services.organizations import live_member_ids
 
     recipients: list[tuple[uuid.UUID, uuid.UUID | None]] = []
     for reviewer_id, organization_id in db.execute(
@@ -403,8 +403,8 @@ def notify_re_approve_requested(
             recipients.append((reviewer_id, None))
         else:
             recipients.extend(
-                (manager_id, organization_id)
-                for manager_id in db.scalars(live_manager_ids(organization_id))
+                (member_id, organization_id)
+                for member_id in db.scalars(live_member_ids(organization_id))
             )
     credited = _ever_credited_ids(db, event)
     recipients = [(r, org) for r, org in recipients if org is None or r not in credited]
@@ -512,8 +512,8 @@ def pending_invites(db: Session, *, user: User, rows: list[Notification]) -> set
     return {r.id for r in rows if r.id in newest and r.event_id in waiting}
 
 
-def _managed(db: Session, *, user: User, rows: list[Notification]) -> set[uuid.UUID]:
-    """The organizations named by ``rows`` that ``user`` is an org manager of now."""
+def _member_of(db: Session, *, user: User, rows: list[Notification]) -> set[uuid.UUID]:
+    """The organizations named by ``rows`` that ``user`` is a member of now."""
     org_ids = {r.organization_id for r in rows if r.organization_id is not None}
     if not org_ids:
         return set()
@@ -521,7 +521,6 @@ def _managed(db: Session, *, user: User, rows: list[Notification]) -> set[uuid.U
         db.scalars(
             select(OrganizationMember.organization_id).where(
                 OrganizationMember.user_id == user.id,
-                OrganizationMember.role == "manager",
                 OrganizationMember.organization_id.in_(org_ids),
             )
         )
@@ -538,14 +537,14 @@ def open_approval_requests(
     db: Session, *, user: User, rows: list[Notification]
 ) -> dict[uuid.UUID, uuid.UUID]:
     """The open approval request behind each of ``rows``' ``approval_request_received`` rows, by
-    notification id: one addressed to ``user``, or to an organization ``user`` is an org manager
-    of now. Only the newest row of a key carries it; an older one stands for a request already
+    notification id: one addressed to ``user``, or to an organization ``user`` is a member of
+    now. Only the newest row of a key carries it; an older one stands for a request already
     answered."""
     received = [r for r in rows if r.kind == "approval_request_received" and r.event_id]
     if not received:
         return {}
     event_ids = {r.event_id for r in received}
-    org_ids = _managed(db, user=user, rows=received)
+    org_ids = _member_of(db, user=user, rows=received)
     found = db.execute(
         select(
             ApprovalRequest.event_id,
@@ -652,11 +651,11 @@ def reapproval_offers(
     """The offer of each event among ``rows``' re-approval and approval requests that ``user``
     can approve now, as themselves or for the organization the row names: published, never
     credited to them, and not yet approved at the live version (by them, or by the organization,
-    which they must still manage).
+    which they must still belong to).
 
     Callers eager-load ``Notification.event``.
     """
-    managed = _managed(db, user=user, rows=rows)
+    member_of = _member_of(db, user=user, rows=rows)
     candidates: dict[OfferKey, int] = {
         (r.event.id, r.organization_id): r.event.version_no
         for r in rows
@@ -664,7 +663,7 @@ def reapproval_offers(
         and r.event is not None
         and r.event.status == STATUS_GEOLOCATED
         and r.event.owner_id != user.id
-        and (r.organization_id is None or r.organization_id in managed)
+        and (r.organization_id is None or r.organization_id in member_of)
     }
     if not candidates:
         return {}
@@ -699,7 +698,7 @@ def reapproval_offers(
                     EventApproval.reviewer_id == user.id,
                     EventApproval.organization_id.is_(None),
                 ),
-                EventApproval.organization_id.in_(managed),
+                EventApproval.organization_id.in_(member_of),
             ),
         )
     ).tuples():

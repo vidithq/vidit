@@ -3,11 +3,12 @@
 import { useState } from "react";
 
 import { useAuth } from "@/contexts/AuthContext";
-import { useManagedOrganizations } from "@/hooks/useManagedOrganizations";
+import { useMemberOrganizations } from "@/hooks/useMemberOrganizations";
 import type { ApiResource } from "@/hooks/useApiResource";
 import {
   blockingRevocation,
   cannotApproveAgainLine,
+  organizationApprovalOnLive,
   ownApprovalOnLive,
   standingApprovalBefore,
   type ApprovalList,
@@ -19,7 +20,7 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import {
   ApprovalStamps,
   ApproveButtons,
-  RevokeOwnApproval,
+  RevokeApproval,
   YourOutdatedApproval,
 } from "@/components/event/Approvals";
 import {
@@ -37,7 +38,8 @@ const STAMP_SLOTS = 14;
  * stamps that link to each signer's page, or *No approvals yet*; the reader's own outdated
  * approval with what changed since; **Approve** (and **Approve as <organization>**) for a reader
  * who may approve, with who asked the reader for approval and **Decline** beside it; **Revoke** in
- * its place once the reader's own approval of the live version stands, or why the reader cannot
+ * its place once the reader's own approval of the live version stands, and **Revoke as
+ * <organization>** once one of the reader's organizations' approval stands, or why the reader cannot
  * approve this version again once a site admin revoked it; and a geolocator's approval requests. Outdated and revoked approvals are read on each
  * version's page.
  */
@@ -50,7 +52,7 @@ export function ApprovalsCard({
   approvals: ApiResource<ApprovalList>;
 }) {
   const { user } = useAuth();
-  const managed = useManagedOrganizations();
+  const memberOf = useMemberOrganizations();
   const [showAll, setShowAll] = useState(false);
   const [approvedCount, setApprovedCount] = useState(0);
   const incoming = useApprovalRequests(event, approvedCount);
@@ -64,6 +66,9 @@ export function ApprovalsCard({
   );
   const own = ownApprovalOnLive(rows, event.version_no, user?.id);
   const blocked = own ? null : blockingRevocation(rows, event.version_no, user?.id);
+  const organizationApprovals = memberOf.flatMap(
+    (o) => organizationApprovalOnLive(rows, event.version_no, o.slug) ?? [],
+  );
 
   return (
     <section aria-label="Approvals">
@@ -89,17 +94,18 @@ export function ApprovalsCard({
               <p className="text-xs text-neutral-500">{cannotApproveAgainLine(blocked)}</p>
             )}
             <div className="flex flex-wrap items-center gap-2 empty:hidden">
-              {own && (
-                <RevokeOwnApproval
+              {[...(own ? [own] : []), ...organizationApprovals].map((approval) => (
+                <RevokeApproval
+                  key={approval.id}
                   eventId={event.id}
-                  approval={own}
+                  approval={approval}
                   onRevoked={approvals.refetch}
                 />
-              )}
+              ))}
               <ApproveButtons
                 event={event}
                 approvals={approvals.data}
-                managed={managed}
+                memberOf={memberOf}
                 onApproved={() => {
                   approvals.refetch();
                   setApprovedCount((n) => n + 1);

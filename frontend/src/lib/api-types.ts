@@ -1383,7 +1383,7 @@ export interface paths {
         /**
          * Approve Event
          * @description Approve the live version of a published geolocation you are not credited on, as
-         *     yourself or, as its org manager, for an organization.
+         *     yourself or, as one of its members, for an organization.
          */
         post: operations["approve_event_api_v1_events__geolocation_id__approvals_post"];
         delete?: never;
@@ -1403,7 +1403,7 @@ export interface paths {
         put?: never;
         /**
          * Revoke Approval
-         * @description Revoke an approval: your own, your organization's as its org manager, or any as a site
+         * @description Revoke an approval: your own, your organization's as one of its members, or any as a site
          *     admin.
          */
         post: operations["revoke_approval_api_v1_events__geolocation_id__approvals__approval_id__revoke_post"];
@@ -1907,8 +1907,8 @@ export interface paths {
         };
         /**
          * List Organization Approval Requests
-         * @description Open approval requests addressed to the organization, oldest first. Org managers and site
-         *     managers only.
+         * @description Open approval requests addressed to the organization, oldest first. Members and site
+         *     admins only.
          */
         get: operations["list_organization_approval_requests_api_v1_organizations__slug__approval_requests_get"];
         put?: never;
@@ -2966,7 +2966,8 @@ export interface components {
         /**
          * ApprovalCreate
          * @description Body of ``POST /events/{id}/approvals``: the version you read, an optional note, and the
-         *     slug of the organization you approve for as its org manager (your own approval without it).
+         *     slug of the organization you approve for as one of its members (your own approval without
+         *     it).
          */
         ApprovalCreate: {
             /** Note */
@@ -2994,11 +2995,11 @@ export interface components {
          * @description One review of one version of an event.
          *
          *     ``organization`` is the organization the review was placed for, with
-         *     ``reviewer`` the org manager who placed it; null for an analyst's own review.
+         *     ``reviewer`` the member who placed it; null for an analyst's own review.
          *     ``reviewer`` is null on an organization's review once the account of the
-         *     org manager who placed it is erased: the review stays the organization's.
+         *     member who placed it is erased: the review stays the organization's.
          *     ``current`` is true while the review covers the live version and is not
-         *     revoked. ``revoked_as`` says who revoked it: the reviewer, an org manager of
+         *     revoked. ``revoked_as`` says who revoked it: the reviewer, another member of
          *     the organization, or a site admin.
          */
         ApprovalRead: {
@@ -3021,7 +3022,7 @@ export interface components {
             /** Revoke Reason */
             revoke_reason: string | null;
             /** Revoked As */
-            revoked_as: ("reviewer" | "organization_manager" | "site_admin") | null;
+            revoked_as: ("reviewer" | "organization_member" | "site_admin") | null;
             /** Revoked At */
             revoked_at: string | null;
             /**
@@ -4243,7 +4244,7 @@ export interface components {
         };
         /**
          * OrganizationApprovalRead
-         * @description One approval an org manager placed in an organization's name, with the event it covers,
+         * @description One approval a member placed in an organization's name, with the event it covers,
          *     for ``GET /organizations/{slug}/approvals``.
          */
         OrganizationApprovalRead: {

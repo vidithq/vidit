@@ -246,6 +246,16 @@ describe("OrganizationPage", () => {
     await waitFor(() => expect(refetch).toHaveBeenCalled());
   });
 
+  it("gives a member the open approval requests with Decline, without the audience control", () => {
+    signIn("ana");
+    serve({ ...ORG, viewer_role: "member" });
+    render(<OrganizationPage />);
+
+    expect(screen.getByRole("link", { name: "Port fire" })).toHaveAttribute("href", "/events/e2");
+    expect(screen.getByRole("button", { name: "Decline" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Everyone" })).toBeNull();
+  });
+
   it("shows a site admin the requests without the answer", () => {
     signIn("mod");
     serve({ ...ORG, viewer_can_manage: true });

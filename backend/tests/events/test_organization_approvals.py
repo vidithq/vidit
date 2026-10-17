@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from app.config import settings
 from app.models.admin_event import AdminEvent
 from app.models.approval import EventApproval
 from app.models.approval_request import ApprovalRequest
@@ -260,17 +261,21 @@ def test_the_organization_approvals_page_by_cursor_and_skip_unreadable_events(
     assert walked == [str(events[3].id), str(events[2].id)]
 
 
-def test_only_an_org_manager_approves_in_its_name(db, author, make_user, make_org):
+def test_any_member_approves_in_its_name_and_an_outsider_is_refused(
+    db, author, make_user, make_org
+):
     manager, member = make_user(), make_user()
     org = make_org(managers=[manager], members=[member])
     geo = _published(db, author)
 
-    refused = _approve(geo, member, org)
-    assert refused.status_code == 403
-    assert _code(refused) == "not_organization_manager"
-
     outsider = _approve(geo, make_user(), org)
-    assert _code(outsider) == "not_organization_manager"
+    assert outsider.status_code == 403
+    assert _code(outsider) == "not_organization_member"
+
+    approved = _approve(geo, member, org)
+    assert approved.status_code == 201, approved.text
+    assert approved.json()["organization"]["slug"] == org.slug
+    assert approved.json()["reviewer"]["id"] == str(member.id)
 
     headers = login_as(client, manager)
     unknown = client.post(
@@ -322,7 +327,7 @@ def test_one_standing_approval_per_organization_and_version(db, author, make_use
 # ── A new version resets organization approvals ─────────────────────
 
 
-def test_a_new_version_resets_and_asks_the_org_managers(
+def test_a_new_version_resets_and_asks_every_member(
     db, author, make_user, make_org, conflict, capture_source_tag
 ):
     acting, other_manager, member = make_user(), make_user(), make_user()
@@ -340,9 +345,9 @@ def test_a_new_version_resets_and_asks_the_org_managers(
 
     asked = _rows(db, acting, "re_approve_requested")
     assert {r.organization_id for r in asked} == {None, org.id}
-    [for_org] = _rows(db, other_manager, "re_approve_requested")
-    assert for_org.organization_id == org.id
-    assert _rows(db, member, "re_approve_requested") == []
+    for user in (other_manager, member):
+        [for_org] = _rows(db, user, "re_approve_requested")
+        assert for_org.organization_id == org.id
 
     [row] = [n for n in _feed(other_manager) if n["kind"] == "re_approve_requested"]
     assert row["organization"]["slug"] == org.slug
@@ -354,63 +359,73 @@ def test_a_new_version_resets_and_asks_the_org_managers(
     assert row["reapprove_version"] is None
 
 
-def test_a_demoted_manager_loses_the_organization_offer(
+def test_a_member_who_leaves_loses_the_organization_offer(
     db, author, make_user, make_org, conflict, capture_source_tag
 ):
-    manager, demoted = make_user(), make_user()
-    org = make_org(managers=[manager, demoted])
+    manager, leaving = make_user(), make_user()
+    org = make_org(managers=[manager], members=[leaving])
     geo = _published_with_floor(db, author, conflict, capture_source_tag)
     assert _approve(geo, manager, org).status_code == 201
     saved = _save_version(geo.id, author, data=_form(conflict, capture_source_tag))
     assert saved.status_code == 200, saved.text
-    [asked] = _rows(db, demoted, "re_approve_requested")
+    [asked] = _rows(db, leaving, "re_approve_requested")
     message = notification_delivery._PUSH_BUILDERS["re_approve_requested"](asked)
     assert message.title.endswith(f"a geolocation {org.name} approved")
+    [row] = [n for n in _feed(leaving) if n["kind"] == "re_approve_requested"]
+    assert row["reapprove_version"] == 2
 
-    db.query(OrganizationMember).filter(OrganizationMember.user_id == demoted.id).update(
-        {"role": "member"}
-    )
+    db.query(OrganizationMember).filter(OrganizationMember.user_id == leaving.id).delete()
     db.commit()
-    [row] = [n for n in _feed(demoted) if n["kind"] == "re_approve_requested"]
+    [row] = [n for n in _feed(leaving) if n["kind"] == "re_approve_requested"]
     assert row["reapprove_version"] is None
 
 
 # ── Revocation ──────────────────────────────────────────────────────
 
 
-def test_an_org_manager_revokes_the_organization_approval(db, author, make_user, make_org):
-    acting, other_manager, member = make_user(), make_user(), make_user()
-    org = make_org(managers=[acting, other_manager], members=[member])
+def test_any_member_revokes_the_organization_approval_and_it_approves_again(
+    db, author, make_user, make_org
+):
+    acting, manager, member = make_user(), make_user(), make_user()
+    org = make_org(managers=[manager], members=[acting, member])
     geo = _published(db, author)
     approval = _approve(geo, acting, org).json()
 
-    refused = _revoke(geo, approval["id"], member)
+    refused = _revoke(geo, approval["id"], make_user())
     assert refused.status_code == 403
     assert _code(refused) == "revoke_forbidden"
 
-    response = _revoke(geo, approval["id"], other_manager)
+    headers = login_as(client, member)
+    response = client.post(f"{_EVENTS}/{geo.id}/approvals/{approval['id']}/revoke", headers=headers)
     assert response.status_code == 200, response.text
-    assert response.json()["revoked_as"] == "organization_manager"
-    assert response.json()["revoke_reason"] == "Wrong building"
+    assert response.json()["revoked_as"] == "organization_member"
+    assert response.json()["revoke_reason"] is None
     db.expire_all()
-    assert db.query(AdminEvent).filter(AdminEvent.actor_id == other_manager.id).count() == 0
+    assert db.query(AdminEvent).filter(AdminEvent.actor_id == member.id).count() == 0
+
+    again = _approve(geo, manager, org)
+    assert again.status_code == 201, again.text
+    rows = client.get(f"{_EVENTS}/{geo.id}/approvals").json()["items"]
+    assert [(r["id"] == approval["id"], r["revoked_at"] is None) for r in rows] == [
+        (True, False),
+        (False, True),
+    ]
 
 
-def test_the_acting_member_revokes_only_while_org_manager(db, author, make_user, make_org):
+def test_the_acting_member_revokes_only_while_a_member(db, author, make_user, make_org):
     acting, keeper = make_user(), make_user()
-    org = make_org(managers=[acting, keeper])
+    org = make_org(managers=[keeper], members=[acting])
     geo = _published(db, author)
     approval = _approve(geo, acting, org).json()
 
-    db.query(OrganizationMember).filter(OrganizationMember.user_id == acting.id).update(
-        {"role": "member"}
-    )
+    db.query(OrganizationMember).filter(OrganizationMember.user_id == acting.id).delete()
     db.commit()
     assert _code(_revoke(geo, approval["id"], acting)) == "revoke_forbidden"
+    client.cookies.clear()
+    [row] = client.get(f"{_EVENTS}/{geo.id}/approvals").json()["items"]
+    assert row["current"] is True
 
-    db.query(OrganizationMember).filter(OrganizationMember.user_id == acting.id).update(
-        {"role": "manager"}
-    )
+    db.add(OrganizationMember(organization_id=org.id, user_id=acting.id, role="member"))
     db.commit()
     response = _revoke(geo, approval["id"], acting)
     assert response.json()["revoked_as"] == "reviewer"
@@ -526,7 +541,7 @@ def test_the_picker_suggests_organizations_without_revealing_their_audience(
     assert _code(refused) == "target_is_geolocator"
 
 
-def test_a_request_reaches_every_org_manager_and_an_approval_resolves_it(
+def test_a_request_reaches_every_member_and_an_approval_resolves_it(
     db, author, make_user, make_org
 ):
     first, second, member = make_user(), make_user(), make_user()
@@ -537,10 +552,9 @@ def test_a_request_reaches_every_org_manager_and_an_approval_resolves_it(
     assert created.status_code == 201, created.text
     assert created.json()["target"] is None
     assert created.json()["target_organization"]["slug"] == org.slug
-    for manager in (first, second):
-        [row] = _rows(db, manager, "approval_request_received")
+    for user in (first, second, member):
+        [row] = _rows(db, user, "approval_request_received")
         assert (row.actor_id, row.organization_id) == (author.id, org.id)
-    assert _rows(db, member, "approval_request_received") == []
 
     [row] = [n for n in _feed(second) if n["kind"] == "approval_request_received"]
     assert row["approval_request_id"] == created.json()["id"]
@@ -550,12 +564,15 @@ def test_a_request_reaches_every_org_manager_and_an_approval_resolves_it(
     [visible] = client.get(f"{_EVENTS}/{geo.id}/approval-requests").json()
     assert visible["id"] == created.json()["id"]
     login_as(client, member)
+    [visible] = client.get(f"{_EVENTS}/{geo.id}/approval-requests").json()
+    assert visible["id"] == created.json()["id"]
+    login_as(client, make_user())
     assert client.get(f"{_EVENTS}/{geo.id}/approval-requests").json() == []
 
     duplicate = _ask(geo, author, org)
     assert _code(duplicate) == "already_requested"
 
-    assert _approve(geo, first, org).status_code == 201
+    assert _approve(geo, member, org).status_code == 201
     db.expire_all()
     assert db.get(ApprovalRequest, uuid.UUID(created.json()["id"])).status == "approved"
     [received] = _rows(db, author, "approval_received")
@@ -565,19 +582,46 @@ def test_a_request_reaches_every_org_manager_and_an_approval_resolves_it(
     assert _code(again) == "already_approved"
 
 
-def test_any_org_manager_declines_for_the_organization(db, author, make_user, make_org):
-    first, second, member = make_user(), make_user(), make_user()
-    org = make_org(managers=[first, second], members=[member], audience="everyone")
+def test_any_member_declines_for_the_organization(db, author, make_user, make_org):
+    manager, member = make_user(), make_user()
+    org = make_org(managers=[manager], members=[member], audience="everyone")
     geo = _published(db, author)
     request_id = _ask(geo, author, org).json()["id"]
 
-    assert _decline(geo, request_id, member).status_code == 404
-    response = _decline(geo, request_id, second)
+    assert _decline(geo, request_id, make_user()).status_code == 404
+    response = _decline(geo, request_id, member)
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "declined"
     [declined] = _rows(db, author, "approval_request_declined")
-    assert (declined.actor_id, declined.organization_id) == (second.id, org.id)
-    assert _decline(geo, request_id, first).status_code == 409
+    assert (declined.actor_id, declined.organization_id) == (member.id, org.id)
+    assert _decline(geo, request_id, manager).status_code == 409
+
+
+def test_a_request_to_a_large_organization_stays_under_the_per_actor_email_cap(
+    db, author, make_user, make_org, monkeypatch
+):
+    """Every member gets the row, and the requester's emails stop at the per-actor cap."""
+    monkeypatch.setattr(settings, "notification_email_daily_cap_per_actor", 2)
+    manager = make_user(email_verified_at=datetime.now(UTC))
+    members = [make_user(email_verified_at=datetime.now(UTC)) for _ in range(2)]
+    org = make_org(managers=[manager], members=members, audience="everyone")
+    geo = _published(db, author)
+    assert _ask(geo, author, org).status_code == 201
+
+    db.expire_all()
+    recipients = [manager, *members]
+    assert all(_rows(db, user, "approval_request_received") for user in recipients)
+    emails = (
+        db.query(NotificationDelivery)
+        .join(Notification)
+        .filter(
+            Notification.kind == "approval_request_received",
+            Notification.user_id.in_([u.id for u in recipients]),
+            NotificationDelivery.channel == "email",
+        )
+        .count()
+    )
+    assert emails == 2
 
 
 # ── The organization page ───────────────────────────────────────────
@@ -600,9 +644,9 @@ def test_the_organization_page_lists_its_approvals_and_open_requests(
     assert row["event"]["id"] == str(approved.id)
     assert row["approval"]["id"] == approval["id"]
 
-    login_as(client, member)
+    login_as(client, make_user())
     assert client.get(f"{_ORGS}/{org.slug}/approval-requests").status_code == 403
-    login_as(client, manager)
+    login_as(client, member)
     [open_row] = client.get(f"{_ORGS}/{org.slug}/approval-requests").json()
     assert open_row["event"]["id"] == str(asked.id)
     assert open_row["request"]["id"] == request_id

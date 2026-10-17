@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import type { EventDetail } from "@/types";
 import { useAuth } from "@/contexts/AuthContext";
-import { useManagedOrganizations } from "@/hooks/useManagedOrganizations";
+import { useMemberOrganizations } from "@/hooks/useMemberOrganizations";
 import { useApiResource } from "@/hooks/useApiResource";
 import { apiFetch } from "@/lib/api";
 import { useMutation } from "@/hooks/useMutation";
@@ -167,10 +167,10 @@ function RequestApprovalForm({
 }
 
 /** The open approval requests on a published event, and `mine`: those addressed to the reader or
- *  to an organization they manage. `refreshKey` changes when an approval may have resolved one. */
+ *  to an organization they are a member of. `refreshKey` changes when an approval may have resolved one. */
 export function useApprovalRequests(event: EventDetail, refreshKey: number) {
   const { user } = useAuth();
-  const managed = useManagedOrganizations();
+  const memberOf = useMemberOrganizations();
   const requests = useApiResource<ApprovalRequest[]>(
     user && event.status === "geolocated" ? approvalRequestsPath(event.id) : null,
   );
@@ -181,7 +181,7 @@ export function useApprovalRequests(event: EventDetail, refreshKey: number) {
   const rows = requests.data ?? [];
   const mine = rows.filter((r) =>
     r.target_organization
-      ? managed.some((o) => o.slug === r.target_organization?.slug)
+      ? memberOf.some((o) => o.slug === r.target_organization?.slug)
       : r.target?.id === user?.id,
   );
   return { requests, rows, mine };
@@ -190,7 +190,7 @@ export function useApprovalRequests(event: EventDetail, refreshKey: number) {
 type ApprovalRequests = ReturnType<typeof useApprovalRequests>;
 
 /** Who asked the reader for approval, one line for the reader and one per organization they
- *  manage: each requester's picture and name, then "asked for your approval". */
+ *  belong to: each requester's picture and name, then "asked for your approval". */
 export function IncomingRequests({ requests }: { requests: ApprovalRequest[] }) {
   const personal = requests.filter((r) => !r.target_organization).map((r) => r.requester);
   const organizations = new Map<string, { organization: OrganizationRef; requesters: ApprovalRequest["requester"][] }>();

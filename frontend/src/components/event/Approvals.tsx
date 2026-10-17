@@ -38,7 +38,7 @@ export function ApprovalState({ approval }: { approval: Approval }) {
   return <Pill tone="neutral">Outdated</Pill>;
 }
 
-/** One review: who placed it (an organization signs with its name, its acting org manager
+/** One review: who placed it (an organization signs with its name, its acting member
  *  beside it, or "on behalf of" it once that account is erased) and when, and, once revoked,
  *  when and by which role, with the public reason when one was given. */
 export function ApprovalRow({ approval }: { approval: Approval }) {
@@ -161,18 +161,18 @@ export function ApprovalStamps({
 /**
  * The approve controls of the live version, each approving in one click: **Approve** for an
  * analyst outside the event's geolocators who has not reviewed it, and one **Approve as
- * <organization>** per organization the reader manages whose approval of it does not stand. A
- * stale version offers **Reload**.
+ * <organization>** per organization the reader is a member of whose approval of it does not stand
+ * (and no site admin revoked). A stale version offers **Reload**.
  */
 export function ApproveButtons({
   event,
   approvals,
-  managed,
+  memberOf,
   onApproved,
 }: {
   event: EventDetail;
   approvals: ApprovalList;
-  managed: OrganizationRef[];
+  memberOf: OrganizationRef[];
   onApproved: () => void;
 }) {
   const { user } = useAuth();
@@ -197,7 +197,7 @@ export function ApproveButtons({
     },
   );
 
-  const { eligible, organizations } = approveOptions(event, approvals, managed, user?.id);
+  const { eligible, organizations } = approveOptions(event, approvals, memberOf, user?.id);
   if (!eligible && organizations.length === 0 && !approve.error) return null;
 
   return (
@@ -237,9 +237,10 @@ export function ApproveButtons({
   );
 }
 
-/** **Revoke** for the reader's own standing approval of the live version, in one click and with
- *  no reason: the reader may approve the version again afterwards. */
-export function RevokeOwnApproval({
+/** One-click revoke, with no reason, of a standing approval of the live version: **Revoke** for
+ *  the reader's own, **Revoke as <organization>** for one an organization the reader belongs to
+ *  gave. The reader, or the organization, may approve the version again afterwards. */
+export function RevokeApproval({
   eventId,
   approval,
   onRevoked,
@@ -252,11 +253,18 @@ export function RevokeOwnApproval({
     fallback: "Failed to revoke the approval",
     onSuccess: onRevoked,
   });
+  const organization = approval.organization;
   return (
     <>
-      <Tooltip label="Withdraw your approval of this version">
+      <Tooltip
+        label={
+          organization
+            ? `Withdraw ${organization.name}'s approval of this version`
+            : "Withdraw your approval of this version"
+        }
+      >
         <Button variant="secondary" onClick={() => void revoke.run()} disabled={revoke.loading}>
-          Revoke
+          {organization ? `Revoke as ${organization.name}` : "Revoke"}
         </Button>
       </Tooltip>
       {revoke.error && (
