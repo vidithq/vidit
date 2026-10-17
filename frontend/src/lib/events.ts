@@ -59,7 +59,7 @@ const DETECTIONS_PER_PAGE = 10;
 const DETECTIONS_REVIEW_QUEUE = 100;
 
 /** Queue filter for `GET /events/detections`. Hand-written like `EventView` (the router
- *  takes a plain `str`). Mirrors `services/events.DETECTION_READINESS`; change both. */
+ *  takes a plain `str`). Mirrors `services/events/readiness.py` `DETECTION_READINESS`; change both. */
 export type DetectionReadiness = "all" | "ready" | "incomplete";
 
 /** Shape of `GET /events/detections`. `total` counts the set `readiness` selected;

@@ -11,6 +11,9 @@ import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Textarea } from "@/components/ui/Input";
 import { FORM_LABEL, FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
+// Mirrors backend schemas/event.EventCloseRequest.close_reason; change both.
+const CLOSE_REASON_MAX_LEN = 2000;
+
 /**
  * What each row is called, for the one verb that closes all of them. The verb is always *Close*:
  * one write ends a request, a detection and a published geolocation, and per-shape verbs would
@@ -97,6 +100,7 @@ export function CloseEventForm({
         <Textarea
           id="close_reason"
           rows={3}
+          maxLength={CLOSE_REASON_MAX_LEN}
           value={reason}
           onChange={(e) => {
             setReason(e.target.value);

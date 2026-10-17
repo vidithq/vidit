@@ -28,6 +28,10 @@ import { Card } from "@/components/ui/Card";
 import { Input, Textarea } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
 
+// Mirrors backend schemas/product_update.py; change both.
+const PRODUCT_UPDATE_TITLE_MAX_LEN = 120;
+const PRODUCT_UPDATE_BODY_MAX_LEN = 5000;
+
 const EMPTY: ProductUpdateDraft = { label: "", title: "", body: "", link_url: "" };
 
 function draftBody(draft: ProductUpdateDraft): ProductUpdateDraft {
@@ -129,7 +133,7 @@ export function ProductUpdatesPanel() {
           <Input
             id="pu-title"
             value={draft.title}
-            maxLength={120}
+            maxLength={PRODUCT_UPDATE_TITLE_MAX_LEN}
             onChange={(e) => edit("title")(e.target.value)}
             className="mt-1"
           />
@@ -142,7 +146,7 @@ export function ProductUpdatesPanel() {
         <Textarea
           id="pu-body"
           rows={8}
-          maxLength={5000}
+          maxLength={PRODUCT_UPDATE_BODY_MAX_LEN}
           value={draft.body}
           onChange={(e) => edit("body")(e.target.value)}
           className="mt-1"
