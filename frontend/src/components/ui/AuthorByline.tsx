@@ -12,11 +12,12 @@ type Author = {
   href?: string;
 };
 
-/** What goes before the name at `index` in a credit line of `count` names: nothing, a comma, or
- *  " and " before the last ("ana, bo and cy"). Shared with the card byline in `EntityCard`. */
-export function creditSeparator(index: number, count: number): string {
-  if (index === 0) return "";
-  return index === count - 1 ? " and " : ", ";
+/** What a screen reader hears before the name at `index` in a credit line of `count` names:
+ *  nothing, a comma, or " and " before the last ("ana, bo and cy"). On screen the names stand
+ *  apart with no separator. */
+function CreditSeparator({ index, count }: { index: number; count: number }) {
+  if (index === 0) return null;
+  return <span className="sr-only">{index === count - 1 ? " and " : ", "}</span>;
 }
 
 /**
@@ -25,9 +26,9 @@ export function creditSeparator(index: number, count: number): string {
  * `size` scales the gap for the dense panel header; `avatar` leads with the
  * profile picture where the byline is the page's author signature.
  *
- * `coAuthors` credits more analysts after `author` ("by ana, bo and cy"), each
- * with the same avatar and link treatment: the credit line of an event several
- * geolocators share.
+ * `coAuthors` credits more analysts after `author`, each as its picture and
+ * name, side by side: the credit line of an event several geolocators share.
+ * With more than one name every name shows its picture, `avatar` or not.
  *
  * `link={false}` drops the anchor for a slot that is itself one click: a row
  * under a stretched link cannot hold a second link (a separate keyboard stop).
@@ -59,20 +60,21 @@ export function AuthorByline({
 }) {
   const gap = size === "xs" ? "gap-1" : "gap-1.5";
   const names = [author, ...coAuthors];
+  const pictures = avatar || names.length > 1;
   return (
     <span className={cn("inline-flex items-center", gap, className)}>
       {prefix && !avatar && <>by </>}
-      {/* Inline flow, not flex: a flex item trims the spaces around " and ". */}
-      <span>
+      <span className="inline-flex flex-wrap items-center gap-x-2.5 gap-y-1">
         {names.map((person, index) => (
           <Fragment key={person.username}>
-            {creditSeparator(index, names.length)}
+            <CreditSeparator index={index} count={names.length} />
             <span className={cn("inline-flex items-center", gap)}>
-              {avatar && (
+              {pictures && (
                 <Avatar
                   as="span"
                   src={person.avatar_url}
                   username={person.username}
+                  decorative
                   size={size === "xs" ? "size-4 text-[9px]" : "size-5 text-[10px]"}
                 />
               )}

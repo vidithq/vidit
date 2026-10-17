@@ -23,8 +23,9 @@ export function Avatar({
   size: string;
   fallback?: "initial" | "icon";
   as?: "div" | "span";
-  /** Drop the alt text for a host that names itself (the sidebar identity
-   *  row): alt text would win over the link's title as its accessible name. */
+  /** Hide the picture from assistive tech for a host that names itself (the
+   *  sidebar identity row, a byline name): alt text or the initial would be
+   *  read before the name, or win over the link's title as its accessible name. */
   decorative?: boolean;
   /** Colour for the icon fallback (`text-current` to follow the host). */
   iconClassName?: string;
@@ -38,6 +39,7 @@ export function Avatar({
 
   return (
     <Tag
+      aria-hidden={decorative || undefined}
       className={`${size} ${shape === "square" ? "rounded-md" : "rounded-full"} bg-neutral-800 border border-neutral-700 flex items-center justify-center overflow-hidden shrink-0`}
     >
       {showImage ? (

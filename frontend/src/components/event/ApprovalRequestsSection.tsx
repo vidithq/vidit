@@ -190,7 +190,7 @@ export function useApprovalRequests(event: EventDetail, refreshKey: number) {
 type ApprovalRequests = ReturnType<typeof useApprovalRequests>;
 
 /** Who asked the reader for approval, one line for the reader and one per organization they
- *  manage: "maya and jules asked for your approval". */
+ *  manage: each requester's picture and name, then "asked for your approval". */
 export function IncomingRequests({ requests }: { requests: ApprovalRequest[] }) {
   const personal = requests.filter((r) => !r.target_organization).map((r) => r.requester);
   const organizations = new Map<string, { organization: OrganizationRef; requesters: ApprovalRequest["requester"][] }>();

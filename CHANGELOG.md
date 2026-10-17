@@ -42,6 +42,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - A reviewer whose approval of the live version was revoked reads why they cannot approve it again, and a stale version error offers Reload.
 - Notification rows put Decline below the row so a phone keeps the event title readable, and an answered approval request shows Approved or Declined.
 - Settings hides the Push column when the server sends no push, and the app checks admin status once per session instead of once per component.
+- A credit line with several analysts shows each one as a picture and a name side by side, with no "and" or comma, on event pages, cards and the Approvals card's request line.
 
 ### Changed
 

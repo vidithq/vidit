@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { MapPin } from "lucide-react";
 
@@ -6,11 +6,11 @@ import type { Media } from "@/types";
 import { cn } from "@/lib/cn";
 import { formatDate } from "@/lib/format";
 import { displayUrlsFor, posterFrameUrl } from "@/lib/mediaUrls";
-import { META_LINE, TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
+import { META_LINE, TAPPABLE_HOVER } from "@/components/ui/styles";
 import { GraphicContentGate } from "@/components/ui/GraphicContentGate";
 import { Pill } from "@/components/ui/Pill";
 import { Avatar } from "@/components/ui/Avatar";
-import { creditSeparator } from "@/components/ui/AuthorByline";
+import { AuthorByline } from "@/components/ui/AuthorByline";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 
 // One card for every catalogue entity (geolocated / detected geolocation,
@@ -95,15 +95,17 @@ type TitleProps =
   | { title: string; titleText?: string }
   | { title: ReactNode; titleText: string };
 
+type CardAuthor = { username: string; avatar_url?: string | null };
+
 interface EntityCardBaseProps {
   badge?: ReactNode;
   media?: Media;
   isGraphic?: boolean;
   /** Omitted on a surface that names one analyst once in its header (a
    *  collection's item list). */
-  author?: { username: string };
+  author?: CardAuthor;
   /** Credited beside `author` on an event several geolocators share. */
-  coAuthors?: { username: string }[];
+  coAuthors?: CardAuthor[];
   /** Fixed height floor so catalogue rows match whatever slots they fill. Off,
    *  the row stands on its media column and the text centres against it. */
   uniformHeight?: boolean;
@@ -163,31 +165,6 @@ function CoordsMeta({ coords }: { coords: { lat: number; lng: number } }) {
       <MapPin size={10} />
       {formatCoord(coords.lat, coords.lng)}
     </span>
-  );
-}
-
-function AuthorLink({ username }: { username: string }) {
-  return (
-    <Link
-      href={`/profile/${username}`}
-      className={`relative z-20 font-medium ${TEXT_LINK}`}
-    >
-      {username}
-    </Link>
-  );
-}
-
-function AuthorLinks({ authors }: { authors: { username: string }[] }) {
-  return (
-    <>
-      by{" "}
-      {authors.map((a, index) => (
-        <Fragment key={a.username}>
-          {creditSeparator(index, authors.length)}
-          <AuthorLink username={a.username} />
-        </Fragment>
-      ))}
-    </>
   );
 }
 
@@ -266,9 +243,12 @@ export function EntityCard({
           )}
           <div className="flex flex-col leading-tight">
             {author && (
-              <span className="text-[11px] text-neutral-500">
-                <AuthorLinks authors={[author, ...coAuthors]} />
-              </span>
+              <AuthorByline
+                author={author}
+                coAuthors={coAuthors}
+                size="xs"
+                className="text-[11px] text-neutral-500"
+              />
             )}
             <span className={cn(META_LINE, "flex-wrap gap-x-2")}>
               {dates?.map((d) => (
@@ -311,9 +291,12 @@ export function EntityCard({
           </h3>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-500">
             {author && (
-              <span>
-                <AuthorLinks authors={[author, ...coAuthors]} />
-              </span>
+              <AuthorByline
+                author={author}
+                coAuthors={coAuthors}
+                size="xs"
+                className="relative z-20"
+              />
             )}
             {date && <span>{formatDate(date)}</span>}
             {age && <span>{age}</span>}
