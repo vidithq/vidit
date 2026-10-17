@@ -5,7 +5,7 @@ from typing import Literal
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base
+from app.database import Base, literal_check
 
 # ``pending`` waits for an admin. An approval deletes the row, so ``declined``
 # is the only decided state a row keeps. Value-domain source of truth for the
@@ -45,10 +45,7 @@ class XHandleRequest(Base):
     user = relationship("User")
 
     __table_args__ = (
-        CheckConstraint(
-            "status IN ('pending', 'declined')",
-            name="ck_x_handle_requests_status_valid",
-        ),
+        literal_check("status", XHandleRequestStatus, "ck_x_handle_requests_status_valid"),
         CheckConstraint(
             "(status = 'declined') = (decline_reason IS NOT NULL AND decided_at IS NOT NULL)",
             name="ck_x_handle_requests_decision_stamp",

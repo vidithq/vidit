@@ -3,7 +3,6 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from sqlalchemy import (
-    CheckConstraint,
     DateTime,
     ForeignKey,
     String,
@@ -12,7 +11,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base
+from app.database import Base, literal_check
 
 # Where the link was found: ``source_url`` (declared footage source),
 # ``secondary_source`` (a mirror in ``event_source_links``), ``detected_from``
@@ -66,14 +65,6 @@ class SourceArchive(Base):
     __table_args__ = (
         # One archived copy per link per event (makes resubmission an overwrite).
         UniqueConstraint("event_id", "original_url", name="uq_source_archives_event_url"),
-        # Pin the value domains at the DB. Mirrors ``SourceArchiveOrigin`` /
-        # ``SourceArchiveProvider``; keep them in step.
-        CheckConstraint(
-            "origin IN ('source_url', 'secondary_source', 'detected_from', 'proof_link')",
-            name="ck_source_archives_origin_valid",
-        ),
-        CheckConstraint(
-            "provider IN ('wayback', 'archive_today', 'ghostarchive')",
-            name="ck_source_archives_provider_valid",
-        ),
+        literal_check("origin", SourceArchiveOrigin, "ck_source_archives_origin_valid"),
+        literal_check("provider", SourceArchiveProvider, "ck_source_archives_provider_valid"),
     )

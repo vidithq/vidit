@@ -3,7 +3,6 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from sqlalchemy import (
-    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -14,8 +13,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base
-from app.models.notification import DeliveryState
+from app.database import Base, literal_check
+from app.models.notification import DeliveryState, NotificationDeliveryStatus
 
 ConsentSource = Literal["sign_up", "settings"]
 
@@ -39,9 +38,7 @@ class ProductUpdateConsent(Base):
     withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
-        CheckConstraint(
-            "source IN ('sign_up', 'settings')", name="ck_product_update_consents_source_valid"
-        ),
+        literal_check("source", ConsentSource, "ck_product_update_consents_source_valid"),
         Index(
             "uq_product_update_consents_current",
             "user_id",
@@ -90,9 +87,8 @@ class ProductUpdateDelivery(DeliveryState, Base):
     product_update = relationship("ProductUpdate")
 
     __table_args__ = (
-        CheckConstraint(
-            "status IN ('queued', 'sending', 'sent', 'failed', 'skipped')",
-            name="ck_product_update_deliveries_status_valid",
+        literal_check(
+            "status", NotificationDeliveryStatus, "ck_product_update_deliveries_status_valid"
         ),
         UniqueConstraint("product_update_id", "user_id", name="uq_product_update_deliveries_user"),
         Index("ix_product_update_deliveries_user_id", "user_id"),

@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.approval import ApprovalRevoker, ApprovalVerdict
+from app.schemas import OptionalText
 from app.schemas.notification import NotificationEventRef
 from app.schemas.organization import OrganizationRef
 from app.schemas.user import AuthorRef
@@ -20,15 +21,8 @@ class ApprovalCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     version_no: int = Field(ge=1)
-    note: str | None = Field(default=None, max_length=APPROVAL_NOTE_MAX_LENGTH)
+    note: OptionalText = Field(default=None, max_length=APPROVAL_NOTE_MAX_LENGTH)
     organization: str | None = Field(default=None, min_length=1, max_length=50)
-
-    @field_validator("note")
-    @classmethod
-    def _blank_is_none(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        return value.strip() or None
 
 
 class ApprovalRevoke(BaseModel):
@@ -37,14 +31,7 @@ class ApprovalRevoke(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    reason: str | None = Field(default=None, max_length=REVOKE_REASON_MAX_LENGTH)
-
-    @field_validator("reason")
-    @classmethod
-    def _blank_is_none(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        return value.strip() or None
+    reason: OptionalText = Field(default=None, max_length=REVOKE_REASON_MAX_LENGTH)
 
 
 class ApprovalRead(BaseModel):

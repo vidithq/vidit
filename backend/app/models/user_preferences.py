@@ -2,11 +2,11 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, text
+from sqlalchemy import DateTime, ForeignKey, String, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.database import Base
+from app.database import Base, literal_check
 
 # Who may send this analyst an approval request: analysts they follow, any signed-in analyst, or
 # nobody. Value-domain source of truth; ``ck_user_preferences_approval_request_audience`` pins it
@@ -47,8 +47,9 @@ class UserPreferences(Base):
     )
 
     __table_args__ = (
-        CheckConstraint(
-            "approval_request_audience IN ('following', 'everyone', 'nobody')",
-            name="ck_user_preferences_approval_request_audience",
+        literal_check(
+            "approval_request_audience",
+            ApprovalRequestAudience,
+            "ck_user_preferences_approval_request_audience",
         ),
     )

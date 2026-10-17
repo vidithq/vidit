@@ -3,7 +3,6 @@ from datetime import UTC, datetime
 from typing import Literal, get_args
 
 from sqlalchemy import (
-    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -14,7 +13,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base
+from app.database import Base, literal_check
 
 # What happened, one value per emitter. Value-domain source of truth: the ORM
 # column, the Read schemas and the generated frontend type derive from it, and
@@ -119,16 +118,7 @@ class Notification(Base):
     approval = relationship("EventApproval")
 
     __table_args__ = (
-        CheckConstraint(
-            "kind IN ('request_fulfilled', 'new_follower', "
-            "'x_handle_request_approved', 'x_handle_request_declined', "
-            "'co_geolocator_invite', 'co_geolocator_removed', 'ownership_transferred', "
-            "'organization_invite', 'organization_invite_accepted', "
-            "'organization_manager_inherited', 're_approve_requested', 'approval_received', "
-            "'approval_revoked', 'approval_request_received', 'approval_request_declined', "
-            "'organization_approval_removed')",
-            name="ck_notifications_kind_valid",
-        ),
+        literal_check("kind", NotificationKind, "ck_notifications_kind_valid"),
         # The feed walk, newest first per recipient.
         Index("ix_notifications_user_created_at", "user_id", "created_at", "id"),
         # The unread count.
@@ -206,12 +196,9 @@ class NotificationDelivery(DeliveryState, Base):
     notification = relationship("Notification")
 
     __table_args__ = (
-        CheckConstraint(
-            "channel IN ('email', 'push')", name="ck_notification_deliveries_channel_valid"
-        ),
-        CheckConstraint(
-            "status IN ('queued', 'sending', 'sent', 'failed', 'skipped')",
-            name="ck_notification_deliveries_status_valid",
+        literal_check("channel", NotificationChannel, "ck_notification_deliveries_channel_valid"),
+        literal_check(
+            "status", NotificationDeliveryStatus, "ck_notification_deliveries_status_valid"
         ),
         UniqueConstraint("notification_id", "channel", name="uq_notification_deliveries_channel"),
         # The claim walk, oldest first.

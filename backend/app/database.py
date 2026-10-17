@@ -1,6 +1,6 @@
-from typing import Any
+from typing import Any, get_args
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import CheckConstraint, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.config import settings
@@ -23,6 +23,17 @@ SessionLocal = sessionmaker(bind=engine)
 
 class Base(DeclarativeBase):
     pass
+
+
+def literal_check(
+    column: str, values: Any, name: str, *, nullable: bool = False
+) -> CheckConstraint:
+    """A CHECK pinning ``column`` to the members of the ``Literal`` ``values``, so the model's
+    constraint follows the type. ``nullable`` also admits NULL. The migration that creates the
+    constraint still changes by hand with the type."""
+    members = ", ".join(f"'{v}'" for v in get_args(values))
+    allowed = f"{column} IN ({members})"
+    return CheckConstraint(f"{column} IS NULL OR {allowed}" if nullable else allowed, name=name)
 
 
 def bound_lock_waits() -> None:

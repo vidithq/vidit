@@ -4,6 +4,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.x_handle_request import XHandleRequestStatus
+from app.schemas import OptionalText
 from app.schemas.admin import AdminUserRead, normalize_x_handle
 
 # Ceiling on both free-text reasons. Mirrored by
@@ -17,7 +18,7 @@ class XHandleRequestCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     x_handle: str
-    reason: str | None = Field(default=None, max_length=REASON_MAX_LENGTH)
+    reason: OptionalText = Field(default=None, max_length=REASON_MAX_LENGTH)
 
     @field_validator("x_handle")
     @classmethod
@@ -25,11 +26,6 @@ class XHandleRequestCreate(BaseModel):
         normalized = normalize_x_handle(v)
         assert normalized is not None
         return normalized
-
-    @field_validator("reason")
-    @classmethod
-    def _blank_is_none(cls, v: str | None) -> str | None:
-        return (v or "").strip() or None
 
 
 class XHandleRequestRead(BaseModel):

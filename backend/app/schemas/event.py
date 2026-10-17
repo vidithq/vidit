@@ -11,6 +11,7 @@ from app.models.event import (
     EventStatus,
 )
 from app.models.source_archive import SourceArchiveProvider
+from app.schemas import UsernameRef
 from app.schemas.conflict import ConflictRead
 from app.schemas.media import MediaRead
 from app.schemas.tag import TagRead
@@ -318,7 +319,7 @@ class GeolocatorInviteCreate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    username: str = Field(min_length=1, max_length=50)
+    username: UsernameRef
 
 
 class GeolocatorInviteRead(BaseModel):

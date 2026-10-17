@@ -14,7 +14,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base
+from app.database import Base, literal_check
 
 # What a review says. Value-domain source of truth for the column and the Read
 # schema; ``ck_event_approvals_verdict_valid`` pins it at the DB (keep the two
@@ -84,15 +84,12 @@ class EventApproval(Base):
     event = relationship("Event")
 
     __table_args__ = (
-        CheckConstraint("verdict IN ('approve')", name="ck_event_approvals_verdict_valid"),
+        literal_check("verdict", ApprovalVerdict, "ck_event_approvals_verdict_valid"),
         CheckConstraint(
             "revoke_reason IS NULL OR revoked_at IS NOT NULL",
             name="ck_event_approvals_revoke_reason",
         ),
-        CheckConstraint(
-            "revoked_as IN ('reviewer', 'organization_member', 'site_admin')",
-            name="ck_event_approvals_revoked_as_valid",
-        ),
+        literal_check("revoked_as", ApprovalRevoker, "ck_event_approvals_revoked_as_valid"),
         CheckConstraint(
             "(revoked_at IS NULL) = (revoked_as IS NULL)",
             name="ck_event_approvals_revoked_as",

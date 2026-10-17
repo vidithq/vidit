@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.organization import OrganizationRole
 from app.models.user_preferences import ApprovalRequestAudience
+from app.schemas import UsernameRef
 from app.schemas.admin import normalize_x_handle
 from app.schemas.user import AuthorRef, UserUpdate
 
@@ -69,7 +70,7 @@ class OrganizationManagerAppoint(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    username: str = Field(min_length=1, max_length=50)
+    username: UsernameRef
 
 
 class OrganizationMembershipRead(BaseModel):
@@ -106,7 +107,7 @@ class OrganizationInviteCreate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    username: str = Field(min_length=1, max_length=50)
+    username: UsernameRef
 
 
 class OrganizationMemberUpdate(BaseModel):
@@ -136,7 +137,7 @@ class OrganizationCreate(OrganizationUpdate):
     name: str = Field(min_length=1, max_length=ORGANIZATION_NAME_MAX_LEN)
     slug: str
     x_handle: str | None = None
-    manager_username: str = Field(min_length=1, max_length=50)
+    manager_username: UsernameRef
 
     @field_validator("name")
     @classmethod
