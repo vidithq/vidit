@@ -43,6 +43,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - Notification rows put Decline below the row so a phone keeps the event title readable, and an answered approval request shows Approved or Declined.
 - Settings hides the Push column when the server sends no push, and the app checks admin status once per session instead of once per component.
 - A credit line with several analysts shows each one as a picture and a name side by side, with no "and" or comma, on event pages, cards and the Approvals card's request line.
+- Each notification has a delete button that removes it from your feed, with its queued email or push (`DELETE /notifications/{id}`).
 
 ### Changed
 

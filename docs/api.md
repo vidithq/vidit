@@ -161,6 +161,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/notifications` | 🔒 | Your notifications, newest first (cursor-paged) |
 | GET | `/notifications/unread-count` | 🔒 | How many notifications you have not been shown |
 | POST | `/notifications/read` | 🔒 | Mark the notifications the feed showed you read |
+| DELETE | `/notifications/{id}` | 🔒 | Delete one of your notifications |
 | GET/POST | `/notifications/unsubscribe` | 🌐 | Send to the confirmation page / turn off one kind of notification email, named by a signed token |
 | **Organizations** | | | |
 | GET | `/organizations/{slug}` | 🌐 | An organization's public profile |
@@ -276,6 +277,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | **Notifications** | |
 | `GET /notifications`, `GET /notifications/unread-count` | 120/min |
 | `POST /notifications/read` | 60/min |
+| `DELETE /notifications/{id}` | 60/min |
 | `GET`/`POST /notifications/unsubscribe` | 30/min (anonymous allowed) |
 | **Organizations** | |
 | `GET /organizations/{slug}`, `GET /organizations/{slug}/members`, `GET /organizations/{slug}/approvals` | 120/min |
@@ -2553,7 +2555,7 @@ flowchart LR
   subgraph legend [Legend]
     direction LR
     l1["`an action that emits a row`"]:::spec
-    l2["`an endpoint that reads the rows or marks them read`"]:::shared
+    l2["`an endpoint that reads, marks or deletes the rows`"]:::shared
     l3["`a read-time filter`"]:::core
     l4[("`a stored value`")]:::store
     l1 ~~~ l2 ~~~ l3 ~~~ l4
@@ -2584,6 +2586,8 @@ flowchart LR
   drives the sidebar dot`"]:::shared
   read["`**POST /notifications/read**
   ids: the rows the feed showed`"]:::shared
+  delete["`**DELETE /notifications/{id}**
+  one of your rows and its deliveries`"]:::shared
   readat[("`**notifications.read_at**
   per row; NULL is unread`")]:::store
   queue[("`**notification_deliveries**
@@ -2606,9 +2610,10 @@ flowchart LR
   readat --> feed
   rows --> queue --> worker
   visible --> worker
+  delete --> rows
 ```
 
-An action that concerns another analyst writes a [`notifications`](data-model.md#notifications) row in its own transaction, so a rolled-back action leaves no row. Nobody is notified of their own action. Every read passes the same filter: a row whose event is soft-deleted or taken down, or whose actor is soft-deleted or deactivated, is hidden from the feed and the count, including when that happens after the row was written. An `approval_received` row is hidden the same way once the approval it reports is revoked. Read state is per row: `read_at` is NULL until `POST /notifications/read` names the row, which the feed page does for the unread rows it shows. A row whose action commits after the feed was read stays unread, whatever its `created_at`.
+An action that concerns another analyst writes a [`notifications`](data-model.md#notifications) row in its own transaction, so a rolled-back action leaves no row. Nobody is notified of their own action. Every read passes the same filter: a row whose event is soft-deleted or taken down, or whose actor is soft-deleted or deactivated, is hidden from the feed and the count, including when that happens after the row was written. An `approval_received` row is hidden the same way once the approval it reports is revoked. Read state is per row: `read_at` is NULL until `POST /notifications/read` names the row, which the feed page does for the unread rows it shows. A row whose action commits after the feed was read stays unread, whatever its `created_at`. `DELETE /notifications/{id}` removes one of your rows for good.
 
 When your email switch for the kind is on and your address is verified, the same transaction queues an email. The worker sends it after the action commits, so a provider failure never fails the action. At send time the worker skips the email if the switch is now off or the feed would hide the row. Notification email has a daily cap, in total and per recipient, and a queued email older than 48 hours is dropped. The emails an analyst sends straight at someone (`co_geolocator_invite`, `organization_invite`, `approval_request_received`) are capped per actor in a trailing 24 hours too: past the cap, the row still reaches the feed and push, but queues no email. Fan-out an action sets off, such as re-approval requests after a new version, is neither capped nor counted. The email links to the item and to Settings, and its `List-Unsubscribe` header turns that kind off by email in one click ([`POST /notifications/unsubscribe`](#post-notificationsunsubscribe)). The queue and the caps are in [`engineering.md`](engineering.md#email).
 
@@ -2693,6 +2698,20 @@ Mark the listed notifications read by setting their `read_at`. Only your own row
 | Code | Case |
 |------|------|
 | 422 | `ids` missing, empty, longer than 100, or holding a value that is not a UUID |
+
+---
+
+### `DELETE /notifications/{id}` 🔒
+
+Delete one of your notifications. Its `notification_deliveries` rows go with it, so a queued email or push for it is never sent. The row leaves the feed and the unread count.
+
+**Response 204:** no body.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | No notification with this id is yours |
+| 422 | `id` is not a UUID |
 
 ---
 

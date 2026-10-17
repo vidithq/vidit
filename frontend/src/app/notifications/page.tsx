@@ -12,6 +12,7 @@ import {
   ClipboardX,
   RefreshCw,
   ShieldCheck,
+  Trash2,
   UserCheck,
   UserMinus,
   UserPlus,
@@ -21,8 +22,10 @@ import {
 
 import { useUnreadNotifications } from "@/contexts/NotificationsContext";
 import { useCursorList } from "@/hooks/useCursorList";
+import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import {
+  deleteNotification,
   describeNotification,
   markNotificationsRead,
   notificationLabel,
@@ -58,6 +61,32 @@ const KIND_ICON: Record<NotificationKind, LucideIcon> = {
   organization_approval_removed: Building2,
 };
 
+function DeleteNotification({ id, onDeleted }: { id: string; onDeleted: () => void }) {
+  const remove = useMutation(() => deleteNotification(id), {
+    fallback: "Failed to delete the notification",
+    onSuccess: onDeleted,
+  });
+  return (
+    <>
+      <Button
+        icon
+        variant="ghost"
+        aria-label="Delete notification"
+        title="Delete"
+        onClick={() => void remove.run()}
+        disabled={remove.loading}
+      >
+        <Trash2 size={14} />
+      </Button>
+      {remove.error && (
+        <div className={`${FORM_ERROR_BANNER} basis-full`} role="alert">
+          {remove.error}
+        </div>
+      )}
+    </>
+  );
+}
+
 function NotificationRows({
   title,
   rows,
@@ -79,13 +108,18 @@ function NotificationRows({
               {/* Decline sits below the link, not in it or beside it: the row is one link, and
                   beside it a phone would squeeze the title. Approving happens on the event page
                   only, after reading the event. */}
-              <LinkRow
-                icon={KIND_ICON[n.kind]}
-                label={notificationLabel(n)}
-                value={text}
-                href={href}
-                external={false}
-              />
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <LinkRow
+                    icon={KIND_ICON[n.kind]}
+                    label={notificationLabel(n)}
+                    value={text}
+                    href={href}
+                    external={false}
+                  />
+                </div>
+                <DeleteNotification id={n.id} onDeleted={onChanged} />
+              </div>
               {n.approval_request_id !== null && n.event && (
                 <ApprovalRequestDecline
                   eventId={n.event.id}
@@ -130,6 +164,11 @@ export default function NotificationsPage() {
 
   if (authLoading || !user) return <PageLoading />;
 
+  const changed = () => {
+    reload();
+    refresh();
+  };
+
   return (
     <PageShell title="Notifications">
       {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
@@ -146,12 +185,12 @@ export default function NotificationsPage() {
           <NotificationRows
             title="New"
             rows={items.filter((n) => n.read_at === null)}
-            onChanged={reload}
+            onChanged={changed}
           />
           <NotificationRows
             title="Earlier"
             rows={items.filter((n) => n.read_at !== null)}
-            onChanged={reload}
+            onChanged={changed}
           />
           {hasMore && (
             <div className="flex justify-center">

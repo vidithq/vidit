@@ -772,6 +772,17 @@ def unread_count(db: Session, *, user: User) -> int:
     )
 
 
+def delete(db: Session, *, user: User, notification_id: uuid.UUID) -> bool:
+    """Delete one row ``user`` owns; False when no such row is theirs. Its
+    ``notification_deliveries`` rows go with it (``ON DELETE CASCADE``)."""
+    deleted = (
+        db.query(Notification)
+        .filter(Notification.id == notification_id, Notification.user_id == user.id)
+        .delete(synchronize_session=False)
+    )
+    return deleted > 0
+
+
 def mark_read(db: Session, *, user: User, ids: list[uuid.UUID]) -> None:
     """Stamp ``read_at`` on the listed rows ``user`` owns. Another analyst's id
     and an already-read row are left as they are."""

@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.models.event import Event
-from app.models.notification import Notification
+from app.models.notification import Notification, NotificationDelivery
 from app.models.user import User
 from app.services.auth import hash_password
 from tests.conftest import login_as
@@ -197,6 +197,32 @@ def test_read_takes_one_page_of_ids_at_most(author):
     assert _mark(author).status_code == 422
     too_many = [uuid.uuid4() for _ in range(101)]
     assert _mark(author, *too_many).status_code == 422
+
+
+def _delete(user: User, notification_id: uuid.UUID):
+    headers = login_as(client, user)
+    return client.delete(f"{_FEED}/{notification_id}", headers=headers)
+
+
+def test_delete_removes_the_row_and_its_deliveries(db, author, second_user):
+    row = _notify(db, recipient=author, actor=second_user)
+    kept = _notify(db, recipient=author, actor=second_user)
+    db.add(NotificationDelivery(notification_id=row.id, channel="email"))
+    db.add(NotificationDelivery(notification_id=row.id, channel="push", status="sent"))
+    db.commit()
+    row_id = row.id
+
+    assert _delete(author, row_id).status_code == 204
+    assert [r.id for r in _rows(db, author)] == [kept.id]
+    assert db.query(NotificationDelivery).filter_by(notification_id=row_id).count() == 0
+    assert _unread(author) == 1
+
+
+def test_delete_answers_404_for_another_analysts_row(db, author, second_user):
+    row = _notify(db, recipient=author, actor=second_user)
+    assert _delete(second_user, row.id).status_code == 404
+    assert _delete(author, uuid.uuid4()).status_code == 404
+    assert [r.id for r in _rows(db, author)] == [row.id]
 
 
 def test_feed_pages_with_a_cursor(db, author, second_user):

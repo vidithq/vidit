@@ -39,6 +39,11 @@ export async function markNotificationsRead(ids: string[]): Promise<void> {
   }
 }
 
+/** Delete one of your notifications. */
+export function deleteNotification(id: string): Promise<void> {
+  return apiFetch<void>(`${NOTIFICATIONS_PATH}/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 /** Per-kind copy for the feed and the settings rows. Keyed by the generated kind, so a kind
  *  the backend registers fails the type-check until it gets its wording here. Each `label` is
  *  mirrored by the `setting` the backend's `services/email` notification builder names; change

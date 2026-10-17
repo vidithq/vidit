@@ -14,6 +14,8 @@ vi.mock("@/lib/api", () => ({
   apiFetch: api.apiFetch,
   apiFetchPage: api.apiFetchPage,
   ApiError: class extends Error {},
+  errorMessage: (err: unknown, fallback = "Something went wrong.") =>
+    err instanceof Error ? err.message : fallback,
 }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
@@ -171,6 +173,31 @@ describe("NotificationsPage", () => {
     await waitFor(() => expect(api.apiFetchPage.mock.calls.length).toBeGreaterThan(loads));
   });
 
+  it("deletes a row from its own delete button, then reloads the feed and the dot", async () => {
+    serve([follower]);
+    render(<NotificationsPage />);
+
+    await screen.findByRole("link", { name: /cy followed you/ });
+    const loads = api.apiFetchPage.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "Delete notification" }));
+
+    await waitFor(() =>
+      expect(api.apiFetch).toHaveBeenCalledWith("/notifications/n1", { method: "DELETE" }),
+    );
+    await waitFor(() => expect(api.apiFetchPage.mock.calls.length).toBeGreaterThan(loads));
+    expect(api.refresh).toHaveBeenCalled();
+  });
+
+  it("keeps the row and says so when the delete fails", async () => {
+    serve([follower]);
+    api.apiFetch.mockRejectedValue(new Error("boom"));
+    render(<NotificationsPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Delete notification" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /cy followed you/ })).toBeInTheDocument();
+  });
+
   it("offers no approval: re-approval and review rows link to the event page", async () => {
     const organization = { slug: "osw", name: "Open Source Watch", avatar_url: null };
     const reapprove: Notification = {
@@ -222,10 +249,11 @@ describe("NotificationsPage", () => {
     expect(links).toHaveLength(2);
     const decline = screen.getByRole("button", { name: "Decline" });
     // In the row, below the link it answers, so a phone keeps the title at full width.
-    expect(links[0].parentElement?.parentElement).toContainElement(decline);
+    const row = links[0].parentElement?.parentElement?.parentElement;
+    expect(row).toContainElement(decline);
     expect(links[0].contains(decline)).toBe(false);
     expect(links[0].compareDocumentPosition(decline) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(decline.parentElement?.parentElement).toBe(links[0].parentElement);
+    expect(decline.parentElement?.parentElement).toBe(row);
     const loads = api.apiFetchPage.mock.calls.length;
     fireEvent.click(decline);
 
