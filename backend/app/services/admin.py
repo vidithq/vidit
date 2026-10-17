@@ -322,12 +322,14 @@ def search_users(db: Session, *, query: str, limit: int = 20) -> list[User]:
     cleaned = query.strip()
     if not cleaned:
         return []
-    pattern = f"%{cleaned}%"
     return (
         db.query(User)
         .filter(
             User.deleted_at.is_(None),
-            or_(User.username.ilike(pattern), User.email.ilike(pattern)),
+            or_(
+                User.username.icontains(cleaned, autoescape=True),
+                User.email.icontains(cleaned, autoescape=True),
+            ),
         )
         .order_by(User.username.asc())
         .limit(limit)

@@ -606,6 +606,15 @@ def test_search_users_403_for_regular_user(regular_user):
     assert response.status_code == 403
 
 
+@pytest.mark.parametrize("q", ["%", "_"])
+def test_search_users_treats_like_wildcards_literally(admin_user, regular_user, q):
+    response = client.get(
+        "/api/v1/admin/users", params={"q": q}, headers=login_as(client, admin_user)
+    )
+    assert response.status_code == 200
+    assert all(q in r["username"] or q in r["email"] for r in response.json())
+
+
 def test_search_users_returns_empty_for_blank_query(admin_user):
     response = client.get("/api/v1/admin/users?q=", headers=login_as(client, admin_user))
     assert response.status_code == 200

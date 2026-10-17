@@ -321,10 +321,6 @@ def _declined_recently(geo: Event, requester: User) -> ColumnElement[bool]:
     )
 
 
-def _substring(query: str) -> str:
-    return query.strip().replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
-
-
 def _eligible_analysts(
     db: Session, *, geo: Event, requester: User, q: str, exact: str
 ) -> list[User]:
@@ -351,8 +347,8 @@ def _eligible_analysts(
         _suggested_analyst(requester.id, exact),
     )
     if q:
-        stmt = stmt.where(User.username.ilike(f"%{q}%", escape="\\")).order_by(
-            User.username.ilike(f"{q}%", escape="\\").desc()
+        stmt = stmt.where(User.username.icontains(q, autoescape=True)).order_by(
+            User.username.istartswith(q, autoescape=True).desc()
         )
     return list(db.scalars(stmt.order_by(User.username).limit(MAX_TARGET_SUGGESTIONS)))
 
@@ -380,11 +376,10 @@ def _eligible_organizations(
         _suggested_organization(requester.id, exact),
     )
     if q:
-        pattern = f"%{q}%"
         stmt = stmt.where(
             or_(
-                Organization.name.ilike(pattern, escape="\\"),
-                Organization.slug.ilike(pattern, escape="\\"),
+                Organization.name.icontains(q, autoescape=True),
+                Organization.slug.icontains(q, autoescape=True),
             )
         )
     return list(db.scalars(stmt.order_by(Organization.name).limit(MAX_TARGET_SUGGESTIONS)))
@@ -406,10 +401,9 @@ def eligible_targets(
     request, so the list never reveals an ``everyone`` audience.
     """
     _require_requester(db, geo=geo, requester=requester)
-    q = _substring(query)
     exact = query.strip()
-    analysts = _eligible_analysts(db, geo=geo, requester=requester, q=q, exact=exact)
-    organizations = _eligible_organizations(db, geo=geo, requester=requester, q=q, exact=exact)
+    analysts = _eligible_analysts(db, geo=geo, requester=requester, q=exact, exact=exact)
+    organizations = _eligible_organizations(db, geo=geo, requester=requester, q=exact, exact=exact)
     listed = {u.username.lower() for u in analysts} | {o.slug.lower() for o in organizations}
     return ApprovalRequestTargetList(
         analysts=[AuthorRef.model_validate(u) for u in analysts],
@@ -629,7 +623,7 @@ def decline(db: Session, *, geo: Event, request_id: uuid.UUID, user: User) -> Ap
     and tell the requester.
 
     404 ``approval_request_not_found`` for an id that is not such a request on ``geo``; 409
-    ``already_resolved`` once it is approved or declined.
+    ``already_resolved`` once it is approved, declined or withdrawn.
     """
     geo = _lock(db, geo.id)
     row = (
