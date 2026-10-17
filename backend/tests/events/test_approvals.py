@@ -14,7 +14,7 @@ from app.models.approval import EventApproval
 from app.models.event import STATUS_CLOSED, Event, EventGeolocator
 from app.models.notification import Notification
 from app.models.user import User
-from app.services import approvals
+from app.services import approvals, notification_delivery
 from app.services.auth import hash_password
 from app.services.geolocator_credit import JOINED_AS_GEOLOCATOR_REASON
 from tests.conftest import login_as
@@ -65,11 +65,11 @@ def _approve(geo: Event, user: User, version_no: int = 1, **body):
     )
 
 
-def _revoke(geo: Event, approval_id: str, user: User, reason: str = "Wrong building"):
+def _revoke(geo: Event, approval_id: str, user: User, reason: str | None = "Wrong building"):
     headers = login_as(client, user)
     return client.post(
         f"{_EVENTS}/{geo.id}/approvals/{approval_id}/revoke",
-        json={"reason": reason},
+        json=None if reason is None else {"reason": reason},
         headers=headers,
     )
 
@@ -298,8 +298,8 @@ def test_the_reviewer_revokes_with_a_public_reason(db, author, second_user, make
     owner = _revoke(geo, approval["id"], author)
     assert owner.status_code == 403
 
-    blank = _revoke(geo, approval["id"], second_user, reason="   ")
-    assert blank.status_code == 422
+    too_long = _revoke(geo, approval["id"], second_user, reason="x" * 2001)
+    assert too_long.status_code == 422
 
     response = _revoke(geo, approval["id"], second_user, reason="  The shadows disagree.  ")
     assert response.status_code == 200, response.text
@@ -314,6 +314,67 @@ def test_the_reviewer_revokes_with_a_public_reason(db, author, second_user, make
     again = _revoke(geo, approval["id"], second_user)
     assert again.status_code == 409
     assert again.json()["detail"]["code"] == "already_revoked"
+
+
+@pytest.mark.parametrize("reason", [None, "   "])
+def test_the_reason_is_optional_and_a_blank_one_is_stored_as_null(db, author, second_user, reason):
+    geo = _published(db, author)
+    approval = _approve(geo, second_user).json()
+
+    response = _revoke(geo, approval["id"], second_user, reason=reason)
+    assert response.status_code == 200, response.text
+    assert response.json()["revoked_at"] is not None
+    assert response.json()["revoke_reason"] is None
+    db.expire_all()
+    row = db.get(EventApproval, uuid.UUID(approval["id"]))
+    assert row is not None and row.revoked_at is not None and row.revoke_reason is None
+
+
+def test_a_revoke_notifies_the_owner_and_hides_the_approval_notice(db, author, second_user):
+    geo = _published(db, author)
+    approval = _approve(geo, second_user).json()
+    assert [n["kind"] for n in _feed(author)] == ["approval_received"]
+
+    assert _revoke(geo, approval["id"], second_user, reason=None).status_code == 200
+
+    feed = _feed(author)
+    assert [(n["kind"], n["actor"]["id"]) for n in feed] == [
+        ("approval_revoked", str(second_user.id))
+    ]
+    assert feed[0]["event"]["id"] == str(geo.id)
+    unread = client.get("/api/v1/notifications/unread-count").json()["count"]
+    assert unread == 1
+    assert ("approval_received", second_user.id, geo.id) in _kinds(db, author)
+    assert not db.query(Notification).filter_by(user_id=second_user.id).count()
+
+    [row] = db.query(Notification).filter_by(user_id=author.id, kind="approval_revoked").all()
+    built = notification_delivery._EMAIL_BUILDERS["approval_revoked"](row, "probe@example.com")
+    assert second_user.username in built.subject
+    message = notification_delivery._PUSH_BUILDERS["approval_revoked"](row)
+    assert message.path == f"/events/{geo.id}"
+
+
+def test_a_revoke_hides_only_the_notice_of_the_revoked_approval(
+    db, author, second_user, conflict, capture_source_tag
+):
+    geo = _published_with_floor(db, author, conflict, capture_source_tag)
+    first = _approve(geo, second_user).json()
+    saved = _save_version(geo.id, author, data=_form(conflict, capture_source_tag))
+    assert saved.status_code == 200, saved.text
+    second = _approve(geo, second_user, version_no=2).json()
+
+    assert _revoke(geo, first["id"], second_user).status_code == 200
+
+    received = [n for n in _feed(author) if n["kind"] == "approval_received"]
+    assert len(received) == 1
+    db.expire_all()
+    [shown] = (
+        db.query(Notification)
+        .filter_by(user_id=author.id, kind="approval_received")
+        .filter(Notification.id == uuid.UUID(received[0]["id"]))
+        .all()
+    )
+    assert shown.approval_id == uuid.UUID(second["id"])
 
 
 def test_a_site_admin_revokes_any_approval_and_is_audited(db, author, second_user, admin_user):

@@ -11,9 +11,6 @@ export type OrganizationApproval = components["schemas"]["OrganizationApprovalRe
 type Author = components["schemas"]["AuthorRef"];
 type Revoker = NonNullable<Approval["revoked_as"]>;
 
-/** Mirrors `schemas/approval.APPROVAL_NOTE_MAX_LENGTH`; change both. */
-export const APPROVAL_NOTE_MAX_LEN = 280;
-
 /** The reviews of one version of an event; the live version when `versionNo` is omitted. */
 export function approvalsPath(eventId: string, versionNo?: number): string {
   const base = `/events/${eventId}/approvals`;
@@ -60,42 +57,60 @@ export function changesSince(current: EventDetail, approved: EventVersion): stri
   return changedFields(current, snapshotToEventView(current, approved));
 }
 
-/** The label of an approve button: the version, and the organization it approves for. */
-export function approveLabel(versionNo: number, organization?: OrganizationRef | null): string {
-  return organization
-    ? `Approve version ${versionNo} as ${organization.name}`
-    : `Approve version ${versionNo}`;
-}
-
 /** Approve `versionNo`, the version the reader has on screen, as the reader or, as its
  *  org manager, for the organization `organization` (a slug); the backend answers 409 when the
  *  live version moved on since. */
 export function approveEvent(
   eventId: string,
   versionNo: number,
-  note?: string,
   organization?: string,
 ): Promise<Approval> {
   return apiFetch<Approval>(approvalsPath(eventId), {
     method: "POST",
-    body: JSON.stringify({
-      version_no: versionNo,
-      note: note?.trim() || null,
-      ...(organization ? { organization } : {}),
-    }),
+    body: JSON.stringify({ version_no: versionNo, ...(organization ? { organization } : {}) }),
   });
 }
 
-export function revokeApproval(
-  eventId: string,
-  approvalId: string,
-  reason: string,
-): Promise<Approval> {
+/** The reader's own review of the live version, standing or revoked; null when there is none.
+ *  An analyst reviews a version once, revoked included, so there is at most one. Mirrors backend
+ *  services/approvals.approve; change both. */
+export function ownApprovalOnLive(
+  rows: Approval[],
+  liveVersion: number,
+  userId: string | undefined,
+): Approval | null {
+  if (!userId) return null;
+  return (
+    rows.find(
+      (a) => !a.organization && a.reviewer?.id === userId && a.version_no === liveVersion,
+    ) ?? null
+  );
+}
+
+export function revokeApproval(eventId: string, approvalId: string): Promise<Approval> {
   return apiFetch<Approval>(`${approvalsPath(eventId)}/${approvalId}/revoke`, {
     method: "POST",
-    body: JSON.stringify({ reason }),
   });
 }
+
+/** Why the reader cannot approve the live version again after their approval of it was
+ *  revoked. */
+export function cannotApproveAgainLine(approval: Approval): string {
+  const lead =
+    approval.revoked_as === "reviewer"
+      ? `You revoked your approval of version ${approval.version_no}.`
+      : `Your approval of version ${approval.version_no} was revoked.`;
+  return `${lead} You cannot approve this version again.`;
+}
+
+/** The confirmation an approval shows once it is placed. */
+export function approvedNotice(approval: Approval): string {
+  return approval.organization
+    ? `Approved version ${approval.version_no} as ${approval.organization.name}.`
+    : `Approved version ${approval.version_no}.`;
+}
+
+export const REVOKED_NOTICE = "Approval revoked.";
 
 /** Whether `userId` may approve the live version of `event`, given its reviews: as themselves,
  *  or, with `organization` (a slug of an organization they manage), in its name.

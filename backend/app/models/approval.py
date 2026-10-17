@@ -33,7 +33,7 @@ class EventApproval(Base):
     Bound to ``(event_id, version_no)``. It is current while ``version_no`` is
     the event's live version and ``revoked_at`` is NULL, so a new version ends
     it without a write and the row stays readable on the version it covered.
-    Revocation stamps the row and keeps it: the reason is public.
+    Revocation stamps the row and keeps it, with an optional public reason.
 
     With ``organization_id`` set, the approval is the organization's and
     ``reviewer_id`` is the org manager who placed it in its name, NULL once that
@@ -82,7 +82,7 @@ class EventApproval(Base):
     __table_args__ = (
         CheckConstraint("verdict IN ('approve')", name="ck_event_approvals_verdict_valid"),
         CheckConstraint(
-            "(revoked_at IS NULL) = (revoke_reason IS NULL)",
+            "revoke_reason IS NULL OR revoked_at IS NOT NULL",
             name="ck_event_approvals_revoke_reason",
         ),
         CheckConstraint(

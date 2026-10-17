@@ -48,21 +48,15 @@ test.describe("settings", () => {
 
     const emailSwitches = page.getByRole("switch", { name: /, Email$/ });
     await expect(emailSwitches.first()).toBeVisible();
+    // The fixture deployment sends no push, so the matrix holds the Email column only.
+    await expect(page.getByRole("switch", { name: /, Push$/ })).toHaveCount(0);
     const viewportWidth = page.viewportSize()!.width;
     for (const email of await emailSwitches.all()) {
-      const name = (await email.getAttribute("aria-label"))!;
-      const push = page.getByRole("switch", { name: name.replace(/Email$/, "Push") });
-      // The fixture deployment sends no push, so the column is disabled with one reason.
-      await expect(push).toBeDisabled();
       await email.scrollIntoViewIfNeeded();
-      const [emailBox, pushBox] = [(await email.boundingBox())!, (await push.boundingBox())!];
-      for (const box of [emailBox, pushBox]) {
-        expect(box.width).toBeGreaterThanOrEqual(36);
-        expect(box.height).toBeGreaterThanOrEqual(36);
-        expect(box.x + box.width).toBeLessThanOrEqual(viewportWidth);
-      }
-      expect(Math.abs(emailBox.y - pushBox.y)).toBeLessThan(1);
-      expect(pushBox.x).toBeGreaterThan(emailBox.x);
+      const box = (await email.boundingBox())!;
+      expect(box.width).toBeGreaterThanOrEqual(36);
+      expect(box.height).toBeGreaterThanOrEqual(36);
+      expect(box.x + box.width).toBeLessThanOrEqual(viewportWidth);
     }
     await expect(
       page.getByText("This Vidit server does not send push notifications.", { exact: true }),

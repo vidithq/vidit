@@ -387,8 +387,12 @@ describe("public profile identity", () => {
       within(identity).getByRole("link", { name: "Member of Sahel Desk" }),
     ).toHaveAttribute("href", "/organizations/sahel-desk");
 
-    fireEvent.focus(manager);
-    expect(screen.getByRole("tooltip")).toHaveTextContent("Open Source WatchOrg manager");
+    fireEvent.pointerEnter(manager, { pointerType: "mouse" });
+    expect(
+      [...document.body.querySelectorAll('[aria-hidden="true"]')].some(
+        (el) => el.textContent === "Org manager of Open Source Watch",
+      ),
+    ).toBe(true);
 
     // The logos replace the card: no section titled Organizations.
     expect(screen.queryByText("Organizations")).toBeNull();

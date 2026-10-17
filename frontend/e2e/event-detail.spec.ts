@@ -70,29 +70,21 @@ test.describe("shared event link", () => {
     const mediaBox = await page.getByRole("heading", { name: "Source media" }).boundingBox();
     expect(cardBox!.y + cardBox!.height).toBeLessThanOrEqual(mediaBox!.y);
 
-    // Two rows of stamps, oldest first, the bubble for the rest taking the last slot.
+    // Two rows of stamps, oldest first, each a link to its signer's page, the bubble for the
+    // rest taking the last slot.
     const stamps = card.getByRole("list", { name: "Approved by" });
-    await expect(stamps.getByRole("button", { name: /^Approved by/ })).toHaveCount(13);
-    const first = stamps.getByRole("button", {
-      name: `Approved by ${EVENT_APPROVALS[0].reviewer!.username}`,
-    });
+    await expect(stamps.getByRole("link")).toHaveCount(13);
+    const username = EVENT_APPROVALS[0].reviewer!.username;
+    const first = stamps.getByRole("link", { name: username, exact: true });
+    await expect(first).toHaveAttribute("href", `/profile/${username}`);
     expect((await first.boundingBox())?.width).toBe(28);
     await expectNarrowViewportLayout(page, stamps.getByRole("button", { name: "Show 3 more approvals" }));
-
-
-    // A tap opens the stamp's card, which holds the note and the way to the profile.
-    await first.click();
-    await expect(page.getByRole("dialog").getByText(EVENT_APPROVALS[0].note!)).toBeVisible();
-    await expectNarrowViewportLayout(page, page.getByRole("link", { name: "View profile" }));
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.getByText(EVENT_APPROVALS[0].note!)).toHaveCount(0);
 
     // The bubble shows the rest of the stamps, which wrap inside the card.
     await stamps.getByRole("button", { name: "Show 3 more approvals" }).click();
-    await expect(stamps.getByRole("button", { name: /^Approved by/ })).toHaveCount(
-      EVENT_APPROVALS.length,
-    );
-    await expectNarrowViewportLayout(page, stamps.getByRole("button", { name: /^Approved by/ }).last());
+    await expect(stamps.getByRole("link")).toHaveCount(EVENT_APPROVALS.length);
+    await expectNarrowViewportLayout(page, stamps.getByRole("link").last());
   });
 
   test("keeps the header on screen above the rail once the page scrolls", async ({ page }) => {

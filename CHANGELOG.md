@@ -37,6 +37,11 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - The timeline is now the feed: the page moves from `/timeline` to `/feed` (the old address redirects), the sidebar entry is "Feed", and `GET /timeline` becomes `GET /feed` with `feed_at` in place of `timeline_at` ([#585](https://github.com/vidithq/vidit/pull/585)).
 - Settings lists each notification kind once, with an Email and a Push switch side by side, and closes the Push column with one reason when the server sends no push or your account has no push device ([#575](https://github.com/vidithq/vidit/pull/575)).
 - The Approvals card sets its approver pictures apart in two rows of up to seven before a +N bubble, and its title explains in a tooltip that an approval covers one version; an incoming approval request reads as one line above Approve, with Decline beside it.
+- Approvals are simpler: Approve approves in one click with no note, each stamp links to the reviewer's profile or the organization's page with the handle in a tooltip, and once your approval stands a Revoke button takes Approve's place, asking for no reason; a confirmation shows after either.
+- Revoking an approval no longer needs a reason (the API still takes an optional one), the event owner gets a notification when an approval of their event is revoked, and the revoked approval's notice leaves the feed.
+- A reviewer whose approval of the live version was revoked reads why they cannot approve it again, and a stale version error offers Reload.
+- Notification rows put Decline below the row so a phone keeps the event title readable, and an answered approval request shows Approved or Declined.
+- Settings hides the Push column when the server sends no push, and the app checks admin status once per session instead of once per component.
 
 ### Changed
 

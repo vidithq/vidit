@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -7,6 +8,9 @@ from app.models.notification import NotificationKind
 from app.schemas.organization import OrganizationRef
 from app.schemas.user import AuthorRef
 from app.services.pagination import MAX_PAGE_SIZE
+
+# The answers a feed row reports on the approval request behind it.
+ApprovalRequestOutcome = Literal["approved", "declined"]
 
 
 class NotificationEventRef(BaseModel):
@@ -26,7 +30,9 @@ class NotificationRead(BaseModel):
     null when the reader cannot approve it now. ``approved_version`` is then,
     on a ``re_approve_requested`` row, the latest earlier version the reader's
     approval still stands on, the base of the change list. ``approval_request_id`` is the open request behind a
-    ``approval_request_received`` row, null once it is resolved.
+    ``approval_request_received`` row, null once it is resolved;
+    ``approval_request_status`` is then ``approved`` or ``declined`` when the
+    request was answered.
     ``organization_name`` names the deleted organization on an
     ``organization_approval_removed`` row, and is null on every other kind."""
 
@@ -42,6 +48,7 @@ class NotificationRead(BaseModel):
     reapprove_version: int | None
     approved_version: int | None
     approval_request_id: uuid.UUID | None
+    approval_request_status: ApprovalRequestOutcome | None = None
 
 
 class NotificationUnreadCount(BaseModel):

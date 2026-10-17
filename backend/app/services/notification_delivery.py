@@ -191,6 +191,14 @@ def _review_fields(n: Notification) -> _ReviewFields:
     }
 
 
+def _approval_signer(n: Notification) -> str:
+    """Who signed the approval an ``approval_revoked`` row names: its organization, or its
+    reviewer."""
+    if n.organization is not None:
+        return n.organization.name
+    return n.actor.username
+
+
 _EMAIL_BUILDERS: dict[NotificationKind, Callable[[Notification, str], email.Email]] = {
     "request_fulfilled": _request_fulfilled,
     "new_follower": _new_follower,
@@ -206,6 +214,9 @@ _EMAIL_BUILDERS: dict[NotificationKind, Callable[[Notification, str], email.Emai
         to=to, **_review_fields(n)
     ),
     "approval_received": lambda n, to: email.approval_received_email(to=to, **_review_fields(n)),
+    "approval_revoked": lambda n, to: email.approval_revoked_email(
+        to=to, signer=_approval_signer(n), event_id=str(n.event.id), event_title=n.event.title
+    ),
     "approval_request_received": lambda n, to: email.approval_request_received_email(
         to=to, **_review_fields(n)
     ),
@@ -382,6 +393,11 @@ _PUSH_BUILDERS: dict[NotificationKind, Callable[[Notification], push.PushMessage
     "organization_manager_inherited": _organization_manager_inherited_push,
     "re_approve_requested": _re_approve_requested_push,
     "approval_received": _approval_received_push,
+    "approval_revoked": lambda n: push.PushMessage(
+        title=f"The approval by {_approval_signer(n)} of your geolocation was revoked",
+        body=n.event.title,
+        path=f"/events/{n.event.id}",
+    ),
     "approval_request_received": _approval_request_received_push,
     "approval_request_declined": _approval_request_declined_push,
     "organization_approval_removed": lambda n: push.PushMessage(

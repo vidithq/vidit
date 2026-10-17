@@ -19,12 +19,6 @@ export function ProfileOrganizations({ memberships }: { memberships: Organizatio
         variant: "organization",
         label: `${ROLE_LABEL[role]} of ${organization.name}`,
         href: organizationPath(organization.slug),
-        renderCard: () => (
-          <>
-            <span className="block font-medium text-neutral-100">{organization.name}</span>
-            <span className="block text-neutral-500">{ROLE_LABEL[role]}</span>
-          </>
-        ),
       }))}
     />
   );

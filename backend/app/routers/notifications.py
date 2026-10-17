@@ -59,9 +59,14 @@ def list_notifications(
     approval_requests = notifications_service.open_approval_requests(
         db, user=current_user, rows=rows
     )
+    answered = notifications_service.answered_approval_requests(db, user=current_user, rows=rows)
     return [
         notifications_service.build_read(
-            row, pending=pending, offers=offers, approval_requests=approval_requests
+            row,
+            pending=pending,
+            offers=offers,
+            approval_requests=approval_requests,
+            answered=answered,
         )
         for row in rows
     ]

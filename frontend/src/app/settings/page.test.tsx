@@ -159,22 +159,21 @@ describe("SettingsPage", () => {
     );
   });
 
-  it("closes the push column with one reason when the server sends no push", async () => {
+  it("hides the push column and says why when the server sends no push", async () => {
     push.readPushState.mockResolvedValue("unavailable" satisfies PushDeviceState);
     serveDevices([PHONE]);
     render(<SettingsPage />);
 
     const reason = "This Vidit server does not send push notifications.";
+    expect(await screen.findByText(reason)).toBeInTheDocument();
     await waitFor(() =>
-      expect(screen.getByRole("switch", { name: "New follower, Push" })).toBeDisabled(),
+      expect(screen.queryByRole("switch", { name: "New follower, Push" })).toBeNull(),
     );
-    expect(screen.getByRole("switch", { name: "Request fulfilled, Push" })).toBeDisabled();
-    expect(screen.getByRole("switch", { name: "New follower, Push" })).toHaveAccessibleDescription(
-      new RegExp(reason),
-    );
-    expect(screen.getAllByText(new RegExp(reason))).toHaveLength(1);
+    expect(screen.queryByRole("switch", { name: /, Push$/ })).toBeNull();
+    expect(screen.queryByText("Push", { selector: "span" })).toBeNull();
     expect(screen.getByRole("switch", { name: "New follower, Email" })).toBeEnabled();
-    expect(screen.getByText(/add Vidit to the Home Screen/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Default: off\./).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/add Vidit to the Home Screen/)).toBeNull();
   });
 
   it("closes the push column when the account has no push device", async () => {

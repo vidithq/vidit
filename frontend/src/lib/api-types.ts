@@ -1403,8 +1403,8 @@ export interface paths {
         put?: never;
         /**
          * Revoke Approval
-         * @description Revoke an approval with a public reason: your own, your organization's as its org manager,
-         *     or any as a site admin.
+         * @description Revoke an approval: your own, your organization's as its org manager, or any as a site
+         *     admin.
          */
         post: operations["revoke_approval_api_v1_events__geolocation_id__approvals__approval_id__revoke_post"];
         delete?: never;
@@ -3073,11 +3073,12 @@ export interface components {
         };
         /**
          * ApprovalRevoke
-         * @description Body of ``POST /events/{id}/approvals/{approval_id}/revoke``. The reason is public.
+         * @description Optional body of ``POST /events/{id}/approvals/{approval_id}/revoke``: a public reason,
+         *     stored as null when blank.
          */
         ApprovalRevoke: {
             /** Reason */
-            reason: string;
+            reason?: string | null;
         };
         /**
          * ArchiveImportEnqueue
@@ -4152,7 +4153,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_manager_inherited" | "re_approve_requested" | "approval_received" | "approval_request_received" | "approval_request_declined" | "organization_approval_removed";
+            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_manager_inherited" | "re_approve_requested" | "approval_received" | "approval_revoked" | "approval_request_received" | "approval_request_declined" | "organization_approval_removed";
         };
         /**
          * NotificationRead
@@ -4165,7 +4166,9 @@ export interface components {
          *     null when the reader cannot approve it now. ``approved_version`` is then,
          *     on a ``re_approve_requested`` row, the latest earlier version the reader's
          *     approval still stands on, the base of the change list. ``approval_request_id`` is the open request behind a
-         *     ``approval_request_received`` row, null once it is resolved.
+         *     ``approval_request_received`` row, null once it is resolved;
+         *     ``approval_request_status`` is then ``approved`` or ``declined`` when the
+         *     request was answered.
          *     ``organization_name`` names the deleted organization on an
          *     ``organization_approval_removed`` row, and is null on every other kind.
          */
@@ -4173,6 +4176,8 @@ export interface components {
             actor: components["schemas"]["AuthorRef"] | null;
             /** Approval Request Id */
             approval_request_id: string | null;
+            /** Approval Request Status */
+            approval_request_status?: ("approved" | "declined") | null;
             /** Approved Version */
             approved_version: number | null;
             /**
@@ -4192,7 +4197,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_manager_inherited" | "re_approve_requested" | "approval_received" | "approval_request_received" | "approval_request_declined" | "organization_approval_removed";
+            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_manager_inherited" | "re_approve_requested" | "approval_received" | "approval_revoked" | "approval_request_received" | "approval_request_declined" | "organization_approval_removed";
             organization: components["schemas"]["OrganizationRef"] | null;
             /** Organization Name */
             organization_name?: string | null;
@@ -7464,9 +7469,9 @@ export interface operations {
                 vidit_session?: string | null;
             };
         };
-        requestBody: {
+        requestBody?: {
             content: {
-                "application/json": components["schemas"]["ApprovalRevoke"];
+                "application/json": components["schemas"]["ApprovalRevoke"] | null;
             };
         };
         responses: {

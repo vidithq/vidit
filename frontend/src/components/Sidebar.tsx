@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { useUnreadNotifications } from "@/contexts/NotificationsContext";
-import { useAdmin } from "@/hooks/useAdmin";
+import { useAdmin } from "@/contexts/AdminContext";
 import { ACCENT_SURFACE } from "@/components/ui/styles";
 import { ICON_TAP_STEP } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";

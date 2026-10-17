@@ -27,6 +27,7 @@ import {
   FEED_ITEMS,
   INVITE_CANDIDATES,
   NO_UNREAD,
+  NOTIFICATION_FEED,
   ORGANIZATION,
   ORGANIZATION_APPROVALS,
   ORGANIZATION_INVITES,
@@ -66,6 +67,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/^\/users\/me\/push-config$/, PUSH_OFF],
   [/^\/users\/me\/x-handle$/, X_HANDLE_WITH_DECLINED_REQUEST],
   [/^\/notifications\/unread-count$/, NO_UNREAD],
+  [/^\/notifications$/, NOTIFICATION_FEED],
   // The request board's first page. Every pattern here anchors on the whole
   // path, so the bare list, the detection queue above and the event by id
   // below stay distinct.

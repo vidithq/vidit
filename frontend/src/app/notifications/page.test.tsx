@@ -221,8 +221,11 @@ describe("NotificationsPage", () => {
     });
     expect(links).toHaveLength(2);
     const decline = screen.getByRole("button", { name: "Decline" });
-    // In the row: beside the link it answers, inside the same wrapper.
+    // In the row, below the link it answers, so a phone keeps the title at full width.
     expect(links[0].parentElement?.parentElement).toContainElement(decline);
+    expect(links[0].contains(decline)).toBe(false);
+    expect(links[0].compareDocumentPosition(decline) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(decline.parentElement?.parentElement).toBe(links[0].parentElement);
     const loads = api.apiFetchPage.mock.calls.length;
     fireEvent.click(decline);
 
@@ -232,6 +235,48 @@ describe("NotificationsPage", () => {
       }),
     );
     await waitFor(() => expect(api.apiFetchPage.mock.calls.length).toBeGreaterThan(loads));
+  });
+
+  it("labels an answered approval request with how it ended", async () => {
+    const asked: Notification = {
+      ...follower,
+      id: "n9",
+      kind: "approval_request_received",
+      event: { id: "e8", title: "Bridge strike" },
+      approval_request_status: "approved",
+    };
+    serve([asked, { ...asked, id: "n10", approval_request_status: "declined" }]);
+    render(<NotificationsPage />);
+
+    const links = await screen.findAllByRole("link", {
+      name: /cy asked you to approve: Bridge strike/,
+    });
+    expect(links[0]).toHaveTextContent(/Approval request · .* · Approved/);
+    expect(links[1]).toHaveTextContent(/Approval request · .* · Declined/);
+    expect(screen.queryByRole("button", { name: "Decline" })).toBeNull();
+  });
+
+  it("tells the owner an approval was revoked, naming the organization when it is one", async () => {
+    const revoked: Notification = {
+      ...follower,
+      id: "n11",
+      kind: "approval_revoked",
+      event: { id: "e8", title: "Bridge strike" },
+    };
+    const organization = { slug: "osw", name: "Open Source Watch", avatar_url: null };
+    serve([revoked, { ...revoked, id: "n12", actor: null, organization }]);
+    render(<NotificationsPage />);
+
+    expect(
+      await screen.findByRole("link", {
+        name: /The approval by cy of your geolocation was revoked: Bridge strike/,
+      }),
+    ).toHaveAttribute("href", "/events/e8");
+    expect(
+      screen.getByRole("link", {
+        name: /The approval by Open Source Watch of your geolocation was revoked: Bridge strike/,
+      }),
+    ).toBeInTheDocument();
   });
 
   it("explains the empty feed", async () => {

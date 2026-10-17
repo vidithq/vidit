@@ -463,9 +463,8 @@ Every other frontend copy of a backend rule or of the GitHub Project is hand-kep
 | `lib/collections.ts::COLLECTABLE_STATUSES` | `event_filters.collectable_events` | picker offers rows the add verb refuses (409) |
 | `components/event/useEventActions.tsx` credit controls on `geolocated` rows only | `geolocator_credit._require_published` | the Geolocators panel offers an invitation the API refuses (409) |
 | `lib/approvals.ts::canApprove` | `approvals.approve` (published only, never a geolocator, one review per analyst and version, one standing approval per organization and version) | the Approvals card offers an approval the API refuses (403 or 409); the API's `viewer_can_approve` covers former geolocators, whom the event's credit no longer lists |
-| `components/event/Approvals.tsx` Revoke on an organization's approval for its org managers and site admins | `approvals._revoker_role` | the panel offers a revocation the API refuses (403) |
 | `lib/approvals.ts::standingApprovalBefore` | `notifications.reapproval_offers` `approved_version` (latest earlier unrevoked approval) | the Approvals card and the API's `approved_version` name different base versions |
-| `lib/approvals.ts::APPROVAL_NOTE_MAX_LEN` | `schemas/approval.APPROVAL_NOTE_MAX_LENGTH` | server refuses typed text |
+| `lib/approvals.ts::ownApprovalOnLive` | `approvals.approve` (one review per analyst and version, revoked included) | the Approvals card offers Approve to a reviewer whose revoked approval blocks it, or hides Revoke on an approval that stands |
 | `lib/approvalRequests.ts::canRequestApproval` | `approval_requests._require_requester` (published only, a geolocator of the event) | the Approval requests card offers a request the API refuses (403 or 409) |
 | `app/page.tsx::ROADMAP` | the issues of type Epic in the [GitHub Project](https://github.com/orgs/vidithq/projects/1): Version value, title, summary | landing roadmap promises a version the Project no longer plans |
 | `lib/palette.ts::DEFAULT_PALETTE`, `lib/theme.ts::DEFAULT_THEME`, `lib/helpPreference.ts` (help shown when unset) | `schemas/preferences.DISPLAY_DEFAULTS` | first paint on a new device differs from the account's default until the preferences load |
@@ -479,7 +478,6 @@ Every other frontend copy of a backend rule or of the GitHub Project is hand-kep
 | `types/index.ts::MapPoint` 6-tuple | `routers/events/read.py::list_points` tuple order `[id, lat, lng, event_date, added_date, detected]` | every map point mis-decodes |
 | expiry copy on `app/(auth)/forgot-password`, `registration-pending` and `resend-confirmation` (15 minutes, 24 hours) | `config.password_reset_token_minutes`, `registration.CONFIRMATION_TOKEN_MINUTES` | page states the wrong expiry |
 | `@viditbot` in `app/import/page.tsx` and `components/ui/MockPost.tsx` | `config.x_bot_handle` | guide names the wrong handle |
-| the Revoke control of `components/event/Approvals.tsx` | `approvals._revoker_role` | Revoke shows on an approval the server refuses to revoke, or hides on one it accepts |
 | `lib/approvalRequests.ts::APPROVAL_REQUEST_AUDIENCE_DEFAULT` | `user_preferences.APPROVAL_REQUEST_AUDIENCE_DEFAULT` | Settings shows an audience the server does not apply while preferences load |
 | `lib/notifications.ts::NotificationChannel`, `CHANNEL_LABEL` | `models/notification.NotificationChannel` (the preferences schema types channels as plain keys) | Settings offers no switch for a channel the server delivers on |
 | `lib/notifications.ts::NOTIFICATION_KIND_COPY` labels | the `setting` each notification builder passes in `services/email.py` | an email names a switch Settings does not show |
