@@ -312,7 +312,7 @@ def list_versions(
     """One page of the event's superseded versions, newest first.
 
     Over-fetches by one row so the caller can detect a next page
-    (``services/pagination.take_page``).
+    (``services/pagination.paged``).
 
     Ordered by ``version_no DESC``, the cursor key
     (``services/pagination.encode_ordinal_cursor``): unique per event and taken

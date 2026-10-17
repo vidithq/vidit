@@ -3,6 +3,11 @@
 One row cap, one cursor format, one ``Link: rel="next"`` builder. Routers own
 the query; this module bounds a page and links to the next one.
 
+* **The service over-fetches, the router cuts.** A keyset list service takes the
+  page size and returns a window of up to one row more; the router hands it to
+  :func:`paged`, which cuts the page and sends the ``Link`` exactly when the extra
+  row exists, so the next page is never empty.
+
 * **The cap is the server's.** Asking for more than :data:`MAX_PAGE_SIZE`
   rows gets :data:`MAX_PAGE_SIZE`, never an error.
 * **Malformed is a 422.** A page size or page below 1, or an undecodable
@@ -27,12 +32,12 @@ from __future__ import annotations
 import base64
 import binascii
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import date, datetime, time
 from typing import Any
 
 import orjson
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Request, Response
 from sqlalchemy import tuple_
 from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql.elements import ColumnElement
@@ -187,12 +192,15 @@ def keyset_before(
     return tuple_(created_at_col, id_col) < cursor
 
 
-def take_page[T](rows: list[T], size: int) -> tuple[list[T], bool]:
-    """Split an over-fetched ``size + 1`` window into ``(page, has_next)``.
-
-    The extra row guarantees the next page is never empty.
-    """
-    return rows[:size], len(rows) > size
+def paged[T](
+    request: Request, response: Response, window: list[T], size: int, cursor_of: Callable[[T], str]
+) -> list[T]:
+    """The page of an over-fetched ``size + 1`` window. When the window holds the extra row,
+    ``response`` carries the :func:`next_link` to the cursor of the page's last row."""
+    page = window[:size]
+    if len(window) > size:
+        response.headers["Link"] = next_link(request, cursor_of(page[-1]))
+    return page
 
 
 def next_link(request: Request, cursor: str) -> str:

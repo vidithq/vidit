@@ -396,7 +396,7 @@ def list_for_organization(
     cursor: tuple[datetime, uuid.UUID] | None,
 ) -> list[EventApproval]:
     """One window of the approvals placed for ``org``, newest first, over-fetched by one row for
-    ``take_page``. An approval of an event a public reader cannot see is left out; every other
+    ``pagination.paged``. An approval of an event a public reader cannot see is left out; every other
     stays whatever became of the member who placed it, as on the event page."""
     query = (
         db.query(EventApproval)

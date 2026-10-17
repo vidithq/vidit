@@ -20,7 +20,7 @@ from app.services.event_filters import (
     visible_events,
 )
 from app.services.geolocator_credit import CREDIT_LOAD
-from app.services.pagination import keyset_before, take_page
+from app.services.pagination import keyset_before
 from app.services.thumbnails import thumbnail_media_criteria
 
 FeedScope = Literal["following", "all"]
@@ -109,8 +109,8 @@ def get_feed(
     approved: bool = False,
     approved_by: str | None = None,
     approved_by_org: str | None = None,
-) -> tuple[list[Row[tuple[Event, float | None, float | None, datetime]]], bool]:
-    """One page of the feed, newest first, and whether a next page holds a row.
+) -> list[Row[tuple[Event, float | None, float | None, datetime]]]:
+    """One window of the feed, newest first, over-fetched by one row for ``pagination.paged``.
 
     The feed carries two kinds of row: a geolocation an analyst published
     (:func:`services.event_filters.published_events`) and a request an analyst has open
@@ -169,5 +169,4 @@ def get_feed(
     )
     if cursor is not None:
         query = query.filter(keyset_before(key, Event.id, cursor))
-    window = query.order_by(key.desc(), Event.id.desc()).limit(size + 1).all()
-    return take_page(window, size)
+    return query.order_by(key.desc(), Event.id.desc()).limit(size + 1).all()

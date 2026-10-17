@@ -70,9 +70,8 @@ from app.services.geolocator_credit import CREDIT_LOAD, has_pending_invite
 from app.services.pagination import (
     decode_ordinal_cursor,
     encode_ordinal_cursor,
-    next_link,
     page_size,
-    take_page,
+    paged,
 )
 from app.services.source_archive import SnapshotRejected
 from app.services.thumbnails import thumbnail_media_criteria
@@ -553,10 +552,7 @@ def list_event_versions(
         limit=size,
         cursor=decode_ordinal_cursor(cursor) if cursor is not None else None,
     )
-    rows, has_next = take_page(window, size)
-    if has_next:
-        last = rows[-1]
-        response.headers["Link"] = next_link(request, encode_ordinal_cursor(last.version_no))
+    rows = paged(request, response, window, size, lambda r: encode_ordinal_cursor(r.version_no))
     return EventVersionList(
         items=[build_version_read(row) for row in rows],
         total=versions_service.count_versions(db, geo.id),

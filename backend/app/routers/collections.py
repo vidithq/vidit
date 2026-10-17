@@ -30,9 +30,8 @@ from app.services.pagination import (
     MAX_PAGE_SIZE,
     decode_chronological_cursor,
     encode_chronological_cursor,
-    next_link,
     page_size,
-    take_page,
+    paged,
 )
 
 router = APIRouter()
@@ -191,21 +190,19 @@ def list_collection_events(
     """
     collection = _resolve(db, collection_id, current_user)
     size = page_size(limit)
-
-    # One row past the page decides whether a ``Link: rel="next"`` goes out.
     window = collections_service.list_items(
         db,
         collection_id=collection.id,
-        limit=size + 1,
+        limit=size,
         cursor=decode_chronological_cursor(cursor) if cursor is not None else None,
     )
-    rows, has_next = take_page(window, size)
-    if has_next:
-        last_event = rows[-1][0]
-        response.headers["Link"] = next_link(
-            request,
-            encode_chronological_cursor(*collections_service.cursor_values(last_event)),
-        )
+    rows = paged(
+        request,
+        response,
+        window,
+        size,
+        lambda r: encode_chronological_cursor(*collections_service.cursor_values(r[0])),
+    )
     return [build_event_list(event, lat=lat, lng=lng) for event, lat, lng in rows]
 
 

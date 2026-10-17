@@ -21,9 +21,8 @@ from app.services.pagination import (
     MAX_PAGE_SIZE,
     decode_cursor,
     encode_cursor,
-    next_link,
     page_size,
-    take_page,
+    paged,
 )
 from app.services.unsubscribe_tokens import InvalidUnsubscribeTokenError
 
@@ -51,10 +50,7 @@ def list_notifications(
         limit=size,
         cursor=decode_cursor(cursor) if cursor is not None else None,
     )
-    rows, has_next = take_page(window, size)
-    if has_next:
-        last = rows[-1]
-        response.headers["Link"] = next_link(request, encode_cursor(last.created_at, last.id))
+    rows = paged(request, response, window, size, lambda r: encode_cursor(r.created_at, r.id))
     answered = notifications_service.answered_approval_requests(db, user=current_user, rows=rows)
     return [notifications_service.build_read(row, answered=answered) for row in rows]
 

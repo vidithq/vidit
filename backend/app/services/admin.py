@@ -36,7 +36,7 @@ from app.services.evidence_intake import (
     orphaned_source_media,
     prune_unreferenced_proof_media,
 )
-from app.services.pagination import keyset_before, take_page
+from app.services.pagination import keyset_before
 from app.services.storage import avatar_key_of, sweep_keys
 from app.services.users import x_handle_holder
 
@@ -238,8 +238,9 @@ def list_invite_codes(
     *,
     limit: int,
     cursor: tuple[datetime, uuid.UUID] | None = None,
-) -> tuple[list[InviteCode], bool]:
-    """One page of invite codes, newest first, plus whether another follows.
+) -> list[InviteCode]:
+    """One window of invite codes, newest first, over-fetched by one row for
+    ``pagination.paged``.
 
     No status filtering: an admin needs revoked and expired rows to remember what was issued.
     Paged on the ``created_at DESC, id DESC`` keyset, since only an unused code's row ever
@@ -252,7 +253,7 @@ def list_invite_codes(
     )
     if cursor is not None:
         query = query.filter(keyset_before(InviteCode.created_at, InviteCode.id, cursor))
-    return take_page(query.limit(limit + 1).all(), limit)
+    return query.limit(limit + 1).all()
 
 
 def revoke_invite_code(

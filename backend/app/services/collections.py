@@ -599,14 +599,12 @@ def list_items(
     limit: int,
     cursor: tuple[date, time, datetime, uuid.UUID] | None = None,
 ) -> list[tuple[Event, float | None, float | None]]:
-    """One window of a collection's items, in the order the events happened.
+    """One window of a collection's items, in the order the events happened, over-fetched by
+    one row for ``pagination.paged``.
 
     Returns ``(event, lat, lng)`` rows with coordinates in the same SELECT.
     ``joinedload`` for the owner, ``selectinload`` for the sets (a
     ``joinedload`` would row-multiply against the ``LIMIT``).
-
-    ``limit`` is the caller's window: asking for one row past the page decides
-    the ``Link: rel="next"``.
     """
     key = chronological_key()
     query = (
@@ -628,7 +626,7 @@ def list_items(
     )
     if cursor is not None:
         query = query.filter(keyset_after(key, cursor))
-    return [(event, lat, lng) for event, lat, lng in query.order_by(*key).limit(limit).all()]
+    return [(event, lat, lng) for event, lat, lng in query.order_by(*key).limit(limit + 1).all()]
 
 
 def list_owned_collections(

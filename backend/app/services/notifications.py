@@ -436,7 +436,7 @@ def list_feed(
     cursor: tuple[datetime, uuid.UUID] | None,
 ) -> list[Notification]:
     """One window of the feed, newest first, over-fetched by one row for
-    ``take_page``."""
+    ``pagination.paged``."""
     query = _visible_rows(db, user).options(
         contains_eager(Notification.event),
         contains_eager(Notification.actor.of_type(_Actor)),

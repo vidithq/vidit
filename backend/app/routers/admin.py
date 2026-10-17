@@ -46,8 +46,8 @@ from app.services.pagination import (
     MAX_PAGE_SIZE,
     decode_cursor,
     encode_cursor,
-    next_link,
     page_size,
+    paged,
 )
 
 router = APIRouter()
@@ -120,14 +120,12 @@ def list_invite_codes(
 ) -> list[AdminInviteCodeRead]:
     """Invite codes, newest first, capped at 100 per page (``Link: rel="next"`` cursor)."""
     size = page_size(limit)
-    rows, has_next = admin_service.list_invite_codes(
+    window = admin_service.list_invite_codes(
         db,
         limit=size,
         cursor=decode_cursor(cursor) if cursor is not None else None,
     )
-    if has_next:
-        last = rows[-1]
-        response.headers["Link"] = next_link(request, encode_cursor(last.created_at, last.id))
+    rows = paged(request, response, window, size, lambda r: encode_cursor(r.created_at, r.id))
     return admin_service.serialize_invite_codes(db, rows)
 
 

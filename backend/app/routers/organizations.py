@@ -29,9 +29,8 @@ from app.services.pagination import (
     MAX_PAGE_SIZE,
     decode_cursor,
     encode_cursor,
-    next_link,
     page_size,
-    take_page,
+    paged,
 )
 
 router = APIRouter()
@@ -98,10 +97,7 @@ def list_organization_approvals(
         limit=size,
         cursor=decode_cursor(cursor) if cursor is not None else None,
     )
-    rows, has_next = take_page(window, size)
-    if has_next:
-        last = rows[-1]
-        response.headers["Link"] = next_link(request, encode_cursor(last.created_at, last.id))
+    rows = paged(request, response, window, size, lambda r: encode_cursor(r.created_at, r.id))
     return [approvals_service.build_organization_read(row) for row in rows]
 
 
