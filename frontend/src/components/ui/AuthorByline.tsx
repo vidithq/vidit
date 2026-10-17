@@ -2,6 +2,7 @@ import { Fragment } from "react";
 import Link from "next/link";
 
 import { Avatar } from "@/components/ui/Avatar";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { cn } from "@/lib/cn";
 
@@ -26,9 +27,12 @@ function CreditSeparator({ index, count }: { index: number; count: number }) {
  * `size` scales the gap for the dense panel header; `avatar` leads with the
  * profile picture where the byline is the page's author signature.
  *
- * `coAuthors` credits more analysts after `author`, each as its picture and
- * name, side by side: the credit line of an event several geolocators share.
- * With more than one name every name shows its picture, `avatar` or not.
+ * `coAuthors` credits more analysts after `author`, side by side: the credit
+ * line of an event several geolocators share. By default each is its picture
+ * and name, and with more than one name every name shows its picture, `avatar`
+ * or not. `coAuthorsAs="avatars"` keeps the lead as picture and name and shows
+ * each co-author as a picture alone, named by its handle and showing it in a
+ * `<Tooltip>`: the feed cards and the event page header.
  *
  * `link={false}` drops the anchor for a slot that is itself one click: a row
  * under a stretched link cannot hold a second link (a separate keyboard stop).
@@ -39,6 +43,7 @@ function CreditSeparator({ index, count }: { index: number; count: number }) {
 export function AuthorByline({
   author,
   coAuthors = [],
+  coAuthorsAs = "names",
   prefix = true,
   size = "sm",
   avatar = false,
@@ -48,6 +53,8 @@ export function AuthorByline({
   author: Author;
   /** Credited beside `author`, in order. */
   coAuthors?: Author[];
+  /** `avatars` shows each co-author as a picture alone, its handle in a tooltip. */
+  coAuthorsAs?: "names" | "avatars";
   /** The leading "by ". Off where a label already says it. */
   prefix?: boolean;
   /** `xs` is the dense map-panel header (smaller gap). */
@@ -61,6 +68,17 @@ export function AuthorByline({
   const gap = size === "xs" ? "gap-1" : "gap-1.5";
   const names = [author, ...coAuthors];
   const pictures = avatar || names.length > 1;
+  const pictureSize = size === "xs" ? "size-4 text-[9px]" : "size-5 text-[10px]";
+  const picture = (person: Author) => (
+    <Avatar
+      as="span"
+      src={person.avatar_url}
+      username={person.username}
+      decorative
+      size={pictureSize}
+    />
+  );
+  const href = (person: Author) => person.href ?? `/profile/${person.username}`;
   return (
     <span className={cn("inline-flex items-center", gap, className)}>
       {prefix && !avatar && <>by </>}
@@ -68,24 +86,30 @@ export function AuthorByline({
         {names.map((person, index) => (
           <Fragment key={person.username}>
             <CreditSeparator index={index} count={names.length} />
-            <span className={cn("inline-flex items-center", gap)}>
-              {pictures && (
-                <Avatar
-                  as="span"
-                  src={person.avatar_url}
-                  username={person.username}
-                  decorative
-                  size={size === "xs" ? "size-4 text-[9px]" : "size-5 text-[10px]"}
-                />
-              )}
-              {link ? (
-                <Link href={person.href ?? `/profile/${person.username}`} className={TEXT_LINK}>
-                  {person.username}
-                </Link>
-              ) : (
-                <span>{person.username}</span>
-              )}
-            </span>
+            {index > 0 && coAuthorsAs === "avatars" ? (
+              <Tooltip label={person.username}>
+                {link ? (
+                  <Link href={href(person)} aria-label={person.username} className="flex rounded-full">
+                    {picture(person)}
+                  </Link>
+                ) : (
+                  <span role="img" aria-label={person.username} className="flex">
+                    {picture(person)}
+                  </span>
+                )}
+              </Tooltip>
+            ) : (
+              <span className={cn("inline-flex items-center", gap)}>
+                {pictures && picture(person)}
+                {link ? (
+                  <Link href={href(person)} className={TEXT_LINK}>
+                    {person.username}
+                  </Link>
+                ) : (
+                  <span>{person.username}</span>
+                )}
+              </span>
+            )}
           </Fragment>
         ))}
       </span>

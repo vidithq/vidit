@@ -35,7 +35,7 @@ export default function EventPage() {
     <PageShell
       back
       title={geo.title}
-      subtitle={<AuthorByline {...creditProps(geo)} avatar />}
+      subtitle={<AuthorByline {...creditProps(geo)} coAuthorsAs="avatars" avatar />}
       actions={actions}
       rail={approvalsCard}
       railLabel="Approvals"

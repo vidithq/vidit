@@ -9,7 +9,6 @@ import { displayUrlsFor, posterFrameUrl } from "@/lib/mediaUrls";
 import { META_LINE, TAPPABLE_HOVER } from "@/components/ui/styles";
 import { GraphicContentGate } from "@/components/ui/GraphicContentGate";
 import { Pill } from "@/components/ui/Pill";
-import { Avatar } from "@/components/ui/Avatar";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 
@@ -235,30 +234,25 @@ export function EntityCard({
           <h2 className="text-sm font-medium text-neutral-100">{title}</h2>
           {badge && <div className="shrink-0">{badge}</div>}
         </div>
-        <div className="relative z-20 flex items-center gap-2.5 text-xs w-fit">
+        <div className="relative z-20 flex flex-col gap-1 text-xs w-fit leading-tight">
           {author && (
-            <Link href={`/profile/${author.username}`}>
-              <Avatar username={author.username} size="size-7" />
-            </Link>
+            <AuthorByline
+              author={author}
+              coAuthors={coAuthors}
+              coAuthorsAs="avatars"
+              avatar
+              size="xs"
+              className="text-[11px] text-neutral-500"
+            />
           )}
-          <div className="flex flex-col leading-tight">
-            {author && (
-              <AuthorByline
-                author={author}
-                coAuthors={coAuthors}
-                size="xs"
-                className="text-[11px] text-neutral-500"
-              />
-            )}
-            <span className={cn(META_LINE, "flex-wrap gap-x-2")}>
-              {dates?.map((d) => (
-                <span key={d.label}>
-                  {d.label} {formatDate(d.date)}
-                </span>
-              ))}
-              {coords && <CoordsMeta coords={coords} />}
-            </span>
-          </div>
+          <span className={cn(META_LINE, "flex-wrap gap-x-2")}>
+            {dates?.map((d) => (
+              <span key={d.label}>
+                {d.label} {formatDate(d.date)}
+              </span>
+            ))}
+            {coords && <CoordsMeta coords={coords} />}
+          </span>
         </div>
         <MediaThumb
           media={media}
@@ -294,6 +288,8 @@ export function EntityCard({
               <AuthorByline
                 author={author}
                 coAuthors={coAuthors}
+                coAuthorsAs="avatars"
+                avatar
                 size="xs"
                 className="relative z-20"
               />

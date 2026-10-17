@@ -32,4 +32,20 @@ describe("<AuthorByline>", () => {
     container.querySelectorAll(".sr-only, [aria-hidden='true']").forEach((node) => node.remove());
     expect(container.textContent).toBe("by anabocy");
   });
+
+  it("shows co-authors as pictures alone with coAuthorsAs avatars, each named and linked", () => {
+    const { container } = render(
+      <AuthorByline
+        author={{ username: "ana", avatar_url: "https://media.example/ana.jpg" }}
+        coAuthors={[{ username: "bo", avatar_url: "https://media.example/bo.jpg" }]}
+        coAuthorsAs="avatars"
+        avatar
+      />,
+    );
+    expect(screen.getByRole("link", { name: "ana" })).toHaveTextContent("ana");
+    const bo = screen.getByRole("link", { name: "bo" });
+    expect(bo).toHaveAttribute("href", "/profile/bo");
+    expect(bo).toHaveTextContent("");
+    expect(container.querySelector("img[src='https://media.example/bo.jpg']")).not.toBeNull();
+  });
 });

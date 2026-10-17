@@ -37,12 +37,16 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - The timeline is now the feed: the page moves from `/timeline` to `/feed` (the old address redirects), the sidebar entry is "Feed", and `GET /timeline` becomes `GET /feed` with `feed_at` in place of `timeline_at` ([#585](https://github.com/vidithq/vidit/pull/585)).
 - Settings lists each notification kind once, with an Email and a Push switch side by side, and closes the Push column with one reason when the server sends no push or your account has no push device ([#575](https://github.com/vidithq/vidit/pull/575)).
 - The Approvals card sets its approver pictures apart in two rows of up to seven before a +N bubble, and its title explains in a tooltip that an approval covers one version; an incoming approval request reads as one line above Approve, with Decline beside it.
-- Approvals are simpler: Approve approves in one click with no note, each stamp links to the reviewer's profile or the organization's page with the handle in a tooltip, and once your approval stands a Revoke button takes Approve's place, asking for no reason; a confirmation shows after either.
+- Approvals are simpler: Approve approves in one click with no note, each stamp links to the reviewer's profile or the organization's page with the handle in a tooltip, and once your approval stands a Revoke button takes Approve's place, asking for no reason.
 - Revoking an approval no longer needs a reason (the API still takes an optional one), the event owner gets a notification when an approval of their event is revoked, and the revoked approval's notice leaves the feed.
-- A reviewer whose approval of the live version was revoked reads why they cannot approve it again, and a stale version error offers Reload.
+- A reviewer whose approval of the live version a site admin revoked reads why they cannot approve it again, and a stale version error offers Reload.
 - Notification rows put Decline below the row so a phone keeps the event title readable, and an answered approval request shows Approved or Declined.
 - The app checks admin status once per session instead of once per component.
 - Push notifications are always on: the API refuses to start in a deployment without `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT`, `make env` writes a development key pair, and Settings always shows the Push column.
+- A reviewer who revoked their own approval can approve that version again, and Revoke takes one click. Approve buttons carry a stamp icon.
+- Deleting a notification keeps its sent delivery rows (with no notification) so the daily email cap still counts them, and drops only the unsent ones.
+- The edit page's explanatory sentences (what closing does, who sees the close reason, how shared credit works) move into `?` tooltips.
+- Feed and list cards and the event page header show the owner as a picture and a name and each co-geolocator as a picture with the handle in a tooltip; the feed card's separate author circle is gone.
 - A credit line with several analysts shows each one as a picture and a name side by side, with no "and" or comma, on event pages, cards and the Approvals card's request line.
 - Each notification has a delete button that removes it from your feed, with its queued email or push (`DELETE /notifications/{id}`).
 

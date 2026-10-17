@@ -213,7 +213,7 @@ export function IncomingRequests({ requests }: { requests: ApprovalRequest[] }) 
       )}
       {[...organizations.values()].map(({ organization, requesters }) => (
         <p key={organization.slug}>
-          <AuthorByline author={requesters[0]} coAuthors={requesters.slice(1)} prefix={false} />{" "}
+          <AuthorByline author={requesters[0]} coAuthors={requesters.slice(1)} avatar prefix={false} />{" "}
           asked{" "}
           <AuthorByline author={organizationByline(organization)} avatar prefix={false} /> for
           approval
