@@ -3,13 +3,12 @@ import type { components } from "./api-types";
 import { changedFields, snapshotToEventView } from "./events";
 import { creditedAuthors } from "./geolocatorCredit";
 import type { OrganizationRef } from "./organizations";
-import type { EventDetail, EventVersion } from "@/types";
+import type { AuthorRef as Author, EventDetail, EventVersion } from "@/types";
 import { withCursor } from "./pagination";
 
 export type Approval = components["schemas"]["ApprovalRead"];
 export type ApprovalList = components["schemas"]["ApprovalList"];
 export type OrganizationApproval = components["schemas"]["OrganizationApprovalRead"];
-type Author = components["schemas"]["AuthorRef"];
 type Revoker = NonNullable<Approval["revoked_as"]>;
 
 /** The reviews of one version of an event; the live version when `versionNo` is omitted. */

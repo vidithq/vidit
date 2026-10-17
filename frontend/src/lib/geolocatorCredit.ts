@@ -1,8 +1,8 @@
 import { apiFetch } from "./api";
 import type { components } from "./api-types";
+import type { AuthorRef as Author } from "@/types";
 
 export type GeolocatorInvite = components["schemas"]["GeolocatorInviteRead"];
-type Author = components["schemas"]["AuthorRef"];
 
 /** The analysts an event credits, owner first, then every other geolocator by credit time. The
  *  owner of a published row is a geolocator too; a request or a detection has none, so its

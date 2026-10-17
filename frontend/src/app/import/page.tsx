@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/MockPost";
 import { MAX_UPLOAD_LABEL } from "@/lib/archive";
 import { ARCHIVE_EXPORT_STEPS, X_ARCHIVE_HELP } from "@/lib/archiveExport";
+import { staticPageMetadata } from "../_og/metadata";
 
 // The one import guide, public (see `PUBLIC_PREFIXES` in `proxy.ts`). One detection engine reads every entry, so the
 // conditions are stated once under "What makes a detection" and each entry section holds only what differs.
@@ -29,25 +30,11 @@ const TITLE = "Import your work from X";
 const DESCRIPTION =
   "Tag @ViditBot, paste a post URL, or upload your X archive. Vidit reads your posts and creates a detection for each geolocation, with its coordinates, source, media and proof note.";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = staticPageMetadata({
+  path: "/import",
   title: TITLE,
   description: DESCRIPTION,
-  openGraph: {
-    type: "website",
-    url: "https://vidit.app/import",
-    siteName: "Vidit",
-    title: TITLE,
-    description: DESCRIPTION,
-    locale: "en_US",
-  },
-  twitter: {
-    card: "summary_large_image",
-    site: "@vidithq",
-    creator: "@vidithq",
-    title: TITLE,
-    description: DESCRIPTION,
-  },
-};
+});
 
 const SECTION = "text-sm font-medium text-neutral-200";
 const BODY = "text-sm text-neutral-300 leading-relaxed";

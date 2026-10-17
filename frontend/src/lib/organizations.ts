@@ -1,7 +1,7 @@
 import { apiFetch } from "./api";
 import type { components } from "./api-types";
 import type { InviteAnswer } from "./geolocatorCredit";
-import type { ExternalLinks } from "@/types";
+import type { AuthorRef, ExternalLinks } from "@/types";
 import { countLabel } from "./format";
 
 /** `GET /organizations/{slug}`, with `external_links` kept as the narrow per-platform shape. */
@@ -15,7 +15,7 @@ export type OrganizationMembership = components["schemas"]["OrganizationMembersh
 export type OrganizationRole = OrganizationMember["role"];
 export type OrganizationCreate = components["schemas"]["OrganizationCreate"];
 export type OrganizationUpdate = components["schemas"]["OrganizationUpdate"];
-export type InviteCandidate = components["schemas"]["AuthorRef"];
+export type InviteCandidate = AuthorRef;
 export type AdminOrganization = components["schemas"]["AdminOrganizationRead"];
 export type OrganizationRef = components["schemas"]["OrganizationRef"];
 

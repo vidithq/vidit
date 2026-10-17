@@ -11,6 +11,9 @@ export type User = Omit<components["schemas"]["UserRead"], "external_links"> & {
   external_links: ExternalLinks;
 };
 
+/** An analyst as a read names them: id, username and picture. */
+export type AuthorRef = components["schemas"]["AuthorRef"];
+
 export type TagCategory = components["schemas"]["TagRead"]["category"];
 
 /** An archive-import job as the owner polls it (queued by `POST /events/import-archive`,

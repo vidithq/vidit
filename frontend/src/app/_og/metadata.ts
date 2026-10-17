@@ -8,6 +8,40 @@ const DESCRIPTION_MAX = 180;
 /** Title budget, under what X truncates. */
 const ARTICLE_TITLE_MAX = 90;
 
+/** Page tags for a static public page at `path` (`/` for the landing). `shareDescription` replaces
+ *  `description` on the card when the page wants a shorter one. */
+export function staticPageMetadata({
+  path,
+  title,
+  description,
+  shareDescription = description,
+}: {
+  path: string;
+  title: string;
+  description: string;
+  shareDescription?: string;
+}): Metadata {
+  return {
+    title,
+    description,
+    openGraph: {
+      type: "website",
+      url: `https://vidit.app${path === "/" ? "" : path}`,
+      siteName: "Vidit",
+      title,
+      description: shareDescription,
+      locale: "en_US",
+    },
+    twitter: {
+      card: "summary_large_image",
+      site: "@vidithq",
+      creator: "@vidithq",
+      title,
+      description: shareDescription,
+    },
+  };
+}
+
 /** The second line of a dead event or collection link, on its card and in its description. */
 export const NOT_FOUND_LINE = "This link points at nothing in the catalog.";
 

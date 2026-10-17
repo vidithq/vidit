@@ -5,6 +5,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { TEXT_LINK } from "@/components/ui/styles";
+import { staticPageMetadata } from "../_og/metadata";
 
 // Public privacy policy (see `PUBLIC_PREFIXES` in `proxy.ts`). Every claim is checked against the code that writes the data:
 // `models/user.py`, `models/auth_event.py` + `services/audit.py` (connection log, no IP or user agent),
@@ -15,25 +16,11 @@ const TITLE = "Privacy policy";
 const DESCRIPTION =
   "Data Vidit collects, purposes, retention periods and how to exercise your rights.";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = staticPageMetadata({
+  path: "/privacy",
   title: TITLE,
   description: DESCRIPTION,
-  openGraph: {
-    type: "website",
-    url: "https://vidit.app/privacy",
-    siteName: "Vidit",
-    title: TITLE,
-    description: DESCRIPTION,
-    locale: "en_US",
-  },
-  twitter: {
-    card: "summary_large_image",
-    site: "@vidithq",
-    creator: "@vidithq",
-    title: TITLE,
-    description: DESCRIPTION,
-  },
-};
+});
 
 const CONTACT_EMAIL = "support@vidit.app";
 
