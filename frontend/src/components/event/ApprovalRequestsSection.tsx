@@ -35,8 +35,8 @@ import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 
 /**
  * The target's answer to an open approval request outside the approve form: Decline. The
- * notification row, the event page and the organization page render it; approving happens in
- * the event page's Approvals card, after reading the event.
+ * organization page renders it; approving happens in the event page's Approvals card, after
+ * reading the event.
  */
 export function ApprovalRequestDecline({
   eventId,

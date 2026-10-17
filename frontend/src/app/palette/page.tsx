@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import {
   Archive,
   AtSign,
+  ClipboardCheck,
   UserPlus,
   BookOpen,
   Bot,
@@ -22,6 +23,7 @@ import {
   MessageCircle,
   Search as SearchIcon,
   Swords,
+  Trash2,
   Upload,
   X,
 } from "lucide-react";
@@ -1404,7 +1406,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<LinkRow>" usage="Stay in touch and Guides (About), and each row of the Notifications feed (kind and date as the label, the sentence as the value). The profile's linked accounts are icon buttons instead. The trailing ↗ marks external only: an in-app href routes through next/link, a mailto stays a plain <a>, and neither takes the glyph. `leading` (opt-in) shows a node in place of the icon: the feed passes the picture of who is behind the row (an analyst's circle, an organization's square logo), and `icon` stays the fallback when the row has no one behind it.">
+          <Item name="<LinkRow>" usage="Stay in touch and Guides (About), and each row of the Notifications feed (kind and date as the label, the sentence as the value). The profile's linked accounts are icon buttons instead. The trailing ↗ marks external only: an in-app href routes through next/link, a mailto stays a plain <a>, and neither takes the glyph. `leading` (opt-in) shows a node in place of the icon: the feed passes the picture of who is behind the row (an analyst's circle, an organization's square logo), and `icon` stays the fallback when the row has no one behind it. `variant` arrow (opt-in, the feed's rows): neutral value that wraps, an orange ArrowRight at the right edge, the link stretched over the block (hover and focus light the border and the arrow), and `action` inside the block left of the arrow, above the link.">
             <div className="w-full max-w-md space-y-2">
               <LinkRow icon={AtSign} label="X / Twitter" value="@vidithq" href="https://x.com/vidithq" />
               <LinkRow icon={BookOpen} label="How Vidit works" value="/guide" href="/guide" external={false} />
@@ -1417,6 +1419,26 @@ export default function PalettePage() {
                 value="maya followed you"
                 href="/palette"
                 external={false}
+              />
+              <LinkRow
+                variant="arrow"
+                icon={ClipboardCheck}
+                leading={<Avatar username="maya" size="size-7" decorative />}
+                label="Approval request · Oct 12"
+                value="maya asked you to approve: Strike on the fuel depot north of the river crossing"
+                href="/palette"
+                external={false}
+                action={
+                  <Button
+                    icon
+                    variant="dangerGhost"
+                    className="text-neutral-500 hover:text-red-400"
+                    aria-label="Delete notification"
+                    title="Delete"
+                  >
+                    <Trash2 size={14} />
+                  </Button>
+                }
               />
             </div>
           </Item>

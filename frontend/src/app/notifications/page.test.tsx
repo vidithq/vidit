@@ -144,7 +144,7 @@ describe("NotificationsPage", () => {
     expect(api.apiFetch).not.toHaveBeenCalled();
   });
 
-  it("answers a pending geolocator invitation from its row, then reloads the feed", async () => {
+  it("offers no action: an invitation or a request row only links to where you answer it", async () => {
     const invite: Notification = {
       ...follower,
       id: "n3",
@@ -152,25 +152,43 @@ describe("NotificationsPage", () => {
       event: { id: "e9", title: "Bridge strike" },
       invite_pending: true,
     };
-    serve([invite, { ...invite, id: "n4", invite_pending: false }]);
+    const asked: Notification = {
+      ...follower,
+      id: "n7",
+      kind: "approval_request_received",
+      event: { id: "e8", title: "Bridge strike" },
+      reapprove_version: 2,
+      approval_request_id: "r1",
+    };
+    serve([invite, asked, orgInvite]);
     render(<NotificationsPage />);
 
     expect(
-      await screen.findAllByRole("link", {
-        name: /cy invited you to share the credit of: Bridge strike/,
-      }),
-    ).toHaveLength(2);
-    // Only the row still waiting for an answer carries the buttons.
-    expect(screen.getAllByRole("button", { name: "Accept" })).toHaveLength(1);
-    const loads = api.apiFetchPage.mock.calls.length;
-    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
-
-    await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/events/e9/geolocator-invites/accept", {
-        method: "POST",
-      }),
+      await screen.findByRole("link", { name: /cy invited you to share the credit of: Bridge strike/ }),
+    ).toHaveAttribute("href", "/events/e9");
+    expect(screen.getByRole("link", { name: /cy asked you to approve: Bridge strike/ })).toHaveAttribute(
+      "href",
+      "/events/e8",
     );
-    await waitFor(() => expect(api.apiFetchPage.mock.calls.length).toBeGreaterThan(loads));
+    expect(screen.getByRole("link", { name: /bo invited you to join Open Source Watch/ })).toHaveAttribute(
+      "href",
+      "/organizations/osw",
+    );
+    expect(screen.queryByRole("button", { name: /Accept|Decline|Approve/ })).toBeNull();
+  });
+
+  it("reads the sentence in the neutral colour, with the arrow and the trash inside the block", async () => {
+    serve([follower]);
+    render(<NotificationsPage />);
+
+    const link = await screen.findByRole("link", { name: /cy followed you/ });
+    expect(screen.getByText("cy followed you")).toHaveClass("text-neutral-200");
+    const block = link.parentElement!;
+    const trash = screen.getByRole("button", { name: "Delete notification" });
+    const arrow = block.querySelector("svg.lucide-arrow-right")!;
+    expect(block).toContainElement(trash);
+    expect(link.contains(trash)).toBe(false);
+    expect(trash.compareDocumentPosition(arrow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("deletes a row from its own delete button, then reloads the feed and the dot", async () => {
@@ -229,40 +247,6 @@ describe("NotificationsPage", () => {
       screen.getByRole("link", { name: /cy asked Open Source Watch to approve: Bridge strike/ }),
     ).toHaveAttribute("href", "/events/e8");
     expect(screen.queryByRole("button", { name: /Approve/ })).toBeNull();
-  });
-
-  it("declines an open approval request from its row, and offers nothing once it is resolved", async () => {
-    const asked: Notification = {
-      ...follower,
-      id: "n7",
-      kind: "approval_request_received",
-      event: { id: "e8", title: "Bridge strike" },
-      reapprove_version: 2,
-      approval_request_id: "r1",
-    };
-    serve([asked, { ...asked, id: "n8", reapprove_version: null, approval_request_id: null }]);
-    render(<NotificationsPage />);
-
-    const links = await screen.findAllByRole("link", {
-      name: /cy asked you to approve: Bridge strike/,
-    });
-    expect(links).toHaveLength(2);
-    const decline = screen.getByRole("button", { name: "Decline" });
-    // In the row, below the link it answers, so a phone keeps the title at full width.
-    const row = links[0].parentElement?.parentElement?.parentElement;
-    expect(row).toContainElement(decline);
-    expect(links[0].contains(decline)).toBe(false);
-    expect(links[0].compareDocumentPosition(decline) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(decline.parentElement?.parentElement).toBe(row);
-    const loads = api.apiFetchPage.mock.calls.length;
-    fireEvent.click(decline);
-
-    await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/events/e8/approval-requests/r1/decline", {
-        method: "POST",
-      }),
-    );
-    await waitFor(() => expect(api.apiFetchPage.mock.calls.length).toBeGreaterThan(loads));
   });
 
   it("labels an answered approval request with how it ended", async () => {

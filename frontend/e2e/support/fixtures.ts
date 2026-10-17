@@ -401,7 +401,7 @@ export const NO_UNREAD: UnreadCount = { count: 0 };
 const LONG_EVENT_TITLE =
   "Strike on the fuel depot north of the river crossing, seen from the eastern ridge at dusk";
 
-/** The notification feed: an open approval request, whose row carries Decline, and an
+/** The notification feed: an open approval request and an
  *  answered one, both naming a long event title a phone must not squeeze. */
 export const NOTIFICATION_FEED: Notification[] = [
   {

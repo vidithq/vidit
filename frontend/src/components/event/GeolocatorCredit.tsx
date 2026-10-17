@@ -28,12 +28,9 @@ import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 
-/**
- * The invitee's answer to an invitation to share an event's credit: the notification row and the
- * event page both render it. Accepting adds the reader to the event's geolocators; declining drops
- * the invitation.
- */
-export function InviteAnswerButtons({
+/** The invitee's answer to an invitation to share an event's credit. Accepting adds the reader to
+ *  the event's geolocators; declining drops the invitation. */
+function InviteAnswerButtons({
   eventId,
   onAnswered,
 }: {

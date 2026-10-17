@@ -34,9 +34,7 @@ import {
   type Notification,
   type NotificationKind,
 } from "@/lib/notifications";
-import { InviteAnswerButtons } from "@/components/event/GeolocatorCredit";
 import { Avatar } from "@/components/ui/Avatar";
-import { ApprovalRequestDecline } from "@/components/event/ApprovalRequestsSection";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LinkRow } from "@/components/ui/LinkRow";
@@ -63,29 +61,54 @@ const KIND_ICON: Record<NotificationKind, LucideIcon> = {
   organization_approval_removed: Building2,
 };
 
-function DeleteNotification({ id, onDeleted }: { id: string; onDeleted: () => void }) {
-  const remove = useMutation(() => deleteNotification(id), {
+function NotificationRow({ n, onChanged }: { n: Notification; onChanged: () => void }) {
+  const { text, href } = describeNotification(n);
+  const avatar = notificationAvatar(n);
+  const remove = useMutation(() => deleteNotification(n.id), {
     fallback: "Failed to delete the notification",
-    onSuccess: onDeleted,
+    onSuccess: onChanged,
   });
   return (
-    <>
-      <Button
-        icon
-        variant="ghost"
-        aria-label="Delete notification"
-        title="Delete"
-        onClick={() => void remove.run()}
-        disabled={remove.loading}
-      >
-        <Trash2 size={14} />
-      </Button>
+    <div className="space-y-2">
+      <LinkRow
+        variant="arrow"
+        icon={KIND_ICON[n.kind]}
+        leading={
+          avatar && (
+            // Decorative: the sentence beside it names the analyst or the organization.
+            <Avatar
+              src={avatar.avatarUrl}
+              username={avatar.name}
+              size="size-7"
+              shape={avatar.shape}
+              decorative
+            />
+          )
+        }
+        label={notificationLabel(n)}
+        value={text}
+        href={href}
+        external={false}
+        action={
+          <Button
+            icon
+            variant="dangerGhost"
+            className="text-neutral-500 hover:text-red-400"
+            aria-label="Delete notification"
+            title="Delete"
+            onClick={() => void remove.run()}
+            disabled={remove.loading}
+          >
+            <Trash2 size={14} />
+          </Button>
+        }
+      />
       {remove.error && (
-        <div className={`${FORM_ERROR_BANNER} basis-full`} role="alert">
+        <div className={FORM_ERROR_BANNER} role="alert">
           {remove.error}
         </div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -103,51 +126,9 @@ function NotificationRows({
     <section>
       <SectionEyebrow title={title} />
       <div className="space-y-2">
-        {rows.map((n) => {
-          const { text, href } = describeNotification(n);
-          const avatar = notificationAvatar(n);
-          return (
-            <div key={n.id} className="space-y-2">
-              {/* Decline sits below the link, not in it or beside it: the row is one link, and
-                  beside it a phone would squeeze the title. Approving happens on the event page
-                  only, after reading the event. */}
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex-1 min-w-0">
-                  <LinkRow
-                    icon={KIND_ICON[n.kind]}
-                    leading={
-                      avatar && (
-                        // Decorative: the sentence beside it names the analyst or the organization.
-                        <Avatar
-                          src={avatar.avatarUrl}
-                          username={avatar.name}
-                          size="size-7"
-                          shape={avatar.shape}
-                          decorative
-                        />
-                      )
-                    }
-                    label={notificationLabel(n)}
-                    value={text}
-                    href={href}
-                    external={false}
-                  />
-                </div>
-                <DeleteNotification id={n.id} onDeleted={onChanged} />
-              </div>
-              {n.approval_request_id !== null && n.event && (
-                <ApprovalRequestDecline
-                  eventId={n.event.id}
-                  requestId={n.approval_request_id}
-                  onAnswered={onChanged}
-                />
-              )}
-              {n.invite_pending && n.event && (
-                <InviteAnswerButtons eventId={n.event.id} onAnswered={onChanged} />
-              )}
-            </div>
-          );
-        })}
+        {rows.map((n) => (
+          <NotificationRow key={n.id} n={n} onChanged={onChanged} />
+        ))}
       </div>
     </section>
   );
