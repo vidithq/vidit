@@ -27,6 +27,7 @@ import {
   uploadArchive,
 } from "@/lib/events";
 import type { ArchiveImportJob } from "@/types";
+import { pluralNoun } from "@/lib/format";
 
 /** Bytes below 1 KB, then KB, then MB with one decimal below 100 MB. */
 function formatBytes(n: number): string {
@@ -43,12 +44,12 @@ function importSummary(job: ArchiveImportJob): string {
   const parts: string[] = [];
   if (job.created > 0) {
     parts.push(
-      `${job.created.toLocaleString()} detection${job.created === 1 ? "" : "s"} ready for review`
+      `${job.created.toLocaleString()} ${pluralNoun(job.created, "detection")} ready for review`
     );
   }
   if (job.updated > 0) {
     parts.push(
-      `${job.updated.toLocaleString()} detection${job.updated === 1 ? "" : "s"} updated`
+      `${job.updated.toLocaleString()} ${pluralNoun(job.updated, "detection")} updated`
     );
   }
   if (job.skipped > 0) {
@@ -320,9 +321,10 @@ export function ImportArchivePanel({ username }: { username: string }) {
                   spinner: true,
                   ...(liveJob?.post_estimate != null
                     ? {
-                        detail: `~${liveJob.post_estimate.toLocaleString()} post${
-                          liveJob.post_estimate === 1 ? "" : "s"
-                        } in your archive.`,
+                        detail: `~${liveJob.post_estimate.toLocaleString()} ${pluralNoun(
+                          liveJob.post_estimate,
+                          "post",
+                        )} in your archive.`,
                       }
                     : {}),
                 },
@@ -337,9 +339,10 @@ export function ImportArchivePanel({ username }: { username: string }) {
                             ? liveJob.progress_done / liveJob.progress_total
                             : 1,
                         detail:
-                          `${liveJob.progress_done.toLocaleString()} of ${liveJob.progress_total.toLocaleString()} geolocation${
-                            liveJob.progress_total === 1 ? "" : "s"
-                          } extracted` +
+                          `${liveJob.progress_done.toLocaleString()} of ${liveJob.progress_total.toLocaleString()} ${pluralNoun(
+                            liveJob.progress_total,
+                            "geolocation",
+                          )} extracted` +
                           (liveJob.post_estimate !== null
                             ? ` · from ~${liveJob.post_estimate.toLocaleString()} posts`
                             : ""),

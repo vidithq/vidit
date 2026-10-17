@@ -66,6 +66,7 @@ import {
 } from "@/components/ui/SegmentedControl";
 import { creditProps } from "@/lib/geolocatorCredit";
 import { memberCountLabel, organizationPath } from "@/lib/organizations";
+import { countLabel } from "@/lib/format";
 
 const ICON = { size: 13, strokeWidth: 1.8, className: "max-sm:hidden" } as const;
 
@@ -393,7 +394,7 @@ function SearchPageBody() {
               {loading
                 ? "Searching…"
                 : results
-                  ? `${totalHits} result${totalHits === 1 ? "" : "s"}${activeQuery.trim() ? " for " : ""}`
+                  ? `${countLabel(totalHits, "result")}${activeQuery.trim() ? " for " : ""}`
                   : null}
               {!loading && results && activeQuery.trim() && (
                 <span className="text-neutral-300 font-medium">

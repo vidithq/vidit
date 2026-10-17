@@ -3,7 +3,7 @@ import { Layers } from "lucide-react";
 import { apiFetch, apiFetchPage } from "./api";
 import type { components } from "./api-types";
 import { eventListPath, type ContentReport } from "./events";
-import { formatDate } from "./format";
+import { countLabel, formatDate } from "./format";
 import { search } from "./search";
 import type {
   EventDetail,
@@ -276,7 +276,7 @@ export function removeEventFromCollection(
 
 /** One phrasing for the page meta line, the profile card and the panel row. */
 export function eventCountLabel(count: number): string {
-  return `${count} event${count === 1 ? "" : "s"}`;
+  return countLabel(count, "event");
 }
 
 /** The meta line the page and profile card print: the count (zero included), then the span

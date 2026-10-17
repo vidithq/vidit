@@ -15,7 +15,7 @@ export const DAY_MS = 86_400_000;
 export function formatOpenAge(since: string): string {
   const days = Math.max(0, Math.floor((Date.now() - new Date(since).getTime()) / DAY_MS));
   if (days === 0) return "Open today";
-  return `Open ${days} day${days === 1 ? "" : "s"}`;
+  return `Open ${countLabel(days, "day")}`;
 }
 
 /** `2026-03` → "Mar 2026"; an unparsable key renders as-is. */
@@ -72,4 +72,9 @@ export function safeHostname(url: string): string {
 /** `noun` for a count of one, `noun` plus `s` for any other: regular English plurals only. */
 export function pluralNoun(count: number, noun: string): string {
   return count === 1 ? noun : `${noun}s`;
+}
+
+/** The count, then `noun` in the matching number: "1 event", "3 events". */
+export function countLabel(count: number, noun: string): string {
+  return `${count} ${pluralNoun(count, noun)}`;
 }

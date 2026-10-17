@@ -2,6 +2,7 @@ import { apiFetch } from "./api";
 import type { components } from "./api-types";
 import type { InviteAnswer } from "./geolocatorCredit";
 import type { ExternalLinks } from "@/types";
+import { countLabel } from "./format";
 
 /** `GET /organizations/{slug}`, with `external_links` kept as the narrow per-platform shape. */
 export type Organization = Omit<
@@ -31,7 +32,7 @@ export function organizationPath(slug: string): string {
 }
 
 export function memberCountLabel(count: number): string {
-  return `${count} member${count === 1 ? "" : "s"}`;
+  return countLabel(count, "member");
 }
 
 /** An organization as an `AuthorByline` name: its picture, its name, and a link to its page. */

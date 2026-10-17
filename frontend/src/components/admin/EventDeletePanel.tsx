@@ -20,6 +20,7 @@ import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { ActionReceipt } from "@/components/admin/ActionReceipt";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { countLabel } from "@/lib/format";
 
 export function EventDeletePanel() {
   const [id, setId] = useState("");
@@ -166,8 +167,7 @@ export function EventDeletePanel() {
           </div>
           {result.mode === "hard" && (
             <div className="text-neutral-500">
-              Swept {result.media_count} media row
-              {result.media_count === 1 ? "" : "s"} (source + proof roles).
+              Swept {countLabel(result.media_count, "media row")} (source + proof roles).
             </div>
           )}
         </ActionReceipt>
