@@ -90,8 +90,9 @@ export interface EventActions {
   actions: ReactNode;
   /** The panels the header's toggles open, for the body under the header. */
   panels: ReactNode;
-  /** The Approvals card, on the event page of a published row only. */
-  approvalsCard: ReactNode;
+  /** The event page's rail: a pending geolocator invitation, then the Approvals card of a
+   *  published row. */
+  rail: ReactNode;
   /** The Actions card, on the page of an open request only. */
   actionsCard: ReactNode;
 }
@@ -136,7 +137,7 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
   }, [event?.id]);
 
   if (!event || !tiers) {
-    return { actions: null, panels: null, approvalsCard: null, actionsCard: null };
+    return { actions: null, panels: null, rail: null, actionsCard: null };
   }
 
   const isOpenRequest = event.status === "requested";
@@ -225,15 +226,6 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
     // is its own titled card.
     panels: (
       <>
-        {invited && (
-          <GeolocatorInviteCard
-            event={event}
-            onAnswered={() => {
-              setAnsweredFor(event.id);
-              onChanged?.();
-            }}
-          />
-        )}
         {canSeeCredit && crediting && (
           <HeaderPanel id={CREDIT_PANEL_ID}>
             <Card as="section">
@@ -253,7 +245,23 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
         {canReport && report.panel && <HeaderPanel id={REPORT_PANEL_ID}>{report.panel}</HeaderPanel>}
       </>
     ),
-    approvalsCard: showsApprovals ? <ApprovalsCard event={event} approvals={approvals} /> : null,
+    // The rail is where the reader acts: an invitation to share the credit sits at its top,
+    // above the Approvals card.
+    rail:
+      invited || showsApprovals ? (
+        <div className="space-y-4">
+          {invited && (
+            <GeolocatorInviteCard
+              event={event}
+              onAnswered={() => {
+                setAnsweredFor(event.id);
+                onChanged?.();
+              }}
+            />
+          )}
+          {showsApprovals && <ApprovalsCard event={event} approvals={approvals} />}
+        </div>
+      ) : null,
     actionsCard:
       tiers.flow && isOpenRequest ? (
         <Card as="section">

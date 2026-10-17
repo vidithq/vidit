@@ -19,19 +19,19 @@ vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: { id: "u2", username: "bo" } }),
 }));
 
-function Panels({ invited }: { invited: boolean }) {
+function Rail({ invited }: { invited: boolean }) {
   const event = {
     ...eventDetail("e1", "Bridge strike"),
     owner: { id: "u1", username: "ana" },
     viewer_invite_pending: invited,
   };
-  const { panels } = useEventActions({ event, surface: "event" });
-  return <>{panels}</>;
+  const { rail } = useEventActions({ event, surface: "event" });
+  return <>{rail}</>;
 }
 
 describe("useEventActions invitation", () => {
-  it("shows the invitation from the event read, without asking the invitation list", () => {
-    render(<Panels invited />);
+  it("shows the invitation in the rail from the event read, without asking the invitation list", () => {
+    render(<Rail invited />);
 
     expect(screen.getByText("Geolocator invitation")).toBeInTheDocument();
     expect(api.apiFetch).not.toHaveBeenCalledWith(
@@ -42,7 +42,7 @@ describe("useEventActions invitation", () => {
   });
 
   it("shows nothing to a reader without an invitation", () => {
-    render(<Panels invited={false} />);
+    render(<Rail invited={false} />);
 
     expect(screen.queryByText("Geolocator invitation")).toBeNull();
   });

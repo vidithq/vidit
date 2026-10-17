@@ -94,7 +94,7 @@ function Harness({
   beforeClosedStatus?: BeforeClosedStatus | null;
   versionNo?: number;
 }) {
-  const { actions, panels, approvalsCard, actionsCard } = useEventActions({
+  const { actions, panels, rail, actionsCard } = useEventActions({
     event: eventFixture(status, beforeClosedStatus, versionNo),
     surface,
   });
@@ -102,7 +102,7 @@ function Harness({
     <>
       {actions && <header data-testid="header">{actions}</header>}
       {panels}
-      {approvalsCard}
+      {rail}
       {actionsCard}
     </>
   );
