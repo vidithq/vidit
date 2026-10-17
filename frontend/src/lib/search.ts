@@ -1,5 +1,6 @@
 import type { Account } from "@/components/ui/AccountPicker";
 import { apiFetch } from "./api";
+import type { components } from "./api-types";
 import type {
   SearchResponse,
   SearchType,
@@ -130,7 +131,7 @@ export async function suggestAuthors(q: string): Promise<Account[]> {
   const trimmed = q.trim();
   if (!AUTHOR_FILTER_RE.test(trimmed)) return [];
   const params = new URLSearchParams({ q: trimmed });
-  const res = await apiFetch<{ authors: string[] }>(`/search/authors?${params.toString()}`);
+  const res = await apiFetch<components["schemas"]["AuthorSuggestions"]>(`/search/authors?${params.toString()}`);
   return res.authors.map((username) => ({ kind: "analyst", username }));
 }
 

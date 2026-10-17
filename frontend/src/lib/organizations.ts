@@ -1,6 +1,5 @@
 import { apiFetch } from "./api";
 import type { components } from "./api-types";
-import type { UserProfileUpdate } from "./users";
 import type { ExternalLinks } from "@/types";
 
 /** `GET /organizations/{slug}`, with `external_links` kept as the narrow per-platform shape. */
@@ -13,6 +12,7 @@ export type OrganizationInvite = components["schemas"]["OrganizationInviteRead"]
 export type OrganizationMembership = components["schemas"]["OrganizationMembershipRead"];
 export type OrganizationRole = OrganizationMember["role"];
 export type OrganizationCreate = components["schemas"]["OrganizationCreate"];
+export type OrganizationUpdate = components["schemas"]["OrganizationUpdate"];
 export type InviteCandidate = components["schemas"]["AuthorRef"];
 export type AdminOrganization = components["schemas"]["AdminOrganizationRead"];
 export type OrganizationRef = components["schemas"]["OrganizationRef"];
@@ -51,21 +51,11 @@ export function createOrganization(body: OrganizationCreate): Promise<Organizati
 
 export function updateOrganization(
   slug: string,
-  body: UserProfileUpdate,
+  body: OrganizationUpdate,
 ): Promise<Organization> {
   return apiFetch<Organization>(organizationPath(slug), {
     method: "PATCH",
     body: JSON.stringify(body),
-  });
-}
-
-export function setOrganizationApprovalRequestAudience(
-  slug: string,
-  audience: NonNullable<Organization["approval_request_audience"]>,
-): Promise<Organization> {
-  return apiFetch<Organization>(organizationPath(slug), {
-    method: "PATCH",
-    body: JSON.stringify({ approval_request_audience: audience }),
   });
 }
 

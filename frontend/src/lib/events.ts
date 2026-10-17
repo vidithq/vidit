@@ -60,17 +60,12 @@ const DETECTIONS_REVIEW_QUEUE = 100;
  *  takes a plain `str`). Mirrors `services/events.DETECTION_READINESS`; change both. */
 export type DetectionReadiness = "all" | "ready" | "incomplete";
 
-/** Shape of `GET /events/detections`. Mirrors backend `PaginatedEventDetails`.
- *  `total` counts the set `readiness` selected; `ready_total` and `incomplete_total`
- *  count the whole queue under any filter. */
-export interface PaginatedEventDetails {
-  items: EventDetail[];
-  total: number;
-  page: number;
-  per_page: number;
-  ready_total: number;
-  incomplete_total: number;
-}
+/** Shape of `GET /events/detections`. `total` counts the set `readiness` selected;
+ *  `ready_total` and `incomplete_total` count the whole queue under any filter. */
+export type PaginatedEventDetails = Omit<
+  components["schemas"]["PaginatedEventDetails"],
+  "items"
+> & { items: EventDetail[] };
 
 export function detectionsPath(
   page = 1,

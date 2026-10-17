@@ -4,11 +4,8 @@ import type { ExternalLinks, User } from "@/types";
 
 /** Payload for `PATCH /users/me`. `undefined` omits (preserves the column); `null` or an
  *  empty string clears it (`model_dump(exclude_unset=True)`). `external_links` is replaced
- *  wholesale. No `avatar_url`: the backend body is `extra=forbid`, so sending one 422s. */
-export interface UserProfileUpdate {
-  bio?: string | null;
-  external_links?: ExternalLinks | null;
-}
+ *  wholesale. */
+export type UserProfileUpdate = components["schemas"]["UserUpdate"];
 
 export function updateMyProfile(body: UserProfileUpdate): Promise<User> {
   return apiFetch<User>("/users/me", {

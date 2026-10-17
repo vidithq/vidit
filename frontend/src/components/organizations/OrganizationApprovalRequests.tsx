@@ -5,7 +5,7 @@ import { ClipboardCheck } from "lucide-react";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useMutation } from "@/hooks/useMutation";
 import { formatDate } from "@/lib/format";
-import { setOrganizationApprovalRequestAudience, type Organization } from "@/lib/organizations";
+import { updateOrganization, type Organization } from "@/lib/organizations";
 import {
   ORGANIZATION_AUDIENCE_OPTIONS,
   APPROVAL_REQUEST_AUDIENCE_DEFAULT,
@@ -84,7 +84,8 @@ export function OrganizationApprovalRequests({
     organizationApprovalRequestsPath(org.slug),
   );
   const audience = useMutation(
-    (value: ApprovalRequestAudience) => setOrganizationApprovalRequestAudience(org.slug, value),
+    (value: ApprovalRequestAudience) =>
+      updateOrganization(org.slug, { approval_request_audience: value }),
     { fallback: "Could not change who can send approval requests", onSuccess: onChanged },
   );
   const rows = requests.data ?? [];
