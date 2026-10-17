@@ -1,5 +1,6 @@
 import { apiFetch } from "./api";
 import type { components } from "./api-types";
+import type { InviteAnswer } from "./geolocatorCredit";
 import type { ExternalLinks } from "@/types";
 
 /** `GET /organizations/{slug}`, with `external_links` kept as the narrow per-platform shape. */
@@ -88,7 +89,7 @@ export function cancelOrganizationInvite(slug: string, inviteId: string): Promis
 /** Answer your own pending invite. */
 export function answerOrganizationInvite(
   slug: string,
-  answer: "accept" | "decline",
+  answer: InviteAnswer,
 ): Promise<void> {
   return apiFetch<void>(`${organizationPath(slug)}/invite/${answer}`, { method: "POST" });
 }

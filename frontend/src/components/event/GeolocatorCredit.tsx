@@ -14,6 +14,7 @@ import {
   removeGeolocator,
   withdrawGeolocatorInvite,
   type GeolocatorInvite,
+  type InviteAnswer,
 } from "@/lib/geolocatorCredit";
 import { suggestAuthors } from "@/lib/search";
 import {
@@ -28,19 +29,19 @@ import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 
-/** The invitee's answer to an invitation to share an event's credit. Accepting adds the reader to
- *  the event's geolocators; declining drops the invitation. */
-function InviteAnswerButtons({
-  eventId,
+/** **Accept** and **Decline** for the reader's own invitation, to share an event's credit or to
+ *  join an organization; `answer` posts the choice. */
+export function InviteAnswerButtons({
+  answer: post,
   onAnswered,
 }: {
-  eventId: string;
+  answer: (choice: InviteAnswer) => Promise<unknown>;
   onAnswered: () => void;
 }) {
-  const answer = useMutation(
-    (verb: "accept" | "decline") => answerGeolocatorInvite(eventId, verb),
-    { fallback: "Failed to answer the invitation", onSuccess: onAnswered },
-  );
+  const answer = useMutation(post, {
+    fallback: "Failed to answer the invitation",
+    onSuccess: onAnswered,
+  });
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
@@ -79,7 +80,10 @@ export function GeolocatorInviteCard({
         <AuthorByline author={event.owner} prefix={false} /> invites you to share the credit of
         this geolocation. You are credited beside them; editing and closing stay with the owner.
       </p>
-      <InviteAnswerButtons eventId={event.id} onAnswered={onAnswered} />
+      <InviteAnswerButtons
+        answer={(choice) => answerGeolocatorInvite(event.id, choice)}
+        onAnswered={onAnswered}
+      />
     </Card>
   );
 }

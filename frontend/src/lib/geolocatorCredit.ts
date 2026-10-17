@@ -42,10 +42,14 @@ export function withdrawGeolocatorInvite(eventId: string, username: string): Pro
   );
 }
 
+/** An invitee's answer to an invitation, to an event's credit or to an organization: the last
+ *  path segment of its POST. */
+export type InviteAnswer = "accept" | "decline";
+
 /** The invitee's answer to their own invitation. */
 export function answerGeolocatorInvite(
   eventId: string,
-  answer: "accept" | "decline",
+  answer: InviteAnswer,
 ): Promise<void> {
   return apiFetch<void>(`${geolocatorInvitesPath(eventId)}/${answer}`, { method: "POST" });
 }
