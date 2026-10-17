@@ -23,14 +23,12 @@ import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
 /** One open request as a row to its event: the requester's picture, the event title, who asked
- *  and when, and, for a member, Decline. Approving happens on the event page, after reading it. */
+ *  and when, and Decline. Approving happens on the event page, after reading it. */
 function RequestRow({
   item: { event, request },
-  canAnswer,
   onAnswered,
 }: {
   item: OrganizationApprovalRequest;
-  canAnswer: boolean;
   onAnswered: () => void;
 }) {
   const decline = useMutation(() => declineApprovalRequest(event.id, request.id), {
@@ -56,11 +54,9 @@ function RequestRow({
         href={`/events/${event.id}`}
         external={false}
         action={
-          canAnswer && (
-            <Button variant="ghost" onClick={() => void decline.run()} disabled={decline.loading}>
-              Decline
-            </Button>
-          )
+          <Button variant="ghost" onClick={() => void decline.run()} disabled={decline.loading}>
+            Decline
+          </Button>
         }
       />
       {decline.error && (
@@ -73,10 +69,9 @@ function RequestRow({
 }
 
 /**
- * The organization's approval requests, for its members and site admins: the open requests, oldest
- * first, and, for its org managers and site admins, who may send one (the organization's audience,
- * which they set here). Any member declines a request here, or approves it in the organization's
- * name from the event page. A site admin who is not a member reads the list without answering.
+ * The organization's approval requests, for its members: the open requests, oldest first, and, for
+ * its org managers, who may send one (the organization's audience, which they set here). Any member
+ * declines a request here, or approves it in the organization's name from the event page.
  */
 export function OrganizationApprovalRequests({
   org,
@@ -93,7 +88,6 @@ export function OrganizationApprovalRequests({
     { fallback: "Could not change who can send approval requests", onSuccess: onChanged },
   );
   const rows = requests.data ?? [];
-  const canAnswer = org.viewer_role !== null && org.viewer_role !== undefined;
   const error = audience.error ?? requests.error;
 
   return (
@@ -126,7 +120,6 @@ export function OrganizationApprovalRequests({
             <RequestRow
               key={item.request.id}
               item={item}
-              canAnswer={canAnswer}
               onAnswered={requests.refetch}
             />
           ))}

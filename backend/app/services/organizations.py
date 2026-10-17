@@ -408,6 +408,9 @@ def apply_update(org: Organization, body: OrganizationUpdate) -> None:
 
 
 def build_read(db: Session, org: Organization, *, viewer: User | None) -> OrganizationRead:
+    """The organization as ``viewer`` reads it. The ``viewer_*`` flags follow the viewer's own
+    membership: a site admin's manager powers (:func:`require_manager`) serve the admin panel,
+    so they do not raise ``viewer_can_manage``."""
     role: OrganizationRole | None = None
     invited = False
     can_manage = False
@@ -423,7 +426,7 @@ def build_read(db: Session, org: Organization, *, viewer: User | None) -> Organi
             .first()
             is not None
         )
-        can_manage = viewer.is_admin or role == "manager"
+        can_manage = role == "manager"
     return OrganizationRead(
         id=org.id,
         slug=org.slug,

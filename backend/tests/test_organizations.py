@@ -428,11 +428,15 @@ def test_org_manager_removes_a_member(db, org, org_manager, make_user):
     assert client.delete(path, headers=headers).status_code == 404
 
 
-def test_site_admin_manages_any_organization(db, org, site_admin, make_user, org_manager):
+def test_site_admin_manages_any_organization_without_the_viewer_flag(
+    db, org, site_admin, make_user, org_manager
+):
     member = make_user()
     _join(db, org_manager, org["slug"], member)
     headers = login_as(client, site_admin)
-    assert client.get(_org(org["slug"])).json()["viewer_can_manage"] is True
+    read = client.get(_org(org["slug"])).json()
+    assert (read["viewer_role"], read["viewer_can_manage"]) == (None, False)
+    assert read["approval_request_audience"] is None
     promoted = client.patch(
         f"{_org(org['slug'])}/members/{member.username}", headers=headers, json={"role": "manager"}
     )

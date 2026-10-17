@@ -2814,7 +2814,7 @@ An organization's public profile. Anonymous callers are allowed.
 }
 ```
 
-`approval_request_audience` is who may send the organization a [approval request](#approval-requests): `following` (an analyst any live org manager follows), `everyone` or `nobody`. It is shown to the organization's org managers and to site admins only, and is `null` for anyone else. `viewer_role` is your role, null when you are not a member or not signed in. `viewer_invited` is true while you hold a pending invite. `viewer_can_manage` is true for an org manager and for a site admin.
+`approval_request_audience` is who may send the organization a [approval request](#approval-requests): `following` (an analyst any live org manager follows), `everyone` or `nobody`. It is shown to the organization's org managers only, and is `null` for anyone else. `viewer_role` is your role, null when you are not a member or not signed in. `viewer_invited` is true while you hold a pending invite. `viewer_can_manage` is true for an org manager only. The `viewer_*` fields follow your own membership: being a site admin does not set them, even though the API accepts a site admin's manager requests.
 
 ---
 
@@ -3016,7 +3016,7 @@ The token carries no expiry. It stops working only when `JWT_SECRET` rotates. Id
 
 ## Admin
 
-All routes below are mounted under `/admin` and gated by the `require_admin` dependency, which layers on `get_current_user`, so a deactivated admin (`is_active=false`) loses access immediately. A path naming an unknown id returns 404. Each state-changing route appends an `admin_events` row, named under its endpoint.
+All routes below are mounted under `/admin` and gated by the `require_admin` dependency, which layers on `get_current_user`, so a deactivated admin (`is_active=false`) loses access immediately. A path naming an unknown id returns 404. Each state-changing route appends an `admin_events` row, named under its endpoint. Outside `/admin`, the `viewer_*` fields a route returns follow the caller's own role, so being a site admin does not set them.
 
 <details>
 <summary>Admin endpoints. Expand for contracts.</summary>

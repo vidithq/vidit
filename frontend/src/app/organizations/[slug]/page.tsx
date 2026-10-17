@@ -35,8 +35,8 @@ import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
 /** An organization's public page: the analyst profile's header (name, picture, bio, links), then
- * the members, the approvals placed in its name, and, for org managers and site admins, its
- * approval requests and invites. An invited viewer answers the invite in the right rail. Org managers and site admins
+ * the members, the approvals placed in its name, its approval requests for members, and its
+ * invites for org managers. An invited viewer answers the invite in the right rail. Org managers
  * edit the bio, links and picture in place, as an analyst edits their profile. */
 export default function OrganizationPage() {
   const params = useParams();
@@ -132,13 +132,9 @@ export default function OrganizationPage() {
 
           <OrganizationApprovals slug={slug} />
 
-          {(org.viewer_role || org.viewer_can_manage) && (
-            <OrganizationApprovalRequests org={org} onChanged={refetch} />
-          )}
+          {org.viewer_role && <OrganizationApprovalRequests org={org} onChanged={refetch} />}
 
-          {org.viewer_can_manage && (
-            <OrganizationInvites slug={slug} canInvite={org.viewer_role === "manager"} />
-          )}
+          {org.viewer_can_manage && <OrganizationInvites slug={slug} />}
         </>
       )}
     </PageShell>

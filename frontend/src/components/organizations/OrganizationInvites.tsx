@@ -30,19 +30,10 @@ import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
  *
  * The picker lists only the analysts the server accepts: mutual follows of the viewer who are
  * neither members nor invited. The line under the heading says so, which is what explains an
- * analyst missing from the list. A site admin who is not an org manager sees the pending invites
- * without the picker (`canInvite`). */
-export function OrganizationInvites({
-  slug,
-  canInvite,
-}: {
-  slug: string;
-  canInvite: boolean;
-}) {
+ * analyst missing from the list. */
+export function OrganizationInvites({ slug }: { slug: string }) {
   const base = organizationPath(slug);
-  const candidates = useApiResource<InviteCandidate[]>(
-    canInvite ? `${base}/invite-candidates` : null,
-  );
+  const candidates = useApiResource<InviteCandidate[]>(`${base}/invite-candidates`);
   const invites = useApiResource<OrganizationInvite[]>(`${base}/invites`);
   const [picked, setPicked] = useState<Account | null>(null);
 
@@ -71,47 +62,43 @@ export function OrganizationInvites({
     <Card as="section">
       <header className="space-y-1">
         <SectionEyebrow title="Invites" margin="none" />
-        {canInvite && (
-          <p className="text-xs text-neutral-500">
-            You can invite an analyst who follows you and whom you follow. They join once
-            they accept.
-          </p>
-        )}
+        <p className="text-xs text-neutral-500">
+          You can invite an analyst who follows you and whom you follow. They join once they
+          accept.
+        </p>
       </header>
 
-      {canInvite && (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (picked) void send.run(picked);
-          }}
-          className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end"
-        >
-          <div>
-            <label className={FORM_LABEL} htmlFor="invite-candidate">
-              Analyst
-            </label>
-            <div className="mt-1">
-              <AccountPicker
-                id="invite-candidate"
-                options={options}
-                selected={picked}
-                onSelect={setPicked}
-                onClear={() => setPicked(null)}
-                placeholder="Pick an analyst"
-                emptyText={
-                  candidates.data?.length === 0
-                    ? "No mutual follow to invite"
-                    : "No mutual follow matches"
-                }
-              />
-            </div>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (picked) void send.run(picked);
+        }}
+        className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end"
+      >
+        <div>
+          <label className={FORM_LABEL} htmlFor="invite-candidate">
+            Analyst
+          </label>
+          <div className="mt-1">
+            <AccountPicker
+              id="invite-candidate"
+              options={options}
+              selected={picked}
+              onSelect={setPicked}
+              onClear={() => setPicked(null)}
+              placeholder="Pick an analyst"
+              emptyText={
+                candidates.data?.length === 0
+                  ? "No mutual follow to invite"
+                  : "No mutual follow matches"
+              }
+            />
           </div>
-          <Button type="submit" variant="secondary" disabled={!picked || send.loading}>
-            {send.loading ? "Inviting…" : "Invite"}
-          </Button>
-        </form>
-      )}
+        </div>
+        <Button type="submit" variant="secondary" disabled={!picked || send.loading}>
+          {send.loading ? "Inviting…" : "Invite"}
+        </Button>
+      </form>
 
       {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
 

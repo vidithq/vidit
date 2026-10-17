@@ -38,6 +38,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- Outside the admin page a site admin sees what their own role allows: the organization page shows role controls, invites and approval requests only to its members and org managers, and `viewer_can_manage` follows the org manager role alone ([#595](https://github.com/vidithq/vidit/pull/595)).
 - The event and request pages hold their actions in the right rail, top right beside the title and under it on a phone, and the organization page holds an invitation's Accept and Decline there; the title and byline scroll with the page ([#595](https://github.com/vidithq/vidit/pull/595)).
 - The edit page moves Save, the version note, Close and the geolocators into a sticky right rail beside the fields, under them on a phone; geolocator changes still apply right away and make no new version ([#593](https://github.com/vidithq/vidit/pull/593)).
 - An event page's header holds a version selector, Edit for the owner, a one-click Share and Report; an Approvals card beside the record shows the live approvals, close and credit move to the edit page, and icon buttons show their label on hover ([#583](https://github.com/vidithq/vidit/pull/583)).

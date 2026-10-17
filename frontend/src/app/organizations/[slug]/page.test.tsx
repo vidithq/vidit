@@ -130,6 +130,7 @@ function signIn(username: string | null) {
 describe("OrganizationPage", () => {
   beforeEach(() => {
     apiFetch.mockReset().mockResolvedValue(undefined);
+    useApiResource.mockClear();
   });
 
   it("shows a visitor the profile and the members, with no controls", () => {
@@ -287,12 +288,17 @@ describe("OrganizationPage", () => {
     expect(screen.queryByRole("button", { name: "Everyone" })).toBeNull();
   });
 
-  it("shows a site admin the requests without the answer", () => {
+  it("shows a site admin who is not a member no role controls, requests or invites", () => {
     signIn("mod");
-    serve({ ...ORG, viewer_can_manage: true });
+    serve(ORG);
     render(<OrganizationPage />);
 
-    expect(screen.getByRole("link", { name: /^Port fire/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Decline" })).toBeNull();
+    expect(screen.getByRole("link", { name: /^lead/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Remove|Leave|Make/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit profile" })).toBeNull();
+    expect(screen.queryByText("Approval requests")).toBeNull();
+    expect(screen.queryByText("Invites")).toBeNull();
+    expect(useApiResource).not.toHaveBeenCalledWith("/organizations/osw/approval-requests");
+    expect(useApiResource).not.toHaveBeenCalledWith("/organizations/osw/invites");
   });
 });
