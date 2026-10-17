@@ -12,10 +12,15 @@ import {
   type OrganizationInvite,
 } from "@/lib/organizations";
 import { formatDate } from "@/lib/format";
+import {
+  AccountPicker,
+  accountName,
+  analystAccount,
+  type Account,
+} from "@/components/ui/AccountPicker";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { Select } from "@/components/ui/Input";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 
@@ -37,17 +42,17 @@ export function OrganizationInvites({
     canInvite ? `${base}/invite-candidates` : null,
   );
   const invites = useApiResource<OrganizationInvite[]>(`${base}/invites`);
-  const [picked, setPicked] = useState("");
+  const [picked, setPicked] = useState<Account | null>(null);
 
   const refresh = () => {
     candidates.refetch();
     invites.refetch();
   };
 
-  const send = useMutation(() => inviteToOrganization(slug, picked), {
+  const send = useMutation((invitee: Account) => inviteToOrganization(slug, accountName(invitee)), {
     fallback: "Could not send the invite",
     onSuccess: () => {
-      setPicked("");
+      setPicked(null);
       refresh();
     },
   });
@@ -56,7 +61,7 @@ export function OrganizationInvites({
     onSuccess: refresh,
   });
 
-  const options = candidates.data ?? [];
+  const options = (candidates.data ?? []).map(analystAccount);
   const pending = invites.data ?? [];
   const error = send.error ?? cancel.error ?? invites.error ?? candidates.error;
 
@@ -76,7 +81,7 @@ export function OrganizationInvites({
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            void send.run();
+            if (picked) void send.run(picked);
           }}
           className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end"
         >
@@ -84,22 +89,21 @@ export function OrganizationInvites({
             <label className={FORM_LABEL} htmlFor="invite-candidate">
               Analyst
             </label>
-            <Select
-              id="invite-candidate"
-              value={picked}
-              onChange={(e) => setPicked(e.target.value)}
-              disabled={options.length === 0}
-              className="mt-1"
-            >
-              <option value="">
-                {options.length === 0 ? "No mutual follow to invite" : "Pick an analyst"}
-              </option>
-              {options.map((c) => (
-                <option key={c.id} value={c.username}>
-                  {c.username}
-                </option>
-              ))}
-            </Select>
+            <div className="mt-1">
+              <AccountPicker
+                id="invite-candidate"
+                options={options}
+                selected={picked}
+                onSelect={setPicked}
+                onClear={() => setPicked(null)}
+                placeholder="Pick an analyst"
+                emptyText={
+                  candidates.data?.length === 0
+                    ? "No mutual follow to invite"
+                    : "No mutual follow matches"
+                }
+              />
+            </div>
           </div>
           <Button type="submit" variant="secondary" disabled={!picked || send.loading}>
             {send.loading ? "Inviting…" : "Invite"}

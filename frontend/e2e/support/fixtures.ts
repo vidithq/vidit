@@ -377,6 +377,11 @@ export const ORGANIZATION_MEMBERS: OrganizationMember[] = [
 
 export const INVITE_CANDIDATES: InviteCandidate[] = [
   { id: "99999999-9999-4999-8999-999999999992", username: "mutual", avatar_url: null },
+  {
+    id: "99999999-9999-4999-8999-999999999995",
+    username: "a_mutual_follow_with_a_username_long_enough_to_wr",
+    avatar_url: null,
+  },
 ];
 
 export const ORGANIZATION_INVITES: OrganizationInvite[] = [

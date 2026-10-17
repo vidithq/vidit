@@ -3060,13 +3060,16 @@ export interface components {
         /**
          * ApprovalRequestTargetList
          * @description ``GET /events/{id}/approval-request-targets``: the analysts and the organizations you can
-         *     ask to approve the event now.
+         *     ask to approve the event now, and ``refusal``, why the account whose username or slug is
+         *     ``q`` is left out.
          */
         ApprovalRequestTargetList: {
             /** Analysts */
             analysts: components["schemas"]["AuthorRef"][];
             /** Organizations */
             organizations: components["schemas"]["OrganizationRef"][];
+            /** Refusal */
+            refusal: string | null;
         };
         /**
          * ApprovalRevoke

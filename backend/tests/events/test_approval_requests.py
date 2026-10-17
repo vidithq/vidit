@@ -283,6 +283,25 @@ def test_an_analyst_who_reviewed_the_live_version_is_not_asked(db, author, make_
     assert _code(response) == "already_approved"
 
 
+def test_an_exact_match_left_out_of_the_targets_carries_its_refusal(db, author, make_user):
+    geo = _published(db, author)
+    reviewer = make_user(audience="nobody")
+    assert _approve(geo, reviewer, 1).status_code == 201
+    login_as(client, author)
+    path = f"{_EVENTS}/{geo.id}/approval-request-targets"
+
+    body = client.get(path, params={"q": reviewer.username.upper()}).json()
+    assert body["analysts"] == []
+    # The audience is never the reason: an exact match is listed whatever its audience.
+    assert body["refusal"] == "This analyst already reviewed the live version"
+
+    stranger = make_user(audience="nobody")
+    body = client.get(path, params={"q": stranger.username}).json()
+    assert [u["username"] for u in body["analysts"]] == [stranger.username]
+    assert body["refusal"] is None
+    assert client.get(path, params={"q": "nobody-here"}).json()["refusal"] is None
+
+
 # ── Duplicates and the daily cap ────────────────────────────────────
 
 

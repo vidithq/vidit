@@ -27,6 +27,7 @@ import {
 
 import type { Conflict, EventDetail, EventStatus, Media, Tag } from "@/types";
 import { PageShell } from "@/components/ui/PageShell";
+import { AccountPicker, type Account } from "@/components/ui/AccountPicker";
 import { ActionMenu } from "@/components/ui/ActionMenu";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -865,6 +866,10 @@ export default function PalettePage() {
                 setSelectedConflictIds={setTpConflictSel}
               />
             </div>
+          </Item>
+
+          <Item name="<AccountPicker>" usage="The one way to pick an analyst or an organization: a combobox field (role=combobox over a role=listbox) whose rows show the picture (a circle for an analyst, a rounded square for an organization), the name and, for an organization, its slug muted. `options` filters a local list by name and handle; `search` runs the caller's request 250ms after typing stops, once the query holds `minQueryLength` characters, and a `note` it returns (why an exact match is left out) shows as a muted row. Loading, a failed search and `emptyText` are muted rows too. ArrowUp and ArrowDown move and wrap, Enter takes the highlighted row or hands the typed text to `onSubmitText` when no row is up (an exact username), Escape, Tab or an outside click closes. With `selected`, the pick shows as an accent chip that `onClear` removes; without it, the field empties after each pick. The list spans the field's width and scrolls past 15rem. Consumers: the approval request, the search Author filter, the co-geolocator invite, the organization invite and the admin org manager fields.">
+            <PaletteAccountPicker />
           </Item>
         </section>
 
@@ -1787,6 +1792,40 @@ function PaletteActiveFilterPills() {
       }))}
       onClearAll={() => setActive([])}
     />
+  );
+}
+
+const PALETTE_ACCOUNTS: Account[] = [
+  { kind: "analyst", username: "ana-demo" },
+  { kind: "analyst", username: "bo-demo" },
+  { kind: "organization", slug: "open-source-watch", name: "Open Source Watch" },
+];
+
+function PaletteAccountPicker() {
+  const [picked, setPicked] = useState<Account | null>(null);
+  return (
+    <div className="grid w-full max-w-2xl gap-4 sm:grid-cols-2">
+      <Variant label="field resets after a pick">
+        <AccountPicker
+          aria-label="Pick an account"
+          options={PALETTE_ACCOUNTS}
+          onSelect={() => undefined}
+          placeholder="Search analysts and organizations"
+          emptyText="No analyst or organization matches"
+        />
+      </Variant>
+      <Variant label="selected shows as a chip">
+        <AccountPicker
+          aria-label="Pick an account to keep"
+          options={PALETTE_ACCOUNTS}
+          selected={picked}
+          onSelect={setPicked}
+          onClear={() => setPicked(null)}
+          placeholder="Pick an analyst"
+          emptyText="No analyst or organization matches"
+        />
+      </Variant>
+    </div>
   );
 }
 

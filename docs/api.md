@@ -132,7 +132,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/collections/{id}/events/{event_id}` | 🔒 | Take one event off it (idempotent) |
 | **Search** | | | |
 | GET | `/search` | 🌐 | Free-text search across geolocations / requests / collections / users / organizations |
-| GET | `/search/authors` | 🌐 | Username typeahead for the author filter |
+| GET | `/search/authors` | 🌐 | Username typeahead for the author filter and the co-geolocator invite |
 | **Tags** | | | |
 | GET | `/tags` | 🌐 | List tags (defaults to ones referenced by live geos) |
 | POST | `/tags` | 🔒 | Create a free tag (curated categories rejected) |
@@ -1684,11 +1684,11 @@ The open approval requests on the event, oldest first. A geolocator of the event
 
 ### `GET /events/{id}/approval-request-targets` 🔒
 
-The analysts and organizations to suggest for approval of the event, at most 20 of each. Analysts: live, outside the event's current and former geolocators, who have not reviewed the live version, hold no open request from you on it and declined none in the last 7 days, and who follow you and take requests, or whose username is `q` exactly. Organizations: with a live org manager outside the current and former geolocators, without a standing approval of the live version, an open request from you on it or one it declined in the last 7 days, and followed by one of its org managers while it takes requests, or whose slug is `q` exactly; by name. The list never reveals an `everyone` audience: an exact match is listed whatever its audience, and asking it may still return `requests_not_accepted`.
+The analysts and organizations to suggest for approval of the event, at most 20 of each. Analysts: live, outside the event's current and former geolocators, who have not reviewed the live version, hold no open request from you on it and declined none in the last 7 days, and who follow you and take requests, or whose username is `q` exactly. Organizations: with a live org manager outside the current and former geolocators, without a standing approval of the live version, an open request from you on it or one it declined in the last 7 days, and followed by one of its org managers while it takes requests, or whose slug is `q` exactly; by name. The list never reveals an `everyone` audience: an exact match is listed whatever its audience, and asking it may still return `requests_not_accepted`. When `q` is the exact username of a live analyst, or else the exact slug of an organization, that the list leaves out, `refusal` holds the reason the request would get (a geolocator, already approved, already asked, or declined in the last 7 days); otherwise it is `null`. The audience is never a `refusal`.
 
 **Query params:** `q`, up to 50 characters: a case-insensitive substring of the username, prefix matches first, or of the organization's name or slug.
 
-**Response 200:** `{ "analysts": [{ "id", "username", "avatar_url" }], "organizations": [{ "slug", "name", "avatar_url" }] }`.
+**Response 200:** `{ "analysts": [{ "id", "username", "avatar_url" }], "organizations": [{ "slug", "name", "avatar_url" }], "refusal": null }`.
 
 **Errors:**
 | Code | Case |
