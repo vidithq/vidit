@@ -21,7 +21,6 @@ from app.models.event import (
 )
 from app.models.invite_code import InviteCode
 from app.models.media import Media
-from app.models.organization import Organization
 from app.models.user import User
 from app.schemas.admin import (
     AdminDetectionStatsRead,
@@ -39,6 +38,7 @@ from app.services.evidence_intake import (
 )
 from app.services.pagination import keyset_before, take_page
 from app.services.storage import avatar_key_of, sweep_keys
+from app.services.users import x_handle_holder
 
 
 class AdminError(Exception):
@@ -175,17 +175,11 @@ def serialize_invite_code(db: Session, invite: InviteCode) -> AdminInviteCodeRea
 def _assert_x_handle_free(
     db: Session, x_handle: str, *, exclude_user_id: uuid.UUID | None = None
 ) -> None:
-    """Raise the typed conflict when any user row or organization already carries the handle.
-
-    Soft-deleted rows count too: ``users.x_handle`` is UNIQUE across every row. Analysts and
-    organizations share one namespace, so the bot never credits a handle to two owners.
-    """
-    query = db.query(User).filter(User.x_handle == x_handle)
-    if exclude_user_id is not None:
-        query = query.filter(User.id != exclude_user_id)
-    if query.first() is not None:
+    """Raise the typed conflict when :func:`services.users.x_handle_holder` names a holder."""
+    holder = x_handle_holder(db, x_handle, exclude_user_id=exclude_user_id)
+    if holder == "analyst":
         raise XHandleConflictError("x_handle is already linked to another account")
-    if db.query(Organization.id).filter(Organization.x_handle == x_handle).first() is not None:
+    if holder == "organization":
         raise XHandleConflictError("x_handle is already linked to an organization")
 
 

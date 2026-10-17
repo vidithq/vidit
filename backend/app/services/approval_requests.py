@@ -53,6 +53,7 @@ from app.services.approvals import (
 )
 from app.services.event_filters import ever_credited_ids, lock_event, visible_events
 from app.services.organizations import is_organization_member, live_manager_ids, live_member_ids
+from app.services.users import get_live_by_username
 
 MAX_TARGET_SUGGESTIONS = 20
 # After a decline, the same requester waits this long before asking the same target about the
@@ -447,12 +448,8 @@ def _check_daily_cap(db: Session, *, requester: User) -> None:
 def _check_analyst_target(
     db: Session, *, geo: Event, requester: User, username: str, check_audience: bool = True
 ) -> User:
-    target = (
-        db.query(User)
-        .filter(User.username == username, User.deleted_at.is_(None), User.is_active.is_(True))
-        .first()
-    )
-    if target is None:
+    target = get_live_by_username(db, username)
+    if target is None or not target.is_active:
         raise TargetNotFoundError("No analyst with that username")
     if ever_credited(db, geo=geo, user_id=target.id):
         raise TargetIsGeolocatorError(

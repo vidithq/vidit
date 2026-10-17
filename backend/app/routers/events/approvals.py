@@ -15,7 +15,7 @@ from app.ratelimit import authenticated_read_quota, limiter
 from app.routers._errors import raise_typed_error
 from app.routers.events._common import resolve_live_event, resolve_readable_event
 from app.schemas.approval import ApprovalCreate, ApprovalList, ApprovalRead, ApprovalRevoke
-from app.services import approvals
+from app.services import approvals, organizations
 from app.services.approvals import APPROVAL_ERROR_STATUS, ApprovalError
 
 router = APIRouter()
@@ -71,10 +71,13 @@ def approve_event(
     geo = resolve_live_event(db, geolocation_id)
     try:
         organization = (
-            approvals.resolve_organization(db, body.organization)
+            organizations.get_by_slug(db, body.organization)
             if body.organization is not None
             else None
         )
+    except organizations.OrganizationError as exc:
+        raise_typed_error(exc, organizations.ORGANIZATION_ERROR_STATUS)
+    try:
         row = approvals.approve(
             db,
             geo=geo,

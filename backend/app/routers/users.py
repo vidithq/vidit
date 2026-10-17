@@ -40,7 +40,7 @@ router = APIRouter()
 def _get_live_user_or_404(db: Session, username: str) -> User:
     """Resolve ``username`` to a live ``User`` or 404. Unknown and soft-deleted
     both 404 so the URL space isn't a soft-delete oracle."""
-    user = db.query(User).filter(User.username == username, User.deleted_at.is_(None)).first()
+    user = users_service.get_live_by_username(db, username)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     return user

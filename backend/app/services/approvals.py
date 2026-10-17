@@ -84,10 +84,6 @@ class RevokeForbiddenError(ApprovalError):
     code = "revoke_forbidden"
 
 
-class OrganizationNotFoundError(ApprovalError):
-    code = "organization_not_found"
-
-
 class NotOrganizationMemberError(ApprovalError):
     code = "not_organization_member"
 
@@ -101,7 +97,6 @@ APPROVAL_ERROR_STATUS: dict[str, int] = {
     "approval_not_found": 404,
     "already_revoked": 409,
     "revoke_forbidden": 403,
-    "organization_not_found": 404,
     "not_organization_member": 403,
 }
 
@@ -191,14 +186,6 @@ def build_read(row: EventApproval, *, live_version: int) -> ApprovalRead:
         revoke_reason=row.revoke_reason,
         revoked_as=row.revoked_as,
     )
-
-
-def resolve_organization(db: Session, slug: str) -> Organization:
-    """The organization an approval is placed for, or 404 ``organization_not_found``."""
-    org = db.query(Organization).filter(Organization.slug == slug).first()
-    if org is None:
-        raise OrganizationNotFoundError("Organization not found")
-    return org
 
 
 # One read returns at most this many reviews: far past any event's reviewers on one version,

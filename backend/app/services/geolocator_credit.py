@@ -34,6 +34,7 @@ from app.schemas.user import AuthorRef
 from app.services import notifications
 from app.services.event_filters import lock_event
 from app.services.permissions import ensure_owner
+from app.services.users import get_live_by_username
 
 # Every relationship ``build_event_read`` and ``build_event_list`` read for the credit line.
 CREDIT_LOAD = selectinload(Event.geolocators).joinedload(EventGeolocator.user)
@@ -107,10 +108,6 @@ def _require_published(geo: Event) -> None:
         raise EventNotPublishedError("Only a published geolocation shares its credit")
 
 
-def _user_by_username(db: Session, username: str) -> User | None:
-    return db.query(User).filter(User.username == username, User.deleted_at.is_(None)).first()
-
-
 def _invite_row(db: Session, event_id: uuid.UUID, user_id: uuid.UUID) -> EventGeolocatorInvite:
     row = db.get(EventGeolocatorInvite, (event_id, user_id))
     if row is None:
@@ -150,7 +147,7 @@ def invite(db: Session, *, geo: Event, owner: User, username: str) -> EventGeolo
     geo = lock_event(db, geo.id)
     ensure_owner(geo, owner)
     _require_published(geo)
-    invitee = _user_by_username(db, username)
+    invitee = get_live_by_username(db, username)
     if invitee is None:
         raise InviteeNotFoundError("No analyst with that username")
     if db.get(EventGeolocator, (geo.id, invitee.id)) is not None or invitee.id == geo.owner_id:
@@ -186,7 +183,7 @@ def withdraw(db: Session, *, geo: Event, owner: User, username: str) -> None:
     """Withdraw the owner's pending invitation of ``username`` (404 ``invite_not_found``)."""
     geo = lock_event(db, geo.id)
     ensure_owner(geo, owner)
-    invitee = _user_by_username(db, username)
+    invitee = get_live_by_username(db, username)
     if invitee is None:
         raise InviteNotFoundError("No pending invitation")
     db.delete(_invite_row(db, geo.id, invitee.id))

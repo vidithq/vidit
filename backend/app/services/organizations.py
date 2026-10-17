@@ -38,7 +38,7 @@ from app.schemas.user import AuthorRef
 from app.services import admin as admin_service
 from app.services import notifications, social
 from app.services.storage import avatar_key_of, sweep_keys
-from app.services.users import apply_profile_update
+from app.services.users import apply_profile_update, get_live_by_username, x_handle_holder
 
 
 class OrganizationError(Exception):
@@ -124,7 +124,7 @@ def get_by_slug(db: Session, slug: str, *, lock: bool = False) -> Organization:
 
 
 def _live_user(db: Session, username: str) -> User:
-    user = db.query(User).filter(User.username == username, User.deleted_at.is_(None)).first()
+    user = get_live_by_username(db, username)
     if user is None:
         raise UserNotFoundError("User not found")
     return user
@@ -271,17 +271,10 @@ def create_organization(db: Session, *, actor: User, body: OrganizationCreate) -
     first_manager = _live_user(db, body.manager_username)
     if db.query(Organization.id).filter(Organization.slug == body.slug).first() is not None:
         raise SlugTakenError("An organization already uses this slug")
-    if (
-        body.x_handle is not None
-        and db.query(Organization.id).filter(Organization.x_handle == body.x_handle).first()
-        is not None
-    ):
+    holder = x_handle_holder(db, body.x_handle) if body.x_handle is not None else None
+    if holder == "organization":
         raise XHandleConflictError("X handle already linked to another organization")
-    # Analysts and organizations share one X handle namespace.
-    if (
-        body.x_handle is not None
-        and db.query(User.id).filter(User.x_handle == body.x_handle).first() is not None
-    ):
+    if holder == "analyst":
         raise XHandleConflictError("X handle already linked to an analyst")
 
     org = Organization(
