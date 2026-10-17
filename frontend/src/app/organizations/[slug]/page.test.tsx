@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Organization, OrganizationMember } from "@/lib/organizations";
@@ -150,12 +150,13 @@ describe("OrganizationPage", () => {
     expect(screen.queryByText("Skyline matches")).toBeNull();
   });
 
-  it("lets an invited analyst accept", async () => {
+  it("lets an invited analyst accept from the rail", async () => {
     signIn("bo");
     const refetch = serve({ ...ORG, viewer_invited: true });
     render(<OrganizationPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+    const rail = screen.getByRole("complementary", { name: "Invitation" });
+    fireEvent.click(within(rail).getByRole("button", { name: "Accept" }));
     await waitFor(() =>
       expect(apiFetch).toHaveBeenCalledWith("/organizations/osw/invite/accept", {
         method: "POST",

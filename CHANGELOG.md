@@ -36,6 +36,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- The event and request pages hold their actions in the right rail, top right beside the title and under it on a phone, and the organization page holds an invitation's Accept and Decline there; the title and byline scroll with the page ([#595](https://github.com/vidithq/vidit/pull/595)).
 - The edit page moves Save, the version note, Close and the geolocators into a sticky right rail beside the fields, under them on a phone; geolocator changes still apply right away and make no new version ([#593](https://github.com/vidithq/vidit/pull/593)).
 - An event page's header holds a version selector, Edit for the owner, a one-click Share and Report; an Approvals card beside the record shows the live approvals, close and credit move to the edit page, and icon buttons show their label on hover ([#583](https://github.com/vidithq/vidit/pull/583)).
 - On a wide screen the page column sits centred, the nav rail counted as part of the left margin, so the space left and right of the content is equal; every page still starts its title at the same x.

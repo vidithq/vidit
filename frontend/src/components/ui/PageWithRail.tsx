@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
 
@@ -11,29 +11,32 @@ import { cn } from "@/lib/cn";
  * (`narrow="stacked"`), stacks below it (`narrow="below"`), for a rail that acts on what the column
  * holds, or leaves the page (`narrow="hidden"`), for a page that offers its own narrow entry point.
  * Without a `rail` the main column takes the full width.
+ *
+ * A `header` heads the main column, beside the rail rather than above it, and comes first below
+ * `lg`, so a stacked rail lands under it.
  */
 export function PageWithRail({
   rail,
   railLabel,
   narrow = "stacked",
-  topOffset = 0,
+  header,
   children,
 }: {
   rail?: ReactNode;
   /** Accessible name of the rail's `aside` landmark. */
   railLabel?: string;
   narrow?: "stacked" | "below" | "hidden";
-  /** Height in px of a sticky header above the rail, which the rail sticks under. */
-  topOffset?: number;
+  header?: ReactNode;
   children: ReactNode;
 }) {
   // DOM order sets the narrow stacking and the tab order; from `lg` up the grid places both.
   const aside = rail && (
     <aside
       aria-label={railLabel}
-      style={{ "--rail-top": `${topOffset}px` } as CSSProperties}
       className={cn(
-        "min-w-0 lg:sticky lg:top-[calc(var(--rail-top)+1.5rem)] lg:col-start-2 lg:row-start-1 lg:max-h-[calc(100dvh-var(--rail-top)-3rem)] lg:overflow-y-auto",
+        "min-w-0 lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1 lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto",
+        // The `1fr` second row takes the rail's extra height, so the header row stays the header's.
+        header && "lg:row-span-2",
         narrow === "hidden" && "max-lg:hidden",
       )}
     >
@@ -45,10 +48,19 @@ export function PageWithRail({
       className={cn(
         "grid gap-6",
         rail && "lg:grid-cols-[minmax(0,1fr)_17.5rem] lg:items-start",
+        rail && header && "lg:grid-rows-[auto_1fr]",
       )}
     >
+      {header && <div className="min-w-0 space-y-6 lg:col-start-1 lg:row-start-1">{header}</div>}
       {narrow !== "below" && aside}
-      <div className="min-w-0 space-y-6 lg:col-start-1 lg:row-start-1">{children}</div>
+      <div
+        className={cn(
+          "min-w-0 space-y-6 lg:col-start-1",
+          header ? "lg:row-start-2" : "lg:row-start-1",
+        )}
+      >
+        {children}
+      </div>
       {narrow === "below" && aside}
     </div>
   );

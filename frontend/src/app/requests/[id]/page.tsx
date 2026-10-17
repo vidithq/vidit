@@ -10,10 +10,9 @@ import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 
 /**
  * A request is a `requested` event (see `docs/data-model.md`, `events`) served by
- * `GET /events/{id}`; renders the shared `EventDetailBody` under the shared
- * event header (`useEventActions`: Edit, Share, Report), with the Actions card
- * (Geolocate) in the rail, after the body on a phone. The owner closes it from
- * the edit page.
+ * `GET /events/{id}`; renders the shared `EventDetailBody` under the title, with
+ * the Actions card (`useEventActions`: Edit, Share, Report, Geolocate) in the
+ * rail, under the title on a phone. The owner closes it from the edit page.
  */
 export default function RequestDetailPage() {
   const params = useParams();
@@ -26,7 +25,7 @@ export default function RequestDetailPage() {
     requestId ? `/events/${requestId}` : null
   );
   // Called before the early returns.
-  const { actions, panels, actionsCard } = useEventActions({
+  const { panels, rail } = useEventActions({
     event: request,
     surface: "request",
     onChanged: refetch,
@@ -46,12 +45,10 @@ export default function RequestDetailPage() {
       back
       title={request.title}
       subtitle={<AuthorByline author={request.owner} avatar />}
-      actions={actions}
-      rail={actionsCard}
+      rail={rail}
       railLabel="Actions"
-      narrowRail="below"
+      headerInColumn
     >
-      {/* The report form sits under the header, where the control that opens it is. */}
       {panels}
 
       {/* No coordinates: the Location is empty and the missing rows drop out. */}

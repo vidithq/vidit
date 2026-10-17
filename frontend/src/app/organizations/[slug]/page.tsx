@@ -35,8 +35,8 @@ import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
 /** An organization's public page: the analyst profile's header (name, picture, bio, links), then
- * the invite answer for an invited viewer, the members, the approvals placed in its name, and,
- * for org managers and site admins, its approval requests and invites. Org managers and site admins
+ * the members, the approvals placed in its name, and, for org managers and site admins, its
+ * approval requests and invites. An invited viewer answers the invite in the right rail. Org managers and site admins
  * edit the bio, links and picture in place, as an analyst edits their profile. */
 export default function OrganizationPage() {
   const params = useParams();
@@ -87,6 +87,30 @@ export default function OrganizationPage() {
       actions={
         <ProfileActions links={org.external_links} canEdit={org.viewer_can_manage} edit={edit} />
       }
+      rail={
+        org.viewer_invited && !edit.editing ? (
+          <Card as="section">
+            <p className="text-sm text-neutral-200">
+              You are invited to join {org.name}.
+            </p>
+            {answer.error && <div className={FORM_ERROR_BANNER}>{answer.error}</div>}
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => void answer.run("accept")} disabled={answer.loading}>
+                Accept
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => void answer.run("decline")}
+                disabled={answer.loading}
+              >
+                Decline
+              </Button>
+            </div>
+          </Card>
+        ) : null
+      }
+      railLabel="Invitation"
+      headerInColumn
     >
       <ProfileHeaderEditFields name={org.name} edit={edit} />
 
@@ -96,27 +120,6 @@ export default function OrganizationPage() {
 
       {!edit.editing && (
         <>
-          {org.viewer_invited && (
-            <Card as="section">
-              <p className="text-sm text-neutral-200">
-                You are invited to join {org.name}.
-              </p>
-              {answer.error && <div className={FORM_ERROR_BANNER}>{answer.error}</div>}
-              <div className="flex flex-wrap gap-2">
-                <Button onClick={() => void answer.run("accept")} disabled={answer.loading}>
-                  Accept
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => void answer.run("decline")}
-                  disabled={answer.loading}
-                >
-                  Decline
-                </Button>
-              </div>
-            </Card>
-          )}
-
           {members && (
             <OrganizationMembers
               slug={slug}

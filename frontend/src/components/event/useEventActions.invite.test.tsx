@@ -41,6 +41,14 @@ describe("useEventActions invitation", () => {
     expect(api.apiFetch).not.toHaveBeenCalledWith(expect.stringContaining("geolocator-invites"));
   });
 
+  it("puts the invitation under the row of actions", () => {
+    render(<Rail invited />);
+
+    const row = screen.getByRole("group", { name: "Event actions" });
+    const card = screen.getByText("Geolocator invitation");
+    expect(row.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("shows nothing to a reader without an invitation", () => {
     render(<Rail invited={false} />);
 

@@ -21,7 +21,6 @@ import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Button } from "@/components/ui/Button";
 import { CloseSection } from "@/components/event/CloseEventForm";
 import { GeolocatorsPanel } from "@/components/event/GeolocatorCredit";
-import { useEventActions } from "@/components/event/useEventActions";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
@@ -89,10 +88,6 @@ export function EventEditForm({
   // Read off the row so the page and the form cannot disagree about the mode.
   const editingPublished = geo.status === "geolocated";
   const finish = queue?.onAdvance ?? (() => router.push(redirectTo));
-
-  // No action tier on this surface (the grammar in `useEventActions` decides);
-  // the call stays for the slot the panels land in.
-  const { actions, panels } = useEventActions({ event: geo, surface: "edit" });
 
   const form = useEventForm(geo);
 
@@ -289,17 +284,14 @@ export function EventEditForm({
       title={editingPublished ? "Edit geolocation" : "Submit detection"}
       actions={
         // The review pass's own chrome. A plain edit has none.
-        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
-          {queue && (
-            <>
-              <span className={LABEL_TEXT}>{queue.position}</span>
-              <Button variant="secondary" onClick={queue.onAdvance} disabled={busy}>
-                Skip
-              </Button>
-            </>
-          )}
-          {actions}
-        </div>
+        queue && (
+          <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
+            <span className={LABEL_TEXT}>{queue.position}</span>
+            <Button variant="secondary" onClick={queue.onAdvance} disabled={busy}>
+              Skip
+            </Button>
+          </div>
+        )
       }
       rail={
         <div className="space-y-6">
@@ -376,8 +368,6 @@ export function EventEditForm({
       railLabel={editingPublished ? "Actions and geolocators" : "Actions"}
       narrowRail="below"
     >
-      {panels}
-
       {/* `noValidate`: IncompleteFormNotice owns required-field feedback. */}
       <form id={EDIT_FORM_ID} onSubmit={attemptSubmit} className="space-y-6" noValidate>
         <EventFormFields

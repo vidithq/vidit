@@ -12,7 +12,6 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { Button } from "@/components/ui/Button";
 import { CloseSection } from "@/components/event/CloseEventForm";
-import { useEventActions } from "@/components/event/useEventActions";
 import { useMutation } from "@/hooks/useMutation";
 import {
   missingEventRequestFields,
@@ -49,10 +48,6 @@ export function RequestEditForm({
   redirectTo: string;
 }) {
   const router = useRouter();
-  // No action tier here, as on the published edit form (the grammar in
-  // `useEventActions` decides); the call stays for the panels slot.
-  const { actions, panels } = useEventActions({ event: geo, surface: "edit" });
-
   // A `requested` row always has a source URL (`ck_events_source_url_status`);
   // the block's `?? ""` seed only satisfies the nullable wire type.
   const form = useEventForm(geo);
@@ -127,7 +122,6 @@ export function RequestEditForm({
       back
       backFallback={redirectTo}
       title="Edit request"
-      actions={actions}
       rail={
         <Card as="section">
           <IncompleteFormNotice
@@ -154,8 +148,6 @@ export function RequestEditForm({
       railLabel="Actions"
       narrowRail="below"
     >
-      {panels}
-
       {/* `noValidate`: IncompleteFormNotice owns required-field feedback. */}
       <form id={REQUEST_FORM_ID} onSubmit={attemptSave} className="space-y-6" noValidate>
         <EventFormFields

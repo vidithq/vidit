@@ -19,7 +19,7 @@ export default function EventPage() {
     refetch,
   } = useApiResource<EventDetail>(eventId ? `/events/${eventId}` : null);
   // Called before the early returns.
-  const { actions, panels, rail } = useEventActions({
+  const { panels, rail } = useEventActions({
     event: geo,
     surface: "event",
     onChanged: refetch,
@@ -36,13 +36,10 @@ export default function EventPage() {
       back
       title={geo.title}
       subtitle={<AuthorByline {...creditProps(geo)} coAuthorsAs="avatars" avatar />}
-      actions={actions}
       rail={rail}
-      railLabel="Approvals"
-      stickyHeader
+      railLabel="Actions and approvals"
+      headerInColumn
     >
-      {/* Directly under the header, where the menu that opened them is. Below `lg` the
-          Approvals card stacks above them, under the title. */}
       {panels}
       <EventPageBody geo={geo} />
     </PageShell>
