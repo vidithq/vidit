@@ -456,6 +456,7 @@ Every other frontend copy of a backend rule or of the GitHub Project is hand-kep
 | `lib/events.ts::DetectionReadiness` | `events/readiness.DETECTION_READINESS` (the router takes `str`, so codegen cannot carry it) | `readiness` parameter refused (422) |
 | `lib/events.ts::snapshotToEventView`, `changedFields`, `hasVersionChanges` | `versions.build_snapshot` fields, `versions.COMPARED_FIELDS` (the snapshot is untyped JSON, so neither codegen nor `tsc` catches a renamed key) | version pages silently blank a field |
 | `lib/events.ts::REPORT_DETAILS_MAX_LEN`, `VERSION_NOTE_MAX_LEN` | `schemas/report.DETAILS_MAX_LENGTH`, `schemas/event.VERSION_NOTE_MAX_LENGTH` | server refuses typed text |
+| `components/event/CloseEventForm.tsx::CLOSE_REASON_MAX_LEN` | `schemas/event.EventCloseRequest.close_reason` `max_length` | the server refuses typed text |
 | `components/profile/useProfileEdit.ts::BIO_MAX_LEN` | `schemas/user.BIO_MAX_LEN` | server refuses typed text |
 | `lib/xHandle.ts::X_HANDLE_REASON_MAX_LEN` | `schemas/x_handle_request.REASON_MAX_LENGTH` | server refuses typed text |
 | `components/admin/ProductUpdatesPanel.tsx` `PRODUCT_UPDATE_TITLE_MAX_LEN`, `PRODUCT_UPDATE_BODY_MAX_LEN` | `schemas/product_update.py` title and body `max_length` | server refuses typed text |
