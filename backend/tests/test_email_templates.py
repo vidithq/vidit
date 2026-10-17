@@ -8,12 +8,13 @@ import re
 from collections.abc import Callable
 from datetime import UTC, datetime
 from html.parser import HTMLParser
+from types import SimpleNamespace
 
 import httpx
 import pytest
 
 from app.config import settings
-from app.services import email
+from app.services import email, notification_delivery
 
 BASE = "https://vidit.example"
 
@@ -21,6 +22,17 @@ BASE = "https://vidit.example"
 @pytest.fixture(autouse=True)
 def _frontend_url(monkeypatch):
     monkeypatch.setattr(settings, "frontend_url", BASE)
+
+
+def _notification_email(kind: str, event_title: str = "Strike & smoke") -> email.Email:
+    n = SimpleNamespace(
+        kind=kind,
+        actor=SimpleNamespace(username="bo"),
+        event=SimpleNamespace(id="e1", title=event_title),
+        organization=None,
+        organization_name=None,
+    )
+    return notification_delivery._email_for(n, "a@example.com")
 
 
 BUILDERS: dict[str, Callable[[], email.Email]] = {
@@ -55,12 +67,10 @@ BUILDERS: dict[str, Callable[[], email.Email]] = {
         reporter="anonymous",
         created_at=datetime(2026, 10, 1, tzinfo=UTC),
     ),
-    "request_fulfilled": lambda: email.request_fulfilled_email(
-        to="a@example.com", actor="bo", event_id="e1", event_title="Strike & smoke"
-    ),
-    "new_follower": lambda: email.new_follower_email(to="a@example.com", actor="bo"),
-    "x_handle_request_approved": lambda: email.x_handle_request_approved_email(to="a@example.com"),
-    "x_handle_request_declined": lambda: email.x_handle_request_declined_email(to="a@example.com"),
+    "request_fulfilled": lambda: _notification_email("request_fulfilled"),
+    "new_follower": lambda: _notification_email("new_follower"),
+    "x_handle_request_approved": lambda: _notification_email("x_handle_request_approved"),
+    "x_handle_request_declined": lambda: _notification_email("x_handle_request_declined"),
     "product_update": lambda: email.product_update_email(
         to="a@example.com",
         label="1.0.0",
@@ -131,9 +141,7 @@ _PHISH = "https://vidit-login.example/reset"
     "message",
     [
         pytest.param(
-            lambda: email.co_geolocator_invite_email(
-                to="a@example.com", actor="bo", event_id="e1", event_title=f"Log in at {_PHISH}"
-            ),
+            lambda: _notification_email("co_geolocator_invite", event_title=f"Log in at {_PHISH}"),
             id="event title",
         ),
         pytest.param(

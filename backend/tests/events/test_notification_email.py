@@ -291,10 +291,10 @@ def test_a_row_queued_too_long_is_skipped(
     assert [m for m in outbox if m.to == author.email] == []
 
 
-def test_every_kind_that_can_email_has_a_builder():
+def test_every_kind_that_can_email_has_copy():
     """A kind an analyst can switch on for email needs an email to send."""
     emailable = {kind for kind, channels in NOTIFICATION_KINDS.items() if "email" in channels}
-    assert emailable - set(notification_delivery._EMAIL_BUILDERS) == set()
+    assert emailable - set(notification_delivery._COPY) == set()
 
 
 def _two_queued_rows(db, author, second_user, admin_user, conflict, tag) -> None:
@@ -312,13 +312,13 @@ def _two_queued_rows(db, author, second_user, admin_user, conflict, tag) -> None
     assert response.status_code == 204, response.text
 
 
-def test_a_kind_without_a_builder_is_skipped_and_the_drain_goes_on(
+def test_a_kind_without_copy_is_skipped_and_the_drain_goes_on(
     db, author, second_user, admin_user, conflict, capture_source_tag, outbox, monkeypatch
 ):
     _two_queued_rows(db, author, second_user, admin_user, conflict, capture_source_tag)
-    builders = dict(notification_delivery._EMAIL_BUILDERS)
-    del builders["request_fulfilled"]
-    monkeypatch.setattr(notification_delivery, "_EMAIL_BUILDERS", builders)
+    copy = dict(notification_delivery._COPY)
+    del copy["request_fulfilled"]
+    monkeypatch.setattr(notification_delivery, "_COPY", copy)
 
     notification_delivery.drain(db)
 
@@ -332,13 +332,13 @@ def test_a_row_that_raises_is_retried_and_the_drain_goes_on(
 ):
     _two_queued_rows(db, author, second_user, admin_user, conflict, capture_source_tag)
 
-    def _broken(_n: Notification, _to: str) -> email.Email:
-        raise RuntimeError("builder bug")
+    def _broken(_n: Notification) -> notification_delivery._Copy:
+        raise RuntimeError("copy bug")
 
     monkeypatch.setattr(
         notification_delivery,
-        "_EMAIL_BUILDERS",
-        {**notification_delivery._EMAIL_BUILDERS, "request_fulfilled": _broken},
+        "_COPY",
+        {**notification_delivery._COPY, "request_fulfilled": _broken},
     )
 
     notification_delivery.drain(db)

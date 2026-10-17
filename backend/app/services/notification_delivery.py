@@ -14,15 +14,14 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from functools import partial
-from typing import TypedDict
 
 from sqlalchemy import ColumnElement, and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models.event import Event
 from app.models.notification import (
     DeliveryOutcome,
     DeliveryState,
@@ -33,6 +32,7 @@ from app.models.notification import (
 )
 from app.models.user import User
 from app.services import email, push
+from app.services.email_layout import Action, app_url
 from app.services.notifications import has_verified_email, is_visible
 from app.services.preferences import channel_enabled, email_unsubscribe_token
 
@@ -126,110 +126,275 @@ def _claim_next(
     return row
 
 
-def _request_fulfilled(n: Notification, to: str) -> email.Email:
-    event: Event = n.event
-    return email.request_fulfilled_email(
-        to=to, actor=n.actor.username, event_id=str(event.id), event_title=event.title
+@dataclass(frozen=True)
+class _Copy:
+    """One notification in words. ``title`` is the email subject and the push title, ``text``
+    the email's sentence above its ``action`` button, ``path`` the app page both open,
+    ``setting`` the kind's label in Settings, and ``push_body`` the line under the push title."""
+
+    title: str
+    text: str
+    action: str
+    path: str
+    setting: str
+    push_body: str
+
+
+def _event_path(n: Notification) -> str:
+    return f"/events/{n.event.id}"
+
+
+def _organization_path(n: Notification) -> str:
+    return f"/organizations/{n.organization.slug}"
+
+
+def _organization_name(n: Notification) -> str | None:
+    """The organization an approval or approval request row is about, when it names one."""
+    return n.organization.name if n.organization is not None else None
+
+
+def _request_fulfilled(n: Notification) -> _Copy:
+    actor, title = n.actor.username, n.event.title
+    return _Copy(
+        title=f"{actor} geolocated your request",
+        text=f"{actor} answered your request “{title}” with a geolocation.",
+        action="View the geolocation",
+        path=_event_path(n),
+        setting="Request fulfilled",
+        push_body=title,
     )
 
 
-def _new_follower(n: Notification, to: str) -> email.Email:
-    return email.new_follower_email(to=to, actor=n.actor.username)
-
-
-def _co_geolocator_invite(n: Notification, to: str) -> email.Email:
-    return email.co_geolocator_invite_email(
-        to=to, actor=n.actor.username, event_id=str(n.event.id), event_title=n.event.title
+def _new_follower(n: Notification) -> _Copy:
+    actor = n.actor.username
+    return _Copy(
+        title=f"{actor} follows you on Vidit",
+        text=f"{actor} now follows your work on Vidit.",
+        action="View their profile",
+        path=f"/profile/{actor}",
+        setting="New follower",
+        push_body="Open their profile to see their work.",
     )
 
 
-def _co_geolocator_removed(n: Notification, to: str) -> email.Email:
-    return email.co_geolocator_removed_email(
-        to=to, actor=n.actor.username, event_id=str(n.event.id), event_title=n.event.title
+def _x_handle_request_approved(_n: Notification) -> _Copy:
+    return _Copy(
+        title="Your X handle change was approved",
+        text="An admin linked the X handle you requested to your Vidit account. "
+        "The Vidit bot and the archive import now credit posts from that handle to you.",
+        action="Open your settings",
+        path="/settings",
+        setting="X handle change approved",
+        push_body="Posts from the new handle now count as yours.",
     )
 
 
-def _ownership_transferred(n: Notification, to: str) -> email.Email:
-    return email.ownership_transferred_email(
-        to=to, event_id=str(n.event.id), event_title=n.event.title
+def _x_handle_request_declined(_n: Notification) -> _Copy:
+    return _Copy(
+        title="Your X handle change was declined",
+        text="An admin declined the X handle you requested. Your settings show the reason, "
+        "and you can send a new request from there.",
+        action="Open your settings",
+        path="/settings",
+        setting="X handle change declined",
+        push_body="Open Settings to read why.",
     )
 
 
-def _organization_invite(n: Notification, to: str) -> email.Email:
-    return email.organization_invite_email(
-        to=to, actor=n.actor.username, slug=n.organization.slug, name=n.organization.name
+def _co_geolocator_invite(n: Notification) -> _Copy:
+    actor, title = n.actor.username, n.event.title
+    return _Copy(
+        title=f"{actor} invites you to share a geolocation",
+        text=f"{actor} invites you to be credited as a geolocator of “{title}”. "
+        "Accept or decline on the geolocation's page. Editing and closing stay with the owner.",
+        action="View the invitation",
+        path=_event_path(n),
+        setting="Geolocator invitation",
+        push_body=title,
     )
 
 
-def _organization_invite_accepted(n: Notification, to: str) -> email.Email:
-    return email.organization_invite_accepted_email(
-        to=to, actor=n.actor.username, slug=n.organization.slug, name=n.organization.name
+def _co_geolocator_removed(n: Notification) -> _Copy:
+    actor, title = n.actor.username, n.event.title
+    return _Copy(
+        title=f"{actor} removed you from a geolocation",
+        text=f"{actor} removed you from the geolocators of “{title}”.",
+        action="View the geolocation",
+        path=_event_path(n),
+        setting="Credit removed",
+        push_body=title,
     )
 
 
-def _organization_manager_inherited(n: Notification, to: str) -> email.Email:
-    return email.organization_manager_inherited_email(
-        to=to, slug=n.organization.slug, name=n.organization.name
+def _ownership_transferred(n: Notification) -> _Copy:
+    title = n.event.title
+    return _Copy(
+        title="A geolocation you share is now yours",
+        text=f"You now own “{title}”: the account of its previous owner was removed. "
+        "You can edit, correct and close it.",
+        action="View the geolocation",
+        path=_event_path(n),
+        setting="Ownership transferred",
+        push_body=title,
     )
 
 
-class _ReviewFields(TypedDict):
-    actor: str
-    event_id: str
-    event_title: str
-    organization: str | None
+def _organization_invite(n: Notification) -> _Copy:
+    actor, name = n.actor.username, n.organization.name
+    return _Copy(
+        title=f"{actor} invites you to join {name}",
+        text=f"{actor}, an org manager of {name}, invites you to join the organization on Vidit. "
+        "Accept or decline on its page.",
+        action="View the invitation",
+        path=_organization_path(n),
+        setting="Organization invite",
+        push_body="Accept or decline on the organization's page.",
+    )
 
 
-def _review_fields(n: Notification) -> _ReviewFields:
-    """The fields of an approval or approval request row: the actor, the event, and the
-    organization the row is about, when it names one."""
-    return {
-        "actor": n.actor.username,
-        "event_id": str(n.event.id),
-        "event_title": n.event.title,
-        "organization": n.organization.name if n.organization is not None else None,
-    }
+def _organization_invite_accepted(n: Notification) -> _Copy:
+    actor, name = n.actor.username, n.organization.name
+    return _Copy(
+        title=f"{actor} joined {name}",
+        text=f"{actor} accepted your invitation and is now a member of {name}.",
+        action="View the organization",
+        path=_organization_path(n),
+        setting="Invite accepted",
+        push_body="Your invitation was accepted.",
+    )
 
 
-def _approval_signer(n: Notification) -> str:
-    """Who signed the approval an ``approval_revoked`` row names: its organization, or its
-    reviewer."""
-    if n.organization is not None:
-        return n.organization.name
-    return n.actor.username
+def _organization_manager_inherited(n: Notification) -> _Copy:
+    name = n.organization.name
+    return _Copy(
+        title=f"You are now an org manager of {name}",
+        text=f"The account of the last org manager of {name} was removed, and you were its "
+        "earliest member, so you are now its org manager. You can invite analysts, "
+        "change roles and edit its profile.",
+        action="View the organization",
+        path=_organization_path(n),
+        setting="Now org manager",
+        push_body="The account of its last org manager was removed.",
+    )
 
 
-_EMAIL_BUILDERS: dict[NotificationKind, Callable[[Notification, str], email.Email]] = {
+def _re_approve_requested(n: Notification) -> _Copy:
+    actor, title, org = n.actor.username, n.event.title, _organization_name(n)
+    whose = f"{org}'s approval" if org else "Your approval"
+    again = f"approve again as {org}" if org else "approve again"
+    return _Copy(
+        title=f"{actor} saved a new version of a geolocation {org or 'you'} approved",
+        text=f"{actor} saved a new version of “{title}”. {whose} covered the version "
+        f"before it, so it no longer stands. See what changed and {again}.",
+        action="Review the new version",
+        path=_event_path(n),
+        setting="New version to approve",
+        push_body=title,
+    )
+
+
+def _approval_received(n: Notification) -> _Copy:
+    actor, title, org = n.actor.username, n.event.title, _organization_name(n)
+    on_behalf = f" for {org}" if org else ""
+    return _Copy(
+        title=f"{actor} approved your geolocation{on_behalf}",
+        text=f"{actor} approved the current version of “{title}”{on_behalf}.",
+        action="View the geolocation",
+        path=_event_path(n),
+        setting="Approval received",
+        push_body=title,
+    )
+
+
+def _approval_revoked(n: Notification) -> _Copy:
+    # The signer is the organization the approval was placed for, or else its reviewer.
+    signer, title = _organization_name(n) or n.actor.username, n.event.title
+    return _Copy(
+        title=f"The approval by {signer} of your geolocation was revoked",
+        text=f"The approval by {signer} of “{title}” was revoked. It no longer stands.",
+        action="View the geolocation",
+        path=_event_path(n),
+        setting="Approval revoked",
+        push_body=title,
+    )
+
+
+def _approval_request_received(n: Notification) -> _Copy:
+    actor, title, org = n.actor.username, n.event.title, _organization_name(n)
+    target = org or "you"
+    as_target = f" as {org}" if org else ""
+    return _Copy(
+        title=f"{actor} asks {target} to approve a geolocation",
+        text=f"{actor} asks {target} to approve “{title}”. Approve its current "
+        f"version{as_target}, or decline the request, from the geolocation's page.",
+        action="Review the geolocation",
+        path=_event_path(n),
+        setting="Approval request",
+        push_body=title,
+    )
+
+
+def _approval_request_declined(n: Notification) -> _Copy:
+    actor, title, org = n.actor.username, n.event.title, _organization_name(n)
+    on_behalf = f" for {org}" if org else ""
+    return _Copy(
+        title=f"{org or actor} declined to approve your geolocation",
+        text=f"{actor} declined{on_behalf} your request to approve “{title}”.",
+        action="View the geolocation",
+        path=_event_path(n),
+        setting="Approval request declined",
+        push_body=title,
+    )
+
+
+def _organization_approval_removed(n: Notification) -> _Copy:
+    org, title = n.organization_name or "An organization", n.event.title
+    return _Copy(
+        title=f"{org} was removed from Vidit",
+        text=f"{org} was removed from Vidit, and its approval of “{title}” "
+        "went with it. The event and its other approvals are unchanged.",
+        action="View the geolocation",
+        path=_event_path(n),
+        setting="Organization approval removed",
+        push_body=f"Its approval of {title} is gone.",
+    )
+
+
+# One entry per kind renders both channels; a kind missing here is skipped on each.
+_COPY: dict[NotificationKind, Callable[[Notification], _Copy]] = {
     "request_fulfilled": _request_fulfilled,
     "new_follower": _new_follower,
-    "x_handle_request_approved": lambda _n, to: email.x_handle_request_approved_email(to=to),
-    "x_handle_request_declined": lambda _n, to: email.x_handle_request_declined_email(to=to),
+    "x_handle_request_approved": _x_handle_request_approved,
+    "x_handle_request_declined": _x_handle_request_declined,
     "co_geolocator_invite": _co_geolocator_invite,
     "co_geolocator_removed": _co_geolocator_removed,
     "ownership_transferred": _ownership_transferred,
     "organization_invite": _organization_invite,
     "organization_invite_accepted": _organization_invite_accepted,
     "organization_manager_inherited": _organization_manager_inherited,
-    "re_approve_requested": lambda n, to: email.re_approve_requested_email(
-        to=to, **_review_fields(n)
-    ),
-    "approval_received": lambda n, to: email.approval_received_email(to=to, **_review_fields(n)),
-    "approval_revoked": lambda n, to: email.approval_revoked_email(
-        to=to, signer=_approval_signer(n), event_id=str(n.event.id), event_title=n.event.title
-    ),
-    "approval_request_received": lambda n, to: email.approval_request_received_email(
-        to=to, **_review_fields(n)
-    ),
-    "approval_request_declined": lambda n, to: email.approval_request_declined_email(
-        to=to, **_review_fields(n)
-    ),
-    "organization_approval_removed": lambda n, to: email.organization_approval_removed_email(
-        to=to,
-        organization=n.organization_name or "An organization",
-        event_id=str(n.event.id),
-        event_title=n.event.title,
-    ),
+    "re_approve_requested": _re_approve_requested,
+    "approval_received": _approval_received,
+    "approval_revoked": _approval_revoked,
+    "approval_request_received": _approval_request_received,
+    "approval_request_declined": _approval_request_declined,
+    "organization_approval_removed": _organization_approval_removed,
 }
+
+
+def _email_for(n: Notification, to: str) -> email.Email:
+    copy = _COPY[n.kind](n)
+    return email.notification_email(
+        to=to,
+        subject=copy.title,
+        text=copy.text,
+        action=Action(copy.action, app_url(copy.path)),
+        setting=copy.setting,
+    )
+
+
+def _push_for(n: Notification) -> push.PushMessage:
+    copy = _COPY[n.kind](n)
+    return push.PushMessage(title=copy.title, body=copy.push_body, path=copy.path)
 
 
 def _send_email(db: Session, row: NotificationDelivery, recipient: User) -> DeliveryOutcome:
@@ -237,13 +402,12 @@ def _send_email(db: Session, row: NotificationDelivery, recipient: User) -> Deli
         return "skipped"
     assert recipient.email is not None
     n = row.notification
-    builder = _EMAIL_BUILDERS.get(n.kind)
-    if builder is None:
-        logger.warning("notification email %s skipped: no builder for kind %r", row.id, n.kind)
+    if n.kind not in _COPY:
+        logger.warning("notification email %s skipped: no copy for kind %r", row.id, n.kind)
         return "skipped"
     token = email_unsubscribe_token(recipient.id, n.kind)
     message = email.one_click_unsubscribe(
-        builder(n, recipient.email),
+        _email_for(n, recipient.email),
         f"{settings.api_url.rstrip('/')}/notifications/unsubscribe?token={token}",
     )
     return send_email(message, what=f"notification email {row.id}")
@@ -263,158 +427,12 @@ def send_email(message: email.Email, *, what: str) -> DeliveryOutcome:
     return "sent"
 
 
-def _request_fulfilled_push(n: Notification) -> push.PushMessage:
-    return push.PushMessage(
-        title=f"{n.actor.username} geolocated your request",
-        body=n.event.title,
-        path=f"/events/{n.event.id}",
-    )
-
-
-def _new_follower_push(n: Notification) -> push.PushMessage:
-    return push.PushMessage(
-        title=f"{n.actor.username} follows you on Vidit",
-        body="Open their profile to see their work.",
-        path=f"/profile/{n.actor.username}",
-    )
-
-
-_X_HANDLE_APPROVED_PUSH = push.PushMessage(
-    title="Your X handle change was approved",
-    body="Posts from the new handle now count as yours.",
-    path="/settings",
-)
-
-_X_HANDLE_DECLINED_PUSH = push.PushMessage(
-    title="Your X handle change was declined",
-    body="Open Settings to read why.",
-    path="/settings",
-)
-
-
-def _co_geolocator_invite_push(n: Notification) -> push.PushMessage:
-    return push.PushMessage(
-        title=f"{n.actor.username} invites you to share a geolocation",
-        body=n.event.title,
-        path=f"/events/{n.event.id}",
-    )
-
-
-def _co_geolocator_removed_push(n: Notification) -> push.PushMessage:
-    return push.PushMessage(
-        title=f"{n.actor.username} removed you from a geolocation",
-        body=n.event.title,
-        path=f"/events/{n.event.id}",
-    )
-
-
-def _ownership_transferred_push(n: Notification) -> push.PushMessage:
-    return push.PushMessage(
-        title="A geolocation you share is now yours",
-        body=n.event.title,
-        path=f"/events/{n.event.id}",
-    )
-
-
-def _organization_path(n: Notification) -> str:
-    return f"/organizations/{n.organization.slug}"
-
-
-def _organization_invite_push(n: Notification) -> push.PushMessage:
-    return push.PushMessage(
-        title=f"{n.actor.username} invites you to join {n.organization.name}",
-        body="Accept or decline on the organization's page.",
-        path=_organization_path(n),
-    )
-
-
-def _organization_invite_accepted_push(n: Notification) -> push.PushMessage:
-    return push.PushMessage(
-        title=f"{n.actor.username} joined {n.organization.name}",
-        body="Your invitation was accepted.",
-        path=_organization_path(n),
-    )
-
-
-def _organization_manager_inherited_push(n: Notification) -> push.PushMessage:
-    return push.PushMessage(
-        title=f"You are now an org manager of {n.organization.name}",
-        body="The account of its last org manager was removed.",
-        path=_organization_path(n),
-    )
-
-
-def _re_approve_requested_push(n: Notification) -> push.PushMessage:
-    approver = n.organization.name if n.organization is not None else "you"
-    return push.PushMessage(
-        title=f"{n.actor.username} saved a new version of a geolocation {approver} approved",
-        body=n.event.title,
-        path=f"/events/{n.event.id}",
-    )
-
-
-def _approval_received_push(n: Notification) -> push.PushMessage:
-    on_behalf = f" for {n.organization.name}" if n.organization is not None else ""
-    return push.PushMessage(
-        title=f"{n.actor.username} approved your geolocation{on_behalf}",
-        body=n.event.title,
-        path=f"/events/{n.event.id}",
-    )
-
-
-def _approval_request_received_push(n: Notification) -> push.PushMessage:
-    target = n.organization.name if n.organization is not None else "you"
-    return push.PushMessage(
-        title=f"{n.actor.username} asks {target} to approve a geolocation",
-        body=n.event.title,
-        path=f"/events/{n.event.id}",
-    )
-
-
-def _approval_request_declined_push(n: Notification) -> push.PushMessage:
-    decliner = n.organization.name if n.organization is not None else n.actor.username
-    return push.PushMessage(
-        title=f"{decliner} declined to approve your geolocation",
-        body=n.event.title,
-        path=f"/events/{n.event.id}",
-    )
-
-
-_PUSH_BUILDERS: dict[NotificationKind, Callable[[Notification], push.PushMessage]] = {
-    "request_fulfilled": _request_fulfilled_push,
-    "new_follower": _new_follower_push,
-    "x_handle_request_approved": lambda _n: _X_HANDLE_APPROVED_PUSH,
-    "x_handle_request_declined": lambda _n: _X_HANDLE_DECLINED_PUSH,
-    "co_geolocator_invite": _co_geolocator_invite_push,
-    "co_geolocator_removed": _co_geolocator_removed_push,
-    "ownership_transferred": _ownership_transferred_push,
-    "organization_invite": _organization_invite_push,
-    "organization_invite_accepted": _organization_invite_accepted_push,
-    "organization_manager_inherited": _organization_manager_inherited_push,
-    "re_approve_requested": _re_approve_requested_push,
-    "approval_received": _approval_received_push,
-    "approval_revoked": lambda n: push.PushMessage(
-        title=f"The approval by {_approval_signer(n)} of your geolocation was revoked",
-        body=n.event.title,
-        path=f"/events/{n.event.id}",
-    ),
-    "approval_request_received": _approval_request_received_push,
-    "approval_request_declined": _approval_request_declined_push,
-    "organization_approval_removed": lambda n: push.PushMessage(
-        title=f"{n.organization_name or 'An organization'} was removed from Vidit",
-        body=f"Its approval of {n.event.title} is gone.",
-        path=f"/events/{n.event.id}",
-    ),
-}
-
-
 def _send_push(db: Session, row: NotificationDelivery, recipient: User) -> DeliveryOutcome:
     n = row.notification
-    builder = _PUSH_BUILDERS.get(n.kind)
-    if builder is None:
-        logger.warning("notification push %s skipped: no builder for kind %r", row.id, n.kind)
+    if n.kind not in _COPY:
+        logger.warning("notification push %s skipped: no copy for kind %r", row.id, n.kind)
         return "skipped"
-    return push.send(db, user_id=recipient.id, message=builder(n))
+    return push.send(db, user_id=recipient.id, message=_push_for(n))
 
 
 _SENDERS: dict[

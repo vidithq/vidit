@@ -363,7 +363,7 @@ def test_a_reapproval_push_names_the_organization(
     saved = _save_version(geo.id, author, data=_form(conflict, capture_source_tag))
     assert saved.status_code == 200, saved.text
     [asked] = _rows(db, member, "re_approve_requested")
-    message = notification_delivery._PUSH_BUILDERS["re_approve_requested"](asked)
+    message = notification_delivery._push_for(asked)
     assert message.title.endswith(f"a geolocation {org.name} approved")
 
 
@@ -666,10 +666,10 @@ def test_organization_rows_name_the_organization_in_email_and_push(
         "approval_received",
     }
     for row in rows:
-        message = notification_delivery._PUSH_BUILDERS[row.kind](row)
+        message = notification_delivery._push_for(row)
         assert org.name in message.title
         assert message.path == f"/events/{geo.id}"
-        built = notification_delivery._EMAIL_BUILDERS[row.kind](row, "probe@example.com")
+        built = notification_delivery._email_for(row, "probe@example.com")
         assert org.name in built.subject
 
 

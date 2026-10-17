@@ -554,6 +554,6 @@ def test_push_messages_name_the_actor_and_open_the_event(db, author, make_user):
     rows = db.query(Notification).filter(Notification.event_id == geo.id).all()
     assert {r.kind for r in rows} == {"approval_request_received", "approval_request_declined"}
     for row in rows:
-        message = notification_delivery._PUSH_BUILDERS[row.kind](row)
+        message = notification_delivery._push_for(row)
         assert row.actor.username in message.title
         assert message.path == f"/events/{geo.id}"
