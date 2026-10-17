@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Stamp } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
-import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
 import { ApiError } from "@/lib/api";
 import {
@@ -24,7 +24,7 @@ import { organizationByline, type OrganizationRef } from "@/lib/organizations";
 import type { EventDetail, EventVersion } from "@/types";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { AvatarStack, type AvatarStackItem } from "@/components/ui/AvatarStack";
-import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -173,7 +173,7 @@ export function ApproveButtons({
   event: EventDetail;
   approvals: ApprovalList;
   managed: OrganizationRef[];
-  onApproved: (approval: Approval) => void;
+  onApproved: () => void;
 }) {
   const { user } = useAuth();
   const [stale, setStale] = useState(false);
@@ -190,9 +190,9 @@ export function ApproveButtons({
         setStale(err instanceof ApiError && err.code === "version_mismatch");
         return undefined;
       },
-      onSuccess: (approval) => {
+      onSuccess: () => {
         setApprovedOn(approvals);
-        onApproved(approval);
+        onApproved();
       },
     },
   );
@@ -208,6 +208,7 @@ export function ApproveButtons({
           onClick={() => void approve.run(null)}
           disabled={approve.loading || busy}
         >
+          <Stamp size={14} />
           Approve
         </Button>
       )}
@@ -218,6 +219,7 @@ export function ApproveButtons({
           onClick={() => void approve.run(organization.slug)}
           disabled={approve.loading || busy}
         >
+          <Stamp size={14} />
           Approve as {organization.name}
         </Button>
       ))}
@@ -235,8 +237,8 @@ export function ApproveButtons({
   );
 }
 
-/** **Revoke** for the reader's own standing approval of the live version, armed by a first click
- *  and sent by the second; no reason is asked. */
+/** **Revoke** for the reader's own standing approval of the live version, in one click and with
+ *  no reason: the reader may approve the version again afterwards. */
 export function RevokeOwnApproval({
   eventId,
   approval,
@@ -250,21 +252,11 @@ export function RevokeOwnApproval({
     fallback: "Failed to revoke the approval",
     onSuccess: onRevoked,
   });
-  const { armed, trigger, controlRef } = useConfirmAction(
-    () => revoke.run().then(() => undefined),
-    { timeoutMs: ARM_MS, dismissOnOutside: true },
-  );
   return (
     <>
       <Tooltip label="Withdraw your approval of this version">
-        <Button
-          ref={controlRef}
-          variant="secondary"
-          className={armed ? DANGER_CONFIRM : ""}
-          onClick={trigger}
-          disabled={revoke.loading}
-        >
-          {armed ? "Confirm revoke" : "Revoke"}
+        <Button variant="secondary" onClick={() => void revoke.run()} disabled={revoke.loading}>
+          Revoke
         </Button>
       </Tooltip>
       {revoke.error && (

@@ -6,8 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useManagedOrganizations } from "@/hooks/useManagedOrganizations";
 import type { ApiResource } from "@/hooks/useApiResource";
 import {
-  REVOKED_NOTICE,
-  approvedNotice,
+  blockingRevocation,
   cannotApproveAgainLine,
   ownApprovalOnLive,
   standingApprovalBefore,
@@ -16,7 +15,7 @@ import {
 import type { EventDetail } from "@/types";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { FORM_ERROR_BANNER, FORM_SUCCESS_BANNER } from "@/components/ui/form-styles";
+import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import {
   ApprovalStamps,
   ApproveButtons,
@@ -35,12 +34,11 @@ const STAMP_SLOTS = 14;
 
 /**
  * The published event's Approvals card, about the live version only: its standing approvals as
- * stamps that link to each signer's page, or *No approvals yet*; a confirmation once the reader
- * approves or revokes; the reader's own outdated approval with what changed since; **Approve**
- * (and **Approve as <organization>**) for a reader who may approve, with who asked the reader
- * for approval and **Decline** beside it; **Revoke** in its place once the reader's own approval
- * of the live version stands, or why the reader cannot approve this version again once it was
- * revoked; and a geolocator's approval requests. Outdated and revoked approvals are read on each
+ * stamps that link to each signer's page, or *No approvals yet*; the reader's own outdated
+ * approval with what changed since; **Approve** (and **Approve as <organization>**) for a reader
+ * who may approve, with who asked the reader for approval and **Decline** beside it; **Revoke** in
+ * its place once the reader's own approval of the live version stands, or why the reader cannot
+ * approve this version again once a site admin revoked it; and a geolocator's approval requests. Outdated and revoked approvals are read on each
  * version's page.
  */
 export function ApprovalsCard({
@@ -54,7 +52,6 @@ export function ApprovalsCard({
   const { user } = useAuth();
   const managed = useManagedOrganizations();
   const [showAll, setShowAll] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
   const [approvedCount, setApprovedCount] = useState(0);
   const incoming = useApprovalRequests(event, approvedCount);
   const rows = approvals.data?.items ?? [];
@@ -66,6 +63,7 @@ export function ApprovalsCard({
     event.version_no,
   );
   const own = ownApprovalOnLive(rows, event.version_no, user?.id);
+  const blocked = own ? null : blockingRevocation(rows, event.version_no, user?.id);
 
   return (
     <section aria-label="Approvals">
@@ -83,35 +81,26 @@ export function ApprovalsCard({
               }
               onOverflow={() => setShowAll(true)}
             />
-            {notice && (
-              <div className={FORM_SUCCESS_BANNER} role="status">
-                {notice}
-              </div>
-            )}
             {outdatedOwn !== null && (
               <YourOutdatedApproval event={event} approvedVersion={outdatedOwn} />
             )}
             {incoming.mine.length > 0 && <IncomingRequests requests={incoming.mine} />}
-            {own?.revoked_at && approvals.data.viewer_can_approve && (
-              <p className="text-xs text-neutral-500">{cannotApproveAgainLine(own)}</p>
+            {blocked && approvals.data.viewer_can_approve && (
+              <p className="text-xs text-neutral-500">{cannotApproveAgainLine(blocked)}</p>
             )}
             <div className="flex flex-wrap items-center gap-2 empty:hidden">
-              {own && !own.revoked_at && (
+              {own && (
                 <RevokeOwnApproval
                   eventId={event.id}
                   approval={own}
-                  onRevoked={() => {
-                    setNotice(REVOKED_NOTICE);
-                    approvals.refetch();
-                  }}
+                  onRevoked={approvals.refetch}
                 />
               )}
               <ApproveButtons
                 event={event}
                 approvals={approvals.data}
                 managed={managed}
-                onApproved={(approval) => {
-                  setNotice(approvedNotice(approval));
+                onApproved={() => {
                   approvals.refetch();
                   setApprovedCount((n) => n + 1);
                 }}

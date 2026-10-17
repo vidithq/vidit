@@ -71,20 +71,42 @@ export function approveEvent(
   });
 }
 
-/** The reader's own review of the live version, standing or revoked; null when there is none.
- *  An analyst reviews a version once, revoked included, so there is at most one. Mirrors backend
- *  services/approvals.approve; change both. */
+/** Whether `approval` closes its version to another review by the same analyst, or for the same
+ *  organization: it stands, or someone other than its own side revoked it. A site admin's
+ *  revocation closes an organization's version; an analyst's own revocation reopens theirs. The
+ *  revocation stamped when the reviewer joined the geolocators also closes it, which the credit
+ *  check covers here. Mirrors backend services/approvals.closes_review; change both. */
+export function closesReview(approval: Approval): boolean {
+  if (!approval.revoked_at) return true;
+  return approval.organization
+    ? approval.revoked_as === "site_admin"
+    : approval.revoked_as !== "reviewer";
+}
+
+function ownOnLive(rows: Approval[], liveVersion: number, userId: string | undefined): Approval[] {
+  if (!userId) return [];
+  return rows.filter(
+    (a) => !a.organization && a.reviewer?.id === userId && a.version_no === liveVersion,
+  );
+}
+
+/** The reader's own standing approval of the live version, or null. */
 export function ownApprovalOnLive(
   rows: Approval[],
   liveVersion: number,
   userId: string | undefined,
 ): Approval | null {
-  if (!userId) return null;
-  return (
-    rows.find(
-      (a) => !a.organization && a.reviewer?.id === userId && a.version_no === liveVersion,
-    ) ?? null
-  );
+  return ownOnLive(rows, liveVersion, userId).find((a) => !a.revoked_at) ?? null;
+}
+
+/** The revocation of the reader's own approval of the live version that bars them from
+ *  approving it again, or null: a site admin's. */
+export function blockingRevocation(
+  rows: Approval[],
+  liveVersion: number,
+  userId: string | undefined,
+): Approval | null {
+  return ownOnLive(rows, liveVersion, userId).find((a) => a.revoked_at && closesReview(a)) ?? null;
 }
 
 export function revokeApproval(eventId: string, approvalId: string): Promise<Approval> {
@@ -93,29 +115,16 @@ export function revokeApproval(eventId: string, approvalId: string): Promise<App
   });
 }
 
-/** Why the reader cannot approve the live version again after their approval of it was
- *  revoked. */
+/** Why the reader cannot approve the live version again after someone else revoked their
+ *  approval of it. */
 export function cannotApproveAgainLine(approval: Approval): string {
-  const lead =
-    approval.revoked_as === "reviewer"
-      ? `You revoked your approval of version ${approval.version_no}.`
-      : `Your approval of version ${approval.version_no} was revoked.`;
-  return `${lead} You cannot approve this version again.`;
+  return `Your approval of version ${approval.version_no} was revoked. You cannot approve this version again.`;
 }
-
-/** The confirmation an approval shows once it is placed. */
-export function approvedNotice(approval: Approval): string {
-  return approval.organization
-    ? `Approved version ${approval.version_no} as ${approval.organization.name}.`
-    : `Approved version ${approval.version_no}.`;
-}
-
-export const REVOKED_NOTICE = "Approval revoked.";
 
 /** Whether `userId` may approve the live version of `event`, given its reviews: as themselves,
  *  or, with `organization` (a slug of an organization they manage), in its name.
- *  Mirrors backend services/approvals.approve (published only, never a geolocator, one review
- *  per analyst and version, one standing approval per organization and version); change both. */
+ *  Mirrors backend services/approvals.approve (published only, never a geolocator, no review of
+ *  the version that `closesReview`); change both. */
 export function canApprove(
   event: { status: string; owner: Author; geolocators: Author[] },
   userId: string | undefined,
@@ -125,9 +134,11 @@ export function canApprove(
   if (!userId || event.status !== "geolocated") return false;
   if (creditedAuthors(event).some((a) => a.id === userId)) return false;
   if (organization) {
-    return !liveApprovals.some((a) => a.organization?.slug === organization && !a.revoked_at);
+    return !liveApprovals.some((a) => a.organization?.slug === organization && closesReview(a));
   }
-  return !liveApprovals.some((a) => !a.organization && a.reviewer?.id === userId);
+  return !liveApprovals.some(
+    (a) => !a.organization && a.reviewer?.id === userId && closesReview(a),
+  );
 }
 
 /** What the reader may approve on the live version: as themselves (`eligible`), and for which of

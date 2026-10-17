@@ -163,7 +163,7 @@ describe("<ApprovalsCard>", () => {
     expect(screen.queryByRole("list", { name: "Approved by" })).toBeNull();
   });
 
-  it("approves the version on screen in one click, with no note, and confirms it", async () => {
+  it("approves the version on screen in one click, with no note and no confirmation banner", async () => {
     api.viewer = CY;
     serve([]);
     render(<Panel />);
@@ -178,7 +178,7 @@ describe("<ApprovalsCard>", () => {
       }),
     );
     await waitFor(() => expect(listReads()).toBe(2));
-    expect(await screen.findByRole("status")).toHaveTextContent("Approved version 2.");
+    expect(screen.queryByRole("status")).toBeNull();
   });
   it("offers a reload when the live version moved on since the page loaded", async () => {
     api.viewer = CY;
@@ -208,7 +208,7 @@ describe("<ApprovalsCard>", () => {
     expect(screen.queryByRole("button", { name: "Reload" })).toBeNull();
   });
 
-  it("tells a reviewer who revoked their approval of the live version they cannot approve it again", async () => {
+  it("offers Approve again to a reviewer who revoked their own approval of the live version", async () => {
     api.viewer = BO;
     serve([
       approval({
@@ -219,12 +219,49 @@ describe("<ApprovalsCard>", () => {
     ]);
     render(<Panel />);
 
+    expect(await screen.findByRole("button", { name: "Approve" })).toBeInTheDocument();
+    expect(screen.queryByText(/cannot approve this version again/)).toBeNull();
+  });
+
+  it("tells a reviewer whose approval a site admin revoked they cannot approve again", async () => {
+    api.viewer = BO;
+    serve([
+      approval({
+        current: false,
+        revoked_at: "2026-10-16T09:00:00Z",
+        revoked_as: "site_admin",
+      }),
+    ]);
+    render(<Panel />);
+
     expect(
       await screen.findByText(
-        "You revoked your approval of version 2. You cannot approve this version again.",
+        "Your approval of version 2 was revoked. You cannot approve this version again.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+  });
+
+  it("offers an org manager Approve as the organization again after an org manager revoked it", async () => {
+    api.viewer = CY;
+    serve(
+      [
+        approval({
+          organization: BELLINGCAT,
+          current: false,
+          revoked_at: "2026-10-16T09:00:00Z",
+          revoked_as: "organization_manager",
+        }),
+      ],
+      {
+        "/users/cy/organizations": [
+          { organization: BELLINGCAT, role: "manager", joined_at: "2026-10-01T00:00:00Z" },
+        ],
+      },
+    );
+    render(<Panel />);
+
+    expect(await screen.findByRole("button", { name: "Approve as Bellingcat" })).toBeInTheDocument();
   });
 
   it("says nothing of a revoked approval on an earlier version", async () => {
@@ -351,7 +388,7 @@ describe("<ApprovalsCard>", () => {
     expect(screen.queryByText("No approvals yet")).toBeNull();
   });
 
-  it("puts Revoke in place of Approve once the reader's approval stands, and confirms it", async () => {
+  it("puts Revoke in place of Approve once the reader's approval stands, revoking in one click", async () => {
     api.viewer = BO;
     serve([approval(), approval({ id: "a2", reviewer: CY })]);
     render(<Panel />);
@@ -360,14 +397,12 @@ describe("<ApprovalsCard>", () => {
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
     expect(screen.queryByRole("textbox")).toBeNull();
     fireEvent.click(revoke);
-    expect(api.apiFetch).not.toHaveBeenCalledWith("/events/e1/approvals/a1/revoke", expect.anything());
-    fireEvent.click(screen.getByRole("button", { name: "Confirm revoke" }));
     await waitFor(() =>
       expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/approvals/a1/revoke", {
         method: "POST",
       }),
     );
-    expect(await screen.findByRole("status")).toHaveTextContent("Approval revoked.");
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("offers no Revoke for someone else's approval", async () => {
@@ -398,7 +433,6 @@ describe("<ApprovalsCard>", () => {
         body: JSON.stringify({ version_no: 2, organization: "bellingcat" }),
       }),
     );
-    expect(await screen.findByRole("status")).toHaveTextContent("Approved version 2.");
   });
 
   it("gives an org manager no revoke control for their organization's approval", async () => {
