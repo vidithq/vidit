@@ -26,7 +26,6 @@ from collections.abc import Sequence
 from datetime import date, datetime, time
 from typing import Any, NamedTuple
 
-from fastapi import HTTPException, status
 from geoalchemy2.functions import ST_X, ST_Y
 from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.exc import IntegrityError
@@ -80,6 +79,12 @@ class EventNotCollectableError(CollectionError):
     code = "event_not_collectable"
 
 
+class NotCreditedError(CollectionError):
+    """The caller is not credited on the event (:func:`credited_to`)."""
+
+    code = "not_credited"
+
+
 class InvalidDescriptionError(CollectionError):
     """The description breaks one of the rules in :func:`_checked_description`.
 
@@ -93,6 +98,7 @@ COLLECTION_ERROR_STATUS: dict[str, int] = {
     "collection_not_found": 404,
     "event_not_found": 404,
     "event_not_collectable": 409,
+    "not_credited": 403,
     "invalid_description": 400,
 }
 
@@ -112,6 +118,7 @@ MAX_POPOVER_COLLECTIONS = 100
 _UNIQUE_VIOLATION = "23505"
 
 
+# Mirrored by frontend EventPicker.tsx (its date and id keys only); change both.
 def chronological_key() -> tuple[Any, ...]:
     """The sort key a collection's items read by, as SQL expressions.
 
@@ -208,6 +215,7 @@ def stats_for(db: Session, collection_ids: Sequence[uuid.UUID]) -> dict[uuid.UUI
 
 
 # Tiles in the profile card's mosaic; a fifth would be too small to read.
+# Mirrored by frontend lib/og.ts MOSAIC_MAX_TILES; change both.
 COVER_TILES = 4
 
 
@@ -388,11 +396,11 @@ def resolve_collection(db: Session, *, collection_id: uuid.UUID, viewer: User | 
 
 def _refuse_uncredited(credited: bool) -> None:
     if not credited:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+        raise NotCreditedError("Not authorized")
 
 
 def ensure_credited(db: Session, *, event_id: uuid.UUID, user: User) -> None:
-    """403 unless ``user`` is credited on the event (:func:`credited_to`)."""
+    """Raise :class:`NotCreditedError` unless ``user`` is credited on the event."""
     credited = db.query(credited_to([user.id])).filter(Event.id == event_id).scalar()
     _refuse_uncredited(bool(credited))
 

@@ -602,7 +602,10 @@ def list_event_collections(
     soft-deleted or withheld event, 403 when you are not credited.
     """
     geo = resolve_live_event(db, geolocation_id)
-    collections_service.ensure_credited(db, event_id=geo.id, user=current_user)
+    try:
+        collections_service.ensure_credited(db, event_id=geo.id, user=current_user)
+    except collections_service.CollectionError as exc:
+        raise_typed_error(exc, collections_service.COLLECTION_ERROR_STATUS)
     return CollectionMembershipList(
         items=collections_service.list_memberships(db, owner=current_user, event_id=geo.id)
     )
