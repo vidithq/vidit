@@ -455,6 +455,32 @@ describe("<ApprovalsCard>", () => {
     expect(screen.getByRole("button", { name: "Request approval" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
   });
+
+  it("names who asked the reader for approval, with Decline beside Approve", async () => {
+    api.viewer = BO;
+    serve([], {
+      "/events/e1/approval-requests": [
+        {
+          id: "r1",
+          event_id: "e1",
+          version_no: 2,
+          requester: ANA,
+          target: BO,
+          target_organization: null,
+          status: "open",
+          created_at: "2026-10-15T09:00:00Z",
+          resolved_at: null,
+        },
+      ],
+    });
+    render(<Panel />);
+
+    expect(await screen.findByText(/asked for your approval/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "ana" })).toHaveAttribute("href", "/profile/ana");
+    const decline = screen.getByRole("button", { name: "Decline" });
+    expect(decline.closest("div")).toBe(screen.getByRole("button", { name: "Approve" }).parentElement);
+    expect(screen.queryByRole("heading", { name: "Approval requests" })).toBeNull();
+  });
 });
 
 describe("<VersionApprovals>", () => {

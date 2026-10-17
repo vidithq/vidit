@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ApprovalRequest } from "@/lib/approvalRequests";
@@ -18,7 +18,12 @@ vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: api.viewer }),
 }));
 
-import { ApprovalRequestsSection } from "./ApprovalRequestsSection";
+import {
+  ApprovalRequestsSection,
+  DeclineRequests,
+  IncomingRequests,
+  useApprovalRequests,
+} from "./ApprovalRequestsSection";
 
 const ANA = { id: "u1", username: "ana" };
 const BO = { id: "u2", username: "bo" };
@@ -65,6 +70,22 @@ function serve(
   });
 }
 
+/** The requests as the Approvals card lays them out: who asked the reader, Decline, and the
+ *  geolocator's section. */
+function Requests() {
+  const requests = useApprovalRequests(event, 0);
+  const { mine } = requests;
+  return (
+    <>
+      {mine.length > 0 && <IncomingRequests requests={mine} />}
+      {mine.length > 0 && (
+        <DeclineRequests eventId="e1" requests={mine} onAnswered={requests.requests.refetch} />
+      )}
+      <ApprovalRequestsSection event={event} requests={requests} />
+    </>
+  );
+}
+
 describe("<ApprovalRequestsSection>", () => {
   beforeEach(() => {
     api.apiFetch.mockReset();
@@ -74,7 +95,7 @@ describe("<ApprovalRequestsSection>", () => {
   it("lets a geolocator pick an eligible analyst and ask for approval", async () => {
     api.viewer = ANA;
     serve([request()]);
-    render(<ApprovalRequestsSection event={event} refreshKey={0} />);
+    render(<Requests />);
 
     expect(await screen.findByText(/asked by ana/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Request approval" }));
@@ -94,7 +115,7 @@ describe("<ApprovalRequestsSection>", () => {
   it("keeps the request form collapsed until asked, and Cancel collapses it again", async () => {
     api.viewer = ANA;
     serve([]);
-    render(<ApprovalRequestsSection event={event} refreshKey={0} />);
+    render(<Requests />);
 
     expect(await screen.findByText("No open requests.")).toBeInTheDocument();
     expect(screen.queryByLabelText(/Ask an analyst or an organization/)).toBeNull();
@@ -107,7 +128,7 @@ describe("<ApprovalRequestsSection>", () => {
   it("lets a geolocator ask an organization", async () => {
     api.viewer = ANA;
     serve([request({ target: null, target_organization: BELLINGCAT })]);
-    render(<ApprovalRequestsSection event={event} refreshKey={0} />);
+    render(<Requests />);
 
     expect(await screen.findByRole("link", { name: "Bellingcat" })).toHaveAttribute(
       "href",
@@ -128,7 +149,7 @@ describe("<ApprovalRequestsSection>", () => {
   it("says so when no analyst or organization would accept a request", async () => {
     api.viewer = ANA;
     serve([], { analysts: [], organizations: [] });
-    render(<ApprovalRequestsSection event={event} refreshKey={0} />);
+    render(<Requests />);
 
     expect(await screen.findByText("No open requests.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Request approval" }));
@@ -139,9 +160,10 @@ describe("<ApprovalRequestsSection>", () => {
   it("lets the analyst asked decline", async () => {
     api.viewer = BO;
     serve([request()]);
-    render(<ApprovalRequestsSection event={event} refreshKey={0} />);
+    render(<Requests />);
 
-    expect(await screen.findByText(/asks you to approve this geolocation/)).toBeInTheDocument();
+    expect(await screen.findByText(/asked for your approval/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "ana" })).toHaveAttribute("href", "/profile/ana");
     expect(screen.queryByRole("button", { name: "Request approval" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Decline" }));
 
@@ -155,9 +177,13 @@ describe("<ApprovalRequestsSection>", () => {
   it("lets an org manager of the organization asked decline for it", async () => {
     api.viewer = CY;
     serve([request({ target: null, target_organization: BELLINGCAT })], undefined, [BELLINGCAT]);
-    render(<ApprovalRequestsSection event={event} refreshKey={0} />);
+    render(<Requests />);
 
-    expect(await screen.findByText(/asks Bellingcat to approve this geolocation/)).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Bellingcat" })).toHaveAttribute(
+      "href",
+      "/organizations/bellingcat",
+    );
+    expect(screen.getByText(/for approval/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Decline" }));
     await waitFor(() =>
       expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/approval-requests/r1/decline", {
@@ -166,10 +192,28 @@ describe("<ApprovalRequestsSection>", () => {
     );
   });
 
+  it("lists every requester on one line and declines each request", async () => {
+    api.viewer = BO;
+    serve([request(), request({ id: "r2", requester: CY })]);
+    render(<Requests />);
+
+    const line = await screen.findByText(/asked for your approval/);
+    expect(within(line).getByRole("link", { name: "ana" })).toBeInTheDocument();
+    expect(within(line).getByRole("link", { name: "cy" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Decline" }));
+    await waitFor(() => {
+      for (const id of ["r1", "r2"]) {
+        expect(api.apiFetch).toHaveBeenCalledWith(`/events/e1/approval-requests/${id}/decline`, {
+          method: "POST",
+        });
+      }
+    });
+  });
+
   it("stays hidden for a reader neither credited nor asked", async () => {
     api.viewer = CY;
     serve([]);
-    const { container } = render(<ApprovalRequestsSection event={event} refreshKey={0} />);
+    const { container } = render(<Requests />);
 
     await waitFor(() => expect(api.apiFetch).toHaveBeenCalled());
     expect(container).toBeEmptyDOMElement();
