@@ -97,7 +97,7 @@ export function ApprovalsCard({
   return (
     <section aria-label="Approvals">
       <Card>
-        <SectionEyebrow title="Approvals" margin="none" />
+        <SectionEyebrow title="Approvals" concept="approval_version" margin="none" />
         {approvals.data && (
           <div className="space-y-3">
             {standing.length === 0 && (

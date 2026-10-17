@@ -906,35 +906,25 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<AvatarStack>" usage="The approval stamps in the event page's Approvals card: an overlapping row of 28px pictures, oldest first. An organization (variant=organization) takes the rounded square, an analyst the circle; each picture is a button with its own accessible name (label, such as Approved by maya). Hover or focus opens the item's renderCard in a TOOLTIP_SURFACE card (usePinnedPopover); a click or a tap pins it and moves focus to its first link. Escape, or tabbing past either end of the card, closes it and returns focus to the row; the card holds while focus is inside it. The card carries the way on (the event page's card: picture, name, Version N · date, the note, on behalf of an organization, View profile or View organization). At most max (5 by default) show; the rest fold into a +N bubble, a button when onOverflow is set (the Approvals card expands its full approval list) and plain text otherwise. Renders nothing for an empty list.">
+          <Item name="<AvatarStack>" usage="The approval stamps in the event page's Approvals card: a row of 28px pictures, oldest first, overlapping by default; spacing=gap sets them apart and wraps them onto further lines (the Approvals card). An organization (variant=organization) takes the rounded square, an analyst the circle; each picture is a button with its own accessible name (label, such as Approved by maya). Hover or focus opens the item's renderCard in a TOOLTIP_SURFACE card (usePinnedPopover); a click or a tap pins it and moves focus to its first link. Escape, or tabbing past either end of the card, closes it and returns focus to the row; the card holds while focus is inside it. The card carries the way on (the event page's card: picture, name, Version N · date, the note, on behalf of an organization, View profile or View organization). At most max (5 by default) show; the rest fold into a +N bubble, a button when onOverflow is set (the Approvals card expands its full approval list) and plain text otherwise. Renders nothing for an empty list.">
             <Variant label="analysts and an organization, max=3 with onOverflow (+N opens the panel)">
               <AvatarStack
                 label="Approved by"
                 max={3}
                 onOverflow={() => {}}
                 overflowLabel={(hidden) => `Show ${hidden} more approvals`}
-                items={[
-                  { name: "maya", variant: "analyst" as const },
-                  { name: "Open Source Watch", variant: "organization" as const },
-                  { name: "bo", variant: "analyst" as const },
-                  { name: "cy", variant: "analyst" as const },
-                  { name: "dee", variant: "analyst" as const },
-                ].map(({ name, variant }) => ({
-                  key: name,
-                  name,
-                  variant,
-                  label: `Approved by ${name}`,
-                  renderCard: () => (
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium text-neutral-100">{name}</p>
-                      <p className="text-neutral-500">Version 2 · 14 Mar 2026</p>
-                      <Link href="/palette" className={TEXT_LINK}>
-                        {variant === "organization" ? "View organization" : "View profile"}
-                      </Link>
-                    </div>
-                  ),
-                }))}
+                items={paletteApprovalStamps(PALETTE_APPROVERS.slice(0, 5))}
               />
+            </Variant>
+            <Variant label="spacing=gap: pictures set apart, wrapping onto a second line (the event page's Approvals card)">
+              <div className="w-56">
+                <AvatarStack
+                  label="Approved by"
+                  max={PALETTE_APPROVERS.length}
+                  spacing="gap"
+                  items={paletteApprovalStamps(PALETTE_APPROVERS)}
+                />
+              </div>
             </Variant>
             <Variant label="href set: each picture is a link and its card a tooltip (the profile header's organization logos)">
               <AvatarStack
@@ -1701,6 +1691,36 @@ export default function PalettePage() {
 // show the same media. The URL is the app's own OG image: extensionless, so
 // `displayUrlsFor` finds no sibling to derive and every size resolves to it (a
 // real backend row has `_hero` / `_thumb` siblings, which this demo has not).
+const PALETTE_APPROVERS = [
+  { name: "maya", variant: "analyst" },
+  { name: "Open Source Watch", variant: "organization" },
+  { name: "bo", variant: "analyst" },
+  { name: "cy", variant: "analyst" },
+  { name: "dee", variant: "analyst" },
+  { name: "Sahel Desk", variant: "organization" },
+  { name: "eli", variant: "analyst" },
+  { name: "fay", variant: "analyst" },
+  { name: "gus", variant: "analyst" },
+] as const;
+
+function paletteApprovalStamps(approvers: readonly (typeof PALETTE_APPROVERS)[number][]) {
+  return approvers.map(({ name, variant }) => ({
+    key: name,
+    name,
+    variant,
+    label: `Approved by ${name}`,
+    renderCard: () => (
+      <div className="space-y-2">
+        <p className="text-sm font-medium text-neutral-100">{name}</p>
+        <p className="text-neutral-500">Version 2 · 14 Mar 2026</p>
+        <Link href="/palette" className={TEXT_LINK}>
+          {variant === "organization" ? "View organization" : "View profile"}
+        </Link>
+      </div>
+    ),
+  }));
+}
+
 const PALETTE_MEDIA: Media = {
   id: "palette-demo",
   role: "source",

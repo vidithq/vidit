@@ -32,6 +32,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - App pages share one container, left-aligned after the sidebar: a page keeps its reading width, and a page with a right rail widens to hold it beside the same main column ([#588](https://github.com/vidithq/vidit/pull/588)).
 - The timeline is now the feed: the page moves from `/timeline` to `/feed` (the old address redirects), the sidebar entry is "Feed", and `GET /timeline` becomes `GET /feed` with `feed_at` in place of `timeline_at` ([#585](https://github.com/vidithq/vidit/pull/585)).
 - Settings lists each notification kind once, with an Email and a Push switch side by side, and closes the Push column with one reason when the server sends no push or your account has no push device ([#575](https://github.com/vidithq/vidit/pull/575)).
+- The Approvals card sets its approver pictures apart and wraps them onto further lines, and its title explains in a tooltip that an approval covers one version; the approve form drops that sentence.
 
 ### Changed
 
