@@ -40,8 +40,12 @@ test.describe("shared event link", () => {
 
     // The version selector names the version on screen and lists the versions plus the history.
     await page.getByRole("button", { name: "v1: choose a version" }).click();
-    await expect(page.getByRole("menuitem")).toHaveText(["Version 1 Current", "Full history"]);
-    await expectControlInsideViewport(page, page.getByRole("menuitem", { name: "Full history" }));
+    const items = page.getByRole("menuitem");
+    await expect(items).toHaveCount(2);
+    await expect(items.nth(0)).toHaveAccessibleName("v1");
+    await expect(items.nth(0)).toHaveAttribute("aria-current", "page");
+    await expect(items.nth(1)).toHaveAccessibleName("History");
+    await expectControlInsideViewport(page, page.getByRole("menuitem", { name: "History" }));
     await page.keyboard.press("Escape");
 
     // One click copies the link: no menu, the confirmation only for screen readers.

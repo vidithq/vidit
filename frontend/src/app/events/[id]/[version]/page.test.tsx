@@ -138,12 +138,10 @@ describe("EventVersionPage", () => {
   it("shows the version on screen as selected in the header's version selector", () => {
     render(<EventVersionPage />);
     fireEvent.click(screen.getByRole("button", { name: "v2: choose a version" }));
-    const current = screen.getByRole("menuitem", { name: "Version 2" });
+    const current = screen.getByRole("menuitem", { name: "v2" });
     expect(current.getAttribute("aria-current")).toBe("page");
     expect(current.getAttribute("href")).toBe("/events/e1/v2");
-    expect(screen.getByRole("menuitem", { name: "Version 3 Current" }).getAttribute("href")).toBe(
-      "/events/e1"
-    );
+    expect(screen.getByRole("menuitem", { name: "v3" }).getAttribute("href")).toBe("/events/e1");
   });
 
   it("says version 1 was published rather than edited", () => {
