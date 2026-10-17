@@ -12,6 +12,7 @@ import { hasPublishedRecord } from "@/lib/events";
 import { AddToCollectionPanel } from "@/components/collections/AddToCollectionPanel";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { FieldHelp } from "@/components/ui/FieldHelp";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { ACCENT_SURFACE } from "@/components/ui/styles";
@@ -28,15 +29,15 @@ import type { EventDetail } from "@/types";
  * header and Approvals card):
  *
  * 1. **The version selector**, on the event page of a published row.
- * 2. **Geolocate**, filled, on the request page.
- * 3. **Edit**, an icon, for the owner. Closing and the geolocators live on the edit page.
- * 4. **Share**.
- * 5. **Add to collection** for the owner and every co-geolocator, and **Geolocators** for a
+ * 2. **Edit**, an icon, for the owner. Closing and the geolocators live on the edit page.
+ * 3. **Share**.
+ * 4. **Add to collection** for the owner and every co-geolocator, and **Geolocators** for a
  *    co-geolocator (where they leave). Each opens a panel under the header.
- * 6. **Report** for every reader but the owner.
+ * 5. **Report** for every reader but the owner.
  *
  * On the event page of a published row the hook also returns the Approvals card (status,
- * approvals, Approve, approval requests), which the page renders beside the body.
+ * approvals, Approve, approval requests), and on the page of an open request the Actions card
+ * (**Geolocate**), each of which the page renders in its rail.
  *
  * The hook returns nodes rather than rendering them because the header, the panels and the card
  * land in different slots. Called before a surface's early returns, with `event` null while the
@@ -51,7 +52,7 @@ export type ActionSurface = "event" | "request" | "panel" | "edit";
 // record mid-rewrite acts on something other than what is on screen).
 //
 // `utilities` is Share and Report, which any reader of the record may use. `flow` is geolocating
-// an open request. `edit` is the owner's way to the edit page. `collect` shelves the row on one
+// an open request, from the request page's Actions card. `edit` is the owner's way to the edit page. `collect` shelves the row on one
 // of the reader's collections. `history` (the version selector), `credit` and `approvals` (the
 // Approvals card) belong to the event page, the one surface serving the published record.
 const TIERS: Record<
@@ -91,6 +92,8 @@ export interface EventActions {
   panels: ReactNode;
   /** The Approvals card, on the event page of a published row only. */
   approvalsCard: ReactNode;
+  /** The Actions card, on the page of an open request only. */
+  actionsCard: ReactNode;
 }
 
 /** A panel a header toggle opens. It mounts when opened and takes focus then, so a keyboard or
@@ -132,7 +135,9 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
     setCrediting(false);
   }, [event?.id]);
 
-  if (!event || !tiers) return { actions: null, panels: null, approvalsCard: null };
+  if (!event || !tiers) {
+    return { actions: null, panels: null, approvalsCard: null, actionsCard: null };
+  }
 
   const isOpenRequest = event.status === "requested";
   // The owner edits an open request (overwriting it), a detection, or a published geolocation
@@ -174,16 +179,6 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
         liveVersion={event.version_no}
         selected={event.version_no}
       />
-    ),
-    tiers.flow && isOpenRequest && (
-      <Link
-        key="geolocate"
-        href={`/submit?request_id=${event.id}`}
-        className={buttonClasses("primary")}
-      >
-        <MapPin size={14} />
-        Geolocate
-      </Link>
     ),
     canEdit && (
       // A published record is corrected by adding a version, a request is overwritten: the
@@ -259,5 +254,18 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
       </>
     ),
     approvalsCard: showsApprovals ? <ApprovalsCard event={event} approvals={approvals} /> : null,
+    actionsCard:
+      tiers.flow && isOpenRequest ? (
+        <Card as="section">
+          <SectionEyebrow title="Actions" margin="none" />
+          <span className="inline-flex items-center gap-1.5">
+            <Link href={`/submit?request_id=${event.id}`} className={buttonClasses("primary")}>
+              <MapPin size={14} />
+              Geolocate
+            </Link>
+            <FieldHelp concept="geolocate_request" />
+          </span>
+        </Card>
+      ) : null,
   };
 }

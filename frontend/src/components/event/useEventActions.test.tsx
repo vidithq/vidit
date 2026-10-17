@@ -94,7 +94,7 @@ function Harness({
   beforeClosedStatus?: BeforeClosedStatus | null;
   versionNo?: number;
 }) {
-  const { actions, panels, approvalsCard } = useEventActions({
+  const { actions, panels, approvalsCard, actionsCard } = useEventActions({
     event: eventFixture(status, beforeClosedStatus, versionNo),
     surface,
   });
@@ -103,6 +103,7 @@ function Harness({
       {actions && <header data-testid="header">{actions}</header>}
       {panels}
       {approvalsCard}
+      {actionsCard}
     </>
   );
 }
@@ -208,18 +209,26 @@ describe("the owner's edit", () => {
     expect(within(header()).queryByRole("link", { name: "Edit" })).toBeNull();
   });
 
-  it("keeps Geolocate filled on the request page, beside the asker's Edit", () => {
+  it("puts Geolocate in the request page's Actions card, the asker's Edit in the header", () => {
     renderAs(OWNER, { status: "requested", surface: "request" });
-    expect(headerControls()).toEqual(["Geolocate", "Edit", "Share"]);
-    expect(within(header()).getByRole("link", { name: "Geolocate" })).toHaveAttribute(
+    expect(headerControls()).toEqual(["Edit", "Share"]);
+    const card = screen.getByRole("heading", { name: "Actions" }).closest("section")!;
+    expect(within(card).getByRole("link", { name: "Geolocate" })).toHaveAttribute(
       "href",
       "/submit?request_id=e1",
     );
   });
 
-  it("shows a visitor Geolocate, Share and Report on the request page", () => {
+  it("shows a visitor Share and Report on the request page, Geolocate in the card", () => {
     renderAs(ANALYST, { status: "requested", surface: "request" });
-    expect(headerControls()).toEqual(["Geolocate", "Share", "Report"]);
+    expect(headerControls()).toEqual(["Share", "Report"]);
+    expect(screen.getByRole("link", { name: "Geolocate" })).toBeInTheDocument();
+  });
+
+  it("gives a closed request no Actions card", () => {
+    renderAs(ANALYST, { status: "closed", surface: "request", beforeClosedStatus: "requested" });
+    expect(screen.queryByRole("link", { name: "Geolocate" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Actions" })).toBeNull();
   });
 
   // Destruction is admin-only, so no surface and no status shows a delete.

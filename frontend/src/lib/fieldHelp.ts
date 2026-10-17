@@ -132,6 +132,10 @@ export const FIELD_HELP = {
     text: "Add these to publish your geolocation. The request supplies the source media, and you become the owner of the event.",
     label: "What does the geolocation need?",
   },
+  geolocate_request: {
+    text: "Opens the submit page with this request's footage and source filled in. Publishing your geolocation answers the request, and you become the owner of the event.",
+    label: "What does Geolocate do?",
+  },
   approval_version: {
     text: "An approval covers one version. When the event gets a new version, approvers are asked to approve again.",
     label: "What does an approval cover?",

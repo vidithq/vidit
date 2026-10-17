@@ -508,7 +508,7 @@ The history list's `Current` row opens the canonical page rather than a version 
 
 #### Event header and Approvals card
 
-An event's detail page carries its controls in the header, and a published event's page carries an Approvals card beside the record. [`useEventActions`](../frontend/src/components/event/useEventActions.tsx) assembles them and returns three nodes: the header controls, the panels the header's toggles open, and the Approvals card. A surface renders those nodes instead of building controls of its own.
+An event's detail page carries its controls in the header, a published event's page carries an Approvals card beside the record, and an open request's page carries an Actions card there. [`useEventActions`](../frontend/src/components/event/useEventActions.tsx) assembles them and returns four nodes: the header controls, the panels the header's toggles open, the Approvals card and the Actions card. A surface renders those nodes instead of building controls of its own.
 
 ```mermaid
 flowchart TB
@@ -531,8 +531,6 @@ flowchart TB
     direction LR
     versions["`**VersionSelector**
     v2, every version, Full history`"]:::spec
-    geolocate["`**Geolocate**
-    request page, every reader`"]:::spec
     edit["`**Edit**
     the owner`"]:::spec
     share["`**Share**
@@ -543,7 +541,7 @@ flowchart TB
     a co-geolocator`"]:::spec
     report["`**Report**
     every reader but the owner`"]:::spec
-    versions ~~~ geolocate ~~~ edit ~~~ share ~~~ collect ~~~ credit ~~~ report
+    versions ~~~ edit ~~~ share ~~~ collect ~~~ credit ~~~ report
   end
 
   menu["`**ActionMenu**`"]:::shared
@@ -557,9 +555,12 @@ flowchart TB
   each takes focus when it opens`"]:::spec
   card["`**ApprovalsCard**
   right column from lg, under the title below it`"]:::spec
+  actionscard["`**Actions card**
+  request page: Geolocate, after the body below lg`"]:::spec
 
   hook --> header
   hook --> card
+  hook --> actionscard
   menu --> versions
   copy --> share
   tooltip --> header
@@ -574,7 +575,6 @@ The header holds these controls, left to right, each shown only to the reader it
 | Control | Who sees it | What it does |
 |---|---|---|
 | Version selector | Every reader of a published record, retraction included, on the event page and on a version page | A compact *v2* button with a chevron, an [`<ActionMenu>`](../frontend/src/components/ui/ActionMenu.tsx). It opens the event's versions newest first, the live one marked *Current*, then **Full history**. The live version opens `/events/{id}`, an older one `/events/{id}/vN`, and **Full history** opens `/events/{id}/history`. The version on screen is marked and takes focus when the menu opens. It shows on a single-version event too, so the version on screen is always named. |
-| Geolocate | Every reader of an open request, on the request page | The one filled button: it opens the submit form on the request. |
 | Edit | The owner of a row that is not closed | An icon link (lucide `SquarePen`) named *Edit* to `/events/{id}/edit`. Its tooltip reads *Edit (saves a new version)* on a published row, which an edit corrects by adding a version. The owner closes the row and manages its geolocators there (see [The owner edit form](#the-owner-edit-form)). |
 | Share | Every reader | One click shares. See **Share** below. |
 | Add to collection | The owner and every co-geolocator of a row a collection may hold | An icon toggle that opens the collection picker under the header (see [Collections](#collections)). |
@@ -582,6 +582,8 @@ The header holds these controls, left to right, each shown only to the reader it
 | Report | Every reader but the owner, signed out included | The red flag ([`useReportContent`](../frontend/src/components/report/useReportContent.tsx)) that opens the report form under the header. Reporting your own event says nothing an edit or a close could not. |
 
 [`VersionSelector`](../frontend/src/components/event/VersionSelector.tsx) lists the versions from the live version number, so it reads nothing. It is not an owner control: the other controls act on the record, and this one reads it. Every reader gets it, because a corrected record is auditable only when anyone can walk the corrections. The map panel and the forms show one version by construction and carry none.
+
+**Actions card.** The request page mounts an Actions `<Card>` in its rail with `narrowRail="below"`, as the edit page does, so on a phone it follows the request. It holds **Geolocate**, the one filled button, which opens the submit form on the request, with a `?` saying what publishing does. A closed request has no card. Share, Edit and Report stay in the header, as on the event page.
 
 A toggle wears the active-row paint while its panel is open, and the panel takes focus when it mounts, so a keyboard or screen reader user lands in it. Open panels stack as separate cards. Nothing in the header closes or destroys a row.
 
