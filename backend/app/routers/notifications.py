@@ -55,22 +55,8 @@ def list_notifications(
     if has_next:
         last = rows[-1]
         response.headers["Link"] = next_link(request, encode_cursor(last.created_at, last.id))
-    pending = notifications_service.pending_invites(db, user=current_user, rows=rows)
-    offers = notifications_service.reapproval_offers(db, user=current_user, rows=rows)
-    approval_requests = notifications_service.open_approval_requests(
-        db, user=current_user, rows=rows
-    )
     answered = notifications_service.answered_approval_requests(db, user=current_user, rows=rows)
-    return [
-        notifications_service.build_read(
-            row,
-            pending=pending,
-            offers=offers,
-            approval_requests=approval_requests,
-            answered=answered,
-        )
-        for row in rows
-    ]
+    return [notifications_service.build_read(row, answered=answered) for row in rows]
 
 
 @router.get("/unread-count", response_model=NotificationUnreadCount)

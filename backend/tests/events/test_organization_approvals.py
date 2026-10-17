@@ -351,33 +351,20 @@ def test_a_new_version_resets_and_asks_every_member(
 
     [row] = [n for n in _feed(other_manager) if n["kind"] == "re_approve_requested"]
     assert row["organization"]["slug"] == org.slug
-    assert row["reapprove_version"] == geo.version_no
-    assert row["approved_version"] == 1
-
-    assert _approve(geo, other_manager, org, version_no=geo.version_no).status_code == 201
-    [row] = [n for n in _feed(acting) if n["organization"]]
-    assert row["reapprove_version"] is None
 
 
-def test_a_member_who_leaves_loses_the_organization_offer(
+def test_a_reapproval_push_names_the_organization(
     db, author, make_user, make_org, conflict, capture_source_tag
 ):
-    manager, leaving = make_user(), make_user()
-    org = make_org(managers=[manager], members=[leaving])
+    manager, member = make_user(), make_user()
+    org = make_org(managers=[manager], members=[member])
     geo = _published_with_floor(db, author, conflict, capture_source_tag)
     assert _approve(geo, manager, org).status_code == 201
     saved = _save_version(geo.id, author, data=_form(conflict, capture_source_tag))
     assert saved.status_code == 200, saved.text
-    [asked] = _rows(db, leaving, "re_approve_requested")
+    [asked] = _rows(db, member, "re_approve_requested")
     message = notification_delivery._PUSH_BUILDERS["re_approve_requested"](asked)
     assert message.title.endswith(f"a geolocation {org.name} approved")
-    [row] = [n for n in _feed(leaving) if n["kind"] == "re_approve_requested"]
-    assert row["reapprove_version"] == 2
-
-    db.query(OrganizationMember).filter(OrganizationMember.user_id == leaving.id).delete()
-    db.commit()
-    [row] = [n for n in _feed(leaving) if n["kind"] == "re_approve_requested"]
-    assert row["reapprove_version"] is None
 
 
 # ── Revocation ──────────────────────────────────────────────────────
@@ -557,8 +544,7 @@ def test_a_request_reaches_every_member_and_an_approval_resolves_it(
         assert (row.actor_id, row.organization_id) == (author.id, org.id)
 
     [row] = [n for n in _feed(second) if n["kind"] == "approval_request_received"]
-    assert row["approval_request_id"] == created.json()["id"]
-    assert row["reapprove_version"] == 1
+    assert row["organization"]["slug"] == org.slug
 
     login_as(client, second)
     [visible] = client.get(f"{_EVENTS}/{geo.id}/approval-requests").json()

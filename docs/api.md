@@ -2660,24 +2660,12 @@ Your notifications, newest first. Cursor-paged; [Pagination](#pagination) gives 
     "event": { "id": "9b2d…", "title": "Strike on the depot" },
     "organization": null,
     "read_at": null,
-    "invite_pending": false,
-    "reapprove_version": null,
-    "approved_version": null,
-    "approval_request_id": null,
     "approval_request_status": null
   }
 ]
 ```
 
 `approval_request_status` is `approved` or `declined` on the newest `approval_request_received` row of a requester, target and event whose request was answered, read off the newest request of that key, and `null` on every other row, an older row of the same key included. The feed page adds it to the row's label.
-
-`invite_pending` is `true` on the newest `co_geolocator_invite` row of an event whose invitation still waits for your answer, and `false` on every other row, an older invitation row of the same event included. The feed page shows the accept and decline controls on that row.
-
-`reapprove_version` is set on a `re_approve_requested` row, and on a `approval_request_received` row whose request is open, when you can approve the event now: it is `geolocated`, you are not one of its current or former geolocators, and you have not reviewed its live version. On a row that names an organization, the approval is the organization's: you must still be one of its members, and its approval of the live version must not stand. It holds the live version number. The feed page offers no approve control: approving happens on the event page with [`POST /events/{id}/approvals`](#post-eventsidapprovals). It is `null` on every other row.
-
-`approved_version` is set beside `reapprove_version` on a `re_approve_requested` row: the latest earlier version your unrevoked approval stands on, or the organization's on a row that names one, or `null` when none does. The event page's Approvals card lists the fields that changed between that version and the live event.
-
-`approval_request_id` is the open [approval request](#approval-requests) behind the newest `approval_request_received` row of its event, requester and organization, addressed to you or to the organization the row names, which the feed page's decline control posts to [`POST /events/{id}/approval-requests/{request_id}/decline`](#post-eventsidapproval-requestsrequest_iddecline). It is `null` once the request is resolved, and on every other row.
 
 ---
 

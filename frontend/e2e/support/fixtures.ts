@@ -412,10 +412,6 @@ export const NOTIFICATION_FEED: Notification[] = [
     event: { id: EVENT_ID, title: LONG_EVENT_TITLE },
     organization: null,
     read_at: "2026-10-16T10:00:00Z",
-    invite_pending: false,
-    reapprove_version: 1,
-    approved_version: null,
-    approval_request_id: "4b0d6c1e-0000-4000-8000-0000000000b1",
     approval_request_status: null,
   },
   {
@@ -426,10 +422,6 @@ export const NOTIFICATION_FEED: Notification[] = [
     event: { id: EVENT_ID, title: LONG_EVENT_TITLE },
     organization: null,
     read_at: "2026-10-15T10:00:00Z",
-    invite_pending: false,
-    reapprove_version: null,
-    approved_version: null,
-    approval_request_id: null,
     approval_request_status: "declined",
   },
 ];

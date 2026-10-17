@@ -40,8 +40,7 @@ export function revokedByLabel(approval: Approval): string {
   return approval.revoked_as ? REVOKED_BY[approval.revoked_as] : "Revoked";
 }
 
-/** The latest version below `liveVersion` that one of `rows` still stands on, or null.
- *  Mirrors backend notifications.reapproval_offers (approved_version); change both. */
+/** The latest version below `liveVersion` that one of `rows` still stands on, or null. */
 export function standingApprovalBefore(rows: Approval[], liveVersion: number): number | null {
   const versions = rows
     .filter((a) => !a.revoked_at && a.version_no < liveVersion)

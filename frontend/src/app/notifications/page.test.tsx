@@ -37,10 +37,6 @@ const fulfilled: Notification = {
   event: { id: "e1", title: "Strike on the depot" },
   organization: null,
   read_at: null,
-  invite_pending: false,
-  reapprove_version: null,
-  approved_version: null,
-  approval_request_id: null,
 };
 const follower: Notification = {
   id: "n1",
@@ -50,10 +46,6 @@ const follower: Notification = {
   event: null,
   organization: null,
   read_at: "2026-10-11T09:00:00Z",
-  invite_pending: false,
-  reapprove_version: null,
-  approved_version: null,
-  approval_request_id: null,
 };
 const orgInvite: Notification = {
   id: "n3",
@@ -63,10 +55,6 @@ const orgInvite: Notification = {
   event: null,
   organization: { slug: "osw", name: "Open Source Watch", avatar_url: null },
   read_at: null,
-  invite_pending: false,
-  reapprove_version: null,
-  approved_version: null,
-  approval_request_id: null,
 };
 
 function serve(items: Notification[]) {
@@ -150,15 +138,12 @@ describe("NotificationsPage", () => {
       id: "n3",
       kind: "co_geolocator_invite",
       event: { id: "e9", title: "Bridge strike" },
-      invite_pending: true,
     };
     const asked: Notification = {
       ...follower,
       id: "n7",
       kind: "approval_request_received",
       event: { id: "e8", title: "Bridge strike" },
-      reapprove_version: 2,
-      approval_request_id: "r1",
     };
     serve([invite, asked, orgInvite]);
     render(<NotificationsPage />);
@@ -223,8 +208,6 @@ describe("NotificationsPage", () => {
       id: "n5",
       kind: "re_approve_requested",
       event: { id: "e7", title: "Depot fire" },
-      reapprove_version: 3,
-      approved_version: 2,
     };
     const asked: Notification = {
       ...follower,
@@ -232,8 +215,6 @@ describe("NotificationsPage", () => {
       kind: "approval_request_received",
       event: { id: "e8", title: "Bridge strike" },
       organization,
-      reapprove_version: 2,
-      approval_request_id: "r1",
     };
     serve([reapprove, asked]);
     render(<NotificationsPage />);

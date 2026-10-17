@@ -4181,27 +4181,15 @@ export interface components {
          * NotificationRead
          * @description One feed row. ``actor``, ``event`` and ``organization`` are null on a
          *     kind that names none; ``read_at`` is null until the feed has shown the row.
-         *     ``invite_pending`` is true on a ``co_geolocator_invite`` row whose
-         *     invitation still waits for the reader's answer. ``reapprove_version`` is
-         *     the live version a ``re_approve_requested`` row, or a
-         *     ``approval_request_received`` row whose request is open, offers to approve,
-         *     null when the reader cannot approve it now. ``approved_version`` is then,
-         *     on a ``re_approve_requested`` row, the latest earlier version the reader's
-         *     approval still stands on, the base of the change list. ``approval_request_id`` is the open request behind a
-         *     ``approval_request_received`` row, null once it is resolved;
-         *     ``approval_request_status`` is then ``approved`` or ``declined`` when the
-         *     request was answered.
+         *     ``approval_request_status`` is ``approved`` or ``declined`` on the newest
+         *     ``approval_request_received`` row of a request that was answered.
          *     ``organization_name`` names the deleted organization on an
          *     ``organization_approval_removed`` row, and is null on every other kind.
          */
         NotificationRead: {
             actor: components["schemas"]["AuthorRef"] | null;
-            /** Approval Request Id */
-            approval_request_id: string | null;
             /** Approval Request Status */
             approval_request_status?: ("approved" | "declined") | null;
-            /** Approved Version */
-            approved_version: number | null;
             /**
              * Created At
              * Format: date-time
@@ -4213,8 +4201,6 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Invite Pending */
-            invite_pending: boolean;
             /**
              * Kind
              * @enum {string}
@@ -4225,8 +4211,6 @@ export interface components {
             organization_name?: string | null;
             /** Read At */
             read_at: string | null;
-            /** Reapprove Version */
-            reapprove_version: number | null;
         };
         /**
          * NotificationReadUpdate

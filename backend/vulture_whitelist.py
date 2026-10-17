@@ -77,7 +77,6 @@ requests  # schemas/search.py SearchTotals + SearchResponse (reader-vocabulary g
 discord  # schemas/user.py UserRead
 website  # schemas/user.py UserRead
 github  # schemas/user.py UserRead
-invite_pending  # schemas/notification.py NotificationRead
 transferred_events  # schemas/admin.py AdminUserDeleteResponse
 member_count  # schemas/organization.py OrganizationRead
 viewer_role  # schemas/organization.py OrganizationRead
@@ -96,8 +95,6 @@ queued  # schemas/product_update.py ProductUpdateProgress, filled by keyword
 sending  # schemas/product_update.py ProductUpdateProgress, filled by keyword
 sent  # schemas/product_update.py ProductUpdateProgress, filled by keyword
 revoked_by_admin  # schemas/approval.py ApprovalRead
-reapprove_version  # schemas/notification.py NotificationRead
-approved_version  # schemas/notification.py NotificationRead
 approval_request_status  # schemas/notification.py NotificationRead
 start_year  # models/conflict.py + schemas/conflict.py ConflictRead (wire field)
 end_year  # models/conflict.py + schemas/conflict.py ConflictRead (wire field)

@@ -267,13 +267,9 @@ def test_a_new_version_resets_approvals_and_asks_reviewers_again(
     assert _kinds(db, second_user) == [("re_approve_requested", author.id, geo.id)]
     assert _kinds(db, third) == []
     feed = _feed(second_user)
-    assert [(n["kind"], n["reapprove_version"], n["approved_version"]) for n in feed] == [
-        ("re_approve_requested", 2, 1)
-    ]
+    assert [n["kind"] for n in feed] == ["re_approve_requested"]
 
     assert _approve(geo, second_user, version_no=2).status_code == 201
-    assert _feed(second_user)[0]["reapprove_version"] is None
-    assert _feed(second_user)[0]["approved_version"] is None
     assert [a["current"] for a in _listed(geo)] == [True]
 
     client.cookies.clear()
