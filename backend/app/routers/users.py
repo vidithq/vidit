@@ -2,12 +2,9 @@ import asyncio
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
-from geoalchemy2.functions import ST_X, ST_Y
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.orm import Session
 
 from app.dependencies import get_current_user, get_current_user_optional, get_db
-from app.models.event import Event
-from app.models.follow import Follow
 from app.models.push_subscription import PushSubscription
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
@@ -26,13 +23,7 @@ from app.services import preferences as preferences_service
 from app.services import push as push_service
 from app.services import social, user_stats, x_handle_requests
 from app.services import users as users_service
-from app.services.event_filters import (
-    published_credited_to,
-    visible_events,
-)
-from app.services.geolocator_credit import CREDIT_LOAD
 from app.services.pagination import page_size
-from app.services.thumbnails import thumbnail_media_criteria
 
 router = APIRouter()
 
@@ -222,35 +213,7 @@ def get_user_profile(
     current_user: User | None = Depends(get_current_user_optional),
 ) -> UserProfile:
     user = _get_live_user_or_404(db, username)
-
-    # Published work credited to them, not everything owned: the profile's headline number and
-    # the size of the Recent submissions block and the coverage split's
-    # ``geolocated`` leg. Counting detections made the page contradict itself.
-    # Same predicate as the feed below. The wider ``geolocated`` + ``detected``
-    # figure is ``total_events`` on ``GET /users/{username}/stats``.
-    geolocations_count = (
-        db.query(Event).filter(published_credited_to([user.id]), *visible_events()).count()
-    )
-
-    followers_count = db.query(Follow).filter(Follow.followed_id == user.id).count()
-    following_count = db.query(Follow).filter(Follow.follower_id == user.id).count()
-
-    is_following = False
-    if current_user is not None and current_user.id != user.id:
-        is_following = social.is_following(db, follower_id=current_user.id, followed_id=user.id)
-
-    return UserProfile(
-        id=user.id,
-        username=user.username,
-        bio=user.bio,
-        avatar_url=user.avatar_url,
-        external_links=user.external_links or {},
-        created_at=user.created_at,
-        geolocations_count=geolocations_count,
-        followers_count=followers_count,
-        following_count=following_count,
-        is_following=is_following,
-    )
+    return social.build_profile(db, user, viewer=current_user)
 
 
 @router.get("/{username}/stats", response_model=UserStatsRead)
@@ -369,38 +332,11 @@ def get_user_geolocations(
     editable, so it cannot key a cursor.
     """
     user = _get_live_user_or_404(db, username)
-
     # Over-asking is clamped; ``ge=1`` keeps a page below 1 from becoming a
     # negative OFFSET (a 500).
     per_page = page_size(per_page)
-
-    credited_and_published = (published_credited_to([user.id]), *visible_events())
-
-    total = db.query(Event).filter(*credited_and_published).count()
-
-    rows = (
-        db.query(
-            Event,
-            ST_Y(Event.event_coords).label("lat"),
-            ST_X(Event.event_coords).label("lng"),
-        )
-        # Loader choice: see ``list_detections`` in ``routers/events/read.py``.
-        .options(
-            joinedload(Event.owner),
-            selectinload(Event.tags),
-            selectinload(Event.conflicts),
-            selectinload(Event.media.and_(thumbnail_media_criteria())),
-            CREDIT_LOAD,
-        )
-        .filter(*credited_and_published)
-        # ``event_date`` is neither unique nor non-null, so ties could repeat or
-        # skip rows across OFFSET pages; ``created_at, id`` makes it total.
-        .order_by(Event.event_date.desc(), Event.created_at.desc(), Event.id.desc())
-        .offset((page - 1) * per_page)
-        .limit(per_page)
-        .all()
+    rows, total = social.list_published_geolocations(
+        db, user_id=user.id, page=page, per_page=per_page
     )
-
     items = [build_event_list(geo, lat=lat, lng=lng) for geo, lat, lng in rows]
-
     return PaginatedEvents(items=items, total=total, page=page, per_page=per_page)

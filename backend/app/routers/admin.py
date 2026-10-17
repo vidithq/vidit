@@ -634,14 +634,12 @@ def maintenance_reap_auth_tokens(
     current_user: User = Depends(require_admin),
 ) -> AdminMaintenanceResponse:
     """Drop expired and old-consumed auth_tokens rows."""
-    result = maintenance_service.reap_auth_tokens(db)
-    admin_service.log_admin_event(
+    result = maintenance_service.run_logged(
         db,
         actor_id=current_user.id,
         action="maintenance_reap_auth_tokens",
-        target=result,
+        job=maintenance_service.reap_auth_tokens,
     )
-    db.commit()
     return AdminMaintenanceResponse(**result)
 
 
@@ -654,14 +652,12 @@ def maintenance_reap_pending_registrations(
 ) -> AdminMaintenanceResponse:
     """Drop expired ``pending_registrations`` rows. The create path sweeps
     inline, so this mostly clears abandoned signups."""
-    result = registration_service.reap_pending_registrations(db)
-    admin_service.log_admin_event(
+    result = maintenance_service.run_logged(
         db,
         actor_id=current_user.id,
         action="maintenance_reap_pending_registrations",
-        target=result,
+        job=registration_service.reap_pending_registrations,
     )
-    db.commit()
     return AdminMaintenanceResponse(**result)
 
 
@@ -678,12 +674,10 @@ def maintenance_send_completion_digests(
     queue. One provider round-trip per analyst, capped at
     ``maintenance.COMPLETION_DIGEST_LIMIT`` addresses; a provider failure on
     one is counted, not raised."""
-    result = maintenance_service.send_completion_digests(db)
-    admin_service.log_admin_event(
+    result = maintenance_service.run_logged(
         db,
         actor_id=current_user.id,
         action="maintenance_send_completion_digests",
-        target=result,
+        job=maintenance_service.send_completion_digests,
     )
-    db.commit()
     return AdminMaintenanceResponse(**result)

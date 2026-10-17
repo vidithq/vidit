@@ -7,6 +7,8 @@ latency-sensitive.
 from __future__ import annotations
 
 import logging
+import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func
@@ -16,12 +18,23 @@ from app.models.auth_token import AuthToken
 from app.models.event import STATUS_DETECTED, Event
 from app.models.user import User
 from app.services import email as email_service
+from app.services.admin import log_admin_event
 from app.services.event_filters import visible_events
 
 logger = logging.getLogger(__name__)
 
 # Consumed tokens stay for replay debugging; expired unconsumed rows are dropped at once.
 AUTH_TOKEN_RETENTION_DAYS = 30
+
+
+def run_logged(
+    db: Session, *, actor_id: uuid.UUID, action: str, job: Callable[[Session], dict[str, int]]
+) -> dict[str, int]:
+    """Run ``job``, record its counts in ``admin_events`` under ``action``, and commit."""
+    result = job(db)
+    log_admin_event(db, actor_id=actor_id, action=action, target=result)
+    db.commit()
+    return result
 
 
 def reap_auth_tokens(db: Session) -> dict[str, int]:
