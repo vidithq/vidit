@@ -2,6 +2,12 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Fixed
+
+- The account picker's suggestions show in full wherever the picker sits, such as the Request approval field in an event's Approvals card, and open above the field near the bottom of the screen ([#602](https://github.com/vidithq/vidit/pull/602)).
+
 ## v0.7.0, 2026-10-17
 
 ### Added
