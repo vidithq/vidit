@@ -15,10 +15,16 @@ import {
   withdrawGeolocatorInvite,
   type GeolocatorInvite,
 } from "@/lib/geolocatorCredit";
+import { suggestAuthors } from "@/lib/search";
+import {
+  AccountPicker,
+  accountName,
+  analystAccount,
+  type Account,
+} from "@/components/ui/AccountPicker";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 
@@ -104,7 +110,7 @@ function CreditRow({
 const INVITE_FIELD_ID = "geolocator-invite-username";
 
 /**
- * The geolocators of a published event. The owner invites an analyst by username, withdraws a
+ * The geolocators of a published event. The owner invites an analyst picked by username, withdraws a
  * pending invitation and removes a co-geolocator; a co-geolocator sees the same list and can
  * leave. Credit grants no edit right, so nothing else here acts on the event.
  */
@@ -120,7 +126,7 @@ export function GeolocatorsPanel({
   const invites = useApiResource<GeolocatorInvite[]>(
     isOwner ? geolocatorInvitesPath(event.id) : null,
   );
-  const [username, setUsername] = useState("");
+  const [invitee, setInvitee] = useState<Account | null>(null);
 
   const write = useMutation(
     (kind: "invite" | "withdraw" | "remove", name: string) => {
@@ -131,7 +137,7 @@ export function GeolocatorsPanel({
     {
       fallback: "Failed to update the geolocators",
       onSuccess: (_result, kind) => {
-        if (kind === "invite") setUsername("");
+        if (kind === "invite") setInvitee(null);
         invites.refetch();
         if (kind === "remove") onChanged();
       },
@@ -140,8 +146,7 @@ export function GeolocatorsPanel({
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    const name = username.trim();
-    if (name) void write.run("invite", name);
+    if (invitee) void write.run("invite", accountName(invitee));
   };
 
   const rowAction = (name: string) => {
@@ -188,14 +193,18 @@ export function GeolocatorsPanel({
             Invite a geolocator
           </label>
           <div className="flex items-center gap-2">
-            <Input
+            <AccountPicker
               id={INVITE_FIELD_ID}
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              search={suggestAuthors}
+              minQueryLength={2}
+              selected={invitee}
+              onSelect={setInvitee}
+              onSubmitText={(name) => setInvitee(analystAccount({ username: name }))}
+              onClear={() => setInvitee(null)}
               placeholder="Username"
-              autoComplete="off"
+              emptyText="No analyst with a published geolocation matches. Press Enter to invite this exact username."
             />
-            <Button type="submit" disabled={write.loading || !username.trim()}>
+            <Button type="submit" disabled={write.loading || !invitee}>
               Invite
             </Button>
           </div>

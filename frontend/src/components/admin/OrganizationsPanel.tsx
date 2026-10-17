@@ -14,6 +14,13 @@ import {
   type AdminOrganization,
   type Organization,
 } from "@/lib/organizations";
+import { searchUsers } from "@/lib/admin";
+import {
+  AccountPicker,
+  accountName,
+  analystAccount,
+  type Account,
+} from "@/components/ui/AccountPicker";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Textarea } from "@/components/ui/Input";
@@ -29,17 +36,51 @@ import {
 const EMPTY = { name: "", slug: "", x_handle: "", manager_username: "", bio: "" };
 type Draft = typeof EMPTY;
 
-const FIELDS: { key: Exclude<keyof Draft, "bio">; label: string; placeholder: string }[] = [
+const FIELDS: {
+  key: Exclude<keyof Draft, "bio" | "manager_username">;
+  label: string;
+  placeholder: string;
+}[] = [
   { key: "name", label: "Name", placeholder: "Open Source Watch" },
   { key: "slug", label: "Slug (the URL, fixed once set)", placeholder: "open-source-watch" },
   { key: "x_handle", label: "X handle (verified by you)", placeholder: "@handle" },
-  { key: "manager_username", label: "First org manager (username)", placeholder: "username" },
 ];
+
+const searchAnalysts = (query: string) => searchUsers(query).then((users) => users.map(analystAccount));
+
+/** A site admin's pick of one analyst by username: the admin user search, or an exact username
+ *  typed and committed with Enter. */
+function ManagerPicker({
+  id,
+  label,
+  username,
+  onChange,
+}: {
+  id?: string;
+  label?: string;
+  username: string;
+  onChange: (username: string) => void;
+}) {
+  return (
+    <AccountPicker
+      id={id}
+      aria-label={label}
+      search={searchAnalysts}
+      minQueryLength={1}
+      selected={username ? analystAccount({ username }) : null}
+      onSelect={(account) => onChange(accountName(account))}
+      onSubmitText={onChange}
+      onClear={() => onChange("")}
+      placeholder="username"
+      emptyText="No analyst matches. Press Enter to use this exact username."
+    />
+  );
+}
 
 /** A flagged organization's way back: name a live analyst its org manager. */
 function AppointManager({ slug, onDone }: { slug: string; onDone: () => void }) {
   const [username, setUsername] = useState("");
-  const appoint = useMutation(() => appointOrganizationManager(slug, username.trim()), {
+  const appoint = useMutation(() => appointOrganizationManager(slug, username), {
     fallback: "Could not name the org manager",
     onSuccess: () => {
       setUsername("");
@@ -54,15 +95,14 @@ function AppointManager({ slug, onDone }: { slug: string; onDone: () => void }) 
         void appoint.run();
       }}
     >
-      <Input
-        variant="compact"
-        aria-label={`New org manager of ${slug} (username)`}
-        value={username}
-        onChange={(e) => setUsername(e.target.value)}
-        placeholder="username"
-        className="min-w-0 flex-1"
-      />
-      <Button type="submit" variant="secondary" disabled={!username.trim() || appoint.loading}>
+      <div className="min-w-0 flex-1">
+        <ManagerPicker
+          label={`New org manager of ${slug} (username)`}
+          username={username}
+          onChange={setUsername}
+        />
+      </div>
+      <Button type="submit" variant="secondary" disabled={!username || appoint.loading}>
         Name org manager
       </Button>
       {appoint.error && <div className={`${FORM_ERROR_BANNER} w-full`}>{appoint.error}</div>}
@@ -189,6 +229,18 @@ export function OrganizationsPanel() {
               />
             </div>
           ))}
+          <div>
+            <label className={FORM_LABEL} htmlFor="org-manager_username">
+              First org manager (username)
+            </label>
+            <div className="mt-1">
+              <ManagerPicker
+                id="org-manager_username"
+                username={draft.manager_username}
+                onChange={(manager_username) => setDraft((d) => ({ ...d, manager_username }))}
+              />
+            </div>
+          </div>
         </div>
         <div>
           <label className={FORM_LABEL} htmlFor="org-bio">

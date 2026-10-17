@@ -6,6 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- One account picker, with pictures and keyboard navigation, picks the analyst or organization in an approval request, the search Author filter, a co-geolocator or organization invite and the admin org manager fields; an exact match that cannot be asked says why (PR_LINK).
 - A site admin can delete an organization from the admin panel after typing its slug; its memberships, invites, approval requests and approvals go with it, and each event owner who loses its approval is notified ([#576](https://github.com/vidithq/vidit/pull/576)).
 - An org manager approves and revokes approvals in an organization's name, a geolocator can ask an organization for approval, which any org manager answers, and the organization page lists its approvals and open requests ([#574](https://github.com/vidithq/vidit/pull/574)).
 - Feed, Requests and search filters sit in a sticky right rail, or a Filters button on a phone; the feed filters by kind, conflict, capture source and tags, with its Following / All control under the title ([#588](https://github.com/vidithq/vidit/pull/588)).

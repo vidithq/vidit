@@ -6,7 +6,7 @@ import type { EventDetail } from "@/types";
 import { useAuth } from "@/contexts/AuthContext";
 import { useManagedOrganizations } from "@/hooks/useManagedOrganizations";
 import { useApiResource } from "@/hooks/useApiResource";
-import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
+import { apiFetch } from "@/lib/api";
 import { useMutation } from "@/hooks/useMutation";
 import { formatDate } from "@/lib/format";
 import { organizationByline, type OrganizationRef } from "@/lib/organizations";
@@ -20,10 +20,14 @@ import {
   type ApprovalRequestTarget,
   type ApprovalRequestTargets,
 } from "@/lib/approvalRequests";
+import {
+  AccountPicker,
+  accountName,
+  analystAccount,
+  type Account,
+} from "@/components/ui/AccountPicker";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 
@@ -81,30 +85,28 @@ function RequestRow({ request }: { request: ApprovalRequest }) {
 }
 
 const TARGET_FIELD_ID = "approval-request-target";
-// Not a fetch per keystroke, but up by the time typing stops.
-const TARGET_QUERY_DEBOUNCE_MS = 250;
 
-/** One suggestion of the picker: what the request posts, and the name its Pill shows. */
-type TargetOption = { key: string; label: string; target: ApprovalRequestTarget };
+function targetOf(account: Account): ApprovalRequestTarget {
+  return account.kind === "analyst"
+    ? { username: account.username }
+    : { organization: account.slug };
+}
 
-function targetOptions(targets: ApprovalRequestTargets | null): TargetOption[] {
-  if (!targets) return [];
-  return [
-    ...targets.analysts.map((a) => ({
-      key: `user:${a.username}`,
-      label: a.username,
-      target: { username: a.username },
-    })),
-    ...targets.organizations.map((o) => ({
-      key: `organization:${o.slug}`,
-      label: o.name,
-      target: { organization: o.slug },
-    })),
-  ];
+function searchTargets(eventId: string, query: string) {
+  return apiFetch<ApprovalRequestTargets>(approvalRequestTargetsPath(eventId, query)).then(
+    (targets) => ({
+      accounts: [
+        ...targets.analysts.map(analystAccount),
+        ...targets.organizations.map((o): Account => ({ kind: "organization", ...o })),
+      ],
+      note: targets.refusal,
+    }),
+  );
 }
 
 /** The geolocator's picker: analysts who follow the reader, organizations an org manager of which
- *  follows them, and an exact username or slug, whose request may still be refused. */
+ *  follows them, and an exact username or slug, whose request may still be refused. An exact match
+ *  the server leaves out shows its refusal as the list's muted row. */
 function RequestApprovalForm({
   eventId,
   onSent,
@@ -114,75 +116,48 @@ function RequestApprovalForm({
   onSent: () => void;
   onCancel: () => void;
 }) {
-  const [query, setQuery] = useState("");
-  const [debounced, setDebounced] = useState("");
-  const [selected, setSelected] = useState<TargetOption | null>(null);
-  useDebouncedEffect(() => setDebounced(query.trim()), [query], TARGET_QUERY_DEBOUNCE_MS);
-  const targets = useApiResource<ApprovalRequestTargets>(
-    approvalRequestTargetsPath(eventId, debounced),
-  );
+  const [selected, setSelected] = useState<Account | null>(null);
   const send = useMutation((target: ApprovalRequestTarget) => requestApproval(eventId, target), {
     fallback: "Failed to send the approval request",
     onSuccess: () => {
-      setQuery("");
       setSelected(null);
-      targets.refetch();
       onSent();
     },
   });
 
-  const options = targetOptions(targets.data);
   return (
     <div className="space-y-2">
       <label htmlFor={TARGET_FIELD_ID} className={FORM_LABEL}>
         Ask an analyst or an organization to approve this version
       </label>
-      <Input
+      <AccountPicker
         id={TARGET_FIELD_ID}
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
+        search={(query) => searchTargets(eventId, query)}
+        selected={selected}
+        onSelect={setSelected}
+        onClear={() => {
           setSelected(null);
+          send.reset();
         }}
+        onQueryChange={send.reset}
         placeholder="Search analysts and organizations"
-        autoComplete="off"
+        emptyText="No analyst or organization to suggest. Suggestions are analysts who follow you and organizations whose org managers follow you. Type an exact username or slug to ask someone else."
         autoFocus
       />
-      {options.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5">
-          {options.map((option) => (
-            <Pill
-              key={option.key}
-              tone={selected?.key === option.key ? "accent" : "neutral"}
-              onClick={() => setSelected(option)}
-            >
-              {option.label}
-            </Pill>
-          ))}
-        </div>
-      ) : (
-        targets.data && (
-          <p className="text-xs text-neutral-500">
-            No analyst or organization to suggest. Suggestions are analysts who follow you and
-            organizations whose org managers follow you. Type an exact username or slug to ask
-            someone else.
-          </p>
-        )
-      )}
       <div className="flex flex-wrap gap-2">
         <Button
-          onClick={() => selected && void send.run(selected.target)}
+          onClick={() => selected && void send.run(targetOf(selected))}
           disabled={send.loading || !selected}
         >
-          {selected ? `Ask ${selected.label}` : "Ask for approval"}
+          {selected ? `Ask ${accountName(selected)}` : "Ask for approval"}
         </Button>
         <Button variant="ghost" onClick={onCancel} disabled={send.loading}>
           Cancel
         </Button>
       </div>
-      {(send.error || targets.error) && (
+      {send.error && (
         <div className={FORM_ERROR_BANNER} role="alert">
-          {send.error ?? targets.error}
+          {send.error}
         </div>
       )}
     </div>

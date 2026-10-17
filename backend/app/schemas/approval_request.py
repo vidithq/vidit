@@ -43,10 +43,12 @@ class ApprovalRequestRead(BaseModel):
 
 class ApprovalRequestTargetList(BaseModel):
     """``GET /events/{id}/approval-request-targets``: the analysts and the organizations you can
-    ask to approve the event now."""
+    ask to approve the event now, and ``refusal``, why the account whose username or slug is
+    ``q`` is left out."""
 
     analysts: list[AuthorRef]
     organizations: list[OrganizationRef]
+    refusal: str | None
 
 
 class OrganizationApprovalRequestRead(BaseModel):

@@ -43,7 +43,11 @@ const BELLINGCAT = { slug: "bellingcat", name: "Bellingcat", avatar_url: null };
 
 function serve(
   rows: ApprovalRequest[],
-  targets: { analysts: (typeof CY)[]; organizations: (typeof BELLINGCAT)[] } = {
+  targets: {
+    analysts: (typeof CY)[];
+    organizations: (typeof BELLINGCAT)[];
+    refusal?: string | null;
+  } = {
     analysts: [CY],
     organizations: [BELLINGCAT],
   },
@@ -78,7 +82,7 @@ describe("<ApprovalRequestsSection>", () => {
 
     expect(await screen.findByText(/asked by ana/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Request approval" }));
-    fireEvent.click(await screen.findByRole("button", { name: "cy" }));
+    fireEvent.click(await screen.findByRole("option", { name: "cy" }));
     fireEvent.click(screen.getByRole("button", { name: "Ask cy" }));
 
     await waitFor(() =>
@@ -114,7 +118,7 @@ describe("<ApprovalRequestsSection>", () => {
       "/organizations/bellingcat",
     );
     fireEvent.click(screen.getByRole("button", { name: "Request approval" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Bellingcat" }));
+    fireEvent.click(await screen.findByRole("option", { name: /Bellingcat/ }));
     fireEvent.click(screen.getByRole("button", { name: "Ask Bellingcat" }));
 
     await waitFor(() =>
@@ -134,6 +138,41 @@ describe("<ApprovalRequestsSection>", () => {
     fireEvent.click(screen.getByRole("button", { name: "Request approval" }));
     expect(await screen.findByText(/No analyst or organization to suggest/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ask for approval" })).toBeDisabled();
+  });
+
+  it("shows why an exact match cannot be asked, and drops a send error once the query changes", async () => {
+    api.viewer = ANA;
+    serve([], {
+      analysts: [CY],
+      organizations: [],
+      refusal: "This analyst already reviewed the live version",
+    });
+    api.apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+      if (init?.method === "POST") return Promise.reject(new Error("refused"));
+      if (path.includes("approval-request-targets")) {
+        return Promise.resolve(
+          path.endsWith("q=bo")
+            ? { analysts: [], organizations: [], refusal: "This analyst already reviewed the live version" }
+            : { analysts: [CY], organizations: [], refusal: null },
+        );
+      }
+      return Promise.resolve([]);
+    });
+    render(<ApprovalRequestsSection event={event} refreshKey={0} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Request approval" }));
+    fireEvent.click(await screen.findByRole("option", { name: "cy" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ask cy" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Failed to send the approval request");
+
+    fireEvent.click(screen.getByRole("button", { name: "cy" }));
+    const field = screen.getByLabelText(/Ask an analyst or an organization/);
+    fireEvent.change(field, { target: { value: "bo" } });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(
+      await screen.findByText("This analyst already reviewed the live version"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("option")).toBeNull();
   });
 
   it("lets the analyst asked decline", async () => {

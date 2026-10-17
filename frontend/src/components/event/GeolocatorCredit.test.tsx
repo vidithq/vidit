@@ -38,9 +38,11 @@ describe("<GeolocatorsPanel>", () => {
     expect(await screen.findByRole("button", { name: "Withdraw" })).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Remove" })).toHaveLength(1);
 
-    fireEvent.change(screen.getByLabelText("Invite a geolocator"), {
-      target: { value: "dee" },
-    });
+    const field = screen.getByLabelText("Invite a geolocator");
+    fireEvent.change(field, { target: { value: "dee" } });
+    // Enter takes the exact username when no suggestion is up.
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(screen.getByRole("button", { name: "dee" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Invite" }));
     await waitFor(() =>
       expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/geolocator-invites", {

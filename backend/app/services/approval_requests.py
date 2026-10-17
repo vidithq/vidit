@@ -417,16 +417,46 @@ def eligible_targets(
     _require_requester(db, geo=geo, requester=requester)
     q = _substring(query)
     exact = query.strip()
+    analysts = _eligible_analysts(db, geo=geo, requester=requester, q=q, exact=exact)
+    organizations = _eligible_organizations(db, geo=geo, requester=requester, q=q, exact=exact)
+    listed = {u.username.lower() for u in analysts} | {o.slug.lower() for o in organizations}
     return ApprovalRequestTargetList(
-        analysts=[
-            AuthorRef.model_validate(u)
-            for u in _eligible_analysts(db, geo=geo, requester=requester, q=q, exact=exact)
-        ],
-        organizations=[
-            OrganizationRef.model_validate(o)
-            for o in _eligible_organizations(db, geo=geo, requester=requester, q=q, exact=exact)
-        ],
+        analysts=[AuthorRef.model_validate(u) for u in analysts],
+        organizations=[OrganizationRef.model_validate(o) for o in organizations],
+        refusal=(
+            _exact_refusal(db, geo=geo, requester=requester, exact=exact)
+            if exact and exact.lower() not in listed
+            else None
+        ),
     )
+
+
+def _exact_refusal(db: Session, *, geo: Event, requester: User, exact: str) -> str | None:
+    """Why the analyst whose username is ``exact``, or else the organization whose slug is, cannot
+    be asked. The audience is left out: an exact match is listed whatever its audience, so the
+    reason never reveals it."""
+    username = db.scalar(
+        select(User.username).where(
+            func.lower(User.username) == exact.lower(),
+            User.deleted_at.is_(None),
+            User.is_active.is_(True),
+        )
+    )
+    slug = db.scalar(
+        select(Organization.slug).where(func.lower(Organization.slug) == exact.lower())
+    )
+    try:
+        if username is not None:
+            _check_analyst_target(
+                db, geo=geo, requester=requester, username=username, check_audience=False
+            )
+        elif slug is not None:
+            _check_organization_target(
+                db, geo=geo, requester=requester, slug=slug, check_audience=False
+            )
+    except ApprovalRequestError as exc:
+        return str(exc)
+    return None
 
 
 def _check_daily_cap(db: Session, *, requester: User) -> None:
@@ -449,7 +479,9 @@ def _check_daily_cap(db: Session, *, requester: User) -> None:
         )
 
 
-def _check_analyst_target(db: Session, *, geo: Event, requester: User, username: str) -> User:
+def _check_analyst_target(
+    db: Session, *, geo: Event, requester: User, username: str, check_audience: bool = True
+) -> User:
     target = (
         db.query(User)
         .filter(User.username == username, User.deleted_at.is_(None), User.is_active.is_(True))
@@ -461,7 +493,7 @@ def _check_analyst_target(db: Session, *, geo: Event, requester: User, username:
         raise TargetIsGeolocatorError(
             "A geolocator of this event, current or former, cannot review it"
         )
-    admitted = db.scalar(
+    admitted = not check_audience or db.scalar(
         select(accepts_requests_from(requester.id)).select_from(User).where(User.id == target.id)
     )
     if not admitted:
@@ -502,7 +534,7 @@ def _check_analyst_target(db: Session, *, geo: Event, requester: User, username:
 
 
 def _check_organization_target(
-    db: Session, *, geo: Event, requester: User, slug: str
+    db: Session, *, geo: Event, requester: User, slug: str, check_audience: bool = True
 ) -> Organization:
     org = db.query(Organization).filter(Organization.slug == slug).first()
     if org is None:
@@ -514,7 +546,7 @@ def _check_organization_target(
             "No org manager of this organization outside the current and former geolocators of this "
             "event can review it"
         )
-    admitted = db.scalar(
+    admitted = not check_audience or db.scalar(
         select(organization_accepts_requests_from(requester.id))
         .select_from(Organization)
         .where(Organization.id == org.id)

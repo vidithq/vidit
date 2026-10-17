@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
-import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import { AUTHOR_FILTER_RE, suggestAuthors } from "@/lib/search";
 
 import type { Conflict, Tag } from "@/types";
 import type { ActiveFilter } from "@/components/ui/ActiveFilterPills";
 import { TAP_STEP } from "@/components/ui/Button";
 import { ChipBucket } from "@/components/ui/ChipBucket";
-import { Input } from "@/components/ui/Input";
+import { AccountPicker, accountName, analystAccount } from "@/components/ui/AccountPicker";
 import {
   FilterSection,
   chipSummary,
@@ -101,9 +100,6 @@ export interface InjectedSection {
   active: boolean;
   children: ReactNode;
 }
-
-// Author typeahead debounce: not a fetch per keystroke, but up by the time typing stops.
-const AUTHOR_SUGGEST_DEBOUNCE_MS = 250;
 
 // The free-tag bucket is unbounded: show this many, the rest behind "Show all". Selected tags past
 // the cut always show.
@@ -265,46 +261,13 @@ export function EventFilterSections({
 }) {
   const offers = (name: EventFilterSectionName) => sections.includes(name);
   const [showAllTags, setShowAllTags] = useState(false);
-  // The author input is commit-style, like a tag chip: typing stays local and fetches usernames to
-  // pick from (the server filter is an exact match, so a fragment must become a handle); the
-  // committed value renders as a removable chip. Live-filtering per keystroke refetched on every
-  // letter and flashed partial pills.
-  const [authorDraft, setAuthorDraft] = useState("");
-  const [authorSuggestions, setAuthorSuggestions] = useState<string[]>([]);
+  // The server's author filter is an exact match, so a typed fragment becomes a handle through
+  // the typeahead; an ineligible draft is not committed, instead of 422ing.
   const commitAuthor = (name: string) => {
-    const v = name.trim();
-    // Same gate as the server's ?author= pattern: an ineligible draft is not committed, instead of 422ing.
-    if (!AUTHOR_FILTER_RE.test(v)) return;
-    onPatch({ author: v });
-    setAuthorDraft("");
-    setAuthorSuggestions([]);
+    if (AUTHOR_FILTER_RE.test(name)) onPatch({ author: name });
   };
+  const author = values.author.trim();
 
-  // Debounced typeahead over usernames. An ineligible draft (under two characters or rejected by
-  // the ?author= gate) clears the list instead of 422ing; the clear is immediate, only the fetch waits.
-  const authorQuery = authorDraft.trim();
-  const canSuggest = authorQuery.length >= 2 && AUTHOR_FILTER_RE.test(authorQuery);
-  useEffect(() => {
-    if (!canSuggest) setAuthorSuggestions([]);
-  }, [canSuggest, authorQuery]);
-  useDebouncedEffect(
-    () => {
-      if (!canSuggest) return;
-      let cancelled = false;
-      suggestAuthors(authorQuery)
-        .then((authors) => {
-          if (!cancelled) setAuthorSuggestions(authors);
-        })
-        .catch(() => {
-          if (!cancelled) setAuthorSuggestions([]);
-        });
-      return () => {
-        cancelled = true;
-      };
-    },
-    [authorQuery, canSuggest],
-    AUTHOR_SUGGEST_DEBOUNCE_MS,
-  );
   // Accordion open-state lives here so a re-render never resets it. Every section starts collapsed
   // except one holding an active value, so the reader sees what is applied.
   const isActive: Record<string, boolean> = {
@@ -482,44 +445,18 @@ export function EventFilterSections({
           open={!!openSections["Author"]}
           onToggle={() => toggleSection("Author")}
         >
-          <div className="space-y-2">
-            {values.author.trim() && (
-              <div className="flex flex-wrap gap-1.5">
-                <Pill
-                  tone="accent"
-                  title="Remove the author filter"
-                  onClick={() => onPatch({ author: "" })}
-                >
-                  {values.author.trim()}
-                </Pill>
-              </div>
-            )}
-            <Input
-              type="text"
-              value={authorDraft}
-              onChange={(e) => setAuthorDraft(e.target.value)}
-              // Enter commits the top suggestion when one is up, else the raw draft. No blur commit: clicking
-              // away mid-typing must not apply a partial username.
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  commitAuthor(authorSuggestions[0] ?? authorDraft);
-                }
-              }}
-              placeholder="Type a username…"
-              aria-label="Author username"
-              className="bg-neutral-800 sm:text-[11px]"
-            />
-            {authorSuggestions.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {authorSuggestions.map((name) => (
-                  <Pill key={name} onClick={() => commitAuthor(name)}>
-                    {name}
-                  </Pill>
-                ))}
-              </div>
-            )}
-          </div>
+          <AccountPicker
+            search={suggestAuthors}
+            minQueryLength={2}
+            selected={author ? analystAccount({ username: author }) : null}
+            onSelect={(account) => commitAuthor(accountName(account))}
+            onSubmitText={commitAuthor}
+            onClear={() => onPatch({ author: "" })}
+            placeholder="Type a username…"
+            aria-label="Author username"
+            emptyText="No analyst matches"
+            className="sm:text-[11px]"
+          />
         </FilterSection>
       )}
 

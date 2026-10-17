@@ -181,7 +181,9 @@ describe("OrganizationPage", () => {
     expect(screen.getByRole("button", { name: "Make org manager" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remove" })).toBeInTheDocument();
     expect(screen.getByText("Invites")).toBeInTheDocument();
-    expect(screen.getByLabelText("Analyst")).toBeDisabled();
+    fireEvent.focus(screen.getByLabelText("Analyst"));
+    expect(screen.getByText("No mutual follow to invite")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Invite" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Edit profile" })).toBeInTheDocument();
   });
 
