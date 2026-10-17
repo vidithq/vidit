@@ -17,6 +17,7 @@ import MapGL, {
 } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./maplibreWorker";
+import { guardedMaplibre, supportsMaplibreWebGL, WebGLUnavailableError } from "./webgl";
 import type { EventDetail, MapPoint } from "@/types";
 import { usePalette } from "@/hooks/usePalette";
 import { useTheme } from "@/hooks/useTheme";
@@ -801,7 +802,8 @@ export default function Map({
   embedded = false,
 }: MapProps) {
   const [mounted, setMounted] = useState(false);
-  // MapLibre needs WebGL, which Tor Browser gates; detect on mount to show a message, not a black canvas.
+  // MapLibre needs WebGL2, which Tor Browser and some mobile GPUs lack; detect on mount to show a
+  // message, not a black canvas.
   const [webglMissing, setWebglMissing] = useState(false);
   // Skip the first onMoveEnd (initial layout): it carries the values just seeded.
   const firstMoveEndRef = useRef(true);
@@ -945,14 +947,7 @@ export default function Map({
   );
 
   useEffect(() => {
-    let ok = false;
-    try {
-      const canvas = document.createElement("canvas");
-      ok = !!(canvas.getContext("webgl2") || canvas.getContext("webgl"));
-    } catch {
-      ok = false;
-    }
-    setWebglMissing(!ok);
+    setWebglMissing(!supportsMaplibreWebGL());
     setMounted(true);
   }, []);
 
@@ -1070,7 +1065,7 @@ export default function Map({
     return (
       <div className={`w-full h-full bg-neutral-950 flex items-center justify-center px-6 ${className || ""}`}>
         <p className="max-w-md text-center text-neutral-400 text-sm">
-          The map needs WebGL, which is disabled in your browser. If you&apos;re on Tor Browser, switch the security level to Standard.
+          The map needs WebGL 2, which your browser has disabled or does not support. If you&apos;re on Tor Browser, switch the security level to Standard.
         </p>
       </div>
     );
@@ -1082,6 +1077,11 @@ export default function Map({
       style={{ width: "100%", height: "100%", position: "relative" }}
     >
     <MapGL
+      mapLib={guardedMaplibre}
+      onError={(evt) => {
+        if (evt.error instanceof WebGLUnavailableError) setWebglMissing(true);
+        else console.error(evt.error);
+      }}
       initialViewState={{
         latitude: center?.lat ?? 48.5,
         longitude: center?.lng ?? 35.0,
