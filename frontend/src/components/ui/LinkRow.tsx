@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { ArrowRight, ExternalLink, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { TAPPABLE_HOVER } from "./styles";
+import { META_LINE, TAPPABLE_HOVER } from "./styles";
 import { FORM_LABEL } from "./form-styles";
 import { OutboundLink } from "./OutboundLink";
 
@@ -22,7 +22,10 @@ import { OutboundLink } from "./OutboundLink";
 //   instead of truncating, and an orange arrow at the right edge says where the
 //   row goes. The link is stretched over the block, so `action` (a control such
 //   as a delete button) sits inside the block, left of the arrow and above the
-//   link, without nesting a control in an <a>.
+//   link, without nesting a control in an <a>. When the value and the action do
+//   not fit on one line, the action and the arrow wrap to a second line.
+//   `meta` is a muted line under the value; it renders inside the link, so it
+//   holds text and pills, never a link.
 const ROW =
   "group flex items-center gap-3 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md";
 
@@ -63,6 +66,7 @@ export function LinkRow({
   leading,
   label,
   value,
+  meta,
   href,
   external = true,
   variant = "accent",
@@ -70,8 +74,9 @@ export function LinkRow({
 }: {
   icon: LucideIcon;
   leading?: ReactNode;
-  label: string;
+  label?: string;
   value: string;
+  meta?: ReactNode;
   href?: string;
   external?: boolean;
   variant?: "accent" | "arrow";
@@ -87,24 +92,37 @@ export function LinkRow({
   if (href && variant === "arrow") {
     return (
       <div
-        className={cn(ROW, TAPPABLE_HOVER, "relative has-[a:focus-visible]:border-orange-500/40")}
+        className={cn(
+          ROW,
+          TAPPABLE_HOVER,
+          "relative flex-wrap has-[a:focus-visible]:border-orange-500/40",
+        )}
       >
         <RowLink
           href={href}
           external={external}
-          className="flex flex-1 min-w-0 items-center gap-3 outline-hidden after:absolute after:inset-0 after:rounded-md"
+          className="flex grow basis-40 min-w-0 items-center gap-3 outline-hidden after:absolute after:inset-0 after:rounded-md"
         >
           {lead}
           <div className="flex-1 min-w-0">
-            <span className={FORM_LABEL}>{label}</span>
+            {label && <span className={FORM_LABEL}>{label}</span>}
             <p className="text-sm text-neutral-200 break-words">{value}</p>
+            {meta && (
+              <p className={cn(META_LINE, "flex-wrap [overflow-wrap:anywhere]")}>{meta}</p>
+            )}
           </div>
         </RowLink>
-        {action && <div className="relative z-10 shrink-0">{action}</div>}
-        <ArrowRight
-          size={16}
-          className="shrink-0 text-orange-400/70 transition-colors group-hover:text-orange-400 group-has-[a:focus-visible]:text-orange-400"
-        />
+        <div className="ml-auto flex min-w-0 items-center gap-3">
+          {action && (
+            <div className="relative z-10 flex min-w-0 flex-wrap items-center justify-end gap-1.5">
+              {action}
+            </div>
+          )}
+          <ArrowRight
+            size={16}
+            className="shrink-0 text-orange-400/70 transition-colors group-hover:text-orange-400 group-has-[a:focus-visible]:text-orange-400"
+          />
+        </div>
       </div>
     );
   }
@@ -113,7 +131,7 @@ export function LinkRow({
     <>
       {lead}
       <div className="flex-1 min-w-0">
-        <span className={FORM_LABEL}>{label}</span>
+        {label && <span className={FORM_LABEL}>{label}</span>}
         <p
           className={`text-sm truncate ${
             href

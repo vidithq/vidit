@@ -33,38 +33,6 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 
-/**
- * The target's answer to an open approval request outside the approve form: Decline. The
- * organization page renders it; approving happens in the event page's Approvals card, after
- * reading the event.
- */
-export function ApprovalRequestDecline({
-  eventId,
-  requestId,
-  onAnswered,
-}: {
-  eventId: string;
-  requestId: string;
-  onAnswered: () => void;
-}) {
-  const decline = useMutation(() => declineApprovalRequest(eventId, requestId), {
-    fallback: "Failed to decline the approval request",
-    onSuccess: onAnswered,
-  });
-  return (
-    <div className="space-y-2">
-      <Button variant="ghost" onClick={() => void decline.run()} disabled={decline.loading}>
-        Decline
-      </Button>
-      {decline.error && (
-        <div className={FORM_ERROR_BANNER} role="alert">
-          {decline.error}
-        </div>
-      )}
-    </div>
-  );
-}
-
 /** Who a request asks, as a byline: the analyst, or the organization with its picture and page. */
 function TargetByline({ request }: { request: ApprovalRequest }) {
   const target = request.target_organization

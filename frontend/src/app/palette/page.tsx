@@ -1406,7 +1406,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<LinkRow>" usage="Stay in touch and Guides (About), and each row of the Notifications feed (kind and date as the label, the sentence as the value). The profile's linked accounts are icon buttons instead. The trailing ↗ marks external only: an in-app href routes through next/link, a mailto stays a plain <a>, and neither takes the glyph. `leading` (opt-in) shows a node in place of the icon: the feed passes the picture of who is behind the row (an analyst's circle, an organization's square logo), and `icon` stays the fallback when the row has no one behind it. `variant` arrow (opt-in, the feed's rows): neutral value that wraps, an orange ArrowRight at the right edge, the link stretched over the block (hover and focus light the border and the arrow), and `action` inside the block left of the arrow, above the link.">
+          <Item name="<LinkRow>" usage="Stay in touch and Guides (About), and each row of the Notifications feed (kind and date as the label, the sentence as the value). The profile's linked accounts are icon buttons instead. The trailing ↗ marks external only: an in-app href routes through next/link, a mailto stays a plain <a>, and neither takes the glyph. `leading` (opt-in) shows a node in place of the icon: the feed passes the picture of who is behind the row (an analyst's circle, an organization's square logo), and `icon` stays the fallback when the row has no one behind it. `variant` arrow (opt-in, the feed's rows and every list on the organization page and the admin Organizations panel): neutral value that wraps, an orange ArrowRight at the right edge, the link stretched over the block (hover and focus light the border and the arrow), and `action` inside the block left of the arrow, above the link; when the value and the action do not fit on one line, the action and the arrow wrap to a second line. `label` is optional. `meta` (arrow only) is a muted line under the value (date, version, who, a role or state pill), inside the link, so it never holds a link.">
             <div className="w-full max-w-md space-y-2">
               <LinkRow icon={AtSign} label="X / Twitter" value="@vidithq" href="https://x.com/vidithq" />
               <LinkRow icon={BookOpen} label="How Vidit works" value="/guide" href="/guide" external={false} />
@@ -1438,6 +1438,26 @@ export default function PalettePage() {
                   >
                     <Trash2 size={14} />
                   </Button>
+                }
+              />
+              <LinkRow
+                variant="arrow"
+                icon={UserPlus}
+                leading={<Avatar username="maya" size="size-7" decorative />}
+                value="maya"
+                meta={
+                  <>
+                    <Pill tone="accent">Org manager</Pill>
+                    <span>Joined Oct 12</span>
+                  </>
+                }
+                href="/palette"
+                external={false}
+                action={
+                  <>
+                    <Button variant="ghost">Make member</Button>
+                    <Button variant="danger">Remove</Button>
+                  </>
                 }
               />
             </div>

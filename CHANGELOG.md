@@ -6,6 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- Every list on the organization page and the admin Organizations panel is a row of blocks with neutral text, a muted meta line and an orange arrow, its controls inside the row; a member or invitee row opens the profile ([#595](https://github.com/vidithq/vidit/pull/595)).
 - From `lg` up the back arrow sticks in the gutter left of the title while the page scrolls, and the right rail sticks at its resting top, so neither moves ([#595](https://github.com/vidithq/vidit/pull/595)).
 - A notification only links to where you act, the event or organization page; a geolocator invitation sits atop the event page's rail, and each row has neutral text, an orange arrow and its delete button inside ([#595](https://github.com/vidithq/vidit/pull/595)).
 - Each notification leads with the picture of the analyst behind it, or the organization's logo where the organization acts; a row with no one behind it keeps its icon ([#595](https://github.com/vidithq/vidit/pull/595)).

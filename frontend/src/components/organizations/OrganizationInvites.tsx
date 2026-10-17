@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { User } from "lucide-react";
 
 import { useApiResource } from "@/hooks/useApiResource";
 import { useMutation } from "@/hooks/useMutation";
@@ -18,9 +19,10 @@ import {
   analystAccount,
   type Account,
 } from "@/components/ui/AccountPicker";
-import { AuthorByline } from "@/components/ui/AuthorByline";
+import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { LinkRow } from "@/components/ui/LinkRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 
@@ -118,21 +120,37 @@ export function OrganizationInvites({
       ) : (
         <ul className="space-y-2">
           {pending.map((invite) => (
-            <li key={invite.id} className="flex flex-wrap items-center justify-between gap-2">
-              <span className="flex min-w-0 flex-wrap items-center gap-2 text-sm wrap-anywhere">
-                <AuthorByline author={invite.user} avatar className="min-w-0" />
-                <span className="text-xs text-neutral-500">
-                  Invited {formatDate(invite.created_at)}
-                  {invite.invited_by ? ` by ${invite.invited_by.username}` : ""}
-                </span>
-              </span>
-              <Button
-                variant="ghost"
-                onClick={() => void cancel.run(invite.id)}
-                disabled={cancel.loading}
-              >
-                Withdraw
-              </Button>
+            <li key={invite.id}>
+              <LinkRow
+                variant="arrow"
+                icon={User}
+                leading={
+                  <Avatar
+                    src={invite.user.avatar_url}
+                    username={invite.user.username}
+                    size="size-7"
+                    decorative
+                  />
+                }
+                value={invite.user.username}
+                meta={
+                  <span>
+                    Invited {formatDate(invite.created_at)}
+                    {invite.invited_by ? ` by ${invite.invited_by.username}` : ""}
+                  </span>
+                }
+                href={`/profile/${invite.user.username}`}
+                external={false}
+                action={
+                  <Button
+                    variant="ghost"
+                    onClick={() => void cancel.run(invite.id)}
+                    disabled={cancel.loading}
+                  >
+                    Withdraw
+                  </Button>
+                }
+              />
             </li>
           ))}
         </ul>
