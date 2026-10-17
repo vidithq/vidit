@@ -1,16 +1,25 @@
 "use client";
 
-import { useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
+import { cn } from "@/lib/cn";
 import { smartBack } from "@/lib/navigation";
 import { getPhoneBackSlot, subscribePhoneBackSlot } from "@/lib/phoneBackSlot";
 import { TEXT_LINK } from "./styles";
 import { Button } from "./Button";
 import { PageCenter, PageFrame } from "./PageFrame";
 import { PageWithRail } from "./PageWithRail";
+
+const subscribeScroll = (listener: () => void) => {
+  window.addEventListener("scroll", listener, { passive: true });
+  return () => window.removeEventListener("scroll", listener);
+};
+const subscribeNothing = () => () => {};
+const isScrolled = () => window.scrollY > 0;
+const notScrolled = () => false;
 
 export function PageShell({
   title,
@@ -22,6 +31,7 @@ export function PageShell({
   rail,
   railLabel,
   narrowRail,
+  stickyHeader = false,
   children,
 }: {
   title: ReactNode;
@@ -40,6 +50,9 @@ export function PageShell({
   rail?: ReactNode;
   railLabel?: string;
   narrowRail?: "stacked" | "hidden";
+  /** Keeps the header at the top of the viewport from `sm` up, with a bottom border once the
+   *  page has scrolled. Below `sm` the header scrolls away, clear of the menu chip. */
+  stickyHeader?: boolean;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -50,6 +63,22 @@ export function PageShell({
     getPhoneBackSlot,
     getPhoneBackSlot,
   );
+  const scrolled = useSyncExternalStore(
+    stickyHeader ? subscribeScroll : subscribeNothing,
+    stickyHeader ? isScrolled : notScrolled,
+    notScrolled,
+  );
+  const headerRef = useRef<HTMLElement>(null);
+  const [headerHeight, setHeaderHeight] = useState(0);
+  useEffect(() => {
+    const header = headerRef.current;
+    if (!stickyHeader || !header) return;
+    const observer = new ResizeObserver(() =>
+      setHeaderHeight(header.getBoundingClientRect().height),
+    );
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, [stickyHeader]);
   // One control, two placements: only the visibility classes differ.
   const renderBack = (className: string) => (
     <Button
@@ -69,7 +98,16 @@ export function PageShell({
       column={rail ? "wide" : "reading"}
       className="pt-10 max-sm:pt-16 pb-16 space-y-6"
     >
-      <header className="relative">
+      <header
+        ref={headerRef}
+        className={cn(
+          "relative",
+          // The padding and margin cancel out, so the title sits where it does on any other page.
+          stickyHeader &&
+            "sm:sticky sm:top-0 sm:z-1050 sm:-mt-3 sm:mb-3 sm:py-3 sm:bg-neutral-950 sm:border-b sm:border-transparent",
+          stickyHeader && scrolled && "sm:border-neutral-800",
+        )}
+      >
         {back && (
           // `right-full` parks the button outside the header's left edge, so the
           // title's x is the same with or without it. That gutter exists from
@@ -108,7 +146,12 @@ export function PageShell({
       {rail === undefined ? (
         children
       ) : (
-        <PageWithRail rail={rail} railLabel={railLabel} narrow={narrowRail}>
+        <PageWithRail
+          rail={rail}
+          railLabel={railLabel}
+          narrow={narrowRail}
+          topOffset={stickyHeader ? headerHeight : 0}
+        >
           {children}
         </PageWithRail>
       )}

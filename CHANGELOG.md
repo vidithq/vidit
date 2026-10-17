@@ -6,6 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- The event page keeps its header (back, title, byline, version selector, Share, Edit and Report) at the top of the screen while you scroll, from tablet width up ([#591](https://github.com/vidithq/vidit/pull/591)).
 - A site admin can delete an organization from the admin panel after typing its slug; its memberships, invites, approval requests and approvals go with it, and each event owner who loses its approval is notified ([#576](https://github.com/vidithq/vidit/pull/576)).
 - An org manager approves and revokes approvals in an organization's name, a geolocator can ask an organization for approval, which any org manager answers, and the organization page lists its approvals and open requests ([#574](https://github.com/vidithq/vidit/pull/574)).
 - Feed, Requests and search filters sit in a sticky right rail, or a Filters button on a phone; the feed filters by kind, conflict, capture source and tags, with its Following / All control under the title ([#588](https://github.com/vidithq/vidit/pull/588)).

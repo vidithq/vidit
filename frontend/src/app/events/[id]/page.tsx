@@ -39,6 +39,7 @@ export default function EventPage() {
       actions={actions}
       rail={approvalsCard}
       railLabel="Approvals"
+      stickyHeader
     >
       {/* Directly under the header, where the menu that opened them is. Below `lg` the
           Approvals card stacks above them, under the title. */}
