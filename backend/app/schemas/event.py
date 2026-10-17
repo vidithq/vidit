@@ -141,6 +141,7 @@ class EventCloseRequest(BaseModel):
     """Body for ``POST /events/{id}/close``. The reason is required because a
     closed event stays public."""
 
+    # Mirrored by frontend CloseEventForm.tsx CLOSE_REASON_MAX_LEN; change both.
     close_reason: str = Field(min_length=1, max_length=2000)
 
 
