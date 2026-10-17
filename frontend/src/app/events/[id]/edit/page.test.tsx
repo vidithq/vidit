@@ -453,9 +453,9 @@ describe("editing a published geolocation", () => {
     const credit = within(rail).getByRole("heading", { name: /^Geolocators/ });
     expect(follows(note, save) && follows(save, close) && follows(close, credit)).toBe(true);
     expect(within(rail).getByLabelText("Invite a geolocator")).toBeInTheDocument();
-    // Credit changes apply on click and never make a version; the title says so.
+    // How shared credit works, changes applying on click with no new version, is the title's help.
     expect(
-      within(credit).getByRole("button", { name: "When do geolocator changes apply?" })
+      within(credit).getByRole("button", { name: "How does shared credit work?" })
     ).toBeInTheDocument();
   });
 

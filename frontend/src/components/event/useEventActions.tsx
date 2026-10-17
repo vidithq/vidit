@@ -242,7 +242,7 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
         {canSeeCredit && crediting && (
           <HeaderPanel id={CREDIT_PANEL_ID}>
             <Card as="section">
-              <SectionEyebrow title="Geolocators" margin="none" />
+              <SectionEyebrow title="Geolocators" concept="geolocators" margin="none" />
               <GeolocatorsPanel event={event} onChanged={() => onChanged?.()} />
             </Card>
           </HeaderPanel>

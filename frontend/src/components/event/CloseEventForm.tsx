@@ -5,7 +5,9 @@ import { useState } from "react";
 import { closeEvent } from "@/lib/events";
 import { useMutation } from "@/hooks/useMutation";
 import type { EventDetail, EventStatus } from "@/types";
+import type { Concept } from "@/lib/fieldHelp";
 import { Button } from "@/components/ui/Button";
+import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Textarea } from "@/components/ui/Input";
 import { FORM_LABEL, FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
@@ -19,6 +21,13 @@ const CLOSE_NOUN: Partial<Record<EventStatus, string>> = {
   requested: "request",
   detected: "detection",
   geolocated: "geolocation",
+};
+
+/** What closing does, per row, as the close button's help. */
+const CLOSE_HELP: Partial<Record<EventStatus, Concept>> = {
+  requested: "close_request",
+  detected: "close_detection",
+  geolocated: "close_geolocation",
 };
 
 /** What this row is called in the close copy (see `CLOSE_NOUN`). */
@@ -79,9 +88,12 @@ export function CloseEventForm({
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
-        <label htmlFor="close_reason" className={FORM_LABEL}>
-          Close reason
-        </label>
+        <span className="inline-flex items-center gap-1">
+          <label htmlFor="close_reason" className={FORM_LABEL}>
+            Close reason
+          </label>
+          <FieldHelp concept="close_reason" />
+        </span>
         <Textarea
           id="close_reason"
           rows={3}
@@ -93,9 +105,6 @@ export function CloseEventForm({
           invalid={emptyReason}
           placeholder={`Why are you closing this ${noun}? (stays visible on the closed row)`}
         />
-        <p className="text-xs text-neutral-500">
-          The reason stays publicly visible next to the closed badge.
-        </p>
       </div>
 
       {emptyReason && (
@@ -122,9 +131,8 @@ export function CloseEventForm({
 }
 
 /**
- * The close at the foot of an owner's edit page actions card, under the save: what closing does,
- * then **Close this …**, which opens `CloseEventForm` in place. Closing takes the row back; it
- * stays readable with its reason.
+ * The close at the foot of an owner's edit page actions card, under the save: **Close this …**,
+ * with what closing does in its help, which opens `CloseEventForm` in place.
  */
 export function CloseSection({
   eventId,
@@ -144,15 +152,12 @@ export function CloseSection({
           disabled={disabled}
         />
       ) : (
-        <>
-          <p className="text-sm text-neutral-400">
-            Closing takes this {closeNoun(status)} back. It stays readable, with your reason
-            beside it.
-          </p>
+        <span className="inline-flex items-center gap-1.5">
           <Button variant="danger" onClick={() => setOpen(true)} disabled={disabled}>
             {closeActionLabel(status)}
           </Button>
-        </>
+          {CLOSE_HELP[status] && <FieldHelp concept={CLOSE_HELP[status]} />}
+        </span>
       )}
     </div>
   );

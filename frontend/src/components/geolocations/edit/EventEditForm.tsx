@@ -367,7 +367,7 @@ export function EventEditForm({
 
           {editingPublished && (
             <Card as="section">
-              <SectionEyebrow title="Geolocators" concept="geolocators_immediate" margin="none" />
+              <SectionEyebrow title="Geolocators" concept="geolocators" margin="none" />
               <GeolocatorsPanel event={geo} onChanged={() => onCreditChanged?.()} />
             </Card>
           )}

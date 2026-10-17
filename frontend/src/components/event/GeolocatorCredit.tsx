@@ -208,9 +208,6 @@ export function GeolocatorsPanel({
               Invite
             </Button>
           </div>
-          <p className="text-xs text-neutral-500">
-            The analyst is credited once they accept. Editing and closing stay with you.
-          </p>
         </form>
       )}
 

@@ -96,9 +96,25 @@ export const FIELD_HELP = {
     text: "Optional. One line on what you changed and why, kept with the version this edit replaces so a reader can follow the correction.",
     label: "What is the version note?",
   },
-  geolocators_immediate: {
-    text: "Changes apply right away and do not create a new version.",
-    label: "When do geolocator changes apply?",
+  geolocators: {
+    text: "An invited analyst is credited once they accept. Editing and closing stay with the owner. Invites, withdrawals and removals apply right away and do not create a new version.",
+    label: "How does shared credit work?",
+  },
+  close_geolocation: {
+    text: "Closing takes this geolocation back. It stays readable, with your reason beside it.",
+    label: "What does closing do?",
+  },
+  close_detection: {
+    text: "Closing takes this detection back. It stays readable, with your reason beside it.",
+    label: "What does closing do?",
+  },
+  close_request: {
+    text: "Closing takes this request back. It stays readable, with your reason beside it.",
+    label: "What does closing do?",
+  },
+  close_reason: {
+    text: "The reason stays publicly visible next to the closed badge.",
+    label: "Who sees the close reason?",
   },
   action_submit: {
     text: "Submits this detection: your edits are saved and it becomes Geolocated (a person stands behind it). It becomes public, and from then on every change you make is kept as a new version, the source link and the source media included. Give it a full read first, then click Submit twice to confirm.",
