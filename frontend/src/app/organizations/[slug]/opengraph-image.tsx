@@ -5,11 +5,12 @@ import { organizationPath, type Organization } from "@/lib/organizations";
 import {
   OG_CONTENT_TYPE,
   OG_SIZE,
+  OgNotFoundCard,
   ogFailedReadResponse,
   ogImageResponse,
 } from "../../_og/card";
 import { ogImageDataUri, ogFetch } from "../../_og/data";
-import { PortfolioCard, PortfolioNotFoundCard } from "../../_og/portfolio";
+import { PortfolioCard } from "../../_og/portfolio";
 
 // `og:image` for `/organizations/{slug}`: the analyst profile's card with the organization's
 // name, picture, bio and member count, read from the same anonymous payload the page renders.
@@ -29,7 +30,7 @@ export default async function OrganizationOpenGraphImage({
 
   if (read.status === "missing") {
     return ogImageResponse(
-      <PortfolioNotFoundCard
+      <OgNotFoundCard
         title="No organization here"
         line={`${ogTruncate(slug, 40)} is not an organization on Vidit.`}
       />,

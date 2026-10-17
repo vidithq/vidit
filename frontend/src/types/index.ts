@@ -5,15 +5,11 @@ import type { components } from "@/lib/api-types";
  * declare a loose map). */
 export type ExternalLinks = components["schemas"]["ExternalLinks"];
 
-export interface User {
-  id: string;
-  username: string;
-  email: string;
-  bio: string | null;
-  avatar_url: string | null;
+export type User = Omit<components["schemas"]["UserRead"], "external_links"> & {
   external_links: ExternalLinks;
-  created_at: string;
-}
+};
+
+export type AuthorRef = components["schemas"]["AuthorRef"];
 
 export type TagCategory = components["schemas"]["TagRead"]["category"];
 

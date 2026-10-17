@@ -11,6 +11,7 @@ import { eventVersionsPath, eventVersions } from "@/lib/events";
 import { EventVersionRow } from "@/components/event/EventVersionRow";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
+import { countLabel } from "@/lib/format";
 
 /** The history read answers an envelope; module-level because `useCursorList` keys fetches on this function's identity. */
 const versionRows = (page: EventVersionList): EventVersion[] => page.items;
@@ -53,7 +54,7 @@ export default function EventHistoryPage() {
         <>
           <p className="text-[11px] text-neutral-500">
             <span className="text-neutral-300 font-medium">
-              {geo.version_no} version{geo.version_no === 1 ? "" : "s"}
+              {countLabel(geo.version_no, "version")}
             </span>{" "}
             · newest first
           </p>

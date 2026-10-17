@@ -294,7 +294,7 @@ describe("the search page's filter rail", () => {
 
     await waitFor(() =>
       expect(search).toHaveBeenCalledWith(
-        expect.objectContaining({ type: "event", eventDateFrom: "2026-06-01" }),
+        expect.objectContaining({ type: "event", eventFrom: "2026-06-01" }),
       ),
     );
     expect(screen.getByRole("button", { name: "Filters (1)" })).toBeInTheDocument();

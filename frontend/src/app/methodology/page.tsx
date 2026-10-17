@@ -3,6 +3,7 @@ import Link from "next/link";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { NumberedSteps, type NumberedStep } from "@/components/ui/NumberedSteps";
+import { staticPageMetadata } from "../_og/metadata";
 
 // Public methodology guide (see `PUBLIC_PREFIXES` in `proxy.ts`), linked from the proof section of the forms. Server component for SEO.
 
@@ -11,25 +12,11 @@ const DESCRIPTION =
   "How a Vidit geolocation proof comes together: verify and archive the source, pin the visual anchors, cross-reference on satellite imagery, and annotate the match.";
 
 // Same openGraph + twitter shape as the landing; the root image files supply the image.
-export const metadata: Metadata = {
+export const metadata: Metadata = staticPageMetadata({
+  path: "/methodology",
   title: TITLE,
   description: DESCRIPTION,
-  openGraph: {
-    type: "website",
-    url: "https://vidit.app/methodology",
-    siteName: "Vidit",
-    title: TITLE,
-    description: DESCRIPTION,
-    locale: "en_US",
-  },
-  twitter: {
-    card: "summary_large_image",
-    site: "@vidithq",
-    creator: "@vidithq",
-    title: TITLE,
-    description: DESCRIPTION,
-  },
-};
+});
 
 const PROOF_STEPS: NumberedStep[] = [
   {

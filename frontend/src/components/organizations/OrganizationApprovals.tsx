@@ -12,11 +12,12 @@ import {
 } from "@/lib/approvals";
 import { ApprovalState } from "@/components/event/Approvals";
 import { Avatar } from "@/components/ui/Avatar";
-import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { LinkRow } from "@/components/ui/LinkRow";
+import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
+import { eventHref } from "@/lib/routes";
 
 /** One approval as a row to its event: the acting org manager's picture, the event title, then the
  *  version, who placed it and when, its state and, once revoked, by which role and why. */
@@ -47,7 +48,7 @@ function ApprovalLinkRow({ event, approval }: OrganizationApproval) {
           )}
         </>
       }
-      href={`/events/${event.id}`}
+      href={eventHref(event.id)}
       external={false}
     />
   );
@@ -59,13 +60,13 @@ export function OrganizationApprovals({ slug }: { slug: string }) {
     (cursor: string | null) => organizationApprovalsPath(slug, cursor),
     [slug],
   );
-  const { items, error, loading, loadingMore, hasMore, loadMore } =
-    useCursorList<OrganizationApproval>(buildPath);
+  const walk = useCursorList<OrganizationApproval>(buildPath);
+  const { items, error, loading } = walk;
 
   return (
     <Card as="section">
       <SectionEyebrow title="Approvals" margin="none" />
-      {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
+      {error && items.length === 0 && <div className={FORM_ERROR_BANNER}>{error}</div>}
       {!loading && items.length === 0 && !error && (
         <p className="text-sm text-neutral-500">No approval in this organization&apos;s name yet.</p>
       )}
@@ -78,11 +79,7 @@ export function OrganizationApprovals({ slug }: { slug: string }) {
           ))}
         </ul>
       )}
-      {hasMore && (
-        <Button variant="secondary" onClick={loadMore} disabled={loadingMore}>
-          {loadingMore ? "Loading…" : "Load more"}
-        </Button>
-      )}
+      <LoadMoreRow walk={walk} />
     </Card>
   );
 }

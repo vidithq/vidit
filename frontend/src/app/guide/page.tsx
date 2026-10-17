@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/NumberedSteps";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { OutboundLink } from "@/components/ui/OutboundLink";
+import { staticPageMetadata } from "../_og/metadata";
 
 // Public getting-started guide (see `PUBLIC_PREFIXES` in `proxy.ts`): teaches the whole loop; `/methodology` and `/import` go deeper. Server component for SEO.
 
@@ -16,25 +17,11 @@ const DESCRIPTION =
   "The Vidit loop end to end: explore the map, read a geolocation and its proof, publish your own work, and pick up open requests.";
 
 // Same openGraph + twitter shape as the landing; the root image files supply the image.
-export const metadata: Metadata = {
+export const metadata: Metadata = staticPageMetadata({
+  path: "/guide",
   title: TITLE,
   description: DESCRIPTION,
-  openGraph: {
-    type: "website",
-    url: "https://vidit.app/guide",
-    siteName: "Vidit",
-    title: TITLE,
-    description: DESCRIPTION,
-    locale: "en_US",
-  },
-  twitter: {
-    card: "summary_large_image",
-    site: "@vidithq",
-    creator: "@vidithq",
-    title: TITLE,
-    description: DESCRIPTION,
-  },
-};
+});
 
 const STEPS: NumberedStep[] = [
   {

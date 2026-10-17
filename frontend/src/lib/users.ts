@@ -1,14 +1,12 @@
 import { apiFetch } from "./api";
+import { parseHttp } from "./format";
 import type { components } from "./api-types";
 import type { ExternalLinks, User } from "@/types";
 
 /** Payload for `PATCH /users/me`. `undefined` omits (preserves the column); `null` or an
  *  empty string clears it (`model_dump(exclude_unset=True)`). `external_links` is replaced
- *  wholesale. No `avatar_url`: the backend body is `extra=forbid`, so sending one 422s. */
-export interface UserProfileUpdate {
-  bio?: string | null;
-  external_links?: ExternalLinks | null;
-}
+ *  wholesale. */
+export type UserProfileUpdate = components["schemas"]["UserUpdate"];
 
 export function updateMyProfile(body: UserProfileUpdate): Promise<User> {
   return apiFetch<User>("/users/me", {
@@ -51,17 +49,7 @@ export function getUserStats(username: string): Promise<UserStats> {
  *  of anchor targets. */
 function asHttpUrl(value: string | null | undefined): string | null {
   if (!value) return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  try {
-    const url = new URL(trimmed);
-    if (url.protocol === "http:" || url.protocol === "https:") {
-      return url.toString();
-    }
-  } catch {
-    // Not a parsable URL: render as text.
-  }
-  return null;
+  return parseHttp(value.trim())?.toString() ?? null;
 }
 
 /** Hosts whose URLs name a profile on the platform, canonical first (a parsed handle links

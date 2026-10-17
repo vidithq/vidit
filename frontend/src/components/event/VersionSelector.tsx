@@ -4,6 +4,7 @@ import { ChevronDown, History } from "lucide-react";
 
 import { eventHistoryHref, eventVersionHref } from "@/lib/events";
 import { ActionMenu, type ActionMenuItem } from "@/components/ui/ActionMenu";
+import { eventHref } from "@/lib/routes";
 
 /**
  * The version a published event's page shows, as a compact *v2* button in the header, opening a
@@ -27,7 +28,7 @@ export function VersionSelector({
     return {
       key: `v${n}`,
       label: `v${n}`,
-      href: n === liveVersion ? `/events/${eventId}` : eventVersionHref(eventId, n),
+      href: n === liveVersion ? eventHref(eventId) : eventVersionHref(eventId, n),
       current: n === selected,
     };
   });

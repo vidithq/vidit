@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 
 import type { EventDetail } from "@/types";
 import { useAuth } from "@/contexts/AuthContext";
-import { useMemberOrganizations } from "@/hooks/useMemberOrganizations";
 import { useApiResource } from "@/hooks/useApiResource";
 import { apiFetch } from "@/lib/api";
 import { useMutation } from "@/hooks/useMutation";
@@ -135,10 +134,13 @@ function RequestApprovalForm({
 }
 
 /** The open approval requests on a published event, and `mine`: those addressed to the reader or
- *  to an organization they are a member of. `refreshKey` changes when an approval may have resolved one. */
-export function useApprovalRequests(event: EventDetail, refreshKey: number) {
+ *  to an organization in `memberOf`. `refreshKey` changes when an approval may have resolved one. */
+export function useApprovalRequests(
+  event: EventDetail,
+  memberOf: OrganizationRef[],
+  refreshKey: number,
+) {
   const { user } = useAuth();
-  const memberOf = useMemberOrganizations();
   const requests = useApiResource<ApprovalRequest[]>(
     user && event.status === "geolocated" ? approvalRequestsPath(event.id) : null,
   );

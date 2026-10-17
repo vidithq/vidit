@@ -27,11 +27,12 @@ import {
 } from "@/components/filters/EventFilterSections";
 import { FilterBar } from "@/components/filters/FilterBar";
 import { cardTags } from "@/lib/cardTags";
-import { appendApprovalFilters } from "@/lib/search";
+import { appendEventFilterParams } from "@/lib/search";
 import { creditProps } from "@/lib/geolocatorCredit";
 import type { PublicProfile } from "@/lib/users";
 import type { components, operations } from "@/lib/api-types";
-import type { Conflict, Tag } from "@/types";
+import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
+import { eventHref } from "@/lib/routes";
 
 type FeedItem = components["schemas"]["FeedItemRead"];
 type FeedQuery = NonNullable<
@@ -70,7 +71,7 @@ const EMPTY_FEED_FILTERS: FeedFilters = { kinds: [], values: EMPTY_EVENT_FILTERS
 function itemHref(item: FeedItem): string {
   return item.status === "requested"
     ? `/requests/${item.id}`
-    : `/events/${item.id}`;
+    : eventHref(item.id);
 }
 
 /** The event date when known, then the date the row entered the feed, named by its kind. */
@@ -88,17 +89,13 @@ export default function FeedPage() {
   const { user, loading: authLoading } = useRequireAuth();
   const [scope, setScope] = useState<FeedScope>("following");
   const [filters, setFilters] = useState<FeedFilters>(EMPTY_FEED_FILTERS);
-  const { data: tagsData } = useApiResource<Tag[]>("/tags");
-  const { data: conflictsData } = useApiResource<Conflict[]>("/conflicts?used=true");
+  const { tags, conflicts } = useFilterVocabulary();
 
   const buildPath = useCallback(
     (cursor: string | null) => {
       const search = new URLSearchParams({ scope });
       filters.kinds.forEach((k) => search.append("kind", k));
-      filters.values.conflicts.forEach((n) => search.append("conflict", n));
-      filters.values.captureSources.forEach((n) => search.append("capture_source", n));
-      filters.values.tags.forEach((n) => search.append("tag", n));
-      appendApprovalFilters(search, filters.values);
+      appendEventFilterParams(search, filters.values);
       if (cursor) search.set("cursor", cursor);
       return `/feed?${search}`;
     },
@@ -125,8 +122,8 @@ export default function FeedPage() {
     setPanel: (next: FeedFilters) => void
   ) => (
     <EventFilterSections
-      tags={tagsData ?? []}
-      conflicts={conflictsData ?? []}
+      tags={tags}
+      conflicts={conflicts}
       values={panel.values}
       onPatch={(patch) =>
         setPanel({ ...panel, values: { ...panel.values, ...patch } })

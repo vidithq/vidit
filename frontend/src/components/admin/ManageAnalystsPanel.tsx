@@ -17,6 +17,7 @@ import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { ActionReceipt, PurgeReceipt } from "@/components/admin/ActionReceipt";
 import { UserActionsCard } from "@/components/admin/UserActionsCard";
+import { countLabel } from "@/lib/format";
 
 export function ManageAnalystsPanel() {
   const [query, setQuery] = useState("");
@@ -128,14 +129,10 @@ export function ManageAnalystsPanel() {
         >
           <div className="text-neutral-500">
             {lastDelete.mode === "hard"
-              ? `Dropped ${lastDelete.cascaded_geolocations} geolocation${
-                  lastDelete.cascaded_geolocations === 1 ? "" : "s"
-                }, handed ${lastDelete.transferred_events} to a co-geolocator, swept ${
-                  lastDelete.media_count
-                } media row${lastDelete.media_count === 1 ? "" : "s"} (source + proof roles).`
-              : `Cascade-hid ${lastDelete.cascaded_geolocations} geolocation${
-                  lastDelete.cascaded_geolocations === 1 ? "" : "s"
-                }.`}
+              ? `Dropped ${countLabel(lastDelete.cascaded_geolocations, "geolocation")}, handed ${
+                  lastDelete.transferred_events
+                } to a co-geolocator, swept ${countLabel(lastDelete.media_count, "media row")} (source + proof roles).`
+              : `Cascade-hid ${countLabel(lastDelete.cascaded_geolocations, "geolocation")}.`}
           </div>
         </ActionReceipt>
       )}

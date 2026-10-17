@@ -12,6 +12,7 @@ import {
   detectionEditPath,
   type PaginatedEventDetails,
 } from "@/lib/events";
+import { detectionsQueueHref, profileHref } from "@/lib/routes";
 
 /**
  * Entry to a review pass: opens the first detection of the queue and hands the
@@ -24,11 +25,11 @@ export default function DetectionReviewPage() {
   const { user, loading: authLoading } = useRequireAuth();
   const username = typeof params.username === "string" ? params.username : "";
   const isOwn = !!user && user.username === username;
-  const queueHref = `/profile/${username}/detections`;
+  const queueHref = detectionsQueueHref(username);
 
   // Same owner rule as the queue: the endpoint scopes to `current_user` and ignores the URL username.
   useEffect(() => {
-    if (user && !isOwn) router.replace(`/profile/${username}`);
+    if (user && !isOwn) router.replace(profileHref(username));
   }, [user, isOwn, username, router]);
 
   const { data, error } = useApiResource<PaginatedEventDetails>(

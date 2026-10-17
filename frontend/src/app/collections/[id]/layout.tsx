@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 
 import { collectionMetaSegments, type Collection } from "@/lib/collections";
-import { ogTruncate } from "@/lib/og";
 
 import { ogFetch } from "../../_og/data";
+import { articleMetadata } from "../../_og/metadata";
 
 // The collection page is a client component, so its metadata lives on the
 // segment layout: this is the server half of `/collections/{id}`, and the only
@@ -15,12 +15,6 @@ import { ogFetch } from "../../_og/data";
 // card. That page is behind the auth wall and is never the URL anyone shares.
 // `/collections/new` is a sibling of `[id]`, so it inherits nothing from here.
 
-/** Title budget, under what X truncates. */
-const TITLE_MAX = 90;
-
-/** Description budget, under the ~200 characters X and Discord render. */
-const DESCRIPTION_MAX = 180;
-
 export async function generateMetadata({
   params,
 }: {
@@ -31,51 +25,18 @@ export async function generateMetadata({
 
   // A failed upstream gets no tags (site-wide defaults inherit): "not found" would freeze into crawlers.
   if (read.status === "failed") return {};
-
-  if (read.status === "missing") {
-    const title = "Collection not found on Vidit";
-    const description = "This link points at nothing in the catalog.";
-    // Same tag shape as the found path, so a dead link still unfurls completely.
-    return {
-      title,
-      description,
-      openGraph: { type: "article", title, description, siteName: "Vidit" },
-      twitter: { card: "summary_large_image", title, description },
-    };
-  }
+  if (read.status === "missing") return articleMetadata({ found: false, noun: "Collection" });
 
   const collection = read.data;
-  const title = ogTruncate(collection.title, TITLE_MAX);
-  // Meta segments in the shared phrasing, then the description as plain text (meta tags carry no marks), then the byline.
-  const description = ogTruncate(
-    [
-      ...collectionMetaSegments(collection),
-      collection.description_text,
-      `Filed by ${collection.owner.username} on Vidit.`,
-    ]
-      .filter(Boolean)
-      .join(" · "),
-    DESCRIPTION_MAX,
-  );
-
-  return {
-    title,
-    description,
-    openGraph: {
-      type: "article",
-      title,
-      description,
-      url: `/collections/${encodeURIComponent(collection.id)}`,
-      siteName: "Vidit",
-      publishedTime: collection.created_at,
-    },
-    twitter: {
-      // 1200×630 card needs the large-image treatment.
-      card: "summary_large_image",
-      title,
-      description,
-    },
-  };
+  return articleMetadata({
+    found: true,
+    title: collection.title,
+    // Meta segments in the shared phrasing, then the description as plain text (meta tags carry no marks).
+    segments: [...collectionMetaSegments(collection), collection.description_text],
+    owner: collection.owner.username,
+    url: `/collections/${encodeURIComponent(collection.id)}`,
+    publishedTime: collection.created_at,
+  });
 }
 
 export default function CollectionLayout({ children }: { children: React.ReactNode }) {

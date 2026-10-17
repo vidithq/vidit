@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ApprovalRequest } from "@/lib/approvalRequests";
+import { useMemberOrganizations } from "@/hooks/useMemberOrganizations";
 import { eventDetail } from "@/test/eventDetail";
 
 const api = vi.hoisted(() => ({
@@ -77,7 +78,7 @@ function serve(
 /** The requests as the Approvals card lays them out: who asked the reader, Decline, and the
  *  geolocator's section. */
 function Requests() {
-  const requests = useApprovalRequests(event, 0);
+  const requests = useApprovalRequests(event, useMemberOrganizations(), 0);
   const { mine } = requests;
   return (
     <>

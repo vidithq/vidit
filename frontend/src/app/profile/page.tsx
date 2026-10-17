@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { PageLoading } from "@/components/ui/PageShell";
+import { profileHref } from "@/lib/routes";
 
 /** Redirects to the canonical /profile/[username] for the current user. */
 export default function ProfileRedirect() {
@@ -15,7 +16,7 @@ export default function ProfileRedirect() {
     if (!user) {
       router.replace("/login");
     } else {
-      router.replace(`/profile/${user.username}`);
+      router.replace(profileHref(user.username));
     }
   }, [loading, user, router]);
 

@@ -19,6 +19,7 @@ import { LinkRow } from "@/components/ui/LinkRow";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
+import { profileHref } from "@/lib/routes";
 
 interface MemberRowProps {
   slug: string;
@@ -97,7 +98,7 @@ function MemberRow({ slug, member, viewer, canManage, lastManager, onChanged }: 
             <span>Joined {formatDate(member.joined_at)}</span>
           </>
         }
-        href={`/profile/${username}`}
+        href={profileHref(username)}
         external={false}
         action={hasControls ? controls : undefined}
       />

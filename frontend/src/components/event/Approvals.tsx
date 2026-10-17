@@ -31,6 +31,7 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
+import { profileHref } from "@/lib/routes";
 
 export function ApprovalState({ approval }: { approval: Approval }) {
   if (approval.revoked_at) return <Pill tone="danger">Revoked</Pill>;
@@ -131,7 +132,7 @@ function approvalStamp(approval: Approval): AvatarStackItem | null {
     avatarUrl: approval.reviewer.avatar_url,
     variant: "analyst",
     label: approval.reviewer.username,
-    href: `/profile/${approval.reviewer.username}`,
+    href: profileHref(approval.reviewer.username),
   };
 }
 

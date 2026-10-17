@@ -38,6 +38,7 @@ import {
   useEventForm,
 } from "@/components/geolocations/EventFormFields";
 import { DuplicateProbe } from "@/components/geolocations/new/DuplicateProbe";
+import { eventHref } from "@/lib/routes";
 
 // Three entry paths, differing only in where the work starts: `single` is one event by hand,
 // `xpost` reads one of your own X posts into a detection you review, `bulk` backfills an
@@ -254,7 +255,7 @@ function SubmitForm() {
     },
     {
       fallback: "Submission failed",
-      onSuccess: (result) => router.push(`/events/${result.id}`),
+      onSuccess: (result) => router.push(eventHref(result.id)),
     }
   );
 
