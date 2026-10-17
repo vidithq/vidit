@@ -15,6 +15,7 @@ import type {
   TagCategory,
   TweetImportOutcome,
 } from "@/types";
+import { withCursor } from "./pagination";
 
 /** A required field a create/edit form is still missing; `key` drives the in-form highlight. */
 export type MissingFieldKey =
@@ -323,10 +324,7 @@ export function saveVersion(
 
 /** Cursor is the previous page's `Link: rel="next"` value, `null` for the first. */
 export function eventVersionsPath(id: string, cursor: string | null): string {
-  const params = new URLSearchParams();
-  if (cursor) params.set("cursor", cursor);
-  const query = params.toString();
-  return `/events/${id}/versions${query ? `?${query}` : ""}`;
+  return withCursor(`/events/${id}/versions`, cursor);
 }
 
 export function eventVersionPath(id: string, versionNo: number): string {

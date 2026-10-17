@@ -9,6 +9,7 @@ import parse, {
 } from "html-react-parser";
 
 import { ProofImage } from "@/components/event/ProofImage";
+import { parseHttp } from "@/lib/format";
 import { OutboundLink } from "@/components/ui/OutboundLink";
 import { TEXT_LINK } from "@/components/ui/styles";
 
@@ -17,16 +18,7 @@ const LOCAL_STORAGE_URL_PREFIX = "http://localhost:8000/local-storage/";
 
 /** Mirrors backend `sanitize.safe_link_href`; change both. */
 export function isSafeLinkHref(href: string): boolean {
-  let parsed: URL;
-  try {
-    parsed = new URL(href);
-  } catch {
-    return false;
-  }
-  return (
-    (parsed.protocol === "http:" || parsed.protocol === "https:") &&
-    parsed.hostname.length > 0
-  );
+  return parseHttp(href) !== null;
 }
 
 /** Mirrors backend `sanitize._safe_image_src`; change both. Normalises like a browser (WHATWG)

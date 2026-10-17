@@ -3,6 +3,11 @@
  *  callers build paths with their own query builders, and the header's absolute URL carries
  *  the API origin. */
 
+/** `base` with the next page's `?cursor=`, or `base` alone for the first page. */
+export function withCursor(base: string, cursor: string | null): string {
+  return cursor ? `${base}?cursor=${encodeURIComponent(cursor)}` : base;
+}
+
 /** The `cursor` value of a `Link: rel="next"` header, or `null` (no header, no `next`
  *  relation, or no `cursor`): the caller stops. */
 export function nextCursor(header: string | null): string | null {

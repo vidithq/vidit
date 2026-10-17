@@ -3,6 +3,7 @@
 import { Archive, ArchiveRestore, ExternalLink } from "lucide-react";
 
 import type { ArchivedLink } from "@/types";
+import { parseHttp } from "@/lib/format";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { OutboundLink } from "@/components/ui/OutboundLink";
@@ -83,12 +84,7 @@ export function isSnapshotUrl(value: string): boolean {
 /** The link the provider page can open for, or null. `http(s)` only, matching
  *  what the catalog accepts as a source. */
 function archivable(url: string): string | null {
-  try {
-    const parsed = new URL(url.trim());
-    return parsed.protocol === "http:" || parsed.protocol === "https:" ? url.trim() : null;
-  } catch {
-    return null;
-  }
+  return parseHttp(url.trim()) ? url.trim() : null;
 }
 
 /**

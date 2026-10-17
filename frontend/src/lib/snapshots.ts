@@ -1,3 +1,5 @@
+import { parseHttp } from "./format";
+
 /**
  * Reads the original out of a replay URL so the paste field can warn about an obvious
  * mis-paste. The server checks where a snapshot lives (`services/source_archive.
@@ -69,13 +71,8 @@ function replayedLink(snapshot: string): string | null {
  *  when not http(s) ("cannot tell"). The scheme, host case, leading `www.` and trailing slash
  *  come off, then platform folds (one post under two of a platform's domains). */
 function canonicalLink(url: string): string | null {
-  let parsed: URL;
-  try {
-    parsed = new URL(url.trim());
-  } catch {
-    return null;
-  }
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+  const parsed = parseHttp(url.trim());
+  if (!parsed) return null;
 
   let host = parsed.hostname.toLowerCase().replace(/^www\./, "");
   let path = parsed.pathname.replace(/\/+$/, "");

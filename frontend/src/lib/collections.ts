@@ -12,6 +12,7 @@ import type {
   MapPoint,
   SearchEventHit,
 } from "@/types";
+import { withCursor } from "./pagination";
 
 /** The collections surface: routes, the hand-kept caps, and the meta line and item pins
  *  every collection surface prints. */
@@ -80,8 +81,7 @@ export function collectionEventsPath(
   id: string,
   cursor: string | null,
 ): string {
-  const base = `/collections/${encodeURIComponent(id)}/events`;
-  return cursor === null ? base : `${base}?cursor=${encodeURIComponent(cursor)}`;
+  return withCursor(`/collections/${encodeURIComponent(id)}/events`, cursor);
 }
 
 /** The collection's page opened on a 1-based `?step=`. */

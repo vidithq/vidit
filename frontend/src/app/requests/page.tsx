@@ -3,12 +3,11 @@
 import Link from "next/link";
 import { useCallback, useState } from "react";
 import { Megaphone } from "lucide-react";
-import { useApiResource } from "@/hooks/useApiResource";
 import { useCursorList } from "@/hooks/useCursorList";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { eventListPath, type EventListSort } from "@/lib/events";
 import { formatOpenAge } from "@/lib/format";
-import type { Conflict, EventListItem, Tag } from "@/types";
+import type { EventListItem } from "@/types";
 import {
   EMPTY_DATE_WINDOWS,
   EMPTY_EVENT_FILTERS,
@@ -29,6 +28,7 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { buttonClasses } from "@/components/ui/Button";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
 
 // Status is fixed to `requested`, so the board offers no Status section: "closed" would read as
 // "done" on a work queue. `GET /events` takes no `media` filter, so Source media stays off too.
@@ -51,8 +51,7 @@ export default function RequestsPage() {
   const [values, setValues] = useState<EventFilterValues>(EMPTY_EVENT_FILTERS);
   const [sort, setSort] = useState<EventListSort>("newest");
 
-  const { data: tagsData } = useApiResource<Tag[]>("/tags");
-  const { data: conflictsData } = useApiResource<Conflict[]>("/conflicts?used=true");
+  const { tags, conflicts } = useFilterVocabulary();
 
   const onPatch: EventFilterPatch = (patch) => setValues((v) => ({ ...v, ...patch }));
   const clearFilters = () => setValues(EMPTY_EVENT_FILTERS);
@@ -62,8 +61,8 @@ export default function RequestsPage() {
     setPanelValues: (next: EventFilterValues) => void
   ) => (
     <EventFilterSections
-      tags={tagsData ?? []}
-      conflicts={conflictsData ?? []}
+      tags={tags}
+      conflicts={conflicts}
       values={panelValues}
       onPatch={(patch) => setPanelValues({ ...panelValues, ...patch })}
       sections={BOARD_SECTIONS}

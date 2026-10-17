@@ -1,5 +1,6 @@
 import { apiFetch } from "./api";
 import type { components } from "./api-types";
+import { withCursor } from "./pagination";
 
 export type InviteCodeStatus =
   components["schemas"]["AdminInviteCodeRead"]["status"];
@@ -13,7 +14,7 @@ export type CreateInviteCodeBody = components["schemas"]["AdminInviteCodeCreate"
 /** `GET /admin/invite-codes` for one page; a path because the console reads it through
  *  `useCursorList`. */
 export function inviteCodesPath(cursor: string | null): string {
-  return `/admin/invite-codes${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`;
+  return withCursor("/admin/invite-codes", cursor);
 }
 
 export function createInviteCode(

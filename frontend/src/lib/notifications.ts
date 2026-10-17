@@ -2,6 +2,7 @@ import { apiFetch } from "./api";
 import type { components } from "./api-types";
 import { formatDate } from "./format";
 import { organizationPath } from "./organizations";
+import { withCursor } from "./pagination";
 
 export type Notification = components["schemas"]["NotificationRead"];
 export type NotificationKind = Notification["kind"];
@@ -11,9 +12,7 @@ export const NOTIFICATIONS_PATH = "/notifications";
 export const UNREAD_COUNT_PATH = "/notifications/unread-count";
 
 export function notificationsPath(cursor: string | null): string {
-  return cursor
-    ? `${NOTIFICATIONS_PATH}?cursor=${encodeURIComponent(cursor)}`
-    : NOTIFICATIONS_PATH;
+  return withCursor(NOTIFICATIONS_PATH, cursor);
 }
 
 /** A delivery channel of a notification kind, as the Settings column header names it.

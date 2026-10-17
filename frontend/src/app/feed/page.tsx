@@ -31,7 +31,7 @@ import { appendEventFilterParams } from "@/lib/search";
 import { creditProps } from "@/lib/geolocatorCredit";
 import type { PublicProfile } from "@/lib/users";
 import type { components, operations } from "@/lib/api-types";
-import type { Conflict, Tag } from "@/types";
+import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
 
 type FeedItem = components["schemas"]["FeedItemRead"];
 type FeedQuery = NonNullable<
@@ -88,8 +88,7 @@ export default function FeedPage() {
   const { user, loading: authLoading } = useRequireAuth();
   const [scope, setScope] = useState<FeedScope>("following");
   const [filters, setFilters] = useState<FeedFilters>(EMPTY_FEED_FILTERS);
-  const { data: tagsData } = useApiResource<Tag[]>("/tags");
-  const { data: conflictsData } = useApiResource<Conflict[]>("/conflicts?used=true");
+  const { tags, conflicts } = useFilterVocabulary();
 
   const buildPath = useCallback(
     (cursor: string | null) => {
@@ -122,8 +121,8 @@ export default function FeedPage() {
     setPanel: (next: FeedFilters) => void
   ) => (
     <EventFilterSections
-      tags={tagsData ?? []}
-      conflicts={conflictsData ?? []}
+      tags={tags}
+      conflicts={conflicts}
       values={panel.values}
       onPatch={(patch) =>
         setPanel({ ...panel, values: { ...panel.values, ...patch } })

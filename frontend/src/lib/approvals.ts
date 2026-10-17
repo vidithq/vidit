@@ -4,6 +4,7 @@ import { changedFields, snapshotToEventView } from "./events";
 import { creditedAuthors } from "./geolocatorCredit";
 import type { OrganizationRef } from "./organizations";
 import type { EventDetail, EventVersion } from "@/types";
+import { withCursor } from "./pagination";
 
 export type Approval = components["schemas"]["ApprovalRead"];
 export type ApprovalList = components["schemas"]["ApprovalList"];
@@ -24,8 +25,7 @@ export function allApprovalsPath(eventId: string): string {
 
 /** The approvals placed in an organization's name, newest first (cursor-paged). */
 export function organizationApprovalsPath(slug: string, cursor: string | null): string {
-  const base = `/organizations/${encodeURIComponent(slug)}/approvals`;
-  return cursor ? `${base}?cursor=${encodeURIComponent(cursor)}` : base;
+  return withCursor(`/organizations/${encodeURIComponent(slug)}/approvals`, cursor);
 }
 
 // Keyed by the generated revoker values, so a value the backend adds fails the type-check.

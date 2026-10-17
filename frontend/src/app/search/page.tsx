@@ -23,14 +23,12 @@ import {
 import { Avatar } from "@/components/ui/Avatar";
 import { EntityCard } from "@/components/ui/EntityCard";
 import type {
-  Conflict,
   SearchRequestHit,
   SearchEventHit,
   SearchOrganizationHit,
   SearchResponse,
   SearchType,
   SearchUserHit,
-  Tag,
 } from "@/types";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -56,7 +54,6 @@ import {
   type EventFilterValues,
 } from "@/components/filters/EventFilterSections";
 import { FilterBar } from "@/components/filters/FilterBar";
-import { useApiResource } from "@/hooks/useApiResource";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 
 import { META_LINE, TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
@@ -67,6 +64,7 @@ import {
 import { creditProps } from "@/lib/geolocatorCredit";
 import { memberCountLabel, organizationPath } from "@/lib/organizations";
 import { countLabel } from "@/lib/format";
+import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
 
 const ICON = { size: 13, strokeWidth: 1.8, className: "max-sm:hidden" } as const;
 
@@ -157,9 +155,7 @@ function SearchPageBody() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Same pickers as the map: the live taxonomy + the used-conflict list.
-  const { data: tagsData } = useApiResource<Tag[]>("/tags");
-  const { data: conflictsData } = useApiResource<Conflict[]>("/conflicts?used=true");
+  const { tags, conflicts } = useFilterVocabulary();
 
   const onPatch: EventFilterPatch = (patch) => setValues((v) => ({ ...v, ...patch }));
   const clearFilters = () => {
@@ -202,8 +198,8 @@ function SearchPageBody() {
   ) =>
     filterSections && (
       <EventFilterSections
-        tags={tagsData ?? []}
-        conflicts={conflictsData ?? []}
+        tags={tags}
+        conflicts={conflicts}
         values={panel.values}
         onPatch={(patch) =>
           setPanel({ ...panel, values: { ...panel.values, ...patch } })

@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { filterPointsByStatus } from "@/types";
-import type { Conflict, MapPoint, EventDetail, Tag } from "@/types";
+import type { MapPoint, EventDetail } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { apiFetch } from "@/lib/api";
 import { appendEventFilterParams } from "@/lib/search";
@@ -17,6 +17,7 @@ import {
 import { DetailSidePanel } from "@/components/map/DetailSidePanel";
 import { FilterPanel } from "@/components/map/FilterPanel";
 import { useMapState } from "@/contexts/MapStateContext";
+import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
 
 const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
 
@@ -38,11 +39,7 @@ export default function HomePage() {
   // The padded region those points cover; a viewport inside it needs no request.
   const coveredRef = useRef<MapBounds | null>(null);
   const boundsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { data: tagsData } = useApiResource<Tag[]>("/tags");
-  const tags = tagsData ?? [];
-  // Only conflicts carried by at least one live event, not the whole referential.
-  const { data: conflictsData } = useApiResource<Conflict[]>("/conflicts?used=true");
-  const conflicts = conflictsData ?? [];
+  const { tags, conflicts } = useFilterVocabulary();
   // Keyed on the selection in context, so returning to the map re-reads it.
   const detail = useApiResource<EventDetail>(
     selectedId ? `/events/${selectedId}` : null,

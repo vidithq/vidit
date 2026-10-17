@@ -69,6 +69,18 @@ export function safeHostname(url: string): string {
   }
 }
 
+/** `href` parsed when it is an http(s) URL with a host, else null. */
+export function parseHttp(href: string): URL | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(href);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+  return parsed.hostname ? parsed : null;
+}
+
 /** `noun` for a count of one, `noun` plus `s` for any other: regular English plurals only. */
 export function pluralNoun(count: number, noun: string): string {
   return count === 1 ? noun : `${noun}s`;
