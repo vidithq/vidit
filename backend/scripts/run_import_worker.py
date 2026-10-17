@@ -10,7 +10,8 @@ notification emails (``services/notification_delivery``), then one batch of
 product update emails (``services/product_updates``). An email queue that raises is captured
 and skipped for the pass, so it never holds back the jobs and mentions. Each pass opens a fresh
 session shared across its jobs (per-job isolation is the rollback inside ``process``), and a
-pass that dies outside job processing is captured and retried with a backoff.
+pass that dies outside job processing is captured and retried with a backoff. Before its
+first pass it waits for the schema to reach the alembic head (``app/schema_gate``).
 (useful by hand and for a cron fallback).
 """
 
@@ -26,8 +27,9 @@ sys.path.append(str(Path(__file__).parent.parent))
 import sentry_sdk
 from sqlalchemy.orm import Session
 
-from app.database import SessionLocal
+from app.database import SessionLocal, engine
 from app.observability import configure_logging, init_sentry
+from app.schema_gate import wait_for_schema_head
 from app.services.archive_jobs import run_once
 from app.services.bot import drain_webhook_events
 from app.services.notification_delivery import drain as drain_notification_emails
@@ -69,6 +71,7 @@ def main() -> None:
     # Same opt-in Sentry boot as the app and bot cron: a failed import lands the
     # job row ``failed`` but must also page.
     init_sentry()
+    wait_for_schema_head(engine)
 
     if os.environ.get("IMPORT_WORKER_ONCE"):
         handled = _drain()
