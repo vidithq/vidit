@@ -301,14 +301,26 @@ def build_organization_read(row: ApprovalRequest) -> OrganizationApprovalRequest
     )
 
 
-def _declined_recently(geo: Event, requester: User) -> ColumnElement[bool]:
-    """The requests ``requester`` sent about ``geo`` that were declined within
-    :data:`DECLINE_COOLDOWN`."""
-    return and_(
+def _asked(geo: Event, requester: User, to: ColumnElement[bool]) -> ColumnElement[bool]:
+    """``requester`` holds an open request about ``geo`` to the target ``to`` matches. ``to``
+    compares a target column with a value, or with the correlated row in scope."""
+    return exists().where(
+        ApprovalRequest.event_id == geo.id,
+        ApprovalRequest.requester_id == requester.id,
+        ApprovalRequest.status == "open",
+        to,
+    )
+
+
+def _declined_recently(geo: Event, requester: User, to: ColumnElement[bool]) -> ColumnElement[bool]:
+    """The target ``to`` matches declined a request ``requester`` sent about ``geo`` within
+    :data:`DECLINE_COOLDOWN`. ``to`` as in :func:`_asked`."""
+    return exists().where(
         ApprovalRequest.event_id == geo.id,
         ApprovalRequest.requester_id == requester.id,
         ApprovalRequest.status == "declined",
         ApprovalRequest.resolved_at >= datetime.now(UTC) - DECLINE_COOLDOWN,
+        to,
     )
 
 
@@ -320,19 +332,8 @@ def _eligible_analysts(
         User.is_active.is_(True),
         User.id.not_in(ever_credited_ids(geo.id)),
         User.id.not_in(closed_reviewer_ids(geo)),
-        User.id.not_in(
-            select(ApprovalRequest.target_user_id).where(
-                ApprovalRequest.event_id == geo.id,
-                ApprovalRequest.requester_id == requester.id,
-                ApprovalRequest.status == "open",
-                ApprovalRequest.target_user_id.is_not(None),
-            )
-        ),
-        User.id.not_in(
-            select(ApprovalRequest.target_user_id).where(
-                _declined_recently(geo, requester), ApprovalRequest.target_user_id.is_not(None)
-            )
-        ),
+        ~_asked(geo, requester, ApprovalRequest.target_user_id == User.id),
+        ~_declined_recently(geo, requester, ApprovalRequest.target_user_id == User.id),
         _suggested_analyst(requester.id, exact),
     )
     if q:
@@ -348,19 +349,9 @@ def _eligible_organizations(
     stmt = select(Organization).where(
         _can_act_for(geo),
         Organization.id.not_in(closed_organization_ids(geo)),
-        Organization.id.not_in(
-            select(ApprovalRequest.target_organization_id).where(
-                ApprovalRequest.event_id == geo.id,
-                ApprovalRequest.requester_id == requester.id,
-                ApprovalRequest.status == "open",
-                ApprovalRequest.target_organization_id.is_not(None),
-            )
-        ),
-        Organization.id.not_in(
-            select(ApprovalRequest.target_organization_id).where(
-                _declined_recently(geo, requester),
-                ApprovalRequest.target_organization_id.is_not(None),
-            )
+        ~_asked(geo, requester, ApprovalRequest.target_organization_id == Organization.id),
+        ~_declined_recently(
+            geo, requester, ApprovalRequest.target_organization_id == Organization.id
         ),
         _suggested_organization(requester.id, exact),
     )
@@ -477,25 +468,10 @@ def _check_analyst_target(
     )
     if reviewed:
         raise TargetAlreadyReviewedError("This analyst already reviewed the live version")
-    pending = db.scalar(
-        select(
-            exists().where(
-                ApprovalRequest.event_id == geo.id,
-                ApprovalRequest.requester_id == requester.id,
-                ApprovalRequest.target_user_id == target.id,
-                ApprovalRequest.status == "open",
-            )
-        )
-    )
-    if pending:
+    to = ApprovalRequest.target_user_id == target.id
+    if db.scalar(select(_asked(geo, requester, to))):
         raise AlreadyRequestedError("You already asked this analyst to approve this event")
-    if db.scalar(
-        select(
-            exists().where(
-                _declined_recently(geo, requester), ApprovalRequest.target_user_id == target.id
-            )
-        )
-    ):
+    if db.scalar(select(_declined_recently(geo, requester, to))):
         raise RecentlyDeclinedError(_DECLINED_MESSAGE)
     return target
 
@@ -525,26 +501,10 @@ def _check_organization_target(
     )
     if approved:
         raise TargetAlreadyReviewedError("This organization already approved the live version")
-    pending = db.scalar(
-        select(
-            exists().where(
-                ApprovalRequest.event_id == geo.id,
-                ApprovalRequest.requester_id == requester.id,
-                ApprovalRequest.target_organization_id == org.id,
-                ApprovalRequest.status == "open",
-            )
-        )
-    )
-    if pending:
+    to = ApprovalRequest.target_organization_id == org.id
+    if db.scalar(select(_asked(geo, requester, to))):
         raise AlreadyRequestedError("You already asked this organization to approve this event")
-    if db.scalar(
-        select(
-            exists().where(
-                _declined_recently(geo, requester),
-                ApprovalRequest.target_organization_id == org.id,
-            )
-        )
-    ):
+    if db.scalar(select(_declined_recently(geo, requester, to))):
         raise RecentlyDeclinedError(_DECLINED_MESSAGE)
     return org
 
