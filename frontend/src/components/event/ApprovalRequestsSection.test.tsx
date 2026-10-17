@@ -179,7 +179,7 @@ describe("<ApprovalRequestsSection>", () => {
       }
       return Promise.resolve([]);
     });
-    render(<ApprovalRequestsSection event={event} refreshKey={0} />);
+    render(<Requests />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Request approval" }));
     fireEvent.click(await screen.findByRole("option", { name: "cy" }));
