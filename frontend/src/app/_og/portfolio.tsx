@@ -62,20 +62,6 @@ function Avatar({ src, name }: { src: string | null; name: string }) {
   );
 }
 
-/** The card for a key that names no profile: `title`, then `line`. */
-export function PortfolioNotFoundCard({ title, line }: { title: string; line: string }) {
-  return (
-    <OgCard>
-      <div style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
-        <div style={{ display: "flex", fontSize: "72px", color: OG_COLOR.text }}>{title}</div>
-        <div style={{ display: "flex", marginTop: "20px", fontSize: "30px", color: OG_COLOR.muted }}>
-          {line}
-        </div>
-      </div>
-    </OgCard>
-  );
-}
-
 export function PortfolioCard({
   badge,
   caption,

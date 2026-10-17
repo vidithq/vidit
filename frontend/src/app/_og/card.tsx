@@ -167,6 +167,20 @@ export function OgDefaultBody() {
   );
 }
 
+/** The card for a link that names nothing: `title`, then `line`. */
+export function OgNotFoundCard({ title, line }: { title: string; line: string }) {
+  return (
+    <OgCard>
+      <div style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
+        <div style={{ display: "flex", fontSize: "72px", color: OG_COLOR.text }}>{title}</div>
+        <div style={{ display: "flex", marginTop: "20px", fontSize: "30px", color: OG_COLOR.muted }}>
+          {line}
+        </div>
+      </div>
+    </OgCard>
+  );
+}
+
 /** What a data card answers with when its upstream read failed: the site-wide composition,
  * no claim about the link. The route also emits no title or description on this path, so the
  * whole preview stays neutral. */
