@@ -8,8 +8,6 @@ const DESCRIPTION_MAX = 180;
 /** Title budget, under what X truncates. */
 const ARTICLE_TITLE_MAX = 90;
 
-/** Page tags for a static public page at `path` (`/` for the landing). `shareDescription` replaces
- *  `description` on the card when the page wants a shorter one. */
 export function staticPageMetadata({
   path,
   title,
@@ -42,15 +40,8 @@ export function staticPageMetadata({
   };
 }
 
-/** The second line of a dead event or collection link, on its card and in its description. */
 export const NOT_FOUND_LINE = "This link points at nothing in the catalog.";
 
-/**
- * Page tags for an event or a collection (`og:type` `article`): its title, then `segments` and
- * `Filed by <owner> on Vidit.` joined as the description, and the large-image card the segment's
- * `opengraph-image` renders. `found: false` gives a dead link the same tag shape, so it still
- * unfurls completely.
- */
 export function articleMetadata(
   article:
     | { found: false; noun: string }
@@ -63,6 +54,7 @@ export function articleMetadata(
         publishedTime: string;
       },
 ): Metadata {
+  // Same tag shape as the found path, so a dead link still unfurls completely.
   if (!article.found) {
     const title = `${article.noun} not found on Vidit`;
     const description = NOT_FOUND_LINE;

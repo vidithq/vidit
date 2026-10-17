@@ -69,7 +69,6 @@ export function safeHostname(url: string): string {
   }
 }
 
-/** `href` parsed when it is an http(s) URL with a host, else null. */
 export function parseHttp(href: string): URL | null {
   let parsed: URL;
   try {
@@ -86,7 +85,6 @@ export function pluralNoun(count: number, noun: string): string {
   return count === 1 ? noun : `${noun}s`;
 }
 
-/** The count, then `noun` in the matching number: "1 event", "3 events". */
 export function countLabel(count: number, noun: string): string {
   return `${count} ${pluralNoun(count, noun)}`;
 }

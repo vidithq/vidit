@@ -29,8 +29,6 @@ import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 
-/** **Accept** and **Decline** for the reader's own invitation, to share an event's credit or to
- *  join an organization; `answer` posts the choice. */
 export function InviteAnswerButtons({
   answer: post,
   onAnswered,

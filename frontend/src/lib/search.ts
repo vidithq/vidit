@@ -27,9 +27,7 @@ export interface ApprovalFilters {
   approvedBy: Account | null;
 }
 
-/** The event filter set of `services/event_filters`, shared by `GET /events`, `/events/points`,
- *  `/feed` and `/search`. A surface passes the fields it offers; an empty field sets no key. The
- *  date fields are the `DateWindows` names, so a surface spreads its windows in. */
+/** The date fields share the `DateWindows` names, so a surface spreads its windows in. */
 export interface EventFilterParams extends Partial<ApprovalFilters> {
   statuses?: string[];
   conflicts?: string[];
@@ -44,11 +42,8 @@ export interface EventFilterParams extends Partial<ApprovalFilters> {
   addedTo?: string;
 }
 
-/** Set the event filter keys on a request, or on the search page's URL. A list repeats its key
- *  (any-match within a list, AND across lists). An author the `AUTHOR_FILTER_RE` gate refuses is
- *  dropped rather than sent to a 422. The approval keys are those of
- *  `services/event_filters.approval_predicates`: `approved_by` names an analyst, `approved_by_org`
- *  an organization. */
+/** A list is any-match within itself and AND across lists. An author the `AUTHOR_FILTER_RE` gate
+ *  refuses is dropped rather than sent to a 422. */
 export function appendEventFilterParams(params: URLSearchParams, f: EventFilterParams): void {
   f.statuses?.forEach((v) => params.append("status", v));
   f.conflicts?.forEach((v) => params.append("conflict", v));
@@ -68,9 +63,8 @@ export function appendEventFilterParams(params: URLSearchParams, f: EventFilterP
   if (f.addedTo) params.set("submitted_to", f.addedTo);
 }
 
-/** Read the event filter keys back from a URL, the inverse of `appendEventFilterParams`. A name the
- *  `AUTHOR_FILTER_RE` gate refuses is dropped, so a crafted URL cannot 422 every fetch, and an
- *  organization read from a slug carries the slug as its name. */
+/** A name the `AUTHOR_FILTER_RE` gate refuses is dropped, so a crafted URL cannot 422 every fetch,
+ *  and an organization read from a slug carries the slug as its name. */
 export function readEventFilterParams(params: {
   get(name: string): string | null;
   getAll(name: string): string[];

@@ -14,7 +14,6 @@ const COPY: TokenUnsubscribeCopy = {
     "Vidit sends you no more emails about major releases. Turn them back on in Settings at any time.",
 };
 
-/** The unsubscribe link of a product update email. */
 export default function UnsubscribePage() {
   return <TokenUnsubscribe unsubscribe={unsubscribeFromProductUpdates} copy={() => COPY} />;
 }

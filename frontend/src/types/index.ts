@@ -5,13 +5,10 @@ import type { components } from "@/lib/api-types";
  * declare a loose map). */
 export type ExternalLinks = components["schemas"]["ExternalLinks"];
 
-/** The signed-in analyst (`GET /auth/me`), with `external_links` kept as the narrow per-platform
- *  shape. */
 export type User = Omit<components["schemas"]["UserRead"], "external_links"> & {
   external_links: ExternalLinks;
 };
 
-/** An analyst as a read names them: id, username and picture. */
 export type AuthorRef = components["schemas"]["AuthorRef"];
 
 export type TagCategory = components["schemas"]["TagRead"]["category"];

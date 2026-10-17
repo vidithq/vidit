@@ -7,7 +7,6 @@ import {
   unsubscribeTokenKind,
 } from "@/lib/notifications";
 
-/** The token also names the kind, so the page says which email it turns off. */
 function copy(token: string): TokenUnsubscribeCopy {
   const kind = unsubscribeTokenKind(token);
   const label = kind ? `“${NOTIFICATION_KIND_COPY[kind].label}”` : "these notifications";

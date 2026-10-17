@@ -167,7 +167,6 @@ export function OgDefaultBody() {
   );
 }
 
-/** The card for a link that names nothing: `title`, then `line`. */
 export function OgNotFoundCard({ title, line }: { title: string; line: string }) {
   return (
     <OgCard>

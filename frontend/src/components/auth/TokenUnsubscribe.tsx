@@ -10,8 +10,6 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { useMutation } from "@/hooks/useMutation";
 
-/** The page's wording: the card before the click, the action and its pending label, and the card
- *  once the email is off. */
 export interface TokenUnsubscribeCopy {
   title: string;
   subtitle: string;
