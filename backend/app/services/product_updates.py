@@ -18,7 +18,7 @@ import uuid
 from datetime import UTC, datetime
 from functools import partial
 
-from sqlalchemy import Select, func, insert, literal, or_, select, update
+from sqlalchemy import Select, func, insert, literal, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -41,9 +41,9 @@ from app.services.admin import log_admin_event
 from app.services.email_layout import Block, app_url
 from app.services.notification_delivery import (
     CAP_WINDOW,
-    RETRY_AFTER,
-    STALE_SENDING_AFTER,
+    claim_first,
     deliver,
+    fail_stale_sending,
     possibly_sent_since,
     send_email,
 )
@@ -226,25 +226,7 @@ def _claim_next(db: Session, *, now: datetime) -> ProductUpdateDelivery | None:
     )
     if sent_today >= settings.product_update_email_daily_cap:
         return None
-    row = (
-        db.query(ProductUpdateDelivery)
-        .filter(
-            ProductUpdateDelivery.status == "queued",
-            or_(
-                ProductUpdateDelivery.claimed_at.is_(None),
-                ProductUpdateDelivery.claimed_at < now - RETRY_AFTER,
-            ),
-        )
-        .order_by(ProductUpdateDelivery.created_at, ProductUpdateDelivery.id)
-        .with_for_update(skip_locked=True)
-        .first()
-    )
-    if row is None:
-        return None
-    row.status = "sending"
-    row.claimed_at = now
-    db.commit()
-    return row
+    return claim_first(db, db.query(ProductUpdateDelivery), ProductUpdateDelivery, now=now)
 
 
 def _attempt(db: Session, row: ProductUpdateDelivery) -> DeliveryOutcome:
@@ -271,15 +253,7 @@ def drain(db: Session) -> int:
     stuck in ``sending`` past the stale limit turns ``failed``. A queued row
     never expires: a large audience takes days. A row that raises counts as a
     refusal and the batch goes on."""
-    now = datetime.now(UTC)
-    db.execute(
-        update(ProductUpdateDelivery)
-        .where(
-            ProductUpdateDelivery.status == "sending",
-            ProductUpdateDelivery.claimed_at < now - STALE_SENDING_AFTER,
-        )
-        .values(status="failed")
-    )
+    fail_stale_sending(db, ProductUpdateDelivery, now=datetime.now(UTC))
     db.commit()
     handled = 0
     while handled < settings.product_update_email_batch_size and (

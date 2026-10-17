@@ -19,7 +19,7 @@ from datetime import UTC, datetime, timedelta
 from functools import partial
 
 from sqlalchemy import ColumnElement, and_, func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Query, Session
 
 from app.config import settings
 from app.models.notification import (
@@ -75,11 +75,39 @@ def _emails_sent_count(db: Session, *, now: datetime) -> int:
     )
 
 
-def _expire(db: Session, *, now: datetime) -> None:
-    db.query(NotificationDelivery).filter(
-        NotificationDelivery.status == "sending",
-        NotificationDelivery.claimed_at < now - STALE_SENDING_AFTER,
+def fail_stale_sending(db: Session, model: type[DeliveryState], *, now: datetime) -> None:
+    """Fail the rows of a queue left ``sending`` past ``STALE_SENDING_AFTER``. The provider may
+    have taken them, so they are never retried. Shared by every queue; the caller commits."""
+    db.query(model).filter(
+        model.status == "sending", model.claimed_at < now - STALE_SENDING_AFTER
     ).update({"status": "failed"}, synchronize_session=False)
+
+
+def claim_first[Row: DeliveryState](
+    db: Session, query: Query[Row], model: type[Row], *, now: datetime
+) -> Row | None:
+    """Claim the oldest claimable row ``query`` holds: ``queued``, and never claimed or last
+    claimed past ``RETRY_AFTER``. Set ``sending`` and committed before the provider call. Shared
+    by every queue."""
+    row = (
+        query.filter(
+            model.status == "queued",
+            or_(model.claimed_at.is_(None), model.claimed_at < now - RETRY_AFTER),
+        )
+        .order_by(model.created_at, model.id)
+        .with_for_update(skip_locked=True, of=model)
+        .first()
+    )
+    if row is None:
+        return None
+    row.status = "sending"
+    row.claimed_at = now
+    db.commit()
+    return row
+
+
+def _expire(db: Session, *, now: datetime) -> None:
+    fail_stale_sending(db, NotificationDelivery, now=now)
     db.query(NotificationDelivery).filter(
         NotificationDelivery.status == "queued",
         NotificationDelivery.created_at < now - QUEUED_EXPIRES_AFTER,
@@ -93,14 +121,7 @@ def _claim_next(
     query = (
         db.query(NotificationDelivery)
         .join(Notification, NotificationDelivery.notification_id == Notification.id)
-        .filter(
-            NotificationDelivery.channel == channel,
-            NotificationDelivery.status == "queued",
-            or_(
-                NotificationDelivery.claimed_at.is_(None),
-                NotificationDelivery.claimed_at < now - RETRY_AFTER,
-            ),
-        )
+        .filter(NotificationDelivery.channel == channel)
     )
     if channel == "email":
         if _emails_sent_count(db, now=now) >= settings.notification_email_daily_cap:
@@ -113,17 +134,7 @@ def _claim_next(
             .having(func.count() >= settings.notification_email_daily_cap_per_user)
         )
         query = query.filter(Notification.user_id.not_in(capped_users))
-    row = (
-        query.order_by(NotificationDelivery.created_at, NotificationDelivery.id)
-        .with_for_update(skip_locked=True, of=NotificationDelivery)
-        .first()
-    )
-    if row is None:
-        return None
-    row.status = "sending"
-    row.claimed_at = now
-    db.commit()
-    return row
+    return claim_first(db, query, NotificationDelivery, now=now)
 
 
 @dataclass(frozen=True)
