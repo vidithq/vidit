@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { ExternalLink, type LucideIcon } from "lucide-react";
 import { TAPPABLE_HOVER } from "./styles";
@@ -14,17 +15,21 @@ import { OutboundLink } from "./OutboundLink";
 //   glyph, the one thing that promises a new tab. An in-app route (`href`
 //   starting with "/") uses next/link; a same-tab non-route (`mailto:`) stays a
 //   plain <a>.
+// - `leading`: opt-in node shown in place of the icon (the Notifications feed's
+//   actor picture); `icon` stays the fallback when it is unset.
 const ROW =
   "group flex items-center gap-3 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md";
 
 export function LinkRow({
   icon: Icon,
+  leading,
   label,
   value,
   href,
   external = true,
 }: {
   icon: LucideIcon;
+  leading?: ReactNode;
   label: string;
   value: string;
   href?: string;
@@ -32,10 +37,12 @@ export function LinkRow({
 }) {
   const inner = (
     <>
-      <Icon
-        size={14}
-        className="text-neutral-500 shrink-0 group-hover:text-orange-400/70 transition-colors"
-      />
+      {leading ?? (
+        <Icon
+          size={14}
+          className="text-neutral-500 shrink-0 group-hover:text-orange-400/70 transition-colors"
+        />
+      )}
       <div className="flex-1 min-w-0">
         <span className={FORM_LABEL}>{label}</span>
         <p

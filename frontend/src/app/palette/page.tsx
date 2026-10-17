@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import {
   Archive,
   AtSign,
+  UserPlus,
   BookOpen,
   Bot,
   Camera,
@@ -1403,12 +1404,20 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<LinkRow>" usage="Stay in touch and Guides (About), and each row of the Notifications feed (kind and date as the label, the sentence as the value). The profile's linked accounts are icon buttons instead. The trailing ↗ marks external only: an in-app href routes through next/link, a mailto stays a plain <a>, and neither takes the glyph.">
+          <Item name="<LinkRow>" usage="Stay in touch and Guides (About), and each row of the Notifications feed (kind and date as the label, the sentence as the value). The profile's linked accounts are icon buttons instead. The trailing ↗ marks external only: an in-app href routes through next/link, a mailto stays a plain <a>, and neither takes the glyph. `leading` (opt-in) shows a node in place of the icon: the feed passes the picture of who is behind the row (an analyst's circle, an organization's square logo), and `icon` stays the fallback when the row has no one behind it.">
             <div className="w-full max-w-md space-y-2">
               <LinkRow icon={AtSign} label="X / Twitter" value="@vidithq" href="https://x.com/vidithq" />
               <LinkRow icon={BookOpen} label="How Vidit works" value="/guide" href="/guide" external={false} />
               <LinkRow icon={Mail} label="Email" value="hello@vidit.app" href="mailto:hello@vidit.app" external={false} />
               <LinkRow icon={MessageCircle} label="Discord" value="a-handle (unresolved)" />
+              <LinkRow
+                icon={UserPlus}
+                leading={<Avatar username="maya" size="size-7" decorative />}
+                label="New follower · Oct 12"
+                value="maya followed you"
+                href="/palette"
+                external={false}
+              />
             </div>
           </Item>
 

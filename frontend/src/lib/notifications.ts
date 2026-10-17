@@ -132,6 +132,29 @@ export function notificationLabel(n: Notification): string {
 }
 
 /** The feed row's sentence and destination. */
+// The kinds where an organization, not the member on the row, is the one acting: its approval
+// landed, was revoked, or it declined a request.
+const ORGANIZATION_ACTS: ReadonlySet<NotificationKind> = new Set([
+  "approval_received",
+  "approval_revoked",
+  "approval_request_declined",
+]);
+
+/** The picture of who is behind a row: the organization's logo where the organization acts, else
+ *  the actor's picture. Null when the row has no actor (a system kind, an erased account), so the
+ *  feed falls back to the kind's icon. */
+export function notificationAvatar(
+  n: Notification,
+): { name: string; avatarUrl: string | null; shape: "circle" | "square" } | null {
+  if (n.organization && ORGANIZATION_ACTS.has(n.kind)) {
+    return { name: n.organization.name, avatarUrl: n.organization.avatar_url ?? null, shape: "square" };
+  }
+  if (n.actor) {
+    return { name: n.actor.username, avatarUrl: n.actor.avatar_url ?? null, shape: "circle" };
+  }
+  return null;
+}
+
 export function describeNotification(n: Notification): { text: string; href: string } {
   const actor = n.actor?.username ?? "Someone";
   const title = n.event?.title ?? "";

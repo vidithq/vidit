@@ -307,6 +307,41 @@ describe("NotificationsPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("leads each row with who is behind it: a picture, a logo, or the kind's icon", async () => {
+    const approved: Notification = {
+      ...fulfilled,
+      id: "n21",
+      kind: "approval_received",
+      actor: { id: "u2", username: "bo", avatar_url: "https://cdn.test/bo.png" },
+      organization: { slug: "osw", name: "Open Source Watch", avatar_url: "https://cdn.test/osw.png" },
+    };
+    const system: Notification = {
+      ...fulfilled,
+      id: "n22",
+      kind: "x_handle_request_approved",
+      actor: null,
+      event: null,
+    };
+    serve([
+      { ...follower, actor: { id: "u3", username: "cy", avatar_url: "https://cdn.test/cy.png" } },
+      approved,
+      system,
+    ]);
+    render(<NotificationsPage />);
+
+    const analyst = await screen.findByRole("link", { name: /cy followed you/ });
+    expect(analyst.querySelector("img")).toHaveAttribute("src", "https://cdn.test/cy.png");
+    expect(analyst.querySelector("img")!.parentElement).toHaveClass("rounded-full");
+
+    const organization = screen.getByRole("link", { name: /bo approved your geolocation for Open Source Watch/ });
+    expect(organization.querySelector("img")).toHaveAttribute("src", "https://cdn.test/osw.png");
+    expect(organization.querySelector("img")!.parentElement).toHaveClass("rounded-md");
+
+    const fallback = screen.getByRole("link", { name: /linked the X handle/ });
+    expect(fallback.querySelector("img")).toBeNull();
+    expect(fallback.querySelector("svg.lucide-at-sign")).not.toBeNull();
+  });
+
   it("explains the empty feed", async () => {
     serve([]);
     render(<NotificationsPage />);

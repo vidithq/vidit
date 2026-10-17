@@ -28,12 +28,14 @@ import {
   deleteNotification,
   describeNotification,
   markNotificationsRead,
+  notificationAvatar,
   notificationLabel,
   notificationsPath,
   type Notification,
   type NotificationKind,
 } from "@/lib/notifications";
 import { InviteAnswerButtons } from "@/components/event/GeolocatorCredit";
+import { Avatar } from "@/components/ui/Avatar";
 import { ApprovalRequestDecline } from "@/components/event/ApprovalRequestsSection";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -103,6 +105,7 @@ function NotificationRows({
       <div className="space-y-2">
         {rows.map((n) => {
           const { text, href } = describeNotification(n);
+          const avatar = notificationAvatar(n);
           return (
             <div key={n.id} className="space-y-2">
               {/* Decline sits below the link, not in it or beside it: the row is one link, and
@@ -112,6 +115,18 @@ function NotificationRows({
                 <div className="flex-1 min-w-0">
                   <LinkRow
                     icon={KIND_ICON[n.kind]}
+                    leading={
+                      avatar && (
+                        // Decorative: the sentence beside it names the analyst or the organization.
+                        <Avatar
+                          src={avatar.avatarUrl}
+                          username={avatar.name}
+                          size="size-7"
+                          shape={avatar.shape}
+                          decorative
+                        />
+                      )
+                    }
                     label={notificationLabel(n)}
                     value={text}
                     href={href}

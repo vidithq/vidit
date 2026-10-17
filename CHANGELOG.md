@@ -6,6 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- Each notification leads with the picture of the analyst behind it, or the organization's logo where the organization acts; a row with no one behind it keeps its icon ([#595](https://github.com/vidithq/vidit/pull/595)).
 - Every member of an organization approves in its name, revokes its approval with one Revoke as click, hears of its approval requests and answers them; org managers keep inviting, removing and promoting ([#595](https://github.com/vidithq/vidit/pull/595)).
 - The version selector opens a compact list as wide as its button: v2, v1, then History as an icon ([#595](https://github.com/vidithq/vidit/pull/595)).
 - The request page holds Geolocate in an Actions card in the right rail, after the request on a phone; Edit, Share and Report stay in the header ([#595](https://github.com/vidithq/vidit/pull/595)).
