@@ -28,6 +28,8 @@ import { Archive, Check, Circle, MapPin, Megaphone } from "lucide-react";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { Pill } from "@/components/ui/Pill";
 import { XGlyph } from "@/components/ui/BrandGlyphs";
 import { isSnapshotUrl, SNAPSHOT_HINT } from "@/components/ui/ArchivedCopies";
@@ -401,9 +403,86 @@ function SubmitForm() {
     ...GEO_EXTRA_REQS,
   ];
 
+  // The rail holds the conditions and the publish actions, as on the edit page; on a phone it
+  // follows the fields. An import entry hides the form, and the rail with it.
+  const rail =
+    showBulk || showXPost ? null : (
+      <Card as="section">
+        {error && (
+          <div className={FORM_ERROR_BANNER} role="alert">
+            {error}
+          </div>
+        )}
+
+        {lockedFromRequest ? (
+          // Fulfilment can only become a geolocation: one action, no request path.
+          <>
+            <div className="space-y-2">
+              <SectionEyebrow title="Geolocation" concept="submit_geolocation" margin="none" />
+              <ReqChecklist reqs={geoFulfilReqs} missing={geoMissingKeys} />
+            </div>
+            <Button
+              type="button"
+              variant="primary"
+              disabled={submitting}
+              className={geoReady ? "" : "opacity-60"}
+              onClick={publishGeolocation}
+            >
+              <MapPin size={14} strokeWidth={2} />
+              {geolocationMutation.loading
+                ? "Publishing…"
+                : "Publish geolocation (fulfil request)"}
+            </Button>
+          </>
+        ) : (
+          // Two outcomes gated on content: meet the request floor and a request can post; add the
+          // extra rows and a geolocation can publish. A click while short flags the gaps red.
+          <>
+            <div className="space-y-2">
+              <SectionEyebrow title="Request" concept="submit_request" margin="none" />
+              <ReqChecklist reqs={REQUEST_REQS} missing={reqMissingKeys} />
+            </div>
+            <div className="space-y-2">
+              <SectionEyebrow
+                title="Geolocation"
+                concept="submit_geolocation_extra"
+                margin="none"
+              />
+              <ReqChecklist reqs={GEO_EXTRA_REQS} missing={geoMissingKeys} />
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Button
+                type="button"
+                variant="primary"
+                disabled={submitting}
+                className={geoReady ? "" : "opacity-60"}
+                onClick={publishGeolocation}
+              >
+                <MapPin size={14} strokeWidth={2} />
+                {geolocationMutation.loading ? "Publishing…" : "Publish geolocation"}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={submitting}
+                className={reqReady ? "" : "opacity-60"}
+                onClick={postRequest}
+              >
+                <Megaphone size={14} strokeWidth={2} />
+                {requestMutation.loading ? "Posting…" : "Publish request"}
+              </Button>
+            </div>
+          </>
+        )}
+      </Card>
+    );
+
   return (
     <PageShell
       title={pageTitle}
+      rail={rail}
+      railLabel="Actions"
+      narrowRail="below"
       controls={
         // Entry paths (fresh create only). Single and From an X post share the one-event form;
         // bulk swaps in the archive on-ramp.
@@ -463,7 +542,7 @@ function SubmitForm() {
           floor is short flags the missing fields red. `noValidate` stops native bubbles. */}
       <form
         onSubmit={(e) => e.preventDefault()}
-        className={showBulk || showXPost ? "hidden" : "mt-4 space-y-6"}
+        className={showBulk || showXPost ? "hidden" : "space-y-6"}
         noValidate
       >
         <EventFormFields
@@ -482,70 +561,6 @@ function SubmitForm() {
           eventDate={form.eventDate}
           skip={lockedFromRequest}
         />
-
-        {error && (
-          <div className={FORM_ERROR_BANNER} role="alert">
-            {error}
-          </div>
-        )}
-
-        {lockedFromRequest ? (
-          // Fulfilment can only become a geolocation: one action, no request path.
-          <div className="space-y-3">
-            <ReqChecklist reqs={geoFulfilReqs} missing={geoMissingKeys} />
-            <Button
-              type="button"
-              variant="primary"
-              disabled={submitting}
-              className={geoReady ? "" : "opacity-60"}
-              onClick={publishGeolocation}
-            >
-              <MapPin size={14} strokeWidth={2} />
-              {geolocationMutation.loading
-                ? "Publishing…"
-                : "Publish geolocation (fulfil request)"}
-            </Button>
-          </div>
-        ) : (
-          // Two outcomes gated on content: meet the request floor and a request can post; add the
-          // extra rows and a geolocation can publish. A click while short flags the gaps red.
-          <div className="space-y-5">
-            <div className="space-y-2">
-              <p className="text-sm text-neutral-400">
-                To post a request for others to locate, add:
-              </p>
-              <ReqChecklist reqs={REQUEST_REQS} missing={reqMissingKeys} />
-            </div>
-            <div className="space-y-2">
-              <p className="text-sm text-neutral-400">
-                Plus, to publish it as a full geolocation:
-              </p>
-              <ReqChecklist reqs={GEO_EXTRA_REQS} missing={geoMissingKeys} />
-            </div>
-            <div className="flex flex-wrap gap-3 pt-1">
-              <Button
-                type="button"
-                variant="primary"
-                disabled={submitting}
-                className={geoReady ? "" : "opacity-60"}
-                onClick={publishGeolocation}
-              >
-                <MapPin size={14} strokeWidth={2} />
-                {geolocationMutation.loading ? "Publishing…" : "Publish geolocation"}
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={submitting}
-                className={reqReady ? "" : "opacity-60"}
-                onClick={postRequest}
-              >
-                <Megaphone size={14} strokeWidth={2} />
-                {requestMutation.loading ? "Posting…" : "Publish request"}
-              </Button>
-            </div>
-          </div>
-        )}
       </form>
     </PageShell>
   );

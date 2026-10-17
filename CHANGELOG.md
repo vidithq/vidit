@@ -6,6 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- The submit page holds its requirement lists and publish actions in a right rail, as the edit page does, and on a phone they follow the fields ([#595](https://github.com/vidithq/vidit/pull/595)).
 - The map, search and feed filter by approval: approved only, or approved by an analyst or an organization, on the live version ([#595](https://github.com/vidithq/vidit/pull/595)).
 - The event page keeps its header (back, title, byline, version selector, Share, Edit and Report) at the top of the screen while you scroll, from tablet width up ([#591](https://github.com/vidithq/vidit/pull/591)).
 - One account picker, with pictures and keyboard navigation, picks analysts and organizations in approval requests, the Author filter, co-geolocator and organization invites and admin fields; a left-out exact match says why ([#592](https://github.com/vidithq/vidit/pull/592)).

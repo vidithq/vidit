@@ -120,6 +120,18 @@ export const FIELD_HELP = {
     text: "Submits this detection: your edits are saved and it becomes Geolocated (a person stands behind it). It becomes public, and from then on every change you make is kept as a new version, the source link and the source media included. Give it a full read first, then click Submit twice to confirm.",
     label: "What does Submit do?",
   },
+  submit_request: {
+    text: "Add these to post a request: other analysts can then locate the footage for you.",
+    label: "What does a request need?",
+  },
+  submit_geolocation_extra: {
+    text: "Add these on top of the request fields to publish a full geolocation, with your coordinates and proof.",
+    label: "What does a geolocation need?",
+  },
+  submit_geolocation: {
+    text: "Add these to publish your geolocation. The request supplies the source media, and you become the owner of the event.",
+    label: "What does the geolocation need?",
+  },
   approval_version: {
     text: "An approval covers one version. When the event gets a new version, approvers are asked to approve again.",
     label: "What does an approval cover?",
