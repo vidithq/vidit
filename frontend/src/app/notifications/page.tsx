@@ -38,6 +38,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LinkRow } from "@/components/ui/LinkRow";
+import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
@@ -139,8 +140,8 @@ function NotificationRows({
 export default function NotificationsPage() {
   const { user, loading: authLoading } = useRequireAuth();
   const { refresh } = useUnreadNotifications();
-  const { items, error, loading, loadingMore, hasMore, loadMore, reload } =
-    useCursorList<Notification>(notificationsPath);
+  const walk = useCursorList<Notification>(notificationsPath);
+  const { items, error, loading, reload } = walk;
 
   // The unread rows loaded so far, as one key, so a later page marks its own rows. Each id is
   // sent once: a second page posts only its own rows.
@@ -167,14 +168,13 @@ export default function NotificationsPage() {
 
   return (
     <PageShell title="Notifications">
-      {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
+      {error && items.length === 0 && <div className={FORM_ERROR_BANNER}>{error}</div>}
       {loading ? (
         <p className="text-sm text-neutral-500">Loading notifications…</p>
       ) : items.length === 0 ? (
         <EmptyState>
-          Nothing yet. A notification appears here when someone geolocates a request you
-          opened, follows you, invites you to share the credit of a geolocation, or invites
-          you to an organization.
+          Nothing yet. A notification appears here when another analyst or an organization
+          acts on your work or your account.
         </EmptyState>
       ) : (
         <>
@@ -188,13 +188,7 @@ export default function NotificationsPage() {
             rows={items.filter((n) => n.read_at !== null)}
             onChanged={changed}
           />
-          {hasMore && (
-            <div className="flex justify-center">
-              <Button variant="secondary" onClick={loadMore} disabled={loadingMore}>
-                {loadingMore ? "Loading…" : "Load more"}
-              </Button>
-            </div>
-          )}
+          <LoadMoreRow walk={walk} />
         </>
       )}
     </PageShell>

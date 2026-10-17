@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import {
   ShieldCheck,
   Users,
@@ -241,9 +242,11 @@ export default function AboutPage() {
             >
               hello@vidit.app
             </a>{" "}
-            from the address tied to the account, and we&apos;ll handle it. A
-            full legal terms-of-service and privacy policy will land before
-            open registration.
+            from the address tied to the account, and we&apos;ll handle it. The{" "}
+            <Link href="/privacy" className={TEXT_LINK}>
+              privacy policy
+            </Link>{" "}
+            lists the data Vidit stores and how long it keeps it.
           </p>
         </Section>
 

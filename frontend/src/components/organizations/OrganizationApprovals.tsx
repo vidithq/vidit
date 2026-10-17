@@ -12,9 +12,9 @@ import {
 } from "@/lib/approvals";
 import { ApprovalState } from "@/components/event/Approvals";
 import { Avatar } from "@/components/ui/Avatar";
-import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { LinkRow } from "@/components/ui/LinkRow";
+import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
@@ -59,13 +59,13 @@ export function OrganizationApprovals({ slug }: { slug: string }) {
     (cursor: string | null) => organizationApprovalsPath(slug, cursor),
     [slug],
   );
-  const { items, error, loading, loadingMore, hasMore, loadMore } =
-    useCursorList<OrganizationApproval>(buildPath);
+  const walk = useCursorList<OrganizationApproval>(buildPath);
+  const { items, error, loading } = walk;
 
   return (
     <Card as="section">
       <SectionEyebrow title="Approvals" margin="none" />
-      {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
+      {error && items.length === 0 && <div className={FORM_ERROR_BANNER}>{error}</div>}
       {!loading && items.length === 0 && !error && (
         <p className="text-sm text-neutral-500">No approval in this organization&apos;s name yet.</p>
       )}
@@ -78,11 +78,7 @@ export function OrganizationApprovals({ slug }: { slug: string }) {
           ))}
         </ul>
       )}
-      {hasMore && (
-        <Button variant="secondary" onClick={loadMore} disabled={loadingMore}>
-          {loadingMore ? "Loading…" : "Load more"}
-        </Button>
-      )}
+      <LoadMoreRow walk={walk} />
     </Card>
   );
 }
