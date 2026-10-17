@@ -96,6 +96,10 @@ export const FIELD_HELP = {
     text: "Optional. One line on what you changed and why, kept with the version this edit replaces so a reader can follow the correction.",
     label: "What is the version note?",
   },
+  geolocators_immediate: {
+    text: "Changes apply right away and do not create a new version.",
+    label: "When do geolocator changes apply?",
+  },
   action_submit: {
     text: "Submits this detection: your edits are saved and it becomes Geolocated (a person stands behind it). It becomes public, and from then on every change you make is kept as a new version, the source link and the source media included. Give it a full read first, then click Submit twice to confirm.",
     label: "What does Submit do?",

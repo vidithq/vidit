@@ -386,10 +386,10 @@ flowchart TB
 [`<PageWithRail>`](../frontend/src/components/ui/PageWithRail.tsx) lays a page out as a main column and a right rail. Use it for any page whose side panel stays in view while its main column scrolls. Pass the panel as `<PageShell>`'s `rail` (with `railLabel` and `narrowRail`): `PageShell` composes `PageWithRail` and widens its column to `wide`, so the main column keeps the 53rem reading width beside the rail once the screen holds both. A page whose rail comes and goes passes `null` while it is gone, which keeps the column one width and keeps its element mounted.
 
 - **From `lg` up** the rail is a `17.5rem` (280px) column right of the main column. It sticks to the top of the viewport while the main column scrolls. Once the rail is taller than the viewport it scrolls on its own, so its foot stays reachable.
-- **Below `lg`** the `narrow` prop picks the shape. `stacked` (the default) puts the rail above the main column. `hidden` takes the rail off the page, for a page that offers its own narrow entry to it.
+- **Below `lg`** the `narrow` prop picks the shape. `stacked` (the default) puts the rail above the main column. `below` puts it under the main column, for a rail that acts on what the column holds; the rail also comes after the column in the tab order at every width. `hidden` takes the rail off the page, for a page that offers its own narrow entry to it.
 - **Without a `rail`** (`null`) the page takes the `reading` column, so a page can drop the rail on a view it does not apply to.
 
-The feed, the [Requests board](#requests-board) and search mount the shared filter panel ([`EventFilterSections`](../frontend/src/components/filters/EventFilterSections.tsx)) in the rail with `narrowRail="hidden"`. The map keeps its floating overlay panel. Above each list sits [`<FilterBar>`](../frontend/src/components/filters/FilterBar.tsx): the removable active-filter pills, and below `lg` a **Filters** button that reads **Filters (N)** while N filters are active. The button opens the same panel full screen in `MediaOverlay`'s dialog variant around a `<Card>`. The panel there edits a draft, so the list refetches once:
+The [owner edit form](#the-owner-edit-form) mounts its actions and geolocators in the rail with `narrowRail="below"`, so on a phone **Save** follows the fields instead of preceding them. The feed, the [Requests board](#requests-board) and search mount the shared filter panel ([`EventFilterSections`](../frontend/src/components/filters/EventFilterSections.tsx)) in the rail with `narrowRail="hidden"`. The map keeps its floating overlay panel. Above each list sits [`<FilterBar>`](../frontend/src/components/filters/FilterBar.tsx): the removable active-filter pills, and below `lg` a **Filters** button that reads **Filters (N)** while N filters are active. The button opens the same panel full screen in `MediaOverlay`'s dialog variant around a `<Card>`. The panel there edits a draft, so the list refetches once:
 
 - **Apply** applies the draft and closes the dialog.
 - **Clear** empties the draft. Apply then clears the list's filters.
@@ -647,9 +647,9 @@ flowchart LR
 
 Approving happens in the Approvals card only, after reading the event: a re-approval request or an approval request in the notification feed links to the event page and offers no approve control. An open approval request's feed row carries **Decline** beside its link, inside the row ([`ApprovalRequestDecline`](../frontend/src/components/event/ApprovalRequestsSection.tsx)), since declining needs no look at the event.
 
-**One verb closes every shape.** The verb is *Close*, and only the noun changes with the row: *Close this request*, *Close this detection*, *Close this geolocation* ([`CloseEventForm`](../frontend/src/components/event/CloseEventForm.tsx) holds that copy, and the edit page's close section, its reason label and its confirm button all read it). One write ends all three, so one word names it on every surface. What the close means still differs by row, and the record says so: the closed page carries the reason, and the state it left is *withdrawn*, *rejected* or *retracted*. The close lives at the foot of the owner's edit page, not in the event page's header; a detection's edit page keeps it beside Skip in its header, since working a detection has three verbs. A closed row has no edit page and no close: closing is terminal and the owner has no un-close. The panel asks for a reason and says it stays public, because that reason is what a reader finds on the closed page in place of the claim.
+**One verb closes every shape.** The verb is *Close*, and only the noun changes with the row: *Close this request*, *Close this detection*, *Close this geolocation* ([`CloseEventForm`](../frontend/src/components/event/CloseEventForm.tsx) holds that copy, and the edit page's close button, its reason label and its confirm button all read it). One write ends all three, so one word names it on every surface. What the close means still differs by row, and the record says so: the closed page carries the reason, and the state it left is *withdrawn*, *rejected* or *retracted*. The close lives in the actions card of the owner's edit page, under the save, not in the event page's header. A closed row has no edit page and no close: closing is terminal and the owner has no un-close. The panel asks for a reason and says it stays public, because that reason is what a reader finds on the closed page in place of the claim.
 
-A retracted geolocation keeps its page. It reads as a `Closed` badge with the reason and the closing day beside it, over the record it took back: the coordinates, the evidence, the credits and the version history are all still there, and the version selector stays in the header, since walking what the record used to claim is exactly what a reader does after a retraction. The map's side panel and the forms carry no header controls at all. The panel previews a row whose own page is one click away on the title, so acting on the record belongs there rather than in a preview of it; a form's primary action is its own Submit, at the bottom of the fields it applies, and sharing or reporting a row one is in the middle of rewriting acts on a record that is not the one on screen. The detection form's header cluster is its own controls instead (the queue position, Skip, Close).
+A retracted geolocation keeps its page. It reads as a `Closed` badge with the reason and the closing day beside it, over the record it took back: the coordinates, the evidence, the credits and the version history are all still there, and the version selector stays in the header, since walking what the record used to claim is exactly what a reader does after a retraction. The map's side panel and the forms carry no header controls at all. The panel previews a row whose own page is one click away on the title, so acting on the record belongs there rather than in a preview of it; a form's primary action is its own Submit, in the actions card beside the fields it applies, and sharing or reporting a row one is in the middle of rewriting acts on a record that is not the one on screen. The detection form's header cluster is its own controls instead (the queue position and Skip).
 
 A published event names its version in the header's version selector, not beside the byline (see [Event header and Approvals card](#event-header-and-approvals-card)).
 
@@ -657,222 +657,9 @@ A published event names its version in the header's version selector, not beside
 
 The locked provenance field (`detected_from_url`) carries the label the detail page gives the same link, from one helper (`provenanceLabel` in [`lib/events.ts`](../frontend/src/lib/events.ts)): *Requested from* on a row the bot opened as a request (`requested_by` set, which survives fulfilment), *Detected from* otherwise. The request edit and the published-row edit both read it.
 
-[`<EventEditForm>`](../frontend/src/components/geolocations/edit/EventEditForm.tsx) is one form in two shapes, selected by the row's state rather than by a prop, so `/events/{id}/edit` is one address for both owner edits. On a `detected` row it is **Submit detection**: every field editable, Skip and Close in the header, and a Submit that arms in place, because submitting publishes the row. On a `geolocated` row it is **Edit geolocation**: the same field bricks and the same editable fields, the source URL and the source media included, an optional **Version note** at the foot, and a **Save version N** that writes on the click that made it, because a version adds a version and overwrites nothing. The button names the number it would produce, so the reader sees what they are about to create rather than what is on screen. A save that would move no versioned field is refused in the form, without a request: the banner reads *Nothing changed since version N*, which is the sentence the server's own refusal maps to. Two inputs hold less than their column does, the source post time (minutes) and the event time (no seconds), so a field still holding what the row seeded it with is treated as untouched and is not posted back as its own truncation: the instant is omitted, which the endpoint reads as *keep*, and the time goes back at the row's precision. Otherwise every edit of a typo would quietly take the seconds off a published record, and no save would ever count as unchanged.
+[`<EventEditForm>`](../frontend/src/components/geolocations/edit/EventEditForm.tsx) is one form in two shapes, selected by the row's state rather than by a prop, so `/events/{id}/edit` is one address for both owner edits. On a `detected` row it is **Submit detection**: every field editable, and a Submit that arms in place, because submitting publishes the row. On a `geolocated` row it is **Edit geolocation**: the same field bricks and the same editable fields, the source URL and the source media included, an optional **Version note** above the save, and a **Save version N** that writes on the click that made it, because a version adds a version and overwrites nothing. The button names the number it would produce, so the reader sees what they are about to create rather than what is on screen. A save that would move no versioned field is refused in the form, without a request: the banner reads *Nothing changed since version N*, which is the sentence the server's own refusal maps to. Two inputs hold less than their column does, the source post time (minutes) and the event time (no seconds), so a field still holding what the row seeded it with is treated as untouched and is not posted back as its own truncation: the instant is omitted, which the endpoint reads as *keep*, and the time goes back at the row's precision. Otherwise every edit of a typo would quietly take the seconds off a published record, and no save would ever count as unchanged.
 
-**The owner's management lives on the edit page.** The event page's header carries only **Edit** for the owner; what the owner does to the record beyond correcting it sits under the form.
-
-```mermaid
-flowchart TB
-  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
-  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
-
-  subgraph legend [Legend]
-    direction LR
-    l1["`a section of the edit page`"]:::spec
-    l2["`a shared component`"]:::shared
-    l1 ~~~ l2
-  end
-
-  subgraph published [Edit geolocation, a geolocated row]
-    direction TB
-    pfields["`**Fields**, **Version note**, **Save version N**`"]:::spec
-    pcredit["`**Geolocators**
-    invite, withdraw, remove`"]:::spec
-    pclose["`**Close this geolocation**
-    at the foot`"]:::spec
-    pfields --> pcredit --> pclose
-  end
-
-  subgraph request [Edit request, a requested row]
-    direction TB
-    rfields["`**Fields**, **Save request**`"]:::spec
-    rclose["`**Close this request**
-    at the foot`"]:::spec
-    rfields --> rclose
-  end
-
-  detection["`**Submit detection**, a detected row
-  Close beside Skip in the header`"]:::spec
-  panel["`**GeolocatorsPanel**`"]:::shared
-  closesec["`**CloseSection** through **CloseEventForm**`"]:::shared
-
-  panel --> pcredit
-  closesec --> pclose
-  closesec --> rclose
-```
-
-- **Geolocators.** A published geolocation's edit page holds the Geolocators panel ([`GeolocatorsPanel`](../frontend/src/components/event/GeolocatorCredit.tsx)) after the form, outside it, since the panel holds a form of its own. The owner invites an analyst by username, withdraws a pending invitation and removes a co-geolocator there. A change rereads the row.
-- **Close.** The foot of a published geolocation's and an open request's edit page is [`CloseSection`](../frontend/src/components/event/CloseEventForm.tsx): what closing does, then **Close this geolocation** or **Close this request**, which opens the reason form in place. A close lands on the event page, or on the request page for a request. A detection keeps its **Close** beside **Skip** in the header.
-
-#### The version history and one version
-
-Three addresses read one record. `/events/{id}` is the canonical page and always shows the current version. `/events/{id}/history` lists every version. `/events/{id}/vN` shows the record as version N stood.
-
-The page titles itself *Version history* and names the event under it as plain text: the `Current` row already opens the event, and a second way there in the header is one control the reader has to tell apart from the other.
-
-**The list is one row per version, newest first.** A row states which version it is, what its edit changed, and who made that edit when: a neutral `v3` [`<Pill>`](../frontend/src/components/ui/Pill.tsx), an accent `Current` beside it on the live version, the changed fields as a short line (*Title, Coordinates, Proof*), then the editor's byline, the date and their note. The whole row is one click, the model every catalogue row uses: a past version opens its own address, and the current version opens `/events/{id}`, because that is where the record as it stands is read. The byline is [`<AuthorByline link={false}>`](../frontend/src/components/ui/AuthorByline.tsx), the handle as plain text: an anchor under the stretched link is a target the mouse reaches by z-order and the keyboard reaches as its own stop, so the two would disagree about what the row does. The profile stays one tap away from the version the row opens. A version an admin redacted carries a danger `Redacted` pill and keeps its number, its byline and its link.
-
-**A row is credited to the edit that produced it.** The API files that credit on the version the edit superseded, so version *n* takes its content from version row *n* and its byline, date and note from row *n - 1* ([`eventVersions`](../frontend/src/lib/events.ts)). Version 1 was published rather than edited, so it reads *Published* and carries the record's own author and date. The changed fields are computed on the client from the two adjacent versions, since the API serves what each version held rather than what an edit did, and they print under the names the event page already uses for the same values. Two versions that cannot be compared, a redacted one on either side, print nothing rather than an empty edit.
-
-**The list walks the shared cursor**, with [`<LoadMoreRow>`](../frontend/src/components/ui/LoadMoreRow.tsx) at the foot like every other cursor list. The page is 50 versions, half the shared row cap, so a history that reaches the 100-version ceiling still pages and the control is one the product exercises rather than one it only declares. A version's credit sits on the version below it, so the oldest row of an unfinished walk is credit for the row above it rather than a row of its own: it is held back until the next page completes it. A row is whole or absent, never a version number with no editor beside it.
-
-**A version page is the canonical page minus its actions.** Both render [`<EventPageBody>`](../frontend/src/components/event/EventPageBody.tsx), fed either the live row or a snapshot mapped onto the same shape (`snapshotToEventView`), so a version cannot drift into a layout of its own. Sharing, reporting and editing act on the record, so the header carries only the version selector, with this version marked. An amber [`<EventVersionBanner>`](../frontend/src/components/event/EventVersionBanner.tsx) opens the page (*Version 2 of 4, edited by ana on 18 Mar 2026*) with an orange link to the current version, the callout split every warning surface takes: the card is the caution, the clickable affordance stays the accent. A redacted version renders the banner and an `<EmptyState>` saying so, and no content.
-
-**`/events/{id}` stays canonical.** A version page carries `robots: noindex` and a canonical link to `/events/{id}`, and asking for the current version's own number forwards there rather than serving the record at two addresses. The route is a `[version]` segment beside the static `edit` and `history` ones, so a version keeps a one-segment address; a segment that is not `v` followed by a version number is a 404, as is a number past the current version.
-
-### Feed
-
-```mermaid
-flowchart TB
-  classDef page fill:#eef1fb,stroke:#4a5fa5,color:#33417a
-  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
-  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
-  classDef state fill:#fdf3e7,stroke:#b8661a,color:#7a430f
-
-  subgraph legend [Legend]
-    direction LR
-    l1["`feed page only`"]:::page
-    l2["`shared list primitive`"]:::shared
-    l3["`the server walk, thick-bordered`"]:::core
-    l4["`what the reader sees`"]:::state
-    l1 ~~~ l2 ~~~ l3 ~~~ l4
-  end
-
-  toggle["`**SegmentedControl**
-  scope: Following (default) or All`"]:::page
-  filters["`**filter rail**
-  Kind, Conflict, Capture source, Tags`"]:::shared
-  walk["`**useCursorList**
-  one walk per scope and filter set; a change starts a new walk`"]:::shared
-  api["`**GET /feed**
-  scope, kind, conflict, capture_source, tag, limit 10, cursor`"]:::core
-  cards["`**EntityCard variant=feed**
-  one card per row, appended page by page`"]:::page
-  row["`**LoadMoreRow infinite**
-  useInfiniteScroll observes the row`"]:::shared
-
-  empty["`**empty first page**
-  filtered: boxed line; Following: no follows, or nothing posted; All: boxed line`"]:::state
-  failed["`**failed page**
-  cards stay, message above Try again; scrolling pauses`"]:::state
-  done["`**end of the walk**
-  You have reached the end of the feed`"]:::state
-
-  toggle --> walk --> api
-  filters --> walk
-  api -->|first page| cards
-  api -->|no rows| empty
-  cards --> row
-  row -->|within one screen| walk
-  row -->|request fails| failed
-  failed -->|Try again| walk
-  api -->|no next page| done
-```
-
-`/feed` is a signed-in page, linked from the rail between Requests and Search. [`GET /feed`](api.md#get-feed) decides which rows it lists and in what order. `/timeline` redirects permanently to `/feed`.
-
-**A [`<SegmentedControl>`](../frontend/src/components/ui/SegmentedControl.tsx) under the title picks the scope**, **Following** (default) or **All**. Picking an option starts a new walk with `scope`, so the list and its empty state describe the scope on screen.
-
-**The [filter rail](#right-rail) narrows the walk.** The panel offers **Kind** (**Geolocations**, **Requests**), Conflict, Capture source and Tags, the filters `GET /feed` serves. A change starts a new walk with `kind`, `conflict`, `capture_source` and `tag`. The filters live in page state and reset on reload. A filtered view that matches nothing reads *Nothing in the feed matches the filters.* in the `boxed` empty state, instead of the follow prompts below.
-
-**A card names its kind.** Each row is the `feed` [`<EntityCard>`](../frontend/src/components/ui/EntityCard.tsx), which only the feed renders. Read top to bottom, it holds:
-
-1. The title, with the [`<StatusBadge>`](../frontend/src/components/event/StatusBadge.tsx) beside it, so *Geolocated* or *Requested* says what the row is.
-2. The byline, which credits the row's owner. An open request's owner is its requester.
-3. The dates, each named: *Event 25 Aug 2009* when the event date is known, then *Published 3 Oct 2026* on a geolocation or *Requested 3 Oct 2026* on a request (`feed_at`). The coordinates follow when the row has them.
-4. The media.
-5. The tag row from [`cardTags`](../frontend/src/lib/cardTags.ts). A conflict or a capture source is a key/value [`<Pill>`](../frontend/src/components/ui/Pill.tsx) (`label`), for example *Conflict: Russo-Ukrainian war* and *Capture source: Smartphone*. A keyed value of *Unknown* is dropped, since it tells the reader nothing. Free tags follow as plain pills.
-
-A geolocation opens `/events/{id}` and a request opens `/requests/{id}`.
-
-**An empty first page names its cause.** An unfiltered empty **Following** view reads the viewer's `following_count` from [`GET /users/{username}`](api.md#get-usersusername) to tell two cases apart:
-
-| Case | Empty state | Actions |
-|---|---|---|
-| The viewer follows nobody | `invite`, *You follow no analysts yet* | **Show all activity**, **Explore the map** |
-| The analysts followed have posted nothing | `plain`, *Nothing from analysts you follow yet* | **Show all activity** |
-
-**Show all activity** switches the scope to **All**. An empty **All** view is a `boxed` line. A first page that fails shows its error banner alone.
-
-**The list walks the shared cursor and scrolls without a click.** A page is 10 rows. [`useCursorList`](../frontend/src/hooks/useCursorList.ts) holds the walk, and the foot is [`<LoadMoreRow infinite>`](../frontend/src/components/ui/LoadMoreRow.tsx), the foot every cursor list shares. Its [`useInfiniteScroll`](../frontend/src/hooks/useInfiniteScroll.ts) calls `loadMore` when the row comes within one screen of the viewport, from the render that mounts the row. While the next page loads, the button is disabled and shows a spinner with *Loading…*.
-
-**A failed page keeps the cards.** The error shows above the row, the button reads **Try again**, and scrolling stops loading until the click, since the row is still in view.
-
-**The end of the walk is marked.** Once no next page exists, the foot reads *You have reached the end of the feed* in the `plain` empty state.
-
-### Public profile
-
-[`/profile/{username}`](../frontend/src/app/profile/[username]/page.tsx) is an analyst's portfolio, the page they pin as their link, so it reads as evidence rather than as an account: identity and contact in the header, then the work, widest reading first.
-
-| Block | Component | Data source | Shown |
-|---|---|---|---|
-| Identity | `ProfileTitle`, `ProfileIdentity` ([`ProfileHeader.tsx`](../frontend/src/components/profile/ProfileHeader.tsx)), `LinkedAccountsLine` ([`LinkedAccounts.tsx`](../frontend/src/components/profile/LinkedAccounts.tsx)) | `GET /users/{username}` | Always |
-| Organization logos | `ProfileOrganizations`, inside `ProfileIdentity` | [`GET /users/{username}/organizations`](api.md#get-usersusernameorganizations) | When the analyst belongs to one |
-| Detections queue | `DetectionsEntry` | `useDetectionsCount` | Owner only, while the queue holds something |
-| Coverage | `ProfileMap` | `GET /events/points?author=…` | When the analyst has located events |
-| Insights | `ProfileInsights` | `GET /users/{username}/stats` | When the profile has events |
-| Collections | `CollectionsSection` | [`GET /users/{username}/collections`](api.md#get-usersusernamecollections) | Owner always; visitor when the list is not empty |
-| Recent submissions | `RecentSubmissions` | `GET /users/{username}/events` | Always |
-| Sign out | | | Owner only, under all of it |
-
-#### Identity
-
-- The handle is the H1, with the avatar beside it (`ProfileTitle`), the grammar the event page uses. PageShell's `subtitle` slot carries `ProfileIdentity`: the bio, then the metadata line. One `space-y-1` spaces the block, so an empty bio leaves no gap. Edit mode drops the block.
-- The profile never prints the account's email, even to its owner: the email is private account information, so it reads on the settings page, in the Account card beside the username.
-- The bio has no card, so the evidence starts one glance below the handle. Empty renders nothing. Every http(s) URL in the bio links through `<OutboundLink>` (see [Outbound links](#outbound-links)) and breaks through `[overflow-wrap:anywhere]`; trailing sentence punctuation stays text. A long bio wraps rather than clamps, since `BIO_MAX_LEN` caps it at 500 characters. Authored line breaks collapse here and keep their shape in the edit field.
-- The metadata line reads `N followers · N following · Member since <date>` as secondary text. It carries no work figures; those live in Insights. Each segment holds together, so the row wraps between segments at 375 px. Zero values print.
-- The analyst's organizations close the metadata line as one more segment: their logos in an [`<AvatarStack>`](../frontend/src/components/ui/AvatarStack.tsx), each a rounded square (`variant="organization"`), every membership shown. Each item sets `href`, so the logo is a link to `/organizations/{slug}` named "Member of <organization>" or "Org manager of <organization>". Hover or focus opens a `TOOLTIP_SURFACE` tooltip with the organization's name and the analyst's role; a click follows the link. The row wraps with the line on a phone. An analyst in no organization, or a failed read, shows no segment, so the coverage map is the first block under the header.
-- The `actions` cluster carries the linked accounts, then Edit profile on your own profile, Follow on someone else's, or the save pair while editing.
-
-#### Linked accounts
-
-- `LinkedAccountsLine` is a row of ghost icon buttons, one per platform the profile carries (X, Discord, website, GitHub), each the brand mark alone. Marks rather than printed handles keep the weight on the handle that titles the page.
-- The owner's **Edit profile** is the last control in that row, a `Pencil` in the same square. The row's `gap-1.5` is the event page's action-cluster spacing, the cluster's `gap-2` separates the row from the button beside it, and the row wraps inside the cluster.
-- The account is in each mark's `title` and accessible name (`X / Twitter: @LoLManya`), printed through `displayLinkValue` ([`lib/users.ts`](../frontend/src/lib/users.ts)): an X or GitHub value reads `@handle` whether stored as a profile URL or a bare handle, and a website drops its scheme and trailing slash.
-- Each platform's `action` decides what its mark does, never how it looks. `link` opens the profile in a new tab through `<OutboundLink>`, so a website on an unknown host asks first. `copy` runs the mark over `useCopyToClipboard`; Discord takes it because the platform publishes no profile URL for a username. The mark flips to a check for the flash while its name holds still.
-- `resolveLinkHref` links an X or GitHub value only when it names an account under the platform's own rules, and a website only when it parses as an http(s) URL. `PATCH /users/me` applies the same rules (see [`api.md`](api.md#patch-usersme)). A stored value the strict parse refuses renders nothing.
-- A profile with no reachable account renders no marks, which leaves Edit profile or Follow alone.
-
-#### Work blocks
-
-- **Detections queue** (`DetectionsEntry`): the count of `detected` geolocations awaiting your submission, linking to `/profile/{username}/detections`. It sits above the work because it is pending work.
-- **Coverage** (`ProfileMap`): the shared `<Map>` with an explicit world `bbox` (`WORLD_BOUNDS` through `toBboxParam`; the endpoint requires one), the camera fitted to the returned points. It maps `geolocated` and `detected` in the map's two point shades. The count beside the heading splits the same way ("N geolocated, N detected on the map"), so its `geolocated` leg equals the Insights `Geolocated` tile.
-- **Insights** (`ProfileInsights`): see [Insights](#insights).
-- **Collections** (`CollectionsSection`): a grid of mosaic cards, the turn from readings of the whole body of work to the work itself (see [Collections](#collections)).
-  - Each card carries the mosaic, the title, the description's plain-text projection clamped to two lines, and the collection page's meta line, and the whole card is one click. No type mark sits beside the title, so the title keeps its two lines of width.
-  - The endpoint narrows by viewer. On an empty list a visitor sees no section, and the owner keeps the heading and the action that fills it.
-  - The grid holds four cards. Past four, `Show more` opens the shelf in `/search` through `profileSearchHref`, carrying `type=collection`, the one scope the `author` filter narrows instead of emptying.
-  - Both owner entry points, beside the heading and in the first-run state, link to `/collections/new`.
-- **Recent submissions** (`RecentSubmissions`): the five newest rows from an endpoint that serves published work only, so the block is what the analyst vouched for. It counts the same set as the `Geolocated` tile.
-  - The heading copy and `Show more` key off the returned rows: an analyst with detections alone gets "No geolocations yet.", and `Show more` carries `status=geolocated` into `/search`.
-  - Every visitor sees the same rows, the owner included. When the block is empty, the owner gets a link to the submit form under the heading and a visitor gets the heading alone.
-  - It reads last because it is the block that grows.
-
-#### Insights
-
-`ProfileInsights` is the page's only home for work figures: a `<StatGrid>` of four tiles (`Geolocated`, `Detected`, `Top conflict`, `Top capture source`), then the source-origin bar and the month grid. It sits under the map because it interprets it: the map says where, the card says what kind, how much, and when.
-
-- **Every tile links into `/search`** through `profileSearchHref` ([`lib/search.ts`](../frontend/src/lib/search.ts)), the one builder for the profile's search links, both `Show more` links included. The status pair carries `status=geolocated` and `status=detected`, the leaders carry `conflict=` and `capture_source=`, and `author` is an exact username match, so a tile lands on the rows it summed. A tile takes `TAPPABLE_HOVER` plus a `focus-visible` ring.
-- A leader with no value prints `None` and carries no link. The two counts stay linked at zero.
-- A leader tile names who leads, and the search behind it says by how much. There is no `Media` tile; `media_count` is served and the share card prints it.
-- **One population.** Every field counts visible `geolocated` and `detected` events. A `requested` or `closed` row counts in no figure: an open ask is not documented work, and a closed row is work the analyst discarded.
-- The line under the card heading names that population for the tiles only (*The tiles below read one set of N events: this analyst's geolocations and machine detections. Two count it, two name what leads it*). Each chart states its own population in its own note, since neither draws the whole set.
-- **Source origin** ([`<SourceHostBar>`](../frontend/src/components/ui/SourceHostBar.tsx)) is one stacked bar over the hosts of the analyst's `source_url` values, ranked, with a legend naming every slice. It says what kind of work the analyst does rather than how much.
-  - Hosts are bare (`t.me`, not *Telegram*), the vocabulary `<SourceLabel>` uses, so the long tail is named rather than printed as "Unknown". The server folds the host to lower case and strips a leading `www.` (see [`api.md`](api.md#get-usersusernamestats)).
-  - Five hosts name themselves, the ceiling the endpoint applies to the leader rankings. The rest is one *Other* slice, and events with no readable source are a *No source* slice, so the bar accounts for every event the tiles count.
-  - The heading carries the `source_url` `<FieldHelp>`, which separates this source (the platform) from the capture source (the lens). One line under the heading states what the bar counts.
-- **The month grid** ([`<ActivityHeatmap>`](../frontend/src/components/ui/ActivityHeatmap.tsx)) counts `event_date`: when the documented events happened.
-  - The heading is *Event dates*, the field's name on the submit and edit forms. The line under it reads *The month each event took place, not when it was posted, imported or published*, since a calendar on a profile otherwise reads as posting activity. The same line states the grid's population (*It covers the N events dated in the years shown*), summed off the buckets rather than `total_events`. The `event_date` `<FieldHelp>` carries the field's definition.
-  - One row per calendar year, twelve month cells, intensity off the busiest month, and a *Less / More* legend. Months rather than days, since tens of events a year leave a daily grid blank.
-  - The server derives the span from the analyst's earliest and latest event date, not from today, so an imported multi-year archive reads whole. The grid shows the 10 most recent years, the rows the card holds at 375 px, and the year labels name them. Every month in the span renders, so a quiet stretch reads as empty. Both ends are clamped to today, so one mistyped year cannot move the window centuries out.
-  - Hovering or tapping a month names it and its count in one readout line under the grid; there is no per-cell tooltip. The cells are paint, not controls: no focus stop, no focus ring. A lit cell carries the accent step its count earns, and an empty one carries `CHART_NEUTRAL`.
-  - No dated event renders a sentence. A single month keeps the grid, since the empty cells say which month it was.
-
-#### Edit mode
-
-While the owner edits, the page renders only the header fields, `BioField`, and `LinkedAccountsFields`, contiguous and in reading order between the header and the Save button in `actions`. Both fields are edit-mode only, since reading the bio and the links happens in the header. The metadata line, the linked-accounts marks, and the read-only sections drop out.
-
-### Organization page
+**The owner's management lives on the edit page.** The event page's header carries only **Edit** for the owner; what the owner does to the record beyond correcting it sits in the edit page's right rail, beside the fields.
 
 ```mermaid
 flowchart TB
@@ -882,252 +669,39 @@ flowchart TB
 
   subgraph legend [Legend]
     direction LR
-    l1["`a block every reader sees`"]:::spec
-    l2["`a block one viewer sees`"]:::shared
-    l3["`a profile primitive shared with the analyst profile`"]:::core
+    l1["`the layout primitive, thick-bordered`"]:::core
+    l2["`a region of the edit page`"]:::spec
+    l3["`a shared component`"]:::shared
     l1 ~~~ l2 ~~~ l3
   end
 
-  header["`**ProfileTitle**, **IdentityLines**, **ProfileActions**
-  name, picture, bio, members and since, links, Edit`"]:::core
-  edit["`**useProfileEdit** with organization calls
-  **ProfileHeaderEditFields**, **BioField**, **LinkedAccountsFields**`"]:::core
-  answer["`invite answer
-  Accept, Decline`"]:::shared
-  members["`**OrganizationMembers**
-  byline, role pill, role and removal controls`"]:::spec
-  approvals["`**OrganizationApprovals**
-  event link, then the event page's approval row`"]:::spec
-  requests["`**OrganizationApprovalRequests**
-  audience control, open requests, Decline`"]:::shared
-  invites["`**OrganizationInvites**
-  mutual-follow picker, pending invites`"]:::shared
+  shell["`**PageShell rail=… narrowRail=below**
+  rail sticky from lg, under the fields below it`"]:::core
+  fields["`**Main column**
+  EventFormFields only`"]:::spec
 
-  header --> answer --> members --> approvals --> requests --> invites
-  header -.->|Edit| edit
+  subgraph rail [Right rail]
+    direction TB
+    actions["`**Actions card**
+    Version note on a published row, the banners,
+    Save version N, Submit or Save request`"]:::spec
+    close["`**CloseSection**
+    Close this geolocation, detection or request`"]:::shared
+    credit["`**Geolocators card**, a published row only
+    GeolocatorsPanel: invite, withdraw, remove`"]:::spec
+    actions --> close
+    close ~~~ credit
+  end
+
+  shell --> fields
+  shell --> rail
 ```
 
-[`/organizations/{slug}`](../frontend/src/app/organizations/[slug]/page.tsx) is an organization's public page. It reads like the [public profile](#public-profile), so the header reuses the profile's primitives rather than a second set.
-
-- **Header.** `ProfileTitle` takes the organization's name and picture. `IdentityLines` carries the bio and the metadata line (`N members · @handle on X · Since <date>`), the same block `ProfileIdentity` renders for an analyst. `ProfileActions` carries `LinkedAccountsLine` and, for an org manager or a site admin, Edit.
-- **Edit mode.** `useProfileEdit` takes the organization's three writes through `calls`, so the picture picker, the bio field and the linked-account fields are the profile's own.
-- **Invite answer.** An invited viewer sees a card naming the organization with **Accept** and **Decline**. The `organization_invite` notification links here.
-- **Members.** `OrganizationMembers` lists one row per member: the `<AuthorByline>` with the avatar, a `<Pill>` for the role (accent for an org manager, neutral for a member), and the controls the viewer holds. A manager flips the role and removes; every member leaves from their own row. Removing and leaving take the two-click `DANGER_CONFIRM`. The server's `last_manager` refusal shows as the row's error banner.
-- **Approvals.** `OrganizationApprovals` lists the approvals placed in the organization's name, newest first, with **Load more** past a page: each row is the event's title, linked, over the event page's own `ApprovalRow`, so the acting org manager, the state pill, the note and a revocation's reason read the same in both places.
-- **Approval requests.** `OrganizationApprovalRequests` shows to managers. Its first row is **Accept approval requests from**, the Settings row's `<SegmentedControl>` with the organization's labels (**People our org managers follow**, **Everyone**, **Nobody**), saved on change. Under it, the open requests addressed to the organization, oldest first: the event, linked, and who asked when. An org manager gets **Decline** on each; approving happens on the event page, as the organization. A site admin who is not an org manager reads the list without the answer.
-- **Search.** [`/search`](../frontend/src/app/search/page.tsx) finds an organization by name, slug or bio, with no navigation entry of its own. The **Organizations** scope chip carries the `Building2` glyph, and the group follows **Analysts**. Each hit is the analyst hit's row, `ProfileResult`: the picture, the highlighted name, a meta line tagged with `Building2` (`Organization · N members`), and the bio excerpt when the bio matched. The row links to the organization page. The page shows no filter rail on this scope, since every filter is an event predicate.
-- **Invites.** `OrganizationInvites` shows to managers. An org manager picks from the analysts the server accepts in an `<AccountPicker>`, with one line saying the list holds mutual follows only; a site admin who is not an org manager sees the pending invites without the picker. Each pending invite withdraws with one ghost button.
-- **Deletion.** Only a site admin deletes an organization, from the admin panel's Organizations list (`OrganizationsPanel`). **Delete** opens a `WARNING_CALLOUT` that says what goes with the organization, a field for its slug, and the danger button, which stays disabled until the typed slug matches and then takes `DANGER_CONFIRM`.
-
-### Collections
-
-A collection is one analyst's named set of their own `geolocated` and `detected` events, shown on their public profile. Its two written fields, the title and the description, are both required. The items order themselves by event date, so there is no caption and no manual order.
-
-```mermaid
-flowchart LR
-  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
-  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
-  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
-
-  subgraph legend [Legend]
-    direction LR
-    l1["`a surface a reader opens`"]:::spec
-    l2["`a shared component`"]:::shared
-    l3["`the endpoint behind it`"]:::core
-    l1 ~~~ l2 ~~~ l3
-  end
-
-  subgraph read [Reading surfaces]
-    direction TB
-    profile["`**CollectionsSection**
-    on /profile/{username}`"]:::spec
-    search["`**/search**
-    Collections group`"]:::spec
-    page["`**/collections/{id}**
-    header, Description, Coverage, Events`"]:::spec
-  end
-
-  subgraph write [Writing surfaces]
-    direction TB
-    panel["`**AddToCollectionPanel**
-    on /events/{id}, owner only`"]:::spec
-    newp["`**/collections/new**
-    optional ?event={id}`"]:::spec
-    edit["`**/collections/{id}/edit**
-    owner only`"]:::spec
-  end
-
-  card["`**CollectionCard**, **CollectionCover**
-  mosaic, title, meta line`"]:::shared
-  reader["`**CollectionReader**
-  map, DetailSidePanel, step list`"]:::shared
-  form["`**CollectionDetailsForm**, **EventPicker**
-  Details, Events in this collection, Add events`"]:::shared
-
-  gu["`**GET /users/{username}/collections**`"]:::core
-  gs["`**GET /search** type=collection`"]:::core
-  gc["`**GET /collections/{id}**`"]:::core
-  gce["`**GET /collections/{id}/events**
-  walked to the end once`"]:::core
-  act["`**POST /collections/{id}/report**
-  **DELETE /collections/{id}**`"]:::core
-  ge["`**GET /events/{id}/collections**`"]:::core
-  pick["`**GET /events**, **GET /search**
-  the picker's two sources`"]:::core
-  post["`**POST /collections**`"]:::core
-  patch["`**PATCH /collections/{id}**`"]:::core
-  member["`**PUT** / **DELETE /collections/{id}/events/{event_id}**`"]:::core
-
-  profile --> card
-  search --> card
-  profile --> gu
-  search --> gs
-  page --> gc
-  page --> reader --> gce
-  page -->|"Report, Drop"| act
-  panel --> ge
-  panel -->|"toggle"| member
-  panel -->|"New collection"| newp
-  newp --> form
-  edit --> form
-  form --> pick
-  form -->|"create"| post
-  form -->|"save"| patch
-  form -->|"save, per row"| member
-```
-
-#### The collection page
-
-[`/collections/{id}`](../frontend/src/app/collections/[id]/page.tsx) is public and titles itself with the collection, the way the event page is the event.
-
-- The header holds the title, the owner's byline with a neutral `Collection` [`<Pill>`](../frontend/src/components/ui/Pill.tsx), and the meta line. It carries no picture: the mosaic belongs to the card and to the [share card](#share-cards).
-- Three `Card` sections follow, each under its own [`<SectionEyebrow>`](../frontend/src/components/ui/SectionEyebrow.tsx): **Description**, **Coverage**, and **Events**.
-- **Description** prints the owner's text whole, at reading size, through [`renderProof`](../frontend/src/lib/proof.tsx), so its marks and lists are painted. It is a section rather than a header line because it runs to `COLLECTION_DESCRIPTION_MAX_LEN` characters.
-
-**Coverage is a player**: [`<CollectionReader>`](../frontend/src/components/collections/CollectionReader.tsx) arranges the map page's two surfaces around a position instead of a selection.
-
-- The map is the shared [`<Map>`](../frontend/src/components/map/Map.tsx) over the items' pins, `embedded` and framed on the whole set (`fitBounds`). On every step it flies to the current item (`flyTo`, which skips the first frame so the opening frame survives the mount, and holds the camera on an item with no coordinate) and dims the steps behind the reader (`dimmedIds`, `DIMMED_OPACITY`).
-- No line joins the pins: a line claims a route between events that were only curated into one set.
-- The panel is the map's [`<DetailSidePanel>`](../frontend/src/components/map/DetailSidePanel.tsx), which fetches nothing, renders the event handed to it, and takes no action tier. It remounts on each step (keyed by event id), which puts a long event back at its top.
-- Map and panel sit side by side in a two-column block that stacks below `sm`. The panel takes its `inline` placement: a page column with no viewport insets, no sheet, no grab bar, and no height cap. The block is 32rem tall from `sm` up, under the map page's panel cap (`calc(100dvh-4.5rem)`). Below `sm` the map keeps the embedded map's fixed height and the panel runs as long as its event.
-- A collection whose items carry no coordinate renders no map.
-- The step rides `?step=` ([`collectionStepHref`](../frontend/src/lib/collections.ts)), 1-based, defaulting to 1, and clamped into the sequence by `readerStep`, so a shared link opens where its sender stood, or on the nearest real step. It moves with `router.replace` and `scroll: false`, so Back leaves the page rather than walking the steps.
-- `ArrowLeft` / `ArrowRight` step too, read on the window, and skipped while an input, textarea, select or contenteditable has the caret or a modifier is held. The keys count from the last press rather than from the URL, so a held key walks the collection. Nothing plays on its own.
-
-**Events is the player's index.** A click anywhere on a row moves the player there, and the current row wears the accent border (`<EntityCard>`'s `onSelect` + `selected`, see [Cards](#cards)). The event's own page is reached from the panel's title. The rows are the same for the owner and a visitor and carry no control: an event joins from its own page or from the edit page's picker, which the sentence under the eyebrow states. The section header's one link is **Your geolocations**, the owner's catalogue in search through `profileSearchHref` ([`lib/search.ts`](../frontend/src/lib/search.ts)), with no status filter, since an unconfirmed detection is still the owner's to shelve.
-
-**One read serves the pins, the panel, and the rows.** `fetchCollectionSequence` walks `GET /collections/{id}/events` to the end of its cursor once, under the `READER_MAX_ITEMS` ceiling (past it the page holds the earliest 500 items and marks no cut). `N of M` counts what the list shows. There is no collection-scoped points endpoint.
-
-**The header cluster is a row of icon buttons.** Share on X and Report lead, and the owner's Edit and Drop follow, so the destructive control sits at the edge. It wraps like the [event header](#event-header-and-approvals-card), `flex-wrap justify-end`.
-
-- **Share on X** is the ghost [`<ShareOnX>`](../frontend/src/components/share/ShareOnX.tsx) icon button, prefilled with the title, `by {owner}`, the meta line's segments, and the collection's URL. It has no confirm, since a collection has no `detected` state.
-- **Report** is the red `dangerGhost` flag, for every reader, signed out included: [`useReportContent`](../frontend/src/components/report/useReportContent.tsx), the event page's form, with the same five buckets and 2000-character cap. Its panel opens under the header and names its subject, so it never reads as a report on the current item.
-- **Edit** is the `ghost` pencil, owner only, `buttonClasses` on a `<Link>`.
-- **Drop** is the red `danger` trash, owner only, behind [`useConfirmAction`](../frontend/src/hooks/useConfirmAction.ts) with `DANGER_CONFIRM` on the armed second click; the label says which click it is. On success the owner lands on their profile. This is the only place a collection is dropped; the edit page carries no drop.
-
-#### The card and the meta line
-
-- The meta line states the count, zero included, then the span the items cover, and the card and the page print the same one ([`collectionMetaSegments`](../frontend/src/lib/collections.ts)). The span prints only where items carry dates, and a single day prints once. Under it, both print the collection's derived tags in the neutral `<Pill>` row an event card uses (`CollectionTags` in [`CollectionCard.tsx`](../frontend/src/components/collections/CollectionCard.tsx)), uncapped.
-- `CollectionIcon` ([`lib/collections.ts`](../frontend/src/lib/collections.ts)) is the one glyph for the type: the `Collection` pill, the `Collections` scope chip on `/search`, the profile section's first-run state, and the shelving control on an event page.
-- The card's picture is [`<CollectionCover>`](../frontend/src/components/collections/CollectionCover.tsx), made of the collection's own items. The server sends up to four tiles in reading order (see [`api.md`](api.md#get-collectionsid)). One tile fills the 16:9 slot, two split it down the middle, three put the earliest item tall on the left with the next two stacked beside it, and four fill a 2x2, all with 2px gaps in the card border's neutral. A collection with nothing to show falls back to the "no media" box. Nothing is uploaded or stored.
-- Each tile goes through the catalogue card's media slot and reads `media_type`, so a video tile plays as a clip. A tile also reads `role`: a tile from a proof image reads the original, since proof uploads carry no `_hero` or `_thumb` derivative.
-
-#### Writing a collection
-
-Opening one is [`/collections/new`](../frontend/src/app/collections/new/page.tsx) and changing one is [`/collections/{id}/edit`](../frontend/src/app/collections/[id]/edit/page.tsx), the shape `/events/{id}/edit` takes, so a reload keeps the write and a link reaches it.
-
-- Both sit behind `useRequireAuth` and compose `PageShell` over [`<CollectionDetailsForm>`](../frontend/src/components/collections/CollectionDetailsForm.tsx): three `Card` sections, **Details**, **Events in this collection**, and **Add events**, then the Save / Cancel row. Only the verb on the button differs. The edit page carries no subtitle; the Title field names the collection.
-- **Details** is the title over the description, each with the shared `remaining / cap` [`<CharCounter>`](../frontend/src/components/ui/CharCounter.tsx) against `COLLECTION_TITLE_MAX_LEN` and `COLLECTION_DESCRIPTION_MAX_LEN`. Submit refuses a blank or over-long value on either. Both fields ride every write and are the only writable fields.
-- The description field is [`<ProofEditor>`](../frontend/src/components/editor/ProofEditor.tsx) under `allowImages={false}`: bold, italic, headings, lists, and links, no images, since nothing on this form uploads and the server drops the node. It wears the field box, the `focus-within` accent border, and `FORM_INVALID_FIELD` on refusal, with its label and counter on the row above. The counter measures `htmlText` ([`lib/proof.tsx`](../frontend/src/lib/proof.tsx)), the projection the server caps, so markup costs nothing (see [Rich text](#rich-text)).
-- `/collections/new` has two entry points: the profile section (beside its heading and in its first-run state) and the add-to-collection panel, which passes `?event={id}`. With the parameter the page opens holding that event, the create carries it ([`POST /collections`](api.md#post-collections)), and the page returns to the event. Without it the page opens the collection it created. Cancel and Back return to where the reader came from.
-- `/collections/{id}/edit` is owner only. A non-owner gets the backend's 403 stated before the form, with a link to the collection. The save writes the difference: the details through `PATCH`, then one `PUT` per added row and one `DELETE` per removed row, in that order, stopping at the first refusal and naming the act that failed. Saving returns to the collection.
-
-[`<EventPicker>`](../frontend/src/components/collections/EventPicker.tsx) renders the two event cards on both write pages, the same on each, each its own `Card` under a `<SectionEyebrow>`:
-
-- **Events in this collection** is the pending set: the rows the edit page opened with, the `?event=` row, and everything added since. Its line states the count through `eventCountLabel`, and its rows take the collection page's order (event date, earliest first, undated last). Each row carries the red `dangerGhost` cross that takes it off. An empty card is the plain [`<EmptyState>`](../frontend/src/components/ui/EmptyState.tsx) pointing at the card below. Nothing writes until the page's submit.
-- **Add events** shows at most `PICKER_ROW_LIMIT` rows. With the field empty it lists the analyst's catalogue newest first through [`GET /events`](api.md#get-events) (`view=located`, `author=`, scoped to `COLLECTABLE_STATUSES`, `limit=`), whose cursor tells it more exists. A typed query goes to [`GET /search`](api.md#get-search) (`type=event`, `author=`), which returns the pre-cap match count.
-  - The line under the rows says what the card is not showing and that search reaches it. A search adds that it answers from the located group, which requires coordinates, so an event with none is reachable only with the field cleared.
-  - The field is the shared [`<Input>`](../frontend/src/components/ui/Input.tsx) with the search glass, debounced at 300ms.
-  - Both sources ask only for collectable statuses, so the card never offers a row the add verb refuses.
-- A row on either card is the compact [`<EntityCard>`](../frontend/src/components/ui/EntityCard.tsx) in plain mode, with its lifecycle badge, its title linking to the event, and one `Button icon` in the `action` slot, so rows on both cards measure the same. On the add card it is a `ghost` plus; a row already held shows a disabled check button rather than dropping out of the results. Adding moves the row to the card above at once.
-
-#### Search, shelving, and moderation
-
-**Search.** `/search` carries a `Collections` result group and scope chip, between Events and Analysts. Each hit is `<CollectionCard showOwner>`, whose meta line leads with `by user` through `<AuthorByline link={false}>`. On this scope the filter panel shows the Author section only: every other filter is an event predicate, and the backend empties the group on it, while `author` narrows the group (see [`api.md`](api.md#get-search)). It is the event scope's own section, the typeahead over `GET /search/authors`, so a scope change keeps the analyst. The panel takes its sections per scope through the `sections` prop of [`EventFilterSections.tsx`](../frontend/src/components/filters/EventFilterSections.tsx), which also drops Status on the legacy request scope. Every section of the filter panel opens collapsed on the map, the search page, the Requests board and the feed, except a section that holds an active value, which opens expanded so the applied filters stay visible; each header still toggles its section.
-
-**Shelving.** [`<AddToCollectionPanel>`](../frontend/src/components/collections/AddToCollectionPanel.tsx) opens from the owner's management tier on an event page, for `geolocated` and `detected` rows only; on a request or a closed row the control is absent.
-
-- Each collection is a [`<ToggleRow>`](../frontend/src/components/ui/ToggleRow.tsx) in its described shape: the title at reading size over the item count (`eventCountLabel`), since a title runs to 255 characters. The list supplies its own dividers and row padding, as the settings card does.
-- A `New collection` row links to `/collections/new?event={id}`.
-- The toggle is optimistic: the bit and the count flip on the click and roll back on a refusal, which the panel's error banner explains. Both membership writes are idempotent.
-
-**Moderation.** [`POST /collections/{id}/report`](api.md#post-collectionsidreport) writes to the event reports' table, and [`<ReportsPanel>`](../frontend/src/components/admin/ReportsPanel.tsx) lists collection reports beside event reports. A collection row prints the title as the link and the owner's `<AuthorByline>` beside it, since an admin recognises a collection by name rather than id. Its verdicts are `Hide the collection`, under the event takedown's two-click confirm, and `Dismiss`. It offers no `Mark graphic`, since a collection carries no media of its own.
-
-### Requests board
-
-[`/requests`](../frontend/src/app/requests/page.tsx) lists open requests from [`GET /events`](api.md#get-events) with `view=requested&status=requested`, cursor-paged behind a **Load more** button.
-
-- The status is fixed to `requested`. The board mounts the shared filter panel ([`EventFilterSections`](../frontend/src/components/filters/EventFilterSections.tsx)) in the [filter rail](#right-rail) without its Status section, because a `closed` chip would read as "done" on a work queue. Source media is also left out, because `GET /events` takes no `media` filter.
-- The panel offers Conflict, Capture source, Location guess, Tags and Author. Location guess is offered on the board alone. **With a guess** keeps requests that carry a guessed point, **No guess** keeps the blind ones, and picking both or neither drops the filter. The section sends [`has_coords`](api.md#get-events).
-- A `<SegmentedControl>` orders the list **Newest** (the default) or **Oldest**. It sends [`sort`](api.md#get-events), so every page of the cursor walk keeps that order.
-- Each card shows how long the request has been open, in whole days from `requested_at`, through `<EntityCard>`'s `age` slot: *Open today*, *Open 1 day*, *Open 12 days*. A row with no `requested_at` shows no age.
-- Filters and sort live in page state and reset on reload.
-
-### Share cards
-
-A pasted link is how most readers meet the platform, so the four pages an analyst shares generate their own preview image. Every card is a [`next/og`](https://nextjs.org/docs/app/api-reference/file-conventions/metadata/opengraph-image) (Satori) composition on one frame, [`_og/card.tsx`](../frontend/src/app/_og/card.tsx): a 1200×630 canvas, the bundled Montserrat 700 cut, the accent-`V` wordmark, the `vidit.app` footer, and the hex palette. Satori accepts no class names, which is why the cards compose that frame instead of the `components/ui/` primitives (see *Sanctioned one-offs*). The palette in `card.tsx` restates the same neutral / orange scale the classes resolve to, and is the one place a card reads colour from.
-
-| Card | Content |
-|---|---|
-| Site default, [`app/opengraph-image.tsx`](../frontend/src/app/opengraph-image.tsx) | Headline and subhead. Inherited by every route that generates none of its own. |
-| Profile, [`profile/[username]/opengraph-image.tsx`](../frontend/src/app/profile/[username]/opengraph-image.tsx) | Avatar (or the handle monogram), handle, bio, and four counts under the page's own labels: geolocated, detected, followers, media. `ogProfileCounts` in [`lib/og.ts`](../frontend/src/lib/og.ts) reads geolocated and detected off the Insights payload, co-geolocated events included, and followers off the header's; the link description lists the same three. A failed stats read keeps geolocated on `geolocations_count`, the same figure, and drops detected and media. Top conflicts sit in the footer. |
-| Organization, [`organizations/[slug]/opengraph-image.tsx`](../frontend/src/app/organizations/[slug]/opengraph-image.tsx) | The profile card's layout ([`_og/portfolio.tsx`](../frontend/src/app/_og/portfolio.tsx), shared by both) with an `Organization` badge: picture or name monogram, name, bio, the member count, and the X handle in the footer. |
-| Event, [`events/[id]/opengraph-image.tsx`](../frontend/src/app/events/[id]/opengraph-image.tsx) | Title, coordinates, the analyst's handle and the event date, the lifecycle badge, and the locator panel. |
-| Collection, [`collections/[id]/opengraph-image.tsx`](../frontend/src/app/collections/[id]/opengraph-image.tsx) | Title, the meta line's count and span, the owner's handle, a `Collection` badge, and the mosaic panel. |
-
-The **locator panel** ([`_og/MiniMap.tsx`](../frontend/src/app/_og/MiniMap.tsx)) is a plate-carrée graticule with the event's point marked on it, drawn from positioned rectangles: no tiles, no basemap request, no static-map service, and no mapping library on the server. What a reader can use at card size is the hemisphere and the rough region, and the real `<Map>` is one click away on the page. The projection is [`lib/og.ts`](../frontend/src/lib/og.ts)'s `projectEquirectangular`, which clamps rather than escapes the frame.
-
-Under the graticule sits a **world outline**, one inline SVG path of Natural Earth 110m land ([`_og/landmass.ts`](../frontend/src/app/_og/landmass.ts), public domain, Antarctica and small islands dropped, aggressively simplified to a few kB), which is what makes a marker read as a place rather than as a point on a grid. It is committed path data in the projection's own 360×180 frame, so it needs no reprojection to line up with the marker and the card still loads nothing at request time. Regenerate it with [`scripts/build-og-landmass.mjs`](../frontend/scripts/build-og-landmass.mjs); the source dataset is not committed.
-
-The event card takes its lifecycle word and emphasis from `EVENT_STATUS_META` in [`StatusBadge.tsx`](../frontend/src/components/event/StatusBadge.tsx), the same map the page's badge renders from, so a row cannot be called one thing on the page and another in the image of the page.
-
-The **mosaic panel** on the collection card is the picture the profile card wears, at card scale. `ogMosaicBoxes` in [`lib/og.ts`](../frontend/src/lib/og.ts) places each tile in [`<CollectionCover>`](../frontend/src/components/collections/CollectionCover.tsx)'s arrangement and gap, as absolute boxes since Satori lays out flex and not grid, and clamps a longer cover to four boxes. A tile's picture is read at the derivative its own size wants through [`displayUrlsFor`](../frontend/src/lib/mediaUrls.ts), the wide `_hero` for a lone tile and the 400px `_thumb` for one sharing the panel, and all of them are fetched at once. A tile off a proof image is fetched at its original, since that upload writes no derivative. A clip carries no poster derivative, so its tile draws the panel colour under a play triangle instead of a frame the server does not have; a picture whose fetch was refused draws the same tile without the triangle. A collection with nothing showable draws the panel under `no media`, the site's own placeholder wording.
-
-Each dynamic card reads the same anonymous public payloads its page renders from (`GET /users/{username}` plus `GET /users/{username}/stats`, `GET /organizations/{slug}`, `GET /events/{id}`, or `GET /collections/{id}`), issued together rather than chained, so a card can only ever show what a signed-out visitor already sees and an unfurl costs one round of requests. Soft-deleted rows 404 upstream.
-
-An upstream read answers one of three ways, and the difference is visible because a crawler caches what it is served:
-
-| Read | Card | Tags |
-|---|---|---|
-| Answered | The data card | Title, description, `og:*`, `twitter:*` from the payload |
-| Permanent miss (`404`, or the `422` a path parameter that names no row draws) | The branded *No analyst here* / *No organization here* / *No event here* / *No collection here* card | The matching not-found title and description, in the same tag shape as a hit |
-| Failed (`429`, `5xx`, timeout, undecodable body) | The site-default composition | None: the page inherits the site-wide metadata |
-
-The failed path says nothing about the link because nothing is known about it, and its image response carries `Cache-Control: no-store` so the CDN and any crawler that honours it ask again rather than keep a card built from a bad second. A crawler that caches on its own policy regardless cannot be reached from here, which is the other half of why that path emits no not-found copy: whatever it keeps, it keeps a neutral preview.
-
-Card reads carry a 15 min revalidate. That window is also the rate-limit headroom: every card request egresses from the deployment's shared IP against the per-IP limit on `/users/{username}`, `/organizations/{slug}`, `/events/{id}` and `/collections/{id}`, so a link going wide is one cached read per window rather than one backend round trip per unfurl. A link wide enough to still trip the limit degrades to the site-default card, never to a broken image.
-
-All four pages are client components, so their `generateMetadata` lives on the segment layout (the profile and the organization build theirs through `portfolioMetadata` in [`_og/metadata.ts`](../frontend/src/app/_og/metadata.ts)): title, description, the `og:*` set, and `twitter:card: summary_large_image`, which is what makes X and Discord render the image full-width instead of as a square thumbnail. `twitter-image.tsx` re-exports the Open Graph composition so the two stay byte-identical.
-
-The renderer publishes what it fetches as a public image, so every picture a card draws goes through one guarded read, `ogImageDataUri` in [`_og/data.ts`](../frontend/src/app/_og/data.ts) (guards also in [`lib/og.ts`](../frontend/src/lib/og.ts)), which inlines the body as a data URI rather than handing Satori a remote `<img src>`. The read accepts only an https dotted hostname, refuses address literals and local suffixes, and refuses a host whose DNS answer holds any private, loopback, link-local, or multicast address, judged in the connector so the socket uses the address the guard checked. It follows no redirect, holds a 3 s budget and an 8 MB ceiling, and accepts PNG, JPEG, GIF, WebP, and AVIF. The rasteriser behind `next/og` draws only PNG and JPEG and leaves a blank for anything else, so the read inlines a PNG or JPEG of 2 MB or less as fetched and re-encodes every other picture through `sharp` as a PNG at most 1200 px on its long edge (the first frame of an animated GIF). A refused read falls back to the drawing without a picture (the handle monogram, a blank mosaic tile) and logs one `og image skipped:` warning naming the reason and the picture's host and path. `users.avatar_url` and cover tile URLs are server-minted, never typed by an analyst, so the guard is defense in depth. The API's own origin skips the host guards: it serves the local storage backend's pictures in development (`http://localhost:8000/local-storage/...`), and the card trusts it as it trusts the payload reads.
-
-### Email
-
-Every email shares one layout, [`services/email_layout.py`](../backend/app/services/email_layout.py), the second surface after the share cards that renders outside the app. Mail clients read no class names from the site and strip most CSS, so the layout carries its own inline styles: a table-based single column 600px wide, a system font stack, and the hex values below. The mechanism and the queue are in [`engineering.md`](engineering.md#email).
-
-| Part | Light (default) | Dark (`prefers-color-scheme: dark`) |
-|---|---|---|
-| Page | `#f4f2ef`, the light theme's warm canvas | `#0a0a0a`, `neutral-950` |
-| Card | `#ffffff` | `#171717`, `neutral-900` |
-| Text | `#232323`, the light theme's `neutral-100` | `#f5f5f5` |
-| Inline link | `#c2410c`, `orange-700` | `#fb923c`, `orange-400` |
-| Action button | `#c2410c` fill, white label | unchanged |
-
-- **Light by default.** A client that ignores the dark media query, such as Gmail, gets the light layout and applies its own dark inversion to it. Apple Mail applies the dark values.
-- **The header** is the accent `V` mark, a PNG served by the frontend at `/icon/android-192` with a transparent background, beside the word Vidit in text. The word carries the brand when a client blocks images.
-- **The action button** is a solid `orange-700` fill, the one place the accent fills a control. A mail client cannot render the tinted-on-dark recipe reliably, and `orange-700` keeps a white label above the 4.5:1 contrast ratio. Under the button, the same URL is printed as a link for a client that drops the button.
-- **The footer** links to Settings and the legal notice.
-- **A product update email** names why it arrived and prints the unsubscribe link in its closing note, in both parts.
+- **Main column.** The page's form holds the event fields and nothing else. The rail's submit button and the version note join it through the form's `id` (the `form` attribute), so Enter in a field or in the note still saves.
+- **Actions card.** The version note on a published row, `IncompleteFormNotice`, the error banner, then the save: **Save version N**, the arming **Submit** on a detection, or **Save request**. The rail sticks from `lg` up, so the save stays in reach on a long form.
+- **Close.** Under the save, in the same card, [`CloseSection`](../frontend/src/components/event/CloseEventForm.tsx) states what closing does, then **Close this geolocation**, **Close this detection** or **Close this request** opens the reason form in place. A close lands on the event page, the next detection of a review pass, the detections queue, or the request page for a request.
+- **Geolocators.** A published geolocation's rail holds a second card with the Geolocators panel ([`GeolocatorsPanel`](../frontend/src/components/event/GeolocatorCredit.tsx)), outside the form, since the panel holds a form of its own. The owner invites an analyst picked in an `<AccountPicker>`, withdraws a pending invitation and removes a co-geolocator there. Each change applies on click through its own endpoint and never makes a version, which the `?` on the card's title states. A change rereads the row.
+- **Phone.** Below `lg` the rail stacks under the fields: the actions card, then the Geolocators card.
 
 ### Buttons
 
@@ -1157,7 +731,7 @@ Section order mirrors the detail page: Title → **Source media** → **Location
 
 **Reviewing is the same form on the same route, one detection at a time.** A queue row and a detection under review open one surface, [`EventEditForm`](../frontend/src/components/geolocations/edit/EventEditForm.tsx) at `/events/{id}/edit`, with the same sections in the same order and every field editable in both cases, the proof editor included. A review pass is that URL carrying `?queue=1`: one address per detection, so a reload keeps its place, the address bar says which detection is open, and the browser's Back steps back one detection. Every entry from the queue page sets the flag, a row click included, so a pass starts wherever the reader entered it; the bare URL stays reachable by hand for a single detection. *Start reviewing* points at `/profile/{username}/detections/review`, which reads the queue and hands over to the first detection's URL, replacing itself in history so Back from that detection lands on the queue list.
 
-With the flag set on a detection the reader owns, the page reads the owner's queue, places the detection in it, and adds the pass's own chrome to the header cluster: the position (*Detection n of m*) and **Skip**, beside the **Close** the form always carries and the utilities. The three verbs a pass uses sit together, above the fields they dispose of. Submitting runs the single-row [`POST /events/{id}/geolocate`](api.md#post-eventsidgeolocate) transition behind the form's confirm and then opens the next detection instead of returning to the queue; closing, behind its own required-reason panel, hands over the same way; **Skip** hands over without writing. Past the last detection the pass ends on the queue list. The position is read off the live queue, so a detection just published or closed is out of both the count and the walk, and a detection the queue no longer holds carries no position at all: the page is a plain edit again.
+With the flag set on a detection the reader owns, the page reads the owner's queue, places the detection in it, and adds the pass's own chrome to the header cluster: the position (*Detection n of m*) and **Skip**. Submit and **Close this detection** sit in the rail's actions card, as on every edit. Submitting runs the single-row [`POST /events/{id}/geolocate`](api.md#post-eventsidgeolocate) transition behind the form's confirm and then opens the next detection instead of returning to the queue; closing, behind its own required-reason panel, hands over the same way; **Skip** hands over without writing. Past the last detection the pass ends on the queue list. The position is read off the live queue, so a detection just published or closed is out of both the count and the walk, and a detection the queue no longer holds carries no position at all: the page is a plain edit again.
 
 **Required by default.** No field carries a `required` or an `optional` marker: per-field markers make the form a legend to decode, and two guides say the same thing better. The readiness tick-list under the actions names every unmet requirement of the publish path you are aiming at, and a clicked action outlines the missing fields in place. On submit, [`IncompleteFormNotice`](../frontend/src/components/ui/IncompleteFormNotice.tsx) lists every unmet field at once (not the first miss) above the action, and outlines each missing field in place (`FORM_INVALID_FIELD`). The forms set `noValidate`, so this notice, not native one-bubble-at-a-time validation, owns the feedback. It is shared across geolocation, request, and detection submit, each computing its own required set (detection is a superset of create; request is a subset). One content rule: a geolocation's proof must contain an image (`proofHasImage`), the source-to-satellite cross-reference. Detection-submit is a single **Submit** behind a confirm: a `detected` row is machine output nobody has vouched for, so submit applies the whole form and publishes it as `geolocated` in one step, after which every change to it is a version on a public record. The confirm **arms the button in place** rather than replacing it with a confirm pair: the label reads *Confirm submit*, the button takes `ARMED_RING`, and the second click writes. Nothing is inserted and nothing moves, so the second click lands where the first one did, and the button keeps focus, so Enter twice submits. It disarms on its own after a few seconds, on Escape, and on any click or focus landing elsewhere ([`useConfirmAction`](../frontend/src/hooks/useConfirmAction.ts) owns all of it). What the second click costs is in the `?` beside the button, and the armed state announces itself in a sibling live region, the shape every copy control uses, so no control renames itself mid-gesture.
 

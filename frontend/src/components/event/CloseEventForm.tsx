@@ -6,15 +6,13 @@ import { closeEvent } from "@/lib/events";
 import { useMutation } from "@/hooks/useMutation";
 import type { EventDetail, EventStatus } from "@/types";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
-import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { Textarea } from "@/components/ui/Input";
 import { FORM_LABEL, FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
 /**
  * What each row is called, for the one verb that closes all of them. The verb is always *Close*:
  * one write ends a request, a detection and a published geolocation, and per-shape verbs would
- * let the action row, panel eyebrow and confirm button drift. The noun names the row. A `closed`
+ * let the open button and the confirm button drift. The noun names the row. A `closed`
  * row offers no close, so the generic noun covers it rather than a fourth entry.
  */
 const CLOSE_NOUN: Partial<Record<EventStatus, string>> = {
@@ -28,9 +26,8 @@ function closeNoun(status: EventStatus): string {
   return CLOSE_NOUN[status] ?? "event";
 }
 
-/** The row's own close label, as the action row, the panel eyebrow and this
- *  form's confirm button all print it. */
-export function closeActionLabel(status: EventStatus): string {
+/** The row's own close label, as the open button and this form's confirm button print it. */
+function closeActionLabel(status: EventStatus): string {
   return `Close this ${closeNoun(status)}`;
 }
 
@@ -125,8 +122,9 @@ export function CloseEventForm({
 }
 
 /**
- * The close at the foot of an owner's edit page: what closing does, then **Close this …**, which
- * opens `CloseEventForm` in place. Closing takes the row back; it stays readable with its reason.
+ * The close at the foot of an owner's edit page actions card, under the save: what closing does,
+ * then **Close this …**, which opens `CloseEventForm` in place. Closing takes the row back; it
+ * stays readable with its reason.
  */
 export function CloseSection({
   eventId,
@@ -135,10 +133,8 @@ export function CloseSection({
   disabled = false,
 }: Omit<CloseEventFormProps, "onCancel">) {
   const [open, setOpen] = useState(false);
-  const label = closeActionLabel(status);
   return (
-    <Card as="section">
-      <SectionEyebrow title={label} margin="none" />
+    <div className="space-y-3 border-t border-neutral-800 pt-4">
       {open ? (
         <CloseEventForm
           eventId={eventId}
@@ -154,10 +150,10 @@ export function CloseSection({
             beside it.
           </p>
           <Button variant="danger" onClick={() => setOpen(true)} disabled={disabled}>
-            {label}
+            {closeActionLabel(status)}
           </Button>
         </>
       )}
-    </Card>
+    </div>
   );
 }

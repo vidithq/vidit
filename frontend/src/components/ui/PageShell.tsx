@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore, type ReactNode } from "react";
+import { useSyncExternalStore, type ComponentProps, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -39,7 +39,7 @@ export function PageShell({
    *  while a rail shows and `reading` otherwise, which leaves the main column one width. */
   rail?: ReactNode;
   railLabel?: string;
-  narrowRail?: "stacked" | "hidden";
+  narrowRail?: ComponentProps<typeof PageWithRail>["narrow"];
   children: ReactNode;
 }) {
   const router = useRouter();
