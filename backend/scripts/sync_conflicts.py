@@ -13,8 +13,9 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 import sentry_sdk
 
-from app.database import SessionLocal
+from app.database import SessionLocal, engine
 from app.observability import configure_logging, init_sentry
+from app.schema_gate import wait_for_schema_head
 from app.services.conflict_sync import ConflictSyncError, sync_conflicts
 
 
@@ -23,6 +24,7 @@ def main() -> None:
     # Same opt-in Sentry boot as the app: a changed page structure aborts every
     # run silently, so it must page.
     init_sentry()
+    wait_for_schema_head(engine)
 
     db = SessionLocal()
     try:

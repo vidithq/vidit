@@ -54,6 +54,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import app  # noqa: E402
 from app.models.user import User  # noqa: E402
+from app.schema_gate import script_directory  # noqa: E402
 from app.services.auth import create_access_token  # noqa: E402
 from app.services.auth_cookies import CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE  # noqa: E402
 from app.services.tweet_ingest import retry  # noqa: E402
@@ -71,11 +72,8 @@ def _admin_conn(base_url: str):
 
 
 def _alembic_script_head() -> str:
-    from alembic.config import Config
-    from alembic.script import ScriptDirectory
-
-    head = ScriptDirectory.from_config(Config("alembic.ini")).get_current_head()
-    assert head is not None, "no alembic head found; is the cwd backend/?"
+    head = script_directory().get_current_head()
+    assert head is not None, "no alembic head found"
     return head
 
 
