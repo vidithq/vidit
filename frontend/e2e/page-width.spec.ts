@@ -4,8 +4,9 @@ import { EVENT_ID } from "./support/fixtures";
 import { grantSession, mockApi } from "./support/mockApi";
 
 /**
- * Every `PageShell` page shares one left-aligned container: the title starts
- * at one x on every page. A page without a rail keeps the 53rem reading width;
+ * Every `PageShell` page shares one container: the title starts at one x on
+ * every page, and from `lg` up a `max-w-6xl` column sits centred on the screen,
+ * the nav rail counted in the left margin. A page without a rail keeps the 53rem reading width;
  * a page with a rail gives the main column the same width beside a 17.5rem
  * rail once the screen holds both.
  */
@@ -31,6 +32,20 @@ test.describe("page width", () => {
     const xs = [];
     for (const path of paths) xs.push(await titleX(page, path));
     for (const x of xs) expect(x, `title x across ${paths.join(", ")}`).toBe(xs[0]);
+  });
+
+  test("centres the wide column on the screen", async ({ page }) => {
+    for (const width of [1512, 1920]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/feed");
+      const title = page.getByRole("heading", { level: 1 });
+      await expect(title).toBeVisible();
+      const { left, right, viewport } = await title.evaluate((el) => {
+        const box = el.closest("header")!.parentElement!.getBoundingClientRect();
+        return { left: box.left, right: box.right, viewport: document.documentElement.clientWidth };
+      });
+      expect(left, `left margin at ${width}px`).toBe(viewport - right);
+    }
   });
 
   test("keeps the reading width without a rail and beside one", async ({ page }) => {
