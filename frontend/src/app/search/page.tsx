@@ -65,6 +65,7 @@ import { creditProps } from "@/lib/geolocatorCredit";
 import { memberCountLabel, organizationPath } from "@/lib/organizations";
 import { countLabel } from "@/lib/format";
 import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
+import { eventHref, profileHref } from "@/lib/routes";
 
 const ICON = { size: 13, strokeWidth: 1.8, className: "max-sm:hidden" } as const;
 
@@ -587,7 +588,7 @@ function EventResult({ hit }: { hit: SearchEventHit }) {
   return (
     <EntityCard
       variant="compact"
-      detailHref={`/events/${hit.id}`}
+      detailHref={eventHref(hit.id)}
       title={<Highlighted value={hit.title_highlight} />}
       titleText={hit.title}
       badge={<StatusBadge status={hit.status} />}
@@ -659,7 +660,7 @@ function ProfileResult({
 function UserResult({ hit }: { hit: SearchUserHit }) {
   return (
     <ProfileResult
-      href={`/profile/${hit.username}`}
+      href={profileHref(hit.username)}
       avatarUrl={hit.avatar_url}
       avatarName={hit.username}
       name={<Highlighted value={hit.username_highlight} />}

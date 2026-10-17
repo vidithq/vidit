@@ -16,6 +16,7 @@ import type {
   TweetImportOutcome,
 } from "@/types";
 import { withCursor } from "./pagination";
+import { eventHref } from "./routes";
 
 /** A required field a create/edit form is still missing; `key` drives the in-form highlight. */
 export type MissingFieldKey =
@@ -333,7 +334,7 @@ export function eventVersionPath(id: string, versionNo: number): string {
 
 /** Past versions only; the current one keeps `/events/{id}`. */
 export function eventVersionHref(id: string, versionNo: number): string {
-  return `/events/${id}/v${versionNo}`;
+  return `${eventHref(id)}/v${versionNo}`;
 }
 
 export function eventHistoryHref(id: string): string {

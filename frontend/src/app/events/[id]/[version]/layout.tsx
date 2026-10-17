@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { eventHref } from "@/lib/routes";
 
 // `[version]` is a dynamic segment beside static `edit` and `history` (static wins); `parseVersionSegment` refuses
 // anything not `v<number>` via `notFound()`.
@@ -13,7 +14,7 @@ export async function generateMetadata({
   const { id } = await params;
   return {
     robots: { index: false, follow: true },
-    alternates: { canonical: `/events/${encodeURIComponent(id)}` },
+    alternates: { canonical: eventHref(id) },
   };
 }
 

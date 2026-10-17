@@ -13,6 +13,7 @@ import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button } from "@/components/ui/Button";
 import { EventDetailBody } from "@/components/event/EventDetailBody";
 import { creditProps } from "@/lib/geolocatorCredit";
+import { eventHref } from "@/lib/routes";
 
 /** Where the panel sits. `overlay`: a card over the full-screen map page (a bottom sheet below
  * `sm`), taking the display cutout as margins from `sm` up and as padding on the sheet's three
@@ -119,7 +120,7 @@ export function DetailSidePanel({
                 marks external only). */}
             <h2 className="text-lg font-medium pr-6">
               <Link
-                href={`/events/${detail.id}`}
+                href={eventHref(detail.id)}
                 className={`text-neutral-100 ${TEXT_LINK}`}
               >
                 {detail.title}

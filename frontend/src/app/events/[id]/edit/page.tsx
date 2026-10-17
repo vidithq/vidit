@@ -16,6 +16,7 @@ import {
   type PaginatedEventDetails,
 } from "@/lib/events";
 import type { EventDetail } from "@/types";
+import { detectionsQueueHref, eventHref } from "@/lib/routes";
 
 /**
  * Owner edit of one event: correcting an open request (`RequestEditForm`,
@@ -66,7 +67,7 @@ export default function EditEventPage() {
         <p className="text-sm text-neutral-400">
           You can only edit your own events.{" "}
           <Link
-            href={isRequest ? `/requests/${geo.id}` : `/events/${geo.id}`}
+            href={isRequest ? `/requests/${geo.id}` : eventHref(geo.id)}
             className={TEXT_LINK}
           >
             {isRequest ? "View this request" : "View this geolocation"}
@@ -89,7 +90,7 @@ export default function EditEventPage() {
         <p className="text-sm text-neutral-400">
           This event is {geo.status}, so it has no edit form.{" "}
           <Link
-            href={`/events/${geo.id}`}
+            href={eventHref(geo.id)}
             className={TEXT_LINK}
           >
             View it
@@ -103,8 +104,8 @@ export default function EditEventPage() {
   // Return to the queue after a confirmation, the event after a version.
   const doneHref =
     geo.status === "geolocated"
-      ? `/events/${geo.id}`
-      : `/profile/${user.username}/detections`;
+      ? eventHref(geo.id)
+      : detectionsQueueHref(user.username);
 
   // Position comes from the live queue; a detection it no longer holds gets a plain edit.
   const items = queueData?.items ?? [];

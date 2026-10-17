@@ -17,6 +17,7 @@ import {
   type DetectionReadiness,
   type PaginatedEventDetails,
 } from "@/lib/events";
+import { detectionsQueueHref, profileHref } from "@/lib/routes";
 
 /** The queue's one filter, answered by the server over the whole queue (not just the loaded rows). */
 const FILTERS: { value: DetectionReadiness; label: string }[] = [
@@ -43,7 +44,7 @@ export default function DetectionsPage() {
 
   // The endpoint scopes to `current_user` and ignores the URL username: send a non-owner to their own profile.
   useEffect(() => {
-    if (user && !isOwn) router.replace(`/profile/${username}`);
+    if (user && !isOwn) router.replace(profileHref(username));
   }, [user, isOwn, username, router]);
 
   // The filter rides in the path, so a pick refetches server-side instead of hiding rows.
@@ -61,7 +62,7 @@ export default function DetectionsPage() {
     return <PageLoading />;
   }
 
-  const reviewHref = `/profile/${username}/detections/review`;
+  const reviewHref = `${detectionsQueueHref(username)}/review`;
 
   let listBody;
   if (error) {

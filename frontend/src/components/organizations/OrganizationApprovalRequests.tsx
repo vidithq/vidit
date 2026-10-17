@@ -21,6 +21,7 @@ import { LinkRow } from "@/components/ui/LinkRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
+import { eventHref } from "@/lib/routes";
 
 /** One open request as a row to its event: the requester's picture, the event title, who asked
  *  and when, and Decline. Approving happens on the event page, after reading it. */
@@ -51,7 +52,7 @@ function RequestRow({
             {formatDate(request.created_at)}
           </span>
         }
-        href={`/events/${event.id}`}
+        href={eventHref(event.id)}
         external={false}
         action={
           <Button variant="ghost" onClick={() => void decline.run()} disabled={decline.loading}>

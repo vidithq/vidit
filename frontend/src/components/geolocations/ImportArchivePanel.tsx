@@ -28,6 +28,7 @@ import {
 } from "@/lib/events";
 import type { ArchiveImportJob } from "@/types";
 import { pluralNoun } from "@/lib/format";
+import { detectionsQueueHref } from "@/lib/routes";
 
 /** Bytes below 1 KB, then KB, then MB with one decimal below 100 MB. */
 function formatBytes(n: number): string {
@@ -196,7 +197,7 @@ export function ImportArchivePanel({ username }: { username: string }) {
         </p>
         <div className="flex flex-wrap gap-3 pt-1">
           <Link
-            href={`/profile/${username}/detections`}
+            href={detectionsQueueHref(username)}
             className={buttonClasses("primary")}
           >
             Open the detections queue
@@ -394,7 +395,7 @@ export function ImportArchivePanel({ username }: { username: string }) {
                 <div className="flex flex-wrap gap-3">
                   {!result || alreadyImported ? (
                     <Link
-                      href={`/profile/${username}/detections`}
+                      href={detectionsQueueHref(username)}
                       className={buttonClasses("primary")}
                     >
                       Review your detections

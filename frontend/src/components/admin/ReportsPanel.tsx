@@ -22,6 +22,7 @@ import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER, LIST_TILE } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
+import { eventHref } from "@/lib/routes";
 
 /**
  * The moderation queue: every content report, open first and newest first within each group (the
@@ -88,8 +89,8 @@ function ReportRow({
         <span className="text-neutral-500">
           {report.reporter_user_id ? "signed in" : "anonymous"}
         </span>
-        {isEvent && (
-          <Link href={`/events/${report.event_id}`} className={TEXT_LINK}>
+        {report.event_id !== null && (
+          <Link href={eventHref(report.event_id)} className={TEXT_LINK}>
             Open the event
           </Link>
         )}
@@ -120,7 +121,7 @@ function ReportRow({
 
       {open && (
         <div className="flex flex-wrap items-center gap-2">
-          {isEvent && (
+          {report.event_id !== null && (
             <Button
               variant="secondary"
               disabled={busy}

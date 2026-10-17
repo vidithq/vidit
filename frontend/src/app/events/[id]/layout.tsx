@@ -6,6 +6,7 @@ import type { EventDetail } from "@/types";
 
 import { ogFetch } from "../../_og/data";
 import { articleMetadata } from "../../_og/metadata";
+import { eventHref } from "@/lib/routes";
 
 // The event page is a client component, so its metadata lives on the segment
 // layout: this is the server half of `/events/{id}`, and the only thing it
@@ -39,7 +40,7 @@ export async function generateMetadata({
       event.event_date ? formatDate(event.event_date) : null,
     ],
     owner: event.owner.username,
-    url: `/events/${encodeURIComponent(event.id)}`,
+    url: eventHref(event.id),
     publishedTime: event.created_at,
   });
 }

@@ -17,6 +17,7 @@ import { LinkRow } from "@/components/ui/LinkRow";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
+import { eventHref } from "@/lib/routes";
 
 /** One approval as a row to its event: the acting org manager's picture, the event title, then the
  *  version, who placed it and when, its state and, once revoked, by which role and why. */
@@ -47,7 +48,7 @@ function ApprovalLinkRow({ event, approval }: OrganizationApproval) {
           )}
         </>
       }
-      href={`/events/${event.id}`}
+      href={eventHref(event.id)}
       external={false}
     />
   );

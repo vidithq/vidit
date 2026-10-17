@@ -5,6 +5,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { cn } from "@/lib/cn";
+import { profileHref } from "@/lib/routes";
 
 type Author = {
   username: string;
@@ -78,7 +79,7 @@ export function AuthorByline({
       size={pictureSize}
     />
   );
-  const href = (person: Author) => person.href ?? `/profile/${person.username}`;
+  const href = (person: Author) => person.href ?? profileHref(person.username);
   return (
     <span className={cn("inline-flex items-center", gap, className)}>
       {prefix && !avatar && <>by </>}

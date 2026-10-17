@@ -5,6 +5,7 @@ import type { PublicProfile, UserStats } from "@/lib/users";
 
 import { ogFetch } from "../../_og/data";
 import { portfolioMetadata } from "../../_og/metadata";
+import { profileHref } from "@/lib/routes";
 
 // The profile page is a client component, so its metadata lives on the segment
 // layout: this is the server half of `/profile/{username}`, and the only thing
@@ -45,7 +46,7 @@ export async function generateMetadata({
           .join(", ")}.`
       : "This handle has no profile on Vidit.",
     bio: profile?.bio,
-    url: `/profile/${encodeURIComponent(profile?.username ?? username)}`,
+    url: profileHref(profile?.username ?? username),
   });
 }
 

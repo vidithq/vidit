@@ -37,6 +37,7 @@ import {
   type Collection,
 } from "@/lib/collections";
 import { renderProof } from "@/lib/proof";
+import { profileHref } from "@/lib/routes";
 
 /**
  * One collection page: the header (title, owner byline with a `Collection` pill, the profile
@@ -105,7 +106,7 @@ function CollectionPageBody() {
   const drop = useMutation(() => deleteCollection(id), {
     fallback: "Failed to drop the collection",
     // Back to the owner's profile: this page no longer exists.
-    onSuccess: () => router.push(`/profile/${collection?.owner.username ?? ""}`),
+    onSuccess: () => router.push(profileHref(collection?.owner.username ?? "")),
   });
 
   // Two clicks, disarming after a few seconds or on any outside click or focus: the same

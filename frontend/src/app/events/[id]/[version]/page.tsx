@@ -14,6 +14,7 @@ import { VersionSelector } from "@/components/event/VersionSelector";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
+import { eventHref } from "@/lib/routes";
 
 /**
  * One filed version at `/events/{id}/vN`: the canonical body fed the version's
@@ -47,7 +48,7 @@ export default function EventVersionPage() {
     if (!isCurrent) return;
     // The current version has one address: forward to it, declaring this page out of the back-stack first.
     skipBackRecord();
-    router.replace(`/events/${eventId}`);
+    router.replace(eventHref(eventId));
   }, [isCurrent, router, eventId]);
 
   if (number === null) notFound();

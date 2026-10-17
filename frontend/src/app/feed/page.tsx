@@ -32,6 +32,7 @@ import { creditProps } from "@/lib/geolocatorCredit";
 import type { PublicProfile } from "@/lib/users";
 import type { components, operations } from "@/lib/api-types";
 import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
+import { eventHref } from "@/lib/routes";
 
 type FeedItem = components["schemas"]["FeedItemRead"];
 type FeedQuery = NonNullable<
@@ -70,7 +71,7 @@ const EMPTY_FEED_FILTERS: FeedFilters = { kinds: [], values: EMPTY_EVENT_FILTERS
 function itemHref(item: FeedItem): string {
   return item.status === "requested"
     ? `/requests/${item.id}`
-    : `/events/${item.id}`;
+    : eventHref(item.id);
 }
 
 /** The event date when known, then the date the row entered the feed, named by its kind. */

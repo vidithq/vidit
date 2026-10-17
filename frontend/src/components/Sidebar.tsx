@@ -35,6 +35,7 @@ import {
   Menu,
   X,
 } from "lucide-react";
+import { detectionsQueueHref, profileHref } from "@/lib/routes";
 
 const X_URL = "https://x.com/vidithq";
 const DISCORD_URL = "https://discord.gg/9wPtsrrKyJ";
@@ -229,8 +230,8 @@ export default function Sidebar() {
   const profileActive =
     !!user &&
     (pathname === "/profile" ||
-      pathname === `/profile/${user.username}` ||
-      pathname === `/profile/${user.username}/detections`);
+      pathname === profileHref(user.username) ||
+      pathname === detectionsQueueHref(user.username));
 
   // The brand mark is the Home entry, so it lights like a nav row on `/`.
   const homeActive = pathname === "/";
@@ -409,7 +410,7 @@ export default function Sidebar() {
           {isAdmin && renderNavItem(ADMIN_ITEM)}
           {user ? (
             <Link
-              href={`/profile/${user.username}`}
+              href={profileHref(user.username)}
               title={
                 !showLabels
                   ? detectionCount > 0
