@@ -67,3 +67,48 @@ test.describe("page width", () => {
     expect(mainWidth).toBe(READING_PX);
   });
 });
+
+/** From `lg` up the back arrow and the right rail stick at their resting place. */
+test.describe("sticky chrome", () => {
+  test.beforeEach(async ({ context, page }) => {
+    await page.setViewportSize({ width: 1512, height: 600 });
+    await grantSession(context);
+    await mockApi(page);
+  });
+
+  async function scrollBy(page: Page, y: number): Promise<void> {
+    await page.evaluate((dy) => window.scrollBy(0, dy), y);
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  }
+
+  test("keeps the back arrow in the gutter and the rail in place", async ({ page }) => {
+    await page.goto(`/events/${EVENT_ID}`);
+    const back = page.getByRole("button", { name: "Back" });
+    const rail = page.getByRole("complementary", { name: "Actions and approvals" });
+    await expect(back).toBeVisible();
+    await expect(rail).toBeVisible();
+    const backAtRest = (await back.boundingBox())!;
+    const railAtRest = (await rail.boundingBox())!;
+
+    await scrollBy(page, 40);
+    expect((await rail.boundingBox())!.y).toBe(railAtRest.y);
+    expect((await back.boundingBox())!.y).toBe(backAtRest.y);
+
+    await scrollBy(page, 400);
+    await expect(back).toBeInViewport();
+    const backScrolled = (await back.boundingBox())!;
+    expect(backScrolled.x).toBe(backAtRest.x);
+    expect(backScrolled.y).toBe(backAtRest.y);
+  });
+
+  test("keeps a rail under the header in place", async ({ page }) => {
+    await page.goto("/feed");
+    const rail = page.getByRole("complementary", { name: "Filters" });
+    await expect(rail).toBeVisible();
+    await expect(rail).toHaveCSS("position", "sticky");
+    const railAtRest = (await rail.boundingBox())!;
+
+    await scrollBy(page, 40);
+    expect((await rail.boundingBox())!.y).toBe(railAtRest.y);
+  });
+});

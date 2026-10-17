@@ -6,8 +6,9 @@ import { cn } from "@/lib/cn";
  * A main column with a sticky 17.5rem right rail from `lg` up. `PageShell` composes it from its
  * `rail` prop; mount it directly only outside `PageShell` (the palette).
  *
- * The rail sticks while the main column scrolls. Once it is taller than the viewport it scrolls on
- * its own, so its foot stays reachable. Below `lg` the rail stacks above the main column
+ * The rail sticks while the main column scrolls, at the `--rail-top` offset `PageShell` sets to its
+ * resting top, so it never moves. Once it is taller than the viewport it scrolls on its own, so its
+ * foot stays reachable. Below `lg` the rail stacks above the main column
  * (`narrow="stacked"`), stacks below it (`narrow="below"`), for a rail that acts on what the column
  * holds, or leaves the page (`narrow="hidden"`), for a page that offers its own narrow entry point.
  * Without a `rail` the main column takes the full width.
@@ -34,7 +35,7 @@ export function PageWithRail({
     <aside
       aria-label={railLabel}
       className={cn(
-        "min-w-0 lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1 lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto",
+        "min-w-0 lg:sticky lg:top-(--rail-top) lg:col-start-2 lg:row-start-1 lg:max-h-[calc(100dvh-var(--rail-top)-1.5rem)] lg:overflow-y-auto",
         // The `1fr` second row takes the rail's extra height, so the header row stays the header's.
         header && "lg:row-span-2",
         narrow === "hidden" && "max-lg:hidden",
