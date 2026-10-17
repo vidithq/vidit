@@ -882,7 +882,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<AccountPicker>" usage="The one way to pick an analyst or an organization: a combobox field (role=combobox over a role=listbox) whose rows show the picture (a circle for an analyst, a rounded square for an organization), the name and, for an organization, its slug muted. `options` filters a local list by name and handle; `search` runs the caller's request 250ms after typing stops, once the query holds `minQueryLength` characters, and a `note` it returns (why an exact match is left out) shows as a muted row. Loading, a failed search and `emptyText` are muted rows too. ArrowUp and ArrowDown move and wrap, Enter takes the highlighted row or hands the typed text to `onSubmitText` when no row is up (an exact username), Escape, Tab or an outside click closes. With `selected`, the pick shows as an accent chip that `onClear` removes; without it, the field empties after each pick. The list spans the field's width and scrolls past 15rem. Consumers: the approval request, the search Author filter, the co-geolocator invite, the organization invite and the admin org manager fields.">
+          <Item name="<AccountPicker>" usage="The one way to pick an analyst or an organization: a combobox field (role=combobox over a role=listbox) whose rows show the picture (a circle for an analyst, a rounded square for an organization), the name and, for an organization, its slug muted. `options` filters a local list by name and handle; `search` runs the caller's request 250ms after typing stops, once the query holds `minQueryLength` characters, and a `note` it returns (why an exact match is left out) shows as a muted row. Loading, a failed search and `emptyText` are muted rows too. ArrowUp and ArrowDown move and wrap, Enter takes the highlighted row or hands the typed text to `onSubmitText` when no row is up (an exact username), Escape, Tab or an outside click closes. With `selected`, the pick shows as an accent chip that `onClear` removes; without it, the field empties after each pick. The list spans the field's width and scrolls past 15rem. It renders in a portal fixed to the viewport, so a card or a scrolling rail never clips it, and it opens above the field when the room below is shorter than 15rem and the room above is larger. Consumers: the approval request, the search Author filter, the co-geolocator invite, the organization invite and the admin org manager fields.">
             <PaletteAccountPicker />
           </Item>
         </section>
@@ -1900,6 +1900,17 @@ function PaletteAccountPicker() {
           placeholder="Pick an analyst"
           emptyText="No analyst or organization matches"
         />
+      </Variant>
+      <Variant label="inside a narrow card that clips its overflow">
+        <Card className="w-56 overflow-hidden">
+          <AccountPicker
+            aria-label="Pick an account in a card"
+            options={PALETTE_ACCOUNTS}
+            onSelect={() => undefined}
+            placeholder="Search analysts and organizations"
+            emptyText="No analyst or organization matches"
+          />
+        </Card>
       </Variant>
     </div>
   );

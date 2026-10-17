@@ -147,4 +147,30 @@ describe("<AccountPicker>", () => {
     fireEvent.click(screen.getByRole("button", { name: "ana" }));
     expect(onClear).toHaveBeenCalled();
   });
+
+  it("renders the list outside a clipping card, under the field", () => {
+    render(
+      <div data-testid="card" className="overflow-hidden">
+        <AccountPicker aria-label="Account" options={[ANA]} onSelect={vi.fn()} emptyText="" />
+      </div>,
+    );
+    vi.spyOn(field(), "getBoundingClientRect").mockReturnValue(
+      DOMRect.fromRect({ x: 20, y: 100, width: 200, height: 36 }),
+    );
+    fireEvent.focus(field());
+    const list = screen.getByRole("listbox").parentElement!;
+    expect(screen.getByTestId("card")).not.toContainElement(list);
+    expect(list).toHaveStyle({ position: "fixed", top: "140px", left: "20px", width: "200px" });
+  });
+
+  it("opens the list above the field near the viewport bottom", () => {
+    render(<AccountPicker aria-label="Account" options={[ANA]} onSelect={vi.fn()} emptyText="" />);
+    vi.spyOn(field(), "getBoundingClientRect").mockReturnValue(
+      DOMRect.fromRect({ x: 0, y: window.innerHeight - 60, width: 200, height: 36 }),
+    );
+    fireEvent.focus(field());
+    const list = screen.getByRole("listbox").parentElement!;
+    expect(list).toHaveStyle({ bottom: "64px" });
+    expect(list.style.top).toBe("");
+  });
 });

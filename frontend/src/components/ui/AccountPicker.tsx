@@ -1,6 +1,14 @@
 "use client";
 
-import { useId, useRef, useState, type KeyboardEvent } from "react";
+import {
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+} from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 import { cn } from "@/lib/cn";
@@ -38,6 +46,25 @@ const SEARCH_DEBOUNCE_MS = 250;
 const ROW =
   "flex w-full min-h-9 cursor-pointer items-center gap-2 rounded px-2.5 py-1.5 text-sm text-neutral-200";
 const STATUS_ROW = "px-2.5 py-1.5 text-xs text-neutral-500";
+
+const LIST_MAX_HEIGHT = 240;
+const LIST_GAP = 4;
+const VIEWPORT_MARGIN = 8;
+
+// Fixed to the viewport from a portal, so an `overflow` ancestor (a card, a scrolling rail) cannot
+// clip the list. It opens above the field when the room below is short and the room above larger.
+function placeList(field: DOMRect): CSSProperties {
+  const below = window.innerHeight - field.bottom - LIST_GAP - VIEWPORT_MARGIN;
+  const above = field.top - LIST_GAP - VIEWPORT_MARGIN;
+  const up = below < LIST_MAX_HEIGHT && above > below;
+  return {
+    position: "fixed",
+    left: field.left,
+    width: field.width,
+    maxHeight: Math.min(LIST_MAX_HEIGHT, up ? above : below),
+    ...(up ? { bottom: window.innerHeight - field.top + LIST_GAP } : { top: field.bottom + LIST_GAP }),
+  };
+}
 
 // Hidden from assistive tech: the row names the account, and the initial fallback would prefix it.
 function AccountAvatar({ account, size }: { account: Account; size: string }) {
@@ -149,6 +176,23 @@ export function AccountPicker({
   const shown = open && ready;
   const optionId = (index: number) => `${listId}-${index}`;
 
+  // Null until measured on the client, which also keeps the portal out of the server render.
+  const [placement, setPlacement] = useState<CSSProperties | null>(null);
+  useLayoutEffect(() => {
+    if (!shown) return;
+    const place = () => {
+      const field = inputRef.current;
+      if (field) setPlacement(placeList(field.getBoundingClientRect()));
+    };
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [shown]);
+
   const close = () => {
     setQuery("");
     setOpen(false);
@@ -206,7 +250,7 @@ export function AccountPicker({
   }
 
   return (
-    <div className="relative w-full">
+    <div className="w-full">
       <Input
         ref={inputRef}
         id={id}
@@ -233,49 +277,50 @@ export function AccountPicker({
         autoFocus={autoFocus}
         className={className}
       />
-      {shown && (
-        <div
-          // Keeps focus in the field, so a click on a row lands before the blur closes the list.
-          onMouseDown={(e) => e.preventDefault()}
-          className={cn(
-            "absolute inset-x-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-md p-1",
-            TOOLTIP_SURFACE,
-          )}
-        >
-          <ul id={listId} role="listbox" aria-label={ariaLabel} className="space-y-0.5">
-            {!loading &&
-              rows.map((account, index) => (
-                <li
-                  key={accountKey(account)}
-                  id={optionId(index)}
-                  role="option"
-                  aria-selected={index === activeIndex}
-                  onClick={() => choose(account)}
-                  onMouseEnter={() => setActive(index)}
-                  className={cn(ROW, index === activeIndex && "bg-neutral-700")}
-                >
-                  <AccountAvatar account={account} size="size-6" />
-                  <span className="min-w-0 truncate">{accountName(account)}</span>
-                  {account.kind === "organization" && " "}
-                  {account.kind === "organization" && (
-                    <span className="min-w-0 truncate text-xs text-neutral-500">
-                      {account.slug}
-                    </span>
-                  )}
-                </li>
-              ))}
-          </ul>
-          {(loading || failed || rows.length === 0 || current?.note) && (
-            <p role="status" className={STATUS_ROW}>
-              {loading
-                ? "Searching…"
-                : failed
-                  ? "Could not load suggestions"
-                  : (current?.note ?? emptyText)}
-            </p>
-          )}
-        </div>
-      )}
+      {shown &&
+        placement &&
+        createPortal(
+          <div
+            // Keeps focus in the field, so a click on a row lands before the blur closes the list.
+            onMouseDown={(e) => e.preventDefault()}
+            style={placement}
+            className={cn("z-[2000] overflow-y-auto rounded-md p-1", TOOLTIP_SURFACE)}
+          >
+            <ul id={listId} role="listbox" aria-label={ariaLabel} className="space-y-0.5">
+              {!loading &&
+                rows.map((account, index) => (
+                  <li
+                    key={accountKey(account)}
+                    id={optionId(index)}
+                    role="option"
+                    aria-selected={index === activeIndex}
+                    onClick={() => choose(account)}
+                    onMouseEnter={() => setActive(index)}
+                    className={cn(ROW, index === activeIndex && "bg-neutral-700")}
+                  >
+                    <AccountAvatar account={account} size="size-6" />
+                    <span className="min-w-0 truncate">{accountName(account)}</span>
+                    {account.kind === "organization" && " "}
+                    {account.kind === "organization" && (
+                      <span className="min-w-0 truncate text-xs text-neutral-500">
+                        {account.slug}
+                      </span>
+                    )}
+                  </li>
+                ))}
+            </ul>
+            {(loading || failed || rows.length === 0 || current?.note) && (
+              <p role="status" className={STATUS_ROW}>
+                {loading
+                  ? "Searching…"
+                  : failed
+                    ? "Could not load suggestions"
+                    : (current?.note ?? emptyText)}
+              </p>
+            )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
