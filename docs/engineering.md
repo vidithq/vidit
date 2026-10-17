@@ -421,11 +421,11 @@ flowchart LR
 1. `sent` when any device's push service accepted the push.
 2. Left `sending` when no device accepted it and a request to one of them failed in transit, since that push may have gone out.
 3. Back to `queued` for a retry when the push services refused it, so a retry never repeats a push a device already shows.
-4. `skipped` when no device is left, or when push is off on the deployment.
+4. `skipped` when no device is left, or on a development server without VAPID keys.
 
 A device endpoint is a bearer URL. A failure is logged by device id, status and exception class only, never with the endpoint or the exception message.
 
-**Configuration.** `VAPID_PRIVATE_KEY` is the base64url raw P-256 private key, and `VAPID_SUBJECT` a `mailto:` or `https:` contact for the push services. The public key derives from the private key. Set both or neither, on the API (it serves the public key) and on the import worker (it sends): neither turns push off, and `config.py` refuses to start with one alone. Generate a key pair for local development with `npx -y web-push generate-vapid-keys` and put its private key in `backend/.env`. Never commit a key.
+**Configuration.** `VAPID_PRIVATE_KEY` is the base64url raw P-256 private key, and `VAPID_SUBJECT` a `mailto:` or `https:` contact for the push services. The public key derives from the private key. Set both on the API (it serves the public key) and on the import worker (it sends). With `COOKIE_SECURE=true`, `config.py` refuses to start without both. Outside a deployment, neither turns push off, and `config.py` refuses to start with one alone. `make env` runs [`scripts/ensure_vapid_keys.py`](../backend/scripts/ensure_vapid_keys.py), which writes a development private key and `VAPID_SUBJECT=mailto:dev@example.com` to `backend/.env` when they are absent and never replaces a value already set. Never commit a key.
 
 ### Hand-kept mirrors
 
@@ -536,7 +536,7 @@ Each service has its own `.env` (not committed):
 - `backend/.env`: `DATABASE_URL`, `JWT_SECRET`, `STORAGE_BACKEND` (`local` or `s3`), `S3_BUCKET`, `AWS_REGION`, `CLOUDFRONT_DOMAIN`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `CORS_ORIGINS`. Full list in `backend/.env.example`.
 - `frontend/.env.local`: `NEXT_PUBLIC_API_URL`. Full list in `frontend/.env.local.example`.
 
-Set `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` in `backend/.env` to send push notifications locally ([Web Push](#web-push) has the key generation step). Leave both unset to run without push.
+`make env` sets `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` in `backend/.env`, so push notifications work locally ([Web Push](#web-push)).
 
 Set `REPORT_NOTIFY_EMAIL` in `backend/.env` to receive one email per content report a viewer files. The message names the reason and links to both the admin console and the reported event. Leave it unset to record reports without sending mail. The admin report queue holds every report either way.
 

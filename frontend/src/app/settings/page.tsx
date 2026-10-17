@@ -69,21 +69,16 @@ const NO_PUSH_DEVICE =
 const PUSH_STATE_LINE: Record<PushDeviceState, string> = {
   unsupported: "This browser cannot receive push notifications.",
   "needs-home-screen": "Add Vidit to your Home Screen to receive push notifications here.",
-  unavailable: "This Vidit server does not send push notifications.",
   denied:
     "Notifications are blocked for Vidit in this browser. Allow them in the site settings, then reload this page.",
   off: "Push notifications are off on this device.",
   on: "Push notifications are on for this device.",
 };
 
-/** What the push column of the kind switches does: hidden when the server sends no push,
- *  closed with its reason when the account has no device, open otherwise. */
-type PushColumn = { hidden: true } | { hidden: false; reason: string | null };
-
 /** This device's push state, the control that turns it on or off, and the account's devices.
- *  The kind switches above apply to every device of the account, so `onPushColumn` hides the
- *  push column when the server sends no push, and closes it when the account has no device. The
- *  matrix prints that reason, so the state line here omits it.
+ *  The kind switches above apply to every device of the account, so `onPushColumn` closes the
+ *  push column with its reason when the account has no device. The matrix prints that reason,
+ *  so the state line here omits it.
  *  `resyncKey` changes after a password change, which deleted every device on the server:
  *  this browser registers again and the list reloads. */
 function PushDevice({
@@ -91,15 +86,13 @@ function PushDevice({
   onPushColumn,
 }: {
   resyncKey: number;
-  onPushColumn: (column: PushColumn) => void;
+  onPushColumn: (reason: string | null) => void;
 }) {
   const config = useApiResource<PushConfig>(PUSH_CONFIG_PATH);
   const [state, setState] = useState<PushDeviceState | null>(null);
-  const settled = config.data !== null || config.error !== null;
   useEffect(() => {
-    if (!settled) return;
     let live = true;
-    readPushState(config.data ?? undefined)
+    readPushState()
       .catch((): PushDeviceState => "unsupported")
       .then((next) => {
         if (live) setState(next);
@@ -107,7 +100,7 @@ function PushDevice({
     return () => {
       live = false;
     };
-  }, [settled, config.data]);
+  }, []);
   const devices = useApiResource<RegisteredDevice[]>(PUSH_DEVICES_PATH);
   const { refetch: refetchDevices } = devices;
   const [thisId, setThisId] = useState<string | null>(null);
@@ -134,7 +127,7 @@ function PushDevice({
   }, [resyncKey, refetchDevices]);
   const change = useMutation(
     (enable: boolean) =>
-      enable && config.data?.public_key ? enablePush(config.data.public_key) : disablePush(),
+      enable ? enablePush(config.data?.public_key ?? "") : disablePush(),
     {
       fallback: "Could not change push on this device. Try again.",
       onSuccess: (next) => {
@@ -149,21 +142,16 @@ function PushDevice({
     onSuccess: refetchDevices,
   });
   const rows = Array.isArray(devices.data) ? devices.data : [];
-  const unavailable = state === "unavailable";
   const pushReason = Array.isArray(devices.data) && rows.length === 0 ? NO_PUSH_DEVICE : null;
-  useEffect(
-    () => onPushColumn(unavailable ? { hidden: true } : { hidden: false, reason: pushReason }),
-    [unavailable, pushReason, onPushColumn],
-  );
+  useEffect(() => onPushColumn(pushReason), [pushReason, onPushColumn]);
   const stateLine = state === null ? "Checking this device..." : PUSH_STATE_LINE[state];
 
   return (
     <div className="space-y-2 border-t border-neutral-800 pt-4">
       <SectionEyebrow title="Push notifications" as="h3" margin="none" />
       <p className="text-xs text-neutral-500">
-        {unavailable
-          ? stateLine
-          : `${stateLine} On iPhone and iPad, push works only after you add Vidit to the Home Screen and open it from there.`}
+        {stateLine} On iPhone and iPad, push works only after you add Vidit to the Home Screen and
+        open it from there.
       </p>
       {(change.error || revoke.error) && (
         <div className={FORM_ERROR_BANNER}>{change.error ?? revoke.error}</div>
@@ -206,7 +194,7 @@ function PushDevice({
 function NotificationsCard({ pushResyncKey }: { pushResyncKey: number }) {
   const { data, error } = useApiResource<UserPreferences>(PREFERENCES_PATH);
   const [saved, setSaved] = useState<UserPreferences | null>(null);
-  const [pushColumn, setPushColumn] = useState<PushColumn>({ hidden: false, reason: null });
+  const [pushReason, setPushReason] = useState<string | null>(null);
   const toggle = useMutation(
     (kind: keyof typeof NOTIFICATION_KIND_COPY, channel: NotificationChannel, on: boolean) =>
       updatePreferences({ notifications: { [kind]: { [channel]: on } } }),
@@ -225,18 +213,16 @@ function NotificationsCard({ pushResyncKey }: { pushResyncKey: number }) {
     (saved ?? data)?.approval_request_audience ?? APPROVAL_REQUEST_AUDIENCE_DEFAULT;
   // Tolerates a missing or partial payload, and a kind this build has no wording for.
   const notifications = (saved ?? data)?.notifications;
-  const channels = pushColumn.hidden ? CHANNELS.filter((c) => c.id !== "push") : CHANNELS;
-  const pushDisabled =
-    !pushColumn.hidden && pushColumn.reason ? { push: pushColumn.reason } : undefined;
+  const pushDisabled = pushReason ? { push: pushReason } : undefined;
   const rows = (Array.isArray(notifications) ? notifications : [])
     .filter((row) => row.kind in NOTIFICATION_KIND_COPY)
     .map((row) => {
       const copy = NOTIFICATION_KIND_COPY[row.kind];
-      const defaults = channels.map((c) => (row.defaults?.[c.id] ? "on" : "off"));
+      const defaults = CHANNELS.map((c) => (row.defaults?.[c.id] ? "on" : "off"));
       const defaultLine =
         new Set(defaults).size === 1
           ? defaults[0]
-          : channels.map((c, i) => `${c.label} ${defaults[i]}`).join(", ");
+          : CHANNELS.map((c, i) => `${c.label} ${defaults[i]}`).join(", ");
       return {
         id: row.kind,
         label: copy.label,
@@ -275,7 +261,7 @@ function NotificationsCard({ pushResyncKey }: { pushResyncKey: number }) {
         />
       </div>
       <ToggleMatrix
-        columns={channels}
+        columns={CHANNELS}
         rows={rows}
         onToggle={(kind, channel, on) => void toggle.run(kind, channel, on)}
       />
@@ -286,7 +272,7 @@ function NotificationsCard({ pushResyncKey }: { pushResyncKey: number }) {
         onToggle={() => consent.run(!productUpdates)}
         className="border-t border-neutral-800 pt-4"
       />
-      <PushDevice resyncKey={pushResyncKey} onPushColumn={setPushColumn} />
+      <PushDevice resyncKey={pushResyncKey} onPushColumn={setPushReason} />
     </Card>
   );
 }

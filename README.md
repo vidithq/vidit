@@ -109,7 +109,7 @@ make test        # backend pytest
 
 ### Secrets
 
-`make init` copies `.env.example` → `.env` (backend) and `.env.local.example` → `.env.local` (frontend). Defaults are wired for `localhost`; every var is documented inline in [`backend/.env.example`](backend/.env.example) and [`frontend/.env.local.example`](frontend/.env.local.example). API docs auto-served at <http://localhost:8000/docs>.
+`make init` copies `.env.example` → `.env` (backend) and `.env.local.example` → `.env.local` (frontend), and gives `backend/.env` a development VAPID key pair for push notifications when it has none. Defaults are wired for `localhost`; every var is documented inline in [`backend/.env.example`](backend/.env.example) and [`frontend/.env.local.example`](frontend/.env.local.example). API docs auto-served at <http://localhost:8000/docs>.
 
 ### Bootstrap an account
 

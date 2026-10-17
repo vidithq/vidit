@@ -2327,7 +2327,7 @@ The key a browser needs to subscribe to push notifications from this deployment.
 { "public_key": "BCVx...base64url" }
 ```
 
-`public_key` is the VAPID application server key, base64url-encoded. It is `null` when the deployment sends no push notifications.
+`public_key` is the VAPID application server key, base64url-encoded. A deployment always has one. It is `null` only on a development server started without VAPID keys.
 
 ---
 

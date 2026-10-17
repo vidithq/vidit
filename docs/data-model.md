@@ -1043,7 +1043,7 @@ Indexes:
 | `sending` | Claimed and committed before the provider call. Never retried: the provider may have accepted it. |
 | `sent` | The provider accepted it |
 | `failed` | Refused three times, or stale in `sending` |
-| `skipped` | Dropped unsent: the switch is off, the address is gone or unverified, no push device is left or push is off on the deployment, the recipient is soft-deleted or inactive, the feed hides the notification, or the row aged out in the queue |
+| `skipped` | Dropped unsent: the switch is off, the address is gone or unverified, no push device is left or a development server has no VAPID keys, the recipient is soft-deleted or inactive, the feed hides the notification, or the row aged out in the queue |
 
 ---
 

@@ -46,21 +46,19 @@ test.describe("settings", () => {
     await mockApi(page);
     await page.goto("/settings");
 
-    const emailSwitches = page.getByRole("switch", { name: /, Email$/ });
-    await expect(emailSwitches.first()).toBeVisible();
-    // The fixture deployment sends no push, so the matrix holds the Email column only.
-    await expect(page.getByRole("switch", { name: /, Push$/ })).toHaveCount(0);
+    const switches = page.getByRole("switch", { name: /, (Email|Push)$/ });
+    await expect(switches.first()).toBeVisible();
+    await expect(page.getByRole("switch", { name: /, Push$/ })).toHaveCount(
+      await page.getByRole("switch", { name: /, Email$/ }).count(),
+    );
     const viewportWidth = page.viewportSize()!.width;
-    for (const email of await emailSwitches.all()) {
-      await email.scrollIntoViewIfNeeded();
-      const box = (await email.boundingBox())!;
+    for (const cell of await switches.all()) {
+      await cell.scrollIntoViewIfNeeded();
+      const box = (await cell.boundingBox())!;
       expect(box.width).toBeGreaterThanOrEqual(36);
       expect(box.height).toBeGreaterThanOrEqual(36);
       expect(box.x + box.width).toBeLessThanOrEqual(viewportWidth);
     }
-    await expect(
-      page.getByText("This Vidit server does not send push notifications.", { exact: true }),
-    ).toHaveCount(1);
     await expectNoHorizontalOverflow(page);
   });
 });

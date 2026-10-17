@@ -320,8 +320,10 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   approval_request_audience: "following",
 };
 
-/** A deployment that sends no push, so the settings page offers no enable button. */
-export const PUSH_OFF: PushConfig = { public_key: null };
+/** The push key every deployment serves: a public example key, never used to send. */
+export const PUSH_CONFIG: PushConfig = {
+  public_key: "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U",
+};
 
 /** A bound handle and a declined change request: the Account card's longest state, with
  *  the admin's reason printed in full. */

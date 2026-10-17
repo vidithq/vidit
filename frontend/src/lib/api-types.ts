@@ -2303,7 +2303,7 @@ export interface paths {
         };
         /**
          * Get Push Config
-         * @description The key a browser subscribes to push with; null when push is off here.
+         * @description The key a browser subscribes to push with; null on a development server without VAPID keys.
          */
         get: operations["get_push_config_api_v1_users_me_push_config_get"];
         put?: never;

@@ -15,11 +15,10 @@ export const PUSH_DEVICES_PATH = "/users/me/push-subscriptions";
 const SERVICE_WORKER_URL = "/sw.js";
 
 /** `needs-home-screen`: an iPhone or iPad browser tab, where push exists only for the site
- *  added to the Home Screen. `unavailable`: this deployment sends no push. */
+ *  added to the Home Screen. */
 export type PushDeviceState =
   | "unsupported"
   | "needs-home-screen"
-  | "unavailable"
   | "denied"
   | "off"
   | "on";
@@ -39,10 +38,9 @@ async function currentSubscription(): Promise<PushSubscription | null> {
   return (await registration?.pushManager.getSubscription()) ?? null;
 }
 
-/** What this device can do now, given the server's push config (`PUSH_CONFIG_PATH`). */
-export async function readPushState(config: PushConfig | undefined): Promise<PushDeviceState> {
+/** What this device can do now. */
+export async function readPushState(): Promise<PushDeviceState> {
   if (!isSupported()) return isAppleMobile() ? "needs-home-screen" : "unsupported";
-  if (!config?.public_key) return "unavailable";
   if (Notification.permission === "denied") return "denied";
   if (Notification.permission !== "granted") return "off";
   return (await currentSubscription()) ? "on" : "off";

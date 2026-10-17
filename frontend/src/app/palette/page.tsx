@@ -1874,7 +1874,7 @@ function PaletteToggleMatrix() {
             label: "Geolocator invitation",
             description: "Someone invites you to share the credit.",
             on: on.invite,
-            disabled: { push: "This Vidit server does not send push notifications." },
+            disabled: { push: "No device of yours receives push yet." },
           },
           { id: "credit", label: "Credit removed", description: "An owner removes you.", on: on.credit },
         ]}

@@ -41,7 +41,8 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - Revoking an approval no longer needs a reason (the API still takes an optional one), the event owner gets a notification when an approval of their event is revoked, and the revoked approval's notice leaves the feed.
 - A reviewer whose approval of the live version was revoked reads why they cannot approve it again, and a stale version error offers Reload.
 - Notification rows put Decline below the row so a phone keeps the event title readable, and an answered approval request shows Approved or Declined.
-- Settings hides the Push column when the server sends no push, and the app checks admin status once per session instead of once per component.
+- The app checks admin status once per session instead of once per component.
+- Push notifications are always on: the API refuses to start in a deployment without `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT`, `make env` writes a development key pair, and Settings always shows the Push column.
 - A credit line with several analysts shows each one as a picture and a name side by side, with no "and" or comma, on event pages, cards and the Approvals card's request line.
 - Each notification has a delete button that removes it from your feed, with its queued email or push (`DELETE /notifications/{id}`).
 
