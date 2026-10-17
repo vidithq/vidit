@@ -29,7 +29,7 @@ flowchart LR
     direction TB
     hand["`**/submit**
     one form: coordinates, source, media, tags, and a rich-text proof`"]:::spec
-    bot["`**tag @ViditBot on X**`"]:::spec
+    bot["`**tag @viditbot on X**`"]:::spec
     paste["`**paste one of your own posts**`"]:::spec
     arch["`**bulk import your X export**`"]:::spec
   end
@@ -95,7 +95,7 @@ make init        # install + env + db-up + migrate (one-shot bootstrap)
 make seed        # mock-admin + machine detections from the committed synthetic archive
 make import-prod # replace the local DB with the latest production backup (see docs/backups.md)
 make dev         # FastAPI :8000 + Next.js :3000 in parallel
-make dev-worker  # archive-import worker (optional; without it, archive uploads stay queued)
+make dev-worker  # background worker (optional; without it, queued emails, archive uploads and bot webhooks wait)
 make test        # backend pytest
 ```
 
