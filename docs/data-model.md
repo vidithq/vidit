@@ -56,7 +56,13 @@ flowchart LR
   ask_review["`**POST /events/{id}/approval-requests**
   a geolocator asks an analyst to approve the row`"]:::spec
   approval_requests[("`**approval_requests**
-  open until approved or declined`")]:::store
+  open until approved, declined or withdrawn`")]:::store
+  leave["`**DELETE /events/{id}/geolocators/{username}**
+  the owner removes a co-geolocator, or one leaves`"]:::spec
+  departures[("`**event_geolocator_departures**
+  who held the credit and lost it; they never approve the row`")]:::store
+  orgs[("`**organizations**
+  an approval, or a request for one, may be placed in its name`")]:::store
   reports[("`**content_reports**
   any viewer, signed in or not; a row names an event or a collection`")]:::store
   shelve["`**PUT /collections/{id}/events/{event_id}**
@@ -73,6 +79,10 @@ flowchart LR
   vouch --> geolocated --> version --> geolocated
   vouch --> credit
   geolocated --> invite --> credit
+  credit --> leave --> departures
+  leave --> approval_requests
+  approvals -.-> orgs
+  approval_requests -.-> orgs
   version --> versions
   geolocated --> approve --> approvals
   geolocated --> ask_review --> approval_requests
@@ -87,7 +97,7 @@ flowchart LR
   shelve --> shelves
 ```
 
-The three entries on the left are the three ways a row is born: a request and a direct submit come from [`POST /events/requests` and `POST /events`](api.md#post-events), and a machine detection comes from the [ingest engine](ingestion.md). The four statuses and the constraints that pin them are [`events`](#events). The four writes are `update_request`, `geolocate`, `save_version` and `close`, all in [`api.md`](api.md). Two of them correct a row rather than move it, and they differ on what the row is: `update_request` overwrites an open question, while `save_version` files what it supersedes, because a published row is a vouched claim. The tables on the right exist because a write happened: [`event_geolocators`](#event_geolocators) records who vouched, the owner and every analyst who accepted an invitation ([`event_geolocator_invites`](#event_geolocator_invites)), [`event_versions`](#event_versions) holds what a correction superseded, [`event_approvals`](#event_approvals) holds who attested which version, [`approval_requests`](#approval_requests) holds who was asked to, [`content_reports`](#content_reports) holds what a viewer flagged, and [`collections`](#collections) with [`collection_events`](#collection_events) holds the curated sets a credited analyst puts the row on.
+The three entries on the left are the three ways a row is born: a request and a direct submit come from [`POST /events/requests` and `POST /events`](api.md#post-events), and a machine detection comes from the [ingest engine](ingestion.md). The four statuses and the constraints that pin them are [`events`](#events). The four writes are `update_request`, `geolocate`, `save_version` and `close`, all in [`api.md`](api.md). Two of them correct a row rather than move it, and they differ on what the row is: `update_request` overwrites an open question, while `save_version` files what it supersedes, because a published row is a vouched claim. The tables on the right exist because a write happened: [`event_geolocators`](#event_geolocators) records who vouched, the owner and every analyst who accepted an invitation ([`event_geolocator_invites`](#event_geolocator_invites)), [`event_versions`](#event_versions) holds what a correction superseded, [`event_geolocator_departures`](#event_geolocator_departures) holds who lost the credit, [`event_approvals`](#event_approvals) holds who attested which version, [`approval_requests`](#approval_requests) holds who was asked to (a departure withdraws the open requests its analyst sent), an [organization](#organizations) can stand behind an approval or a request in place of one analyst, [`content_reports`](#content_reports) holds what a viewer flagged, and [`collections`](#collections) with [`collection_events`](#collection_events) holds the curated sets a credited analyst puts the row on.
 
 ## Schema overview
 
@@ -139,7 +149,7 @@ erDiagram
     invite_codes {
         UUID id PK
         VARCHAR code
-        UUID used_by FK "audit-only"
+        UUID used_by FK "nullable, audit-only"
         TIMESTAMPTZ used_at "nullable, redemption stamp"
         TIMESTAMPTZ expires_at "nullable"
         TIMESTAMPTZ revoked_at "nullable"
@@ -154,6 +164,7 @@ erDiagram
         VARCHAR password_hash
         UUID invite_code_id FK
         TEXT token_hash UK
+        TIMESTAMPTZ product_updates_consented_at "nullable, consent carried to the account"
         TIMESTAMPTZ expires_at
         TIMESTAMPTZ created_at
     }
@@ -494,13 +505,13 @@ erDiagram
         TIMESTAMPTZ created_at
     }
 
-    users ||--o{ invite_codes : "used_by"
+    users |o--o{ invite_codes : "used_by"
     invite_codes ||--o{ pending_registrations : "invite_code_id"
     users ||--o{ auth_tokens : "user_id"
-    users ||--o{ admin_events : "actor_id"
-    users ||--o{ auth_events : "user_id"
+    users |o--o{ admin_events : "actor_id"
+    users |o--o{ auth_events : "user_id"
     users ||--o{ events : "owner_id"
-    users ||--o{ events : "requested_by_id"
+    users |o--o{ events : "requested_by_id"
     events ||--o{ media : "event_id"
     events ||--o{ event_tags : "event_id"
     tags ||--o{ event_tags : "tag_id"
@@ -513,19 +524,19 @@ erDiagram
     events ||--o{ event_geolocator_departures : "event_id"
     users ||--o{ event_geolocator_departures : "user_id"
     events ||--o{ event_approvals : "event_id"
-    users ||--o{ event_approvals : "reviewer_id"
+    users |o--o{ event_approvals : "reviewer_id"
     users |o--o{ event_approvals : "revoked_by_id"
     events ||--o{ approval_requests : "event_id"
     users ||--o{ approval_requests : "requester_id"
     users |o--o{ approval_requests : "target_user_id"
     events ||--o{ event_source_links : "event_id"
     events ||--o{ event_versions : "event_id"
-    users ||--o{ event_versions : "edited_by_id"
-    users ||--o{ event_versions : "redacted_by_id"
+    users |o--o{ event_versions : "edited_by_id"
+    users |o--o{ event_versions : "redacted_by_id"
     events |o--o{ content_reports : "event_id"
     collections |o--o{ content_reports : "collection_id"
-    users ||--o{ content_reports : "reporter_user_id"
-    users ||--o{ content_reports : "resolved_by"
+    users |o--o{ content_reports : "reporter_user_id"
+    users |o--o{ content_reports : "resolved_by"
     users ||--o{ collections : "owner_id"
     collections ||--o{ collection_events : "collection_id"
     events ||--o{ collection_events : "event_id"
@@ -560,6 +571,8 @@ erDiagram
 ---
 
 ## Tables
+
+In the Constraints column, `default X` is the value the application sets on insert, and `server_default X` is a SQL `DEFAULT` the database applies.
 
 ### `users`
 
@@ -762,7 +775,7 @@ event happens ──▶ source posts the media ──▶ analyst posts the geolo
 - `(event_date)` and `(created_at)`. Support time-based queries.
 - `(owner_id, created_at DESC)`. A composite index for profile listing. Single-author reads key on `owner_id`.
 - `ix_events_live`: partial index on `(created_at) WHERE deleted_at IS NULL`. Every public read filters on `deleted_at IS NULL`, and the partial index keeps it tight.
-- `ix_events_status_created_at` on `(status, created_at)`. The requested view, the map, and the detection queue all filter on `status`, newest first.
+- `ix_events_status_created_at` on `(status, created_at)`. The requested view, the map, and the detections queue all filter on `status`, newest first.
 - `ix_events_created_at_id` on `(created_at, id)`. Backs the keyset that the capped list endpoints page on. `GET /events` and `GET /events/detections` order by `created_at DESC, id DESC` and cut each page with a row comparison over that pair; see [`api.md`](api.md#pagination).
 - `ix_events_timeline_at_id` on `(feed_at, id)`, where `feed_at` is `coalesce(CASE WHEN status = 'requested' THEN requested_at ELSE geolocated_at END, created_at)`. Partial: visible (`deleted_at` and `hidden_at` NULL) `geolocated` and `requested` rows. Backs the keyset of [`GET /feed`](api.md#get-feed), which orders by `feed_at DESC, id DESC`, so a page reads the index in order instead of sorting. The expression matches `models/event.feed_at` exactly; the planner ignores the index on any difference.
 - `ix_events_detected_from_url`: partial index on `(detected_from_url) WHERE detected_from_url IS NOT NULL`. Backs the admin machine-detection cohort scans, which count the rows carrying a provenance link at all. Human rows are always NULL here.
@@ -809,6 +822,8 @@ Composite PK: `(event_id, user_id)`: one pending invitation per analyst and even
 - `ix_event_geolocator_invites_user_id` on `(user_id)`. Backs the cascade when an invitee's account is erased.
 
 The service caps geolocators plus pending invitations at 10 per event (`MAX_EVENT_GEOLOCATORS`).
+
+---
 
 ### `event_geolocator_departures`
 
@@ -859,7 +874,7 @@ An analyst's attestation, or an organization's through any of its members, that 
 
 ### `approval_requests`
 
-A geolocator's request that an analyst or an organization review an event, written through [`/events/{id}/approval-requests`](api.md#approval-requests). A row is open until the target approves the event, on any version, or declines it, and stays once resolved. Accepting a co-geolocator invitation deletes the open rows addressed to the new geolocator.
+A geolocator's request that an analyst or an organization approve an event, written through [`/events/{id}/approval-requests`](api.md#approval-requests). A row is open until the target approves the event, on any version, or declines it, or until the requester loses their credit on the event, and stays once resolved. Accepting a co-geolocator invitation deletes the open rows addressed to the new geolocator.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -983,35 +998,35 @@ Self-follow is rejected at two layers. The router returns `400 Cannot follow you
 Indexes:
 - `ix_follows_followed_id` on `(followed_id)`. The PK indexes the forward direction, who is X following, on its leading column. Without this index, the reverse direction, who follows X, the query that powers `followers_count` on every profile load, would full-scan.
 
-`ON DELETE CASCADE` applies to both FKs. Hard-deleting an analyst drops every edge on either side, so a deleted user cannot keep ghost followers or ghost followings. Soft-deleted users (`users.deleted_at IS NOT NULL`) keep their edges. The public profile returns 404 regardless, and resurrecting an account should resurrect its graph.
+`ON DELETE CASCADE` applies to both FKs. Hard-deleting an analyst drops every edge on either side, so a deleted user cannot keep ghost followers or ghost followings. Soft-deleted users (`users.deleted_at IS NOT NULL`) keep their edges. The public profile returns 404 regardless, and restoring the account restores its graph.
 
 ---
 
 ### `notifications`
 
-One thing that happened to an analyst, shown in their feed at [`GET /notifications`](api.md#notifications). The action that causes it writes the row in its own transaction.
+One thing that happened to an analyst, listed at [`GET /notifications`](api.md#notifications). The action that causes it writes the row in its own transaction.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The recipient. |
 | `kind` | `VARCHAR(40)` | NOT NULL, CHECK in `('request_fulfilled', 'new_follower', 'x_handle_request_approved', 'x_handle_request_declined', 'co_geolocator_invite', 'co_geolocator_removed', 'ownership_transferred', 'organization_invite', 'organization_invite_accepted', 'organization_manager_inherited', 're_approve_requested', 'approval_received', 'approval_revoked', 'approval_request_received', 'approval_request_declined', 'organization_approval_removed')` (constraint `ck_notifications_kind_valid`). The kind registry `NOTIFICATION_KINDS` in [`models/notification.py`](../backend/app/models/notification.py) lists the same values with their per-channel defaults. |
-| `actor_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, nullable. Who acted: the fulfiller, the follower, the owner who invited or removed you or saved a new version, the reviewer who approved, the reviewer whose approval was revoked, the geolocator who requested a review, the analyst who declined one, the inviting org manager, or the analyst who accepted an organization invite. NULL on the X handle request outcomes, which name no admin, on `ownership_transferred` and `organization_manager_inherited`, which must not name the erased analyst, and on `organization_approval_removed`, which a site admin's deletion sets off. |
+| `actor_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, nullable. Who acted: the fulfiller, the follower, the owner who invited or removed you or saved a new version, the reviewer who approved, the reviewer whose approval was revoked, the geolocator who requested an approval, the analyst who declined one, the inviting org manager, or the analyst who accepted an organization invite. NULL on the X handle request outcomes, which name no admin, on `ownership_transferred` and `organization_manager_inherited`, which must not name the erased analyst, and on `organization_approval_removed`, which a site admin's deletion sets off. |
 | `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, nullable. The event the row concerns; NULL for a kind that names none. |
 | `organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, nullable. The organization an `organization_*` row concerns. |
 | `organization_name` | `VARCHAR(100)` | nullable. The name of the deleted organization on an `organization_approval_removed` row, which outlives the organization it names; NULL on every other kind. |
-| `approval_id` | `UUID` | FK → `event_approvals.id` ON DELETE CASCADE, nullable. The approval an `approval_received` row reports; the feed and the count hide the row once that approval is revoked. NULL on every other kind. |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()`. Orders the feed. |
-| `read_at` | `TIMESTAMPTZ` | nullable. Set by `POST /notifications/read` on the rows the feed showed; NULL is unread. Read state is per row because `created_at` is stamped at flush: an action that flushes its row and commits after a slow upload would land behind a single read marker already moved past it. |
+| `approval_id` | `UUID` | FK → `event_approvals.id` ON DELETE CASCADE, nullable. The approval an `approval_received` row reports; the list and the count hide the row once that approval is revoked. NULL on every other kind. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()`. Orders the list. |
+| `read_at` | `TIMESTAMPTZ` | nullable. Set by `POST /notifications/read` on the rows the notifications page showed; NULL is unread. Read state is per row because `created_at` is stamped at flush: an action that flushes its row and commits after a slow upload would land behind a single read marker already moved past it. |
 
 Indexes:
 
-- `ix_notifications_user_created_at` on `(user_id, created_at, id)`. Backs the feed's keyset walk.
+- `ix_notifications_user_created_at` on `(user_id, created_at, id)`. Backs the list's keyset walk.
 - `ix_notifications_user_unread`: partial index on `(user_id) WHERE read_at IS NULL`. Backs the unread count.
 - `ix_notifications_actor_id` on `(actor_id)`, `ix_notifications_event_id` on `(event_id)` and `ix_notifications_organization_id` on `(organization_id)`. Back the cascades when an actor, an event or an organization is hard-deleted.
 - `ix_notifications_approval_id`: partial index on `(approval_id) WHERE approval_id IS NOT NULL`. Backs the revoked-approval filter and the cascade when an approval is deleted.
 
-Every foreign key cascades, so a hard-deleted recipient, actor, event, organization or approval takes its rows with it. A soft delete or a takedown keeps the row and hides it at read time: the feed and the count skip a row whose event has `deleted_at` or `hidden_at` set, whose actor has `deleted_at` set, or whose approval has `revoked_at` set. Undoing the takedown shows the row again.
+Every foreign key cascades, so a hard-deleted recipient, actor, event, organization or approval takes its rows with it. A soft delete or a takedown keeps the row and hides it at read time: the list and the count skip a row whose event has `deleted_at` or `hidden_at` set, whose actor has `deleted_at` set, or whose approval has `revoked_at` set. Undoing the takedown shows the row again.
 
 `new_follower` is written once per follower: an unfollow and re-follow finds the earlier row and writes none.
 
@@ -1043,7 +1058,7 @@ Indexes:
 | `sending` | Claimed and committed before the provider call. Never retried: the provider may have accepted it. |
 | `sent` | The provider accepted it |
 | `failed` | Refused three times, or stale in `sending` |
-| `skipped` | Dropped unsent: the switch is off, the address is gone or unverified, no push device is left or a development server has no VAPID keys, the recipient is soft-deleted or inactive, the feed hides the notification, or the row aged out in the queue |
+| `skipped` | Dropped unsent: the switch is off, the address is gone or unverified, no push device is left or a development server has no VAPID keys, the recipient is soft-deleted or inactive, the filter would hide the notification, or the row aged out in the queue |
 
 ---
 
@@ -1148,7 +1163,7 @@ A collective with its own public profile at `/organizations/{slug}`. Only a site
 | `bio` | `TEXT` | nullable. Same rules as `users.bio`. |
 | `avatar_url` | `TEXT` | nullable. Server-minted under `avatars/{organization_id}/`, like `users.avatar_url`. |
 | `external_links` | `JSONB` | NOT NULL, default `'{}'::jsonb`. Same keys and rules as `users.external_links`. |
-| `approval_request_audience` | `VARCHAR(20)` | NOT NULL, default `'following'`, CHECK in `('following', 'everyone', 'nobody')` (constraint `ck_organizations_approval_request_audience`). Who may send the organization a [approval request](#approval_requests), set by its org managers: `following` admits an analyst whom any live org manager follows. Same values as `user_preferences.approval_request_audience`. |
+| `approval_request_audience` | `VARCHAR(20)` | NOT NULL, default `'following'`, CHECK in `('following', 'everyone', 'nobody')` (constraint `ck_organizations_approval_request_audience`). Who may send the organization an [approval request](#approval_requests), set by its org managers: `following` admits an analyst whom any live org manager follows. Same values as `user_preferences.approval_request_audience`. |
 | `created_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The site admin who created it. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL |
 
@@ -1198,7 +1213,7 @@ One analyst's stored preferences, read and written through [`/users/me/preferenc
 | `user_id` | `UUID` | PK, FK → `users.id` ON DELETE CASCADE |
 | `notification_overrides` | `JSONB` | NOT NULL, default `'{}'::jsonb`. `{kind: {channel: bool}}`, holding only the values that differ from the kind's default in `NOTIFICATION_KINDS`. A write equal to the default removes the key, so a changed default reaches every analyst who never moved that switch. |
 | `display` | `JSONB` | NOT NULL, default `'{}'::jsonb`. `palette`, `theme` and `help_tooltips`, each present once written. A missing key reads as the default in `schemas/preferences.DISPLAY_DEFAULTS`. |
-| `approval_request_audience` | `VARCHAR(20)` | NOT NULL, default `'following'`, CHECK in `('following', 'everyone', 'nobody')` (constraint `ck_user_preferences_approval_request_audience`). Who may send the analyst a [approval request](#approval_requests). `ApprovalRequestAudience` in [`models/user_preferences.py`](../backend/app/models/user_preferences.py) lists the same values. |
+| `approval_request_audience` | `VARCHAR(20)` | NOT NULL, default `'following'`, CHECK in `('following', 'everyone', 'nobody')` (constraint `ck_user_preferences_approval_request_audience`). Who may send the analyst an [approval request](#approval_requests). `ApprovalRequestAudience` in [`models/user_preferences.py`](../backend/app/models/user_preferences.py) lists the same values. |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, stamped on every write |
 
 A stored value the API no longer accepts, such as a retired kind or palette, reads as its default.
@@ -1282,7 +1297,7 @@ Every uploaded file for an event, source footage and proof-body images alike, sp
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, NOT NULL. Always set. Files upload at publish, so there is no unattached staging row; see Upload timing below. |
-| `role` | `VARCHAR` | NOT NULL. `'source'` for the footage, at most one per event, enforced by a partial unique index, or `'proof'` for inline images referenced from the proof body, with no per-event limit. |
+| `role` | `VARCHAR(10)` | NOT NULL, CHECK in `('source', 'proof')` (constraint `ck_media_role_valid`). `'source'` for the footage, at most one per event, enforced by a partial unique index, or `'proof'` for inline images referenced from the proof body, with no per-event limit. |
 | `storage_url` | `TEXT` | NOT NULL. An S3 or CloudFront URL. |
 | `media_type` | `VARCHAR(10)` | NOT NULL, `'image'` or `'video'`. The stored MIME type is not a column: an analyst's upload keeps the accepted type it arrived as, and a machine-imported photo is re-encoded to one format at ingest whichever entry read the post; see [`ingestion.md`](ingestion.md#the-contract). |
 | `sha256` | `VARCHAR(64)` | nullable. Hex-encoded SHA-256 of the uploaded bytes, captured at upload time. A stable content fingerprint that survives storage-class changes and copies, unlike the S3 ETag, which is an MD5 for non-multipart uploads and is not stable across copies. **The hash is computed on the bytes that land on S3, for images after the EXIF strip, so an auditor downloading the public URL can independently verify it.** |
@@ -1292,8 +1307,8 @@ Every uploaded file for an event, source footage and proof-body images alike, sp
 `uploaded_ip` and `uploaded_user_agent` are **not stored**. Vidit drops them for privacy; network context lives only at the Cloudflare edge.
 
 **Indexes:**
-- `(sha256) WHERE sha256 IS NOT NULL`: a partial index for "find every row with this content hash" audit and dedup queries. Covers only the rows that carry a hash.
-- unique `(event_id) WHERE role = 'source'`. Enforces the "at most one source media per event" cap.
+- `ix_media_sha256` on `(sha256) WHERE sha256 IS NOT NULL`: a partial index for "find every row with this content hash" audit and dedup queries. Covers only the rows that carry a hash.
+- unique `uq_media_source_per_event` on `(event_id) WHERE role = 'source'`. Enforces the "at most one source media per event" cap.
 
 Each request and each `geolocated` event requires at least one `source` media row. The `geolocate` transition requires at least one `proof` image. A `requested` event carries the poster's evidence from the start.
 
@@ -1448,7 +1463,7 @@ Capture-source and free-form tags share the same mechanics: filtering and many-t
 ### Why `GEOMETRY` instead of two `lat` / `lng` columns?
 PostGIS enables native geospatial queries: bounding-box filtering, distance computation, and clustering. GeoAlchemy2 exposes those types directly to SQLAlchemy.
 
-### Why a `event_geolocators` table and not an id array?
+### Why an `event_geolocators` table and not an id array?
 The table is read from both sides: an event's geolocators, and a user's geolocations on the profile page. A junction table indexes both directions and carries a per-row `created_at`. An id array on `events` would force a GIN scan for the reverse query and store no timestamp.
 
 ### Why full snapshots in `event_versions` and not a per-field change log?
