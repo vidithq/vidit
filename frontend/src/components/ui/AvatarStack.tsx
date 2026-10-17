@@ -181,8 +181,11 @@ function StackedAvatar({ item }: { item: AvatarStackItem }) {
   );
 }
 
+const SPACING = { overlap: "gap-y-1 -space-x-1.5", gap: "gap-1.5" } as const;
+
 /**
- * An overlapping row of pictures: the approval stamps in the event page's Approvals card.
+ * A row of pictures: the approval stamps in the event page's Approvals card, the organization
+ * logos on a profile. `spacing="gap"` sets the pictures apart instead of overlapping them.
  * Hover, focus or a click on a picture opens its card; a click pins the card and moves focus into
  * it, and Escape or tabbing out closes it and returns focus to the row. At most `max` show; the rest collapse into
  * a `+N` bubble, a button when `onOverflow` is set.
@@ -191,6 +194,7 @@ export function AvatarStack({
   items,
   label,
   max = 5,
+  spacing = "overlap",
   onOverflow,
   overflowLabel = (hidden) => `${hidden} more`,
 }: {
@@ -198,6 +202,7 @@ export function AvatarStack({
   /** The list's accessible name. */
   label: string;
   max?: number;
+  spacing?: keyof typeof SPACING;
   onOverflow?: () => void;
   overflowLabel?: (hidden: number) => string;
 }) {
@@ -210,7 +215,7 @@ export function AvatarStack({
     RING,
   );
   return (
-    <ul aria-label={label} className="flex flex-wrap items-center gap-y-1 -space-x-1.5">
+    <ul aria-label={label} className={cn("flex flex-wrap items-center", SPACING[spacing])}>
       {shown.map((item) => (
         <li key={item.key} className="flex shrink-0">
           {item.href ? <LinkedAvatar item={item} href={item.href} /> : <StackedAvatar item={item} />}

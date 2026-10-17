@@ -443,8 +443,8 @@ const SECOND_REVIEWER = {
 };
 
 /** The live version's approvals on the shared event: one standing review with a note long
- *  enough to wrap, one the organization's long name signs, and five more, so the header stamps
- *  fold into a `+N` bubble and the Approvals panel is measured at phone widths. */
+ *  enough to wrap, one the organization's long name signs, and fourteen more, so the card's two
+ *  rows of stamps fold into a `+N` bubble and the Approvals panel is measured at phone widths. */
 export const EVENT_APPROVALS: Approval[] = [
   {
     id: "66666666-6666-4666-8666-666666666661",
@@ -472,13 +472,13 @@ export const EVENT_APPROVALS: Approval[] = [
     revoked_as: null,
     organization: ORGANIZATION_REF,
   },
-  ...[3, 4, 5, 6, 7].map(
+  ...Array.from({ length: 14 }, (_, i) => i + 3).map(
     (n): Approval => ({
-      id: `66666666-6666-4666-8666-66666666666${n}`,
+      id: `66666666-6666-4666-8666-6666666666${String(n).padStart(2, "6")}`,
       version_no: 1,
       verdict: "approve",
       reviewer: {
-        id: `77777777-7777-4777-8777-77777777777${n}`,
+        id: `77777777-7777-4777-8777-7777777777${String(n).padStart(2, "7")}`,
         username: `reviewer_${n}`,
         avatar_url: null,
       },

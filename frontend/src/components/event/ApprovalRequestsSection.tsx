@@ -20,11 +20,13 @@ import {
   type ApprovalRequestTarget,
   type ApprovalRequestTargets,
 } from "@/lib/approvalRequests";
+import { cn } from "@/lib/cn";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 
 /**
@@ -189,83 +191,154 @@ function RequestApprovalForm({
   );
 }
 
-/**
- * Approval requests on a published event, the last section of its Approvals card. A geolocator
- * sees the open requests and asks an analyst or an organization to approve the live version; an
- * analyst asked, or an org manager of an organization asked, sees the request and can decline it,
- * or approve with **Approve** above it. `refreshKey` changes when an approval may have resolved a
- * request.
- */
-export function ApprovalRequestsSection({
-  event,
-  refreshKey,
-}: {
-  event: EventDetail;
-  refreshKey: number;
-}) {
+/** The open approval requests on a published event, and `mine`: those addressed to the reader or
+ *  to an organization they manage. `refreshKey` changes when an approval may have resolved one. */
+export function useApprovalRequests(event: EventDetail, refreshKey: number) {
   const { user } = useAuth();
   const managed = useManagedOrganizations();
-  const geolocator = canRequestApproval(event, user?.id);
   const requests = useApiResource<ApprovalRequest[]>(
     user && event.status === "geolocated" ? approvalRequestsPath(event.id) : null,
   );
-  const [asking, setAsking] = useState(false);
   const { refetch } = requests;
   useEffect(() => {
     if (refreshKey > 0) refetch();
   }, [refreshKey, refetch]);
-
   const rows = requests.data ?? [];
   const mine = rows.filter((r) =>
     r.target_organization
       ? managed.some((o) => o.slug === r.target_organization?.slug)
       : r.target?.id === user?.id,
   );
-  if (!geolocator && mine.length === 0) return null;
+  return { requests, rows, mine };
+}
+
+type ApprovalRequests = ReturnType<typeof useApprovalRequests>;
+
+/** Who asked the reader for approval, one line for the reader and one per organization they
+ *  manage: "maya and jules asked for your approval". */
+export function IncomingRequests({ requests }: { requests: ApprovalRequest[] }) {
+  const personal = requests.filter((r) => !r.target_organization).map((r) => r.requester);
+  const organizations = new Map<string, { organization: OrganizationRef; requesters: ApprovalRequest["requester"][] }>();
+  for (const r of requests) {
+    if (!r.target_organization) continue;
+    const group = organizations.get(r.target_organization.slug) ?? {
+      organization: r.target_organization,
+      requesters: [],
+    };
+    group.requesters.push(r.requester);
+    organizations.set(r.target_organization.slug, group);
+  }
+  return (
+    <div className="space-y-1.5 text-sm text-neutral-300">
+      {personal.length > 0 && (
+        <p>
+          <AuthorByline author={personal[0]} coAuthors={personal.slice(1)} avatar prefix={false} />{" "}
+          asked for your approval
+        </p>
+      )}
+      {[...organizations.values()].map(({ organization, requesters }) => (
+        <p key={organization.slug}>
+          <AuthorByline author={requesters[0]} coAuthors={requesters.slice(1)} prefix={false} />{" "}
+          asked{" "}
+          <AuthorByline author={organizationByline(organization)} avatar prefix={false} /> for
+          approval
+        </p>
+      ))}
+    </div>
+  );
+}
+
+/** **Decline** beside **Approve**: declines every request addressed to the reader. */
+export function DeclineRequests({
+  eventId,
+  requests,
+  onAnswered,
+}: {
+  eventId: string;
+  requests: ApprovalRequest[];
+  onAnswered: () => void;
+}) {
+  const decline = useMutation(
+    async () => {
+      for (const request of requests) await declineApprovalRequest(eventId, request.id);
+    },
+    {
+      fallback: "Failed to decline the approval request",
+      onSuccess: onAnswered,
+      // A failure part way leaves the earlier requests declined: refetch so the rows say so.
+      onError: () => {
+        onAnswered();
+        return undefined;
+      },
+    },
+  );
+  return (
+    <>
+      <Tooltip
+        label={
+          requests.length === 1
+            ? "Declines the request. The requester is notified."
+            : "Declines every request. Each requester is notified."
+        }
+      >
+        <Button variant="ghost" onClick={() => void decline.run()} disabled={decline.loading}>
+          Decline
+        </Button>
+      </Tooltip>
+      {decline.error && (
+        <div className={cn(FORM_ERROR_BANNER, "basis-full")} role="alert">
+          {decline.error}
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * A geolocator's approval requests on a published event, the last section of its Approvals card:
+ * the open requests, and a form that asks an analyst or an organization to approve the live
+ * version.
+ */
+export function ApprovalRequestsSection({
+  event,
+  requests: { requests, rows },
+}: {
+  event: EventDetail;
+  requests: ApprovalRequests;
+}) {
+  const { user } = useAuth();
+  const geolocator = canRequestApproval(event, user?.id);
+  const [asking, setAsking] = useState(false);
+  const { refetch } = requests;
+  if (!geolocator) return null;
 
   return (
     <section className="space-y-3 border-t border-neutral-800 pt-4">
       <SectionEyebrow as="h3" title="Approval requests" margin="none" />
-      {mine.map((request) => (
-        <div key={request.id} className="space-y-2">
-          <p className="text-sm text-neutral-300">
-            <AuthorByline author={request.requester} prefix={false} /> asks{" "}
-            {request.target_organization ? request.target_organization.name : "you"} to approve
-            this geolocation. Approve it
-            {request.target_organization ? ` as ${request.target_organization.name}` : ""} above,
-            or decline.
-          </p>
-          <ApprovalRequestDecline eventId={event.id} requestId={request.id} onAnswered={refetch} />
+      {rows.length > 0 ? (
+        <div className="divide-y divide-neutral-800">
+          {rows.map((request) => (
+            <RequestRow key={request.id} request={request} />
+          ))}
         </div>
-      ))}
-      {geolocator && (
-        <>
-          {rows.length > 0 ? (
-            <div className="divide-y divide-neutral-800">
-              {rows.map((request) => (
-                <RequestRow key={request.id} request={request} />
-              ))}
-            </div>
-          ) : (
-            requests.data && <p className="text-sm text-neutral-500">No open requests.</p>
-          )}
-          {asking ? (
-            <RequestApprovalForm
-              eventId={event.id}
-              onSent={() => {
-                setAsking(false);
-                refetch();
-              }}
-              onCancel={() => setAsking(false)}
-            />
-          ) : (
-            <div>
-              <Button variant="secondary" onClick={() => setAsking(true)}>
-                Request approval
-              </Button>
-            </div>
-          )}
-        </>
+      ) : (
+        requests.data && <p className="text-sm text-neutral-500">No open requests.</p>
+      )}
+      {asking ? (
+        <RequestApprovalForm
+          eventId={event.id}
+          onSent={() => {
+            setAsking(false);
+            refetch();
+          }}
+          onCancel={() => setAsking(false)}
+        />
+      ) : (
+        <div>
+          <Button variant="secondary" onClick={() => setAsking(true)}>
+            Request approval
+          </Button>
+        </div>
       )}
       {requests.error && (
         <div className={FORM_ERROR_BANNER} role="alert">

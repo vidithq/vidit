@@ -242,6 +242,7 @@ export function ApprovalStamps({
       items={approvals.flatMap((a) => stamp(a) ?? [])}
       label="Approved by"
       max={max}
+      spacing="gap"
       onOverflow={onOverflow}
       overflowLabel={(hidden) => `Show ${hidden} more approvals`}
     />
@@ -382,10 +383,6 @@ export function ApproveForm({
           Cancel
         </Button>
       </div>
-      <p className="text-xs text-neutral-500">
-        An approval covers this version only. A new version asks you, or the
-        organization&apos;s org managers, to approve again.
-      </p>
       {approve.error && (
         <div className={FORM_ERROR_BANNER} role="alert">
           {approve.error}

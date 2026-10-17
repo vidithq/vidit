@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useManagedOrganizations } from "@/hooks/useManagedOrganizations";
@@ -23,34 +23,45 @@ import {
   RevokeForm,
   YourOutdatedApproval,
 } from "@/components/event/Approvals";
-import { ApprovalRequestsSection } from "@/components/event/ApprovalRequestsSection";
+import {
+  ApprovalRequestsSection,
+  DeclineRequests,
+  IncomingRequests,
+  useApprovalRequests,
+} from "@/components/event/ApprovalRequestsSection";
 
-// Stamps shown before the +N bubble, which shows the rest.
-const STAMPS_SHOWN = 5;
+// Two full rows in the 17.5rem rail card: 238px inside its padding holds seven 28px stamps 6px apart.
+const STAMP_SLOTS = 14;
 
 /** **Approve** for a reader who may approve the live version, expanding the approve form in
- *  place; **Cancel** collapses it again. */
+ *  place; **Cancel** collapses it again. `beside` sits next to **Approve** while it is closed. */
 function ApproveAction({
   event,
   approvals,
   managed,
   onApproved,
+  beside,
 }: {
   event: EventDetail;
   approvals: ApprovalList;
   managed: OrganizationRef[];
   onApproved: () => void;
+  beside?: ReactNode;
 }) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const { eligible, organizations } = approveOptions(event, approvals, managed, user?.id);
-  if (!eligible && organizations.length === 0) return null;
-  if (!open) {
+  const mayApprove = eligible || organizations.length > 0;
+  if (!open || !mayApprove) {
+    if (!mayApprove && !beside) return null;
     return (
-      <div>
-        <Button variant="secondary" onClick={() => setOpen(true)}>
-          Approve
-        </Button>
+      <div className="flex flex-wrap items-center gap-2">
+        {mayApprove && (
+          <Button variant="secondary" onClick={() => setOpen(true)}>
+            Approve
+          </Button>
+        )}
+        {beside}
       </div>
     );
   }
@@ -69,7 +80,8 @@ function ApproveAction({
  * The published event's Approvals card, about the live version only: its standing approvals as
  * stamps, whose cards hold each note and offer **Revoke** to whoever may revoke, or *No approvals
  * yet*; the reader's own outdated approval with what changed since; **Approve** for a reader who
- * may approve; and the approval requests. Outdated and revoked approvals are read on each
+ * may approve, with who asked the reader for approval and **Decline** beside it; and a
+ * geolocator's approval requests. Outdated and revoked approvals are read on each
  * version's page.
  */
 export function ApprovalsCard({
@@ -85,6 +97,7 @@ export function ApprovalsCard({
   const [showAll, setShowAll] = useState(false);
   const [revoking, setRevoking] = useState<Approval | null>(null);
   const [approvedCount, setApprovedCount] = useState(0);
+  const incoming = useApprovalRequests(event, approvedCount);
   const rows = approvals.data?.items ?? [];
   // The live version's standing approvals: current, or, on a closed event, those that stood when
   // it closed.
@@ -97,7 +110,7 @@ export function ApprovalsCard({
   return (
     <section aria-label="Approvals">
       <Card>
-        <SectionEyebrow title="Approvals" margin="none" />
+        <SectionEyebrow title="Approvals" concept="approval_version" margin="none" />
         {approvals.data && (
           <div className="space-y-3">
             {standing.length === 0 && (
@@ -105,7 +118,9 @@ export function ApprovalsCard({
             )}
             <ApprovalStamps
               approvals={standing}
-              max={showAll ? standing.length : STAMPS_SHOWN}
+              max={
+                showAll || standing.length <= STAMP_SLOTS ? standing.length : STAMP_SLOTS - 1
+              }
               onOverflow={() => setShowAll(true)}
               managed={managed}
               onRevoke={setRevoking}
@@ -125,6 +140,7 @@ export function ApprovalsCard({
             {outdatedOwn !== null && (
               <YourOutdatedApproval event={event} approvedVersion={outdatedOwn} />
             )}
+            {incoming.mine.length > 0 && <IncomingRequests requests={incoming.mine} />}
             <ApproveAction
               event={event}
               approvals={approvals.data}
@@ -133,6 +149,15 @@ export function ApprovalsCard({
                 approvals.refetch();
                 setApprovedCount((n) => n + 1);
               }}
+              beside={
+                incoming.mine.length > 0 && (
+                  <DeclineRequests
+                    eventId={event.id}
+                    requests={incoming.mine}
+                    onAnswered={incoming.requests.refetch}
+                  />
+                )
+              }
             />
           </div>
         )}
@@ -141,7 +166,7 @@ export function ApprovalsCard({
             {approvals.error}
           </div>
         )}
-        <ApprovalRequestsSection event={event} refreshKey={approvedCount} />
+        <ApprovalRequestsSection event={event} requests={incoming} />
       </Card>
     </section>
   );
