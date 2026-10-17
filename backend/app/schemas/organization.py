@@ -15,7 +15,8 @@ ORGANIZATION_NAME_MAX_LEN = 100
 
 
 class OrganizationRef(BaseModel):
-    """Compact organization handle for a notification row."""
+    """Compact organization handle embedded in an approval, an approval request, a notification
+    or a membership row."""
 
     slug: str
     name: str
@@ -114,7 +115,7 @@ class OrganizationMemberUpdate(BaseModel):
 
 class OrganizationUpdate(UserUpdate):
     """Body for ``PATCH /organizations/{slug}``: the fields an org manager edits,
-    under the rules of ``PATCH /users/me``, and who may send the organization a
+    under the rules of ``PATCH /users/me``, and who may send the organization an
     approval request. ``name``, ``slug`` and ``x_handle`` stay with the site
     admin."""
 

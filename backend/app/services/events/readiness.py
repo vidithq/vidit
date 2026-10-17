@@ -21,6 +21,7 @@ _PROOF_IMAGE_PATTERN = r'<img(\s[a-z-]+="[^"]*")*\ssrc="'
 
 # Queue filter values of ``GET /events/detections`` (422 on anything else);
 # ``all`` does not narrow. Sibling of ``event_filters.VIEWS``.
+# Mirrored by frontend lib/events.ts DetectionReadiness; change both.
 DETECTION_READINESS = frozenset({"all", "ready", "incomplete"})
 
 

@@ -590,6 +590,7 @@ def _member_or_404(db: Session, org: Organization, username: str) -> Organizatio
     return member
 
 
+# Mirrored by frontend OrganizationMembers.tsx lastManager; change both.
 def _guard_last_manager(db: Session, org: Organization, member: OrganizationMember) -> None:
     if member.role == "manager" and _live_manager_count(db, org.id) <= 1:
         raise LastManagerError("The last org manager cannot leave or be demoted")

@@ -132,7 +132,7 @@ def update_organization(
     current_user: User = Depends(get_current_user),
 ) -> OrganizationRead:
     """Edit an organization's bio, links and approval request audience. Org managers and site
-    managers only."""
+    admins only."""
     with _typed_errors():
         org = organizations_service.get_by_slug(db, slug)
         organizations_service.require_manager(db, org, current_user)

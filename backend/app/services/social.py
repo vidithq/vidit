@@ -112,11 +112,12 @@ def get_feed(
 ) -> tuple[list[Row[tuple[Event, float | None, float | None, datetime]]], bool]:
     """One page of the feed, newest first, and whether a next page holds a row.
 
-    The feed carries two kinds of row, both credited to ``owner``: a geolocation an analyst
-    published (:func:`services.event_filters.published_events`) and a request an analyst has
-    open (:func:`services.event_filters.open_requests`). An open request's owner is its
-    requester: ownership moves only when a request is geolocated. ``scope="following"`` keeps
-    the rows owned by an analyst ``user_id`` follows; ``"all"`` keeps every row.
+    The feed carries two kinds of row: a geolocation an analyst published
+    (:func:`services.event_filters.published_events`) and a request an analyst has open
+    (:func:`services.event_filters.open_requests`). An open request's owner is its requester:
+    ownership moves only when a request is geolocated. ``scope="following"`` keeps the
+    geolocations credited to an analyst ``user_id`` follows (owner or co-geolocator) and the
+    requests such an analyst owns; ``"all"`` keeps every row.
 
     ``kind`` keeps the named kinds (both when empty). ``conflict``, ``capture_source`` and ``tag``
     narrow through :func:`services.event_filters.taxonomy_predicates`, and ``approved``,

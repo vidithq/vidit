@@ -125,8 +125,7 @@ class AdminUserDeleteResponse(BaseModel):
     deleted_at: datetime | None = None
     # One event cascade covers located and requested rows.
     cascaded_geolocations: int = 0
-    # Hard delete only: owned events handed to their earliest live co-geolocator
-    # instead of deleted.
+    # Owned events handed to their earliest live co-geolocator instead of deleted.
     transferred_events: int = 0
     # Storage objects swept across those events (source and proof, derivatives
     # included), so higher than an event delete's media-row count.

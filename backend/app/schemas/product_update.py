@@ -18,6 +18,7 @@ class ProductUpdateCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     label: Annotated[str, Field(pattern=RELEASE_LABEL_PATTERN, max_length=20)]
+    # Mirrored by frontend PRODUCT_UPDATE_TITLE_MAX_LEN / PRODUCT_UPDATE_BODY_MAX_LEN; change both.
     title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
     body: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=5000)]
     link_url: str | None = None

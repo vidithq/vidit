@@ -96,7 +96,8 @@ class Settings(BaseSettings):
     # Public frontend origin for links in emails: absolute URL, no trailing slash.
     frontend_url: str = "http://localhost:3000"
     # Public API base, the value of the frontend's ``NEXT_PUBLIC_API_URL``: the
-    # one-click ``List-Unsubscribe`` URL of a product update email posts to it.
+    # one-click ``List-Unsubscribe`` URLs of notification and product update
+    # emails post to it.
     api_url: str = "http://localhost:8000/api/v1"
 
     # Reset token TTL (minutes). Short to bound the value of an intercepted

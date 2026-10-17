@@ -27,6 +27,7 @@ def _signature(purpose: bytes, user_id: uuid.UUID, scope: str) -> bytes:
     ).digest()
 
 
+# The join order is mirrored by frontend lib/notifications.ts unsubscribeTokenKind; change both.
 def sign(purpose: bytes, user_id: uuid.UUID, scope: str = "") -> str:
     sig = base64.urlsafe_b64encode(_signature(purpose, user_id, scope)).rstrip(b"=").decode()
     return ".".join([user_id.hex, *([scope] if scope else []), sig])
