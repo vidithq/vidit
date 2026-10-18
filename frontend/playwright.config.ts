@@ -26,7 +26,7 @@ export default defineConfig({
   // served from fixtures, so a failure is a layout regression and a retry
   // would only hide a flaky one behind a second green run.
   retries: 0,
-  workers: process.env.CI ? 1 : undefined,
+  workers: process.env.CI ? 2 : undefined,
   reporter: process.env.CI ? "list" : "line",
   // The dev server compiles a route on its first request, so the first
   // navigation of each spec pays a compile the later ones do not.
