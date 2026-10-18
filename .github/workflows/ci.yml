@@ -157,6 +157,18 @@ jobs:
       - name: Test
         run: npm test
 
+      # Turbopack keeps its build cache under `.next/cache`, and a warm cache
+      # cuts `next build` to about a third. The key changes with any source
+      # change, so every run saves a fresh cache; the prefix in restore-keys
+      # restores the closest earlier one, and Turbopack rebuilds only the
+      # modules that changed since.
+      - name: Cache the Next.js build
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: frontend/.next/cache
+          key: next-build-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-${{ hashFiles('frontend/src/**', 'frontend/public/**', 'frontend/*.mjs', 'frontend/*.ts', 'frontend/tsconfig.json') }}
+          restore-keys: next-build-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-
+
       - name: Build
         run: npm run build
         env:
