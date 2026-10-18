@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.models.invite_code import InviteCode
 from app.models.user import User
 from app.schemas.invite_code import SponsoredInviteCodeList, SponsoredInviteCodeRead
-from app.services.admin import log_admin_event
+from app.services.admin import log_admin_event, revoke_invite_code
 from app.services.auth import generate_invite_code, invite_code_status
 from app.services.email_layout import app_url
 
@@ -36,8 +36,18 @@ class InviteQuotaExceededError(SponsoredInviteError):
     code = "invite_quota_exceeded"
 
 
+class InviteCodeNotFoundError(SponsoredInviteError):
+    code = "invite_code_not_found"
+
+
+class InviteCodeNotActiveError(SponsoredInviteError):
+    code = "invite_code_not_active"
+
+
 ERROR_STATUS: dict[str, int] = {
     InviteMintingDisabledError.code: 403,
+    InviteCodeNotFoundError.code: 404,
+    InviteCodeNotActiveError.code: 409,
     InviteQuotaExceededError.code: 429,
 }
 
@@ -122,3 +132,25 @@ def list_own(db: Session, *, sponsor: User) -> SponsoredInviteCodeList:
         minted_today=sum(1 for row in rows if row.created_at >= start),
         resets_at=resets_at,
     )
+
+
+def revoke_own(db: Session, *, sponsor: User, code_id: uuid.UUID) -> SponsoredInviteCodeRead:
+    """Revoke one of the sponsor's active codes, whatever the admin minting switch says.
+
+    Another sponsor's code 404s like an unknown id, so the endpoint never confirms a code exists.
+    """
+    # The row lock keeps a redemption from landing between the status check and the revoke.
+    invite = (
+        db.query(InviteCode)
+        .filter(InviteCode.id == code_id, InviteCode.created_by == sponsor.id)
+        .with_for_update()
+        .first()
+    )
+    if invite is None:
+        raise InviteCodeNotFoundError("Invite code not found.")
+    status = invite_code_status(invite)
+    if status != "active":
+        raise InviteCodeNotActiveError(f"This invite code is {status}, so it cannot be revoked.")
+    revoked = revoke_invite_code(db, actor_id=sponsor.id, invite_id=invite.id)
+    assert revoked is not None
+    return _read(revoked)

@@ -74,39 +74,95 @@ describe("InviteAnalystsCard", () => {
     });
   }
 
-  it("mints a code and copies its link to the clipboard", async () => {
+  async function mintThroughTheForm(value: string) {
+    fireEvent.change(await screen.findByLabelText("Invitee's X handle"), {
+      target: { value },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Mint invite code" }));
+  }
+
+  it("mints a code and flashes its row's copy button once the link is copied", async () => {
     mintNewHawk();
     render(<InviteAnalystsCard />);
 
-    fireEvent.change(await screen.findByLabelText("Invitee's X handle"), {
-      target: { value: " @new_hawk " },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Mint invite code" }));
+    await mintThroughTheForm(" @new_hawk ");
 
-    expect(
-      await screen.findByText("Invite link for @new_hawk copied to your clipboard."),
-    ).toBeInTheDocument();
-    expect(writeText).toHaveBeenCalledWith(MINTED.link);
     expect(
       await screen.findByRole("button", { name: "Copy the invite link for @new_hawk" }),
     ).toBeInTheDocument();
+    expect(await screen.findByText("Link copied")).toBeInTheDocument();
+    expect(writeText).toHaveBeenCalledWith(MINTED.link);
+    expect(screen.queryByText(/copied to your clipboard|Copy its link below/)).toBeNull();
     const post = api.apiFetch.mock.calls.find(([, init]) => init?.method === "POST");
     expect(JSON.parse(post![1].body)).toEqual({ x_handle: "@new_hawk" });
   });
 
-  it("points to the row's copy button when the clipboard refuses the write", async () => {
+  it("leaves the row's copy button at rest when the clipboard refuses the write", async () => {
     writeText.mockRejectedValue(new Error("NotAllowedError"));
     mintNewHawk();
     render(<InviteAnalystsCard />);
 
-    fireEvent.change(await screen.findByLabelText("Invitee's X handle"), {
-      target: { value: "new_hawk" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Mint invite code" }));
+    await mintThroughTheForm("new_hawk");
 
     expect(
-      await screen.findByText("Invite code for @new_hawk minted. Copy its link below."),
+      await screen.findByRole("button", { name: "Copy the invite link for @new_hawk" }),
     ).toBeInTheDocument();
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    expect(screen.queryByText("Link copied")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("revokes an active code on the confirming second click", async () => {
+    let revoked = false;
+    api.apiFetch.mockImplementation((path: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        revoked = true;
+        return Promise.resolve({ ...MINTED, status: "revoked" });
+      }
+      const fresh = revoked ? { ...MINTED, status: "revoked" as const } : MINTED;
+      return Promise.resolve(list({ items: [fresh, USED] }));
+    });
+    render(<InviteAnalystsCard />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Revoke the invite code for @new_hawk" }),
+    );
+    expect(api.apiFetch.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Confirm revoking the invite code for @new_hawk" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /invite code for @new_hawk/ })).toBeNull(),
+    );
+    const post = api.apiFetch.mock.calls.find(([, init]) => init?.method === "POST");
+    expect(post![0]).toBe("/users/me/invite-codes/c2/revoke");
+  });
+
+  it("shows a refused revoke in the error banner", async () => {
+    api.apiFetch.mockImplementation((_path: string, init?: RequestInit) =>
+      init?.method === "POST"
+        ? Promise.reject(new Error("This invite code is exhausted, so it cannot be revoked."))
+        : Promise.resolve(list({ items: [MINTED, USED] })),
+    );
+    render(<InviteAnalystsCard />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Revoke the invite code for @new_hawk" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Confirm revoking the invite code for @new_hawk" }),
+    );
+
+    expect(await screen.findByText(/cannot be revoked/)).toBeInTheDocument();
+  });
+
+  it("offers neither copy nor revoke on a code that is no longer active", async () => {
+    api.apiFetch.mockResolvedValue(list());
+    render(<InviteAnalystsCard />);
+
+    expect(await screen.findByText("@osint_hawk")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /@osint_hawk/ })).toBeNull();
   });
 
   it("shows the quota refusal from the server", async () => {
@@ -117,10 +173,7 @@ describe("InviteAnalystsCard", () => {
     );
     render(<InviteAnalystsCard />);
 
-    fireEvent.change(await screen.findByLabelText("Invitee's X handle"), {
-      target: { value: "new_hawk" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Mint invite code" }));
+    await mintThroughTheForm("new_hawk");
 
     await waitFor(() =>
       expect(screen.getByText(/quota resets at 2026-10-19/)).toBeInTheDocument(),

@@ -238,6 +238,21 @@ def mint_my_invite_code(
         raise_typed_error(exc, sponsored_invites.ERROR_STATUS)
 
 
+@router.post("/me/invite-codes/{code_id}/revoke", response_model=SponsoredInviteCodeRead)
+@limiter.limit("30/hour")
+def revoke_my_invite_code(
+    request: Request,
+    code_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SponsoredInviteCodeRead:
+    """Revoke an active invite code you minted. The row stays in your list."""
+    try:
+        return sponsored_invites.revoke_own(db, sponsor=current_user, code_id=code_id)
+    except sponsored_invites.SponsoredInviteError as exc:
+        raise_typed_error(exc, sponsored_invites.ERROR_STATUS)
+
+
 @router.get("/{username}", response_model=UserProfile)
 @authenticated_read_quota
 @limiter.limit("120/minute")

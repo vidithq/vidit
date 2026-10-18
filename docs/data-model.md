@@ -709,7 +709,7 @@ An append-only audit log for admin actions taken through the `/admin` page, and 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
-| `actor_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The admin, or the sponsor on an `invite_sponsored` row. |
+| `actor_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The admin, or the sponsor on an `invite_sponsored` row and on an `invite_revoked` row for a code the sponsor revoked. |
 | `action` | `TEXT` | NOT NULL, for example `invite_created`, `invite_revoked`, `invite_deleted`, `invite_sponsored`, `invite_minting_enabled` and `invite_minting_disabled` |
 | `target` | `JSON` | nullable. Free-form context: target IDs and parameters. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |

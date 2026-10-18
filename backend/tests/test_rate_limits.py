@@ -568,6 +568,7 @@ _DOCUMENTED_LIMITS = [
     _Case("get", f"{ME}/invite-codes", 120),
     # Minting is off for the probe account, so no request mints or meets the daily quota.
     _Case("post", f"{ME}/invite-codes", 30, "user_minting_off", {"json": {"x_handle": "rl_probe"}}),
+    _Case("post", f"{ME}/invite-codes/{_MISSING_ID}/revoke", 30),
     _Case("get", "/api/v1/notifications", 120),
     _Case("get", "/api/v1/notifications/unread-count", 120),
     _Case(

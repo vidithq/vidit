@@ -174,6 +174,78 @@ def test_revoked_codes_still_count_against_their_day(sponsor, admin, db):
     assert response.json()["detail"]["code"] == "invite_quota_exceeded"
 
 
+def _revoke(user: User, code_id: str):
+    return client.post(f"{_MINE}/{code_id}/revoke", headers=login_as(client, user))
+
+
+def test_sponsor_revokes_own_active_code_with_an_audit_row(sponsor, db):
+    minted = _mint(sponsor, _handle()).json()
+
+    response = _revoke(sponsor, minted["id"])
+    assert response.status_code == 200, response.text
+    assert response.json()["id"] == minted["id"]
+    assert response.json()["status"] == "revoked"
+
+    invite = db.query(InviteCode).filter(InviteCode.id == uuid.UUID(minted["id"])).one()
+    assert invite.revoked_at is not None
+    audit = (
+        db.query(AdminEvent)
+        .filter(AdminEvent.actor_id == sponsor.id, AdminEvent.action == "invite_revoked")
+        .one()
+    )
+    assert audit.target == {"invite_code_id": minted["id"]}
+
+
+def test_sponsor_revoke_404s_another_sponsors_code_and_an_unknown_id(sponsor, make_user, db):
+    minted = _mint(make_user("spo"), _handle()).json()
+
+    for code_id in (minted["id"], str(uuid.uuid4())):
+        response = _revoke(sponsor, code_id)
+        assert response.status_code == 404
+        assert response.json()["detail"]["code"] == "invite_code_not_found"
+    invite = db.query(InviteCode).filter(InviteCode.id == uuid.UUID(minted["id"])).one()
+    assert invite.revoked_at is None
+
+
+def test_sponsor_revoke_refuses_a_used_or_revoked_code(sponsor, db):
+    used = _mint(sponsor, _handle()).json()
+    db.query(InviteCode).filter(InviteCode.id == uuid.UUID(used["id"])).update(
+        {"used_at": datetime.now(UTC)}
+    )
+    db.commit()
+    revoked = _mint(sponsor, _handle()).json()
+    assert _revoke(sponsor, revoked["id"]).status_code == 200
+
+    for code_id in (used["id"], revoked["id"]):
+        response = _revoke(sponsor, code_id)
+        assert response.status_code == 409
+        assert response.json()["detail"]["code"] == "invite_code_not_active"
+    assert (
+        db.query(AdminEvent)
+        .filter(AdminEvent.actor_id == sponsor.id, AdminEvent.action == "invite_revoked")
+        .count()
+        == 1
+    )
+
+
+def test_sponsor_revoked_codes_still_count_against_their_day(sponsor, db):
+    ids = [_mint(sponsor, _handle()).json()["id"] for _ in range(DAILY_MINT_LIMIT)]
+    for code_id in ids:
+        assert _revoke(sponsor, code_id).status_code == 200
+
+    response = _mint(sponsor, _handle())
+    assert response.status_code == 429
+    assert response.json()["detail"]["code"] == "invite_quota_exceeded"
+
+
+def test_sponsor_revokes_with_minting_turned_off(sponsor, db):
+    minted = _mint(sponsor, _handle()).json()
+    sponsor.invite_minting_enabled = False
+    db.commit()
+
+    assert _revoke(sponsor, minted["id"]).status_code == 200
+
+
 def test_quota_window_starts_at_midnight_utc(sponsor, db):
     _seed_codes(db, sponsor, DAILY_MINT_LIMIT, _today_start() - timedelta(microseconds=1))
     assert _mint(sponsor, _handle()).status_code == 201

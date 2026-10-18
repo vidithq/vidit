@@ -19,3 +19,11 @@ export function mintInviteCode(xHandle: string): Promise<SponsoredInviteCode> {
     body: JSON.stringify({ x_handle: xHandle }),
   });
 }
+
+/** Revoke an active code you minted. Refused with `invite_code_not_active` once it is used or
+ *  revoked; another sponsor's code answers `invite_code_not_found`. */
+export function revokeInviteCode(id: string): Promise<SponsoredInviteCode> {
+  return apiFetch<SponsoredInviteCode>(`${MY_INVITE_CODES_PATH}/${id}/revoke`, {
+    method: "POST",
+  });
+}

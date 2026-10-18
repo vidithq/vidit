@@ -154,6 +154,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | PUT | `/users/me/x-handle-request` | 🔒 | Ask an admin to bind a new X handle (replaces your earlier request) |
 | GET | `/users/me/invite-codes` | 🔒 | The invite codes you minted, newest first, and your daily quota |
 | POST | `/users/me/invite-codes` | 🔒 | Mint a single-use invite code bound to the invitee's X handle |
+| POST | `/users/me/invite-codes/{id}/revoke` | 🔒 | Revoke an active invite code you minted, keeping its row |
 | GET | `/users/{username}/events` | 🌐 | List an analyst's published geolocations |
 | GET | `/users/{username}/collections` | 🌐 | List an analyst's collections |
 | GET | `/users/{username}/organizations` | 🌐 | List the organizations an analyst belongs to |
@@ -285,6 +286,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `PUT /users/me/x-handle-request` | 10/hour |
 | `GET /users/me/invite-codes` | 120/min |
 | `POST /users/me/invite-codes` | 30/hour, plus the daily quota in [`POST /users/me/invite-codes`](#post-usersmeinvite-codes) |
+| `POST /users/me/invite-codes/{id}/revoke` | 30/hour |
 | **Notifications** | |
 | `GET /notifications`, `GET /notifications/unread-count` | 120/min |
 | `POST /notifications/read` | 60/min |
@@ -2552,11 +2554,13 @@ flowchart LR
   switch and daily quota checked`"]:::spec
   switch["`**PATCH /admin/users/{id}/invite-minting**`"]:::shared
   revoke["`**POST /admin/invite-codes/{id}/revoke**`"]:::shared
+  selfrevoke["`**POST /users/me/invite-codes/{id}/revoke**
+  your own active code`"]:::spec
   flag[("`**users.invite_minting_enabled**`")]:::store
   code[("`**invite_codes**
   created_by is the sponsor`")]:::store
   audit[("`**admin_events**
-  invite_sponsored`")]:::store
+  invite_sponsored, invite_revoked`")]:::store
   confirm["`**confirm_pending_registration**
   copies x_handle, stamps used_by`"]:::core
   account[("`**users**
@@ -2567,13 +2571,15 @@ flowchart LR
   mint --> code
   mint --> audit
   revoke --> code
+  selfrevoke --> code
+  selfrevoke --> audit
   code --> confirm
   confirm --> account
 ```
 
 The code behaves like one an admin mints through [`POST /admin/invite-codes`](#post-admininvite-codes): single use, no expiry, and redemption copies the bound handle onto the new account's `users.x_handle`. If another account or an organization holds the handle by then, the account is created without the link. The mint does not check whether another account holds the handle, so the endpoint does not reveal which handle has an account.
 
-`invite_codes.created_by` records you as the sponsor. The account created from the code reads its sponsor through that row, and the admin console shows the sponsor per account and per code. An admin revokes a sponsored code through [`POST /admin/invite-codes/{id}/revoke`](#post-admininvite-codesidrevoke).
+`invite_codes.created_by` records you as the sponsor. The account created from the code reads its sponsor through that row, and the admin console shows the sponsor per account and per code. You revoke an active code you minted through [`POST /users/me/invite-codes/{id}/revoke`](#post-usersmeinvite-codesidrevoke), and an admin revokes any code through [`POST /admin/invite-codes/{id}/revoke`](#post-admininvite-codesidrevoke).
 
 You mint at most 5 codes per UTC day. Every code minted since 00:00 UTC counts, revoked or used. Each mint writes an `admin_events` row with action `invite_sponsored`, `actor_id` set to you, and target `{"invite_code_id": …, "x_handle": …}`.
 
@@ -2592,6 +2598,22 @@ You mint at most 5 codes per UTC day. Every code minted since 00:00 UTC counts, 
 | 403 `invite_minting_disabled` | An admin turned minting off for your account |
 | 422 | A handle outside `^[a-z0-9_]{1,15}$` after normalization, or an unknown field |
 | 429 `invite_quota_exceeded` | You already minted 5 codes since 00:00 UTC. The message states when the quota resets, and [`GET /users/me/invite-codes`](#get-usersmeinvite-codes) returns it as `resets_at` |
+
+---
+
+### `POST /users/me/invite-codes/{id}/revoke` 🔒
+
+Revoke an active invite code you minted, for example one bound to the wrong handle. The endpoint sets `revoked_at` through the same service as [`POST /admin/invite-codes/{id}/revoke`](#post-admininvite-codesidrevoke). The row stays and lists as `revoked` in [`GET /users/me/invite-codes`](#get-usersmeinvite-codes).
+
+The revoke works while an admin keeps minting off for your account. A revoked code still counts against the daily quota of the day you minted it. Each revoke writes an `admin_events` row with action `invite_revoked`, `actor_id` set to you, and target `{"invite_code_id": …}`.
+
+**Response 200:** the revoked code, in the shape of an `items` entry of [`GET /users/me/invite-codes`](#get-usersmeinvite-codes).
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 `invite_code_not_found` | No code carries that id, or another sponsor minted it |
+| 409 `invite_code_not_active` | The code is used, revoked or expired. The message names its status |
 
 ---
 
