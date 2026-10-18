@@ -20,12 +20,7 @@ import { CopyButton } from "@/components/ui/CopyButton";
 import { Input } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import {
-  FORM_ERROR_BANNER,
-  FORM_LABEL,
-  FORM_SUCCESS_BANNER,
-  LIST_TILE,
-} from "@/components/ui/form-styles";
+import { FORM_ERROR_BANNER, FORM_LABEL, LIST_TILE } from "@/components/ui/form-styles";
 
 function CopyLink({ code }: { code: SponsoredInviteCode }) {
   const { copied, copy } = useCopyToClipboard();
@@ -40,19 +35,22 @@ function CopyLink({ code }: { code: SponsoredInviteCode }) {
   );
 }
 
-/** Invite an analyst: mint a single-use code bound to their X handle, copy the register link,
- *  and follow every code you minted. The mint form shows only while an admin leaves minting on. */
+/** Invite an analyst: mint a single-use code bound to their X handle, which copies the register
+ *  link, and follow every code you minted. The mint form shows only while an admin leaves minting on. */
 export function InviteAnalystsCard() {
   const { data, error, refetch } = useApiResource<SponsoredInviteCodeList>(MY_INVITE_CODES_PATH);
   const [handle, setHandle] = useState("");
-  const [minted, setMinted] = useState<SponsoredInviteCode | null>(null);
+  const [lastMint, setLastMint] = useState<{ handle: string; copied: boolean } | null>(null);
+  const { copy } = useCopyToClipboard();
 
   const mint = useMutation(() => mintInviteCode(handle.trim()), {
     fallback: "Could not mint the invite code. Try again.",
-    onSuccess: (code) => {
-      setMinted(code);
+    onSuccess: async (code) => {
       setHandle("");
       refetch();
+      // A browser refuses the write once the click's user activation expires (Safari after the
+      // fetch), so the status line then points to the row's copy button.
+      setLastMint({ handle: code.x_handle, copied: await copy(code.link) });
     },
   });
 
@@ -62,7 +60,7 @@ export function InviteAnalystsCard() {
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setMinted(null);
+    setLastMint(null);
     void mint.run();
   };
 
@@ -103,16 +101,14 @@ export function InviteAnalystsCard() {
               The quota resets on {formatInstant(data.resets_at)}.
             </p>
           </div>
+          {lastMint && (
+            <p className="text-xs text-neutral-400" role="status">
+              {lastMint.copied
+                ? `Invite link for @${lastMint.handle} copied to your clipboard.`
+                : `Invite code for @${lastMint.handle} minted. Copy its link below.`}
+            </p>
+          )}
         </form>
-      )}
-
-      {minted && (
-        <div className={`${FORM_SUCCESS_BANNER} flex items-center gap-2`}>
-          <span className="min-w-0 flex-1 wrap-anywhere">
-            Invite for @{minted.x_handle}: {minted.link}
-          </span>
-          <CopyLink code={minted} />
-        </div>
       )}
 
       {codes.length > 0 && (

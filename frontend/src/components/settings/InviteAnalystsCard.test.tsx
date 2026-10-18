@@ -46,7 +46,13 @@ function list(overrides: Partial<SponsoredInviteCodeList> = {}): SponsoredInvite
 }
 
 describe("InviteAnalystsCard", () => {
-  beforeEach(() => api.apiFetch.mockReset());
+  const writeText = vi.fn();
+
+  beforeEach(() => {
+    api.apiFetch.mockReset();
+    writeText.mockReset().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  });
 
   it("lists your codes with their handle and status", async () => {
     api.apiFetch.mockResolvedValue(list());
@@ -57,10 +63,19 @@ describe("InviteAnalystsCard", () => {
     expect(screen.getByText(/4 of 5 left today/)).toBeInTheDocument();
   });
 
-  it("mints a code and shows its link ready to copy", async () => {
-    api.apiFetch.mockImplementation((_path: string, init?: RequestInit) =>
-      Promise.resolve(init?.method === "POST" ? MINTED : list()),
-    );
+  function mintNewHawk() {
+    let minted = false;
+    api.apiFetch.mockImplementation((_path: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        minted = true;
+        return Promise.resolve(MINTED);
+      }
+      return Promise.resolve(list(minted ? { items: [MINTED, USED], minted_today: 2 } : {}));
+    });
+  }
+
+  it("mints a code and copies its link to the clipboard", async () => {
+    mintNewHawk();
     render(<InviteAnalystsCard />);
 
     fireEvent.change(await screen.findByLabelText("Invitee's X handle"), {
@@ -68,12 +83,30 @@ describe("InviteAnalystsCard", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Mint invite code" }));
 
-    expect(await screen.findByText(/register\?code=new-code/)).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Copy the invite link for @new_hawk" }),
+      await screen.findByText("Invite link for @new_hawk copied to your clipboard."),
+    ).toBeInTheDocument();
+    expect(writeText).toHaveBeenCalledWith(MINTED.link);
+    expect(
+      await screen.findByRole("button", { name: "Copy the invite link for @new_hawk" }),
     ).toBeInTheDocument();
     const post = api.apiFetch.mock.calls.find(([, init]) => init?.method === "POST");
     expect(JSON.parse(post![1].body)).toEqual({ x_handle: "@new_hawk" });
+  });
+
+  it("points to the row's copy button when the clipboard refuses the write", async () => {
+    writeText.mockRejectedValue(new Error("NotAllowedError"));
+    mintNewHawk();
+    render(<InviteAnalystsCard />);
+
+    fireEvent.change(await screen.findByLabelText("Invitee's X handle"), {
+      target: { value: "new_hawk" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Mint invite code" }));
+
+    expect(
+      await screen.findByText("Invite code for @new_hawk minted. Copy its link below."),
+    ).toBeInTheDocument();
   });
 
   it("shows the quota refusal from the server", async () => {
