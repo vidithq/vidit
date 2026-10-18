@@ -187,7 +187,7 @@ vidit/
 └── .github/workflows/        # see GitHub Actions
 ```
 
-`make test` runs `pytest -n auto --dist loadfile`: the conftest migrates a template database to alembic head and clones one database per xdist worker. Plain `pytest` stays serial on the development database.
+`make test` runs `pytest -n auto --dist worksteal`: the conftest migrates a template database to alembic head and clones one database per xdist worker. Plain `pytest` stays serial on the development database.
 
 ---
 
@@ -593,8 +593,8 @@ flowchart LR
 
   subgraph checks [What runs on it]
     direction TB
-    ci["`**ci.yml**, seven jobs, no path filters
-    backend-lint, backend-test, frontend, frontend-e2e, api-types, hygiene, docs-pairing`"]:::spec
+    ci["`**ci.yml**, eight jobs, no path filters
+    backend-lint, backend-test-shard, backend-test, frontend, frontend-e2e, api-types, hygiene, docs-pairing`"]:::spec
     other["`**pr-title.yml**, the **DCO app**, **codeql.yml**
     title shape, sign-off, and the security-extended scan`"]:::spec
   end
@@ -624,7 +624,7 @@ The checks are [GitHub Actions](#github-actions), the gate is the branch-protect
 
 | Workflow | Trigger | Steps |
 |----------|---------|-------|
-| `ci.yml` | Every push to `main` and every PR (no path filters, so required checks always report even on a docs-only PR) | Seven jobs. `backend-lint`: `uv sync` → `ruff check` → `ruff format --check` → `mypy app` → `vulture` (dead code). `backend-test` (parallel with `backend-lint`, no gate): `pytest -n 4 --dist loadfile` against a PostGIS service container (no separate migrate step: the xdist template build runs the migrations, see [Repository layout](#repository-layout-monorepo)). `frontend`: `npm ci` → `eslint` → `tsc --noEmit` → `vitest run` → `next build`. `frontend-e2e`: `npm ci` → `npx playwright install --with-deps chromium` (the browser cached on the lock file's Playwright version) → `npm run test:e2e`, the narrow-viewport smoke suite described below; a red run uploads `frontend/test-results/` as an artifact. `api-types`: regenerates `frontend/src/lib/api-types.ts` from the OpenAPI spec and fails on drift. `hygiene`: `jscpd` (duplication), `knip` (dead frontend code), the palette-coverage check, `video/check-routes.sh`, and a changelog check that fails on any `CHANGELOG.md` line over 300 characters. `docs-pairing` (PR-only): fails when the PR does not touch `docs/`; the exemptions are in [CONTRIBUTING *Doc-sync rule*](../CONTRIBUTING.md#doc-sync-rule). Force-pushes cancel the obsolete in-flight run; pushes to `main` run to completion. |
+| `ci.yml` | Every push to `main` and every PR (no path filters, so required checks always report even on a docs-only PR) | Eight jobs. `backend-lint`: `uv sync` → `ruff check` → `ruff format --check` → `mypy app` → `vulture` (dead code). `backend-test-shard` (parallel with `backend-lint`, no gate): three runners, each running one third of the suite with `pytest -n 4 --dist worksteal` against its own PostGIS service container (no separate migrate step: the xdist template build runs the migrations, see [Repository layout](#repository-layout-monorepo)). `backend-test`: reports the `Backend tests` check, green only when every shard passed; see [Backend test shards](#backend-test-shards). `frontend`: `npm ci` → `eslint` → `tsc --noEmit` → `vitest run` → `next build`. `frontend-e2e`: `npm ci` → `npx playwright install --with-deps chromium` (the browser cached on the lock file's Playwright version) → `npm run test:e2e`, the narrow-viewport smoke suite described below; a red run uploads `frontend/test-results/` as an artifact. `api-types`: regenerates `frontend/src/lib/api-types.ts` from the OpenAPI spec and fails on drift. `hygiene`: `jscpd` (duplication), `knip` (dead frontend code), the palette-coverage check, `video/check-routes.sh`, and a changelog check that fails on any `CHANGELOG.md` line over 300 characters. `docs-pairing` (PR-only): fails when the PR does not touch `docs/`; the exemptions are in [CONTRIBUTING *Doc-sync rule*](../CONTRIBUTING.md#doc-sync-rule). Force-pushes cancel the obsolete in-flight run; pushes to `main` run to completion. |
 | `codeql.yml` | Push to `main`, PR to `main`, weekly cron (Monday 06:00 UTC) | CodeQL dataflow analysis on Python + TypeScript/JavaScript with the `security-extended` query suite. Findings post to *Security tab → Code scanning alerts*. The `analyze` job is gated on `!github.event.repository.private`: code scanning is free on public repos but a paid GitHub Advanced Security add-on on private ones, so the job runs on the public repo and skips (rather than fails) anywhere the repository is private, e.g. a private fork. |
 | `pr-title.yml` | PR opened / edited / synchronized | Validates the PR title against Conventional Commits. Stays outside `ci.yml` on purpose: it re-runs on title edits, and bundling it would re-run the full test suite on every edit. |
 | `deploy.yml` | `workflow_dispatch` | See [Deployment](#deployment) below. |
@@ -639,6 +639,61 @@ The workflows are hardened because forks make every workflow run reachable to at
 - **Every third-party action is SHA-pinned**, with the human-readable version in a trailing comment (the `# vX.Y.Z` form is the one Dependabot's `github-actions` ecosystem reads to know which pin to rewrite on a version-update PR).
 - **Every workflow declares a top-level `permissions:` block** scoped to the minimum it needs.
 - **No workflow uses `pull_request_target`**, because it's a fork-PR escalation vector. Use `pull_request` instead.
+
+#### Backend test shards
+
+The backend suite runs on three runners at once, and one job reports the result under the required check name.
+
+```mermaid
+flowchart LR
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`a file in the repository`"]:::store
+    l2["`a job that runs tests`"]:::shared
+    l3["`the required check`"]:::core
+    l1 ~~~ l2 ~~~ l3
+  end
+
+  durations[("`**backend/.test_durations**
+  seconds per test, written by pytest-split`")]:::store
+
+  subgraph shards [backend-test-shard, one runner and one Postgres each]
+    direction TB
+    s1["`**shard 1**
+    pytest --splits 3 --group 1`"]:::shared
+    s2["`**shard 2**
+    pytest --splits 3 --group 2`"]:::shared
+    s3["`**shard 3**
+    pytest --splits 3 --group 3`"]:::shared
+  end
+
+  gate["`**backend-test**, named Backend tests
+  if: always(), fails unless every shard succeeded`"]:::core
+
+  durations --> s1 & s2 & s3
+  s1 & s2 & s3 --> gate
+```
+
+[pytest-split](https://github.com/jerry-git/pytest-split) assigns each test to one shard with its `least_duration` algorithm, which reads the per-test durations in `backend/.test_durations`. Every shard collects the same suite and keeps a disjoint third of it, so the three shards together run every test once. A test missing from the file counts as the average duration: a new test lands in a shard and runs, and only the balance between shards shifts.
+
+Inside a shard, `--dist worksteal` spreads the tests over four xdist workers and lets an idle worker take queued tests from a busy one. The slowest file, `test_rate_limits.py`, sends enough requests to exhaust each documented limit, so its tests spread over every shard and every worker instead of running on one.
+
+The matrix runs with `fail-fast: false`, so a failing shard does not cancel the others and one run reports every failing test. The `backend-test` job carries the `Backend tests` name that branch protection requires. It runs with `if: always()` and fails when any shard failed or was cancelled.
+
+Refresh the durations file when the shards drift apart by more than a few seconds in CI, for example after adding a slow test file. From `backend/`, with the docker-compose Postgres up:
+
+```bash
+uv run pytest -n auto --dist worksteal --store-durations --clean-durations
+```
+
+Commit the rewritten `.test_durations`. Run the full suite: `--clean-durations` replaces the file with the tests of this run, which drops deleted tests and would drop any test a partial run skips.
+
+To change the shard count, edit the `group` list in the `backend-test-shard` matrix. The `--splits` value reads the matrix size, so it follows.
 
 #### Narrow-viewport smoke tests
 

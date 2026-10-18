@@ -13,3 +13,7 @@
 # the other deletes it) loses the deletion. Only appends and deletes
 # merge reliably; rewrites need a manual pass at PR-author time.
 CHANGELOG.md     merge=union
+
+# pytest-split rewrites this whole file on every refresh (see
+# docs/engineering.md, Backend test shards), so GitHub collapses its diff.
+backend/.test_durations linguist-generated=true
