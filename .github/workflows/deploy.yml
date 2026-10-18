@@ -239,8 +239,6 @@ jobs:
           # belt-and-braces as NEXT_PUBLIC_API_URL: passed from a repo
           # variable so the value reliably reaches `next build`.
           NEXT_PUBLIC_DEMO_VIDEO_URL: ${{ vars.NEXT_PUBLIC_DEMO_VIDEO_URL }}
-          # Getting started walkthrough video on /guide, the same way.
-          NEXT_PUBLIC_GUIDE_VIDEO_URL: ${{ vars.NEXT_PUBLIC_GUIDE_VIDEO_URL }}
           # Sentry — same `vercel pull` belt-and-braces story as
           # NEXT_PUBLIC_API_URL. All four are optional: when unset (bootstrap
           # phase before the Sentry project exists), `withSentryConfig` skips

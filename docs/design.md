@@ -220,7 +220,7 @@ The vocabulary:
   - [`<TileNotice>`](../frontend/src/components/ui/TileNotice.tsx) is the one muted line a media box says when it has nothing to show: an empty media set or a clip the browser refused.
   - [`BrandGlyphs`](../frontend/src/components/ui/BrandGlyphs.tsx) holds `XGlyph` and `GitHubGlyph`, the inline SVG brand marks that lucide does not ship. They paint `currentColor`.
   - [`usePinnedPopover`](../frontend/src/hooks/usePinnedPopover.ts) is the anchored-popover machinery (pin, hover, outside-click / Escape dismiss, portal plus viewport clamp), used by `FieldHelp` and `<Tooltip>`. Both bubbles paint with `TOOLTIP_SURFACE`.
-- **Instruction lists.** [`<NumberedSteps>`](../frontend/src/components/ui/NumberedSteps.tsx) is the static "1, 2, 3…" list (numbered disc, title, body): `plain` on the public guides and under each `/guide` screenshot as its legend (the file also exports the plain disc as `STEP_NUMBER`, the marker on the `/import` annotated post), `boxed` with a per-step icon for the archive export walkthrough on `/submit`. Every step looks the same because it is reference copy, not state. For a check mark or a spinner, use `<ProgressSteps>`.
+- **Instruction lists.** [`<NumberedSteps>`](../frontend/src/components/ui/NumberedSteps.tsx) is the static "1, 2, 3…" list (numbered disc, title, body): `plain` on the public guides and under each `/guide` screenshot as its legend (the file also exports the plain disc as `STEP_NUMBER`, the marker on the `/import` annotated post), `boxed` with a per-step icon for the archive export steps on `/submit`. Every step looks the same because it is reference copy, not state. For a check mark or a spinner, use `<ProgressSteps>`.
 - **Live progress.** [`<ProgressSteps>`](../frontend/src/components/ui/ProgressSteps.tsx) is the vertical stepper for a live multi-step operation (the archive import): check for done, highlighted disc for the active step, muted for pending. A determinate bar renders only when a real 0..1 `progress` ratio exists. A step in flight without one takes a discreet `spinner` next to its label, never a fake animation. `keepDetail` pins a step's detail line after completion (a privacy guarantee, a final count). `failed` turns the active step into the red failure marker. The message itself stays in the form's `FORM_ERROR_BANNER`.
 
 #### Media
@@ -384,9 +384,7 @@ flowchart LR
   about["`**/about**
   first entry of Guides`"]:::spec
   page["`**/guide**
-  PageShell, a video Card, one Card per section`"]:::core
-  video["`**DemoVideo**
-  only while NEXT_PUBLIC_GUIDE_VIDEO_URL is set`"]:::shared
+  PageShell, one Card per section`"]:::core
   tiles["`**IconTile**
   imports, concepts`"]:::shared
   steps["`**NumberedSteps**
@@ -405,7 +403,6 @@ flowchart LR
   email --> page
   confirm --> page
   about --> page
-  page --> video
   page --> tiles
   page --> steps
   page --> badge
@@ -429,7 +426,6 @@ flowchart LR
 
 - **Anchors are contract.** Other pages and messages link to a section by its id, so keep every id when you edit a heading. Each heading takes `max-sm:scroll-mt-16`, so a jump on a phone lands below the menu chip.
 - **One marker list.** [`shots.json`](../frontend/src/app/_shots/shots.json) groups the screenshots by page, `guide` and `import`, and names each one's file, route, window, session and markers. The layout, Approvals, Feed, Notifications and Submit shots are signed in. A marker is a target element and its legend line. [`video/shoot-guide.js`](../video/shoot-guide.js) draws a numbered orange disc beside each target and writes the WebP to `frontend/public/<page>/`. [`Shot`](../frontend/src/app/_shots/Shot.tsx) renders one screenshot on either page and numbers the same labels with `NumberedSteps` under the image. Change a marker in the JSON, then re-shoot (see [`video/README.md`](../video/README.md#guide-screenshots)).
-- **The video slot.** The walkthrough is [`DemoVideo`](../frontend/src/components/landing/DemoVideo.tsx), the landing's click-to-play player, in an `aspect-video` frame, in a card above the sections that renders only with the video. It loads with `preload="metadata"`, so a phone fetches the first frame and nothing more until you press play. It renders only while `NEXT_PUBLIC_GUIDE_VIDEO_URL` holds a direct video file URL. The video is hosted like the landing demo (see [`engineering.md`](engineering.md#operating-the-platform-clis)).
 - **Grounded in the product.** The page names only controls that exist, under the labels the product prints. A change to a surface the page shows updates its screenshot or its tile in the same PR.
 
 #### Import and methodology guides

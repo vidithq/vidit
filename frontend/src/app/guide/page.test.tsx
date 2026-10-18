@@ -1,5 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
@@ -18,10 +18,6 @@ const ANCHORS = [
 ];
 
 describe("/guide", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
   it("holds the six sections in order, each behind a stable anchor", () => {
     const { container } = render(<GuidePage />);
 
@@ -59,21 +55,5 @@ describe("/guide", () => {
       );
     expect(shotsIn("working-with-others")).toEqual([SHOTS.guide.approvals.alt, SHOTS.guide.feed.alt]);
     expect(shotsIn("settings")).toEqual([SHOTS.guide.notifications.alt]);
-  });
-
-  it("renders the walkthrough video only when its URL is set", () => {
-    vi.stubEnv("NEXT_PUBLIC_GUIDE_VIDEO_URL", "");
-    const { container, unmount } = render(<GuidePage />);
-    expect(container.querySelector("video")).toBeNull();
-    unmount();
-
-    vi.stubEnv("NEXT_PUBLIC_GUIDE_VIDEO_URL", "https://cdn.example/landing/guide.mp4");
-    const rendered = render(<GuidePage />);
-    const video = rendered.container.querySelector("video");
-    expect(video).toHaveAttribute("src", "https://cdn.example/landing/guide.mp4");
-    expect(video).toHaveAttribute("preload", "metadata");
-    expect(
-      screen.getByRole("button", { name: "Play the walkthrough video" }),
-    ).toBeInTheDocument();
   });
 });
