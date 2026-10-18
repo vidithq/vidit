@@ -10,6 +10,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
+- The import completion email tells you to use Start reviewing and go through detections one by one, instead of describing a page-at-a-time publish the queue no longer offers ([#612](https://github.com/vidithq/vidit/pull/612)).
 - The account picker's suggestions show in full wherever the picker sits, such as the Request approval field in an event's Approvals card, and open above the field near the bottom of the screen ([#602](https://github.com/vidithq/vidit/pull/602)).
 
 ## v0.7.0, 2026-10-17
