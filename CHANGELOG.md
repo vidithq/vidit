@@ -10,6 +10,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- The rail shows Requests only to a signed-in reader; a request page still opens from a shared link ([#611](https://github.com/vidithq/vidit/pull/611)).
 - The landing roadmap lists v0.8 cleanup and restructuring, v0.9 moderation, v0.10 search and discovery, and a v1.0 that opens reader accounts while publishing stays with contributors ([#607](https://github.com/vidithq/vidit/pull/607)).
 
 ### Fixed

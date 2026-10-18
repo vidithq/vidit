@@ -2,28 +2,31 @@
   "layout": {
     "file": "layout.webp",
     "route": "/map",
+    "session": "signed-in",
     "viewport": { "width": 1440, "height": 900 },
     "dpr": 1,
-    "alt": "The map with the rail expanded on its left edge, each rail entry numbered",
+    "alt": "The map with the rail expanded on its left edge, signed in, each rail entry numbered",
     "markers": [
-      { "target": "aside a[href=\"/map\"]", "place": "right", "label": "Map: every located event is a pin. Click one to open it." },
+      { "target": "aside a[href=\"/map\"]", "place": "right", "label": "Map: every located event, as a pin." },
+      { "target": "aside a[href=\"/submit\"]", "place": "right", "label": "Submit: a geolocation, a request, or an import from X." },
       { "target": "aside a[href=\"/requests\"]", "place": "right", "label": "Requests: footage nobody has placed yet." },
-      { "target": "aside a[href=\"/search\"]", "place": "right", "label": "Search: events, collections, analysts and organizations." },
-      { "target": "aside a[href=\"/about\"]", "place": "right", "label": "About: the guides, this page included." },
-      { "target": "aside a[href=\"/login\"]", "place": "right", "label": "Sign in to add Submit, Feed, your profile, Notifications and Settings." },
-      { "target": "aside button[aria-label=\"Collapse sidebar\"]", "place": "right", "label": "Show or hide the labels beside the icons." },
-      { "target": "role=button[name=/filter/i]", "place": "right", "label": "Filters narrow the pins by status, conflict, dates and more." }
+      { "target": "aside a[href=\"/feed\"]", "place": "right", "label": "Feed: what the analysts you follow publish." },
+      { "target": "aside a[href=\"/search\"]", "place": "right", "label": "Search, then About, which holds the guides." },
+      { "target": "aside a[href^=\"/profile/\"]", "place": "right", "label": "Your profile, with your Detections queue." },
+      { "target": "aside a[href=\"/notifications\"]", "place": "right", "label": "Notifications, then Settings." },
+      { "target": "aside button[aria-label=\"Collapse sidebar\"]", "place": "right", "label": "Show or hide the labels." }
     ]
   },
   "layout-phone": {
     "file": "layout-phone.webp",
     "route": "/map",
+    "session": "signed-in",
     "viewport": { "width": 375, "height": 812 },
     "dpr": 2,
     "alt": "The map on a phone with the navigation drawer open, numbered",
     "markers": [
-      { "target": "role=button[name=\"Open navigation\"]", "place": "top-right", "label": "The menu button opens the rail as a drawer." },
-      { "target": "aside button[aria-label=\"Close navigation\"]", "place": "right", "label": "Close, or a tap outside it, closes the drawer." }
+      { "target": "role=button[name=\"Open navigation\"]", "place": "top-right", "label": "Menu opens the rail as a drawer." },
+      { "target": "aside button[aria-label=\"Close navigation\"]", "place": "right", "label": "Close, or a tap outside, shuts it." }
     ]
   },
   "event": {
@@ -43,6 +46,46 @@
       { "target": "role=button[name=/^v\\d/]", "place": "left", "label": "Versions: open an earlier version or the full history." },
       { "target": "role=button[name=/report/i]", "place": "right", "label": "Share the event, or report it." },
       { "target": "section[aria-label=\"Approvals\"]", "place": "top-left", "label": "Approvals: who backs the current version." }
+    ]
+  },
+  "approvals": {
+    "file": "approvals.webp",
+    "route": "/events/{approve_event}",
+    "session": "signed-in",
+    "viewport": { "width": 1440, "height": 900 },
+    "clip": { "x": 120, "y": 0, "width": 1220, "height": 320 },
+    "dpr": 1,
+    "alt": "Another analyst's geolocation, signed in, with its Approvals card numbered",
+    "markers": [
+      { "target": "section[aria-label=\"Approvals\"]", "place": "top-left", "label": "Each stamp backs the current version." },
+      { "target": "section[aria-label=\"Approvals\"] >> role=button[name=\"Approve\"]", "place": "right", "label": "Approve adds your stamp." }
+    ]
+  },
+  "feed": {
+    "file": "feed.webp",
+    "route": "/feed",
+    "session": "signed-in",
+    "viewport": { "width": 1440, "height": 900 },
+    "dpr": 1,
+    "alt": "The Feed page, signed in, numbered",
+    "markers": [
+      { "target": "role=group[name=\"Feed scope\"]", "place": "right", "label": "Following shows the analysts you follow. All shows everyone." },
+      { "target": "article >> nth=0", "place": "left", "label": "A new geolocation or request. Click to open it." },
+      { "target": "aside[aria-label=\"Filters\"]", "place": "top-left", "label": "Filters narrow the feed." }
+    ]
+  },
+  "notifications": {
+    "file": "notifications.webp",
+    "route": "/settings",
+    "session": "signed-in",
+    "viewport": { "width": 1440, "height": 900 },
+    "clip": { "x": 0, "y": 0, "width": 1040, "height": 540 },
+    "dpr": 1,
+    "alt": "The Notifications card of Settings, numbered",
+    "markers": [
+      { "target": "role=group[name=\"Accept approval requests from\"]", "place": "left", "label": "Who can ask you for an approval." },
+      { "target": "role=switch[name=\"Request fulfilled, Email\"]", "place": "left", "label": "The kinds sent to your email." },
+      { "target": "role=switch[name=\"Request fulfilled, Push\"]", "place": "right", "label": "The kinds pushed to the devices you enable." }
     ]
   }
 }

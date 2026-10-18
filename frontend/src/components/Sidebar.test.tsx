@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import Sidebar from "./Sidebar";
 
@@ -11,10 +11,13 @@ const viewer = vi.hoisted(() => ({
   detections: 0,
   unread: 0,
   pathname: "/map",
+  signedOut: false,
 }));
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({
-    user: { id: "u1", username: "analyst", avatar_url: viewer.avatar_url },
+    user: viewer.signedOut
+      ? null
+      : { id: "u1", username: "analyst", avatar_url: viewer.avatar_url },
     loading: false,
   }),
 }));
@@ -251,6 +254,37 @@ describe("Sidebar drawer controls", () => {
     expect(entry).not.toHaveClass("text-neutral-400");
     expect(screen.getByRole("link", { name: "Map" })).toHaveClass(
       "text-neutral-400",
+    );
+  });
+});
+
+describe("Sidebar signed-out rail", () => {
+  beforeEach(() => {
+    viewer.signedOut = true;
+    viewer.pathname = "/map";
+  });
+  afterEach(() => {
+    viewer.signedOut = false;
+  });
+
+  it("hides the entries that need a session and keeps the public ones", () => {
+    render(<Sidebar />);
+
+    for (const name of ["Submit", "Requests", "Feed"]) {
+      expect(screen.queryByRole("link", { name })).toBeNull();
+    }
+    for (const name of ["Map", "Search", "About", "Sign in"]) {
+      expect(screen.getByRole("link", { name })).toBeInTheDocument();
+    }
+  });
+
+  it("shows Requests once signed in", () => {
+    viewer.signedOut = false;
+    render(<Sidebar />);
+
+    expect(screen.getByRole("link", { name: "Requests" })).toHaveAttribute(
+      "href",
+      "/requests",
     );
   });
 });

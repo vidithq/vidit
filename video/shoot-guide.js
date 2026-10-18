@@ -13,8 +13,8 @@
 //
 // Two rules, both editorial:
 //
-//   1. Nothing is written. The script opens menus and drawers and reads pages;
-//      it never submits a form.
+//   1. No content is written. The script signs in, opens menus and drawers,
+//      scrolls and reads pages; it never submits a form.
 //   2. No private data. A shot with `"session": "signed-in"` signs in as
 //      GUIDE_LOGIN_EMAIL / GUIDE_LOGIN_PASSWORD, and every shot fails if an
 //      email address shows inside its frame.
@@ -23,6 +23,8 @@
 //   GUIDE_BASE   the frontend, default http://localhost:3000
 //   GUIDE_API    the API, default http://localhost:8000/api/v1 (sign-in only)
 //   GUIDE_EVENT  the published geolocation the `event` shot reads
+//   GUIDE_APPROVE_EVENT  another analyst's geolocation the `approvals` shot reads
+//   GUIDE_LOGIN_EMAIL, GUIDE_LOGIN_PASSWORD  the account the signed-in shots use
 //   GUIDE_ONLY   a comma-separated list of shot ids to re-shoot
 
 const fs = require("fs");
@@ -47,6 +49,18 @@ const PREPARE = {
   "layout-phone": async (page) => {
     await page.getByRole("button", { name: "Open navigation" }).click();
     await wait(800);
+  },
+  feed: async (page) => {
+    const empty = page.getByText(/^(You follow no analysts yet|Nothing from analysts you follow yet)$/);
+    if (await empty.count()) {
+      await page.getByRole("group", { name: "Feed scope" }).getByRole("button", { name: "All" }).click();
+      await wait(2500);
+    }
+  },
+  notifications: async (page) => {
+    const box = await page.getByRole("group", { name: "Accept approval requests from" }).boundingBox();
+    await page.evaluate((dy) => window.scrollBy(0, dy), box.y - 115);
+    await wait(500);
   },
 };
 
@@ -99,18 +113,19 @@ async function assertNoEmail(page, clip) {
   const hit = await page.evaluate(
     ({ clip, source }) => {
       const pattern = new RegExp(source);
+      const inside = (r) =>
+        r.right > clip.x && r.bottom > clip.y && r.left < clip.x + clip.width && r.top < clip.y + clip.height;
       const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
         if (!pattern.test(node.textContent)) continue;
         const range = document.createRange();
         range.selectNodeContents(node);
         for (const r of range.getClientRects()) {
-          if (r.right > 0 && r.bottom > 0 && r.left < clip.width && r.top < clip.height) return node.textContent;
+          if (inside(r)) return node.textContent;
         }
       }
       for (const input of document.querySelectorAll("input")) {
-        const r = input.getBoundingClientRect();
-        if (pattern.test(input.value) && r.left < clip.width && r.top < clip.height && r.bottom > 0) return input.value;
+        if (pattern.test(input.value) && inside(input.getBoundingClientRect())) return input.value;
       }
       return null;
     },

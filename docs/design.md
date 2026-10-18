@@ -160,7 +160,7 @@ Constants: the pill tones live on `<Pill>` as `PILL_TONE`. [`styles.ts`](../fron
 └────┴─────────────────────────────────────────────┘
 ```
 
-- **Sidebar rail:** left nav (logo, working surfaces, identity block), a fixed column from `sm` up, which every page clears through `PageFrame`'s `sm:pl-14`. Below `sm` it is a drawer behind a floating menu chip and takes no inset at all; see [Phone chrome](#phone-chrome).
+- **Sidebar rail:** left nav (logo, working surfaces, identity block), a fixed column from `sm` up, which every page clears through `PageFrame`'s `sm:pl-14`. Submit, Requests and Feed show only to a signed-in reader; a signed-out reader gets Map, Search, About and Sign in. Below `sm` it is a drawer behind a floating menu chip and takes no inset at all; see [Phone chrome](#phone-chrome).
 - **Map:** full-screen background on `/map`.
 - **Left panel:** filters, opaque, floating over the map.
 - **Right panel:** event detail, appears on click, dismissible. When the selected event fails to load, the panel shows the error message and a Retry control, never a previously selected event.
@@ -394,7 +394,7 @@ flowchart LR
   badge["`**StatusBadge**
   one per status`"]:::shared
   shots["`**shots.json**
-  file, window, markers and their labels`"]:::data
+  file, window, session, markers and their labels`"]:::data
   script["`**video/shoot-guide.js**
   writes public/guide/*.webp`"]:::data
   imp["`**/import**
@@ -412,19 +412,19 @@ flowchart LR
   page -->|"Bringing your work in"| imp
 ```
 
-[`/guide`](../frontend/src/app/guide/page.tsx) is a server component of `PageShell` plus `Card`, like the other guides. The page shows rather than tells: each section is a title, at most one sentence, and an annotated screenshot or a row of `IconTile`s. The intro card holds the walkthrough video and one `IconTile` per section, linked to its anchor, with the icon the product already uses for that concept. Each section is a `Card` whose `h2` carries the anchor:
+[`/guide`](../frontend/src/app/guide/page.tsx) is a server component of `PageShell` plus `Card`, like the other guides. The page shows rather than tells: each section is a title, at most one sentence, annotated screenshots, and at most one row of `IconTile`s for what no screenshot shows. The intro card holds the walkthrough video and one `IconTile` per section, linked to its anchor, with the icon the product already uses for that concept. Each section is a `Card` whose `h2` carries the anchor:
 
 | Anchor | Heading | What it shows |
 |---|---|---|
-| `#layout` | The layout | A screenshot of the rail on the map, and one of the phone drawer |
+| `#layout` | The layout | A screenshot of the signed-in rail on the map, and one of the phone drawer |
 | `#reading-a-geolocation` | Reading a geolocation | A screenshot of an event page: byline, source media, coordinates, source and archived copy, details, proof, versions, share and report, approvals |
 | `#statuses` | The statuses | The four `StatusBadge`s with one line each, and the steps from detection to geolocation |
 | `#bringing-your-work-in` | Bringing your work in | Tiles to the archive, a pasted post and @ViditBot on `/import`, and to the submit form |
-| `#working-with-others` | Working with others | Tiles for approving, requesting an approval, co-geolocators, organizations and following |
-| `#settings` | Your settings | Tiles for the profile, the X handle, notification channels, approval requests and display |
+| `#working-with-others` | Working with others | A screenshot of the Approvals card on another analyst's geolocation, one of the Feed, and tiles for requesting an approval, co-geolocators and organizations |
+| `#settings` | Your settings | A screenshot of the Notifications card (who can request your approval, the email and push switch per kind), and tiles for the profile, the X handle and display |
 
 - **Anchors are contract.** Other pages and messages link to a section by its id, so keep every id when you edit a heading. Each heading takes `max-sm:scroll-mt-16`, so a jump on a phone lands below the menu chip.
-- **One marker list.** [`shots.json`](../frontend/src/app/guide/shots.json) names each screenshot's file, route, window and markers. A marker is a target element and its legend line. [`video/shoot-guide.js`](../video/shoot-guide.js) draws a numbered orange disc beside each target and writes the WebP to `frontend/public/guide/`; the page numbers the same labels with `NumberedSteps` under the image. Change a marker in the JSON, then re-shoot (see [`video/README.md`](../video/README.md#getting-started-screenshots)).
+- **One marker list.** [`shots.json`](../frontend/src/app/guide/shots.json) names each screenshot's file, route, window, session and markers. The layout, Approvals, Feed and Notifications shots are signed in. A marker is a target element and its legend line. [`video/shoot-guide.js`](../video/shoot-guide.js) draws a numbered orange disc beside each target and writes the WebP to `frontend/public/guide/`; the page numbers the same labels with `NumberedSteps` under the image. Change a marker in the JSON, then re-shoot (see [`video/README.md`](../video/README.md#getting-started-screenshots)).
 - **The video slot.** The walkthrough is [`DemoVideo`](../frontend/src/components/landing/DemoVideo.tsx), the landing's click-to-play player, in an `aspect-video` frame at the top of the intro card. It loads with `preload="metadata"`, so a phone fetches the first frame and nothing more until you press play. It renders only while `NEXT_PUBLIC_GUIDE_VIDEO_URL` holds a direct video file URL. The video is hosted like the landing demo (see [`engineering.md`](engineering.md#operating-the-platform-clis)).
 - **Grounded in the product.** The page names only controls that exist, under the labels the product prints. A change to a surface the page shows updates its screenshot or its tile in the same PR.
 
@@ -1164,7 +1164,7 @@ Opening one is [`/collections/new`](../frontend/src/app/collections/new/page.tsx
 
 ### Requests board
 
-[`/requests`](../frontend/src/app/requests/page.tsx) lists open requests from [`GET /events`](api.md#get-events) with `view=requested&status=requested`, cursor-paged behind a **Load more** button.
+[`/requests`](../frontend/src/app/requests/page.tsx) lists open requests from [`GET /events`](api.md#get-events) with `view=requested&status=requested`, cursor-paged behind a **Load more** button. The board is public by link, but the rail lists it only for a signed-in reader. On a request page, a signed-out reader sees **Geolocate** in the Actions card, which opens the sign-in page and returns to the submit form.
 
 - The status is fixed to `requested`. The board mounts the shared filter panel ([`EventFilterSections`](../frontend/src/components/filters/EventFilterSections.tsx)) in the [filter rail](#right-rail) without its Status section, because a `closed` chip would read as "done" on a work queue. Source media is also left out, because `GET /events` takes no `media` filter.
 - The panel offers Conflict, Capture source, Location guess, Tags and Author. Location guess is offered on the board alone. **With a guess** keeps requests that carry a guessed point, **No guess** keeps the blind ones, and picking both or neither drops the filter. The section sends [`has_coords`](api.md#get-events).

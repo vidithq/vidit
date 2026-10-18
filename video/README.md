@@ -168,13 +168,13 @@ To publish, upload `out/guide-walkthrough.mp4` to the media bucket under `landin
 | Field | What it sets |
 |---|---|
 | `file` | The WebP under `frontend/public/guide/` |
-| `route` | The page to open. `{event}` reads `GUIDE_EVENT` |
+| `route` | The page to open. `{event}` reads `GUIDE_EVENT`, `{approve_event}` reads `GUIDE_APPROVE_EVENT` |
 | `viewport`, `dpr` | The window in CSS pixels and its device pixel ratio |
-| `clip` | The captured area from the top left, when it is smaller than the window |
+| `clip` | The captured area, when it is smaller than the window. `x` and `y` offset it from the top left |
 | `session` | `signed-in` to sign in first; signed out when absent |
 | `markers` | In order: `target` (a Playwright selector), `place` (`left`, `right`, `top-left` or `top-right` of the target's box), and `label` (the legend line) |
 
-A shot that needs a control opened first (the rail expanded, the phone drawer open) gets a step in `PREPARE` in `shoot-guide.js`.
+A shot that needs a control opened first or a page scrolled (the rail expanded, the phone drawer open, the Notifications card of Settings at the top) gets a step in `PREPARE` in `shoot-guide.js`. The `feed` step switches to **All** when the account follows nobody or the analysts it follows have posted nothing.
 
 Set these before a shoot:
 
@@ -183,13 +183,22 @@ Set these before a shoot:
 | `GUIDE_BASE` | The frontend, `http://localhost:3000` by default |
 | `GUIDE_API` | The API, `http://localhost:8000/api/v1` by default. Read only for the sign-in |
 | `GUIDE_EVENT` | The published geolocation the `event` shot reads. Pick one with source media, an archived source, a proof image and at least one approval |
+| `GUIDE_APPROVE_EVENT` | Another analyst's published geolocation the `approvals` shot reads, signed in. Pick one with approvals the account has not given yet, so **Approve** shows |
+| `GUIDE_LOGIN_EMAIL`, `GUIDE_LOGIN_PASSWORD` | The account the signed-in shots use. Its username shows in the rail |
 | `GUIDE_ONLY` | Optional. A comma-separated list of shot ids to re-shoot |
 
 ```bash
 GUIDE_EVENT=… make guide-shots
 ```
 
-The script writes nothing to the instance. It fails when a target is missing and when an email address shows inside a frame. Open every image before you commit it: the shots show the instance's real handles, media and coordinates, so shoot against an instance you are willing to publish. Keep each file under 150 KB.
+To re-shoot only the signed-in shots, read the password into the environment first, so it stays out of your shell history, then run the one-line command:
+
+```bash
+read -rs GUIDE_LOGIN_PASSWORD && export GUIDE_LOGIN_PASSWORD
+GUIDE_ONLY=layout,layout-phone,approvals,feed,notifications GUIDE_LOGIN_EMAIL=… GUIDE_APPROVE_EVENT=… make guide-shots
+```
+
+The script changes no content on the instance: it signs in, opens menus and drawers, and scrolls. It fails when a target is missing and when an email address shows inside a frame, so the Settings shot starts below the Account card. Open every image before you commit it: the shots show the instance's real handles, media and coordinates, so shoot against an instance you are willing to publish. Keep each file under 150 KB.
 
 ## Outputs
 

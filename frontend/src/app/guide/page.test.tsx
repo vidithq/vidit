@@ -53,6 +53,17 @@ describe("/guide", () => {
     }
   });
 
+  it("leads the signed-in sections with their screenshots", () => {
+    render(<GuidePage />);
+
+    const shotsIn = (id: string) =>
+      Array.from(document.getElementById(id)!.closest("section")!.querySelectorAll("img")).map(
+        (img) => img.getAttribute("alt"),
+      );
+    expect(shotsIn("working-with-others")).toEqual([SHOTS.approvals.alt, SHOTS.feed.alt]);
+    expect(shotsIn("settings")).toEqual([SHOTS.notifications.alt]);
+  });
+
   it("renders the walkthrough video only when its URL is set", () => {
     vi.stubEnv("NEXT_PUBLIC_GUIDE_VIDEO_URL", "");
     const { container, unmount } = render(<GuidePage />);

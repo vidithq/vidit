@@ -4,7 +4,6 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   AtSign,
-  Bell,
   Building2,
   ClipboardCheck,
   Globe,
@@ -13,9 +12,7 @@ import {
   Menu,
   Plus,
   Settings,
-  Stamp,
   User,
-  UserPlus,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -135,18 +132,14 @@ const DETECTION_STEPS = [
 ];
 
 const OTHERS = [
-  { icon: Stamp, title: "Approve", note: "Back the current version of another analyst's geolocation." },
-  { icon: ClipboardCheck, title: "Request approval", note: "Ask an analyst or an organization to approve yours." },
+  { icon: ClipboardCheck, title: "Request approval", note: "Ask an analyst or an organization to approve your geolocation." },
   { icon: Users, title: "Co-geolocators", note: "Once you accept an owner's invite, every byline credits you." },
   { icon: Building2, title: "Organizations", note: "Members approve in the organization's name." },
-  { icon: UserPlus, title: "Follow", note: "Their new geolocations and requests fill your Feed." },
 ];
 
 const SETTINGS = [
   { icon: User, title: "Profile", note: "Your public portfolio: picture, bio and links." },
   { icon: AtSign, title: "X handle", note: "Request the link the imports need." },
-  { icon: Bell, title: "Notifications", note: "Email and push, per kind." },
-  { icon: ClipboardCheck, title: "Approval requests", note: "People you follow, everyone, or nobody." },
   { icon: Settings, title: "Display", note: "Light mode, accent color, question marks." },
 ];
 
@@ -241,6 +234,9 @@ export default function GuidePage() {
       </Section>
 
       <Section id="working-with-others">
+        <Shot id="approvals" />
+        <h3 className={SUBHEADING}>Your Feed</h3>
+        <Shot id="feed" />
         <div className={TILES}>
           {OTHERS.map(({ icon, title, note }) => (
             <IconTile key={title} icon={glyph(icon)} title={title} note={note} />
@@ -249,6 +245,7 @@ export default function GuidePage() {
       </Section>
 
       <Section id="settings" lead="Settings sits at the foot of the rail once you are signed in.">
+        <Shot id="notifications" />
         <div className={TILES}>
           {SETTINGS.map(({ icon, title, note }) => (
             <IconTile key={title} icon={glyph(icon)} title={title} note={note} />

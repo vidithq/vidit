@@ -188,8 +188,9 @@ promo-guide:
 	@echo "Done. Master 1080p -> video/out/guide-walkthrough-master.mp4 | Web 1080p (S3, landing/) -> video/out/guide-walkthrough.mp4"
 
 # The annotated screenshots on `/guide`. Requires `make dev` running in another
-# shell, a populated catalog, and GUIDE_EVENT (see video/README.md). Writes the
-# WebP files to frontend/public/guide/ and nothing to the instance.
+# shell, a populated catalog, GUIDE_EVENT, and for the signed-in shots
+# GUIDE_APPROVE_EVENT and GUIDE_LOGIN_EMAIL / GUIDE_LOGIN_PASSWORD (see
+# video/README.md). Writes the WebP files to frontend/public/guide/.
 guide-shots:
 	cd video && node shoot-guide.js
 
