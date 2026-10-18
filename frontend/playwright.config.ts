@@ -26,8 +26,10 @@ export default defineConfig({
   // served from fixtures, so a failure is a layout regression and a retry
   // would only hide a flaky one behind a second green run.
   retries: 0,
-  // A CI runner has 4 vCPUs, shared by the server and the browsers.
-  workers: process.env.CI ? 4 : undefined,
+  // A CI runner has 4 vCPUs, and the server plus two browsers already fill
+  // them: at four workers each test ran twice as long and the suite finished
+  // no sooner.
+  workers: process.env.CI ? 2 : undefined,
   reporter: process.env.CI ? "list" : "line",
   expect: { timeout: 15_000 },
   use: {
