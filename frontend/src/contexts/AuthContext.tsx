@@ -13,6 +13,7 @@ import type { components } from "@/lib/api-types";
 import type { User } from "@/types";
 import { ApiError, apiFetch } from "@/lib/api";
 import { hasSessionCookie } from "@/lib/auth";
+import { hardNavigate } from "@/lib/navigation";
 import { clearDisplay } from "@/lib/preferences";
 import { forgetThisPushDevice } from "@/lib/push";
 
@@ -125,7 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Hard navigate here, not in each caller: consistent destination, and it wipes in-memory
     // state (map, filters, caches) so the next session starts clean.
     if (typeof window !== "undefined") {
-      window.location.assign("/login");
+      hardNavigate("/login");
     }
   };
 

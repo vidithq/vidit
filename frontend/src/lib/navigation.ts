@@ -47,6 +47,12 @@ export function loginNext(target: string): string {
   return `/login?next=${encodeURIComponent(target)}`;
 }
 
+/** A full page load, which drops every in-memory store. Its own export so a test can mock it
+ *  (see `pool` in `vitest.config.mts`). */
+export function hardNavigate(path: string): void {
+  window.location.assign(path);
+}
+
 function readStack(): string[] {
   try {
     const raw = window.sessionStorage.getItem(NAV_STACK_KEY);

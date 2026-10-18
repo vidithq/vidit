@@ -26,11 +26,11 @@ export default defineConfig({
   // served from fixtures, so a failure is a layout regression and a retry
   // would only hide a flaky one behind a second green run.
   retries: 0,
-  workers: process.env.CI ? 1 : undefined,
+  // A CI runner has 4 vCPUs, and the server plus two browsers already fill
+  // them: at four workers each test ran twice as long and the suite finished
+  // no sooner.
+  workers: process.env.CI ? 2 : undefined,
   reporter: process.env.CI ? "list" : "line",
-  // The dev server compiles a route on its first request, so the first
-  // navigation of each spec pays a compile the later ones do not.
-  timeout: 90_000,
   expect: { timeout: 15_000 },
   use: {
     baseURL: APP_ORIGIN,
@@ -48,14 +48,13 @@ export default defineConfig({
     use: { ...devices["Desktop Chrome"], viewport: { width, height } },
   })),
   webServer: {
-    // `next dev`, not a production build. `proxy.ts` collapses every
-    // non-canonical host onto `vidit.app` with a 308 outside development, so a
-    // `next start` server on localhost answers each navigation with a redirect
-    // to the live site and the suite measures production instead of this
-    // worktree. The dev server runs with `NODE_ENV=development`, which is the
-    // one branch that skips the host redirect; the auth wall below it still
-    // runs, so the gated paths are gated exactly as they are in production.
-    command: "npm run dev",
+    // A production build, not `next dev`. The dev server compiles each route
+    // on its first request and renders development React, so on a CI runner
+    // the build plus a run on `next start` finishes before a run on the dev
+    // server alone. `proxy.ts` exempts `localhost` from its host redirect, so
+    // `next start` serves this worktree; the auth wall still runs, so the
+    // gated paths are gated exactly as they are in production.
+    command: "npm run build && npm run start",
     url: APP_ORIGIN,
     reuseExistingServer: !process.env.CI,
     timeout: 300_000,

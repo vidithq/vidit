@@ -75,15 +75,27 @@ jobs:
       - name: vulture
         run: uv run vulture
 
-  backend-test:
-    name: Backend tests
-    # Runs in parallel with the lint job (no `needs:`), the norm on public
-    # repos where runner minutes are free: one cycle surfaces lint AND test
-    # failures together, and a green run (the common case) doesn't pay the
-    # lint duration up front. The old lint gate earned its keep when the
-    # serial suite cost several minutes; at ~1.5 min parallelized it only
-    # added latency.
+  # The suite runs as three shards, each on its own runner with its own
+  # Postgres, so the pytest step costs about a third of a single job's.
+  # pytest-split assigns each test to a shard from the per-test durations in
+  # backend/.test_durations, which keeps the shards within seconds of each
+  # other. A test missing from that file counts as the average duration, so a
+  # new test never breaks the split, only shifts the balance;
+  # docs/engineering.md has the refresh command. Inside a shard, worksteal
+  # spreads the slow test_rate_limits.py cases over all four workers, where
+  # loadfile would pin the whole file to one.
+  #
+  # Runs in parallel with the lint job (no `needs:`), the norm on public
+  # repos where runner minutes are free: one cycle surfaces lint AND test
+  # failures together. `fail-fast: false` follows the same rule: a red shard
+  # does not cancel the others, so every failing test reports in one cycle.
+  backend-test-shard:
+    name: Backend test shard ${{ matrix.group }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [1, 2, 3]
     defaults:
       run:
         working-directory: backend
@@ -123,14 +135,33 @@ jobs:
       # template database at alembic head (tests/conftest.py) and clones it
       # per worker, so the migrations run as part of the pytest step.
       - name: pytest
-        run: uv run pytest -v -n 4 --dist loadfile
+        run: >-
+          uv run pytest -v -n 4 --dist worksteal
+          --splits ${{ strategy.job-total }} --group ${{ matrix.group }}
+          --splitting-algorithm least_duration
 
-  # Deliberately ONE job, not a checks job gating a test job: the steps
-  # already run in fail-fast order (eslint → tsc → vitest → next build)
-  # off a single `npm ci`, so a lint failure stops everything after it.
-  # Splitting would buy nothing and pay a second dependency install.
-  frontend:
-    name: Frontend lint, type-check, test, build
+  # `Backend tests` is a required status check on main, and a matrix job
+  # reports one check per shard under another name. This job carries the
+  # required name: `if: always()` makes it report even when a shard fails
+  # or is cancelled, and it fails unless every shard succeeded.
+  backend-test:
+    name: Backend tests
+    needs: backend-test-shard
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every shard to pass
+        env:
+          SHARDS_RESULT: ${{ needs.backend-test-shard.result }}
+        run: |
+          echo "Backend test shards: $SHARDS_RESULT"
+          test "$SHARDS_RESULT" = success
+
+  # The frontend checks run as three parallel jobs, each with its own `npm ci`,
+  # and the `frontend` job below reports their combined result. One job running
+  # the four steps in sequence took about twice as long.
+  frontend-lint:
+    name: Frontend lint & type-check
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -154,8 +185,58 @@ jobs:
       - name: Type-check
         run: npx tsc --noEmit
 
+  frontend-test:
+    name: Frontend unit tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Test
         run: npm test
+
+  frontend-build:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Turbopack keeps its build cache under `.next/cache`, and a warm cache
+      # cuts `next build` to about a third. The key changes with any source
+      # change, so every run saves a fresh cache; the prefix in restore-keys
+      # restores the closest earlier one, and Turbopack rebuilds only the
+      # modules that changed since.
+      - name: Cache the Next.js build
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: frontend/.next/cache
+          key: next-build-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-${{ hashFiles('frontend/src/**', 'frontend/public/**', 'frontend/*.mjs', 'frontend/*.ts', 'frontend/tsconfig.json') }}
+          restore-keys: next-build-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-
 
       - name: Build
         run: npm run build
@@ -164,6 +245,25 @@ jobs:
           # the bundle so the URL just needs to exist, not work. Real deploys
           # get the production URL from Vercel project settings.
           NEXT_PUBLIC_API_URL: https://api.invalid
+
+  # Branch protection requires this check name. `always()` makes it report
+  # when a part fails or is cancelled, and it passes only when all three did.
+  frontend:
+    name: Frontend lint, type-check, test, build
+    needs: [frontend-lint, frontend-test, frontend-build]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every frontend job to pass
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for result in $RESULTS; do
+            if [ "$result" != success ]; then
+              echo "::error::A frontend job ended as $result."
+              exit 1
+            fi
+          done
 
   # The narrow-viewport smoke suite: the four golden paths (a shared event
   # link, the map, the submit form in both of its single-event modes, sign-in
@@ -181,8 +281,9 @@ jobs:
   frontend-e2e:
     name: Frontend narrow-viewport smoke tests
     runs-on: ubuntu-latest
-    # The suite runs a Next dev server and a browser, so a hang here costs
-    # a runner rather than failing: the whole job is well under 5 minutes.
+    # The suite builds the app, serves it and drives a browser, so a hang
+    # here costs a runner rather than failing: the whole job is well under 5
+    # minutes.
     timeout-minutes: 20
     defaults:
       run:
@@ -197,16 +298,26 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install dependencies
-        run: npm ci
-
       # The browser download is the slowest step in the job, and the version it
       # downloads is decided by @playwright/test, so the lock file's resolved
       # version is the cache key: a Dependabot bump misses the cache and
       # re-downloads, and nothing else does.
       - name: Read the Playwright version
         id: playwright
-        run: echo "version=$(node -p "require('./node_modules/@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")" >> "$GITHUB_OUTPUT"
+
+      # The browser's shared libraries and fonts are apt packages outside the
+      # cached directory, so they install on every run, cache hit or not.
+      # `install-deps` needs only the `playwright` package, so it runs beside
+      # `npm ci` instead of after it.
+      - name: Install dependencies and the browser's system packages
+        env:
+          PLAYWRIGHT_VERSION: ${{ steps.playwright.outputs.version }}
+        run: |
+          npx --yes "playwright@$PLAYWRIGHT_VERSION" install-deps chromium &
+          deps=$!
+          npm ci
+          wait "$deps"
 
       - name: Cache the browser
         id: playwright-cache
@@ -215,10 +326,18 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ms-playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
-      # `--with-deps` installs the shared libraries the browser links against,
-      # which live outside the cached directory, so it runs on a cache hit too.
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
+
+      # The same Turbopack cache as `frontend-build`, under its own key: this
+      # build bakes in the fake API origin from `e2e/support/environment.ts`,
+      # and `next.config.mjs` adds an image pattern when that origin is local.
+      - name: Cache the Next.js build
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: frontend/.next/cache
+          key: next-e2e-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-${{ hashFiles('frontend/src/**', 'frontend/public/**', 'frontend/*.mjs', 'frontend/*.ts', 'frontend/tsconfig.json') }}
+          restore-keys: next-e2e-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-
 
       - name: Narrow-viewport smoke tests
         run: npm run test:e2e

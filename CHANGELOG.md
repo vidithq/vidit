@@ -10,6 +10,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- The test CI finishes in under 2 minutes instead of 4: the backend suite runs on three runners, the frontend checks run as parallel jobs, and the narrow-viewport smoke tests run against a production build with two workers ([#613](https://github.com/vidithq/vidit/pull/613)).
 - The rail shows Requests only to a signed-in reader; a request page still opens from a shared link ([#611](https://github.com/vidithq/vidit/pull/611)).
 - The import guide numbers the parts of a sample post instead of listing them, the methodology guide opens on a real annotated proof, and each guide states a fact once and links the others ([#611](https://github.com/vidithq/vidit/pull/611)).
 - The landing roadmap lists v0.8 cleanup and restructuring, v0.9 moderation, v0.10 search and discovery, and a v1.0 that opens reader accounts while publishing stays with contributors ([#607](https://github.com/vidithq/vidit/pull/607)).

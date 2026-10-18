@@ -231,7 +231,7 @@ dev:
 	(make dev-backend) & (make dev-frontend) & wait
 
 test:
-	cd backend && uv run pytest -n auto --dist loadfile
+	cd backend && uv run pytest -n auto --dist worksteal
 
 # Generate the frontend's API types from the backend OpenAPI spec. The dumped
 # spec (frontend/openapi.json) is a gitignored intermediate; the generated

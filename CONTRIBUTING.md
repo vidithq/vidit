@@ -29,7 +29,7 @@ See [`README.md`](README.md#getting-started-local-dev) → *Getting started (loc
    uv run ruff format --check .   # catches line-wrap issues `ruff check` doesn't
    uv run mypy app                # checks app/ only; scripts/ and tests/ aren't covered
    uv run vulture                 # dead code: removing a helper's last caller orphans it here
-   uv run pytest -n auto --dist loadfile  # parallel: one clone database per worker, built from a migrated template; needs the docker-compose Postgres up
+   uv run pytest -n auto --dist worksteal  # parallel: one clone database per worker, built from a migrated template; needs the docker-compose Postgres up
    ```
 
    Plain `uv run pytest` still works (serial, against the dev database as-is; needs `uv run alembic upgrade head`).

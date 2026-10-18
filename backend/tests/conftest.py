@@ -48,9 +48,16 @@ if _XDIST_WORKER:
     )
     os.environ["DATABASE_URL"] = _worker_db_url(_base, _XDIST_WORKER)
 
+import functools  # noqa: E402
+
+import bcrypt  # noqa: E402
 import psycopg2  # noqa: E402
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
+
+# The production cost of 12 spends ~170 ms per hash and nearly doubles the suite's runtime.
+# Patched before the app import so DUMMY_PASSWORD_HASH is built at the same cost.
+bcrypt.gensalt = functools.partial(bcrypt.gensalt, 4)
 
 from app.main import app  # noqa: E402
 from app.models.user import User  # noqa: E402
