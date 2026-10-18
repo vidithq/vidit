@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Archive, AtSign, ExternalLink, Upload } from "lucide-react";
-import { XGlyph } from "@/components/ui/BrandGlyphs";
-import { TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
+import { ExternalLink, Upload } from "lucide-react";
+import { TEXT_LINK } from "@/components/ui/styles";
 import { OutboundLink } from "@/components/ui/OutboundLink";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
+import { IconTile, TILE, TILE_TITLE } from "@/components/ui/IconTile";
 import {
   NumberedSteps,
   type NumberedStep,
@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/MockPost";
 import { MAX_UPLOAD_LABEL } from "@/lib/archive";
 import { ARCHIVE_EXPORT_STEPS, X_ARCHIVE_HELP } from "@/lib/archiveExport";
+import { IMPORT_ENTRIES, IMPORT_GLYPH } from "@/lib/importEntries";
 import { staticPageMetadata } from "../_og/metadata";
 
 // The one import guide, public (see `PUBLIC_PREFIXES` in `proxy.ts`). One detection engine reads every entry, so the
@@ -40,8 +41,6 @@ const SECTION = "text-sm font-medium text-neutral-200";
 const BODY = "text-sm text-neutral-300 leading-relaxed";
 const NOTE = "text-[13px] leading-relaxed text-neutral-400";
 const LIST = `list-disc space-y-1 pl-4 ${NOTE}`;
-const TILE = "rounded-lg border border-neutral-800 bg-neutral-900 p-4";
-const TILE_TITLE = "text-sm font-medium text-neutral-100";
 
 // The X-side export steps are shared with the import panel on `/submit`; only the closing step differs.
 const EXPORT_STEPS: NumberedStep[] = [
@@ -62,36 +61,8 @@ const EXPORT_STEPS: NumberedStep[] = [
   },
 ];
 
-// The chooser says when to use each entry; glyphs match the Submit page's mode control.
-const GLYPH = {
-  archive: <Archive size={13} strokeWidth={1.8} />,
-  paste: <XGlyph size={12} />,
-  bot: <AtSign size={13} strokeWidth={1.8} />,
-};
-
 // Section heading with its entry's glyph, matching the chooser tile.
 const ENTRY_HEADING = `inline-flex items-center gap-1.5 ${SECTION}`;
-
-const ENTRIES = [
-  {
-    href: "#archive",
-    icon: GLYPH.archive,
-    title: "Upload your X archive",
-    when: "Your whole history, once.",
-  },
-  {
-    href: "#paste",
-    icon: GLYPH.paste,
-    title: "Paste a post URL",
-    when: "One post, no public trace.",
-  },
-  {
-    href: "#bot",
-    icon: GLYPH.bot,
-    title: "Tag @ViditBot on X",
-    when: "Every day, from your feed.",
-  },
-];
 
 export default function ImportGuidePage() {
   return (
@@ -171,27 +142,21 @@ export default function ImportGuidePage() {
         </p>
         <h2 className={SECTION}>Three ways in</h2>
         <div className="grid gap-4 sm:grid-cols-3">
-          {ENTRIES.map(({ href, icon, title, when }) => (
-            <Link
-              key={href}
-              href={href}
-              className={`group block ${TILE} ${TAPPABLE_HOVER}`}
-            >
-              <h3
-                className={`inline-flex items-center gap-1.5 ${TILE_TITLE} transition-colors group-hover:text-orange-400`}
-              >
-                {icon}
-                {title}
-              </h3>
-              <p className={`mt-1.5 ${NOTE}`}>{when}</p>
-            </Link>
+          {IMPORT_ENTRIES.map(({ anchor, title, when }) => (
+            <IconTile
+              key={anchor}
+              href={`#${anchor}`}
+              icon={IMPORT_GLYPH[anchor]}
+              title={title}
+              note={when}
+            />
           ))}
         </div>
       </Card>
 
       <Card as="section">
         <h2 id="archive" className={ENTRY_HEADING}>
-          {GLYPH.archive}
+          {IMPORT_GLYPH.archive}
           Upload your X archive
         </h2>
         <p className={BODY}>
@@ -224,7 +189,7 @@ export default function ImportGuidePage() {
 
       <Card as="section">
         <h2 id="paste" className={ENTRY_HEADING}>
-          {GLYPH.paste}
+          {IMPORT_GLYPH.paste}
           Paste a post URL on Vidit
         </h2>
         <p className={BODY}>
@@ -250,7 +215,7 @@ export default function ImportGuidePage() {
 
       <Card as="section">
         <h2 id="bot" className={ENTRY_HEADING}>
-          {GLYPH.bot}
+          {IMPORT_GLYPH.bot}
           Tag @ViditBot on X
         </h2>
         <p className={BODY}>

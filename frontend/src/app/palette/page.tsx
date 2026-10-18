@@ -56,6 +56,7 @@ import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { OutboundLink } from "@/components/ui/OutboundLink";
 import { StatTile, StatGrid } from "@/components/ui/StatTile";
+import { IconTile } from "@/components/ui/IconTile";
 import { ActivityHeatmap } from "@/components/ui/ActivityHeatmap";
 import { SourceHostBar } from "@/components/ui/SourceHostBar";
 import { NumberedSteps } from "@/components/ui/NumberedSteps";
@@ -1240,6 +1241,13 @@ export default function PalettePage() {
             </div>
           </Item>
 
+          <Item name="<IconTile>" usage="An icon, a title and an optional one-line note in a bordered tile (TILE, with TILE_TITLE on the heading): the chooser on /import and the concept rows on /guide. `href` makes the whole tile one next/link with TAPPABLE_HOVER and an accent title on hover; without it the tile is inert. The caller passes the glyph as a node, so a brand mark such as XGlyph fits. The first tile below is linked, the second is inert.">
+            <div className="grid w-full max-w-xl gap-3 sm:grid-cols-2">
+              <IconTile icon={<Archive size={13} strokeWidth={1.8} />} title="Upload your X archive" note="Your whole history, once." href="/import#archive" />
+              <IconTile icon={<ClipboardCheck size={13} strokeWidth={1.8} />} title="Request approval" note="Ask an analyst or an organization to approve yours." />
+            </div>
+          </Item>
+
           <Item name="<SourceHostBar>" usage="Where a body of work's footage came from (profile insights): one stacked bar over the ranked hosts, widest slice on the strongest accent step, with the unnamed tail and the source-less events in their own neutral slices so the bar accounts for every event counted. The legend is the readable half; the bar is aria-hidden, since a phone has no hover to reveal a title with. Bare hosts, the vocabulary <SourceLabel> already shows a source under.">
             <div className="w-full max-w-xs space-y-4">
               <SourceHostBar
@@ -1285,7 +1293,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<NumberedSteps>" usage="Static &quot;1, 2, 3…&quot; instruction list: numbered disc + title + body. `plain` on the public guides (/guide, /methodology, /import), `boxed` with a per-step icon for the archive export walkthrough on /submit. Not <ProgressSteps>: this is reference copy the reader works through, every step identical; ProgressSteps renders one running operation's live state (done / active / pending / failed).">
+          <Item name="<NumberedSteps>" usage="Static &quot;1, 2, 3…&quot; instruction list: numbered disc + title + body. `plain` on the public guides (/guide, /methodology, /import), where it also numbers the legend under each /guide screenshot, `boxed` with a per-step icon for the archive export walkthrough on /submit. Not <ProgressSteps>: this is reference copy the reader works through, every step identical; ProgressSteps renders one running operation's live state (done / active / pending / failed).">
             <div className="w-full max-w-md space-y-4">
               <Variant label="plain (the guides)">
                 <NumberedSteps

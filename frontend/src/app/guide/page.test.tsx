@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
@@ -6,6 +6,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import GuidePage from "./page";
+import SHOTS from "./shots.json";
 
 const ANCHORS = [
   "layout",
@@ -21,7 +22,7 @@ describe("/guide", () => {
     vi.unstubAllEnvs();
   });
 
-  it("holds the six sections in order, each behind a stable anchor the intro links", () => {
+  it("holds the six sections in order, each behind a stable anchor an intro tile links", () => {
     const { container } = render(<GuidePage />);
 
     expect(
@@ -29,16 +30,26 @@ describe("/guide", () => {
     ).toBeInTheDocument();
     const ids = Array.from(container.querySelectorAll("h2[id]")).map((h) => h.id);
     expect(ids).toEqual(ANCHORS);
-    for (const id of ANCHORS) {
-      expect(container.querySelector(`a[href="#${id}"]`)).not.toBeNull();
+    const intro = container.querySelector("section")!;
+    const tiles = Array.from(intro.querySelectorAll("a")).map((a) => a.getAttribute("href"));
+    expect(tiles).toEqual(ANCHORS.map((id) => `#${id}`));
+  });
+
+  it("links each way in to its section of the import guide, and the submit form", () => {
+    const { container } = render(<GuidePage />);
+
+    for (const href of ["/import#detection", "/import#archive", "/import#paste", "/import#bot", "/submit"]) {
+      expect(container.querySelector(`a[href="${href}"]`)).not.toBeNull();
     }
   });
 
-  it("links each way in from X to its section of the import guide", () => {
-    const { container } = render(<GuidePage />);
+  it("numbers each screenshot's legend from the marker list the capture script reads", () => {
+    render(<GuidePage />);
 
-    for (const anchor of ["#detection", "#archive", "#paste", "#bot"]) {
-      expect(container.querySelector(`a[href="/import${anchor}"]`)).not.toBeNull();
+    for (const shot of Object.values(SHOTS)) {
+      const figure = screen.getByAltText(shot.alt).closest("figure")!;
+      const legend = within(figure).getAllByRole("listitem").map((li) => li.textContent);
+      expect(legend).toEqual(shot.markers.map(({ label }, i) => `${i + 1}${label}`));
     }
   });
 

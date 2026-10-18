@@ -6,7 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
-- The Getting started page walks a new analyst through Vidit in six linkable sections, under a walkthrough video; the registration success screen and the confirmation email lead to it ([#611](https://github.com/vidithq/vidit/pull/611)).
+- The Getting started page shows a new analyst around Vidit in six linkable sections of annotated screenshots and icons, under a walkthrough video; the registration success screen and the confirmation email lead to it ([#611](https://github.com/vidithq/vidit/pull/611)).
 
 ### Changed
 

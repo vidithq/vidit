@@ -25,6 +25,7 @@ Takes that sign in need their account to exist on the instance already:
 | `record-v05b.js` | `VIDIT_DEMO_EMAIL` / `VIDIT_DEMO_PASSWORD` |
 | `record-collections.js` | `PROMO_LOGIN_EMAIL` / `PROMO_LOGIN_PASSWORD` |
 | `record-guide.js` | `GUIDE_LOGIN_EMAIL` / `GUIDE_LOGIN_PASSWORD` |
+| `shoot-guide.js` | nobody, unless a shot in `shots.json` is `signed-in`: then `GUIDE_LOGIN_EMAIL` / `GUIDE_LOGIN_PASSWORD` |
 | `record-v05.js` | nobody (logged out) |
 
 The request author differs from the viewer on purpose: an owner viewing their own request sees *Close this request* where the take expects *Geolocate this*, and the take fails on the missing control. No script in the repo creates these accounts; see [issue #505](https://github.com/vidithq/vidit/issues/505).
@@ -158,6 +159,38 @@ To publish, upload `out/guide-walkthrough.mp4` to the media bucket under `landin
 | Beats, pacing, marks | `record-guide.js` |
 | Window sizes | `DESKTOP` and `PHONE` in `record-guide.js`, `CAPTURES` in `src/GuideWalkthrough.tsx` (keep them equal) |
 
+## Getting started screenshots
+
+`/guide` shows annotated screenshots of the product: real captures with a numbered orange disc beside each element a legend line describes. `make guide-shots` runs `shoot-guide.js`, which writes one WebP per shot to `frontend/public/guide/`.
+
+[`frontend/src/app/guide/shots.json`](../frontend/src/app/guide/shots.json) holds every shot. The page reads the same file for its legends, so a marker and its legend line change together.
+
+| Field | What it sets |
+|---|---|
+| `file` | The WebP under `frontend/public/guide/` |
+| `route` | The page to open. `{event}` reads `GUIDE_EVENT` |
+| `viewport`, `dpr` | The window in CSS pixels and its device pixel ratio |
+| `clip` | The captured area from the top left, when it is smaller than the window |
+| `session` | `signed-in` to sign in first; signed out when absent |
+| `markers` | In order: `target` (a Playwright selector), `place` (`left`, `right`, `top-left` or `top-right` of the target's box), and `label` (the legend line) |
+
+A shot that needs a control opened first (the rail expanded, the phone drawer open) gets a step in `PREPARE` in `shoot-guide.js`.
+
+Set these before a shoot:
+
+| Variable | What it names |
+|---|---|
+| `GUIDE_BASE` | The frontend, `http://localhost:3000` by default |
+| `GUIDE_API` | The API, `http://localhost:8000/api/v1` by default. Read only for the sign-in |
+| `GUIDE_EVENT` | The published geolocation the `event` shot reads. Pick one with source media, an archived source, a proof image and at least one approval |
+| `GUIDE_ONLY` | Optional. A comma-separated list of shot ids to re-shoot |
+
+```bash
+GUIDE_EVENT=… make guide-shots
+```
+
+The script writes nothing to the instance. It fails when a target is missing and when an email address shows inside a frame. Open every image before you commit it: the shots show the instance's real handles, media and coordinates, so shoot against an instance you are willing to publish. Keep each file under 150 KB.
+
 ## Outputs
 
 Each `make` target stages two files off one render:
@@ -179,7 +212,7 @@ Each `make` target stages two files off one render:
 
 ## Shared capture harness
 
-`capture-lib.js` holds what the takes share: the DOM cursor overlay, the chrome the recordings hide (the version pill, the Next.js dev indicator), the motion helpers (`glideAndClick`, `slowScrollToY`, `slowScrollToLocator`, `slowScrollPanel`, `easeCamera`, `dragPan`, `smoothScrollIntoView`, `glideClickStretchedCard`), the mock macOS open dialog (`injectFinder`, `closeFinder`), and `createRecorder`, the frame grabber and encoder. A capture script owns only its storyboard: the pages it visits, what it clicks, and the marks it stamps.
+`capture-lib.js` holds what the takes share: the DOM cursor overlay, the chrome the recordings hide (`HIDE_CHROME_INIT`: the version pill, the Next.js dev indicator), the Chrome launcher (`launchChrome`), the motion helpers (`glideAndClick`, `slowScrollToY`, `slowScrollToLocator`, `slowScrollPanel`, `easeCamera`, `dragPan`, `smoothScrollIntoView`, `glideClickStretchedCard`), the mock macOS open dialog (`injectFinder`, `closeFinder`), and `createRecorder`, the frame grabber and encoder. A capture script owns only its storyboard: the pages it visits, what it clicks, and the marks it stamps.
 
 `window.__viditMap` is set by whichever `<Map>` mounted last, so `easeCamera` drives the profile coverage map and the main map with no per-page wiring. It exists in dev builds only.
 

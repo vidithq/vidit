@@ -216,10 +216,11 @@ The vocabulary:
   - [`<ChipBucket>`](../frontend/src/components/ui/ChipBucket.tsx) is one filter family as a multi-select row of `<Pill>` chips. A selected option is accent, and a click toggles it. Any option in a bucket matches; combining buckets is the caller's rule (AND on the server). The shared filter panel and the feed's Approvals section use it.
   - [`<ActiveFilterPills>`](../frontend/src/components/ui/ActiveFilterPills.tsx) is the one rendering of the applied filters: a removable accent `<Pill>` per filter, with **Clear all** after them once two or more are on. The map's filter overlay and [`<FilterBar>`](../frontend/src/components/filters/FilterBar.tsx) render it.
   - [`<StatTile>`](../frontend/src/components/ui/StatTile.tsx) is a labelled metric tile (icon, uppercase label, value), and `StatGrid` lays a row of them out in two columns, four from `sm` up. With an `href` the tile is one link into the view the figure was read from, with `TAPPABLE_HOVER` and an accent value. The profile insights use it.
+  - [`<IconTile>`](../frontend/src/components/ui/IconTile.tsx) is an icon, a title and an optional one-line note in a bordered tile: the chooser on `/import` and the concept rows on `/guide`. With an `href` the whole tile is one link with `TAPPABLE_HOVER` and an accent title on hover; without it the tile is inert. The icon is a node, so a brand mark such as `XGlyph` fits. The file also exports the tile's box and title classes, `TILE` and `TILE_TITLE`, for the plain example panels on `/import`.
   - [`<TileNotice>`](../frontend/src/components/ui/TileNotice.tsx) is the one muted line a media box says when it has nothing to show: an empty media set or a clip the browser refused.
   - [`BrandGlyphs`](../frontend/src/components/ui/BrandGlyphs.tsx) holds `XGlyph` and `GitHubGlyph`, the inline SVG brand marks that lucide does not ship. They paint `currentColor`.
   - [`usePinnedPopover`](../frontend/src/hooks/usePinnedPopover.ts) is the anchored-popover machinery (pin, hover, outside-click / Escape dismiss, portal plus viewport clamp), used by `FieldHelp` and `<Tooltip>`. Both bubbles paint with `TOOLTIP_SURFACE`.
-- **Instruction lists.** [`<NumberedSteps>`](../frontend/src/components/ui/NumberedSteps.tsx) is the static "1, 2, 3…" list (numbered disc, title, body): `plain` on the public guides, `boxed` with a per-step icon for the archive export walkthrough on `/submit`. Every step looks the same because it is reference copy, not state. For a check mark or a spinner, use `<ProgressSteps>`.
+- **Instruction lists.** [`<NumberedSteps>`](../frontend/src/components/ui/NumberedSteps.tsx) is the static "1, 2, 3…" list (numbered disc, title, body): `plain` on the public guides and under each `/guide` screenshot as its legend, `boxed` with a per-step icon for the archive export walkthrough on `/submit`. Every step looks the same because it is reference copy, not state. For a check mark or a spinner, use `<ProgressSteps>`.
 - **Live progress.** [`<ProgressSteps>`](../frontend/src/components/ui/ProgressSteps.tsx) is the vertical stepper for a live multi-step operation (the archive import): check for done, highlighted disc for the active step, muted for pending. A determinate bar renders only when a real 0..1 `progress` ratio exists. A step in flight without one takes a discreet `spinner` next to its label, never a fake animation. `keepDetail` pins a step's detail line after completion (a privacy guarantee, a final count). `failed` turns the active step into the red failure marker. The message itself stays in the form's `FORM_ERROR_BANNER`.
 
 #### Media
@@ -365,13 +366,15 @@ flowchart LR
   classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
   classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
   classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef data fill:#fdf3e7,stroke:#b8661a,color:#7a430f
 
   subgraph legend [Legend]
     direction LR
     l1["`a surface that links the page`"]:::spec
     l2["`a shared component`"]:::shared
     l3["`the page`"]:::core
-    l1 ~~~ l2 ~~~ l3
+    l4["`a file the page and the capture script share`"]:::data
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
   end
 
   email["`**registration_confirmation_email**
@@ -384,8 +387,16 @@ flowchart LR
   PageShell, an intro Card, one Card per section`"]:::core
   video["`**DemoVideo**
   only while NEXT_PUBLIC_GUIDE_VIDEO_URL is set`"]:::shared
+  tiles["`**IconTile**
+  intro, imports, concepts`"]:::shared
   steps["`**NumberedSteps**
-  detection to geolocation`"]:::shared
+  screenshot legends, detection steps`"]:::shared
+  badge["`**StatusBadge**
+  one per status`"]:::shared
+  shots["`**shots.json**
+  file, window, markers and their labels`"]:::data
+  script["`**video/shoot-guide.js**
+  writes public/guide/*.webp`"]:::data
   imp["`**/import**
   #detection, #archive, #paste, #bot`"]:::spec
 
@@ -393,24 +404,29 @@ flowchart LR
   confirm --> page
   about --> page
   page --> video
+  page --> tiles
   page --> steps
+  page --> badge
+  shots --> page
+  shots --> script
   page -->|"Bringing your work in"| imp
 ```
 
-[`/guide`](../frontend/src/app/guide/page.tsx) is a server component of `PageShell` plus `Card`, like the other guides. The intro card holds the walkthrough video, one paragraph, and a list of links to the six sections. Each section is a `Card` whose `h2` carries the anchor:
+[`/guide`](../frontend/src/app/guide/page.tsx) is a server component of `PageShell` plus `Card`, like the other guides. The page shows rather than tells: each section is a title, at most one sentence, and an annotated screenshot or a row of `IconTile`s. The intro card holds the walkthrough video and one `IconTile` per section, linked to its anchor, with the icon the product already uses for that concept. Each section is a `Card` whose `h2` carries the anchor:
 
-| Anchor | Heading | What it covers |
+| Anchor | Heading | What it shows |
 |---|---|---|
-| `#layout` | The layout | Each rail entry, the foot of the rail, and the phone's menu chip and drawer |
-| `#reading-a-geolocation` | Reading a geolocation | The event page: byline, source media, coordinates, source and archived copy, details, proof, versions, approvals |
-| `#statuses` | The three statuses | Geolocated, detected, requested, the closed state, and the steps from detection to geolocation |
-| `#bringing-your-work-in` | Bringing your work in | The archive, a pasted post and @ViditBot, each linked to its `/import` section, and the submit form |
-| `#working-with-others` | Working with others | Approving, asking for an approval, co-geolocators, organizations, following and the feed |
-| `#settings` | Your settings | Profile, account, notification channels per kind, the approval request audience, display |
+| `#layout` | The layout | A screenshot of the rail on the map, and one of the phone drawer |
+| `#reading-a-geolocation` | Reading a geolocation | A screenshot of an event page: byline, source media, coordinates, source and archived copy, details, proof, versions, share and report, approvals |
+| `#statuses` | The statuses | The four `StatusBadge`s with one line each, and the steps from detection to geolocation |
+| `#bringing-your-work-in` | Bringing your work in | Tiles to the archive, a pasted post and @ViditBot on `/import`, and to the submit form |
+| `#working-with-others` | Working with others | Tiles for approving, requesting an approval, co-geolocators, organizations and following |
+| `#settings` | Your settings | Tiles for the profile, the X handle, notification channels, approval requests and display |
 
 - **Anchors are contract.** Other pages and messages link to a section by its id, so keep every id when you edit a heading. Each heading takes `max-sm:scroll-mt-16`, so a jump on a phone lands below the menu chip.
-- **The video slot.** The walkthrough is [`DemoVideo`](../frontend/src/components/landing/DemoVideo.tsx), the landing's click-to-play player, in an `aspect-video` frame at the top of the intro card. It loads with `preload="metadata"`, so a phone fetches the first frame and nothing more until you press play. It renders only while `NEXT_PUBLIC_GUIDE_VIDEO_URL` holds a direct video file URL; unset, the intro card opens with its paragraph. The video is hosted like the landing demo (see [`engineering.md`](engineering.md#operating-the-platform-clis)).
-- **Grounded in the product.** The page names only controls that exist, under the labels the product prints. A change to a surface the page describes updates its section in the same PR.
+- **One marker list.** [`shots.json`](../frontend/src/app/guide/shots.json) names each screenshot's file, route, window and markers. A marker is a target element and its legend line. [`video/shoot-guide.js`](../video/shoot-guide.js) draws a numbered orange disc beside each target and writes the WebP to `frontend/public/guide/`; the page numbers the same labels with `NumberedSteps` under the image. Change a marker in the JSON, then re-shoot (see [`video/README.md`](../video/README.md#getting-started-screenshots)).
+- **The video slot.** The walkthrough is [`DemoVideo`](../frontend/src/components/landing/DemoVideo.tsx), the landing's click-to-play player, in an `aspect-video` frame at the top of the intro card. It loads with `preload="metadata"`, so a phone fetches the first frame and nothing more until you press play. It renders only while `NEXT_PUBLIC_GUIDE_VIDEO_URL` holds a direct video file URL. The video is hosted like the landing demo (see [`engineering.md`](engineering.md#operating-the-platform-clis)).
+- **Grounded in the product.** The page names only controls that exist, under the labels the product prints. A change to a surface the page shows updates its screenshot or its tile in the same PR.
 
 #### Right rail
 

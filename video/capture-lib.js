@@ -64,20 +64,29 @@ async function apiCall(api, auth, method, pathname, body) {
 
 // ─── cursor overlay + chrome the takes must not show ─────────────────────
 
-const CURSOR_INIT = () => {
+const HIDE_CHROME_INIT = () => {
   const install = () => {
+    if (document.getElementById("__demo_hide_beta__")) return;
     // Hide the fixed version pill site-wide (it flickers on scroll and
     // stamps a dev version string across every shot).
-    if (!document.getElementById("__demo_hide_beta__")) {
-      const style = document.createElement("style");
-      style.id = "__demo_hide_beta__";
-      style.textContent =
-        '[aria-label="Beta"] { display: none !important; }' +
-        // The Next.js dev-tools indicator ("N" badge / "Rendering…" toast)
-        // mounts in a <nextjs-portal> custom element; keep it off camera.
-        "nextjs-portal { display: none !important; }";
-      document.head.appendChild(style);
-    }
+    const style = document.createElement("style");
+    style.id = "__demo_hide_beta__";
+    style.textContent =
+      '[aria-label="Beta"] { display: none !important; }' +
+      // The Next.js dev-tools indicator ("N" badge / "Rendering…" toast)
+      // mounts in a <nextjs-portal> custom element; keep it off camera.
+      "nextjs-portal { display: none !important; }";
+    document.head.appendChild(style);
+  };
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", install);
+  } else {
+    install();
+  }
+};
+
+const CURSOR_INIT = () => {
+  const install = () => {
     if (document.getElementById("__demo_cursor__")) return;
     const pulseStyle = document.createElement("style");
     pulseStyle.textContent =
@@ -491,6 +500,19 @@ async function closeFinder(page) {
 // take the comp draws SMALLER than it was captured, where the downscale hides
 // what the encode rounded off; a take recorded at the size it is drawn at has
 // no such headroom and asks for a lower number.
+// Playwright's bundled Chromium ships without the H.264 decoder, so every
+// source video on camera stays a black box and its poster frame never paints.
+// The installed Google Chrome decodes it; fall back to the bundle only where
+// Chrome is absent, and say so, since that capture will show the black player.
+async function launchChrome(launchOptions) {
+  try {
+    return await chromium.launch({ ...launchOptions, channel: "chrome" });
+  } catch {
+    console.log("  (Google Chrome not found; bundled Chromium has no H.264, videos will render black)");
+    return chromium.launch(launchOptions);
+  }
+}
+
 function createRecorder({
   clipsDir,
   metaPath,
@@ -524,18 +546,7 @@ function createRecorder({
       // this flag every take captured at 720p and the encode upscaled it.
       args: ["--use-angle=metal", `--force-device-scale-factor=${dpr}`],
     };
-    // Playwright's bundled Chromium ships without the H.264 decoder, so every
-    // source video on camera stays a black box and its poster frame never
-    // paints. The installed Google Chrome decodes it; fall back to the bundle
-    // only where Chrome is absent, and say so, since that take will show the
-    // black player.
-    let browser;
-    try {
-      browser = await chromium.launch({ ...launchOptions, channel: "chrome" });
-    } catch {
-      console.log("  (Google Chrome not found; bundled Chromium has no H.264, videos will render black)");
-      browser = await chromium.launch(launchOptions);
-    }
+    const browser = await launchChrome(launchOptions);
     const ctx = await browser.newContext({
       viewport,
       // DPR 2 doubles the captured device px: the comp shows the recording
@@ -544,6 +555,7 @@ function createRecorder({
       deviceScaleFactor: dpr,
     });
     if (cookies) await ctx.addCookies(cookies);
+    await ctx.addInitScript(HIDE_CHROME_INIT);
     await ctx.addInitScript(CURSOR_INIT);
     const page = await ctx.newPage();
 
@@ -691,7 +703,9 @@ module.exports = {
   wait,
   mintCookies,
   apiCall,
+  HIDE_CHROME_INIT,
   CURSOR_INIT,
+  launchChrome,
   glideHover,
   glideAndClick,
   slowScrollToY,

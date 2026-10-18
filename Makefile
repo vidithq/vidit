@@ -1,6 +1,6 @@
 # Vidit - Makefile for local development
 
-.PHONY: help install env db-up db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-detections typology-weights mock-admin import-prod promo promo-v05 promo-v05b promo-collections promo-guide gen-api-types check-dup vulture check-video-routes check-changelog hygiene
+.PHONY: help install env db-up db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-detections typology-weights mock-admin import-prod promo promo-v05 promo-v05b promo-collections promo-guide guide-shots gen-api-types check-dup vulture check-video-routes check-changelog hygiene
 
 help:
 	@echo "Available commands:"
@@ -28,6 +28,7 @@ help:
 	@echo "  make promo-v05b    - Regenerate the v0.5 import/review promo MP4 (see video/README.md)"
 	@echo "  make promo-collections - Regenerate the collections promo MP4 (see video/README.md)"
 	@echo "  make promo-guide   - Regenerate the /guide walkthrough MP4 (see video/README.md)"
+	@echo "  make guide-shots   - Regenerate the /guide annotated screenshots (see video/README.md)"
 
 init: install env db-up migrate
 	@echo "Initialization complete. Run 'make dev' to start."
@@ -185,6 +186,12 @@ promo-guide:
 	ffmpeg -y -i video/out/guide-walkthrough-render.mp4 -c:v libx264 -crf 24 -preset slow -profile:v high -pix_fmt yuv420p -an -movflags +faststart video/out/guide-walkthrough.mp4
 	@ls -lh video/out/guide-walkthrough-master.mp4 video/out/guide-walkthrough.mp4
 	@echo "Done. Master 1080p -> video/out/guide-walkthrough-master.mp4 | Web 1080p (S3, landing/) -> video/out/guide-walkthrough.mp4"
+
+# The annotated screenshots on `/guide`. Requires `make dev` running in another
+# shell, a populated catalog, and GUIDE_EVENT (see video/README.md). Writes the
+# WebP files to frontend/public/guide/ and nothing to the instance.
+guide-shots:
+	cd video && node shoot-guide.js
 
 seed: mock-admin seed-detections
 	@echo "Done. admin@vidit.app exists and the synthetic archive's detections are in."
