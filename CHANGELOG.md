@@ -4,6 +4,10 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ## Unreleased
 
+### Added
+
+- The Getting started page walks a new analyst through Vidit in six linkable sections, under a walkthrough video; the registration success screen and the confirmation email lead to it ([#611](https://github.com/vidithq/vidit/pull/611)).
+
 ### Changed
 
 - The landing roadmap lists v0.8 cleanup and restructuring, v0.9 moderation, v0.10 search and discovery, and a v1.0 that opens reader accounts while publishing stays with contributors ([#607](https://github.com/vidithq/vidit/pull/607)).
