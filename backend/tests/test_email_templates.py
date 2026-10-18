@@ -186,6 +186,12 @@ def test_registration_confirmation_links_the_getting_started_page():
     assert f"{BASE}/guide" in message.text
 
 
+def test_completion_digest_points_at_the_one_by_one_review():
+    message = BUILDERS["completion_digest"]()
+    assert "Start reviewing" in message.text
+    assert "a page at a time" not in message.text
+
+
 def test_password_changed_links_to_the_configured_frontend():
     message = email.password_changed_email(to="a@example.com")
     assert f"{BASE}/forgot-password" in message.text

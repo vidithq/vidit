@@ -152,6 +152,9 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/users/me/push-subscriptions/{id}` | 🔒 | Stop push notifications to one of your devices |
 | GET | `/users/me/x-handle` | 🔒 | The X handle bound to your account, and your change request |
 | PUT | `/users/me/x-handle-request` | 🔒 | Ask an admin to bind a new X handle (replaces your earlier request) |
+| GET | `/users/me/invite-codes` | 🔒 | The invite codes you minted, newest first, and your daily quota |
+| POST | `/users/me/invite-codes` | 🔒 | Mint a single-use invite code bound to the invitee's X handle |
+| POST | `/users/me/invite-codes/{id}/revoke` | 🔒 | Revoke an active invite code you minted, keeping its row |
 | GET | `/users/{username}/events` | 🌐 | List an analyst's published geolocations |
 | GET | `/users/{username}/collections` | 🌐 | List an analyst's collections |
 | GET | `/users/{username}/organizations` | 🌐 | List the organizations an analyst belongs to |
@@ -201,6 +204,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | PATCH | `/admin/collections/{id}/moderation` | 🛡️ | Withhold a collection from public view, or restore it (moves `hidden_at`) |
 | DELETE | `/admin/collections/{id}` | 🛡️ | Withhold a collection from public view (the takedown alias of the PATCH above) |
 | PATCH | `/admin/users/{id}/x-handle` | 🛡️ | Link / clear the bot-attribution X handle |
+| PATCH | `/admin/users/{id}/invite-minting` | 🛡️ | Turn minting invite codes from Settings on or off for one analyst |
 | GET | `/admin/x-handle-requests` | 🛡️ | Pending X handle change requests, oldest first |
 | POST | `/admin/x-handle-requests/{id}/approve` | 🛡️ | Bind the requested handle and notify the analyst |
 | POST | `/admin/x-handle-requests/{id}/decline` | 🛡️ | Decline a request with a reason and notify the analyst |
@@ -280,6 +284,9 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST /users/me/push-subscriptions`, `DELETE /users/me/push-subscriptions/{id}` | 30/min |
 | `GET /users/me/x-handle` | 120/min |
 | `PUT /users/me/x-handle-request` | 10/hour |
+| `GET /users/me/invite-codes` | 120/min |
+| `POST /users/me/invite-codes` | 30/hour, plus the daily quota in [`POST /users/me/invite-codes`](#post-usersmeinvite-codes) |
+| `POST /users/me/invite-codes/{id}/revoke` | 30/hour |
 | **Notifications** | |
 | `GET /notifications`, `GET /notifications/unread-count` | 120/min |
 | `POST /notifications/read` | 60/min |
@@ -298,7 +305,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST /product-updates/unsubscribe` | 30/min (anonymous allowed) |
 | **Admin** 🛡️ | |
 | `POST /admin/invite-codes` · `POST /admin/organizations` · `POST /admin/organizations/{slug}/managers` · `DELETE /admin/organizations/{slug}` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
-| `POST /admin/invite-codes/{id}/revoke` · `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `DELETE /admin/events/{id}` | 60/hour |
+| `POST /admin/invite-codes/{id}/revoke` · `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `PATCH /admin/users/{id}/invite-minting` · `DELETE /admin/events/{id}` | 60/hour |
 | `POST /admin/reports/{id}/resolve` · `PATCH /admin/events/{id}/moderation` · `POST /admin/events/{id}/versions/{version_no}/redact` · `PATCH /admin/collections/{id}/moderation` · `DELETE /admin/collections/{id}` | 60/hour |
 | `POST /admin/x-handle-requests/{id}/approve` · `POST /admin/x-handle-requests/{id}/decline` | 60/hour |
 | `POST /admin/maintenance/reap-*` · `POST /admin/maintenance/send-completion-digests` | 30/hour |
@@ -2488,6 +2495,128 @@ The request does not check whether another account holds the handle: the admin's
 
 ---
 
+### `GET /users/me/invite-codes` 🔒
+
+The invite codes you minted, newest first, used or not, and where your daily quota stands.
+
+**Response 200:**
+```json
+{
+  "items": [
+    {
+      "id": "5b1e…",
+      "code": "Zk3q…",
+      "link": "https://vidit.app/register?code=Zk3q…",
+      "x_handle": "osint_hawk",
+      "status": "active",
+      "created_at": "2026-10-18T09:00:00Z",
+      "used_at": null
+    }
+  ],
+  "minting_enabled": true,
+  "daily_limit": 5,
+  "minted_today": 1,
+  "resets_at": "2026-10-19T00:00:00Z"
+}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `items[].link` | The register page on the app's public origin (`FRONTEND_URL`), with the code in the `code` query parameter. The register form reads it and locks the code field. |
+| `items[].status` | `active`, `exhausted`, `revoked` or `expired`, computed at read time like [`GET /admin/invite-codes`](#get-admininvite-codes). |
+| `minting_enabled` | `false` when an admin turned minting off for your account through [`PATCH /admin/users/{id}/invite-minting`](#patch-adminusersidinvite-minting). Settings then hides the mint form. |
+| `minted_today` | The codes you minted since 00:00 UTC, revoked ones included. |
+| `resets_at` | The next 00:00 UTC, when `minted_today` returns to 0. |
+
+---
+
+### `POST /users/me/invite-codes` 🔒
+
+Mint a single-use invite code bound to the X handle of the analyst you invite.
+
+```mermaid
+flowchart LR
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`an analyst endpoint`"]:::spec
+    l2["`an admin endpoint`"]:::shared
+    l3["`the registration write path`"]:::core
+    l4[("`a stored value`")]:::store
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
+  end
+
+  mint["`**POST /users/me/invite-codes**
+  switch and daily quota checked`"]:::spec
+  switch["`**PATCH /admin/users/{id}/invite-minting**`"]:::shared
+  revoke["`**POST /admin/invite-codes/{id}/revoke**`"]:::shared
+  selfrevoke["`**POST /users/me/invite-codes/{id}/revoke**
+  your own active code`"]:::spec
+  flag[("`**users.invite_minting_enabled**`")]:::store
+  code[("`**invite_codes**
+  created_by is the sponsor`")]:::store
+  audit[("`**admin_events**
+  invite_sponsored, invite_revoked`")]:::store
+  confirm["`**confirm_pending_registration**
+  copies x_handle, stamps used_by`"]:::core
+  account[("`**users**
+  x_handle, sponsor through the code`")]:::store
+
+  switch --> flag
+  flag --> mint
+  mint --> code
+  mint --> audit
+  revoke --> code
+  selfrevoke --> code
+  selfrevoke --> audit
+  code --> confirm
+  confirm --> account
+```
+
+The code behaves like one an admin mints through [`POST /admin/invite-codes`](#post-admininvite-codes): single use, no expiry, and redemption copies the bound handle onto the new account's `users.x_handle`. If another account or an organization holds the handle by then, the account is created without the link. The mint does not check whether another account holds the handle, so the endpoint does not reveal which handle has an account.
+
+`invite_codes.created_by` records you as the sponsor. The account created from the code reads its sponsor through that row, and the admin console shows the sponsor per account and per code. You revoke an active code you minted through [`POST /users/me/invite-codes/{id}/revoke`](#post-usersmeinvite-codesidrevoke), and an admin revokes any code through [`POST /admin/invite-codes/{id}/revoke`](#post-admininvite-codesidrevoke).
+
+You mint at most 5 codes per UTC day. Every code minted since 00:00 UTC counts, revoked or used. Each mint writes an `admin_events` row with action `invite_sponsored`, `actor_id` set to you, and target `{"invite_code_id": …, "x_handle": …}`.
+
+**Body:**
+```json
+{ "x_handle": "@osint_hawk" }
+```
+
+`x_handle` is required and normalized like [`POST /admin/invite-codes`](#post-admininvite-codes): a single leading `@` stripped, lowercased, then matched against `^[a-z0-9_]{1,15}$`.
+
+**Response 201:** the new code, in the shape of an `items` entry of [`GET /users/me/invite-codes`](#get-usersmeinvite-codes).
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 403 `invite_minting_disabled` | An admin turned minting off for your account |
+| 422 | A handle outside `^[a-z0-9_]{1,15}$` after normalization, or an unknown field |
+| 429 `invite_quota_exceeded` | You already minted 5 codes since 00:00 UTC. The message states when the quota resets, and [`GET /users/me/invite-codes`](#get-usersmeinvite-codes) returns it as `resets_at` |
+
+---
+
+### `POST /users/me/invite-codes/{id}/revoke` 🔒
+
+Revoke an active invite code you minted, for example one bound to the wrong handle. The endpoint sets `revoked_at` through the same service as [`POST /admin/invite-codes/{id}/revoke`](#post-admininvite-codesidrevoke). The row stays and lists as `revoked` in [`GET /users/me/invite-codes`](#get-usersmeinvite-codes).
+
+The revoke works while an admin keeps minting off for your account. A revoked code still counts against the daily quota of the day you minted it. Each revoke writes an `admin_events` row with action `invite_revoked`, `actor_id` set to you, and target `{"invite_code_id": …}`.
+
+**Response 200:** the revoked code, in the shape of an `items` entry of [`GET /users/me/invite-codes`](#get-usersmeinvite-codes).
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 `invite_code_not_found` | No code carries that id, or another sponsor minted it |
+| 409 `invite_code_not_active` | The code is used, revoked or expired. The message names its status |
+
+---
+
 ### `GET /users/{username}/events`
 
 An analyst's published geolocations: live rows with `status = "geolocated"` that credit them, as owner or as a [co-geolocator](#shared-credit), newest event date first. `total` counts the same set, and so does `geolocations_count` on [`GET /users/{username}`](#get-usersusername). Offset-paged; [Pagination](#pagination) gives the ordering and cap.
@@ -3091,12 +3220,14 @@ List invite codes, newest first, including exhausted, revoked and expired ones. 
   {
     "id": "…", "code": "…", "status": "exhausted",
     "expires_at": null, "created_at": "…", "used_at": "…", "x_handle": "osint_hawk",
+    "sponsor": { "id": "…", "username": "geo_owl", "avatar_url": null },
     "redeemer": {
       "user_id": "…",
       "username": "osint_hawk",
       "email": "hawk@example.com",
       "is_admin": false,
       "x_handle": "osint_hawk",
+      "invite_minting_enabled": true,
       "archives_imported": 1,
       "bot_detection_count": 3,
       "detected_count": 12,
@@ -3108,6 +3239,7 @@ List invite codes, newest first, including exhausted, revoked and expired ones. 
 ```
 
 - `status` is one of `active`, `exhausted`, `revoked`, `expired`, computed at read time. `redeemer` is `null` until the code is used.
+- `sponsor` is the analyst who minted the code from Settings through [`POST /users/me/invite-codes`](#post-usersmeinvite-codes). It is `null` for an admin-minted code, and once the sponsor's account is erased.
 - `archives_imported` counts `done` archive-import jobs.
 - `bot_detection_count` sums `bot_mentions.events_created` for the account's X handle (case-insensitive), a total that later deletes do not reduce.
 - `detected_count` and `geolocated_count` count the live events the account owns in that status.
@@ -3115,7 +3247,7 @@ List invite codes, newest first, including exhausted, revoked and expired ones. 
 
 ### `POST /admin/invite-codes/{id}/revoke` 🛡️
 
-Revoke an invite code (sets `revoked_at`). The row stays and lists as `revoked`. Idempotent. Audited as `invite_revoked`.
+Revoke an invite code (sets `revoked_at`), admin-minted or sponsored. The row stays and lists as `revoked`. Idempotent. Audited as `invite_revoked`.
 
 **Response 200:** the updated `AdminInviteCodeRead`.
 
@@ -3140,10 +3272,14 @@ Case-insensitive substring match on username or email. `%` and `_` match themsel
     "email": "tester2@example.com",
     "is_admin": false,
     "x_handle": "tester2",
+    "invite_minting_enabled": true,
+    "sponsor": { "id": "…", "username": "geo_owl", "avatar_url": null },
     "created_at": "…"
   }
 ]
 ```
+
+`sponsor` is the analyst who minted the code the account was created from, read through that `invite_codes` row. It is `null` for an account created from an admin-minted code, and once the sponsor's account is erased. `invite_minting_enabled` is the switch [`PATCH /admin/users/{id}/invite-minting`](#patch-adminusersidinvite-minting) moves.
 
 ### `DELETE /admin/users/{id}` 🛡️
 
@@ -3253,6 +3389,21 @@ Link or clear the X handle the bot attributes mentions to. Registration also cop
 **Response 422:** value outside the handle alphabet.
 
 **Response 404:** unknown or soft-deleted user id.
+
+### `PATCH /admin/users/{id}/invite-minting` 🛡️
+
+Turn minting invite codes from Settings ([`POST /users/me/invite-codes`](#post-usersmeinvite-codes)) on or off for one analyst. Codes the analyst already minted stay valid; revoke them one by one. Audited as `invite_minting_enabled` or `invite_minting_disabled`, with target `{"user_id": …}`. Setting the value the account already holds writes no audit row.
+
+**Request body:**
+```json
+{ "enabled": false }
+```
+
+**Response 200:** the updated `AdminUserRead`.
+
+**Response 404:** `user_not_found`, an unknown or soft-deleted user id.
+
+**Response 422:** a missing or non-boolean `enabled`, or an unknown field.
 
 ### `GET /admin/x-handle-requests` 🛡️
 

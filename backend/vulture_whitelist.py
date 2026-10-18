@@ -94,6 +94,9 @@ days  # schemas/product_update.py ProductUpdatePreview
 queued  # schemas/product_update.py ProductUpdateProgress, filled by keyword
 sending  # schemas/product_update.py ProductUpdateProgress, filled by keyword
 sent  # schemas/product_update.py ProductUpdateProgress, filled by keyword
+minting_enabled  # schemas/invite_code.py SponsoredInviteCodeList, filled by keyword
+daily_limit  # schemas/invite_code.py SponsoredInviteCodeList, filled by keyword
+minted_today  # schemas/invite_code.py SponsoredInviteCodeList, filled by keyword
 approval_request_status  # schemas/notification.py NotificationRead
 start_year  # models/conflict.py + schemas/conflict.py ConflictRead (wire field)
 end_year  # models/conflict.py + schemas/conflict.py ConflictRead (wire field)

@@ -24,6 +24,7 @@ from app.schemas.admin import (
     AdminPurgeDetectedResponse,
     AdminUserDeleteResponse,
     AdminUserRead,
+    UserInviteMintingUpdate,
     UserXHandleUpdate,
 )
 from app.schemas.event import EventVersionRead
@@ -266,6 +267,24 @@ def set_user_x_handle(
             actor_id=current_user.id,
             user_id=user_id,
             x_handle=body.x_handle,
+        )
+    except admin_service.AdminError as exc:
+        _raise_admin_error(exc)
+
+
+@router.patch("/users/{user_id}/invite-minting", response_model=AdminUserRead)
+@limiter.limit("60/hour")
+def set_user_invite_minting(
+    request: Request,
+    user_id: uuid.UUID,
+    body: UserInviteMintingUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> User:
+    """Turn minting invite codes from Settings on or off for one analyst."""
+    try:
+        return admin_service.set_invite_minting(
+            db, actor_id=current_user.id, user_id=user_id, enabled=body.enabled
         )
     except admin_service.AdminError as exc:
         _raise_admin_error(exc)

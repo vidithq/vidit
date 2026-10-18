@@ -21,7 +21,6 @@ import {
   revokeInviteCode,
   type AdminPurgeDetectedResponse,
   type InviteCode,
-  type InviteCodeStatus,
 } from "@/lib/admin";
 import { errorMessage } from "@/lib/api";
 import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
@@ -38,33 +37,12 @@ import {
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
-import { Pill, type PillTone } from "@/components/ui/Pill";
+import { Pill } from "@/components/ui/Pill";
+import { InviteStatusPill } from "@/components/invites/InviteStatusPill";
 import { PurgeReceipt } from "@/components/admin/ActionReceipt";
 import { UserActionsCard } from "@/components/admin/UserActionsCard";
 
-// Invite status on the shared pill tones: active accent, revoked red, exhausted and expired neutral.
-const STATUS_TONE: Record<InviteCodeStatus, PillTone> = {
-  active: "accent",
-  exhausted: "neutral",
-  revoked: "danger",
-  expired: "neutral",
-};
-
-// The wire name of a spent code is `exhausted`, which reads as a quota that ran out; a single-use
-// code served its account or didn't, so the column says "used".
-const STATUS_LABEL: Partial<Record<InviteCodeStatus, string>> = {
-  exhausted: "used",
-};
-
-const COLUMN_COUNT = 10;
-
-function StatusChip({ status }: { status: InviteCodeStatus }) {
-  return (
-    <Pill tone={STATUS_TONE[status]} className="uppercase tracking-wider">
-      {STATUS_LABEL[status] ?? status}
-    </Pill>
-  );
-}
+const COLUMN_COUNT = 11;
 
 // Header cell for the per-analyst stat columns: the app-wide glyph stands in for the label
 // (FileArchive imports, Bot detections, MapPin geolocations, AtSign X-bot detections from
@@ -151,11 +129,14 @@ function InviteCodeRow({
         </Button>
       </td>
       <td className="py-2 pr-3">
-        {/* The wire status ranks revoked > expired > exhausted, but this column answers "did the code
-            serve an account", so a redeemed code reads used whatever happened to its expiry. */}
-        <StatusChip
-          status={invite.used_at !== null ? "exhausted" : invite.status}
-        />
+        <InviteStatusPill status={invite.status} usedAt={invite.used_at} />
+      </td>
+      <td className="py-2 pr-3 text-xs text-neutral-400">
+        {invite.sponsor ? (
+          invite.sponsor.username
+        ) : (
+          <span className="text-neutral-600">admin</span>
+        )}
       </td>
       <td className="py-2 pr-3 text-xs text-neutral-400">
         {redeemer ? (
@@ -315,7 +296,8 @@ export function OnboardingPanel() {
 
   // The card renders below the table (not as an expanded row) so it stays put when the wide table
   // scrolls horizontally.
-  const managed = codes.find((c) => c.id === expandedId)?.redeemer ?? null;
+  const managedCode = codes.find((c) => c.id === expandedId);
+  const managed = managedCode?.redeemer ?? null;
 
   return (
     <Card as="section">
@@ -325,7 +307,8 @@ export function OnboardingPanel() {
           Every code is single-use (one code, one analyst), so each row tracks
           one analyst&apos;s journey: archives imported, bot detections, live
           detections, geolocations, last seen. Mint, share via a trusted channel,
-          then manage the code and the account from the row.
+          then manage the code and the account from the row. Minted by names the
+          analyst who minted a code from Settings.
         </p>
       </header>
 
@@ -381,6 +364,7 @@ export function OnboardingPanel() {
             <tr className={LABEL_TEXT}>
               <th className="py-2 pr-3 font-medium">Code</th>
               <th className="py-2 pr-3 font-medium">Status</th>
+              <th className="py-2 pr-3 font-medium">Minted by</th>
               <th className="py-2 pr-3 font-medium">Used by</th>
               <th className="py-2 pr-3 font-medium">X handle</th>
               <StatHeader icon={FileArchive} label="Archives imported" />
@@ -441,6 +425,8 @@ export function OnboardingPanel() {
             email: managed.email,
             is_admin: managed.is_admin,
             x_handle: managed.x_handle,
+            invite_minting_enabled: managed.invite_minting_enabled,
+            sponsor: managedCode?.sponsor ?? null,
           }}
           detectedCount={managed.detected_count}
           onUpdated={reload}

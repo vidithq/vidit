@@ -1226,6 +1226,7 @@ Every email shares one layout, [`services/email_layout.py`](../backend/app/servi
 - **The header** is the accent `V` mark, a PNG served by the frontend at `/icon/android-192` with a transparent background, beside the word Vidit in text. The word carries the brand when a client blocks images.
 - **The action button** is a solid `orange-700` fill, the one place the accent fills a control. A mail client cannot render the tinted-on-dark recipe reliably, and `orange-700` keeps a white label above the 4.5:1 contrast ratio. Under the button, the same URL is printed as a link for a client that drops the button.
 - **The footer** links to Settings and the legal notice.
+- **The completion digest** gives the count of detections awaiting completion and points at **Start reviewing** on the detections queue, which opens the one-by-one review pass.
 - **A product update email** names why it arrived and prints the unsubscribe link in its closing note, in both parts.
 - **The registration confirmation email** links the [Getting started page](#getting-started-page) in its last paragraph, under the confirm action's explanation.
 
