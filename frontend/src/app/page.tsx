@@ -123,22 +123,28 @@ const ROADMAP: {
   link?: { href: string; label: string };
 }[] = [
   {
-    version: "v0.6",
+    version: "v0.8",
     state: "current",
-    title: "Phone-ready",
-    body: "The whole platform works on a phone: open a shared geolocation and follow its analyst, browse and filter the map, submit from the field through the form or an X post, and manage your account. It stays the web app you already use, not a separate native app to install.",
+    title: "Cleanup & restructuring",
+    body: "One release of consolidation before moderation and the public launch: duplicated sources of truth merge, the sign-in layer and file storage are restructured, and tests, docs and backups harden. No new feature for analysts.",
   },
   {
-    version: "v0.7",
+    version: "v0.9",
     state: "upcoming",
-    title: "Collaboration & reviews",
-    body: "Notifications, shared credit on events, edit history on published geolocations, and the request board as a shared queue. Organisations get a verified profile with members and roles, and an analyst or an organisation can approve a geolocation at a given version.",
+    title: "Moderation",
+    body: "Reports filed in the product feed an admin moderation queue. Uploads are scanned for graphic content and child sexual abuse material, metadata is stripped, and a public content policy spells out the rules.",
+  },
+  {
+    version: "v0.10",
+    state: "upcoming",
+    title: "Search & discovery",
+    body: "A geolocation can cover several subject points. Search reaches proof text and source URLs, and the platform surfaces related events and near-duplicates.",
   },
   {
     version: "v1.0",
     state: "upcoming",
     title: "Public v1",
-    body: "Open self-registration behind a hardened moderation and legal stack, map density, and the beta framing removed. The full release.",
+    body: "Anyone can create a reader account to follow analysts and get notifications. Publishing stays with contributors, who earn the status through a verified X handle reviewed by an admin or through sponsorship by another contributor. Anti-abuse, hardened sign-in and a legal foundation back the launch, and the beta framing is removed.",
   },
 ];
 
