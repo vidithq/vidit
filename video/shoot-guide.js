@@ -1,14 +1,14 @@
-// The annotated screenshots of the Getting started page (`/guide`).
+// The annotated screenshots of the guides (`/guide`, `/import`).
 //
-// Each shot in `frontend/src/app/guide/shots.json` names a route, a window, and
-// the elements it numbers. The page renders that same list as the legend under
-// the image, so a marker and its legend line cannot drift: edit the JSON, re-run
-// this script, and both change together.
+// `frontend/src/app/_shots/shots.json` groups the shots by page. Each shot names
+// a route, a window, and the elements it numbers. The page renders that same list
+// as the legend under the image, so a marker and its legend line cannot drift:
+// edit the JSON, re-run this script, and both change together.
 //
 // For each shot the script opens the route in Chrome, runs the shot's `prepare`
 // step below, draws an orange disc with a white number centred on each target
 // (`place` picks the side of the target's box), and writes a WebP to
-// `frontend/public/guide/`. It fails if a target is missing, so a renamed
+// `frontend/public/<page>/`. It fails if a target is missing, so a renamed
 // control surfaces here rather than as a wrong number on the page.
 //
 // Two rules, both editorial:
@@ -34,8 +34,10 @@ const { HIDE_CHROME_INIT, launchChrome, mintCookies, wait } = require("./capture
 const BASE = process.env.GUIDE_BASE || "http://localhost:3000";
 const API = process.env.GUIDE_API || "http://localhost:8000/api/v1";
 const ROOT = path.join(__dirname, "..", "frontend");
-const SHOTS = JSON.parse(fs.readFileSync(path.join(ROOT, "src/app/guide/shots.json"), "utf8"));
-const OUT = path.join(ROOT, "public/guide");
+// A production build redirects every other host to vidit.app; a shot must never leave the local instance.
+const isLocal = (url) => /^(localhost|127\.0\.0\.1|\[::1\]|.+\.localhost)$/.test(new URL(url).hostname);
+for (const url of [BASE, API]) if (!isLocal(url)) throw new Error(`${url} is not a local instance`);
+const SHOTS = JSON.parse(fs.readFileSync(path.join(ROOT, "src/app/_shots/shots.json"), "utf8"));
 const WEBP_QUALITY = 0.72;
 const RADIUS = 15;
 const GAP = 6;
@@ -62,12 +64,16 @@ const PREPARE = {
     await page.evaluate((dy) => window.scrollBy(0, dy), box.y - 115);
     await wait(500);
   },
+  "submit-modes": async (page) => {
+    await page.getByRole("group", { name: "Submission mode" }).getByRole("button", { name: "From an X post" }).click();
+    await wait(800);
+  },
 };
 
 function resolveRoute(route) {
   return route.replace(/\{(\w+)\}/g, (_, key) => {
     const name = `GUIDE_${key.toUpperCase()}`;
-    if (!process.env[name]) throw new Error(`set ${name} (see the Getting started screenshots section of video/README.md)`);
+    if (!process.env[name]) throw new Error(`set ${name} (see the Guide screenshots section of video/README.md)`);
     return process.env[name];
   });
 }
@@ -79,6 +85,8 @@ function centre(box, place) {
       return { x: box.x - GAP - RADIUS, y: midY };
     case "right":
       return { x: box.x + box.width + GAP + RADIUS, y: midY };
+    case "bottom":
+      return { x: box.x + box.width / 2, y: box.y + box.height + GAP + RADIUS };
     case "top-left":
       return { x: box.x, y: box.y };
     case "top-right":
@@ -134,7 +142,7 @@ async function assertNoEmail(page, clip) {
   if (hit) throw new Error(`an email address is in the frame: "${hit.trim()}"`);
 }
 
-async function shoot(browser, id, shot, cookies) {
+async function shoot(browser, folder, id, shot, cookies) {
   const ctx = await browser.newContext({
     viewport: shot.viewport,
     deviceScaleFactor: shot.dpr,
@@ -145,6 +153,7 @@ async function shoot(browser, id, shot, cookies) {
   await ctx.addInitScript(HIDE_CHROME_INIT);
   const page = await ctx.newPage();
   await page.goto(BASE + resolveRoute(shot.route), { waitUntil: "networkidle" });
+  if (!isLocal(page.url())) throw new Error(`${id}: left the local instance for ${page.url()}`);
   await wait(2500);
   if (PREPARE[id]) await PREPARE[id](page);
 
@@ -162,8 +171,9 @@ async function shoot(browser, id, shot, cookies) {
   const png = await page.screenshot({ clip, type: "png" });
   await ctx.close();
   const { webp, width, height } = await toWebp(browser, png);
-  const file = path.join(OUT, shot.file);
-  fs.writeFileSync(file, webp);
+  const out = path.join(ROOT, "public", folder);
+  fs.mkdirSync(out, { recursive: true });
+  fs.writeFileSync(path.join(out, shot.file), webp);
   console.log(`  ${shot.file}  ${width}x${height}  ${Math.round(webp.length / 1024)} KB`);
 }
 
@@ -191,17 +201,20 @@ async function toWebp(browser, png) {
 
 (async () => {
   const only = process.env.GUIDE_ONLY?.split(",");
-  const ids = Object.keys(SHOTS).filter((id) => !only || only.includes(id));
+  const queue = Object.entries(SHOTS).flatMap(([folder, shots]) =>
+    Object.entries(shots)
+      .filter(([id]) => !only || only.includes(id))
+      .map(([id, shot]) => ({ folder, id, shot })),
+  );
   let cookies = null;
-  if (ids.some((id) => SHOTS[id].session === "signed-in")) {
+  if (queue.some(({ shot }) => shot.session === "signed-in")) {
     const { GUIDE_LOGIN_EMAIL: email, GUIDE_LOGIN_PASSWORD: password } = process.env;
     if (!email || !password) throw new Error("set GUIDE_LOGIN_EMAIL and GUIDE_LOGIN_PASSWORD for the signed-in shots");
     ({ cookies } = await mintCookies(API, email, password));
   }
-  fs.mkdirSync(OUT, { recursive: true });
   const browser = await launchChrome({ headless: true, args: ["--use-angle=metal"] });
   try {
-    for (const id of ids) await shoot(browser, id, SHOTS[id], cookies);
+    for (const { folder, id, shot } of queue) await shoot(browser, folder, id, shot, cookies);
   } finally {
     await browser.close();
   }

@@ -10,6 +10,7 @@ vi.mock("next/navigation", () => ({
 import ImportGuidePage from "./page";
 import BotGuideRedirect from "../bot/page";
 import ArchiveGuideRedirect from "../archive/page";
+import SHOTS from "../_shots/shots.json";
 
 describe("/import", () => {
   it("states the conditions once and holds one section per entry", () => {
@@ -49,6 +50,16 @@ describe("/import", () => {
       expect(tile).not.toBeNull();
       expect(tile?.textContent).toContain(title);
     }
+  });
+
+  it("numbers the Submit mode selector from the marker list the capture script reads", () => {
+    render(<ImportGuidePage />);
+
+    const shot = SHOTS.import["submit-modes"];
+    const figure = screen.getByAltText(shot.alt).closest("figure")!;
+    const legend = within(figure).getAllByRole("listitem").map((li) => li.textContent);
+    expect(legend).toEqual(shot.markers.map(({ label }, i) => `${i + 1}${label}`));
+    expect(within(figure).getByText(/@ViditBot needs no form/)).toBeInTheDocument();
   });
 
   it("states the coordinate rule at the one hop the bot and the paste read", () => {

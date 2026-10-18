@@ -351,7 +351,7 @@ Every main-app page uses [`<PageShell>`](../frontend/src/components/ui/PageShell
 
 Pre-data states use `<PageLoading>` / `<PageError>` (one centered shell). Opt-outs: `/` (landing), `/map` (full-screen map), the `(auth)/*` group, and `app/error.tsx`.
 
-The public guides use the same shell, signed in or out: `/guide` ("Getting started", the page a new analyst reads first; see [Getting started page](#getting-started-page)), `/methodology` ("Building a proof"; see [Import and methodology guides](#import-and-methodology-guides)), and `/import` ("Import your work from X": the conditions once, an annotated post for what a detection carries, then one section per entry). Each is a server component of `PageShell` plus `Card`, for SEO, linked from the About page's Guides section. `/bot` and `/archive` are `redirect()` stubs into `/import#bot` and `/import#archive`, and both stay in `PUBLIC_PREFIXES` so a signed-out reader is forwarded rather than sent to the login page. The bot's X bio points at `/bot` (see [The bot](ingestion.md#the-bot)).
+The public guides use the same shell, signed in or out: `/guide` ("Getting started", the page a new analyst reads first; see [Getting started page](#getting-started-page)), `/methodology` ("Building a proof"; see [Import and methodology guides](#import-and-methodology-guides)), and `/import` ("Import your work from X": the conditions once, an annotated post for what a detection carries, a screenshot of the Submit mode selector, then one section per entry). Each is a server component of `PageShell` plus `Card`, for SEO, linked from the About page's Guides section. `/bot` and `/archive` are `redirect()` stubs into `/import#bot` and `/import#archive`, and both stay in `PUBLIC_PREFIXES` so a signed-out reader is forwarded rather than sent to the login page. The bot's X bio points at `/bot` (see [The bot](ingestion.md#the-bot)).
 
 The `(auth)/*` group composes [`<AuthCard>`](../frontend/src/components/auth/AuthCard.tsx) (a `max-w-sm` centered card). The two single-email pages (`/forgot-password`, `/resend-confirmation`) also share [`<SingleEmailFlow>`](../frontend/src/components/auth/SingleEmailFlow.tsx), whose sent-state copy stays anti-enumeration ("if X is registered…", never confirming the address exists).
 
@@ -393,10 +393,12 @@ flowchart LR
   screenshot legends, detection steps`"]:::shared
   badge["`**StatusBadge**
   one per status`"]:::shared
+  shot["`**Shot**
+  a screenshot and its legend`"]:::shared
   shots["`**shots.json**
-  file, window, session, markers and their labels`"]:::data
+  per page: file, window, session, markers and their labels`"]:::data
   script["`**video/shoot-guide.js**
-  writes public/guide/*.webp`"]:::data
+  writes public/guide/ and public/import/`"]:::data
   imp["`**/import**
   #detection, #archive, #paste, #bot`"]:::spec
 
@@ -407,7 +409,9 @@ flowchart LR
   page --> tiles
   page --> steps
   page --> badge
-  shots --> page
+  page --> shot
+  imp --> shot
+  shots --> shot
   shots --> script
   page -->|"Bringing your work in"| imp
 ```
@@ -424,7 +428,7 @@ flowchart LR
 | `#settings` | Your settings | A screenshot of the Notifications card (who can request your approval, the email and push switch per kind), and tiles for the profile, the X handle and display |
 
 - **Anchors are contract.** Other pages and messages link to a section by its id, so keep every id when you edit a heading. Each heading takes `max-sm:scroll-mt-16`, so a jump on a phone lands below the menu chip.
-- **One marker list.** [`shots.json`](../frontend/src/app/guide/shots.json) names each screenshot's file, route, window, session and markers. The layout, Approvals, Feed and Notifications shots are signed in. A marker is a target element and its legend line. [`video/shoot-guide.js`](../video/shoot-guide.js) draws a numbered orange disc beside each target and writes the WebP to `frontend/public/guide/`; the page numbers the same labels with `NumberedSteps` under the image. Change a marker in the JSON, then re-shoot (see [`video/README.md`](../video/README.md#getting-started-screenshots)).
+- **One marker list.** [`shots.json`](../frontend/src/app/_shots/shots.json) groups the screenshots by page, `guide` and `import`, and names each one's file, route, window, session and markers. The layout, Approvals, Feed, Notifications and Submit shots are signed in. A marker is a target element and its legend line. [`video/shoot-guide.js`](../video/shoot-guide.js) draws a numbered orange disc beside each target and writes the WebP to `frontend/public/<page>/`. [`Shot`](../frontend/src/app/_shots/Shot.tsx) renders one screenshot on either page and numbers the same labels with `NumberedSteps` under the image. Change a marker in the JSON, then re-shoot (see [`video/README.md`](../video/README.md#guide-screenshots)).
 - **The video slot.** The walkthrough is [`DemoVideo`](../frontend/src/components/landing/DemoVideo.tsx), the landing's click-to-play player, in an `aspect-video` frame, in a card above the sections that renders only with the video. It loads with `preload="metadata"`, so a phone fetches the first frame and nothing more until you press play. It renders only while `NEXT_PUBLIC_GUIDE_VIDEO_URL` holds a direct video file URL. The video is hosted like the landing demo (see [`engineering.md`](engineering.md#operating-the-platform-clis)).
 - **Grounded in the product.** The page names only controls that exist, under the labels the product prints. A change to a surface the page shows updates its screenshot or its tile in the same PR.
 
@@ -441,6 +445,7 @@ The three guides chain: `/guide` links `/import` and `/methodology`, and neither
 | What a proof is and how to build one | `/methodology` | `/guide#reading-a-geolocation` |
 
 - **The annotated post.** [`/import`](../frontend/src/app/import/page.tsx) shows what a detection carries as a `MockPost` of a typical geolocation post, a quote of the source post with its footage, and numbers its parts with the `STEP_NUMBER` disc that [`NumberedSteps`](../frontend/src/components/ui/NumberedSteps.tsx) exports: 1 coordinates, 2 the source, 3 the source media, 4 the title line, 5 the proof text. A `NumberedSteps` legend beside it gives one line per number, and a short list under it holds the rules a reader needs when a detection looks wrong.
+- **The mode selector.** Under "Three ways in", `/import` shows the `submit-modes` screenshot of `/submit` with "From an X post" selected: 1 the selector, 2 Single, 3 From an X post, 4 Bulk import, 5 the post link field. A line under the legend says that @ViditBot needs no form. The `IconTile` row under it links each entry's section, which the screenshot does not.
 - **The proof example.** [`/methodology`](../frontend/src/app/methodology/page.tsx) opens on one real proof image from a public geolocation, stored as `frontend/public/methodology/proof-example.webp` and captioned with the analyst and a link to the event page. Numbered discs are baked into the image, and each number marks the step of the same number in the list under it, so a reorder of the first four steps re-bakes the image.
 
 #### Right rail

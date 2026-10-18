@@ -22,6 +22,7 @@ import { MAX_UPLOAD_LABEL } from "@/lib/archive";
 import { ARCHIVE_EXPORT_STEPS, X_ARCHIVE_HELP } from "@/lib/archiveExport";
 import { IMPORT_ENTRIES, IMPORT_GLYPH } from "@/lib/importEntries";
 import { staticPageMetadata } from "../_og/metadata";
+import { Shot } from "../_shots/Shot";
 
 // The one import guide, public (see `PUBLIC_PREFIXES` in `proxy.ts`). One detection engine reads every entry, so the
 // conditions are stated once under "What makes a detection" and each entry section holds only what differs. The
@@ -163,6 +164,9 @@ export default function ImportGuidePage() {
           as it is, so re-running an import is always safe.
         </p>
         <h2 className={SECTION}>Three ways in</h2>
+        <Shot page="import" id="submit-modes">
+          <p className={NOTE}>Tagging @ViditBot needs no form: you tag it on X.</p>
+        </Shot>
         <div className="grid gap-4 sm:grid-cols-3">
           {IMPORT_ENTRIES.map(({ anchor, title, when }) => (
             <IconTile

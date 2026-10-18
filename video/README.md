@@ -159,28 +159,28 @@ To publish, upload `out/guide-walkthrough.mp4` to the media bucket under `landin
 | Beats, pacing, marks | `record-guide.js` |
 | Window sizes | `DESKTOP` and `PHONE` in `record-guide.js`, `CAPTURES` in `src/GuideWalkthrough.tsx` (keep them equal) |
 
-## Getting started screenshots
+## Guide screenshots
 
-`/guide` shows annotated screenshots of the product: real captures with a numbered orange disc beside each element a legend line describes. `make guide-shots` runs `shoot-guide.js`, which writes one WebP per shot to `frontend/public/guide/`.
+`/guide` and `/import` show annotated screenshots of the product: real captures with a numbered orange disc beside each element a legend line describes. `make guide-shots` runs `shoot-guide.js`, which writes one WebP per shot to `frontend/public/<page>/`.
 
-[`frontend/src/app/guide/shots.json`](../frontend/src/app/guide/shots.json) holds every shot. The page reads the same file for its legends, so a marker and its legend line change together.
+[`frontend/src/app/_shots/shots.json`](../frontend/src/app/_shots/shots.json) holds every shot, grouped by page: `guide` and `import`. Both pages read the same file for their legends, so a marker and its legend line change together.
 
 | Field | What it sets |
 |---|---|
-| `file` | The WebP under `frontend/public/guide/` |
+| `file` | The WebP under `frontend/public/<page>/` |
 | `route` | The page to open. `{event}` reads `GUIDE_EVENT`, `{approve_event}` reads `GUIDE_APPROVE_EVENT` |
 | `viewport`, `dpr` | The window in CSS pixels and its device pixel ratio |
 | `clip` | The captured area, when it is smaller than the window. `x` and `y` offset it from the top left |
 | `session` | `signed-in` to sign in first; signed out when absent |
-| `markers` | In order: `target` (a Playwright selector), `place` (`left`, `right`, `top-left` or `top-right` of the target's box), and `label` (the legend line) |
+| `markers` | In order: `target` (a Playwright selector), `place` (`left`, `right`, `bottom`, `top-left` or `top-right` of the target's box), and `label` (the legend line) |
 
-A shot that needs a control opened first or a page scrolled (the rail expanded, the phone drawer open, the Notifications card of Settings at the top) gets a step in `PREPARE` in `shoot-guide.js`. The `feed` step switches to **All** when the account follows nobody or the analysts it follows have posted nothing.
+A shot that needs a control opened first or a page scrolled (the rail expanded, the phone drawer open, the Notifications card of Settings at the top, From an X post selected on Submit) gets a step in `PREPARE` in `shoot-guide.js`. The `feed` step switches to **All** when the account follows nobody or the analysts it follows have posted nothing.
 
 Set these before a shoot:
 
 | Variable | What it names |
 |---|---|
-| `GUIDE_BASE` | The frontend, `http://localhost:3000` by default |
+| `GUIDE_BASE` | The frontend, `http://localhost:3000` by default. The script refuses a non-local host, and stops if a page redirects off the local instance (a production build redirects to vidit.app, so run `next dev`) |
 | `GUIDE_API` | The API, `http://localhost:8000/api/v1` by default. Read only for the sign-in |
 | `GUIDE_EVENT` | The published geolocation the `event` shot reads. Pick one with source media, an archived source, a proof image and at least one approval |
 | `GUIDE_APPROVE_EVENT` | Another analyst's published geolocation the `approvals` shot reads, signed in. Pick one with approvals the account has not given yet, so **Approve** shows |
@@ -195,10 +195,10 @@ To re-shoot only the signed-in shots, read the password into the environment fir
 
 ```bash
 read -rs GUIDE_LOGIN_PASSWORD && export GUIDE_LOGIN_PASSWORD
-GUIDE_ONLY=layout,layout-phone,approvals,feed,notifications GUIDE_LOGIN_EMAIL=… GUIDE_APPROVE_EVENT=… make guide-shots
+GUIDE_ONLY=layout,layout-phone,approvals,feed,notifications,submit-modes GUIDE_LOGIN_EMAIL=… GUIDE_APPROVE_EVENT=… make guide-shots
 ```
 
-The script changes no content on the instance: it signs in, opens menus and drawers, and scrolls. It fails when a target is missing and when an email address shows inside a frame, so the Settings shot starts below the Account card. Open every image before you commit it: the shots show the instance's real handles, media and coordinates, so shoot against an instance you are willing to publish. Keep each file under 150 KB.
+The script changes no content on the instance: it signs in, opens menus and drawers, switches modes, and scrolls. It fails when a target is missing and when an email address shows inside a frame, so the Settings shot starts below the Account card. Open every image before you commit it: the shots show the instance's real handles, media and coordinates, so shoot against an instance you are willing to publish. Keep each file under 150 KB.
 
 ## Outputs
 

@@ -28,7 +28,7 @@ help:
 	@echo "  make promo-v05b    - Regenerate the v0.5 import/review promo MP4 (see video/README.md)"
 	@echo "  make promo-collections - Regenerate the collections promo MP4 (see video/README.md)"
 	@echo "  make promo-guide   - Regenerate the /guide walkthrough MP4 (see video/README.md)"
-	@echo "  make guide-shots   - Regenerate the /guide annotated screenshots (see video/README.md)"
+	@echo "  make guide-shots   - Regenerate the /guide and /import annotated screenshots (see video/README.md)"
 
 init: install env db-up migrate
 	@echo "Initialization complete. Run 'make dev' to start."

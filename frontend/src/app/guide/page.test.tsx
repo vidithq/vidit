@@ -6,7 +6,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import GuidePage from "./page";
-import SHOTS from "./shots.json";
+import SHOTS from "../_shots/shots.json";
 
 const ANCHORS = [
   "layout",
@@ -43,7 +43,7 @@ describe("/guide", () => {
   it("numbers each screenshot's legend from the marker list the capture script reads", () => {
     render(<GuidePage />);
 
-    for (const shot of Object.values(SHOTS)) {
+    for (const shot of Object.values(SHOTS.guide)) {
       const figure = screen.getByAltText(shot.alt).closest("figure")!;
       const legend = within(figure).getAllByRole("listitem").map((li) => li.textContent);
       expect(legend).toEqual(shot.markers.map(({ label }, i) => `${i + 1}${label}`));
@@ -57,8 +57,8 @@ describe("/guide", () => {
       Array.from(document.getElementById(id)!.closest("section")!.querySelectorAll("img")).map(
         (img) => img.getAttribute("alt"),
       );
-    expect(shotsIn("working-with-others")).toEqual([SHOTS.approvals.alt, SHOTS.feed.alt]);
-    expect(shotsIn("settings")).toEqual([SHOTS.notifications.alt]);
+    expect(shotsIn("working-with-others")).toEqual([SHOTS.guide.approvals.alt, SHOTS.guide.feed.alt]);
+    expect(shotsIn("settings")).toEqual([SHOTS.guide.notifications.alt]);
   });
 
   it("renders the walkthrough video only when its URL is set", () => {

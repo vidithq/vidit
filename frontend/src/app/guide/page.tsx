@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import {
   AtSign,
@@ -22,11 +21,10 @@ import { StatusBadge } from "@/components/event/StatusBadge";
 import { IMPORT_ENTRIES, IMPORT_GLYPH } from "@/lib/importEntries";
 import type { EventStatus } from "@/types";
 import { staticPageMetadata } from "../_og/metadata";
-import SHOTS from "./shots.json";
+import { Shot } from "../_shots/Shot";
 
 // Public (see `PUBLIC_PREFIXES` in `proxy.ts`) and linked from the registration email and the
 // post-registration screen. The section ids are contract: other pages and messages link to them.
-// The screenshots and their legends both come from `shots.json`; `video/shoot-guide.js` re-shoots them.
 
 const TITLE = "Getting started";
 const DESCRIPTION =
@@ -79,30 +77,6 @@ function Section({
   );
 }
 
-function Shot({ id, narrow = false }: { id: keyof typeof SHOTS; narrow?: boolean }) {
-  const shot = SHOTS[id];
-  const { width, height } = "clip" in shot ? shot.clip : shot.viewport;
-  return (
-    <figure
-      className={
-        narrow ? "grid items-start gap-4 sm:grid-cols-[12rem_1fr]" : "space-y-4"
-      }
-    >
-      <Image
-        src={`/guide/${shot.file}`}
-        alt={shot.alt}
-        width={width}
-        height={height}
-        unoptimized
-        className={`h-auto w-full ${FRAME} ${narrow ? "max-sm:max-w-48" : ""}`}
-      />
-      <figcaption>
-        <NumberedSteps steps={shot.markers.map(({ label }) => ({ title: label }))} />
-      </figcaption>
-    </figure>
-  );
-}
-
 const STATUSES: { status: EventStatus; note: ReactNode }[] = [
   { status: "geolocated", note: "An analyst placed it and stands behind it." },
   { status: "detected", note: "Machine-read from an analyst's post on X, not yet vouched for." },
@@ -152,9 +126,9 @@ export default function GuidePage() {
       )}
 
       <Section id="layout" lead="The rail on the left edge of every page holds the places you go.">
-        <Shot id="layout" />
+        <Shot page="guide" id="layout" />
         <h3 className={SUBHEADING}>On a phone</h3>
-        <Shot id="layout-phone" narrow />
+        <Shot page="guide" id="layout-phone" narrow />
       </Section>
 
       <Section
@@ -169,7 +143,7 @@ export default function GuidePage() {
           </>
         }
       >
-        <Shot id="event" />
+        <Shot page="guide" id="event" />
       </Section>
 
       <Section id="statuses" lead="Every event carries one status, so you know what you are reading.">
@@ -219,9 +193,9 @@ export default function GuidePage() {
       </Section>
 
       <Section id="working-with-others">
-        <Shot id="approvals" />
+        <Shot page="guide" id="approvals" />
         <h3 className={SUBHEADING}>Your Feed</h3>
-        <Shot id="feed" />
+        <Shot page="guide" id="feed" />
         <div className={TILES}>
           {OTHERS.map(({ icon, title, note }) => (
             <IconTile key={title} icon={glyph(icon)} title={title} note={note} />
@@ -230,7 +204,7 @@ export default function GuidePage() {
       </Section>
 
       <Section id="settings" lead="Settings sits at the foot of the rail once you are signed in.">
-        <Shot id="notifications" />
+        <Shot page="guide" id="notifications" />
         <div className={TILES}>
           {SETTINGS.map(({ icon, title, note }) => (
             <IconTile key={title} icon={glyph(icon)} title={title} note={note} />
