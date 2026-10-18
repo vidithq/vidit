@@ -4,6 +4,10 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ## Unreleased
 
+### Changed
+
+- The landing roadmap lists v0.8 cleanup and restructuring, v0.9 moderation, v0.10 search and discovery, and a v1.0 that opens reader accounts while publishing stays with contributors ([#607](https://github.com/vidithq/vidit/pull/607)).
+
 ### Fixed
 
 - The account picker's suggestions show in full wherever the picker sits, such as the Request approval field in an event's Approvals card, and open above the field near the bottom of the screen ([#602](https://github.com/vidithq/vidit/pull/602)).
