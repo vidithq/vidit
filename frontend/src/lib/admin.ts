@@ -2,11 +2,9 @@ import { apiFetch } from "./api";
 import type { components } from "./api-types";
 import { withCursor } from "./pagination";
 
-export type InviteCodeStatus =
-  components["schemas"]["AdminInviteCodeRead"]["status"];
-
 /** One onboarding invite row. ``x_handle`` is the handle the code binds;
- *  redemption copies it onto the new account as its bot-attribution link. */
+ *  redemption copies it onto the new account as its bot-attribution link.
+ *  ``sponsor`` is the analyst who minted it from Settings, null for an admin-minted code. */
 export type InviteCode = components["schemas"]["AdminInviteCodeRead"];
 
 export type CreateInviteCodeBody = components["schemas"]["AdminInviteCodeCreate"];
@@ -41,7 +39,8 @@ export function deleteInviteCode(id: string): Promise<void> {
 
 /** One row of the admin user search. ``email`` is NULL on legacy
  *  credential-less rows; ``x_handle`` is the handle the bot attributes mentions
- *  to (admin-linked, null when none is). */
+ *  to (admin-linked, null when none is); ``sponsor`` minted the code the account
+ *  was created from. */
 export type AdminUser = components["schemas"]["AdminUserRead"];
 
 export function searchUsers(query: string): Promise<AdminUser[]> {
@@ -58,6 +57,17 @@ export function setUserXHandle(
   return apiFetch<AdminUser>(`/admin/users/${userId}/x-handle`, {
     method: "PATCH",
     body: JSON.stringify(body),
+  });
+}
+
+/** Turn minting invite codes from Settings on or off for one analyst. */
+export function setUserInviteMinting(
+  userId: string,
+  enabled: boolean
+): Promise<AdminUser> {
+  return apiFetch<AdminUser>(`/admin/users/${userId}/invite-minting`, {
+    method: "PATCH",
+    body: JSON.stringify({ enabled }),
   });
 }
 

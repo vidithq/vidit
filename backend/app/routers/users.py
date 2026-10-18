@@ -12,6 +12,11 @@ from app.routers._errors import raise_typed_error
 from app.routers.events._common import build_event_list
 from app.schemas.collection import CollectionList
 from app.schemas.event import PaginatedEvents
+from app.schemas.invite_code import (
+    SponsoredInviteCodeCreate,
+    SponsoredInviteCodeList,
+    SponsoredInviteCodeRead,
+)
 from app.schemas.organization import OrganizationMembershipRead
 from app.schemas.preferences import UserPreferencesRead, UserPreferencesUpdate
 from app.schemas.push import PushConfigRead, PushSubscriptionCreate, PushSubscriptionRead
@@ -21,7 +26,7 @@ from app.services import collections as collections_service
 from app.services import organizations as organizations_service
 from app.services import preferences as preferences_service
 from app.services import push as push_service
-from app.services import social, user_stats, x_handle_requests
+from app.services import social, sponsored_invites, user_stats, x_handle_requests
 from app.services import users as users_service
 from app.services.pagination import page_size
 
@@ -201,6 +206,36 @@ def put_my_x_handle_request(
         )
     except x_handle_requests.XHandleUnchangedError as exc:
         raise_typed_error(exc, x_handle_requests.SELF_ERROR_STATUS)
+
+
+@router.get("/me/invite-codes", response_model=SponsoredInviteCodeList)
+@limiter.limit("120/minute")
+def list_my_invite_codes(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SponsoredInviteCodeList:
+    """The invite codes you minted, newest first, and your daily quota."""
+    return sponsored_invites.list_own(db, sponsor=current_user)
+
+
+@router.post(
+    "/me/invite-codes",
+    response_model=SponsoredInviteCodeRead,
+    status_code=status.HTTP_201_CREATED,
+)
+@limiter.limit("30/hour")
+def mint_my_invite_code(
+    request: Request,
+    body: SponsoredInviteCodeCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SponsoredInviteCodeRead:
+    """Mint a single-use invite code bound to the invitee's X handle."""
+    try:
+        return sponsored_invites.mint(db, sponsor=current_user, x_handle=body.x_handle)
+    except sponsored_invites.SponsoredInviteError as exc:
+        raise_typed_error(exc, sponsored_invites.ERROR_STATUS)
 
 
 @router.get("/{username}", response_model=UserProfile)

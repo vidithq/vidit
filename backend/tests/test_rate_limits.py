@@ -411,7 +411,7 @@ class _Case(NamedTuple):
     method: str
     path: str
     limit: int
-    # "anon", "user", or "admin".
+    # "anon", "user", "user_minting_off", or "admin".
     role: str = "user"
     payload: dict[str, Any] | None = None
 
@@ -565,6 +565,9 @@ _DOCUMENTED_LIMITS = [
     _Case("delete", f"{ME}/push-subscriptions/{_MISSING_ID}", 30),
     _Case("get", f"{ME}/x-handle", 120),
     _Case("put", f"{ME}/x-handle-request", 10, "user", {"json": {"x_handle": "rl_probe"}}),
+    _Case("get", f"{ME}/invite-codes", 120),
+    # Minting is off for the probe account, so no request mints or meets the daily quota.
+    _Case("post", f"{ME}/invite-codes", 30, "user_minting_off", {"json": {"x_handle": "rl_probe"}}),
     _Case("get", "/api/v1/notifications", 120),
     _Case("get", "/api/v1/notifications/unread-count", 120),
     _Case(
@@ -671,6 +674,13 @@ _DOCUMENTED_LIMITS = [
         "admin",
         {"json": {"x_handle": "someone"}},
     ),
+    _Case(
+        "patch",
+        f"/api/v1/admin/users/{_MISSING_ID}/invite-minting",
+        60,
+        "admin",
+        {"json": {"enabled": False}},
+    ),
     _Case("post", f"/api/v1/admin/x-handle-requests/{_MISSING_ID}/approve", 60, "admin"),
     _Case(
         "post",
@@ -716,12 +726,15 @@ _DOCUMENTED_LIMITS = [
     list(enumerate(_DOCUMENTED_LIMITS)),
     ids=[f"{c.method.upper()} {c.path}" for c in _DOCUMENTED_LIMITS],
 )
-def test_documented_limit_blocks_at_n_plus_1(live_limiter, user, admin_user, index, case):
+def test_documented_limit_blocks_at_n_plus_1(live_limiter, db, user, admin_user, index, case):
     ip = f"192.0.2.{index + 1}"
+    if case.role == "user_minting_off":
+        user.invite_minting_enabled = False
+        db.commit()
     if case.role == "anon":
         headers = {"X-Forwarded-For": ip}
     else:
-        headers = _auth(user if case.role == "user" else admin_user, ip)
+        headers = _auth(admin_user if case.role == "admin" else user, ip)
     payload = case.payload or {}
 
     for i in range(case.limit):

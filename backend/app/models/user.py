@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -61,4 +61,19 @@ class User(Base):
         JSONB, default=dict, nullable=False, server_default="{}"
     )
 
+    # Admin switch over minting invite codes from Settings.
+    invite_minting_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true"), nullable=False
+    )
+
     events = relationship("Event", back_populates="owner", foreign_keys="Event.owner_id")
+    # Who minted the code this account was created from, read through the code row so the
+    # link has one home. NULL for an admin-minted code or an account that predates codes.
+    sponsor = relationship(
+        "User",
+        secondary="invite_codes",
+        primaryjoin="User.id == InviteCode.used_by",
+        secondaryjoin="User.id == InviteCode.created_by",
+        viewonly=True,
+        uselist=False,
+    )

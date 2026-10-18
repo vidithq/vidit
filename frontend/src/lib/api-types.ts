@@ -547,6 +547,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/users/{user_id}/invite-minting": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set User Invite Minting
+         * @description Turn minting invite codes from Settings on or off for one analyst.
+         */
+        patch: operations["set_user_invite_minting_api_v1_admin_users__user_id__invite_minting_patch"];
+        trace?: never;
+    };
     "/api/v1/admin/users/{user_id}/x-handle": {
         parameters: {
             query?: never;
@@ -2271,6 +2291,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/me/invite-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List My Invite Codes
+         * @description The invite codes you minted, newest first, and your daily quota.
+         */
+        get: operations["list_my_invite_codes_api_v1_users_me_invite_codes_get"];
+        put?: never;
+        /**
+         * Mint My Invite Code
+         * @description Mint a single-use invite code bound to the invitee's X handle.
+         */
+        post: operations["mint_my_invite_code_api_v1_users_me_invite_codes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/me/preferences": {
         parameters: {
             query?: never;
@@ -2763,6 +2807,7 @@ export interface components {
              */
             id: string;
             redeemer: components["schemas"]["AdminInviteRedeemerRead"] | null;
+            sponsor: components["schemas"]["AuthorRef"] | null;
             /**
              * Status
              * @enum {string}
@@ -2791,6 +2836,8 @@ export interface components {
             email: string | null;
             /** Geolocated Count */
             geolocated_count: number;
+            /** Invite Minting Enabled */
+            invite_minting_enabled: boolean;
             /** Is Admin */
             is_admin: boolean;
             /** Last Seen At */
@@ -2934,8 +2981,11 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Invite Minting Enabled */
+            invite_minting_enabled: boolean;
             /** Is Admin */
             is_admin: boolean;
+            sponsor: components["schemas"]["AuthorRef"] | null;
             /** Username */
             username: string;
             /** X Handle */
@@ -4865,6 +4915,65 @@ export interface components {
             username_highlight: string;
         };
         /**
+         * SponsoredInviteCodeCreate
+         * @description Body for `POST /users/me/invite-codes`: the invitee's X handle, which
+         *     the code binds. Same normalization as `POST /admin/invite-codes`.
+         */
+        SponsoredInviteCodeCreate: {
+            /** X Handle */
+            x_handle: string;
+        };
+        /**
+         * SponsoredInviteCodeList
+         * @description Response for `GET /users/me/invite-codes`: the caller's codes, newest
+         *     first, and where the daily quota stands.
+         */
+        SponsoredInviteCodeList: {
+            /** Daily Limit */
+            daily_limit: number;
+            /** Items */
+            items: components["schemas"]["SponsoredInviteCodeRead"][];
+            /** Minted Today */
+            minted_today: number;
+            /** Minting Enabled */
+            minting_enabled: boolean;
+            /**
+             * Resets At
+             * Format: date-time
+             */
+            resets_at: string;
+        };
+        /**
+         * SponsoredInviteCodeRead
+         * @description One invite code the caller minted. ``link`` is the register URL on the
+         *     app's public origin, with the code prefilled.
+         */
+        SponsoredInviteCodeRead: {
+            /** Code */
+            code: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Link */
+            link: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "exhausted" | "revoked" | "expired";
+            /** Used At */
+            used_at: string | null;
+            /** X Handle */
+            x_handle: string;
+        };
+        /**
          * TagCount
          * @description One (name, count) entry for a conflict, capture-source or source-host tally.
          */
@@ -4934,6 +5043,14 @@ export interface components {
         TweetImportRequest: {
             /** Url */
             url: string;
+        };
+        /**
+         * UserInviteMintingUpdate
+         * @description Body for `PATCH /admin/users/{id}/invite-minting`.
+         */
+        UserInviteMintingUpdate: {
+            /** Enabled */
+            enabled: boolean;
         };
         /**
          * UserPreferencesRead
@@ -6090,6 +6207,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminPurgeDetectedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_user_invite_minting_api_v1_admin_users__user_id__invite_minting_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserInviteMintingUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserRead"];
                 };
             };
             /** @description Validation Error */
@@ -9003,6 +9157,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_my_invite_codes_api_v1_users_me_invite_codes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SponsoredInviteCodeList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mint_my_invite_code_api_v1_users_me_invite_codes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SponsoredInviteCodeCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SponsoredInviteCodeRead"];
                 };
             };
             /** @description Validation Error */

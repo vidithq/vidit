@@ -118,6 +118,7 @@ erDiagram
         TEXT bio "nullable, profile blurb"
         TEXT avatar_url "nullable"
         JSONB external_links "default {}, linktree-style"
+        BOOLEAN invite_minting_enabled "admin switch over sponsored invites"
         TIMESTAMPTZ created_at
     }
 
@@ -154,6 +155,7 @@ erDiagram
         TIMESTAMPTZ expires_at "nullable"
         TIMESTAMPTZ revoked_at "nullable"
         VARCHAR x_handle "nullable, bound handle copied at redemption"
+        UUID created_by FK "nullable, the sponsor"
         TIMESTAMPTZ created_at
     }
 
@@ -506,6 +508,7 @@ erDiagram
     }
 
     users |o--o{ invite_codes : "used_by"
+    users |o--o{ invite_codes : "created_by"
     invite_codes ||--o{ pending_registrations : "invite_code_id"
     users ||--o{ auth_tokens : "user_id"
     users |o--o{ admin_events : "actor_id"
@@ -592,6 +595,7 @@ In the Constraints column, `default X` is the value the application sets on inse
 | `bio` | `TEXT` | nullable. A short plain-text blurb shown on the public profile. Analysts edit it through `PATCH /users/me`. The API layer caps it at 500 characters. There is no database constraint, so changing the cap does not require a migration. |
 | `avatar_url` | `TEXT` | nullable. The public URL of the analyst's profile picture, always an object on the media host. The server mints the value: `PUT /users/me/avatar` stores one metadata-stripped 400 px JPEG under `avatars/{user_id}/` and writes its URL here, `DELETE /users/me/avatar` clears the column and the object, and `PATCH /users/me` rejects the field, so the avatar cannot become a beacon that collects readers' IP addresses and User-Agents. |
 | `external_links` | `JSONB` | NOT NULL, default `'{}'::jsonb`. A Linktree-style object keyed by platform (`x`, `discord`, `website`, `github`), each value validated and normalised on the way in (see [`api.md`](api.md#patch-usersme)). The default `{}` means the value is never NULL, so the read path always gets a dict. `PATCH /users/me` replaces the whole column. A partial merge would conflict with the whole-panel form submit. |
+| `invite_minting_enabled` | `BOOLEAN` | NOT NULL, default `true`, server_default `true`. Whether the analyst can mint [sponsored invite codes](#invite_codes) from Settings. An admin moves it through `PATCH /admin/users/{id}/invite-minting`. Codes already minted stay valid when it turns off. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
 Indexes:
@@ -637,9 +641,18 @@ Lifecycle: `mint` creates a token, `consume` redeems it, and `revoke_all_live_fo
 | `expires_at` | `TIMESTAMPTZ` | nullable |
 | `revoked_at` | `TIMESTAMPTZ` | nullable. The admin page sets this. A non-null value invalidates the code immediately. |
 | `x_handle` | `VARCHAR(50)` | nullable. The X handle the code binds, normalized to lowercase with no `@`. Redemption copies it onto the new account's `users.x_handle`, the bot-attribution link. If the handle got linked elsewhere between mint and redemption, redemption fails soft. |
+| `created_by` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The analyst who minted the code from Settings (`POST /users/me/invite-codes`), its sponsor. NULL for an admin-minted code, and once the sponsor's account is erased. A sponsored code always binds an `x_handle`. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
+Indexes:
+
+- `ix_invite_codes_created_by_created_at` on `(created_by, created_at)`. Supports the sponsor's daily quota count and the sponsor's own list.
+
 A code is valid exactly when `revoked_at IS NULL AND used_at IS NULL AND (expires_at IS NULL OR expires_at > now())`. `used_by` is not part of the validity check: it is nulled when the redeemer's account is erased, while `used_at` stays.
+
+An account created from a sponsored code reaches its sponsor through the code row: `used_by` names the account and `created_by` the sponsor. The `User.sponsor` relationship in [`models/user.py`](../backend/app/models/user.py) reads that pair, so the link has one home and needs no column on `users`. Redemption therefore carries the sponsor without a change to `pending_registrations`, which already references the code.
+
+A sponsor mints at most 5 codes per UTC day (`DAILY_MINT_LIMIT` in [`services/sponsored_invites.py`](../backend/app/services/sponsored_invites.py)). The count covers every row with that `created_by` and a `created_at` since 00:00 UTC, revoked or used. The mint locks the sponsor's `users` row, so two concurrent mints cannot both pass the count.
 
 `DELETE /admin/invite-codes/{id}` drops a row whose `used_by` is NULL, the cleanup for codes that were minted and never used. A row naming a redeemer is refused: it is that account's origin record. The `admin_events` row for the deletion carries the `code` value, so the trail names what left the table.
 
@@ -691,13 +704,13 @@ The table stores no IP address or User-Agent. Vidit drops them for privacy; netw
 
 ### `admin_events`
 
-An append-only audit log for admin actions taken through the `/admin` page. It is a sibling to the `auth_events` table above.
+An append-only audit log for admin actions taken through the `/admin` page, and for sponsored invite mints. It is a sibling to the `auth_events` table above.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
-| `actor_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable |
-| `action` | `TEXT` | NOT NULL, for example `invite_created`, `invite_revoked` and `invite_deleted` |
+| `actor_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The admin, or the sponsor on an `invite_sponsored` row. |
+| `action` | `TEXT` | NOT NULL, for example `invite_created`, `invite_revoked`, `invite_deleted`, `invite_sponsored`, `invite_minting_enabled` and `invite_minting_disabled` |
 | `target` | `JSON` | nullable. Free-form context: target IDs and parameters. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
