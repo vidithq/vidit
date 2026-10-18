@@ -80,7 +80,7 @@ const GUIDES = [
   {
     icon: Compass,
     label: "Getting started",
-    value: "How Vidit works",
+    value: "Find your way around Vidit",
     href: "/guide",
   },
   {

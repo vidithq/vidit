@@ -6,11 +6,17 @@ import { Play } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { FLOATING_CONTROL } from "@/components/ui/styles";
 
-// Landing about-video, click-to-play: nothing streams until asked (`preload="metadata"` paints the
-// first frame as the poster). A tap on the frame or the play control starts it; native `controls`
-// stay on afterwards so a phone can pause and scrub. `playsInline` keeps iOS in the frame. A client
-// island because page.tsx is a server component.
-export default function DemoVideo({ src }: { src: string }) {
+// Click-to-play video for the landing demo and the Getting started walkthrough: nothing streams
+// until asked (`preload="metadata"` paints the first frame as the poster). A tap on the frame or
+// the play control starts it; native `controls` stay on afterwards so a phone can pause and scrub.
+// `playsInline` keeps iOS in the frame. A client island because both pages are server components.
+export default function DemoVideo({
+  src,
+  label = "Play the demo video",
+}: {
+  src: string;
+  label?: string;
+}) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [started, setStarted] = useState(false);
 
@@ -42,7 +48,7 @@ export default function DemoVideo({ src }: { src: string }) {
             variant="ghost"
             className={`${FLOATING_CONTROL} pointer-events-auto`}
             onClick={start}
-            aria-label="Play the demo video"
+            aria-label={label}
           >
             <Play size={18} />
           </Button>

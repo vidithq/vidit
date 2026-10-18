@@ -1,6 +1,6 @@
 # Vidit - Makefile for local development
 
-.PHONY: help install env db-up db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-detections typology-weights mock-admin import-prod promo promo-v05 promo-v05b promo-collections gen-api-types check-dup vulture check-video-routes check-changelog hygiene
+.PHONY: help install env db-up db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-detections typology-weights mock-admin import-prod promo promo-v05 promo-v05b promo-collections promo-guide guide-shots gen-api-types check-dup vulture check-video-routes check-changelog hygiene
 
 help:
 	@echo "Available commands:"
@@ -27,6 +27,8 @@ help:
 	@echo "  make promo-v05     - Regenerate the v0.5 portfolio promo MP4 (see video/README.md)"
 	@echo "  make promo-v05b    - Regenerate the v0.5 import/review promo MP4 (see video/README.md)"
 	@echo "  make promo-collections - Regenerate the collections promo MP4 (see video/README.md)"
+	@echo "  make promo-guide   - Regenerate the /guide walkthrough MP4 (see video/README.md)"
+	@echo "  make guide-shots   - Regenerate the /guide and /import annotated screenshots (see video/README.md)"
 
 init: install env db-up migrate
 	@echo "Initialization complete. Run 'make dev' to start."
@@ -156,6 +158,41 @@ promo-collections:
 	ffmpeg -y -i video/out/promo-collections.mp4 -vf scale=1280:-2,fps=30 -c:v libx264 -crf 26 -preset slow -pix_fmt yuv420p -movflags +faststart video/out/promo-collections-readme.mp4
 	@ls -lh video/out/promo-collections-master.mp4 video/out/promo-collections-readme.mp4
 	@echo "Done. Master 1080p (S3) -> video/out/promo-collections-master.mp4 | README 720p -> video/out/promo-collections-readme.mp4"
+
+# The Getting started walkthrough that `/guide` plays: a tour of the page's six
+# sections, cut from two signed-in takes (desktop and phone). Requires `make dev`
+# running in another shell, a populated catalog, and the GUIDE_* env vars that
+# name the session and the accounts on camera (see video/README.md).
+#
+# The take writes nothing: every control it presses opens a menu, a mode or an
+# edit state the page keeps, and it hovers the ones that would write. Re-run it
+# against the same instance as often as you like.
+#
+# Two outputs stage off one capture run:
+#   - `guide-walkthrough-master.mp4`: 1920x1080 / 60fps / CRF 14, +faststart
+#                                     (the archive)
+#   - `guide-walkthrough.mp4`:        1920x1080 / 60fps / CRF 24, high profile,
+#                                     no audio track, +faststart (upload to the
+#                                     media bucket under `landing/`; `/guide`
+#                                     reads its URL from NEXT_PUBLIC_GUIDE_VIDEO_URL)
+#
+# The web file is re-encoded rather than remuxed: the page loads it with
+# `preload="metadata"` and streams it on play, and a mostly still product page
+# loses nothing visible at CRF 24 while the file shrinks several times over.
+promo-guide:
+	cd video && node record-guide.js
+	cd video && npm run render:guide
+	ffmpeg -y -i video/out/guide-walkthrough-render.mp4 -c copy -movflags +faststart video/out/guide-walkthrough-master.mp4
+	ffmpeg -y -i video/out/guide-walkthrough-render.mp4 -c:v libx264 -crf 24 -preset slow -profile:v high -pix_fmt yuv420p -an -movflags +faststart video/out/guide-walkthrough.mp4
+	@ls -lh video/out/guide-walkthrough-master.mp4 video/out/guide-walkthrough.mp4
+	@echo "Done. Master 1080p -> video/out/guide-walkthrough-master.mp4 | Web 1080p (S3, landing/) -> video/out/guide-walkthrough.mp4"
+
+# The annotated screenshots on `/guide`. Requires `make dev` running in another
+# shell, a populated catalog, GUIDE_EVENT, and for the signed-in shots
+# GUIDE_APPROVE_EVENT and GUIDE_LOGIN_EMAIL / GUIDE_LOGIN_PASSWORD (see
+# video/README.md). Writes the WebP files to frontend/public/guide/.
+guide-shots:
+	cd video && node shoot-guide.js
 
 seed: mock-admin seed-detections
 	@echo "Done. admin@vidit.app exists and the synthetic archive's detections are in."

@@ -4,13 +4,20 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ## Unreleased
 
+### Added
+
+- The Getting started page shows a new analyst around Vidit in six linkable sections of annotated screenshots and icons; the registration success screen and the confirmation email lead to it ([#611](https://github.com/vidithq/vidit/pull/611)).
+
 ### Changed
 
 - The test CI finishes in under 2 minutes instead of 4: the backend suite runs on three runners, the frontend checks run as parallel jobs, and the narrow-viewport smoke tests run against a production build with two workers ([#613](https://github.com/vidithq/vidit/pull/613)).
+- The rail shows Requests only to a signed-in reader; a request page still opens from a shared link ([#611](https://github.com/vidithq/vidit/pull/611)).
+- The import guide numbers the parts of a sample post instead of listing them, the methodology guide opens on a real annotated proof, and each guide states a fact once and links the others ([#611](https://github.com/vidithq/vidit/pull/611)).
 - The landing roadmap lists v0.8 cleanup and restructuring, v0.9 moderation, v0.10 search and discovery, and a v1.0 that opens reader accounts while publishing stays with contributors ([#607](https://github.com/vidithq/vidit/pull/607)).
 
 ### Fixed
 
+- The import completion email tells you to use Start reviewing and go through detections one by one, instead of describing a page-at-a-time publish the queue no longer offers ([#612](https://github.com/vidithq/vidit/pull/612)).
 - The account picker's suggestions show in full wherever the picker sits, such as the Request approval field in an event's Approvals card, and open above the field near the bottom of the screen ([#602](https://github.com/vidithq/vidit/pull/602)).
 
 ## v0.7.0, 2026-10-17

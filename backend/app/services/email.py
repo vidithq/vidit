@@ -275,8 +275,8 @@ def completion_digest_email(*, to: str, count: int, link: str) -> Email:
                 f"You have {_plural(count, 'imported detection')} not published yet. Each one "
                 "waits on the two calls only you can make: which conflict it belongs to, and "
                 "what the footage was shot with.",
-                "The queue publishes a page at a time: pick the conflict once for the "
-                "selection, set the capture source per row, publish.",
+                "Open the queue and choose Start reviewing to go through them one by one: "
+                "set the conflict and the capture source, then publish each.",
             ],
             action=Action("Open your detections", link),
         ),
@@ -351,9 +351,11 @@ def registration_confirmation_email(*, to: str, link: str) -> Email:
                 "address within the next 24 hours.",
                 "Until you follow the link, no account exists: the registration is held "
                 "aside. If you do not confirm, it expires and the address is released.",
+                f"Once you are in, the Getting started page shows you around: {app_url('/guide')}",
             ],
             action=Action("Confirm your address", link),
             note="If you did not register on Vidit, ignore this email.",
+            link_blocks=True,
         ),
     )
 

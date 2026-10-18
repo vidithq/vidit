@@ -8,6 +8,10 @@ import {
   PROMO_COLLECTIONS_DURATION,
 } from "./PromoCollections";
 import { FeatureImport, FEATURE_IMPORT_DURATION } from "./FeatureImport";
+import {
+  GuideWalkthrough,
+  GUIDE_WALKTHROUGH_DURATION,
+} from "./GuideWalkthrough";
 
 export const RemotionRoot = () => {
   return (
@@ -55,6 +59,16 @@ export const RemotionRoot = () => {
         id="PromoCollections"
         component={PromoCollections}
         durationInFrames={PROMO_COLLECTIONS_DURATION}
+        fps={60}
+        width={1920}
+        height={1080}
+      />
+      {/* The Getting started walkthrough on /guide (see record-guide.js +
+          GuideWalkthrough.tsx). */}
+      <Composition
+        id="GuideWalkthrough"
+        component={GuideWalkthrough}
+        durationInFrames={GUIDE_WALKTHROUGH_DURATION}
         fps={60}
         width={1920}
         height={1080}

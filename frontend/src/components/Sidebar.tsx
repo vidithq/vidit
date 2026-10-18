@@ -71,9 +71,9 @@ interface NavItem {
 }
 
 // Order: Map, Submit, Requests, Feed, Search, About (public/meta plus the guides hub) last.
-// The bot guide is reached from About and X itself. Home has no slot (the logo links it). Submit
-// and Feed carry `auth: true` and hide signed-out. Profile, Notifications, Settings, Sign-in
-// and Sign-out are the identity block at the bottom.
+// The bot guide is reached from About and X itself. Home has no slot (the logo links it). Submit,
+// Requests and Feed carry `auth: true` and hide signed-out. Profile, Notifications, Settings,
+// Sign-in and Sign-out are the identity block at the bottom.
 const NAV_ITEMS: ReadonlyArray<NavItem> = [
   {
     href: "/map",
@@ -87,6 +87,7 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     href: "/requests",
     icon: Megaphone,
     label: "Requests",
+    auth: true,
     activeFor: (p) => p === "/requests" || p.startsWith("/requests/"),
   },
   { href: "/feed", icon: Activity, label: "Feed", auth: true },
