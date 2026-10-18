@@ -5,6 +5,7 @@ import { useState } from "react";
 import {
   deleteUser,
   purgeDetectedEvents,
+  setUserInviteMinting,
   setUserXHandle,
   type AdminPurgeDetectedResponse,
   type AdminUser,
@@ -17,6 +18,7 @@ import { WARNING_CALLOUT } from "@/components/ui/styles";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
+import { ToggleRow } from "@/components/ui/ToggleRow";
 
 /** The fields the action card needs; `AdminUser` minus the list-only
  *  `created_at`, so the invite-list redeemer converts without inventing one. */
@@ -24,8 +26,8 @@ type ActionableUser = Omit<AdminUser, "created_at">;
 
 type DangerMode = "soft" | "hard" | "purge";
 
-/** One user's admin actions: X-handle link, soft/hard delete, detections purge. Shared by
- * Manage-analysts search and the onboarding table. */
+/** One user's admin actions: X-handle link, invite minting switch, soft/hard delete, detections
+ * purge. Shared by Manage-analysts search and the onboarding table. */
 export function UserActionsCard({
   user,
   detectedCount,
@@ -43,6 +45,7 @@ export function UserActionsCard({
   const [xHandle, setXHandle] = useState(user.x_handle ?? "");
   const [showXHandleForm, setShowXHandleForm] = useState(false);
   const [dangerMode, setDangerMode] = useState<DangerMode | null>(null);
+  const [mintingEnabled, setMintingEnabled] = useState(user.invite_minting_enabled);
 
   const xHandleMutation = useMutation(
     (value: string | null) => setUserXHandle(user.id, { x_handle: value }),
@@ -52,6 +55,17 @@ export function UserActionsCard({
         onUpdated(updated);
         setXHandle(updated.x_handle ?? "");
         setShowXHandleForm(false);
+      },
+    },
+  );
+
+  const mintingMutation = useMutation(
+    (enabled: boolean) => setUserInviteMinting(user.id, enabled),
+    {
+      fallback: "Failed to change invite minting",
+      onSuccess: (updated) => {
+        setMintingEnabled(updated.invite_minting_enabled);
+        onUpdated(updated);
       },
     },
   );
@@ -81,10 +95,14 @@ export function UserActionsCard({
   const acting = deleteMutation.loading || purgeMutation.loading;
   // One shared error slot across the card's actions; each clears the others.
   const error =
-    xHandleMutation.error ?? deleteMutation.error ?? purgeMutation.error;
+    xHandleMutation.error ??
+    mintingMutation.error ??
+    deleteMutation.error ??
+    purgeMutation.error;
 
-  const resetOthers = (keep: "xhandle" | "danger") => {
+  const resetOthers = (keep: "xhandle" | "minting" | "danger") => {
     if (keep !== "xhandle") xHandleMutation.reset();
+    if (keep !== "minting") mintingMutation.reset();
     if (keep !== "danger") {
       deleteMutation.reset();
       purgeMutation.reset();
@@ -154,6 +172,11 @@ export function UserActionsCard({
               <Pill>X: @{user.x_handle}</Pill>
             </div>
           )}
+          {user.sponsor && (
+            <div className="text-xs text-neutral-500 mt-1">
+              Invited by {user.sponsor.username}
+            </div>
+          )}
         </div>
         <div className="shrink-0 flex flex-col items-end gap-1">
           {idle && (
@@ -195,6 +218,17 @@ export function UserActionsCard({
           )}
         </div>
       </div>
+
+      <ToggleRow
+        label="Can mint invite codes"
+        description="Lets this analyst invite others from Settings, up to the daily quota. Codes already minted stay valid."
+        on={mintingEnabled}
+        onToggle={() => {
+          if (mintingMutation.loading) return;
+          resetOthers("minting");
+          void mintingMutation.run(!mintingEnabled);
+        }}
+      />
 
       {showXHandleForm && (
         <div className="space-y-2">

@@ -6,6 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- The narrow-viewport smoke tests run against a production build with two workers, which cuts their CI job from about 190 s to about 130 s ([#614](https://github.com/vidithq/vidit/pull/614)).
 - The landing roadmap lists v0.8 cleanup and restructuring, v0.9 moderation, v0.10 search and discovery, and a v1.0 that opens reader accounts while publishing stays with contributors ([#607](https://github.com/vidithq/vidit/pull/607)).
 
 ### Fixed

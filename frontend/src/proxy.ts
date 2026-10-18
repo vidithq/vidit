@@ -73,15 +73,16 @@ export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasSession = !!request.cookies.get(CSRF_COOKIE);
 
-  // 1. Host redirect, PROD ONLY (it would bounce localhost). Collapse every non-canonical alias
-  // (www, per-deploy URLs, the project alias) onto the apex. www is deliberately not exempt:
-  // Vercel serves it with a 200 and a page loaded there dies on the API's CORS allowlist, so
-  // this owns the 308. Strip an optional `:port` first, or `Host: vidit.app:443` would
-  // redirect-loop.
+  // 1. Host redirect, outside development only (a dev server on a LAN address would bounce).
+  // Collapse every non-canonical alias (www, per-deploy URLs, the project alias) onto the apex.
+  // www is deliberately not exempt: Vercel serves it with a 200 and a page loaded there dies on
+  // the API's CORS allowlist, so this owns the 308. `localhost` is exempt, so a local
+  // `next start` (the e2e suite's server) serves this build instead of the live site. Strip an
+  // optional `:port` first, or `Host: vidit.app:443` would redirect-loop.
   if (process.env.NODE_ENV !== "development") {
     const host = request.headers.get("host") ?? "";
     const hostOnly = host.split(":")[0];
-    if (hostOnly && hostOnly !== CANONICAL_HOST) {
+    if (hostOnly && hostOnly !== CANONICAL_HOST && hostOnly !== "localhost") {
       const url = request.nextUrl.clone();
       url.protocol = "https:";
       url.hostname = CANONICAL_HOST;

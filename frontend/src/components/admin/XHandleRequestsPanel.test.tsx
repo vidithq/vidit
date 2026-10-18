@@ -22,6 +22,8 @@ const REQUEST: AdminXHandleRequest = {
     email: "ana@example.test",
     is_admin: false,
     x_handle: "old_hawk",
+    invite_minting_enabled: true,
+    sponsor: null,
     created_at: "2026-01-01T00:00:00Z",
   },
   x_handle: "new_hawk",

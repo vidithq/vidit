@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.x_handle_request import XHandleRequestStatus
 from app.schemas import OptionalText
-from app.schemas.admin import AdminUserRead, normalize_x_handle
+from app.schemas.admin import AdminUserRead, XHandle
 
 # Ceiling on both free-text reasons. Mirrored by
 # ``frontend/src/lib/xHandle.ts::X_HANDLE_REASON_MAX_LEN``.
@@ -17,15 +17,8 @@ class XHandleRequestCreate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    x_handle: str
+    x_handle: XHandle
     reason: OptionalText = Field(default=None, max_length=REASON_MAX_LENGTH)
-
-    @field_validator("x_handle")
-    @classmethod
-    def _normalize_handle(cls, v: str) -> str:
-        normalized = normalize_x_handle(v)
-        assert normalized is not None
-        return normalized
 
 
 class XHandleRequestRead(BaseModel):

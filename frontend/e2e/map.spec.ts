@@ -44,8 +44,8 @@ test.describe("map", () => {
 
     // Both halves of each header: the summary and chevron, which names itself
     // `Toggle <section>`, and the title beside it, which carries
-    // `aria-expanded` and no name of its own (the Next dev-tools launcher is
-    // the other `aria-expanded` button on the page, and it has one).
+    // `aria-expanded` and no name of its own (the Next dev-tools launcher, on
+    // a dev server, is another `aria-expanded` button, and it has one).
     const toggles = page.locator(
       'button[aria-label^="Toggle "], button[aria-expanded]:not([aria-label])',
     );
