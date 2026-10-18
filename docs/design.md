@@ -384,11 +384,11 @@ flowchart LR
   about["`**/about**
   first entry of Guides`"]:::spec
   page["`**/guide**
-  PageShell, an intro Card, one Card per section`"]:::core
+  PageShell, a video Card, one Card per section`"]:::core
   video["`**DemoVideo**
   only while NEXT_PUBLIC_GUIDE_VIDEO_URL is set`"]:::shared
   tiles["`**IconTile**
-  intro, imports, concepts`"]:::shared
+  imports, concepts`"]:::shared
   steps["`**NumberedSteps**
   screenshot legends, detection steps`"]:::shared
   badge["`**StatusBadge**
@@ -412,7 +412,7 @@ flowchart LR
   page -->|"Bringing your work in"| imp
 ```
 
-[`/guide`](../frontend/src/app/guide/page.tsx) is a server component of `PageShell` plus `Card`, like the other guides. The page shows rather than tells: each section is a title, at most one sentence, annotated screenshots, and at most one row of `IconTile`s for what no screenshot shows. The intro card holds the walkthrough video and one `IconTile` per section, linked to its anchor, with the icon the product already uses for that concept. Each section is a `Card` whose `h2` carries the anchor:
+[`/guide`](../frontend/src/app/guide/page.tsx) is a server component of `PageShell` plus `Card`, like the other guides. The page shows rather than tells: each section is a title, at most one sentence, annotated screenshots, and at most one row of `IconTile`s for what no screenshot shows. Each section is a `Card` whose `h2` carries the anchor:
 
 | Anchor | Heading | What it shows |
 |---|---|---|
@@ -425,7 +425,7 @@ flowchart LR
 
 - **Anchors are contract.** Other pages and messages link to a section by its id, so keep every id when you edit a heading. Each heading takes `max-sm:scroll-mt-16`, so a jump on a phone lands below the menu chip.
 - **One marker list.** [`shots.json`](../frontend/src/app/guide/shots.json) names each screenshot's file, route, window, session and markers. The layout, Approvals, Feed and Notifications shots are signed in. A marker is a target element and its legend line. [`video/shoot-guide.js`](../video/shoot-guide.js) draws a numbered orange disc beside each target and writes the WebP to `frontend/public/guide/`; the page numbers the same labels with `NumberedSteps` under the image. Change a marker in the JSON, then re-shoot (see [`video/README.md`](../video/README.md#getting-started-screenshots)).
-- **The video slot.** The walkthrough is [`DemoVideo`](../frontend/src/components/landing/DemoVideo.tsx), the landing's click-to-play player, in an `aspect-video` frame at the top of the intro card. It loads with `preload="metadata"`, so a phone fetches the first frame and nothing more until you press play. It renders only while `NEXT_PUBLIC_GUIDE_VIDEO_URL` holds a direct video file URL. The video is hosted like the landing demo (see [`engineering.md`](engineering.md#operating-the-platform-clis)).
+- **The video slot.** The walkthrough is [`DemoVideo`](../frontend/src/components/landing/DemoVideo.tsx), the landing's click-to-play player, in an `aspect-video` frame, in a card above the sections that renders only with the video. It loads with `preload="metadata"`, so a phone fetches the first frame and nothing more until you press play. It renders only while `NEXT_PUBLIC_GUIDE_VIDEO_URL` holds a direct video file URL. The video is hosted like the landing demo (see [`engineering.md`](engineering.md#operating-the-platform-clis)).
 - **Grounded in the product.** The page names only controls that exist, under the labels the product prints. A change to a surface the page shows updates its screenshot or its tile in the same PR.
 
 #### Right rail

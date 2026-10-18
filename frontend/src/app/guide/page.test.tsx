@@ -22,7 +22,7 @@ describe("/guide", () => {
     vi.unstubAllEnvs();
   });
 
-  it("holds the six sections in order, each behind a stable anchor an intro tile links", () => {
+  it("holds the six sections in order, each behind a stable anchor", () => {
     const { container } = render(<GuidePage />);
 
     expect(
@@ -30,9 +30,6 @@ describe("/guide", () => {
     ).toBeInTheDocument();
     const ids = Array.from(container.querySelectorAll("h2[id]")).map((h) => h.id);
     expect(ids).toEqual(ANCHORS);
-    const intro = container.querySelector("section")!;
-    const tiles = Array.from(intro.querySelectorAll("a")).map((a) => a.getAttribute("href"));
-    expect(tiles).toEqual(ANCHORS.map((id) => `#${id}`));
   });
 
   it("links each way in to its section of the import guide, and the submit form", () => {

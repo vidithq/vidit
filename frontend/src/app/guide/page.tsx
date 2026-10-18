@@ -6,10 +6,6 @@ import {
   AtSign,
   Building2,
   ClipboardCheck,
-  Globe,
-  Import,
-  MapPin,
-  Menu,
   Plus,
   Settings,
   User,
@@ -45,12 +41,12 @@ export const metadata: Metadata = staticPageMetadata({
 const glyph = (Icon: LucideIcon) => <Icon size={13} strokeWidth={1.8} />;
 
 const SECTIONS = {
-  layout: { title: "The layout", icon: Menu },
-  "reading-a-geolocation": { title: "Reading a geolocation", icon: Globe },
-  statuses: { title: "The statuses", icon: MapPin },
-  "bringing-your-work-in": { title: "Bringing your work in", icon: Import },
-  "working-with-others": { title: "Working with others", icon: Users },
-  settings: { title: "Your settings", icon: Settings },
+  layout: { title: "The layout" },
+  "reading-a-geolocation": { title: "Reading a geolocation" },
+  statuses: { title: "The statuses" },
+  "bringing-your-work-in": { title: "Bringing your work in" },
+  "working-with-others": { title: "Working with others" },
+  settings: { title: "Your settings" },
 } as const;
 
 type SectionId = keyof typeof SECTIONS;
@@ -147,23 +143,13 @@ export default function GuidePage() {
   const videoUrl = process.env.NEXT_PUBLIC_GUIDE_VIDEO_URL;
   return (
     <PageShell title={TITLE} back backFallback="/about">
-      <Card as="section">
-        {videoUrl && (
+      {videoUrl && (
+        <Card as="section">
           <div className={`aspect-video w-full overflow-hidden ${FRAME}`}>
             <DemoVideo src={videoUrl} label="Play the walkthrough video" />
           </div>
-        )}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {(Object.keys(SECTIONS) as SectionId[]).map((id) => (
-            <IconTile
-              key={id}
-              href={`#${id}`}
-              icon={glyph(SECTIONS[id].icon)}
-              title={SECTIONS[id].title}
-            />
-          ))}
-        </div>
-      </Card>
+        </Card>
+      )}
 
       <Section id="layout" lead="The rail on the left edge of every page holds the places you go.">
         <Shot id="layout" />
