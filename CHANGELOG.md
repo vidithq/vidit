@@ -2,10 +2,11 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## Unreleased
+## v0.7.1, 2026-10-18
 
 ### Added
 
+- From Settings, you can mint up to five invite codes a day, each bound to the invitee's X handle, and revoke an unused one; admins see who minted each code and can turn minting off for an analyst ([#609](https://github.com/vidithq/vidit/pull/609)).
 - The Getting started page shows a new analyst around Vidit in six linkable sections of annotated screenshots and icons; the registration success screen and the confirmation email lead to it ([#611](https://github.com/vidithq/vidit/pull/611)).
 
 ### Changed
