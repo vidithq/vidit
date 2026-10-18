@@ -220,7 +220,7 @@ The vocabulary:
   - [`<TileNotice>`](../frontend/src/components/ui/TileNotice.tsx) is the one muted line a media box says when it has nothing to show: an empty media set or a clip the browser refused.
   - [`BrandGlyphs`](../frontend/src/components/ui/BrandGlyphs.tsx) holds `XGlyph` and `GitHubGlyph`, the inline SVG brand marks that lucide does not ship. They paint `currentColor`.
   - [`usePinnedPopover`](../frontend/src/hooks/usePinnedPopover.ts) is the anchored-popover machinery (pin, hover, outside-click / Escape dismiss, portal plus viewport clamp), used by `FieldHelp` and `<Tooltip>`. Both bubbles paint with `TOOLTIP_SURFACE`.
-- **Instruction lists.** [`<NumberedSteps>`](../frontend/src/components/ui/NumberedSteps.tsx) is the static "1, 2, 3…" list (numbered disc, title, body): `plain` on the public guides and under each `/guide` screenshot as its legend, `boxed` with a per-step icon for the archive export walkthrough on `/submit`. Every step looks the same because it is reference copy, not state. For a check mark or a spinner, use `<ProgressSteps>`.
+- **Instruction lists.** [`<NumberedSteps>`](../frontend/src/components/ui/NumberedSteps.tsx) is the static "1, 2, 3…" list (numbered disc, title, body): `plain` on the public guides and under each `/guide` screenshot as its legend (the file also exports the plain disc as `STEP_NUMBER`, the marker on the `/import` annotated post), `boxed` with a per-step icon for the archive export walkthrough on `/submit`. Every step looks the same because it is reference copy, not state. For a check mark or a spinner, use `<ProgressSteps>`.
 - **Live progress.** [`<ProgressSteps>`](../frontend/src/components/ui/ProgressSteps.tsx) is the vertical stepper for a live multi-step operation (the archive import): check for done, highlighted disc for the active step, muted for pending. A determinate bar renders only when a real 0..1 `progress` ratio exists. A step in flight without one takes a discreet `spinner` next to its label, never a fake animation. `keepDetail` pins a step's detail line after completion (a privacy guarantee, a final count). `failed` turns the active step into the red failure marker. The message itself stays in the form's `FORM_ERROR_BANNER`.
 
 #### Media
@@ -351,7 +351,7 @@ Every main-app page uses [`<PageShell>`](../frontend/src/components/ui/PageShell
 
 Pre-data states use `<PageLoading>` / `<PageError>` (one centered shell). Opt-outs: `/` (landing), `/map` (full-screen map), the `(auth)/*` group, and `app/error.tsx`.
 
-The public guides use the same shell, signed in or out: `/guide` ("Getting started", the page a new analyst reads first; see [Getting started page](#getting-started-page)), `/methodology` ("Building a proof"), and `/import` ("Import your work from X": the conditions once, what a detection carries, then one section per entry). Each is a server component of `PageShell` plus `Card`, for SEO, linked from the About page's Guides section. `/bot` and `/archive` are `redirect()` stubs into `/import#bot` and `/import#archive`, and both stay in `PUBLIC_PREFIXES` so a signed-out reader is forwarded rather than sent to the login page. The bot's X bio points at `/bot` (see [The bot](ingestion.md#the-bot)).
+The public guides use the same shell, signed in or out: `/guide` ("Getting started", the page a new analyst reads first; see [Getting started page](#getting-started-page)), `/methodology` ("Building a proof"; see [Import and methodology guides](#import-and-methodology-guides)), and `/import` ("Import your work from X": the conditions once, an annotated post for what a detection carries, then one section per entry). Each is a server component of `PageShell` plus `Card`, for SEO, linked from the About page's Guides section. `/bot` and `/archive` are `redirect()` stubs into `/import#bot` and `/import#archive`, and both stay in `PUBLIC_PREFIXES` so a signed-out reader is forwarded rather than sent to the login page. The bot's X bio points at `/bot` (see [The bot](ingestion.md#the-bot)).
 
 The `(auth)/*` group composes [`<AuthCard>`](../frontend/src/components/auth/AuthCard.tsx) (a `max-w-sm` centered card). The two single-email pages (`/forgot-password`, `/resend-confirmation`) also share [`<SingleEmailFlow>`](../frontend/src/components/auth/SingleEmailFlow.tsx), whose sent-state copy stays anti-enumeration ("if X is registered…", never confirming the address exists).
 
@@ -427,6 +427,21 @@ flowchart LR
 - **One marker list.** [`shots.json`](../frontend/src/app/guide/shots.json) names each screenshot's file, route, window, session and markers. The layout, Approvals, Feed and Notifications shots are signed in. A marker is a target element and its legend line. [`video/shoot-guide.js`](../video/shoot-guide.js) draws a numbered orange disc beside each target and writes the WebP to `frontend/public/guide/`; the page numbers the same labels with `NumberedSteps` under the image. Change a marker in the JSON, then re-shoot (see [`video/README.md`](../video/README.md#getting-started-screenshots)).
 - **The video slot.** The walkthrough is [`DemoVideo`](../frontend/src/components/landing/DemoVideo.tsx), the landing's click-to-play player, in an `aspect-video` frame, in a card above the sections that renders only with the video. It loads with `preload="metadata"`, so a phone fetches the first frame and nothing more until you press play. It renders only while `NEXT_PUBLIC_GUIDE_VIDEO_URL` holds a direct video file URL. The video is hosted like the landing demo (see [`engineering.md`](engineering.md#operating-the-platform-clis)).
 - **Grounded in the product.** The page names only controls that exist, under the labels the product prints. A change to a surface the page shows updates its screenshot or its tile in the same PR.
+
+#### Import and methodology guides
+
+The three guides chain: `/guide` links `/import` and `/methodology`, and neither of those restates what another guide owns. A fact lives in one guide, and the others link to it:
+
+| Fact | Owner | Linked from |
+|---|---|---|
+| The four statuses and the path from detection to geolocation: on the map and in your queue, you review, only you publish, rejecting closes it | `/guide#statuses` | `/import`, one sentence after the annotated post |
+| What makes a detection: your own post from your linked X handle, carrying a coordinate | `/import#detection` | `/guide#bringing-your-work-in` |
+| What a detection carries, and the parsing rules (coordinate formats, a quote outranks links, links that never count, the 120-character title, several candidates leave the source empty) | `/import` | No other guide |
+| Each way in: the archive, a pasted post, @ViditBot | `/import#archive`, `#paste`, `#bot` | `/guide` tiles, as navigation |
+| What a proof is and how to build one | `/methodology` | `/guide#reading-a-geolocation` |
+
+- **The annotated post.** [`/import`](../frontend/src/app/import/page.tsx) shows what a detection carries as a `MockPost` of a typical geolocation post, a quote of the source post with its footage, and numbers its parts with the `STEP_NUMBER` disc that [`NumberedSteps`](../frontend/src/components/ui/NumberedSteps.tsx) exports: 1 coordinates, 2 the source, 3 the source media, 4 the title line, 5 the proof text. A `NumberedSteps` legend beside it gives one line per number, and a short list under it holds the rules a reader needs when a detection looks wrong.
+- **The proof example.** [`/methodology`](../frontend/src/app/methodology/page.tsx) opens on one real proof image from a public geolocation, stored as `frontend/public/methodology/proof-example.webp` and captioned with the analyst and a link to the event page. Numbered discs are baked into the image, and each number marks the step of the same number in the list under it, so a reorder of the first four steps re-bakes the image.
 
 #### Right rail
 

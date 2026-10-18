@@ -42,7 +42,7 @@
       { "target": "role=button[name=/copy/i] >> nth=0", "place": "right", "label": "Coordinates: open them in Google Maps, or copy them." },
       { "target": "role=link[name=/copy of the source$/]", "place": "right", "label": "Source. An orange archive mark opens its stored copy." },
       { "target": "text=\"Details\"", "place": "left", "label": "Details: status, dates, conflict, capture source, tags." },
-      { "target": "text=\"Proof\"", "place": "left", "label": "Proof: the source frame matched against satellite imagery." },
+      { "target": "text=\"Proof\"", "place": "left", "label": "Proof: the analyst's evidence for the location." },
       { "target": "role=button[name=/^v\\d/]", "place": "left", "label": "Versions: open an earlier version or the full history." },
       { "target": "role=button[name=/report/i]", "place": "right", "label": "Share the event, or report it." },
       { "target": "section[aria-label=\"Approvals\"]", "place": "top-left", "label": "Approvals: who backs the current version." }

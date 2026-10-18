@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 const redirect = vi.fn();
@@ -64,6 +64,25 @@ describe("/import", () => {
     expect(
       screen.getByText(/the only entry that stitches full self\s+threads/i),
     ).toBeInTheDocument();
+  });
+
+  it("annotates a typical post, numbering each part the detection reads", () => {
+    const { container } = render(<ImportGuidePage />);
+
+    const figure = container.querySelector("figure")!;
+    const legend = within(figure).getAllByRole("listitem");
+    expect(legend).toHaveLength(5);
+    const post = figure.firstElementChild!;
+    for (let n = 1; n <= legend.length; n++) {
+      expect(within(post as HTMLElement).getByText(String(n))).toBeInTheDocument();
+    }
+  });
+
+  it("leaves the detection lifecycle to the Getting started page", () => {
+    const { container } = render(<ImportGuidePage />);
+
+    expect(container.querySelector('a[href="/guide#statuses"]')).not.toBeNull();
+    expect(screen.queryByText(/Only you turn your detection/i)).toBeNull();
   });
 });
 

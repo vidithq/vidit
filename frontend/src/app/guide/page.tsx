@@ -122,9 +122,9 @@ const STATUSES: { status: EventStatus; note: ReactNode }[] = [
 ];
 
 const DETECTION_STEPS = [
-  { title: "An import lands it in your Detections queue, on your profile." },
+  { title: "An import puts it on the map and in your Detections queue, on your profile." },
   { title: "You check the coordinates, the source, the proof and the date." },
-  { title: "Submit publishes it as a geolocation under your name." },
+  { title: "Only you publish it: Submit makes it a geolocation under your name." },
 ];
 
 const OTHERS = [
@@ -191,12 +191,11 @@ export default function GuidePage() {
         id="bringing-your-work-in"
         lead={
           <>
-            Each import reads only posts from the X handle linked to your
-            account, and the{" "}
+            The{" "}
             <Link href="/import#detection" className={TEXT_LINK}>
               import guide
             </Link>{" "}
-            says what makes a detection.
+            says what makes a detection and covers each way in.
           </>
         }
       >
