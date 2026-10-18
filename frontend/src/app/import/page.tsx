@@ -1,13 +1,15 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import Link from "next/link";
-import { Archive, AtSign, ExternalLink, Upload } from "lucide-react";
-import { XGlyph } from "@/components/ui/BrandGlyphs";
-import { TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
+import { ExternalLink, Upload } from "lucide-react";
+import { TEXT_LINK } from "@/components/ui/styles";
 import { OutboundLink } from "@/components/ui/OutboundLink";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
+import { IconTile, TILE, TILE_TITLE } from "@/components/ui/IconTile";
 import {
   NumberedSteps,
+  STEP_NUMBER,
   type NumberedStep,
 } from "@/components/ui/NumberedSteps";
 import {
@@ -18,17 +20,19 @@ import {
 } from "@/components/ui/MockPost";
 import { MAX_UPLOAD_LABEL } from "@/lib/archive";
 import { ARCHIVE_EXPORT_STEPS, X_ARCHIVE_HELP } from "@/lib/archiveExport";
+import { IMPORT_ENTRIES, IMPORT_GLYPH } from "@/lib/importEntries";
 import { staticPageMetadata } from "../_og/metadata";
+import { Shot } from "../_shots/Shot";
 
 // The one import guide, public (see `PUBLIC_PREFIXES` in `proxy.ts`). One detection engine reads every entry, so the
-// conditions are stated once under "What makes a detection" and each entry section holds only what differs.
-// `docs/ingestion.md` holds the mechanism. Order: common block, then archive, paste, bot.
+// conditions are stated once under "What makes a detection" and each entry section holds only what differs. The
+// detection lifecycle lives on `/guide#statuses`, the mechanism in `docs/ingestion.md`.
 // Anchors are contract: `/bot` and `/archive` redirect to `#bot` and `#archive`, the import panels link to
-// `#paste` and `#archive`. Keep the three heading ids.
+// `#paste` and `#archive`, and `/guide` links `#detection` and the three entries. Keep the heading ids.
 
 const TITLE = "Import your work from X";
 const DESCRIPTION =
-  "Tag @ViditBot, paste a post URL, or upload your X archive. Vidit reads your posts and creates a detection for each geolocation, with its coordinates, source, media and proof note.";
+  "Tag @ViditBot, paste a post URL, or upload your X archive. Vidit reads your posts and creates a detection for each geolocation, with its coordinates, source, media and proof.";
 
 export const metadata: Metadata = staticPageMetadata({
   path: "/import",
@@ -40,8 +44,23 @@ const SECTION = "text-sm font-medium text-neutral-200";
 const BODY = "text-sm text-neutral-300 leading-relaxed";
 const NOTE = "text-[13px] leading-relaxed text-neutral-400";
 const LIST = `list-disc space-y-1 pl-4 ${NOTE}`;
-const TILE = "rounded-lg border border-neutral-800 bg-neutral-900 p-4";
-const TILE_TITLE = "text-sm font-medium text-neutral-100";
+
+const CARRIES: NumberedStep[] = [
+  { title: "Coordinates, in any usual format." },
+  { title: "Source: the post you quote, or a single link." },
+  { title: "Source media: the footage in the quoted post." },
+  { title: "Title: the first line with more than coordinates and links." },
+  { title: "Proof: your text as written, and your photos as proof images." },
+];
+
+function Marked({ n, children }: { n: number; children: ReactNode }) {
+  return (
+    <span className="flex items-start gap-2">
+      <span className={STEP_NUMBER}>{n}</span>
+      <span className="min-w-0">{children}</span>
+    </span>
+  );
+}
 
 // The X-side export steps are shared with the import panel on `/submit`; only the closing step differs.
 const EXPORT_STEPS: NumberedStep[] = [
@@ -62,36 +81,8 @@ const EXPORT_STEPS: NumberedStep[] = [
   },
 ];
 
-// The chooser says when to use each entry; glyphs match the Submit page's mode control.
-const GLYPH = {
-  archive: <Archive size={13} strokeWidth={1.8} />,
-  paste: <XGlyph size={12} />,
-  bot: <AtSign size={13} strokeWidth={1.8} />,
-};
-
 // Section heading with its entry's glyph, matching the chooser tile.
 const ENTRY_HEADING = `inline-flex items-center gap-1.5 ${SECTION}`;
-
-const ENTRIES = [
-  {
-    href: "#archive",
-    icon: GLYPH.archive,
-    title: "Upload your X archive",
-    when: "Your whole history, once.",
-  },
-  {
-    href: "#paste",
-    icon: GLYPH.paste,
-    title: "Paste a post URL",
-    when: "One post, no public trace.",
-  },
-  {
-    href: "#bot",
-    icon: GLYPH.bot,
-    title: "Tag @ViditBot on X",
-    when: "Every day, from your feed.",
-  },
-];
 
 export default function ImportGuidePage() {
   return (
@@ -99,10 +90,9 @@ export default function ImportGuidePage() {
       <Card as="section">
         <p className={BODY}>
           Vidit reads the geolocations you already publish on X and creates a
-          detection for each one, with its coordinates, source, media and proof
-          note. There are three ways in and one engine behind them, so a post
-          reads the same whichever you use. There is no format to learn: write
-          your post as you always do.
+          detection for each one. There are three ways in and one engine behind
+          them, so a post reads the same whichever you use. There is no format
+          to learn: write your post as you always do.
         </p>
         <h2 id="detection" className={SECTION}>
           What makes a detection
@@ -118,80 +108,81 @@ export default function ImportGuidePage() {
           carrying the coordinate.
         </p>
         <h2 className={SECTION}>What the detection carries</h2>
+        <figure className="grid items-start gap-4 sm:grid-cols-2">
+          <MockPost
+            {...MOCK_ANALYST}
+            quoted={{
+              handle: "@frontlinefootage",
+              text: <Marked n={2}>Drone strike on a vehicle depot</Marked>,
+              media: { kind: "video", label: <Marked n={3}>the footage</Marked> },
+            }}
+          >
+            <Marked n={1}>48.123456, 37.654321</Marked>
+            <Marked n={4}>Strike on the vehicle depot</Marked>
+            <Marked n={5}>The hangar roof and the tree line match the footage.</Marked>
+          </MockPost>
+          <figcaption>
+            <NumberedSteps steps={CARRIES} />
+          </figcaption>
+        </figure>
+        <h3 className={SECTION}>If a detection looks wrong</h3>
         <ul className={LIST}>
           <li>
-            <span className="text-neutral-100">Coordinates.</span> Read from
-            your text in any usual form: decimal pairs (48.012345, 37.802411),
-            decimal degrees with a hemisphere letter (33.1°N 35.5°E, N48.0123
-            E37.8024), DMS (48°00&apos;45&quot;N 37°48&apos;08&quot;E) and
-            Google Maps @lat,lng links. A coordinate that appears only inside an
-            image is not read.
+            <span className="text-neutral-100">Coordinates:</span> decimal
+            pairs (48.012345, 37.802411), a hemisphere letter (33.1°N 35.5°E,
+            N48.0123 E37.8024), DMS (48°00&apos;45&quot;N 37°48&apos;08&quot;E)
+            or a Google Maps @lat,lng link. Text inside an image is not read.
           </li>
           <li>
-            <span className="text-neutral-100">Source URL.</span> Every link
-            your thread carries is a candidate, whatever the platform. Three are
-            never candidates, because none points at footage: a link back to
-            your own post, an X link naming no post, and a Google Maps link. A
-            quote of the source post, or a single candidate link, becomes the
-            source, and a quote outranks links. Several candidates leave the
-            source empty and land as secondary links you pick from at review.
+            <span className="text-neutral-100">Source:</span> a quote outranks
+            links. A link to your own post, an X link naming no post and a
+            Google Maps link never count. Several candidate links leave the
+            source empty, and you pick one at review.
           </li>
           <li>
-            <span className="text-neutral-100">Source media.</span> A quoted
-            post&apos;s media is the footage. With no quote, the source
-            post&apos;s media fills the slot, then your thread&apos;s first own
-            video.
+            <span className="text-neutral-100">Media:</span> with no quote, the
+            source post&apos;s media fills the slot, then your thread&apos;s
+            first own video.
           </li>
           <li>
-            <span className="text-neutral-100">Title.</span> The first line that
-            carries text beyond coordinates and links, taken as written and cut
-            at 120 characters. No line qualifying leaves the title empty, and
-            you type one at review.
+            <span className="text-neutral-100">Title:</span> cut at 120
+            characters. With no qualifying line, you type one at review.
           </li>
           <li>
-            <span className="text-neutral-100">Proof.</span> Your thread&apos;s
-            text as you wrote it, coordinate line included, with each shortened
-            link expanded back, and your photos as proof images. You edit it at
-            review.
+            <span className="text-neutral-100">Proof:</span> shortened links are
+            expanded back, and you edit the text at review.
           </li>
         </ul>
         <p className={NOTE}>
-          A detection is on the map from the moment it lands, marked as a
-          machine detection and attributed to your account, and it waits in your
-          detections queue. Review it, correct the event date, then publish it
-          as a geolocation. Rejecting it removes it. Only you turn your
-          detection into a geolocation.
-        </p>
-        <p className={NOTE}>
-          A post carrying several coordinates makes one detection each, sharing
-          every other field. Importing the same geolocation again reuses the
-          first detection instead of duplicating it, and a detection you already
-          published or rejected stays as it is, so re-running an import is
-          always safe.
+          A detection then follows the{" "}
+          <Link href="/guide#statuses" className={TEXT_LINK}>
+            path from detection to geolocation
+          </Link>
+          . A post carrying several coordinates makes one detection each,
+          sharing every other field. Importing the same geolocation again reuses
+          the first detection, and one you already published or rejected stays
+          as it is, so re-running an import is always safe.
         </p>
         <h2 className={SECTION}>Three ways in</h2>
+        <Shot page="import" id="submit-modes">
+          <p className={NOTE}>Tagging @ViditBot needs no form: you tag it on X.</p>
+        </Shot>
         <div className="grid gap-4 sm:grid-cols-3">
-          {ENTRIES.map(({ href, icon, title, when }) => (
-            <Link
-              key={href}
-              href={href}
-              className={`group block ${TILE} ${TAPPABLE_HOVER}`}
-            >
-              <h3
-                className={`inline-flex items-center gap-1.5 ${TILE_TITLE} transition-colors group-hover:text-orange-400`}
-              >
-                {icon}
-                {title}
-              </h3>
-              <p className={`mt-1.5 ${NOTE}`}>{when}</p>
-            </Link>
+          {IMPORT_ENTRIES.map(({ anchor, title, when }) => (
+            <IconTile
+              key={anchor}
+              href={`#${anchor}`}
+              icon={IMPORT_GLYPH[anchor]}
+              title={title}
+              note={when}
+            />
           ))}
         </div>
       </Card>
 
       <Card as="section">
         <h2 id="archive" className={ENTRY_HEADING}>
-          {GLYPH.archive}
+          {IMPORT_GLYPH.archive}
           Upload your X archive
         </h2>
         <p className={BODY}>
@@ -217,14 +208,14 @@ export default function ImportGuidePage() {
           An export runs as a background job, so you can close the page. Vidit
           emails you the outcome when it finishes: how many detections were
           created, updated and skipped, and how many need a source or carry
-          several coordinates. Uploading the same export again creates no
-          duplicates, which is also how you resume an import that failed.
+          several coordinates. To resume an import that failed, upload the same
+          export again.
         </p>
       </Card>
 
       <Card as="section">
         <h2 id="paste" className={ENTRY_HEADING}>
-          {GLYPH.paste}
+          {IMPORT_GLYPH.paste}
           Paste a post URL on Vidit
         </h2>
         <p className={BODY}>
@@ -235,30 +226,26 @@ export default function ImportGuidePage() {
           , pick <span className="text-neutral-100">From an X post</span> and
           paste the link to one of your own posts. The detection is created
           while you wait; the review opens on it when nothing needs your
-          attention, otherwise the page tells you what does. Your own posts
-          only, matched against the X account linked to your profile; a third
-          party&apos;s footage goes through the plain submit form with a source
-          URL.
+          attention, otherwise the page tells you what does. For a third
+          party&apos;s footage, use the plain submit form with a source URL.
         </p>
         <p className={NOTE}>
           Warnings and refusals are shown on the page rather than on X, and
           nothing is posted under your handle, so this is the way in when you do
-          not want a public trace. Pasting a post the bot already imported
-          reopens that detection instead of making a second one.
+          not want a public trace.
         </p>
       </Card>
 
       <Card as="section">
         <h2 id="bot" className={ENTRY_HEADING}>
-          {GLYPH.bot}
+          {IMPORT_GLYPH.bot}
           Tag @ViditBot on X
         </h2>
         <p className={BODY}>
           Tag @ViditBot on a geolocation post and the detection appears on Vidit
           within seconds. You do not leave your feed and you retype nothing. The
-          bot imports only for X handles linked to a Vidit account: it stays
-          silent for any other handle and creates nothing. It reads public posts
-          only, so a tag from a protected account imports nothing. Replying to a
+          bot stays silent for a handle not linked to a Vidit account. It reads
+          public posts only, so a tag from a protected account imports nothing. Replying to a
           post that tagged the bot does not tag it again: X carries the mentions
           over into your reply, and the bot reads only the tag you type after
           your own words.

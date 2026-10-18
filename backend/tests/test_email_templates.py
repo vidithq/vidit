@@ -180,6 +180,12 @@ def test_product_update_blocks_link_the_admins_urls():
     assert f"{BASE}/guide." in _links(built.html).hrefs
 
 
+def test_registration_confirmation_links_the_getting_started_page():
+    message = BUILDERS["registration_confirmation"]()
+    assert f"{BASE}/guide" in _links(message.html).hrefs
+    assert f"{BASE}/guide" in message.text
+
+
 def test_completion_digest_points_at_the_one_by_one_review():
     message = BUILDERS["completion_digest"]()
     assert "Start reviewing" in message.text

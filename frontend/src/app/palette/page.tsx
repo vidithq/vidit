@@ -56,6 +56,7 @@ import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { OutboundLink } from "@/components/ui/OutboundLink";
 import { StatTile, StatGrid } from "@/components/ui/StatTile";
+import { IconTile } from "@/components/ui/IconTile";
 import { ActivityHeatmap } from "@/components/ui/ActivityHeatmap";
 import { SourceHostBar } from "@/components/ui/SourceHostBar";
 import { NumberedSteps } from "@/components/ui/NumberedSteps";
@@ -1240,6 +1241,13 @@ export default function PalettePage() {
             </div>
           </Item>
 
+          <Item name="<IconTile>" usage="An icon, a title and an optional one-line note in a bordered tile (TILE, with TILE_TITLE on the heading): the chooser on /import and the concept rows on /guide. `href` makes the whole tile one next/link with TAPPABLE_HOVER and an accent title on hover; without it the tile is inert. The caller passes the glyph as a node, so a brand mark such as XGlyph fits. The first tile below is linked, the second is inert.">
+            <div className="grid w-full max-w-xl gap-3 sm:grid-cols-2">
+              <IconTile icon={<Archive size={13} strokeWidth={1.8} />} title="Upload your X archive" note="Your whole history, once." href="/import#archive" />
+              <IconTile icon={<ClipboardCheck size={13} strokeWidth={1.8} />} title="Request approval" note="Ask an analyst or an organization to approve yours." />
+            </div>
+          </Item>
+
           <Item name="<SourceHostBar>" usage="Where a body of work's footage came from (profile insights): one stacked bar over the ranked hosts, widest slice on the strongest accent step, with the unnamed tail and the source-less events in their own neutral slices so the bar accounts for every event counted. The legend is the readable half; the bar is aria-hidden, since a phone has no hover to reveal a title with. Bare hosts, the vocabulary <SourceLabel> already shows a source under.">
             <div className="w-full max-w-xs space-y-4">
               <SourceHostBar
@@ -1285,7 +1293,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<NumberedSteps>" usage="Static &quot;1, 2, 3…&quot; instruction list: numbered disc + title + body. `plain` on the public guides (/guide, /methodology, /import), `boxed` with a per-step icon for the archive export walkthrough on /submit. Not <ProgressSteps>: this is reference copy the reader works through, every step identical; ProgressSteps renders one running operation's live state (done / active / pending / failed).">
+          <Item name="<NumberedSteps>" usage="Static &quot;1, 2, 3…&quot; instruction list: numbered disc + title + body. `plain` on the public guides (/guide, /methodology, /import), where it also numbers the legend under each /guide screenshot, `boxed` with a per-step icon for the archive export walkthrough on /submit. STEP_NUMBER is the plain disc, exported so /import numbers the parts of its annotated post with the same disc its legend uses. Not <ProgressSteps>: this is reference copy the reader works through, every step identical; ProgressSteps renders one running operation's live state (done / active / pending / failed).">
             <div className="w-full max-w-md space-y-4">
               <Variant label="plain (the guides)">
                 <NumberedSteps
@@ -1321,7 +1329,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<MockPost>" usage="A fake X post in X's own dark card, so a guide can show the shape of a real post instead of describing it (/import teaches what to write and what the bot answers). Illustration only: the &quot;links&quot; are <MockPostLink> spans, never anchors, and the body breaks anywhere so a long one cannot widen its column. MOCK_ANALYST and MOCK_BOT are the shared identities, so the guides read as one person's posts. `media` attaches one placeholder, `quoted` renders the quote card X draws around a quoted post (with its own optional media), `replyingTo` puts a handle in the byline.">
+          <Item name="<MockPost>" usage="A fake X post in X's own dark card, so a guide can show the shape of a real post instead of describing it (/import teaches what to write and what the bot answers). Illustration only: the &quot;links&quot; are <MockPostLink> spans, never anchors, and the body breaks anywhere so a long one cannot widen its column. MOCK_ANALYST and MOCK_BOT are the shared identities, so the guides read as one person's posts. `media` attaches one placeholder, `quoted` renders the quote card X draws around a quoted post (with its own optional media), `replyingTo` puts a handle in the byline. The body, the quoted text and the media labels take nodes, so /import places STEP_NUMBER markers on the parts it annotates.">
             <div className="w-full max-w-sm space-y-3">
               <Variant label="a post with an attachment">
                 <MockPost
@@ -1409,7 +1417,7 @@ export default function PalettePage() {
           <Item name="<LinkRow>" usage="Stay in touch and Guides (About), and each row of the Notifications feed (kind and date as the label, the sentence as the value). The profile's linked accounts are icon buttons instead. The trailing ↗ marks external only: an in-app href routes through next/link, a mailto stays a plain <a>, and neither takes the glyph. `leading` (opt-in) shows a node in place of the icon: the feed passes the picture of who is behind the row (an analyst's circle, an organization's square logo), and `icon` stays the fallback when the row has no one behind it. `variant` arrow (opt-in, the feed's rows and every list on the organization page and the admin Organizations panel): neutral value that wraps, an orange ArrowRight at the right edge, the link stretched over the block (hover and focus light the border and the arrow), and `action` inside the block left of the arrow, above the link; when the value and the action do not fit on one line, the action and the arrow wrap to a second line. `label` is optional. `meta` (arrow only) is a muted line under the value (date, version, who, a role or state pill), inside the link, so it never holds a link.">
             <div className="w-full max-w-md space-y-2">
               <LinkRow icon={AtSign} label="X / Twitter" value="@vidithq" href="https://x.com/vidithq" />
-              <LinkRow icon={BookOpen} label="How Vidit works" value="/guide" href="/guide" external={false} />
+              <LinkRow icon={BookOpen} label="Getting started" value="/guide" href="/guide" external={false} />
               <LinkRow icon={Mail} label="Email" value="hello@vidit.app" href="mailto:hello@vidit.app" external={false} />
               <LinkRow icon={MessageCircle} label="Discord" value="a-handle (unresolved)" />
               <LinkRow

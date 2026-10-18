@@ -10,9 +10,13 @@ export type NumberedStep = {
   icon?: LucideIcon;
 };
 
+/** The plain step's numbered disc, also the marker that ties an illustration to its legend (`/import`). */
+export const STEP_NUMBER =
+  "size-6 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-[11px] text-neutral-400 font-medium shrink-0";
+
 /**
  * The "1, 2, 3" instruction list: an `<ol>` whose steps lead with a numbered disc.
- * Shared by the public guides (`/guide`, `/methodology`) and the archive export
+ * Shared by the public guides (`/guide`, `/methodology`, `/import`) and the archive export
  * walkthrough on `/submit`.
  *
  * Static reference copy: every step looks the same. For the live state of a
@@ -43,7 +47,7 @@ export function NumberedSteps({
             className={
               boxed
                 ? `flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${ACCENT_SURFACE}`
-                : "mt-0.5 size-6 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-[11px] text-neutral-400 font-medium shrink-0"
+                : `mt-0.5 ${STEP_NUMBER}`
             }
           >
             {i + 1}

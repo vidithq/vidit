@@ -1,152 +1,216 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import Link from "next/link";
+import {
+  AtSign,
+  Building2,
+  ClipboardCheck,
+  Plus,
+  Settings,
+  User,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
-import {
-  NumberedSteps,
-  type NumberedStep,
-} from "@/components/ui/NumberedSteps";
+import { IconTile } from "@/components/ui/IconTile";
+import { NumberedSteps } from "@/components/ui/NumberedSteps";
 import { TEXT_LINK } from "@/components/ui/styles";
-import { OutboundLink } from "@/components/ui/OutboundLink";
+import DemoVideo from "@/components/landing/DemoVideo";
+import { StatusBadge } from "@/components/event/StatusBadge";
+import { IMPORT_ENTRIES, IMPORT_GLYPH } from "@/lib/importEntries";
+import type { EventStatus } from "@/types";
 import { staticPageMetadata } from "../_og/metadata";
+import { Shot } from "../_shots/Shot";
 
-// Public getting-started guide (see `PUBLIC_PREFIXES` in `proxy.ts`): teaches the whole loop; `/methodology` and `/import` go deeper. Server component for SEO.
+// Public (see `PUBLIC_PREFIXES` in `proxy.ts`) and linked from the registration email and the
+// post-registration screen. The section ids are contract: other pages and messages link to them.
 
-const TITLE = "How Vidit works";
+const TITLE = "Getting started";
 const DESCRIPTION =
-  "The Vidit loop end to end: explore the map, read a geolocation and its proof, publish your own work, and pick up open requests.";
+  "Find your way around Vidit: the layout, how to read a geolocation, the statuses, how to bring your work in from X, how to work with other analysts, and your settings.";
 
-// Same openGraph + twitter shape as the landing; the root image files supply the image.
 export const metadata: Metadata = staticPageMetadata({
   path: "/guide",
   title: TITLE,
   description: DESCRIPTION,
 });
 
-const STEPS: NumberedStep[] = [
+const glyph = (Icon: LucideIcon) => <Icon size={13} strokeWidth={1.8} />;
+
+const SECTIONS = {
+  layout: { title: "The layout" },
+  "reading-a-geolocation": { title: "Reading a geolocation" },
+  statuses: { title: "The statuses" },
+  "bringing-your-work-in": { title: "Bringing your work in" },
+  "working-with-others": { title: "Working with others" },
+  settings: { title: "Your settings" },
+} as const;
+
+type SectionId = keyof typeof SECTIONS;
+
+const HEADING = "text-sm font-medium text-neutral-200 max-sm:scroll-mt-16";
+const SUBHEADING = "text-sm font-medium text-neutral-100";
+const BODY = "text-sm text-neutral-300 leading-relaxed";
+const NOTE = "text-[13px] leading-relaxed text-neutral-400";
+const FRAME = "rounded-lg border border-neutral-800 bg-neutral-900";
+const TILES = "grid gap-3 sm:grid-cols-3";
+const TILE_PAIRS = "grid gap-3 sm:grid-cols-2";
+
+function Section({
+  id,
+  lead,
+  children,
+}: {
+  id: SectionId;
+  lead?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <Card as="section">
+      <h2 id={id} className={HEADING}>
+        {SECTIONS[id].title}
+      </h2>
+      {lead && <p className={BODY}>{lead}</p>}
+      {children}
+    </Card>
+  );
+}
+
+const STATUSES: { status: EventStatus; note: ReactNode }[] = [
+  { status: "geolocated", note: "An analyst placed it and stands behind it." },
+  { status: "detected", note: "Machine-read from an analyst's post on X, not yet vouched for." },
   {
-    title: "Explore the map",
-    body: (
+    status: "requested",
+    note: (
       <>
-        Everything lives on the{" "}
-        <Link href="/map" className={TEXT_LINK}>
-          map
-        </Link>
-        : every located event is a pin you can open. Each event carries a
-        status, so you always know what you are reading. Geolocated means a
-        person placed it and stands behind it. Detected is a detection the
-        machine imported, flagged as machine-read everywhere until its owner
-        reviews and publishes it. Requested is footage nobody has placed yet.{" "}
-        <Link href="/search" className={TEXT_LINK}>
-          Search
-        </Link>{" "}
-        and the filters (conflict, capture source, dates, analyst) reach the
-        same events from another angle.
-      </>
-    ),
-  },
-  {
-    title: "Read a geolocation",
-    body: (
-      <>
-        Open one and the anatomy is always the same: the coordinates, the event
-        date, a link to the source post, and the media itself, copied into
-        Vidit&apos;s own storage the moment it lands so it outlives a deleted
-        post or a banned account. Under it sits the proof, the visual argument
-        that the coordinates are right: the source frame next to satellite
-        imagery, with matching coloured boxes on the features that carry the
-        match (the{" "}
-        <Link href="/methodology" className={TEXT_LINK}>
-          methodology guide
-        </Link>{" "}
-        builds one step by step). The byline names the analyst behind the work,
-        and a geolocation that started as a request also credits the analyst who
-        opened it.
-      </>
-    ),
-  },
-  {
-    title: "Publish your work",
-    body: (
-      <>
-        Accounts are invite-only today, so reading is open to everyone and
-        publishing is not: request an invite by DM to{" "}
-        <OutboundLink
-          href="https://x.com/vidithq"
-          className={TEXT_LINK}
-        >
-          @vidithq
-        </OutboundLink>{" "}
-        on X, or in the{" "}
-        <OutboundLink
-          href="https://discord.gg/9wPtsrrKyJ"
-          className={TEXT_LINK}
-        >
-          Discord
-        </OutboundLink>
-        . Three ways in once you are in, all landing on the same map:
-        <ul className="mt-1.5 space-y-1.5 list-disc pl-4">
-          <li>
-            The{" "}
-            <Link href="/submit" className={TEXT_LINK}>
-              submit form
-            </Link>
-            : fill in what you have. Two outcomes come out of the content. Place
-            the coordinates and finish the proof and it publishes as a
-            geolocation; stop at the footage, its source link and its post date
-            and it publishes as a request for others to locate.
-          </li>
-          <li>
-            Your X archive: upload the official export and every geolocation you
-            already published is backfilled as detections you review and vouch for,
-            no manual re-entry (the{" "}
-            <Link href="/import#archive" className={TEXT_LINK}>
-              import guide
-            </Link>{" "}
-            covers what is read and what is never touched).
-          </li>
-          <li>
-            The bot: tag @ViditBot under a geolocation post on X and it lands
-            here as a structured detection waiting in your queue (the{" "}
-            <Link href="/import#bot" className={TEXT_LINK}>
-              import guide
-            </Link>{" "}
-            covers it). You never leave your feed.
-          </li>
-        </ul>
-      </>
-    ),
-  },
-  {
-    title: "Pick up requests",
-    body: (
-      <>
-        When someone has footage they cannot place, they post it as a request:
-        title, media, source and post date, no coordinates. It goes on the{" "}
+        Footage nobody has placed yet, on the{" "}
         <Link href="/requests" className={TEXT_LINK}>
-          requests board
+          Requests board
         </Link>
-        , where any analyst can pick it up. Fulfilling one does
-        not create a second entry: the request becomes a full geolocation, owned
-        by the analyst who located it and still crediting the analyst who opened
-        it.
+        .
       </>
     ),
   },
+  { status: "closed", note: "A withdrawn request, a rejected detection, or a retracted geolocation." },
+];
+
+const DETECTION_STEPS = [
+  { title: "An import puts it on the map and in your Detections queue, on your profile." },
+  { title: "You check the coordinates, the source, the proof and the date." },
+  { title: "Only you publish it: Submit makes it a geolocation under your name." },
+];
+
+const OTHERS = [
+  { icon: ClipboardCheck, title: "Request approval", note: "Ask an analyst or an organization to approve your geolocation." },
+  { icon: Users, title: "Co-geolocators", note: "Once you accept an owner's invite, every byline credits you." },
+  { icon: Building2, title: "Organizations", note: "Members approve in the organization's name." },
+];
+
+const SETTINGS = [
+  { icon: User, title: "Profile", note: "Your public portfolio: picture, bio and links." },
+  { icon: AtSign, title: "X handle", note: "Request the link the imports need." },
+  { icon: Settings, title: "Display", note: "Light mode, accent color, question marks." },
 ];
 
 export default function GuidePage() {
+  const videoUrl = process.env.NEXT_PUBLIC_GUIDE_VIDEO_URL;
   return (
     <PageShell title={TITLE} back backFallback="/about">
-      <Card as="section">
-        <p className="text-sm text-neutral-300 leading-relaxed">
-          Vidit is one shared map of conflict geolocations, each carrying the
-          evidence behind it: the archived source media, the coordinates, and
-          the proof that ties them together. Four steps, in the order an analyst
-          meets them:
-        </p>
-        <NumberedSteps steps={STEPS} />
-      </Card>
+      {videoUrl && (
+        <Card as="section">
+          <div className={`aspect-video w-full overflow-hidden ${FRAME}`}>
+            <DemoVideo src={videoUrl} label="Play the walkthrough video" />
+          </div>
+        </Card>
+      )}
+
+      <Section id="layout" lead="The rail on the left edge of every page holds the places you go.">
+        <Shot page="guide" id="layout" />
+        <h3 className={SUBHEADING}>On a phone</h3>
+        <Shot page="guide" id="layout-phone" narrow />
+      </Section>
+
+      <Section
+        id="reading-a-geolocation"
+        lead={
+          <>
+            Every event page has the same parts, and the{" "}
+            <Link href="/methodology" className={TEXT_LINK}>
+              methodology guide
+            </Link>{" "}
+            shows how to build its proof.
+          </>
+        }
+      >
+        <Shot page="guide" id="event" />
+      </Section>
+
+      <Section id="statuses" lead="Every event carries one status, so you know what you are reading.">
+        <dl className="grid items-center gap-x-4 gap-y-3 sm:grid-cols-[auto_1fr]">
+          {STATUSES.map(({ status, note }) => (
+            <div key={status} className="contents">
+              <dt>
+                <StatusBadge status={status} />
+              </dt>
+              <dd className={NOTE}>{note}</dd>
+            </div>
+          ))}
+        </dl>
+        <h3 className={SUBHEADING}>From detection to geolocation</h3>
+        <NumberedSteps steps={DETECTION_STEPS} />
+      </Section>
+
+      <Section
+        id="bringing-your-work-in"
+        lead={
+          <>
+            The{" "}
+            <Link href="/import#detection" className={TEXT_LINK}>
+              import guide
+            </Link>{" "}
+            says what makes a detection and covers each way in.
+          </>
+        }
+      >
+        <div className={TILE_PAIRS}>
+          {IMPORT_ENTRIES.map(({ anchor, title, when }) => (
+            <IconTile
+              key={anchor}
+              href={`/import#${anchor}`}
+              icon={IMPORT_GLYPH[anchor]}
+              title={title}
+              note={when}
+            />
+          ))}
+          <IconTile
+            href="/submit"
+            icon={glyph(Plus)}
+            title="Fill in the submit form"
+            note="Anything else, as a geolocation or a request."
+          />
+        </div>
+      </Section>
+
+      <Section id="working-with-others">
+        <Shot page="guide" id="approvals" />
+        <h3 className={SUBHEADING}>Your Feed</h3>
+        <Shot page="guide" id="feed" />
+        <div className={TILES}>
+          {OTHERS.map(({ icon, title, note }) => (
+            <IconTile key={title} icon={glyph(icon)} title={title} note={note} />
+          ))}
+        </div>
+      </Section>
+
+      <Section id="settings" lead="Settings sits at the foot of the rail once you are signed in.">
+        <Shot page="guide" id="notifications" />
+        <div className={TILES}>
+          {SETTINGS.map(({ icon, title, note }) => (
+            <IconTile key={title} icon={glyph(icon)} title={title} note={note} />
+          ))}
+        </div>
+      </Section>
     </PageShell>
   );
 }

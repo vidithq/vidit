@@ -24,6 +24,8 @@ Takes that sign in need their account to exist on the instance already:
 | `seed-requests.js` | `analyst@vidit.app` (viewer) and `demo-analyst@vidit.app` (request author) |
 | `record-v05b.js` | `VIDIT_DEMO_EMAIL` / `VIDIT_DEMO_PASSWORD` |
 | `record-collections.js` | `PROMO_LOGIN_EMAIL` / `PROMO_LOGIN_PASSWORD` |
+| `record-guide.js` | `GUIDE_LOGIN_EMAIL` / `GUIDE_LOGIN_PASSWORD` |
+| `shoot-guide.js` | nobody, unless a shot in `shots.json` is `signed-in`: then `GUIDE_LOGIN_EMAIL` / `GUIDE_LOGIN_PASSWORD` |
 | `record-v05.js` | nobody (logged out) |
 
 The request author differs from the viewer on purpose: an owner viewing their own request sees *Close this request* where the take expects *Geolocate this*, and the take fails on the missing control. No script in the repo creates these accounts; see [issue #505](https://github.com/vidithq/vidit/issues/505).
@@ -37,6 +39,7 @@ The request author differs from the viewer on purpose: an owner viewing their ow
 | `PromoV05` | `make promo-v05` | `record-v05.js` | no | `promo-v05-master.mp4`, `promo-v05-readme.mp4` |
 | `PromoV05B` | `make promo-v05b` | `record-v05b.js` | yes: archive import, one submitted draft | `promo-v05b-master.mp4`, `promo-v05b-readme.mp4` |
 | `PromoCollections` | `make promo-collections` | `record-collections.js` | yes: one event added to a collection | `promo-collections-master.mp4`, `promo-collections-readme.mp4` |
+| `GuideWalkthrough` | `make promo-guide` | `record-guide.js` | no | `guide-walkthrough-master.mp4`, `guide-walkthrough.mp4` |
 | `FeatureImport` | `npm run render:feature-import` | none | no | `feature-import.mp4` |
 
 Run the `npm run` commands from `video/`. Every `make` target needs `make dev` running in another shell.
@@ -120,6 +123,83 @@ curl -X DELETE "$API/collections/$COLLECTION/events/$EVENT" \
 
 `verifyTarget` lists every precondition it checks. To retarget, change `HANDLE`, `TARGET_COLLECTION`, `ADD_QUERY` and `QUERY` in `record-collections.js`; `PROMO_COLLECTION`, `PROMO_ADD_QUERY` and `PROMO_QUERY` override the last three for a shoot.
 
+### `GuideWalkthrough`
+
+The Getting started walkthrough that `/guide` plays at the top of the page: one scene per beat of the page's six sections, about 90 seconds. Signed in, it records two takes, `guide.mp4` at a desktop window and `guide-phone.mp4` at a window under the `sm` breakpoint, so the layout scene shows the phone chip and drawer. Unlike the promos, the comp is cut: each scene is a window of a take between two marks, and the captions and the address bar follow the marks.
+
+The take writes nothing, so you can re-run it against the same instance. It hovers every control that would write (Approve, Request approval, Invite, Follow, the settings switches) and closes every menu and edit state it opens.
+
+Set these before a shoot. None has a default, because every one of them names an account that appears on camera:
+
+| Variable | What it names | What `verifyTargets` checks |
+|---|---|---|
+| `GUIDE_LOGIN_EMAIL`, `GUIDE_LOGIN_PASSWORD` | The session the take signs in as | The sign-in succeeds |
+| `GUIDE_EVENT` | A published event of the session's | Source media, coordinates, an archived copy of the source, a proof of 200 characters or more, at least two versions, and at least one approval on the live version |
+| `GUIDE_APPROVE_EVENT` | Another analyst's published event | The session may approve it and has not approved its live version |
+| `GUIDE_ORGANIZATION` | An organization slug | It has given at least one approval |
+| `GUIDE_FOLLOW_HANDLE` | An analyst to show the Follow control on | It is not the session |
+
+The statuses scene also needs one detected, one geolocated and one requested event of the session's on the first page of `/search?type=event&author=<session>`. Get consent from every analyst the variables name, and record with an account whose feed follows only analysts who agreed.
+
+The settings page opens on the Account card, which shows the session's email address. The take jumps past that card before the settings scene starts and fails if the address is in the window while the scene runs.
+
+```bash
+GUIDE_LOGIN_EMAIL=… GUIDE_LOGIN_PASSWORD=… GUIDE_EVENT=… \
+GUIDE_APPROVE_EVENT=… GUIDE_ORGANIZATION=… GUIDE_FOLLOW_HANDLE=… \
+  make promo-guide
+```
+
+Until both takes exist, every scene renders an empty browser window that names the missing file, for its `estimate` in `src/GuideWalkthrough.tsx`, so the composition still previews and renders.
+
+To publish, upload `out/guide-walkthrough.mp4` to the media bucket under `landing/`, the way the landing demo video is hosted, and set the `NEXT_PUBLIC_GUIDE_VIDEO_URL` repo variable to its CloudFront URL. `/guide` renders the player only while that variable is set, and the player loads the file's metadata only until someone presses play.
+
+| To change | Edit |
+|---|---|
+| Scenes, captions, address bar | `SCENES` in `src/GuideWalkthrough.tsx` |
+| Beats, pacing, marks | `record-guide.js` |
+| Window sizes | `DESKTOP` and `PHONE` in `record-guide.js`, `CAPTURES` in `src/GuideWalkthrough.tsx` (keep them equal) |
+
+## Guide screenshots
+
+`/guide` and `/import` show annotated screenshots of the product: real captures with a numbered orange disc beside each element a legend line describes. `make guide-shots` runs `shoot-guide.js`, which writes one WebP per shot to `frontend/public/<page>/`.
+
+[`frontend/src/app/_shots/shots.json`](../frontend/src/app/_shots/shots.json) holds every shot, grouped by page: `guide` and `import`. Both pages read the same file for their legends, so a marker and its legend line change together.
+
+| Field | What it sets |
+|---|---|
+| `file` | The WebP under `frontend/public/<page>/` |
+| `route` | The page to open. `{event}` reads `GUIDE_EVENT`, `{approve_event}` reads `GUIDE_APPROVE_EVENT` |
+| `viewport`, `dpr` | The window in CSS pixels and its device pixel ratio |
+| `clip` | The captured area, when it is smaller than the window. `x` and `y` offset it from the top left |
+| `session` | `signed-in` to sign in first; signed out when absent |
+| `markers` | In order: `target` (a Playwright selector), `place` (`left`, `right`, `bottom`, `top-left` or `top-right` of the target's box), and `label` (the legend line) |
+
+A shot that needs a control opened first or a page scrolled (the rail expanded, the phone drawer open, the Notifications card of Settings at the top, From an X post selected on Submit) gets a step in `PREPARE` in `shoot-guide.js`. The `feed` step switches to **All** when the account follows nobody or the analysts it follows have posted nothing.
+
+Set these before a shoot:
+
+| Variable | What it names |
+|---|---|
+| `GUIDE_BASE` | The frontend, `http://localhost:3000` by default. The script refuses a non-local host, and stops if a page redirects off the local instance (a production build redirects to vidit.app, so run `next dev`) |
+| `GUIDE_API` | The API, `http://localhost:8000/api/v1` by default. Read only for the sign-in |
+| `GUIDE_EVENT` | The published geolocation the `event` shot reads. Pick one with source media, an archived source, a proof image and at least one approval |
+| `GUIDE_APPROVE_EVENT` | Another analyst's published geolocation the `approvals` shot reads, signed in. Pick one with approvals the account has not given yet, so **Approve** shows |
+| `GUIDE_LOGIN_EMAIL`, `GUIDE_LOGIN_PASSWORD` | The account the signed-in shots use. Its username shows in the rail |
+| `GUIDE_ONLY` | Optional. A comma-separated list of shot ids to re-shoot |
+
+```bash
+GUIDE_EVENT=… make guide-shots
+```
+
+To re-shoot only the signed-in shots, read the password into the environment first, so it stays out of your shell history, then run the one-line command:
+
+```bash
+read -rs GUIDE_LOGIN_PASSWORD && export GUIDE_LOGIN_PASSWORD
+GUIDE_ONLY=layout,layout-phone,approvals,feed,notifications,submit-modes GUIDE_LOGIN_EMAIL=… GUIDE_APPROVE_EVENT=… make guide-shots
+```
+
+The script changes no content on the instance: it signs in, opens menus and drawers, switches modes, and scrolls. It fails when a target is missing and when an email address shows inside a frame, so the Settings shot starts below the Account card. Open every image before you commit it: the shots show the instance's real handles, media and coordinates, so shoot against an instance you are willing to publish. Keep each file under 150 KB.
+
 ## Outputs
 
 Each `make` target stages two files off one render:
@@ -131,6 +211,8 @@ Each `make` target stages two files off one render:
 
 `make promo` renders `Demo` at `--scale 2` and downscales the master to 2560×1440. The other targets remux the 1080p render without re-encoding.
 
+`make promo-guide` stages a web file in place of the README file: `guide-walkthrough.mp4`, the 1080p render re-encoded at CRF 24 (H.264 high profile, no audio track, `+faststart`) for the player on `/guide`.
+
 ### Swap the README embed
 
 1. Drag the new `out/*-readme.mp4` into any GitHub draft comment.
@@ -139,7 +221,7 @@ Each `make` target stages two files off one render:
 
 ## Shared capture harness
 
-`capture-lib.js` holds what the takes share: the DOM cursor overlay, the chrome the recordings hide (the version pill, the Next.js dev indicator), the motion helpers (`glideAndClick`, `slowScrollToY`, `slowScrollToLocator`, `slowScrollPanel`, `easeCamera`, `dragPan`, `smoothScrollIntoView`, `glideClickStretchedCard`), the mock macOS open dialog (`injectFinder`, `closeFinder`), and `createRecorder`, the frame grabber and encoder. A capture script owns only its storyboard: the pages it visits, what it clicks, and the marks it stamps.
+`capture-lib.js` holds what the takes share: the DOM cursor overlay, the chrome the recordings hide (`HIDE_CHROME_INIT`: the version pill, the Next.js dev indicator), the Chrome launcher (`launchChrome`), the motion helpers (`glideAndClick`, `slowScrollToY`, `slowScrollToLocator`, `slowScrollPanel`, `easeCamera`, `dragPan`, `smoothScrollIntoView`, `glideClickStretchedCard`), the mock macOS open dialog (`injectFinder`, `closeFinder`), and `createRecorder`, the frame grabber and encoder. A capture script owns only its storyboard: the pages it visits, what it clicks, and the marks it stamps.
 
 `window.__viditMap` is set by whichever `<Map>` mounted last, so `easeCamera` drives the profile coverage map and the main map with no per-page wiring. It exists in dev builds only.
 

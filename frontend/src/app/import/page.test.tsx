@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 const redirect = vi.fn();
@@ -10,6 +10,7 @@ vi.mock("next/navigation", () => ({
 import ImportGuidePage from "./page";
 import BotGuideRedirect from "../bot/page";
 import ArchiveGuideRedirect from "../archive/page";
+import SHOTS from "../_shots/shots.json";
 
 describe("/import", () => {
   it("states the conditions once and holds one section per entry", () => {
@@ -51,6 +52,16 @@ describe("/import", () => {
     }
   });
 
+  it("numbers the Submit mode selector from the marker list the capture script reads", () => {
+    render(<ImportGuidePage />);
+
+    const shot = SHOTS.import["submit-modes"];
+    const figure = screen.getByAltText(shot.alt).closest("figure")!;
+    const legend = within(figure).getAllByRole("listitem").map((li) => li.textContent);
+    expect(legend).toEqual(shot.markers.map(({ label }, i) => `${i + 1}${label}`));
+    expect(within(figure).getByText(/@ViditBot needs no form/)).toBeInTheDocument();
+  });
+
   it("states the coordinate rule at the one hop the bot and the paste read", () => {
     // Two entries read the post plus its direct reply parent only, so a "same thread" rule would mislead; only the bare tag reads further and only the archive reads a whole self thread.
     render(<ImportGuidePage />);
@@ -64,6 +75,25 @@ describe("/import", () => {
     expect(
       screen.getByText(/the only entry that stitches full self\s+threads/i),
     ).toBeInTheDocument();
+  });
+
+  it("annotates a typical post, numbering each part the detection reads", () => {
+    const { container } = render(<ImportGuidePage />);
+
+    const figure = container.querySelector("figure")!;
+    const legend = within(figure).getAllByRole("listitem");
+    expect(legend).toHaveLength(5);
+    const post = figure.firstElementChild!;
+    for (let n = 1; n <= legend.length; n++) {
+      expect(within(post as HTMLElement).getByText(String(n))).toBeInTheDocument();
+    }
+  });
+
+  it("leaves the detection lifecycle to the Getting started page", () => {
+    const { container } = render(<ImportGuidePage />);
+
+    expect(container.querySelector('a[href="/guide#statuses"]')).not.toBeNull();
+    expect(screen.queryByText(/Only you turn your detection/i)).toBeNull();
   });
 });
 

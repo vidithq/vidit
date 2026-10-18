@@ -31,7 +31,7 @@ function Attachment({
   label,
 }: {
   kind: "video" | "image";
-  label: string;
+  label: ReactNode;
 }) {
   return (
     <div className="flex aspect-video items-center justify-center rounded-xl border border-neutral-800 bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900">
@@ -63,11 +63,11 @@ export function MockPost({
   bot?: boolean;
   /** Handle this post answers, shown in the byline. */
   replyingTo?: string;
-  media?: { kind: "video" | "image"; label: string };
+  media?: { kind: "video" | "image"; label: ReactNode };
   quoted?: {
     handle: string;
-    text: string;
-    media?: { kind: "video" | "image"; label: string };
+    text: ReactNode;
+    media?: { kind: "video" | "image"; label: ReactNode };
   };
   children: ReactNode;
 }) {
