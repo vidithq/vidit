@@ -298,16 +298,26 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install dependencies
-        run: npm ci
-
       # The browser download is the slowest step in the job, and the version it
       # downloads is decided by @playwright/test, so the lock file's resolved
       # version is the cache key: a Dependabot bump misses the cache and
       # re-downloads, and nothing else does.
       - name: Read the Playwright version
         id: playwright
-        run: echo "version=$(node -p "require('./node_modules/@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")" >> "$GITHUB_OUTPUT"
+
+      # The browser's shared libraries and fonts are apt packages outside the
+      # cached directory, so they install on every run, cache hit or not.
+      # `install-deps` needs only the `playwright` package, so it runs beside
+      # `npm ci` instead of after it.
+      - name: Install dependencies and the browser's system packages
+        env:
+          PLAYWRIGHT_VERSION: ${{ steps.playwright.outputs.version }}
+        run: |
+          npx --yes "playwright@$PLAYWRIGHT_VERSION" install-deps chromium &
+          deps=$!
+          npm ci
+          wait "$deps"
 
       - name: Cache the browser
         id: playwright-cache
@@ -316,10 +326,18 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ms-playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
-      # `--with-deps` installs the shared libraries the browser links against,
-      # which live outside the cached directory, so it runs on a cache hit too.
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
+
+      # The same Turbopack cache as `frontend-build`, under its own key: this
+      # build bakes in the fake API origin from `e2e/support/environment.ts`,
+      # and `next.config.mjs` adds an image pattern when that origin is local.
+      - name: Cache the Next.js build
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: frontend/.next/cache
+          key: next-e2e-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-${{ hashFiles('frontend/src/**', 'frontend/public/**', 'frontend/*.mjs', 'frontend/*.ts', 'frontend/tsconfig.json') }}
+          restore-keys: next-e2e-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-
 
       - name: Narrow-viewport smoke tests
         run: npm run test:e2e

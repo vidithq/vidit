@@ -27,7 +27,7 @@ export default defineConfig({
   // would only hide a flaky one behind a second green run.
   retries: 0,
   // A CI runner has 4 vCPUs, shared by the server and the browsers.
-  workers: process.env.CI ? 2 : undefined,
+  workers: process.env.CI ? 4 : undefined,
   reporter: process.env.CI ? "list" : "line",
   expect: { timeout: 15_000 },
   use: {
