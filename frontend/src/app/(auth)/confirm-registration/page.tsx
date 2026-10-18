@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { AuthCard } from "@/components/auth/AuthCard";
+import { buttonClasses } from "@/components/ui/Button";
 import { TEXT_LINK } from "@/components/ui/styles";
 
 type State = "confirming" | "success" | "failed";
@@ -13,15 +14,11 @@ type State = "confirming" | "success" | "failed";
 /** Consumes the single-use token on mount; the backend sets session and CSRF cookies in the same response. */
 function ConfirmInner() {
   const params = useSearchParams();
-  const router = useRouter();
   const token = params.get("token") ?? "";
   const [state, setState] = useState<State>("confirming");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const ranRef = useRef(false);
   const { refresh } = useAuth();
-
-  // Ref (not a closure var) so it survives Strict Mode's remount.
-  const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (ranRef.current) return;
@@ -44,9 +41,6 @@ function ConfirmInner() {
           /* non-fatal: the next page load catches up */
         }
         setState("success");
-        // Delay so the user reads the success message; a ref lets unmount cancel the push.
-        // A new account lands on the import on-ramp rather than an empty map.
-        redirectTimerRef.current = setTimeout(() => router.push("/submit?import=1"), 800);
       })
       .catch((err) => {
         setState("failed");
@@ -56,14 +50,7 @@ function ConfirmInner() {
             : "This confirmation link is invalid or expired."
         );
       });
-
-    return () => {
-      if (redirectTimerRef.current) {
-        clearTimeout(redirectTimerRef.current);
-        redirectTimerRef.current = null;
-      }
-    };
-  }, [token, refresh, router]);
+  }, [token, refresh]);
 
   const title = {
     confirming: "Confirming your account…",
@@ -78,9 +65,20 @@ function ConfirmInner() {
       )}
 
       {state === "success" && (
-        <p className="text-xs text-neutral-400">
-          {"Welcome to Vidit. Let's bring your work onto the map, taking you to import your X archive…"}
-        </p>
+        <>
+          <p className="text-xs text-neutral-400">
+            Welcome to Vidit. Bring the geolocations you already posted on X
+            onto the map, or start with a short tour of the site.
+          </p>
+          <div className="flex flex-col gap-2">
+            <Link href="/submit?import=1" className={buttonClasses("primary", { fullWidth: true })}>
+              Import your X archive
+            </Link>
+            <Link href="/guide" className={buttonClasses("secondary", { fullWidth: true })}>
+              Read Getting started
+            </Link>
+          </div>
+        </>
       )}
 
       {state === "failed" && (

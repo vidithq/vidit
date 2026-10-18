@@ -24,7 +24,7 @@ import { staticPageMetadata } from "../_og/metadata";
 // conditions are stated once under "What makes a detection" and each entry section holds only what differs.
 // `docs/ingestion.md` holds the mechanism. Order: common block, then archive, paste, bot.
 // Anchors are contract: `/bot` and `/archive` redirect to `#bot` and `#archive`, the import panels link to
-// `#paste` and `#archive`. Keep the three heading ids.
+// `#paste` and `#archive`, and `/guide` links `#detection` and the three entries. Keep the heading ids.
 
 const TITLE = "Import your work from X";
 const DESCRIPTION =
@@ -159,7 +159,7 @@ export default function ImportGuidePage() {
           A detection is on the map from the moment it lands, marked as a
           machine detection and attributed to your account, and it waits in your
           detections queue. Review it, correct the event date, then publish it
-          as a geolocation. Rejecting it removes it. Only you turn your
+          as a geolocation. Rejecting it closes it. Only you turn your
           detection into a geolocation.
         </p>
         <p className={NOTE}>

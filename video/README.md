@@ -24,6 +24,7 @@ Takes that sign in need their account to exist on the instance already:
 | `seed-requests.js` | `analyst@vidit.app` (viewer) and `demo-analyst@vidit.app` (request author) |
 | `record-v05b.js` | `VIDIT_DEMO_EMAIL` / `VIDIT_DEMO_PASSWORD` |
 | `record-collections.js` | `PROMO_LOGIN_EMAIL` / `PROMO_LOGIN_PASSWORD` |
+| `record-guide.js` | `GUIDE_LOGIN_EMAIL` / `GUIDE_LOGIN_PASSWORD` |
 | `record-v05.js` | nobody (logged out) |
 
 The request author differs from the viewer on purpose: an owner viewing their own request sees *Close this request* where the take expects *Geolocate this*, and the take fails on the missing control. No script in the repo creates these accounts; see [issue #505](https://github.com/vidithq/vidit/issues/505).
@@ -37,6 +38,7 @@ The request author differs from the viewer on purpose: an owner viewing their ow
 | `PromoV05` | `make promo-v05` | `record-v05.js` | no | `promo-v05-master.mp4`, `promo-v05-readme.mp4` |
 | `PromoV05B` | `make promo-v05b` | `record-v05b.js` | yes: archive import, one submitted draft | `promo-v05b-master.mp4`, `promo-v05b-readme.mp4` |
 | `PromoCollections` | `make promo-collections` | `record-collections.js` | yes: one event added to a collection | `promo-collections-master.mp4`, `promo-collections-readme.mp4` |
+| `GuideWalkthrough` | `make promo-guide` | `record-guide.js` | no | `guide-walkthrough-master.mp4`, `guide-walkthrough.mp4` |
 | `FeatureImport` | `npm run render:feature-import` | none | no | `feature-import.mp4` |
 
 Run the `npm run` commands from `video/`. Every `make` target needs `make dev` running in another shell.
@@ -120,6 +122,42 @@ curl -X DELETE "$API/collections/$COLLECTION/events/$EVENT" \
 
 `verifyTarget` lists every precondition it checks. To retarget, change `HANDLE`, `TARGET_COLLECTION`, `ADD_QUERY` and `QUERY` in `record-collections.js`; `PROMO_COLLECTION`, `PROMO_ADD_QUERY` and `PROMO_QUERY` override the last three for a shoot.
 
+### `GuideWalkthrough`
+
+The Getting started walkthrough that `/guide` plays at the top of the page: one scene per beat of the page's six sections, about 90 seconds. Signed in, it records two takes, `guide.mp4` at a desktop window and `guide-phone.mp4` at a window under the `sm` breakpoint, so the layout scene shows the phone chip and drawer. Unlike the promos, the comp is cut: each scene is a window of a take between two marks, and the captions and the address bar follow the marks.
+
+The take writes nothing, so you can re-run it against the same instance. It hovers every control that would write (Approve, Request approval, Invite, Follow, the settings switches) and closes every menu and edit state it opens.
+
+Set these before a shoot. None has a default, because every one of them names an account that appears on camera:
+
+| Variable | What it names | What `verifyTargets` checks |
+|---|---|---|
+| `GUIDE_LOGIN_EMAIL`, `GUIDE_LOGIN_PASSWORD` | The session the take signs in as | The sign-in succeeds |
+| `GUIDE_EVENT` | A published event of the session's | Source media, coordinates, an archived copy of the source, a proof of 200 characters or more, at least two versions, and at least one approval on the live version |
+| `GUIDE_APPROVE_EVENT` | Another analyst's published event | The session may approve it and has not approved its live version |
+| `GUIDE_ORGANIZATION` | An organization slug | It has given at least one approval |
+| `GUIDE_FOLLOW_HANDLE` | An analyst to show the Follow control on | It is not the session |
+
+The statuses scene also needs one detected, one geolocated and one requested event of the session's on the first page of `/search?type=event&author=<session>`. Get consent from every analyst the variables name, and record with an account whose feed follows only analysts who agreed.
+
+The settings page opens on the Account card, which shows the session's email address. The take jumps past that card before the settings scene starts and fails if the address is in the window while the scene runs.
+
+```bash
+GUIDE_LOGIN_EMAIL=… GUIDE_LOGIN_PASSWORD=… GUIDE_EVENT=… \
+GUIDE_APPROVE_EVENT=… GUIDE_ORGANIZATION=… GUIDE_FOLLOW_HANDLE=… \
+  make promo-guide
+```
+
+Until both takes exist, every scene renders an empty browser window that names the missing file, for its `estimate` in `src/GuideWalkthrough.tsx`, so the composition still previews and renders.
+
+To publish, upload `out/guide-walkthrough.mp4` to the media bucket under `landing/`, the way the landing demo video is hosted, and set the `NEXT_PUBLIC_GUIDE_VIDEO_URL` repo variable to its CloudFront URL. `/guide` renders the player only while that variable is set, and the player loads the file's metadata only until someone presses play.
+
+| To change | Edit |
+|---|---|
+| Scenes, captions, address bar | `SCENES` in `src/GuideWalkthrough.tsx` |
+| Beats, pacing, marks | `record-guide.js` |
+| Window sizes | `DESKTOP` and `PHONE` in `record-guide.js`, `CAPTURES` in `src/GuideWalkthrough.tsx` (keep them equal) |
+
 ## Outputs
 
 Each `make` target stages two files off one render:
@@ -130,6 +168,8 @@ Each `make` target stages two files off one render:
 | `*-readme.mp4` | 1280×720, 30 fps, CRF 26, `+faststart` | a GitHub user-attachment URL for the README |
 
 `make promo` renders `Demo` at `--scale 2` and downscales the master to 2560×1440. The other targets remux the 1080p render without re-encoding.
+
+`make promo-guide` stages a web file in place of the README file: `guide-walkthrough.mp4`, the 1080p render re-encoded at CRF 24 (H.264 high profile, no audio track, `+faststart`) for the player on `/guide`.
 
 ### Swap the README embed
 

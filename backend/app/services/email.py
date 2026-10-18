@@ -351,9 +351,11 @@ def registration_confirmation_email(*, to: str, link: str) -> Email:
                 "address within the next 24 hours.",
                 "Until you follow the link, no account exists: the registration is held "
                 "aside. If you do not confirm, it expires and the address is released.",
+                f"Once you are in, the Getting started page shows you around: {app_url('/guide')}",
             ],
             action=Action("Confirm your address", link),
             note="If you did not register on Vidit, ignore this email.",
+            link_blocks=True,
         ),
     )
 

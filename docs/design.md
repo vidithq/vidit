@@ -350,11 +350,67 @@ Every main-app page uses [`<PageShell>`](../frontend/src/components/ui/PageShell
 
 Pre-data states use `<PageLoading>` / `<PageError>` (one centered shell). Opt-outs: `/` (landing), `/map` (full-screen map), the `(auth)/*` group, and `app/error.tsx`.
 
-The public guides use the same shell, signed in or out: `/guide` ("How Vidit works", the whole loop from reading the map to publishing), `/methodology` ("Building a proof"), and `/import` ("Import your work from X": the conditions once, what a detection carries, then one section per entry). Each is a server component of `PageShell` plus `Card`, for SEO, linked from the About page's Guides section. `/bot` and `/archive` are `redirect()` stubs into `/import#bot` and `/import#archive`, and both stay in `PUBLIC_PREFIXES` so a signed-out reader is forwarded rather than sent to the login page. The bot's X bio points at `/bot` (see [The bot](ingestion.md#the-bot)).
+The public guides use the same shell, signed in or out: `/guide` ("Getting started", the page a new analyst reads first; see [Getting started page](#getting-started-page)), `/methodology` ("Building a proof"), and `/import` ("Import your work from X": the conditions once, what a detection carries, then one section per entry). Each is a server component of `PageShell` plus `Card`, for SEO, linked from the About page's Guides section. `/bot` and `/archive` are `redirect()` stubs into `/import#bot` and `/import#archive`, and both stay in `PUBLIC_PREFIXES` so a signed-out reader is forwarded rather than sent to the login page. The bot's X bio points at `/bot` (see [The bot](ingestion.md#the-bot)).
 
 The `(auth)/*` group composes [`<AuthCard>`](../frontend/src/components/auth/AuthCard.tsx) (a `max-w-sm` centered card). The two single-email pages (`/forgot-password`, `/resend-confirmation`) also share [`<SingleEmailFlow>`](../frontend/src/components/auth/SingleEmailFlow.tsx), whose sent-state copy stays anti-enumeration ("if X is registered…", never confirming the address exists).
 
 The registration form asks for consent to product update emails with a [`<ToggleRow>`](../frontend/src/components/ui/ToggleRow.tsx) in its described shape, directly under the email field and off by default, so a consent is never presumed. A switch, not a checkbox: the app has one boolean control, and the row reads the same here as the matching row in Settings → Notifications. `/unsubscribe` is an `<AuthCard>` too: it withdraws the consent only on a click of its button, so a mail scanner that opens the link withdraws nothing.
+
+`/confirm-registration` consumes the token, signs you in, and then stays on its success card rather than redirecting. The card offers the two next steps as full-width links with `buttonClasses`: **Import your X archive** (primary, `/submit?import=1`) and **Read Getting started** (secondary, `/guide`).
+
+#### Getting started page
+
+```mermaid
+flowchart LR
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`a surface that links the page`"]:::spec
+    l2["`a shared component`"]:::shared
+    l3["`the page`"]:::core
+    l1 ~~~ l2 ~~~ l3
+  end
+
+  email["`**registration_confirmation_email**
+  a paragraph linking /guide`"]:::spec
+  confirm["`**/confirm-registration**
+  Read Getting started`"]:::spec
+  about["`**/about**
+  first entry of Guides`"]:::spec
+  page["`**/guide**
+  PageShell, an intro Card, one Card per section`"]:::core
+  video["`**DemoVideo**
+  only while NEXT_PUBLIC_GUIDE_VIDEO_URL is set`"]:::shared
+  steps["`**NumberedSteps**
+  detection to geolocation`"]:::shared
+  imp["`**/import**
+  #detection, #archive, #paste, #bot`"]:::spec
+
+  email --> page
+  confirm --> page
+  about --> page
+  page --> video
+  page --> steps
+  page -->|"Bringing your work in"| imp
+```
+
+[`/guide`](../frontend/src/app/guide/page.tsx) is a server component of `PageShell` plus `Card`, like the other guides. The intro card holds the walkthrough video, one paragraph, and a list of links to the six sections. Each section is a `Card` whose `h2` carries the anchor:
+
+| Anchor | Heading | What it covers |
+|---|---|---|
+| `#layout` | The layout | Each rail entry, the foot of the rail, and the phone's menu chip and drawer |
+| `#reading-a-geolocation` | Reading a geolocation | The event page: byline, source media, coordinates, source and archived copy, details, proof, versions, approvals |
+| `#statuses` | The three statuses | Geolocated, detected, requested, the closed state, and the steps from detection to geolocation |
+| `#bringing-your-work-in` | Bringing your work in | The archive, a pasted post and @ViditBot, each linked to its `/import` section, and the submit form |
+| `#working-with-others` | Working with others | Approving, asking for an approval, co-geolocators, organizations, following and the feed |
+| `#settings` | Your settings | Profile, account, notification channels per kind, the approval request audience, display |
+
+- **Anchors are contract.** Other pages and messages link to a section by its id, so keep every id when you edit a heading. Each heading takes `max-sm:scroll-mt-16`, so a jump on a phone lands below the menu chip.
+- **The video slot.** The walkthrough is [`DemoVideo`](../frontend/src/components/landing/DemoVideo.tsx), the landing's click-to-play player, in an `aspect-video` frame at the top of the intro card. It loads with `preload="metadata"`, so a phone fetches the first frame and nothing more until you press play. It renders only while `NEXT_PUBLIC_GUIDE_VIDEO_URL` holds a direct video file URL; unset, the intro card opens with its paragraph. The video is hosted like the landing demo (see [`engineering.md`](engineering.md#operating-the-platform-clis)).
+- **Grounded in the product.** The page names only controls that exist, under the labels the product prints. A change to a surface the page describes updates its section in the same PR.
 
 #### Right rail
 
@@ -1155,6 +1211,7 @@ Every email shares one layout, [`services/email_layout.py`](../backend/app/servi
 - **The action button** is a solid `orange-700` fill, the one place the accent fills a control. A mail client cannot render the tinted-on-dark recipe reliably, and `orange-700` keeps a white label above the 4.5:1 contrast ratio. Under the button, the same URL is printed as a link for a client that drops the button.
 - **The footer** links to Settings and the legal notice.
 - **A product update email** names why it arrived and prints the unsubscribe link in its closing note, in both parts.
+- **The registration confirmation email** links the [Getting started page](#getting-started-page) in its last paragraph, under the confirm action's explanation.
 
 ### Buttons
 
