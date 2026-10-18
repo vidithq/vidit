@@ -2,6 +2,12 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Removed
+
+- The admin console no longer has the catalogue feed, event moderation, event delete and maintenance panels; the public feed covers the first, and the other three actions stay available through the API.
+
 ## v0.7.1, 2026-10-18
 
 ### Added

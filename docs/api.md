@@ -219,6 +219,8 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/admin/maintenance/reap-*` | 🛡️ | Cron-style reapers (auth tokens, pending regs) |
 | POST | `/admin/maintenance/send-completion-digests` | 🛡️ | Email each analyst the count of detections awaiting completion |
 
+The admin console has no panel for `PATCH /admin/events/{id}/moderation`, `DELETE /admin/events/{id}` or the `/admin/maintenance/*` routes. Call them with an admin session cookie.
+
 ---
 
 ## Rate limits
