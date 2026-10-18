@@ -181,8 +181,9 @@ jobs:
   frontend-e2e:
     name: Frontend narrow-viewport smoke tests
     runs-on: ubuntu-latest
-    # The suite runs a Next dev server and a browser, so a hang here costs
-    # a runner rather than failing: the whole job is well under 5 minutes.
+    # The suite builds the app, serves it and drives a browser, so a hang
+    # here costs a runner rather than failing: the whole job is well under 5
+    # minutes.
     timeout-minutes: 20
     defaults:
       run:

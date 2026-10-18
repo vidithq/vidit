@@ -26,6 +26,7 @@ export default defineConfig({
   // served from fixtures, so a failure is a layout regression and a retry
   // would only hide a flaky one behind a second green run.
   retries: 0,
+  // A CI runner has 4 vCPUs, shared by the server and the browsers.
   workers: process.env.CI ? 2 : undefined,
   reporter: process.env.CI ? "list" : "line",
   expect: { timeout: 15_000 },
@@ -45,12 +46,12 @@ export default defineConfig({
     use: { ...devices["Desktop Chrome"], viewport: { width, height } },
   })),
   webServer: {
-    // A production build, not `next dev`: the dev server compiles each route
-    // on its first request and renders with development React, which costs
-    // more CPU than the browsers on a CI runner. `proxy.ts` exempts
-    // `localhost` from its host redirect, so `next start` serves this
-    // worktree; the auth wall still runs, so the gated paths are gated
-    // exactly as they are in production.
+    // A production build, not `next dev`. The dev server compiles each route
+    // on its first request and renders development React, so on a CI runner
+    // the build plus a run on `next start` finishes before a run on the dev
+    // server alone. `proxy.ts` exempts `localhost` from its host redirect, so
+    // `next start` serves this worktree; the auth wall still runs, so the
+    // gated paths are gated exactly as they are in production.
     command: "npm run build && npm run start",
     url: APP_ORIGIN,
     reuseExistingServer: !process.env.CI,

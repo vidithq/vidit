@@ -96,8 +96,8 @@ export async function expectNoHorizontalOverflow(page: Page): Promise<void> {
  * down a long form.
  *
  * The scroll and the measure retry together: a block that mounts late (the
- * description editor is a client-only dynamic import, slow on CI's cold dev
- * compile) can push the control back out of view after one scroll.
+ * description editor is a client-only dynamic import, slow to load on a CI
+ * runner) can push the control back out of view after one scroll.
  */
 export async function expectControlInsideViewport(
   page: Page,
