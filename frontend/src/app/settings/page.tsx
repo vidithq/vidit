@@ -6,6 +6,7 @@ import { PASSWORD_MAX_BYTES, PASSWORD_MIN_LENGTH, validatePasswordChange } from 
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { AccountXHandle } from "@/components/settings/AccountXHandle";
+import { InviteAnalystsCard } from "@/components/settings/InviteAnalystsCard";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -355,6 +356,8 @@ export default function SettingsPage() {
           </div>
           <AccountXHandle />
         </Card>
+
+        <InviteAnalystsCard />
 
         <Card>
           <div className="space-y-1">

@@ -4,7 +4,7 @@ from typing import Any
 
 from sqlalchemy import and_, delete, func, or_
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models.admin_event import AdminEvent
 from app.models.approval import EventApproval
@@ -27,6 +27,7 @@ from app.schemas.admin import (
     AdminInviteCodeRead,
     AdminInviteRedeemerRead,
 )
+from app.schemas.user import AuthorRef
 from app.services import geolocator_credit, organizations, versions
 from app.services.auth import bump_token_version, generate_invite_code, invite_code_status
 from app.services.evidence_intake import (
@@ -141,6 +142,7 @@ def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInvi
             email=u.email,
             is_admin=u.is_admin,
             x_handle=u.x_handle,
+            invite_minting_enabled=u.invite_minting_enabled,
             archives_imported=archives.get(u.id, 0),
             bot_detection_count=bot_by_handle.get(u.x_handle, 0) if u.x_handle else 0,
             detected_count=by_status.get((u.id, STATUS_DETECTED), 0),
@@ -163,6 +165,11 @@ def serialize_invite_codes(db: Session, invites: list[InviteCode]) -> list[Admin
             redeemer=redeemers.get(invite.used_by) if invite.used_by else None,
             used_at=invite.used_at,
             x_handle=invite.x_handle,
+            sponsor=(
+                AuthorRef.model_validate(invite.created_by_user)
+                if invite.created_by_user is not None
+                else None
+            ),
         )
         for invite in invites
     ]
@@ -248,7 +255,7 @@ def list_invite_codes(
     """
     query = (
         db.query(InviteCode)
-        .options(joinedload(InviteCode.used_by_user))
+        .options(joinedload(InviteCode.used_by_user), joinedload(InviteCode.created_by_user))
         .order_by(InviteCode.created_at.desc(), InviteCode.id.desc())
     )
     if cursor is not None:
@@ -319,6 +326,7 @@ def search_users(db: Session, *, query: str, limit: int = 20) -> list[User]:
         return []
     return (
         db.query(User)
+        .options(selectinload(User.sponsor))
         .filter(
             User.deleted_at.is_(None),
             or_(
@@ -368,6 +376,33 @@ def set_user_x_handle(
         db.rollback()
         raise XHandleConflictError("X handle already linked to another user") from exc
     db.refresh(user)
+    return user
+
+
+def set_invite_minting(
+    db: Session,
+    *,
+    actor_id: uuid.UUID,
+    user_id: uuid.UUID,
+    enabled: bool,
+) -> User:
+    """Turn minting invite codes from Settings on or off for one analyst, with audit.
+
+    Codes already minted stay valid; revoke them one by one.
+    """
+    user = db.query(User).filter(User.id == user_id).with_for_update().first()
+    if user is None or user.deleted_at is not None:
+        raise UserNotFoundError("User not found")
+    if user.invite_minting_enabled != enabled:
+        user.invite_minting_enabled = enabled
+        log_admin_event(
+            db,
+            actor_id=actor_id,
+            action="invite_minting_enabled" if enabled else "invite_minting_disabled",
+            target={"user_id": str(user.id)},
+        )
+        db.commit()
+        db.refresh(user)
     return user
 
 
@@ -690,7 +725,8 @@ def hard_delete_user(
        the organization's, with ``reviewer_id`` set to NULL. Delete the user. ``auth_tokens``, their collections (and memberships), their
        invitations and their contributor rows on other people's events cascade-drop;
        ``admin_events.actor_id`` and ``invite_codes.used_by`` flip to NULL (migration
-       f1a3b5c7d9e0), so invite-code rows outlive the user as audit trail.
+       f1a3b5c7d9e0), as does ``invite_codes.created_by``, so invite-code rows outlive the
+       user as audit trail.
     5. Commit, then sweep S3 (see :func:`services.storage.sweep_keys`).
     """
     user = db.query(User).filter(User.id == user_id).first()

@@ -1,9 +1,11 @@
 import re
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
+
+from app.schemas.user import AuthorRef
 
 # X handle alphabet (letters, digits, underscore, 15 max), matched after
 # normalization.
@@ -19,6 +21,16 @@ def normalize_x_handle(v: str | None) -> str | None:
     if not X_HANDLE_PATTERN.fullmatch(cleaned):
         raise ValueError("x_handle must match ^[a-z0-9_]{1,15}$ after stripping a leading @")
     return cleaned
+
+
+def _normalize_required_x_handle(v: str) -> str:
+    normalized = normalize_x_handle(v)
+    assert normalized is not None
+    return normalized
+
+
+# A required ``x_handle`` field, normalized by :func:`normalize_x_handle`.
+XHandle = Annotated[str, AfterValidator(_normalize_required_x_handle)]
 
 
 InviteCodeStatus = Literal["active", "exhausted", "revoked", "expired"]
@@ -54,6 +66,7 @@ class AdminInviteRedeemerRead(BaseModel):
     email: str | None
     is_admin: bool
     x_handle: str | None
+    invite_minting_enabled: bool
     # ``done`` archive-import jobs only.
     archives_imported: int
     # Sum of ``bot_mentions.events_created`` for the account's X handle.
@@ -85,6 +98,9 @@ class AdminInviteCodeRead(BaseModel):
     status: InviteCodeStatus
     # The X handle the code binds.
     x_handle: str | None
+    # The analyst who minted the code from Settings; NULL for an admin-minted
+    # code, and once that account is erased.
+    sponsor: AuthorRef | None
     # NULL while unredeemed, and once that account is erased.
     redeemer: AdminInviteRedeemerRead | None
     used_at: datetime | None
@@ -112,7 +128,18 @@ class AdminUserRead(BaseModel):
     email: str | None
     is_admin: bool
     x_handle: str | None
+    invite_minting_enabled: bool
+    # Who minted the code the account was created from (``User.sponsor``).
+    sponsor: AuthorRef | None
     created_at: datetime
+
+
+class UserInviteMintingUpdate(BaseModel):
+    """Body for `PATCH /admin/users/{id}/invite-minting`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
 
 
 class AdminUserDeleteResponse(BaseModel):

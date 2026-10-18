@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -9,6 +9,7 @@ from app.database import Base
 
 class InviteCode(Base):
     __tablename__ = "invite_codes"
+    __table_args__ = (Index("ix_invite_codes_created_by_created_at", "created_by", "created_at"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
@@ -24,6 +25,10 @@ class InviteCode(Base):
     # Fail-soft: if the handle was taken meanwhile, the account is created
     # without the link.
     x_handle: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # The analyst who minted the code from Settings; NULL for an admin-minted code.
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
@@ -31,3 +36,4 @@ class InviteCode(Base):
     )
 
     used_by_user = relationship("User", foreign_keys=[used_by])
+    created_by_user = relationship("User", foreign_keys=[created_by])
