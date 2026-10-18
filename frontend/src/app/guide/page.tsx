@@ -16,7 +16,6 @@ import { Card } from "@/components/ui/Card";
 import { IconTile } from "@/components/ui/IconTile";
 import { NumberedSteps } from "@/components/ui/NumberedSteps";
 import { TEXT_LINK } from "@/components/ui/styles";
-import DemoVideo from "@/components/landing/DemoVideo";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { IMPORT_ENTRIES, IMPORT_GLYPH } from "@/lib/importEntries";
 import type { EventStatus } from "@/types";
@@ -53,7 +52,6 @@ const HEADING = "text-sm font-medium text-neutral-200 max-sm:scroll-mt-16";
 const SUBHEADING = "text-sm font-medium text-neutral-100";
 const BODY = "text-sm text-neutral-300 leading-relaxed";
 const NOTE = "text-[13px] leading-relaxed text-neutral-400";
-const FRAME = "rounded-lg border border-neutral-800 bg-neutral-900";
 const TILES = "grid gap-3 sm:grid-cols-3";
 const TILE_PAIRS = "grid gap-3 sm:grid-cols-2";
 
@@ -114,17 +112,8 @@ const SETTINGS = [
 ];
 
 export default function GuidePage() {
-  const videoUrl = process.env.NEXT_PUBLIC_GUIDE_VIDEO_URL;
   return (
     <PageShell title={TITLE} back backFallback="/about">
-      {videoUrl && (
-        <Card as="section">
-          <div className={`aspect-video w-full overflow-hidden ${FRAME}`}>
-            <DemoVideo src={videoUrl} label="Play the walkthrough video" />
-          </div>
-        </Card>
-      )}
-
       <Section id="layout" lead="The rail on the left edge of every page holds the places you go.">
         <Shot page="guide" id="layout" />
         <h3 className={SUBHEADING}>On a phone</h3>
