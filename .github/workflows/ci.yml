@@ -75,15 +75,27 @@ jobs:
       - name: vulture
         run: uv run vulture
 
-  backend-test:
-    name: Backend tests
-    # Runs in parallel with the lint job (no `needs:`), the norm on public
-    # repos where runner minutes are free: one cycle surfaces lint AND test
-    # failures together, and a green run (the common case) doesn't pay the
-    # lint duration up front. The old lint gate earned its keep when the
-    # serial suite cost several minutes; at ~1.5 min parallelized it only
-    # added latency.
+  # The suite runs as three shards, each on its own runner with its own
+  # Postgres, so the pytest step costs about a third of a single job's.
+  # pytest-split assigns each test to a shard from the per-test durations in
+  # backend/.test_durations, which keeps the shards within seconds of each
+  # other. A test missing from that file counts as the average duration, so a
+  # new test never breaks the split, only shifts the balance;
+  # docs/engineering.md has the refresh command. Inside a shard, worksteal
+  # spreads the slow test_rate_limits.py cases over all four workers, where
+  # loadfile would pin the whole file to one.
+  #
+  # Runs in parallel with the lint job (no `needs:`), the norm on public
+  # repos where runner minutes are free: one cycle surfaces lint AND test
+  # failures together. `fail-fast: false` follows the same rule: a red shard
+  # does not cancel the others, so every failing test reports in one cycle.
+  backend-test-shard:
+    name: Backend test shard ${{ matrix.group }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [1, 2, 3]
     defaults:
       run:
         working-directory: backend
@@ -123,7 +135,27 @@ jobs:
       # template database at alembic head (tests/conftest.py) and clones it
       # per worker, so the migrations run as part of the pytest step.
       - name: pytest
-        run: uv run pytest -v -n 4 --dist loadfile
+        run: >-
+          uv run pytest -v -n 4 --dist worksteal
+          --splits ${{ strategy.job-total }} --group ${{ matrix.group }}
+          --splitting-algorithm least_duration
+
+  # `Backend tests` is a required status check on main, and a matrix job
+  # reports one check per shard under another name. This job carries the
+  # required name: `if: always()` makes it report even when a shard fails
+  # or is cancelled, and it fails unless every shard succeeded.
+  backend-test:
+    name: Backend tests
+    needs: backend-test-shard
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every shard to pass
+        env:
+          SHARDS_RESULT: ${{ needs.backend-test-shard.result }}
+        run: |
+          echo "Backend test shards: $SHARDS_RESULT"
+          test "$SHARDS_RESULT" = success
 
   # The frontend checks run as three parallel jobs, each with its own `npm ci`,
   # and the `frontend` job below reports their combined result. One job running
