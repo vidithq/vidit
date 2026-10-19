@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAdmin } from "@/contexts/AdminContext";
 import { DetectionStatsPanel } from "@/components/admin/DetectionStatsPanel";
 import { ReportsPanel } from "@/components/admin/ReportsPanel";
+import { EventActionsPanel } from "@/components/admin/EventActionsPanel";
 import { OnboardingPanel } from "@/components/admin/OnboardingPanel";
 import { ManageAnalystsPanel } from "@/components/admin/ManageAnalystsPanel";
 import { ProductUpdatesPanel } from "@/components/admin/ProductUpdatesPanel";
@@ -44,6 +45,7 @@ export default function AdminPage() {
       <XHandleRequestsPanel />
       <OrganizationsPanel />
       <ReportsPanel />
+      <EventActionsPanel />
       <ProductUpdatesPanel />
     </PageShell>
   );

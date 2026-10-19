@@ -4,8 +4,8 @@ import type { AdminPurgeDetectedResponse } from "@/lib/admin";
 import { Pill } from "@/components/ui/Pill";
 import { countLabel } from "@/lib/format";
 
-/** Post-action receipt shared by the destructive admin panels (analyst delete, detection purge):
- * a quiet summary box with the hard/soft mode badge. Hard reads danger (red), soft is
+/** Post-action receipt shared by the destructive admin panels (analyst delete, detection purge,
+ * event moderation and delete): a quiet summary box with the hard/soft mode badge. Hard reads danger (red), soft is
  * neutral, as the invite StatusChip. */
 export function ActionReceipt({
   mode,

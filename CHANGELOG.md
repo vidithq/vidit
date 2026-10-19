@@ -4,9 +4,9 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ## Unreleased
 
-### Removed
+### Changed
 
-- The admin console no longer has the catalogue feed, event moderation, event delete and maintenance panels; the public feed covers the first, and the other three actions stay available through the API ([#617](https://github.com/vidithq/vidit/pull/617)).
+- The admin console no longer has the catalogue feed or maintenance panels, and one "Manage an event" panel replaces the event moderation and event delete panels ([#617](https://github.com/vidithq/vidit/pull/617)).
 
 ## v0.7.1, 2026-10-18
 

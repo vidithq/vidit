@@ -33,9 +33,9 @@ import { eventHref } from "@/lib/routes";
  * the title and owner it came back with, since a collection is a name, not a recognisable id.
  *
  * Each open row carries the verdicts its target can take. `hidden` withholds the target from every
- * public read, so it takes the two-click confirm the delete panel uses. `Mark graphic` is
+ * public read, so it takes the two-click confirm the event actions panel uses. `Mark graphic` is
  * event-only (the flag is an event column): a collection row doesn't offer it and the API answers
- * 409 `report_verdict_not_applicable`. Both are recoverable, the event through the moderation
+ * 409 `report_verdict_not_applicable`. Both are recoverable, the event through the event actions
  * panel beside this one and the collection through the admin takedown.
  *
  * A report whose target was since deleted survives the deletion: the row says the target is gone

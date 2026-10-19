@@ -72,6 +72,18 @@ export function setUserInviteMinting(
 }
 
 /** `media_count` is every file swept, source and proof roles alike. */
+export type AdminEventDeleteResponse =
+  components["schemas"]["AdminEventDeleteResponse"];
+
+export function deleteEvent(
+  id: string,
+  options: { hard: boolean }
+): Promise<AdminEventDeleteResponse> {
+  const path = `/admin/events/${id}${options.hard ? "?hard=true" : ""}`;
+  return apiFetch<AdminEventDeleteResponse>(path, { method: "DELETE" });
+}
+
+/** `media_count` is every file swept, source and proof roles alike. */
 export type AdminUserDeleteResponse =
   components["schemas"]["AdminUserDeleteResponse"];
 
@@ -118,6 +130,22 @@ export function resolveReport(
     `/admin/reports/${reportId}/resolve`,
     { method: "POST", body: JSON.stringify({ resolution }) }
   );
+}
+
+/** Moderation state after the PATCH; `hidden_at` also says when the takedown landed. */
+export type AdminEventModeration =
+  components["schemas"]["AdminEventModerationRead"];
+
+/** Move either moderation axis directly, with no report behind it, and the one
+ *  verb that undoes a takedown. Omitting an axis leaves it exactly as it is. */
+export function setEventModeration(
+  id: string,
+  body: components["schemas"]["AdminEventModerationUpdate"]
+): Promise<AdminEventModeration> {
+  return apiFetch<AdminEventModeration>(`/admin/events/${id}/moderation`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
 }
 
 /** Machine-extraction quality signal (admin-only). Definitions live on the
