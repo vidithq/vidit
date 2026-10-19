@@ -15,9 +15,9 @@
     "palette:check": "node scripts/check-palette-coverage.mjs"
   },
   "dependencies": {
-    "@blocknote/core": "^0.55.0",
-    "@blocknote/mantine": "^0.55.0",
-    "@blocknote/react": "^0.55.0",
+    "@blocknote/core": "^0.56.0",
+    "@blocknote/mantine": "^0.56.0",
+    "@blocknote/react": "^0.56.0",
     "@sentry/nextjs": "^11.8.0",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
