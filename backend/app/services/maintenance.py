@@ -1,4 +1,4 @@
-"""On-demand maintenance ops surfaced via the admin Maintenance panel.
+"""On-demand maintenance ops exposed through the `/admin/maintenance/*` routes.
 
 Run by an admin click, not a schedule: the backlogs are cheap and not
 latency-sensitive.

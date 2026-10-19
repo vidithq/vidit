@@ -2,6 +2,12 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Changed
+
+- The admin console no longer has the catalogue feed or maintenance panels, and one "Manage an event" panel replaces the event moderation and event delete panels ([#617](https://github.com/vidithq/vidit/pull/617)).
+
 ## v0.7.1, 2026-10-18
 
 ### Added

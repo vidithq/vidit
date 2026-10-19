@@ -6,12 +6,9 @@ import { useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdmin } from "@/contexts/AdminContext";
 import { DetectionStatsPanel } from "@/components/admin/DetectionStatsPanel";
-import { EventDeletePanel } from "@/components/admin/EventDeletePanel";
-import { EventModerationPanel } from "@/components/admin/EventModerationPanel";
-import { CatalogueFeedPanel } from "@/components/admin/CatalogueFeedPanel";
 import { ReportsPanel } from "@/components/admin/ReportsPanel";
+import { EventActionsPanel } from "@/components/admin/EventActionsPanel";
 import { OnboardingPanel } from "@/components/admin/OnboardingPanel";
-import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
 import { ManageAnalystsPanel } from "@/components/admin/ManageAnalystsPanel";
 import { ProductUpdatesPanel } from "@/components/admin/ProductUpdatesPanel";
 import { XHandleRequestsPanel } from "@/components/admin/XHandleRequestsPanel";
@@ -44,15 +41,12 @@ export default function AdminPage() {
     <PageShell title="Admin">
       <OnboardingPanel />
       <DetectionStatsPanel />
-      <CatalogueFeedPanel />
       <ManageAnalystsPanel />
       <XHandleRequestsPanel />
       <OrganizationsPanel />
       <ReportsPanel />
-      <EventModerationPanel />
-      <EventDeletePanel />
+      <EventActionsPanel />
       <ProductUpdatesPanel />
-      <MaintenancePanel />
     </PageShell>
   );
 }
