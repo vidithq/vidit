@@ -2,11 +2,15 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## Unreleased
+## v0.7.2, 2026-10-19
 
 ### Changed
 
 - The admin console no longer has the catalogue feed or maintenance panels, and one "Manage an event" panel replaces the event moderation and event delete panels ([#617](https://github.com/vidithq/vidit/pull/617)).
+
+### Fixed
+
+- The archive import page asks you to confirm before you close or reload it while your archive is still being prepared or uploaded, since leaving then loses the upload ([#618](https://github.com/vidithq/vidit/pull/618)).
 
 ## v0.7.1, 2026-10-18
 

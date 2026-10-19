@@ -14,6 +14,7 @@ import {
   type NumberedStep,
 } from "@/components/ui/NumberedSteps";
 import { ProgressSteps } from "@/components/ui/ProgressSteps";
+import { useLeaveGuard } from "@/hooks/useLeaveGuard";
 import { useMutation } from "@/hooks/useMutation";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { ApiError } from "@/lib/api";
@@ -186,6 +187,10 @@ export function ImportArchivePanel({ username }: { username: string }) {
       onError: importErrorMessage,
     }
   );
+  // Leaving before the enqueue returns drops the archive with no job behind it; once
+  // queued, the worker runs and emails the outcome.
+  const uploading = loading && (phase === "strip" || phase === "upload");
+  useLeaveGuard(uploading);
 
   if (pollLost) {
     return (
@@ -370,10 +375,11 @@ export function ImportArchivePanel({ username }: { username: string }) {
               active={IMPORT_PHASE_INDEX[phase]}
               failed={!loading && error !== null}
             />
-            {/* Only once enqueued: closing during strip or upload aborts. */}
-            {loading && (phase === "queued" || phase === "scanning") && (
+            {loading && phase !== "done" && (
               <p className="text-xs text-neutral-500">
-                You can close this page, we email you when it&apos;s done.
+                {uploading
+                  ? "Keep this page open until the upload finishes."
+                  : "You can close this page, we email you when it's done."}
               </p>
             )}
             {/* Next step, in place (no auto-redirect): retry after partial
