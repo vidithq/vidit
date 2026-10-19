@@ -388,7 +388,7 @@ def confirm_pending_registration(db: Session, raw_token: str) -> User:
 
 
 def reap_pending_registrations(db: Session) -> dict[str, int]:
-    """Bulk-drop expired pending rows. Exposed via the admin Maintenance panel."""
+    """Bulk-drop expired pending rows. Exposed via `POST /admin/maintenance/reap-pending-registrations`."""
     deleted = _delete_expired(db)
     db.commit()
     return {"pending_registrations_deleted": deleted}

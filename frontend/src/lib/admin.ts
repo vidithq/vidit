@@ -155,30 +155,3 @@ export type DetectionStats = components["schemas"]["AdminDetectionStatsRead"];
 export function getDetectionStats(): Promise<DetectionStats> {
   return apiFetch<DetectionStats>("/admin/detection-stats");
 }
-
-/** One shape for every maintenance action; the UI renders only the keys present
- *  in the response. */
-export type MaintenanceResponse =
-  components["schemas"]["AdminMaintenanceResponse"];
-
-export function reapAuthTokens(): Promise<MaintenanceResponse> {
-  return apiFetch<MaintenanceResponse>("/admin/maintenance/reap-auth-tokens", {
-    method: "POST",
-  });
-}
-
-export function reapPendingRegistrations(): Promise<MaintenanceResponse> {
-  return apiFetch<MaintenanceResponse>(
-    "/admin/maintenance/reap-pending-registrations",
-    { method: "POST" }
-  );
-}
-
-/** Email every analyst holding unpublished detections: one message with
- *  the count and a link to their own Detections queue. */
-export function sendCompletionDigests(): Promise<MaintenanceResponse> {
-  return apiFetch<MaintenanceResponse>(
-    "/admin/maintenance/send-completion-digests",
-    { method: "POST" }
-  );
-}
