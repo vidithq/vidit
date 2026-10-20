@@ -7,20 +7,28 @@ Setup, PR flow, and conventions live in [`README.md`](README.md) and [`CONTRIBUT
 | Content | Home | Not allowed in |
 |---|---|---|
 | Vision (problem, persona, principles) | `README.md` | `docs/`, source code |
-| Roadmap / version milestones / work tracker / priorities | [GitHub Project](https://github.com/orgs/vidithq/projects/1) (issues in `vidithq/vidit`; one issue of type Epic per Version value, with the version's open issues as sub-issues, carries that version's title, summary and design) | `docs/`, source code |
-| Reference (API, schema, ops, design) | `docs/*.md` | GitHub Project |
-| Release history | `CHANGELOG.md` | `docs/`, GitHub Project |
+| Roadmap / work tracker / priorities | [Issues in `vidithq/vidit`](https://github.com/vidithq/vidit/issues), grouped under epics (see [Issues and epics](#issues-and-epics)) | `docs/`, source code |
+| Reference (API, schema, ops, design) | `docs/*.md` | issues |
+| Release history | `CHANGELOG.md` | `docs/`, issues |
 | Contribution flow + doc-sync rule | `CONTRIBUTING.md` | scattered |
 | Local-dev setup | `README.md` | `docs/` |
 | AI / agent rules (this file) | `AGENTS.md` | scattered |
 
-CI enforces a floor: every PR to `main` must touch `docs/`. See the `docs-pairing` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Granular pairings (routers ↔ `api.md`, version milestones only in the GitHub Project, etc.) are conventions the writing rules below + human review own; the check stays deliberately blunt so it ages well.
+CI enforces a floor: every PR to `main` must touch `docs/`. See the `docs-pairing` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Granular pairings (routers ↔ `api.md`, version milestones only in the tracker, etc.) are conventions the writing rules below + human review own; the check stays deliberately blunt so it ages well.
+
+### Issues and epics
+
+- Every issue has a type: Feature, Debt, Task, Bug or Epic.
+- An epic is a parent issue for one finishable outcome, with the issues that deliver it as sub-issues. Its body opens with the condition that closes it.
+- Open an epic only when at least three issues make one finishable outcome. A Debt issue never belongs to an epic. Every other issue stays standalone.
+- A private maintainer board schedules the issues with three fields: Status, Version (when it ships: v0.8, v0.9, v1.0 or Unscheduled) and Area (a category such as Moderation, Accounts, Ingestion or Map). Versions say when; epics say what.
+- Operations of the vidit.app instance are tracked separately, outside this repo.
 
 ## Doc writing rules
 
 1. **One fact, one home.** If it lives elsewhere, link; don't restate.
-2. **No tracker content in reference docs or code.** No `(current)`, `Status:`, version milestones (`v0.4`, `v0.5`…), or their names (e.g. *Open beta*) in `docs/*.md` or source files. Roadmap tracking lives in the GitHub Project, `CHANGELOG.md`, and contributor-facing meta (README, AGENTS, CONTRIBUTING, issue templates). The reader-facing roadmap on the public landing is the one sanctioned projection, hand-kept from the version epics (see [hand-kept mirrors](docs/engineering.md#hand-kept-mirrors)).
-3. **No hedge prose in reference docs.** "We should consider…", "may want to…", "it's important to…": make it a decision or an issue in the GitHub Project.
+2. **No tracker content in reference docs or code.** No `(current)`, `Status:`, version milestones (`v0.4`, `v0.5`…), or their names (e.g. *Open beta*) in `docs/*.md` or source files. Roadmap tracking lives in the issues, `CHANGELOG.md`, and contributor-facing meta (README, AGENTS, CONTRIBUTING, issue templates). The reader-facing roadmap on the public landing is the one sanctioned projection, hand-kept from the open epics (see [hand-kept mirrors](docs/engineering.md#hand-kept-mirrors)).
+3. **No hedge prose in reference docs.** "We should consider…", "may want to…", "it's important to…": make it a decision or an issue.
 4. **No "for context" / "for clarity" intros.** State the thing.
 5. **Adjectives → consequences or delete.** "Critical" → "fails the deploy if missing". "Important" → delete. "Complex" → describe or drop.
 6. **If a sentence can be deleted with no information loss, delete it.**

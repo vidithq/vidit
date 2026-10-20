@@ -2,6 +2,12 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Changed
+
+- The landing roadmap lists the planned outcomes with an In progress or Planned status instead of versions and links to the changelog for what shipped, and the contributor docs point to the issues and their epics for planning ([#PRNUM](https://github.com/vidithq/vidit/pull/PRNUM)).
+
 ## v0.7.2, 2026-10-19
 
 ### Changed
