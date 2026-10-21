@@ -8,8 +8,8 @@ Contributions that exist only to enable a competing hosted SaaS on top of this c
 
 ## Before you start
 
-- **Read the [vision](README.md#vision)** for the *why*, the issues of type Epic in the [GitHub Project](https://github.com/orgs/vidithq/projects/1) for the milestone ladder (one per Version value), and the [future considerations epic](https://github.com/vidithq/vidit/issues/535) for what's deferred.
-- **Browse the [GitHub Project](https://github.com/orgs/vidithq/projects/1)** to see open work. Each item is an issue in `vidithq/vidit` with a type (Feature, Debt, Task, Bug) and the project fields Status, Version (v0.6 to v1.0, or Unscheduled), and Area. Shipped items move to [`CHANGELOG.md`](CHANGELOG.md).
+- **Read the [vision](README.md#vision)** for the *why*, the [open epics](https://github.com/vidithq/vidit/issues?q=is%3Aissue%20state%3Aopen%20type%3AEpic) for the outcomes planned next, and the [future considerations epic](https://github.com/vidithq/vidit/issues/535) for what's deferred.
+- **Browse the [issues](https://github.com/vidithq/vidit/issues)** to see open work. Each issue has a type (Feature, Debt, Task, Bug, Epic). An epic is a parent issue for one finishable outcome, with its issues as sub-issues; [`AGENTS.md`](AGENTS.md#issues-and-epics) holds the rules. Shipped work moves to [`CHANGELOG.md`](CHANGELOG.md). Operations of the vidit.app instance are tracked separately.
 - **Read [`AGENTS.md`](AGENTS.md)** for project conventions.
 
 For substantial work, file an issue first.
@@ -85,9 +85,9 @@ An amend + force-push to fix a missing sign-off often re-triggers only the DCO c
 
 ## Doc-sync rule
 
-- **New work?** Open an issue in `vidithq/vidit`, set its type (Feature, Debt, Task, Bug), and add it to the [GitHub Project](https://github.com/orgs/vidithq/projects/1) with Version and Area set. Within a version, the item's position in the project view sets its order.
+- **New work?** Open an issue in `vidithq/vidit` and set its type (Feature, Debt, Task, Bug). When it belongs to an [open epic](https://github.com/vidithq/vidit/issues?q=is%3Aissue%20state%3Aopen%20type%3AEpic), add it to that epic as a sub-issue. Debt goes under [#636](https://github.com/vidithq/vidit/issues/636) and bugs under [#637](https://github.com/vidithq/vidit/issues/637). Without triage access, name the type and the epic in the issue body. The maintainer schedules it.
 - **Item shipped?** Put `Closes #N` in the PR description so the merge closes the issue. Add an entry to [`CHANGELOG.md`](CHANGELOG.md) under `## Unreleased`, in its Keep a Changelog group: one line that states the outcome for a user, operator or contributor in plain words, followed by the PR link in parentheses. Leave out file paths and mechanism details; the PR carries them. CI rejects a line over 300 characters.
-- **Item descoped?** Set its Version to Unscheduled. Rejected → close the issue as not planned.
+- **Item descoped?** Comment on its issue with the reason. The maintainer reschedules it or closes it as not planned.
 
 Touched a published surface → sync the matching doc. The checklist in [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md) maps each surface to its doc.
 

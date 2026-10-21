@@ -15,6 +15,6 @@ Technical reference for [Vidit](https://vidit.app), an OSINT/GEOINT geolocation 
 
 ## Elsewhere
 
-- [Roadmap and work tracker](https://github.com/orgs/vidithq/projects/1): one epic issue per version, plus current work
+- [Roadmap and work tracker](https://github.com/vidithq/vidit/issues): open issues, grouped under [epics](https://github.com/vidithq/vidit/issues?q=is%3Aissue%20state%3Aopen%20type%3AEpic) that each name one outcome
 - [CHANGELOG](https://github.com/vidithq/vidit/blob/main/CHANGELOG.md)
 - [Contributing](https://github.com/vidithq/vidit/blob/main/CONTRIBUTING.md)

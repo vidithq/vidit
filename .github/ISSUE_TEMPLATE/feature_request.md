@@ -18,9 +18,9 @@ How would you solve it? Sketch the UI / API change, not the implementation. If a
 
 What else did you weigh, and why did you rule it out?
 
-## Milestone fit
+## Epic fit
 
-Which roadmap milestone fits, if any? The [GitHub Project](https://github.com/orgs/vidithq/projects/1) holds one issue of type Epic per version and the open work by version, including the Unscheduled items. The [future considerations epic](https://github.com/vidithq/vidit/issues/535) lists deferred items with a documented rationale and revisit trigger: check that your proposal is not already covered there.
+Which open epic does it belong to, if any? Each [open epic](https://github.com/vidithq/vidit/issues?q=is%3Aissue%20state%3Aopen%20type%3AEpic) names one outcome and lists the issues that deliver it. The [future considerations epic](https://github.com/vidithq/vidit/issues/535) lists deferred items with a documented rationale and revisit trigger: check that your proposal is not already covered there.
 
 ## Anything else
 

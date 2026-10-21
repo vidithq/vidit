@@ -84,7 +84,7 @@ https://github.com/user-attachments/assets/f314673c-d357-4468-af6d-2299c831c5fc
 
 A FastAPI + PostgreSQL/PostGIS backend and a Next.js frontend. [docs/engineering.md](docs/engineering.md) covers the tech stack, the repository layout and the CI jobs.
 
-The technical reference lives in [`docs/`](docs/) (start at [docs/index.md](docs/index.md)) and is hosted at **[docs.vidit.app](https://docs.vidit.app)**. The roadmap lives in the [GitHub Project](https://github.com/orgs/vidithq/projects/1): each version has one issue of type Epic with its title, summary and design, and its open issues as sub-issues. Release history lives in [CHANGELOG.md](CHANGELOG.md).
+The technical reference lives in [`docs/`](docs/) (start at [docs/index.md](docs/index.md)) and is hosted at **[docs.vidit.app](https://docs.vidit.app)**. The roadmap lives in the [issues](https://github.com/vidithq/vidit/issues): each [epic](https://github.com/vidithq/vidit/issues?q=is%3Aissue%20state%3Aopen%20type%3AEpic) is a parent issue for one finishable outcome, with the issues that deliver it as sub-issues. Release history lives in [CHANGELOG.md](CHANGELOG.md).
 
 ---
 

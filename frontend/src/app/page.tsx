@@ -107,44 +107,57 @@ const FEATURE_GROUPS: {
 ];
 
 const GITHUB_URL = "https://github.com/vidithq/vidit";
+const CHANGELOG_URL = `${GITHUB_URL}/blob/main/CHANGELOG.md`;
 
-// Reader-facing roadmap. Mirrors the issues of type Epic in the GitHub Project
-// (https://github.com/orgs/vidithq/projects/1); change both.
-// Current + upcoming only; shipped history lives in the CHANGELOG. `state`
-// drives the treatment: the current version carries the accent card and pill.
-// Optional `link` surfaces an in-card link to a concrete artifact.
-type RoadmapState = "current" | "upcoming";
+// Reader-facing roadmap. Mirrors the open epics of vidithq/vidit, Future
+// considerations aside; change both. Shipped work lives in the CHANGELOG.
+type RoadmapStatus = "in-progress" | "planned";
 
-const ROADMAP: {
-  version: string;
-  state: RoadmapState;
-  title: string;
-  body: string;
-  link?: { href: string; label: string };
-}[] = [
+const ROADMAP_STATUS_LABEL: Record<RoadmapStatus, string> = {
+  "in-progress": "In progress",
+  planned: "Planned",
+};
+
+const ROADMAP: { status: RoadmapStatus; title: string; body: string }[] = [
   {
-    version: "v0.8",
-    state: "current",
-    title: "Cleanup & restructuring",
-    body: "One release of consolidation before moderation and the public launch: duplicated sources of truth merge, the sign-in layer and file storage are restructured, and tests, docs and backups harden. No new feature for analysts.",
+    status: "in-progress",
+    title: "Sites",
+    body: "A new kind of record for permanent locations such as military installations, each marked active or former, next to the dated events.",
   },
   {
-    version: "v0.9",
-    state: "upcoming",
+    status: "planned",
     title: "Moderation",
-    body: "Reports filed in the product feed an admin moderation queue. Uploads are scanned for graphic content and child sexual abuse material, metadata is stripped, and a public content policy spells out the rules.",
+    body: "Readers report events and profiles to a moderation queue, every upload is scanned and stripped of metadata, and a public content policy sets the rules.",
   },
   {
-    version: "v0.10",
-    state: "upcoming",
-    title: "Search & discovery",
-    body: "A geolocation can cover several subject points. Search reaches proof text and source URLs, and the platform surfaces related events and near-duplicates.",
+    status: "planned",
+    title: "Readers and contributors",
+    body: "Anyone can sign up as a reader to follow analysts. Publishing belongs to contributors, who earn the status through a verified X handle or another contributor's sponsorship.",
   },
   {
-    version: "v1.0",
-    state: "upcoming",
-    title: "Public v1",
-    body: "Anyone can create a reader account to follow analysts and get notifications. Publishing stays with contributors, who earn the status through a verified X handle reviewed by an admin or through sponsorship by another contributor. Anti-abuse, hardened sign-in and a legal foundation back the launch, and the beta framing is removed.",
+    status: "planned",
+    title: "Safer sign-up and sign-in",
+    body: "Sign-up resists automated abuse, and sign-in locks an account after repeated failures and refuses known-breached passwords.",
+  },
+  {
+    status: "planned",
+    title: "Every source archived",
+    body: "Every source link of a geolocation, secondary links included, gets an archived copy, and you see how many of your links are archived.",
+  },
+  {
+    status: "planned",
+    title: "Search beyond titles",
+    body: "Search reaches proof text and source URLs, an event can mark several points, and related events and near-duplicate media show next to an event.",
+  },
+  {
+    status: "planned",
+    title: "A map ready for everyone",
+    body: "The map stays fast for a large audience, keeps its view and filters in the link you share, and says so when no event matches.",
+  },
+  {
+    status: "planned",
+    title: "Backup and recovery",
+    body: "Every backup passes a restore check, a missed backup raises an alert, and the database can be restored to any point in time.",
   },
 ];
 
@@ -238,20 +251,20 @@ export default function LandingPage() {
             </h2>
           </div>
           <ol className="mt-6 space-y-3">
-            {ROADMAP.map(({ version, state, title, body, link }) => (
+            {ROADMAP.map(({ status, title, body }) => (
               <li
                 key={title}
                 className={`flex gap-4 rounded-lg border p-4 ${
-                  state === "current"
+                  status === "in-progress"
                     ? "border-orange-500/40 bg-orange-500/4"
                     : "border-neutral-800 bg-neutral-900"
                 }`}
               >
                 <Pill
-                  tone={state === "current" ? "accent" : "neutral"}
-                  className="self-start font-mono"
+                  tone={status === "in-progress" ? "accent" : "neutral"}
+                  className="self-start whitespace-nowrap"
                 >
-                  {version}
+                  {ROADMAP_STATUS_LABEL[status]}
                 </Pill>
                 <div>
                   <h3 className="text-sm font-medium text-neutral-100">
@@ -260,18 +273,17 @@ export default function LandingPage() {
                   <p className="mt-1 text-[13px] leading-relaxed text-neutral-400">
                     {body}
                   </p>
-                  {link && (
-                    <OutboundLink
-                      href={link.href}
-                      className={`mt-2 inline-block text-[13px] ${TEXT_LINK}`}
-                    >
-                      {link.label} →
-                    </OutboundLink>
-                  )}
                 </div>
               </li>
             ))}
           </ol>
+          <p className="mt-4 text-center text-[13px] text-neutral-400">
+            What already shipped is in the{" "}
+            <OutboundLink href={CHANGELOG_URL} className={TEXT_LINK}>
+              changelog
+            </OutboundLink>
+            .
+          </p>
         </section>
       </PageFrame>
     </main>
