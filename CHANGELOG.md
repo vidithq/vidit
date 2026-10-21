@@ -12,6 +12,10 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 - The promo video and guide screenshot tooling is maintained separately and no longer ships in this repository; the guide screenshots stay ([#648](https://github.com/vidithq/vidit/pull/648)).
 
+### Security
+
+- The frontend test tooling runs on Vite 8.3.5, which fixes advisories that let a page or a crafted path read files or run commands through a running Vite dev server (PULL).
+
 ## v0.7.3, 2026-10-21
 
 ### Security
