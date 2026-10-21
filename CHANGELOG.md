@@ -7,6 +7,11 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 ### Changed
 
 - The landing roadmap lists the planned outcomes with an In progress or Planned status instead of versions and links to the changelog for what shipped, and the contributor docs point to the issues and their epics for planning ([#635](https://github.com/vidithq/vidit/pull/635)).
+## v0.7.3, 2026-10-21
+
+### Security
+
+- The backend no longer trusts the emSign ECC Root CA - G3, whose eight eMudhra intermediates were compromised in October 2026, so a certificate forged with those keys cannot intercept its calls to email, storage, X or Sentry ([#647](https://github.com/vidithq/vidit/pull/647)).
 
 ## v0.7.2, 2026-10-19
 
