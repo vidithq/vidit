@@ -3,8 +3,8 @@ import Image from "next/image";
 import { NumberedSteps } from "@/components/ui/NumberedSteps";
 import SHOTS from "./shots.json";
 
-// The image and its legend both come from `shots.json`; `video/shoot-guide.js` writes each page's shots to
-// `public/<page>/`.
+// The image and its legend both come from `shots.json`; the screenshot tooling, maintained separately,
+// writes each page's shots to `public/<page>/`.
 
 type Shots = typeof SHOTS;
 type ShotRef = { [P in keyof Shots]: { page: P; id: keyof Shots[P] } }[keyof Shots];
