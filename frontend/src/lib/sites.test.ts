@@ -7,6 +7,7 @@ import {
   observationBody,
   observationMissing,
   previousObservation,
+  shownAtEveryZoom,
   siteSuggestionsPath,
   sitesAsOf,
   sitesPath,
@@ -68,6 +69,21 @@ describe("labels", () => {
     expect(zoneEmphasis(link("destruction"))).toBe("destruction");
     expect(zoneEmphasis(link("other"))).toBeNull();
     expect(zoneEmphasis({ latest_link_effect: null })).toBeNull();
+  });
+});
+
+describe("shownAtEveryZoom", () => {
+  const site = (is_corroborated: boolean) => ({ is_corroborated, owner_id: "owner" });
+
+  it("shows a corroborated site to everyone", () => {
+    expect(shownAtEveryZoom(site(true), null)).toBe(true);
+    expect(shownAtEveryZoom(site(true), "other")).toBe(true);
+  });
+
+  it("shows an uncorroborated site at every zoom to its owner only", () => {
+    expect(shownAtEveryZoom(site(false), "owner")).toBe(true);
+    expect(shownAtEveryZoom(site(false), "other")).toBe(false);
+    expect(shownAtEveryZoom(site(false), null)).toBe(false);
   });
 });
 

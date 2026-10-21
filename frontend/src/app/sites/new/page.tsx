@@ -153,7 +153,8 @@ export default function NewSitePage() {
       </Card>
       <p className="text-xs text-neutral-500">
         You become the owner of the site. Until another analyst links an event to it, the site shows
-        as not corroborated and the map draws it from zoom 10 only, faded.
+        as not corroborated and the map draws it faded: at every zoom for you, from zoom 10 only for
+        everyone else.
       </p>
     </div>
   );

@@ -10,7 +10,7 @@ import { SITE_MAP_COLORS } from "@/lib/palette";
 import type { Zone } from "@/lib/sites";
 import { CLUSTER_LAYER, TAP_TARGET_LAYERS } from "./layers";
 
-/** From this zoom the map draws zones; below it a corroborated site is one square. */
+/** From this zoom the map draws zones; below it a site shown at every zoom is one square. */
 export const ZONE_MIN_ZOOM = 10;
 
 const FILL = "sites-zone-fill";
@@ -31,6 +31,8 @@ export interface MapSite {
   zone: Zone;
   centroid: { lat: number; lng: number };
   corroborated: boolean;
+  /** Drawn as a square below `zoneMinZoom`; defaults to `corroborated`. */
+  everyZoom?: boolean;
   emphasis?: "damage" | "destruction" | null;
 }
 
@@ -86,8 +88,8 @@ function squareIcon(color: string) {
 
 /**
  * The sites layer of a map, mounted as `<Map>` children: zones from `zoneMinZoom` (faded and dashed
- * for a site nobody but its owner corroborates), one square per corroborated site below it, names
- * beside both. Every layer sits under the event pins.
+ * for a site nobody but its owner corroborates), one square per `everyZoom` site below it (faded
+ * when uncorroborated), names beside both. Every layer sits under the event pins.
  */
 export function SiteLayers({
   sites,
@@ -176,6 +178,7 @@ export function SiteLayers({
           id: site.id,
           name: site.name,
           corroborated: site.corroborated ? 1 : 0,
+          everyZoom: (site.everyZoom ?? site.corroborated) ? 1 : 0,
           selected: site.id === selectedId ? 1 : 0,
         },
         geometry: { type: "Point", coordinates: [site.centroid.lng, site.centroid.lat] },
@@ -193,6 +196,7 @@ export function SiteLayers({
     colors.destruction,
     colors.zone,
   ];
+  const faded: ExpressionSpecification = ["case", ["==", ["get", "corroborated"], 1], 1, 0.6];
 
   return (
     <>
@@ -242,7 +246,7 @@ export function SiteLayers({
             id={MARKER}
             type="symbol"
             maxzoom={zoneMinZoom}
-            filter={["==", ["get", "corroborated"], 1]}
+            filter={["==", ["get", "everyZoom"], 1]}
             layout={{
               "icon-image": icon,
               "icon-allow-overlap": true,
@@ -255,9 +259,11 @@ export function SiteLayers({
               "text-optional": true,
             }}
             paint={{
+              "icon-opacity": faded,
               "text-color": colors.zone,
               "text-halo-color": colors.halo,
               "text-halo-width": 1.2,
+              "text-opacity": faded,
             }}
           />
         )}
@@ -274,7 +280,7 @@ export function SiteLayers({
             "text-color": colors.zone,
             "text-halo-color": colors.halo,
             "text-halo-width": 1.2,
-            "text-opacity": ["case", ["==", ["get", "corroborated"], 1], 1, 0.6],
+            "text-opacity": faded,
           }}
         />
       </Source>

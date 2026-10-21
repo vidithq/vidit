@@ -4421,7 +4421,8 @@ export interface components {
         };
         /**
          * LatestLinkEffect
-         * @description The effect of the most recent visible linked event, by ``event_date``.
+         * @description The effect of the most recent visible linked event, by ``event_date``, on or before the
+         *     read's date.
          */
         LatestLinkEffect: {
             /**
@@ -5368,6 +5369,7 @@ export interface components {
             imagery_provider: "google_earth" | "sentinel_2" | "landsat" | "other";
             /** Is Corroborated */
             is_corroborated: boolean;
+            latest_link_effect: components["schemas"]["LatestLinkEffect"] | null;
             /** Name */
             name: string;
             /**
@@ -5380,6 +5382,11 @@ export interface components {
              * Format: date
              */
             observed_on: string;
+            /**
+             * Owner Id
+             * Format: uuid
+             */
+            owner_id: string;
             /**
              * Site Type
              * @enum {string}

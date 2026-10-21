@@ -177,9 +177,20 @@ export function previousObservation(
   return index > 0 ? observations[index - 1] : null;
 }
 
+/** Whether the main map draws a site below the zone zoom: a corroborated site for everyone, an
+ *  uncorroborated one for its owner only. */
+export function shownAtEveryZoom(
+  site: Pick<SiteListItem, "is_corroborated" | "owner_id">,
+  viewerId: string | null,
+): boolean {
+  return site.is_corroborated || (viewerId !== null && site.owner_id === viewerId);
+}
+
 /** The zone effect a site's map paints: damage or destruction from the latest linked event;
  *  anything else stays neutral. */
-export function zoneEmphasis(site: Pick<Site, "latest_link_effect">): "damage" | "destruction" | null {
+export function zoneEmphasis(
+  site: Pick<SiteListItem, "latest_link_effect">,
+): "damage" | "destruction" | null {
   const effect = site.latest_link_effect?.effect;
   return effect === "damage" || effect === "destruction" ? effect : null;
 }

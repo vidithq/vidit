@@ -21,7 +21,17 @@ import { useMapState } from "@/contexts/MapStateContext";
 import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import { toMapSite } from "@/components/sites/useSitesInView";
-import { sitePath, sitesAsOf, sitesPath, todayUtc, type Site, type SiteListItem } from "@/lib/sites";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  shownAtEveryZoom,
+  sitePath,
+  sitesAsOf,
+  sitesPath,
+  todayUtc,
+  zoneEmphasis,
+  type Site,
+  type SiteListItem,
+} from "@/lib/sites";
 
 const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
 const SiteLayers = dynamic(
@@ -125,7 +135,18 @@ export default function HomePage() {
     VIEWPORT_DEBOUNCE_MS,
   );
 
-  const mapSites = useMemo(() => (sitesShown ? sites.map(toMapSite) : []), [sites, sitesShown]);
+  const viewerId = useAuth().user?.id ?? null;
+  const mapSites = useMemo(
+    () =>
+      sitesShown
+        ? sites.map((site) => ({
+            ...toMapSite(site),
+            everyZoom: shownAtEveryZoom(site, viewerId),
+            emphasis: zoneEmphasis(site),
+          }))
+        : [],
+    [sites, sitesShown, viewerId],
+  );
 
   // One panel at a time: a pin closes the site panel, a site closes the event panel.
   const selectEvent = useCallback(

@@ -57,7 +57,7 @@ share_of_existing_zone  # schemas/site.py SiteOverlapRead
 inside_zone  # schemas/site.py SiteLinkedEventRead
 measured_observation_id  # schemas/site.py SiteLinkedEventRead
 observation_effect  # schemas/site.py SiteState
-latest_link_effect  # schemas/site.py SiteRead
+latest_link_effect  # schemas/site.py SiteState
 observations  # schemas/site.py SiteRead
 linked_events  # schemas/site.py SiteRead
 overlapping_sites  # schemas/site.py SiteCreatedRead

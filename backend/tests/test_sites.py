@@ -516,3 +516,49 @@ def test_a_withheld_site_reads_only_for_an_admin(db, users):
     assert site["id"] not in {row["id"] for row in listed}
     login_as(client, admin)
     assert client.get(f"{SITES}/{site['id']}").status_code == 200
+
+
+def test_map_read_carries_the_owner_and_the_latest_link_effect_on_as_of(db, users):
+    owner, analyst = users(), users()
+    lng = LNG + 0.6
+    site = _create_site(owner, _square(0.01, lng=lng), captured_on="2025-01-01")
+
+    def on(as_of: str) -> dict:
+        client.cookies.clear()
+        response = client.get(SITES, params={"bbox": BBOX, "as_of": as_of})
+        assert response.status_code == 200
+        return next(row for row in response.json() if row["id"] == site["id"])
+
+    row = on("2025-12-31")
+    assert row["owner_id"] == str(owner.id)
+    assert row["latest_link_effect"] is None
+
+    damage = _event(db, analyst, lng=lng, event_date=date(2025, 3, 1))
+    assert _link(analyst, damage, site["id"], "damage").status_code == 200
+    later = _event(db, analyst, lng=lng, event_date=date(2025, 9, 1))
+    assert _link(analyst, later, site["id"], "destruction").status_code == 200
+    closed = _event(db, analyst, lng=lng, event_date=date(2025, 10, 1))
+    assert _link(analyst, closed, site["id"], "other").status_code == 200
+    unlinked = _event(db, analyst, lng=lng, event_date=date(2025, 11, 1))
+    assert _link(analyst, unlinked, site["id"], "other").status_code == 200
+    client.delete(
+        f"/api/v1/events/{unlinked.id}/site-links/{site['id']}", headers=login_as(client, analyst)
+    )
+    closed.status = STATUS_CLOSED
+    closed.closed_at = datetime.now(UTC)
+    closed.before_closed_status = STATUS_GEOLOCATED
+    db.commit()
+
+    assert on("2025-12-31")["latest_link_effect"] == {
+        "effect": "destruction",
+        "event_date": "2025-09-01",
+        "event_id": str(later.id),
+    }
+    # A link whose event is dated after as_of stays out of the map read.
+    assert on("2025-06-01")["latest_link_effect"] == {
+        "effect": "damage",
+        "event_date": "2025-03-01",
+        "event_id": str(damage.id),
+    }
+    assert on("2025-02-01")["latest_link_effect"] is None
+    assert _read(site["id"])["latest_link_effect"]["event_id"] == str(later.id)

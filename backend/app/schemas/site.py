@@ -136,7 +136,8 @@ class SiteObservationRead(BaseModel):
 
 
 class LatestLinkEffect(BaseModel):
-    """The effect of the most recent visible linked event, by ``event_date``."""
+    """The effect of the most recent visible linked event, by ``event_date``, on or before the
+    read's date."""
 
     effect: LinkEffect
     event_date: date | None
@@ -170,7 +171,8 @@ class SiteState(BaseModel):
     ``observed_on``, ``imagery_provider`` and ``observation_effect`` come from
     the observation valid at the read's date. ``corroboration_count`` counts
     the distinct owners of visible linked events; ``is_corroborated`` holds
-    when one of them is not the site owner.
+    when one of them is not the site owner. ``latest_link_effect`` comes from
+    the linked events dated on or before the read's date.
     """
 
     id: uuid.UUID
@@ -183,10 +185,13 @@ class SiteState(BaseModel):
     observation_effect: ObservationEffect
     corroboration_count: int
     is_corroborated: bool
+    latest_link_effect: LatestLinkEffect | None
 
 
 class SiteList(SiteState):
     """One site on the map, with the zone valid at ``as_of``."""
+
+    owner_id: uuid.UUID
 
 
 class SiteRead(SiteState):
@@ -194,7 +199,6 @@ class SiteRead(SiteState):
     and every visible linked event oldest first."""
 
     owner: AuthorRef
-    latest_link_effect: LatestLinkEffect | None
     observations: list[SiteObservationRead]
     linked_events: list[SiteLinkedEventRead]
     created_at: datetime

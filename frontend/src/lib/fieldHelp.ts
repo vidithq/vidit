@@ -149,7 +149,7 @@ export const FIELD_HELP = {
     label: "Why can the last org manager not leave?",
   },
   sites_layer: {
-    text: "Durable places analysts map, such as bases, depots and radars. Below zoom 10 each corroborated site is a square; from zoom 10 the map draws every zone, a site nobody but its owner has linked an event to faded and dashed. Each zone is the one valid at the end of the event date window.",
+    text: "Durable places analysts map, such as bases, depots and radars. Below zoom 10 each corroborated site is a square; from zoom 10 the map draws every zone, a site nobody but its owner has linked an event to faded and dashed. Your own uncorroborated sites show at every zoom, faded. A zone turns amber when its latest linked event shows damage and red for destruction. Each zone is the one valid at the end of the event date window.",
     label: "What is the sites layer?",
   },
   site_last_observed: {
@@ -177,7 +177,7 @@ export const FIELD_HELP = {
     label: "What is the link effect?",
   },
   site_corroboration: {
-    text: "The number of different analysts who linked an event to the site. A site linked only by its owner is not corroborated, and the map shows it from zoom 10 only, faded.",
+    text: "The number of different analysts who linked an event to the site. A site linked only by its owner is not corroborated: the map shows it faded, and from zoom 10 only for everyone but its owner.",
     label: "What is corroboration?",
   },
   site_history: {

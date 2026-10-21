@@ -2209,7 +2209,9 @@ The sites whose zone valid on a date meets a bounding box, for the map. Newest s
     "imagery_provider": "sentinel_2",
     "observation_effect": "observed_no_change",
     "corroboration_count": 2,
-    "is_corroborated": true
+    "is_corroborated": true,
+    "latest_link_effect": { "effect": "damage", "event_date": "2026-07-09", "event_id": "uuid" },
+    "owner_id": "uuid"
   }
 ]
 ```
@@ -2220,8 +2222,10 @@ The sites whose zone valid on a date meets a bounding box, for the map. Newest s
 | `observed_on`, `imagery_provider`, `observation_effect` | `captured_on`, `imagery_provider` and `effect` of that observation |
 | `corroboration_count` | The number of distinct owners of the events linked to the site now |
 | `is_corroborated` | `true` when at least one of those owners is not the site's owner |
+| `latest_link_effect` | The `effect` of the linked event with the latest `event_date` on or before `as_of`, with that date and the event's id. The later link wins a tie. `null` when no linked event carries such a date. It sits beside the observed state and never changes it |
+| `owner_id` | The id of the site's owner |
 
-`corroboration_count` and `is_corroborated` describe the links now, whatever `as_of` is.
+`corroboration_count` and `is_corroborated` describe the links now, whatever `as_of` is. `latest_link_effect` reads the links now but skips an event dated after `as_of`, so a date in the past never shows a later effect.
 
 **Errors:**
 | Code | Case |
@@ -2344,13 +2348,12 @@ One site: its current zone and state, every observation, and the events linked t
 }
 ```
 
-The state fields of [`GET /sites`](#get-sites) describe the current zone here. The other fields:
+The state fields of [`GET /sites`](#get-sites) describe the current zone here, and `latest_link_effect` reads every dated linked event. `owner` replaces `owner_id`. The other fields:
 
 | Field | Meaning |
 |---|---|
 | `observations` | Every observation, oldest `captured_on` first, `created_at` breaking ties. `author` is `null` once that account is erased |
 | `linked_events` | The linked events that are `geolocated` and neither soft-deleted nor withheld, oldest `event_date` first, an event without a date last |
-| `latest_link_effect` | The `effect` of the linked event with the latest `event_date`, with that date and the event's id. The later link wins a tie. `null` when no linked event carries a date. It sits beside the observed state and never changes it |
 | `linked_events[].inside_zone` | `true` when the event's point lies in the measured zone |
 | `linked_events[].distance_m` | Metres from the event's point to the measured zone, `null` when `inside_zone` is `true` |
 | `linked_events[].measured_observation_id` | The observation whose zone the event was measured against: the one valid on the event's `event_date`, the earliest one when the event predates every observation, or the latest one when the event has no date |

@@ -152,6 +152,33 @@ def zones_at(as_of: date | None) -> Subquery:
     ).subquery("zone_at")
 
 
+def _latest_link_at(as_of: date | None) -> Any:
+    """Per site, the live link to a dated linkable event with the latest ``event_date`` on or
+    before ``as_of`` (any date when ``None``), the later link winning a tie. Correlates to
+    ``Site``."""
+    query = (
+        select(
+            EventSiteLink.effect.label("effect"),
+            Event.event_date.label("event_date"),
+            Event.id.label("event_id"),
+        )
+        .join(Event, Event.id == EventSiteLink.event_id)
+        .where(
+            EventSiteLink.site_id == Site.id,
+            live_links(),
+            site_linkable_events(),
+            Event.event_date.is_not(None),
+        )
+    )
+    if as_of is not None:
+        query = query.where(Event.event_date <= as_of)
+    return (
+        query.order_by(Event.event_date.desc(), EventSiteLink.linked_at.desc(), Event.id.desc())
+        .limit(1)
+        .lateral("latest_link")
+    )
+
+
 def _site_states(
     db: Session,
     *,
@@ -159,13 +186,14 @@ def _site_states(
     criteria: Sequence[ColumnElement[bool]],
     limit: int,
     bounds: tuple[float, float, float, float] | None = None,
-) -> list[dict[str, Any]]:
-    """The state fields of :class:`SiteList` for each matching site, in one statement.
+) -> list[tuple[Site, dict[str, Any]]]:
+    """Each matching site with the :class:`SiteState` fields, in one statement.
 
     A site with no observation on or before ``as_of`` is absent, and so is one whose zone
     misses the ``south, west, north, east`` box when one is given.
     """
     zone = zones_at(as_of)
+    latest = _latest_link_at(as_of)
     in_box: list[ColumnElement[bool]] = []
     if bounds is not None:
         south, west, north, east = bounds
@@ -202,27 +230,52 @@ def _site_states(
             zone.c.effect,
             corroboration_count,
             corroborated,
+            latest.c.effect,
+            latest.c.event_date,
+            latest.c.event_id,
         )
         .join(zone, zone.c.site_id == Site.id)
+        .outerjoin(latest, true())
         .filter(*criteria, *in_box)
         .order_by(Site.created_at.desc(), Site.id.desc())
         .limit(limit)
         .all()
     )
     return [
-        {
-            "id": site.id,
-            "name": site.name,
-            "site_type": site.site_type,
-            "zone": _geojson(zone_json),
-            "centroid": CoordsRead(lat=lat, lng=lng),
-            "observed_on": observed_on,
-            "imagery_provider": provider,
-            "observation_effect": effect,
-            "corroboration_count": count,
-            "is_corroborated": is_corroborated,
-        }
-        for site, zone_json, lat, lng, observed_on, provider, effect, count, is_corroborated in rows
+        (
+            site,
+            {
+                "id": site.id,
+                "name": site.name,
+                "site_type": site.site_type,
+                "zone": _geojson(zone_json),
+                "centroid": CoordsRead(lat=lat, lng=lng),
+                "observed_on": observed_on,
+                "imagery_provider": provider,
+                "observation_effect": effect,
+                "corroboration_count": count,
+                "is_corroborated": is_corroborated,
+                "latest_link_effect": None
+                if link_event_id is None
+                else LatestLinkEffect(
+                    effect=link_effect, event_date=link_date, event_id=link_event_id
+                ),
+            },
+        )
+        for (
+            site,
+            zone_json,
+            lat,
+            lng,
+            observed_on,
+            provider,
+            effect,
+            count,
+            is_corroborated,
+            link_effect,
+            link_date,
+            link_event_id,
+        ) in rows
     ]
 
 
@@ -233,7 +286,7 @@ def list_sites(
     states = _site_states(
         db, as_of=as_of, criteria=visible_sites(), limit=MAP_SITES_LIMIT, bounds=bounds
     )
-    return [SiteList(**state) for state in states]
+    return [SiteList(**state, owner_id=site.owner_id) for site, state in states]
 
 
 def resolve_site(db: Session, *, site_id: uuid.UUID, viewer: User | None) -> Site:
@@ -328,25 +381,14 @@ def _linked_events(db: Session, site_id: uuid.UUID) -> list[SiteLinkedEventRead]
     ]
 
 
-def _latest_link_effect(linked: Sequence[SiteLinkedEventRead]) -> LatestLinkEffect | None:
-    dated = [row for row in linked if row.event_date is not None]
-    if not dated:
-        return None
-    # ``linked`` runs oldest first, so on a date tie the later link wins.
-    latest = max(reversed(dated), key=lambda row: row.event_date or date.min)
-    return LatestLinkEffect(effect=latest.effect, event_date=latest.event_date, event_id=latest.id)
-
-
 def build_site_read(db: Session, site: Site) -> SiteRead:
     """The full read of one site: current state, observations and linked events."""
-    (state,) = _site_states(db, as_of=None, criteria=[Site.id == site.id], limit=1)
-    linked = _linked_events(db, site.id)
+    ((_, state),) = _site_states(db, as_of=None, criteria=[Site.id == site.id], limit=1)
     return SiteRead(
         **state,
         owner=site.owner,
-        latest_link_effect=_latest_link_effect(linked),
         observations=_observations(db, SiteObservation.site_id == site.id),
-        linked_events=linked,
+        linked_events=_linked_events(db, site.id),
         created_at=site.created_at,
         updated_at=site.updated_at,
     )
