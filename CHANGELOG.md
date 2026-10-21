@@ -7,6 +7,19 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 ### Added
 
 - Sites: you can map a durable place such as a base or a depot as a dated zone backed by imagery, link your published events to it with their effect, follow its history on its own page, and show sites as a layer on the map ([#644](https://github.com/vidithq/vidit/pull/644)).
+### Changed
+
+- The landing roadmap lists the planned outcomes with an In progress or Planned status instead of versions and links to the changelog for what shipped, and the contributor docs point to the issues and their epics for planning ([#635](https://github.com/vidithq/vidit/pull/635)).
+
+### Removed
+
+- The promo video and guide screenshot tooling is maintained separately and no longer ships in this repository; the guide screenshots stay ([#648](https://github.com/vidithq/vidit/pull/648)).
+
+## v0.7.3, 2026-10-21
+
+### Security
+
+- The backend no longer trusts the emSign ECC Root CA - G3, whose eight eMudhra intermediates were compromised in October 2026, so a certificate forged with those keys cannot intercept its calls to email, storage, X or Sentry ([#647](https://github.com/vidithq/vidit/pull/647)).
 
 ## v0.7.2, 2026-10-19
 
