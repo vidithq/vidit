@@ -178,7 +178,7 @@ Media is not in the dump. Imported rows keep the production media URLs they were
 
 ## Manual snapshot and rollback
 
-Follow this procedure for a deploy that ships a migration. Migrations run as a Railway pre-deploy step (`uv run alembic upgrade head`). A failed migration retries three times, then leaves the service failed with the schema half-applied. **Get a fresh backup before any deploy that includes a migration.**
+Follow this procedure for a deploy that ships a migration. Migrations run as a Railway pre-deploy step, the `migrate` [role](engineering.md#backend-roles). A failed migration retries three times, then leaves the service failed with the schema half-applied. **Get a fresh backup before any deploy that includes a migration.**
 
 Two constraints shape this procedure (see [`engineering.md`](engineering.md#deployment)). Production database **public networking is off**. The backend container ships only `libpq5`, **not** the `pg_dump` / `pg_restore` client binaries. Those binaries live in the `backend-backup` cron image, `postgres:16`.
 

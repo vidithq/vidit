@@ -5,7 +5,8 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "preDeployCommand": ["uv run alembic upgrade head"],
+    "preDeployCommand": ["/app/entrypoint.sh migrate"],
+    "startCommand": "/app/entrypoint.sh api",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 30,
     "restartPolicyType": "ON_FAILURE",
