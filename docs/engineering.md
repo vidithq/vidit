@@ -436,7 +436,7 @@ A device endpoint is a bearer URL. A failure is logged by device id, status and 
 
 Each validation rule has one backend home: the upload MIME allowlist in `services/storage.py` (the EXIF-strip set derives from the image allowlist), coordinate bounds in `services/events.validate_coordinates`, and password length in `schemas/auth.NewPassword` (`PASSWORD_MIN_LENGTH` characters, `PASSWORD_MAX_BYTES` UTF-8 bytes, the bcrypt input limit). Frontend enum types are generated from the OpenAPI spec into `lib/api-types.ts`.
 
-Every other frontend copy of a backend rule or of the GitHub Project is hand-kept and listed below. Change both sides in the same PR. Frontend paths are under `frontend/src/`; backend modules are under `backend/app/`.
+Every other frontend copy of a backend rule or of the issue tracker is hand-kept and listed below. Change both sides in the same PR. Frontend paths are under `frontend/src/`; backend modules are under `backend/app/`.
 
 | Frontend | Backend source | Drift breaks |
 |---|---|---|
@@ -479,7 +479,7 @@ Every other frontend copy of a backend rule or of the GitHub Project is hand-kep
 | `lib/approvals.ts::ownApprovalOnLive` | `approvals.approve` (one approval per analyst and version, revoked included) | the Approvals card offers Approve to a reviewer whose revoked approval blocks it, or hides Revoke on an approval that stands |
 | `lib/approvals.ts::organizationApprovalOnLive` and `hooks/useMemberOrganizations.ts` | `approvals._revoker_role` and `organizations.is_organization_member` (any member approves and revokes in the organization's name) | the Approvals card hides **Approve as** or **Revoke as** from a member the API accepts, or offers one the API refuses |
 | `lib/approvalRequests.ts::canRequestApproval` | `approval_requests._require_requester` (published only, a geolocator of the event) | the Approval requests card offers a request the API refuses (403 or 409) |
-| `app/page.tsx::ROADMAP` | the issues of type Epic in the [GitHub Project](https://github.com/orgs/vidithq/projects/1): Version value, title, summary | landing roadmap promises a version the Project no longer plans |
+| `app/page.tsx::ROADMAP` | the [open issues of type Epic](https://github.com/vidithq/vidit/issues?q=is%3Aissue%20state%3Aopen%20type%3AEpic) except Future considerations: title, outcome (the epic's first line) and whether work has started | landing roadmap promises an outcome no epic plans, or leaves out one that an epic plans |
 | `lib/palette.ts::DEFAULT_PALETTE`, `lib/theme.ts::DEFAULT_THEME`, `lib/helpPreference.ts` (help shown when unset) | `schemas/preferences.DISPLAY_DEFAULTS` | first paint on a new device differs from the account's default until the preferences load |
 | `lib/palette.ts::PALETTES`, `lib/theme.ts::isThemeId` and the `data-palette` / `data-theme` blocks in `app/globals.css` | `schemas/preferences.PaletteId`, `ThemeId` (the id types are generated; the lists and CSS are not) | Settings offers no control for a value the API accepts, or the value repaints nothing |
 | the default `orange-*` scale in `app/globals.css`, the `/icon/android-192` route of `app/icon.tsx` | `services/email_layout.py` accent hex and `_LOGO_PATH` | emails wear another accent than the site, or show a broken header image |
