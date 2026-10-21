@@ -130,6 +130,18 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/collections/{id}/events` | 🌐 | Its items, oldest event first (cursor-paged) |
 | PUT | `/collections/{id}/events/{event_id}` | 🔒 | Put one of your events on it (idempotent) |
 | DELETE | `/collections/{id}/events/{event_id}` | 🔒 | Take one event off it (idempotent) |
+| **Sites** | | | |
+| GET | `/sites` | 🌐 | The sites whose zone valid on a date meets a bounding box |
+| POST | `/sites` | 🔒 | Create a site with its first observation; answers with the sites its zone overlaps |
+| POST | `/sites/overlaps` | 🔒 | List the sites whose current zone shares area with a drawn zone |
+| GET | `/sites/{id}` | 🌐 | One site: current zone and state, observations, linked events |
+| GET | `/sites/{id}/history` | 🌐 | The site's history feed, ordered by `fact` date or `recorded` time |
+| POST | `/sites/{id}/observations` | 🔒 | Add a dated zone to a site |
+| GET | `/sites/{id}/nearby-events` | 🌐 | Visible events near the site's current zone and not linked to it |
+| GET | `/events/{id}/site-links` | 🌐 | The sites an event is linked to |
+| POST | `/events/{id}/site-links` | 🔒 | Link your published event to a site, or change the effect of its link (idempotent) |
+| DELETE | `/events/{id}/site-links/{site_id}` | 🔒 | Unlink your event from a site (idempotent) |
+| GET | `/events/{id}/site-suggestions` | 🔒 | Sites your event may link to, nearest first or by name |
 | **Search** | | | |
 | GET | `/search` | 🌐 | Free-text search across geolocations / requests / collections / users / organizations |
 | GET | `/search/authors` | 🌐 | Username typeahead for the author filter and the co-geolocator invite |
@@ -269,6 +281,12 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST /collections`, `PATCH /collections/{id}`, `DELETE /collections/{id}` | 30/min |
 | `POST /collections/{id}/report` | 10/hour (per IP only, anonymous allowed) |
 | `PUT`/`DELETE /collections/{id}/events/{event_id}` | 60/min |
+| **Sites** | |
+| `GET /sites`, `POST /sites/overlaps` | 60/min |
+| `GET /sites/{id}`, `GET /sites/{id}/history`, `GET /sites/{id}/nearby-events` | 120/min |
+| `POST /sites`, `POST /sites/{id}/observations` | 30/min |
+| `GET /events/{id}/site-links`, `GET /events/{id}/site-suggestions` | 120/min |
+| `POST /events/{id}/site-links`, `DELETE /events/{id}/site-links/{site_id}` | 60/min |
 | **Search / Tags** | |
 | `GET /search`, `GET /search/authors` | 60/min |
 | `GET /tags` | 60/min |
@@ -319,13 +337,13 @@ The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/u
 
 ### Per-user read quota
 
-**1000/hour per account.** One bucket is shared across these 23 read paths, not one bucket per endpoint:
+**1000/hour per account.** One bucket is shared across these 28 read paths, not one bucket per endpoint:
 
-`GET /events` · `/events/{id}` · `/events/{id}/versions` · `/events/{id}/versions/{version_no}` · `/events/{id}/approvals` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/users/{username}/collections` · `/users/{username}/organizations` · `/organizations/{slug}` · `/organizations/{slug}/members` · `/organizations/{slug}/approvals` · `/collections/{id}` · `/collections/{id}/events` · `/feed`
+`GET /events` · `/events/{id}` · `/events/{id}/versions` · `/events/{id}/versions/{version_no}` · `/events/{id}/approvals` · `/events/{id}/site-links` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/users/{username}/collections` · `/users/{username}/organizations` · `/organizations/{slug}` · `/organizations/{slug}/members` · `/organizations/{slug}/approvals` · `/collections/{id}` · `/collections/{id}/events` · `/sites` · `/sites/{id}` · `/sites/{id}/history` · `/sites/{id}/nearby-events` · `/feed`
 
 - The key is `User.id`, read from the signature-verified session cookie.
 - The backend evaluates the per-IP table limit first, so a request the table rejects costs the account nothing.
-- Anonymous callers are exempt and keep the per-IP limits alone. Twenty of the 23 paths answer anonymously.
+- Anonymous callers are exempt and keep the per-IP limits alone. Twenty-five of the 28 paths answer anonymously.
 - Every authenticated read absent from the list is exempt, including `GET /auth/me` and the read-only admin probes.
 - `GET /events/import-archive/{job_id}` is exempt because an import polls it. It returns one job's progress counters and no catalog rows.
 
@@ -549,7 +567,7 @@ flowchart LR
   geo -->|"`**POST /events/{id}/close**, retract`"| closed
 ```
 
-[`GET /events`](#get-events) lists one view (`requested` is the request queue, `located` the catalog) and [`GET /events/{id}`](#get-eventsid) reads any status. `DELETE /admin/events/{id}` is the only write that removes a row.
+[`GET /events`](#get-events) lists one view (`requested` is the request queue, `located` the catalog) and [`GET /events/{id}`](#get-eventsid) reads any status. `DELETE /admin/events/{id}` is the only write that removes a row. The links from a published event to the [sites](#sites) it hit live under `/events/{id}/site-links` and `/events/{id}/site-suggestions`, documented in [Sites](#sites).
 
 ### Event form fields
 
@@ -2127,6 +2145,431 @@ Take one event off your collection. Owner only. Idempotent: an event the collect
 |------|------|
 | 403 | Not your collection |
 | 404 | `collection_not_found` |
+
+---
+
+## Sites
+
+A site is a durable place, such as a base, a depot or a radar, with a name and a type. Analysts record where it lies as dated observations, each carrying a zone and the imagery that proves it, and event owners link their published events to it. [`data-model.md`](data-model.md#sites) describes the three tables behind it: `sites`, `site_observations` and `event_site_links`. Nothing about a site's state is stored. Every read computes the zone, the state and the counts from the observations and the links.
+
+**Zone.** A zone is a GeoJSON `Polygon` in WGS84 with `[lng, lat]` positions, the exterior ring first, every ring closed:
+```json
+{
+  "type": "Polygon",
+  "coordinates": [[[34.55, 47.5], [34.65, 47.5], [34.65, 47.45], [34.55, 47.45], [34.55, 47.5]]]
+}
+```
+
+- **Shape (422):** a ring holds at least 4 positions and ends on its first position, and a zone holds at most 1000 positions across all its rings.
+- **Content (400 `invalid_zone`):** a position outside the event coordinate bounds, a self-crossing polygon, or a polygon without area.
+
+**Observation fields.** Every write that records a zone takes these fields. [`site_observations`](data-model.md#site_observations) lists the stored columns.
+
+| Field | Rule |
+|---|---|
+| `zone` | Required, a zone as above |
+| `captured_on` | Required `YYYY-MM-DD`, the capture date of the imagery. A date after today (UTC) is a 422 |
+| `imagery_provider` | Required: `google_earth`, `sentinel_2`, `landsat` or `other` |
+| `imagery_url` | An `http` or `https` URL of up to 2000 characters. Required when `imagery_provider` is `other`. A blank string reads as absent |
+| `effect` | What the imagery shows: `observed_no_change` (default), `construction_extension`, `no_visible_activity`, `reoccupation` or `other` |
+| `note` | Plain text of up to 2000 characters. A blank string reads as absent |
+
+**Site types.** `site_type` is one of `airbase`, `military_base`, `depot`, `port`, `air_defence_position`, `artillery_position`, `radar`, `fortification` or `other`. `name` (1 to 255 characters after stripping whitespace) and `site_type` never change after the create.
+
+**Link effects.** The effect of an event on a site is `damage`, `destruction` or `other`.
+
+**Rules.**
+
+- **Zone selection:** the zone valid on a date is the observation with the greatest `(captured_on, created_at)` at or before that date. The current zone is the latest observation. A site with no observation on or before a date has no zone on that date.
+- **Append-only:** an observation is never edited, so a correction is a new observation. A link is never deleted: an unlink stamps the link, and an effect change closes the live link and opens a new one.
+- **What a site shows of an event:** a linked event counts only while it is `geolocated` and neither soft-deleted nor withheld. The linked event list, `corroboration_count`, `is_corroborated`, `latest_link_effect` and the nearby events all use this one predicate. An event that closes or is taken down leaves them with no write to its link.
+- **Visibility:** a withheld site, or one whose owner is soft-deleted, answers 404 `site_not_found` on every endpoint. An admin also reads a withheld site on `GET /sites/{id}`, `GET /sites/{id}/history` and `GET /sites/{id}/nearby-events`.
+
+### `GET /sites` 🌐
+
+The sites whose zone valid on a date meets a bounding box, for the map. Newest site first, capped at 1000 sites. Past the cap the oldest sites are absent from the response with nothing marking the cut.
+
+**Query params:**
+
+| Param | Rule |
+|---|---|
+| `bbox` | Required, `south,west,north,east`. Latitudes within [-90, 90], longitudes within [-180, 180], `south` at most `north`, `west` at most `east`. A box crossing the antimeridian is rejected: send the full longitude range |
+| `as_of` | `YYYY-MM-DD`, default today (UTC). A site is listed with the zone valid on this date and is absent when it has no observation on or before it |
+
+**Response 200:** an array of `SiteList`, the state fields every site read carries:
+```json
+[
+  {
+    "id": "uuid",
+    "name": "Saky airbase",
+    "site_type": "airbase",
+    "zone": { "type": "Polygon", "coordinates": [[[34.55, 47.5], [34.65, 47.5], [34.65, 47.45], [34.55, 47.45], [34.55, 47.5]]] },
+    "centroid": { "lat": 47.475, "lng": 34.6 },
+    "observed_on": "2026-06-01",
+    "imagery_provider": "sentinel_2",
+    "observation_effect": "observed_no_change",
+    "corroboration_count": 2,
+    "is_corroborated": true
+  }
+]
+```
+
+| Field | Meaning |
+|---|---|
+| `zone`, `centroid` | The zone valid on `as_of` and its centroid |
+| `observed_on`, `imagery_provider`, `observation_effect` | `captured_on`, `imagery_provider` and `effect` of that observation |
+| `corroboration_count` | The number of distinct owners of the events linked to the site now |
+| `is_corroborated` | `true` when at least one of those owners is not the site's owner |
+
+`corroboration_count` and `is_corroborated` describe the links now, whatever `as_of` is.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 422 | `bbox` missing or malformed, or `as_of` not a date. Both answer with a plain-string `detail` |
+
+---
+
+### `POST /sites` 🔒
+
+Create a site and its first observation in one transaction. The creator owns the site.
+
+**Body:**
+```json
+{
+  "name": "Saky airbase",
+  "site_type": "airbase",
+  "observation": {
+    "zone": { "type": "Polygon", "coordinates": [[[34.55, 47.5], [34.65, 47.5], [34.65, 47.45], [34.55, 47.45], [34.55, 47.5]]] },
+    "captured_on": "2026-06-01",
+    "imagery_provider": "sentinel_2",
+    "effect": "observed_no_change",
+    "note": "Revetments along the north apron."
+  }
+}
+```
+
+`observation` takes the [observation fields](#sites).
+
+**Response 201:** a [`SiteRead`](#get-sitesid) plus `overlapping_sites`, the overlap check of [`POST /sites/overlaps`](#post-sitesoverlaps) run on the new zone before the write. The check warns about a possible duplicate and never blocks the create.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 400 | `invalid_zone` |
+| 422 | `name` empty or over 255 characters; unknown `site_type`; a malformed zone; `imagery_url` missing when `imagery_provider` is `other`, or not an `http` or `https` URL; `captured_on` in the future |
+
+---
+
+### `POST /sites/overlaps` 🔒
+
+The overlap check: the visible sites whose current zone shares area with a zone you drew. Call it before [`POST /sites`](#post-sites) to show a duplicate warning.
+
+**Body:**
+```json
+{ "zone": { "type": "Polygon", "coordinates": [[[34.55, 47.5], [34.65, 47.5], [34.65, 47.45], [34.55, 47.45], [34.55, 47.5]]] } }
+```
+
+**Response 200:** an array of `SiteOverlapRead`, the larger `share_of_new_zone` first, capped at 20:
+```json
+[
+  {
+    "id": "uuid",
+    "name": "Saky airbase",
+    "site_type": "airbase",
+    "share_of_new_zone": 0.82,
+    "share_of_existing_zone": 0.4
+  }
+]
+```
+
+Each share is the area of the intersection over the area of one zone, computed on the spheroid, from 0 to 1. `share_of_new_zone` is relative to the zone you sent and `share_of_existing_zone` to the site's current zone. A zone that only touches another along an edge shares no area and is absent.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 400 | `invalid_zone` |
+| 422 | A malformed zone |
+
+---
+
+### `GET /sites/{id}` 🌐
+
+One site: its current zone and state, every observation, and the events linked to it.
+
+**Response 200:** a `SiteRead`.
+```json
+{
+  "id": "uuid",
+  "name": "Saky airbase",
+  "site_type": "airbase",
+  "zone": { "type": "Polygon", "coordinates": [[[34.55, 47.5], [34.65, 47.5], [34.65, 47.45], [34.55, 47.45], [34.55, 47.5]]] },
+  "centroid": { "lat": 47.475, "lng": 34.6 },
+  "observed_on": "2026-06-01",
+  "imagery_provider": "sentinel_2",
+  "observation_effect": "observed_no_change",
+  "corroboration_count": 1,
+  "is_corroborated": true,
+  "owner": { "id": "uuid", "username": "analyst", "avatar_url": null },
+  "latest_link_effect": { "effect": "damage", "event_date": "2026-07-09", "event_id": "uuid" },
+  "observations": [
+    {
+      "id": "uuid",
+      "zone": { "type": "Polygon", "coordinates": [[[34.55, 47.5], [34.65, 47.5], [34.65, 47.45], [34.55, 47.45], [34.55, 47.5]]] },
+      "captured_on": "2026-06-01",
+      "imagery_provider": "sentinel_2",
+      "imagery_url": null,
+      "effect": "observed_no_change",
+      "note": null,
+      "author": { "id": "uuid", "username": "analyst", "avatar_url": null },
+      "created_at": "2026-08-01T09:12:00Z"
+    }
+  ],
+  "linked_events": [
+    {
+      "id": "uuid",
+      "title": "Strike on the north apron",
+      "event_date": "2026-07-09",
+      "event_coords": { "lat": 47.49, "lng": 34.6 },
+      "owner": { "id": "uuid", "username": "geolocator", "avatar_url": null },
+      "effect": "damage",
+      "linked_at": "2026-08-02T10:00:00Z",
+      "inside_zone": true,
+      "distance_m": null,
+      "measured_observation_id": "uuid"
+    }
+  ],
+  "created_at": "2026-08-01T09:12:00Z",
+  "updated_at": "2026-08-01T09:12:00Z"
+}
+```
+
+The state fields of [`GET /sites`](#get-sites) describe the current zone here. The other fields:
+
+| Field | Meaning |
+|---|---|
+| `observations` | Every observation, oldest `captured_on` first, `created_at` breaking ties. `author` is `null` once that account is erased |
+| `linked_events` | The linked events that are `geolocated` and neither soft-deleted nor withheld, oldest `event_date` first, an event without a date last |
+| `latest_link_effect` | The `effect` of the linked event with the latest `event_date`, with that date and the event's id. The later link wins a tie. `null` when no linked event carries a date. It sits beside the observed state and never changes it |
+| `linked_events[].inside_zone` | `true` when the event's point lies in the measured zone |
+| `linked_events[].distance_m` | Metres from the event's point to the measured zone, `null` when `inside_zone` is `true` |
+| `linked_events[].measured_observation_id` | The observation whose zone the event was measured against: the one valid on the event's `event_date`, the earliest one when the event predates every observation, or the latest one when the event has no date |
+| `linked_events[].linked_at` | When the live link opened. After an effect change it is the time of the change |
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | `site_not_found`: unknown, withheld (an admin still reads it), or the owner is soft-deleted |
+
+---
+
+### `GET /sites/{id}/history` 🌐
+
+The site's history as one feed of dated facts, computed from the site, its observations and its links. No log table backs it.
+
+**Query params:**
+
+| Param | Rule |
+|---|---|
+| `order` | `fact` (default) or `recorded`. Any other value is a 422 |
+
+Each entry carries two clocks:
+
+- **`recorded_at`:** when the fact entered Vidit.
+- **`fact_date`:** when it happened on the ground. It is the `captured_on` of an observation and the `event_date` of a link entry, and `null` for `site_created` or an event without a date.
+
+`order=recorded` sorts by `recorded_at`. `order=fact` sorts by `fact_date`, with `recorded_at` breaking ties, and places an entry whose `fact_date` is `null` on the day it was recorded. Imagery found after the fact keeps its capture date, so the two orders differ.
+
+**Response 200:** an array of `SiteHistoryEntry`:
+```json
+[
+  { "kind": "site_created", "recorded_at": "2026-08-01T09:12:00Z", "fact_date": null,
+    "actor": { "id": "uuid", "username": "analyst", "avatar_url": null } },
+  { "kind": "observation_added", "recorded_at": "2026-08-01T09:12:00Z", "fact_date": "2026-06-01",
+    "actor": { "id": "uuid", "username": "analyst", "avatar_url": null },
+    "observation_id": "uuid", "observation_effect": "observed_no_change", "imagery_provider": "sentinel_2" },
+  { "kind": "link_effect_changed", "recorded_at": "2026-08-03T08:00:00Z", "fact_date": "2026-07-09",
+    "actor": { "id": "uuid", "username": "geolocator", "avatar_url": null },
+    "event": { "id": "uuid", "title": "Strike on the north apron", "event_date": "2026-07-09" },
+    "link_effect": "destruction", "previous_link_effect": "damage" }
+]
+```
+
+| `kind` | Written when | Payload fields |
+|---|---|---|
+| `site_created` | The site was created | none |
+| `observation_added` | An observation was added, the first one included | `observation_id`, `observation_effect`, `imagery_provider` |
+| `event_linked` | An event was linked | `event`, `link_effect` |
+| `event_unlinked` | A link was removed | `event`, `link_effect` (the effect of the removed link) |
+| `link_effect_changed` | A live link took a new effect | `event`, `link_effect` (the new one), `previous_link_effect` |
+
+A payload field the kind does not use is `null`. `actor` is `null` once that account is erased. An effect change shows as one `link_effect_changed` entry, not as an unlink and a link. A link entry names only an event that is neither soft-deleted nor withheld, so an event leaves the feed when it is taken down. A closed event keeps its entries.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | `site_not_found` |
+| 422 | `order` is neither `fact` nor `recorded` |
+
+---
+
+### `POST /sites/{id}/observations` 🔒
+
+Add a dated zone to a site. Any signed-in analyst may, not only the owner. An observation is never edited afterwards.
+
+**Body:** the [observation fields](#sites).
+```json
+{
+  "zone": { "type": "Polygon", "coordinates": [[[34.55, 47.5], [34.66, 47.5], [34.66, 47.45], [34.55, 47.45], [34.55, 47.5]]] },
+  "captured_on": "2026-09-15",
+  "imagery_provider": "other",
+  "imagery_url": "https://example.com/imagery/2026-09-15",
+  "effect": "construction_extension"
+}
+```
+
+**Response 201:** the new observation, in the shape of an `observations` entry of [`GET /sites/{id}`](#get-sitesid).
+
+The new zone applies from its `captured_on`, not from the day you add it. A reader asking for an earlier date still gets the earlier zone, and an observation with an older `captured_on` than the current one does not replace the current zone.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 400 | `invalid_zone` |
+| 404 | `site_not_found`: unknown, withheld (an admin gets it too), or the owner is soft-deleted |
+| 422 | A malformed zone; `imagery_url` missing when `imagery_provider` is `other`, or not an `http` or `https` URL; `captured_on` in the future; an unknown enum value |
+
+---
+
+### `GET /sites/{id}/nearby-events` 🌐
+
+The events that may belong to the site but are not linked to it: visible `geolocated` events within a distance of the site's current zone, nearest first, capped at 50. Use it to prompt event owners to link.
+
+**Query params:**
+
+| Param | Rule |
+|---|---|
+| `margin_m` | Metres from the current zone, 0 to 10000, default 2000. A value outside the range is a 422 |
+
+**Response 200:** an array of `SiteNearbyEventRead`:
+```json
+[
+  {
+    "id": "uuid",
+    "title": "Fire at the fuel depot",
+    "event_date": "2026-07-10",
+    "event_coords": { "lat": 47.52, "lng": 34.6 },
+    "owner": { "id": "uuid", "username": "geolocator", "avatar_url": null },
+    "distance_m": 1840.5
+  }
+]
+```
+
+`distance_m` is the distance in metres to the current zone, 0 for a point inside it. An event with a live link to the site is absent, whichever effect the link carries.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | `site_not_found` |
+| 422 | `margin_m` outside 0 to 10000 |
+
+---
+
+### `GET /events/{id}/site-links` 🌐
+
+The sites an event is linked to now, oldest link first. A withheld site is absent. Event visibility follows [`GET /events/{id}`](#get-eventsid): a withheld event answers 404 to everyone but an admin.
+
+**Response 200:** an array of `EventSiteLinkRead`:
+```json
+[
+  {
+    "site": { "id": "uuid", "name": "Saky airbase", "site_type": "airbase" },
+    "effect": "damage",
+    "linked_at": "2026-08-02T10:00:00Z"
+  }
+]
+```
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | Unknown or soft-deleted event, or a withheld one for a non-admin (a plain-string `detail`) |
+
+---
+
+### `POST /events/{id}/site-links` 🔒
+
+Link your published event to a site, or change the effect of its link. Only the event's owner links, and the event must be `geolocated`. The call is idempotent: it answers 200 whether it opens a link, changes one or finds the same link in force.
+
+**Body:**
+```json
+{ "site_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "effect": "damage" }
+```
+
+`effect` is `damage`, `destruction` or `other`.
+
+**Response 200:** the live link, in the shape of a [`GET /events/{id}/site-links`](#get-eventsidsite-links) entry.
+
+- **Same effect again:** nothing is written and the link in force is returned.
+- **New effect:** the live link is closed and a new one opens with the new effect. The new link's `linked_at` equals the closed link's `unlinked_at`, which is how [the history](#get-sitesidhistory) tells an effect change from an unlink. The closed link stays.
+- **Linking again after an unlink:** a new link opens. The unlinked one stays.
+
+Four refusals, in this order: the event is unknown, soft-deleted or withheld (404); you are not the event's owner (403); the event is not published (409); the site is unknown or withheld (404).
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 403 | You do not own the event |
+| 404 | Unknown, soft-deleted or withheld event (a plain-string `detail`), or `site_not_found`: unknown site, withheld (an admin gets it too), or the owner is soft-deleted |
+| 409 | `event_not_linkable`: the event is not `geolocated` |
+| 422 | `site_id` missing or not a UUID, or `effect` not one of the three values |
+
+---
+
+### `DELETE /events/{id}/site-links/{site_id}` 🔒
+
+Remove your event's link to a site. Owner only. The link row stays with `unlinked_at` stamped, and the site's [history](#get-sitesidhistory) records an `event_unlinked` entry. Idempotent: an event with no live link to that site, or a `site_id` no site carries, returns 204 and writes nothing. The event does not need to be `geolocated`, so you can clear a link on an event that has since closed.
+
+**Response 204:** no body.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 403 | You do not own the event |
+| 404 | Unknown, soft-deleted or withheld event (a plain-string `detail`) |
+
+---
+
+### `GET /events/{id}/site-suggestions` 🔒
+
+The sites an event may link to, nearest first. Any signed-in analyst may call it. Capped at 20.
+
+**Query params:**
+
+| Param | Rule |
+|---|---|
+| `margin_m` | Metres from the event's point to a site's current zone, 0 to 10000, default 2000. A value outside the range is a 422 |
+| `q` | 1 to 100 characters. A site matches when its name contains `q`, whatever the case |
+
+- **Without `q`:** the visible sites whose current zone lies within `margin_m` of the event's point. An event without a point gets an empty array.
+- **With `q`:** the visible sites whose name matches, at any distance. `margin_m` is ignored.
+
+Results sort by `distance_m`, then by name. A suggestion with a `null` `distance_m` sorts last.
+
+**Response 200:** an array of `SiteSuggestionRead`:
+```json
+[
+  { "id": "uuid", "name": "Saky airbase", "site_type": "airbase", "distance_m": 420.7 }
+]
+```
+
+`distance_m` is the distance in metres from the event's point to the site's current zone, 0 inside it, and `null` when the event has no point.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | Unknown, soft-deleted or withheld event (a plain-string `detail`) |
+| 422 | `margin_m` outside 0 to 10000, or `q` empty or over 100 characters |
 
 ---
 
