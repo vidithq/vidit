@@ -926,3 +926,15 @@ Dependabot opens a security alert per advisory at [github.com/vidithq/vidit/secu
 - **Override-pinned**: a transitive `npm` dependency is vulnerable and its direct parent cannot be lifted in the same PR (for example `maplibre-gl` on its own release cadence). Add a targeted entry to [`frontend/package.json`](../frontend/package.json) `overrides` (`pkg@<x.y.z` for the vulnerable range only, `parent>pkg` for one nested path), written as a range (`^x.y.z`), not an exact pin. A universal override force-downgrades safe higher-major lines elsewhere in the tree, and an exact pin makes npm rewrite consumers' peer ranges to that exact version, which breaks `npm ci`.
 
 A batched lockfile refresh that closes several advisories cites each GHSA in its CHANGELOG entry.
+
+### CA trust stores
+
+When browsers distrust a certificate authority, each runtime below keeps trusting it until its own trust store is updated.
+
+| Runtime | Trust store | How a distrust reaches production |
+|---------|-------------|-----------------------------------|
+| Backend services (`httpx`, `requests`, `boto3`, `sentry-sdk`) | `certifi` bundle pinned in [`backend/uv.lock`](../backend/uv.lock), not the image's Debian store | Run `uv lock --upgrade-package certifi`, then redeploy every Railway service. |
+| Backup service (`awscli`, `curl`) | Debian `ca-certificates` in [`docker/backup/Dockerfile`](../docker/backup/Dockerfile) | Redeploy `backend-backup`; the build installs the current Debian package. |
+| Frontend server code on Vercel | Root store compiled into Node.js | Vercel ships the Node.js patch release; the repo has nothing to change. |
+
+These clients do not check revocation, so a revoked intermediate stays trusted until its root leaves the bundle. To check whether the locked bundle still carries a root, run `grep -c "<root label>" "$(uv run python -m certifi)"` from `backend/`.
