@@ -106,8 +106,8 @@ describe("displayLinkValue", () => {
   });
 
   it("strips a website's scheme and trailing slash, keeping the path", () => {
-    expect(displayLinkValue("website", "https://osintmethat.com/")).toBe(
-      "osintmethat.com"
+    expect(displayLinkValue("website", "https://osint.example/")).toBe(
+      "osint.example"
     );
     expect(displayLinkValue("website", "http://ana.example")).toBe("ana.example");
     expect(displayLinkValue("website", "https://ana.example/blog")).toBe(

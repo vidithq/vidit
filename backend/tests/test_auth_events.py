@@ -361,7 +361,7 @@ def test_rate_limit_key_takes_rightmost_xff_not_client_host():
     """slowapi keys must not come from ``request.client.host``.
 
     uvicorn sets it to the left-most X-Forwarded-For entry, which the client
-    controls (Railway appends). Keying on it would let an attacker mint fresh
+    controls (the reverse proxy appends). Keying on it would let an attacker mint fresh
     buckets or pin a victim's bucket. ``rate_limit_key`` uses the right-most entry.
     """
     # Attacker prepends 1.2.3.4, the proxy appends the real client IP.

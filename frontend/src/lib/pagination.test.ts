@@ -4,13 +4,13 @@ import { nextCursor } from "./pagination";
 describe("nextCursor", () => {
   it("pulls the cursor out of a rel=next link", () => {
     expect(
-      nextCursor('<https://api.vidit.app/api/v1/events?limit=2&cursor=abc123>; rel="next"')
+      nextCursor('<https://api.example.org/api/v1/events?limit=2&cursor=abc123>; rel="next"')
     ).toBe("abc123");
   });
 
   it("keeps the cursor whole when it carries base64url padding characters", () => {
     const cursor = "WyIyMDI2LTA4LTExVDEwOjAwOjAwKzAwOjAwIiwiZi0xIl0";
-    expect(nextCursor(`<https://api.vidit.app/api/v1/events?cursor=${cursor}>; rel="next"`)).toBe(
+    expect(nextCursor(`<https://api.example.org/api/v1/events?cursor=${cursor}>; rel="next"`)).toBe(
       cursor
     );
   });

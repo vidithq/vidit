@@ -897,7 +897,7 @@
     "tests/test_bot.py::test_a_bare_tag_under_an_untagged_parent_still_climbs": 0.04993079090490937,
     "tests/test_bot.py::test_a_climb_cut_by_a_parent_x_will_not_serve_says_so": 0.038121041376143694,
     "tests/test_bot.py::test_a_coordinate_bearing_re_tag_lands_a_detection_beside_the_request": 0.10109879216179252,
-    "tests/test_bot.py::test_a_coordinate_less_mirror_post_opens_a_request[9110000000000000001-https://t.me/wilddivision82/351]": 0.05964150093495846,
+    "tests/test_bot.py::test_a_coordinate_less_mirror_post_opens_a_request[9110000000000000001-https://t.me/example_channel/351]": 0.05964150093495846,
     "tests/test_bot.py::test_a_coordinate_less_mirror_post_opens_a_request[9110000000000000003-https://x.com/front_owl/status/9110000000000000004]": 0.06641274993307889,
     "tests/test_bot.py::test_a_follow_up_under_the_analysts_own_tagged_post_inherits": 0.03725287481211126,
     "tests/test_bot.py::test_a_mirror_carrying_no_clip_of_its_own_is_told_to_attach_one": 0.04146258416585624,

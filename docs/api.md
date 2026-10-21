@@ -2244,7 +2244,7 @@ The body rejects unknown fields, `avatar_url` among them. The profile picture ch
 
 ### `PUT /users/me/avatar` 🔒
 
-Upload your profile picture. The backend strips the image's metadata, resizes it so its longer edge fits 400 px, re-encodes it as JPEG, and stores one object under `avatars/{user_id}/`. It then points `users.avatar_url` at that object and deletes the picture it replaced, under the retention rules in the Media row of [`engineering.md`](engineering.md#deployment).
+Upload your profile picture. The backend strips the image's metadata, resizes it so its longer edge fits 400 px, re-encodes it as JPEG, and stores one object under `avatars/{user_id}/`. It then points `users.avatar_url` at that object and deletes the picture it replaced, under the bucket's Object Lock retention (see *Media bucket* in [`engineering.md`](engineering.md#deployment)).
 
 **Body:** `multipart/form-data` with a single `file` field. Accepts `image/jpeg`, `image/png`, and `image/webp` within the image [file limits](#file-limits), which set a lower pixel limit for a profile picture. Video types are rejected.
 
@@ -2259,7 +2259,7 @@ Upload your profile picture. The backend strips the image's metadata, resizes it
 
 ### `DELETE /users/me/avatar` 🔒
 
-Remove your profile picture. Clears `users.avatar_url` and deletes the stored object, under the retention rules in the Media row of [`engineering.md`](engineering.md#deployment). Idempotent: removing a picture you do not have returns 200.
+Remove your profile picture. Clears `users.avatar_url` and deletes the stored object, under the bucket's Object Lock retention (see *Media bucket* in [`engineering.md`](engineering.md#deployment)). Idempotent: removing a picture you do not have returns 200.
 
 **Response 200:** the updated `UserRead`, with `avatar_url` null.
 
@@ -3777,7 +3777,7 @@ One Account Activity delivery.
 **Cursor-paged lists.** Send `limit` and `cursor`. A page whose next page holds at least one row carries a `Link` header:
 
 ```
-Link: <https://api.vidit.app/api/v1/events?view=requested&cursor=WyIyMDI2LTA4LTExVDA5OjE0OjIyKzAwOjAwIiwiOWY0…Il0>; rel="next"
+Link: <https://<api-host>/api/v1/events?view=requested&cursor=WyIyMDI2LTA4LTExVDA5OjE0OjIyKzAwOjAwIiwiOWY0…Il0>; rel="next"
 ```
 
 The URL carries the whole query the page was minted under, so a walk stays inside one filter set. No header means no further rows. CORS exposes the header to browser clients. The cursor is opaque: it encodes the position of the page's last row in a total ordering, so rows inserted mid-walk never cause a repeat or a skip. A cursor that decodes cleanly is honored whoever minted it; it carries no authorization, and every filter on the request still applies. A cursor-paged list returns a bare array, except `GET /events/{id}/versions`, which returns `{items, total}`.

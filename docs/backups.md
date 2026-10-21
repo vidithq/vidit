@@ -159,7 +159,7 @@ No scheduled job runs a restore; every restore is manual.
 
 Media protection relies on replication, not backup. The database dump never touches the media bucket: adding media would duplicate what replication provides, with a dump too large to run daily.
 
-Replicate the media bucket to a replica bucket in another region, with one replication rule per content prefix. The code writes these prefixes: `uploads/`, `bounty_uploads/`, `proof/`, `demo-pool/`, `detected/` (machine-detection media, written through `services/storage.py::detected_media_key`), and `avatars/` (profile pictures, written through `services/storage.py::upload_avatar_image`). Add a rule for any prefix you upload to by hand, such as the one that holds the landing demo video. `avatars/` is personal data, and it is replicated for the same reason `proof/` is: nothing regenerates it, so the copy on the media bucket is the only one.
+Replicate the media bucket to a replica bucket in another region, with one replication rule per content prefix. The code writes these prefixes: `uploads/`, `proof/`, `detected/` (machine-detection media, written through `services/storage.py::detected_media_key`), and `avatars/` (profile pictures, written through `services/storage.py::upload_avatar_image`). Add a rule for any prefix you upload to by hand, such as the one that holds the landing demo video. `avatars/` is personal data, and it is replicated for the same reason `proof/` is: nothing regenerates it, so the copy on the media bucket is the only one.
 
 Exclude `archive-imports/`: it holds staged personal X exports on a 7-day expiry, and replicating it into a locked bucket would retain personal data for the replica's retention period past the point the source copy expires.
 
