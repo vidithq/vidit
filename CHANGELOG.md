@@ -7,6 +7,11 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 ### Changed
 
 - The landing roadmap lists the planned outcomes with an In progress or Planned status instead of versions and links to the changelog for what shipped, and the contributor docs point to the issues and their epics for planning ([#635](https://github.com/vidithq/vidit/pull/635)).
+
+### Security
+
+- The backend decodes uploaded images with Pillow 13.0.0, which fixes a heap buffer overflow in its JPEG decoder that a crafted upload could trigger (PULL).
+
 ## v0.7.3, 2026-10-21
 
 ### Security
