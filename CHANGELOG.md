@@ -11,7 +11,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Removed
 
-- The repository no longer carries the vidit.app deploy workflow, its hosting config, the backup job or `make import-prod`; the docs describe what any instance runs: the backend roles, their schedules, backups and restores ([#PR](https://github.com/vidithq/vidit/pull/PR)).
+- The repository no longer carries the vidit.app deploy workflow, its hosting config, the backup job or `make import-prod`; the docs describe what any instance runs: the backend roles, their schedules, backups and restores ([#660](https://github.com/vidithq/vidit/pull/660)).
 - The promo video and guide screenshot tooling is maintained separately and no longer ships in this repository; the guide screenshots stay ([#648](https://github.com/vidithq/vidit/pull/648)).
 
 ### Security
