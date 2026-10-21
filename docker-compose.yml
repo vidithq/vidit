@@ -1,7 +1,7 @@
 services:
   db:
-    # The database image a deployment runs (see docs/engineering.md), so a
-    # production dump restores locally without an extension or archive-format
+    # The stock image a PostgreSQL 16 + PostGIS 3 dump restores into (see
+    # docs/engineering.md), so a production dump restores locally without an extension or archive-format
     # mismatch. It ships postgis, postgis_topology, fuzzystrmatch, and
     # postgis_tiger_geocoder: the only extensions the dump references.
     image: postgis/postgis:16-3.4

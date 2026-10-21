@@ -373,7 +373,7 @@ flowchart LR
     l1["`a surface that links the page`"]:::spec
     l2["`a shared component`"]:::shared
     l3["`the page`"]:::core
-    l4["`a file the page and the capture script share`"]:::data
+    l4["`a file the page and the screenshot tooling share`"]:::data
     l1 ~~~ l2 ~~~ l3 ~~~ l4
   end
 

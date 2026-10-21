@@ -55,7 +55,8 @@ class Settings(BaseSettings):
 
     # Trusted proxy hops in front of the backend. The rate-limit key
     # (``services.audit.rate_limit_key``) picks the ``X-Forwarded-For`` entry at
-    # ``-trusted_proxy_hops`` (1 = Railway only; 2 if Cloudflare sits in front).
+    # ``-trusted_proxy_hops``: 1 for one reverse proxy in front of the backend,
+    # plus one per extra trusted proxy.
     trusted_proxy_hops: int = 1
 
     # Transactional email. `console` logs instead of sending; `resend` needs

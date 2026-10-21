@@ -6,8 +6,8 @@ describe("resolveLinkHref", () => {
   it("links an X or GitHub handle to the account on the platform", () => {
     expect(resolveLinkHref("x", "analyst_example")).toBe("https://x.com/analyst_example");
     expect(resolveLinkHref("x", "@analyst_example")).toBe("https://x.com/analyst_example");
-    expect(resolveLinkHref("github", "@torvalds")).toBe(
-      "https://github.com/torvalds"
+    expect(resolveLinkHref("github", "@octocat")).toBe(
+      "https://github.com/octocat"
     );
   });
 
@@ -25,7 +25,7 @@ describe("resolveLinkHref", () => {
     // under X's logo.
     expect(resolveLinkHref("x", "https://nitter.net/analyst_example")).toBeNull();
     expect(resolveLinkHref("x", "https://x.com.evil.example/analyst_example")).toBeNull();
-    expect(resolveLinkHref("github", "https://gitlab.com/torvalds")).toBeNull();
+    expect(resolveLinkHref("github", "https://gitlab.com/octocat")).toBeNull();
   });
 
   it("links nothing for a URL that carries more than an account", () => {
@@ -64,8 +64,8 @@ describe("displayLinkValue", () => {
   it("reduces an X or GitHub profile URL to the handle", () => {
     // The icon names the platform, so the host carries nothing.
     expect(displayLinkValue("x", "https://x.com/analyst_example")).toBe("@analyst_example");
-    expect(displayLinkValue("github", "https://github.com/torvalds")).toBe(
-      "@torvalds"
+    expect(displayLinkValue("github", "https://github.com/octocat")).toBe(
+      "@octocat"
     );
   });
 
@@ -74,8 +74,8 @@ describe("displayLinkValue", () => {
     expect(displayLinkValue("x", "https://www.twitter.com/analyst_example/")).toBe(
       "@analyst_example"
     );
-    expect(displayLinkValue("github", "https://www.github.com/torvalds")).toBe(
-      "@torvalds"
+    expect(displayLinkValue("github", "https://www.github.com/octocat")).toBe(
+      "@octocat"
     );
   });
 

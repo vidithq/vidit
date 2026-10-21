@@ -62,8 +62,8 @@ def _client_ip(request: Request) -> str | None:
     Take the RIGHT-most ``X-Forwarded-For`` entry: trusted proxies *append* the observed client
     IP, so it is the only value we can defend. A client can prepend anything.
 
-    Defaults to ONE trusted hop (Railway to backend). Bump ``TRUSTED_PROXY_HOPS`` to 2 when a
-    second trusted proxy (e.g. Cloudflare) lands in front. The value only buckets the rate
+    Defaults to ONE trusted hop: one reverse proxy in front of the backend. Add one to
+    ``TRUSTED_PROXY_HOPS`` per extra trusted proxy in front of it. The value only buckets the rate
     limiter, so a miscount blurs a bucket boundary and is no vulnerability.
 
     Validated via ``ipaddress.ip_address`` so a hostile non-IP header value falls through to

@@ -236,7 +236,7 @@ BODIES = {
         "created_at": "2026-03-13T08:05:00.000Z",
         "user": {"screen_name": HANDLE},
         "text": (
-            "@other_analyst @geoconfirmed @viditbot @uacontrolmap "
+            "@other_analyst @other_osint @viditbot @ministry_wire "
             "The guy who opens the window is on the third floor"
         ),
         "in_reply_to_status_id_str": INHERITED_PARENT_ID,
@@ -775,7 +775,7 @@ async def test_failure_reply_loop_guard_on_replies_to_the_bot(db, linked_owner):
         ("@other_analyst @viditbot look at this", False, True),
         # The field shape: four carried mentions, the bot third, then the analyst's sentence.
         (
-            "@other_analyst @geoconfirmed @viditbot @uacontrolmap "
+            "@other_analyst @other_osint @viditbot @ministry_wire "
             "The guy who opens the window is on the third floor",
             True,
             False,
@@ -795,7 +795,7 @@ async def test_failure_reply_loop_guard_on_replies_to_the_bot(db, linked_owner):
         # The dot-mention: X never writes a period into a prefix, so it ends the run.
         (".@ViditBot 48.123456, 37.654321", True, True),
         # Somebody else's handle, whatever its position.
-        ("@other_analyst @uacontrolmap the depot", True, False),
+        ("@other_analyst @ministry_wire the depot", True, False),
         ("", True, False),
     ],
 )

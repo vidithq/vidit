@@ -55,12 +55,13 @@ function apiIsLocal() {
 }
 
 /**
- * Hostname of the CDN a deployment serves media from, read the same way as
+ * Hostname a deployment serves media from, read the same way as
  * NEXT_PUBLIC_API_URL above (Next loads the `.env*` files before evaluating
  * this config). Bare hostname, no scheme or path: it feeds the
- * `remotePatterns` entry below. Unset, no CDN entry is added and media comes
- * from the API host, as in local dev. A deployment that serves media from a CDN
- * sets it in the build environment.
+ * `remotePatterns` entry below. Unset, `next/image` allows only the local dev
+ * media host (`localhost:8000`). A deployment sets it in the build
+ * environment: to its CDN host, or to its bucket endpoint when it serves media
+ * from S3 without a CDN.
  */
 const mediaHost = process.env.NEXT_PUBLIC_MEDIA_HOST;
 
