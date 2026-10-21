@@ -395,8 +395,8 @@ flowchart LR
   a screenshot and its legend`"]:::shared
   shots["`**shots.json**
   per page: file, window, session, markers and their labels`"]:::data
-  script["`**video/shoot-guide.js**
-  writes public/guide/ and public/import/`"]:::data
+  script["`**screenshot tooling**
+  maintained separately, writes public/guide/ and public/import/`"]:::data
   imp["`**/import**
   #detection, #archive, #paste, #bot`"]:::spec
 
@@ -425,7 +425,7 @@ flowchart LR
 | `#settings` | Your settings | A screenshot of the Notifications card (who can request your approval, the email and push switch per kind), and tiles for the profile, the X handle and display |
 
 - **Anchors are contract.** Other pages and messages link to a section by its id, so keep every id when you edit a heading. Each heading takes `max-sm:scroll-mt-16`, so a jump on a phone lands below the menu chip.
-- **One marker list.** [`shots.json`](../frontend/src/app/_shots/shots.json) groups the screenshots by page, `guide` and `import`, and names each one's file, route, window, session and markers. The layout, Approvals, Feed, Notifications and Submit shots are signed in. A marker is a target element and its legend line. [`video/shoot-guide.js`](../video/shoot-guide.js) draws a numbered orange disc beside each target and writes the WebP to `frontend/public/<page>/`. [`Shot`](../frontend/src/app/_shots/Shot.tsx) renders one screenshot on either page and numbers the same labels with `NumberedSteps` under the image. Change a marker in the JSON, then re-shoot (see [`video/README.md`](../video/README.md#guide-screenshots)).
+- **One marker list.** [`shots.json`](../frontend/src/app/_shots/shots.json) groups the screenshots by page, `guide` and `import`, and names each one's file, route, window, session and markers. The layout, Approvals, Feed, Notifications and Submit shots are signed in. A marker is a target element and its legend line. The screenshot tooling, maintained separately, draws a numbered orange disc beside each target and writes the WebP to `frontend/public/<page>/`. [`Shot`](../frontend/src/app/_shots/Shot.tsx) renders one screenshot on either page and numbers the same labels with `NumberedSteps` under the image. Change a marker in the JSON, then re-shoot the screenshots.
 - **Grounded in the product.** The page names only controls that exist, under the labels the product prints. A change to a surface the page shows updates its screenshot or its tile in the same PR.
 
 #### Import and methodology guides

@@ -74,7 +74,7 @@ Vidit is open source under [AGPL-3.0](LICENSE). Anyone can self-host the platfor
 
 ## Demo
 
-<!-- To replace this video, see video/README.md, section "Swap the README embed". -->
+<!-- The promo and screenshot tooling that produces this video is maintained separately. -->
 
 https://github.com/user-attachments/assets/f314673c-d357-4468-af6d-2299c831c5fc
 

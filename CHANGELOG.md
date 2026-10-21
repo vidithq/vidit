@@ -2,6 +2,12 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Removed
+
+- The promo video and guide screenshot tooling is maintained separately and no longer ships in this repository; the guide screenshots stay ([#648](https://github.com/vidithq/vidit/pull/648)).
+
 ## v0.7.2, 2026-10-19
 
 ### Changed

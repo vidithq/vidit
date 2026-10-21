@@ -1,6 +1,6 @@
 # Vidit - Makefile for local development
 
-.PHONY: help install env db-up db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-detections typology-weights mock-admin import-prod promo promo-v05 promo-v05b promo-collections guide-shots gen-api-types check-dup vulture check-video-routes check-changelog hygiene
+.PHONY: help install env db-up db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-detections typology-weights mock-admin import-prod gen-api-types check-dup vulture check-changelog hygiene
 
 help:
 	@echo "Available commands:"
@@ -21,13 +21,8 @@ help:
 	@echo "  make dev           - Run both backend and frontend in parallel"
 	@echo "  make test          - Run backend test suite (pytest)"
 	@echo "  make gen-api-types - Regenerate frontend API types from the backend OpenAPI spec"
-	@echo "  make hygiene       - Duplication (jscpd) + dead-code (knip frontend, vulture backend) + video-route + changelog line-length checks"
+	@echo "  make hygiene       - Duplication (jscpd) + dead-code (knip frontend, vulture backend) + changelog line-length checks"
 	@echo "  make clean         - Stop containers and purge local storage/cache/builds"
-	@echo "  make promo         - Regenerate the promo MP4 (see video/README.md)"
-	@echo "  make promo-v05     - Regenerate the v0.5 portfolio promo MP4 (see video/README.md)"
-	@echo "  make promo-v05b    - Regenerate the v0.5 import/review promo MP4 (see video/README.md)"
-	@echo "  make promo-collections - Regenerate the collections promo MP4 (see video/README.md)"
-	@echo "  make guide-shots   - Regenerate the /guide and /import annotated screenshots (see video/README.md)"
 
 init: install env db-up migrate
 	@echo "Initialization complete. Run 'make dev' to start."
@@ -50,120 +45,6 @@ mock-admin:
 # the confirmation.
 import-prod:
 	./backend/scripts/import_prod.sh $(ARGS)
-
-# End-to-end promo render. Requires `make dev` running in another shell.
-# Also assumes the local database already carries a populated catalog, so
-# the map reads as populated on camera: `make import-prod` or an archive
-# import covers that.
-#
-# Two outputs stage off one capture run:
-#   - `promo-master.mp4` — 2560×1440 / 60fps comp / CRF 16, +faststart
-#                          (S3 → landing's `<video>`; also the archive)
-#   - `promo-readme.mp4` — 1280×720  / 30fps      / CRF 26, +faststart
-#                          (drag-drop into a GitHub draft for the
-#                           user-attachments URL the README embeds)
-#
-# Master is rendered at Remotion `--scale 2` (4K canvas) so the
-# rasterised captions / brand chrome are crisp, then ffmpeg downscales
-# to 2K. A 1080p intermediate isn't worth maintaining at beta
-# traffic: the master streams fine over CloudFront and the browser
-# downscales for free.
-# See video/README.md for the breakdown of each step.
-promo: mock-admin
-	cd video && node seed-requests.js
-	cd video && node record-submit.js
-	cp video/out/recording-submit.mp4 video/public/recording-submit.mp4
-	cd video && npx remotion render src/index.ts Demo out/promo-4k.mp4 --codec h264 --crf 16 --scale 2
-	ffmpeg -y -i video/out/promo-4k.mp4 -vf scale=2560:-2 -c:v libx264 -crf 16 -preset slow -pix_fmt yuv420p -movflags +faststart video/out/promo-master.mp4
-	ffmpeg -y -i video/out/promo-4k.mp4 -vf scale=1280:-2,fps=30 -c:v libx264 -crf 26 -preset slow -pix_fmt yuv420p -movflags +faststart video/out/promo-readme.mp4
-	@ls -lh video/out/promo-master.mp4 video/out/promo-readme.mp4
-	@echo "Done. Master 2K (S3) → video/out/promo-master.mp4 | README 720p → video/out/promo-readme.mp4"
-
-# The v0.5 promo A, "the portfolio": the brand intro, one unbroken logged-out
-# take of an analyst's public profile, the closing card. Requires `make dev`
-# running in another shell and a populated catalog (`make import-prod` or an
-# archive import); it reads the instance and writes nothing to it.
-#
-# The take is paced in real time and played uncut, so its length is the
-# promo's recorded length. Re-pace it in `video/record-v05.js`, not in the
-# composition.
-#
-# Two outputs stage off one capture run:
-#   - `promo-v05-master.mp4`: 1920x1080 / 60fps / CRF 16, +faststart
-#                              (S3 -> the landing `<video>`; also the archive)
-#   - `promo-v05-readme.mp4`: 1280x720  / 30fps / CRF 26, +faststart
-#                              (drag-drop into a GitHub draft for the
-#                               user-attachments URL the README embeds)
-#
-# Unlike `promo`, the master is a plain remux of the 1080p render rather than a
-# 4K render downscaled: the take is captured short and wide (1040x560, see
-# video/README.md) and the comp scales it up to fill the frame, so a 4K canvas
-# buys nothing but render time. The master pass only relocates the moov atom
-# for streaming, so it re-encodes nothing.
-promo-v05:
-	cd video && node record-v05.js
-	cd video && npm run render:v05
-	ffmpeg -y -i video/out/promo-v05.mp4 -c copy -movflags +faststart video/out/promo-v05-master.mp4
-	ffmpeg -y -i video/out/promo-v05.mp4 -vf scale=1280:-2,fps=30 -c:v libx264 -crf 26 -preset slow -pix_fmt yuv420p -movflags +faststart video/out/promo-v05-readme.mp4
-	@ls -lh video/out/promo-v05-master.mp4 video/out/promo-v05-readme.mp4
-	@echo "Done. Master 1080p (S3) -> video/out/promo-v05-master.mp4 | README 720p -> video/out/promo-v05-readme.mp4"
-
-# The v0.5 promo B, "import and review": a signed-in take of an archive import
-# and a review pass. Requires `make dev` running in another shell, the demo
-# account's password in VIDIT_DEMO_PASSWORD, and the trimmed export that the
-# take imports:
-#
-#   backend/.venv/bin/python video/prep-review-take.py \
-#       --archive "<the analyst's own export>.zip" --username <account> \
-#       --creating --threads 14 --out video/out/x-archive-trimmed.zip
-#
-# Unlike `promo-v05`, this take WRITES to the instance: it imports an archive
-# and submits one draft. Read the editorial rules at the top of record-v05b.js
-# before pointing it at anything but a local instance. Staging outputs match
-# `promo-v05`.
-promo-v05b:
-	cd video && node record-v05b.js
-	cd video && npm run render:v05b
-	ffmpeg -y -i video/out/promo-v05b.mp4 -c copy -movflags +faststart video/out/promo-v05b-master.mp4
-	ffmpeg -y -i video/out/promo-v05b.mp4 -vf scale=1280:-2,fps=30 -c:v libx264 -crf 26 -preset slow -pix_fmt yuv420p -movflags +faststart video/out/promo-v05b-readme.mp4
-	@ls -lh video/out/promo-v05b-master.mp4 video/out/promo-v05b-readme.mp4
-	@echo "Done. Master 1080p (S3) -> video/out/promo-v05b-master.mp4 | README 720p -> video/out/promo-v05b-readme.mp4"
-
-# The collections promo: one unbroken take of a collection being read and then
-# written to, between the brand intro and the closing card. Requires `make dev`
-# running in another shell and an instance holding the analyst's shelf
-# (`make import-prod` or a local set of collections).
-#
-# The take signs in as the collection's owner (PROMO_LOGIN_EMAIL /
-# PROMO_LOGIN_PASSWORD, defaulting to the local dev fixture) because the edit
-# page is a beat, and it WRITES: the edit beat puts one event on the collection
-# and saves. Undo that after the render, the way `video/README.md` spells out,
-# so the next run finds the collection as this one did.
-#
-# The take checks what it needs before it captures a frame: the session owns
-# the collection it opens, the sequence is long enough for the steps, the
-# picker's first result can still be added, the shelf is longer than the
-# profile's grid so the `Show more` link exists, and the closing query reaches
-# a collection. Re-point any of those at the top of
-# `video/record-collections.js`.
-#
-# The take is paced in real time and played uncut, so its length is the promo's
-# recorded length. Re-pace it in `video/record-collections.js`, not in the
-# composition. Staging outputs match `promo-v05`.
-promo-collections:
-	cd video && node record-collections.js
-	cd video && npm run render:collections
-	ffmpeg -y -i video/out/promo-collections.mp4 -c copy -movflags +faststart video/out/promo-collections-master.mp4
-	ffmpeg -y -i video/out/promo-collections.mp4 -vf scale=1280:-2,fps=30 -c:v libx264 -crf 26 -preset slow -pix_fmt yuv420p -movflags +faststart video/out/promo-collections-readme.mp4
-	@ls -lh video/out/promo-collections-master.mp4 video/out/promo-collections-readme.mp4
-	@echo "Done. Master 1080p (S3) -> video/out/promo-collections-master.mp4 | README 720p -> video/out/promo-collections-readme.mp4"
-
-# The annotated screenshots on `/guide`. Requires `make dev` running in another
-# shell, a populated catalog, GUIDE_EVENT, and for the signed-in shots
-# GUIDE_APPROVE_EVENT and GUIDE_LOGIN_EMAIL / GUIDE_LOGIN_PASSWORD (see
-# video/README.md). Writes the WebP files to frontend/public/guide/.
-guide-shots:
-	cd video && node shoot-guide.js
 
 seed: mock-admin seed-detections
 	@echo "Done. admin@vidit.app exists and the synthetic archive's detections are in."
@@ -219,17 +100,11 @@ check-dup:
 vulture:
 	cd backend && uv run vulture
 
-# The capture scripts run outside every test suite, so a route rename
-# elsewhere in the repo only surfaces at the next promo render. See
-# video/check-routes.sh.
-check-video-routes:
-	./video/check-routes.sh
-
 # CHANGELOG entries stay one short line each (CONTRIBUTING.md).
 check-changelog:
 	awk 'length($$0) > 300 { print "::error file=CHANGELOG.md,line=" NR "::Line is " length($$0) " characters; keep a CHANGELOG entry to one line of at most 300"; bad=1 } END { exit bad }' CHANGELOG.md
 
-hygiene: check-dup vulture check-video-routes check-changelog
+hygiene: check-dup vulture check-changelog
 	cd frontend && npm run knip
 	cd frontend && npm run palette:check
 

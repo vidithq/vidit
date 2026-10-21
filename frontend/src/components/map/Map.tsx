@@ -772,8 +772,8 @@ function FlyToCamera({ target }: { target: { lat: number; lng: number } | null }
   return null;
 }
 
-// Dev-only camera handle for the promo-recording pipeline (video/): exposes the maplibre instance
-// for Playwright easeTo moves. Gated at the render site, so never mounted in production.
+// Dev-only camera handle for the promo recordings, whose tooling is maintained separately: exposes the
+// maplibre instance for Playwright easeTo moves. Gated at the render site, so never mounted in production.
 function DevMapHandle() {
   const { current: map } = useMap();
   useEffect(() => {
