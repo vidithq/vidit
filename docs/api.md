@@ -919,7 +919,7 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
     {
       "id": "uuid",
       "role": "source",
-      "storage_url": "https://d10w3bld05vsky.cloudfront.net/uploads/.../video.mp4",
+      "storage_url": "https://<cloudfront-domain>/uploads/.../video.mp4",
       "media_type": "video",
       "sha256": "f7c3bcd13f00e8a4b2d4e9b3f1a2c5d6e7f8901234567890abcdef1234567890",
       "original_filename": "IMG_2034.MOV"
