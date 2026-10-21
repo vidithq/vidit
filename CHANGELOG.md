@@ -4,6 +4,9 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ## Unreleased
 
+### Added
+
+- Sites: you can map a durable place such as a base or a depot as a dated zone backed by imagery, link your published events to it with their effect, follow its history on its own page, and show sites as a layer on the map ([#644](https://github.com/vidithq/vidit/pull/644)).
 ### Changed
 
 - The landing roadmap lists the planned outcomes with an In progress or Planned status instead of versions and links to the changelog for what shipped, and the contributor docs point to the issues and their epics for planning ([#635](https://github.com/vidithq/vidit/pull/635)).

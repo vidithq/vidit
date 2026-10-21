@@ -16,10 +16,28 @@ import {
 } from "@/lib/viewport";
 import { DetailSidePanel } from "@/components/map/DetailSidePanel";
 import { FilterPanel } from "@/components/map/FilterPanel";
+import { SitePanel } from "@/components/map/SitePanel";
 import { useMapState } from "@/contexts/MapStateContext";
 import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
+import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
+import { toMapSite } from "@/components/sites/useSitesInView";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  shownAtEveryZoom,
+  sitePath,
+  sitesAsOf,
+  sitesPath,
+  todayUtc,
+  zoneEmphasis,
+  type Site,
+  type SiteListItem,
+} from "@/lib/sites";
 
 const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
+const SiteLayers = dynamic(
+  () => import("@/components/map/SiteLayers").then((m) => m.SiteLayers),
+  { ssr: false },
+);
 
 export default function HomePage() {
   // Navigation-surviving state lives in MapStateContext; the page reads only filter values (setters live with FilterPanel).
@@ -30,6 +48,9 @@ export default function HomePage() {
     setSelectedId,
     filters,
     dateWindows,
+    sitesShown,
+    selectedSiteId,
+    setSelectedSiteId,
   } = useMapState();
 
   const [points, setPoints] = useState<MapPoint[]>([]);
@@ -44,6 +65,12 @@ export default function HomePage() {
   const detail = useApiResource<EventDetail>(
     selectedId ? `/events/${selectedId}` : null,
   );
+  const siteDetail = useApiResource<Site>(
+    sitesShown && selectedSiteId ? sitePath(selectedSiteId) : null,
+  );
+  const [sites, setSites] = useState<SiteListItem[]>([]);
+  // The zone a site shows is the one valid at the end of the event date window.
+  const asOf = sitesAsOf(dateWindows.eventTo, todayUtc());
   const abortRef = useRef<AbortController | null>(null);
 
   const fetchPoints = useCallback(() => {
@@ -93,6 +120,49 @@ export default function HomePage() {
   useEffect(() => {
     fetchPoints();
   }, [fetchPoints]);
+
+  // Debounced so scrubbing the event date window settles into one request per resting date.
+  useDebouncedEffect(
+    () => {
+      if (!sitesShown || !bbox) return;
+      const controller = new AbortController();
+      apiFetch<SiteListItem[]>(sitesPath(bbox, asOf), { signal: controller.signal })
+        .then(setSites)
+        .catch(() => {});
+      return () => controller.abort();
+    },
+    [sitesShown, bbox, asOf],
+    VIEWPORT_DEBOUNCE_MS,
+  );
+
+  const viewerId = useAuth().user?.id ?? null;
+  const mapSites = useMemo(
+    () =>
+      sitesShown
+        ? sites.map((site) => ({
+            ...toMapSite(site),
+            everyZoom: shownAtEveryZoom(site, viewerId),
+            emphasis: zoneEmphasis(site),
+          }))
+        : [],
+    [sites, sitesShown, viewerId],
+  );
+
+  // One panel at a time: a pin closes the site panel, a site closes the event panel.
+  const selectEvent = useCallback(
+    (id: string | null) => {
+      setSelectedSiteId(null);
+      setSelectedId(id);
+    },
+    [setSelectedId, setSelectedSiteId],
+  );
+  const selectSite = useCallback(
+    (id: string) => {
+      setSelectedId(null);
+      setSelectedSiteId(id);
+    },
+    [setSelectedId, setSelectedSiteId],
+  );
 
   // Debounced so a drag or wheel zoom settles into one request; a containment check drops pans that need no new points.
   const handleBoundsChange = useCallback((next: MapBounds) => {
@@ -148,13 +218,17 @@ export default function HomePage() {
       <Map
         points={visiblePoints}
         selectedId={selectedId}
-        onPointClick={setSelectedId}
+        onPointClick={selectEvent}
         className="map-fullscreen"
         center={{ lat: viewState.latitude, lng: viewState.longitude }}
         zoom={viewState.zoom}
         onViewChange={setViewState}
         onBoundsChange={handleBoundsChange}
-      />
+      >
+        {sitesShown && (
+          <SiteLayers sites={mapSites} selectedId={selectedSiteId} onSelect={selectSite} />
+        )}
+      </Map>
 
       <FilterPanel
         tags={tags}
@@ -171,6 +245,10 @@ export default function HomePage() {
           resource={detail}
           onClose={() => setSelectedId(null)}
         />
+      )}
+
+      {sitesShown && selectedSiteId && !selectedId && (
+        <SitePanel resource={siteDetail} onClose={() => setSelectedSiteId(null)} />
       )}
     </div>
   );

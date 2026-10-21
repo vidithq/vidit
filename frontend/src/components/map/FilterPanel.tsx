@@ -1,13 +1,20 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import { ChevronDown, ChevronUp, Filter } from "lucide-react";
+import Link from "next/link";
+import { ChevronDown, ChevronUp, Filter, Plus } from "lucide-react";
 
 import { filterPointsByStatus } from "@/types";
 import type { Conflict, MapPoint, Tag } from "@/types";
 import { ActiveFilterPills, type ActiveFilter } from "@/components/ui/ActiveFilterPills";
 import { rangeSummary } from "@/components/ui/FilterSection";
 import { Dot } from "@/components/ui/Dot";
+import { buttonClasses } from "@/components/ui/Button";
+import { FieldHelp } from "@/components/ui/FieldHelp";
+import { ToggleRow } from "@/components/ui/ToggleRow";
+import { useAuth } from "@/contexts/AuthContext";
+import { formatDate } from "@/lib/format";
+import { NEW_SITE_HREF, sitesAsOf, todayUtc } from "@/lib/sites";
 import {
   EMPTY_DATE_WINDOWS,
   EMPTY_EVENT_FILTERS,
@@ -51,7 +58,11 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
     setAddedPlaying,
     filtersOpen,
     setFiltersOpen,
+    sitesShown,
+    setSitesShown,
   } = useMapState();
+  const { user } = useAuth();
+  const asOf = sitesAsOf(dateWindows.eventTo, todayUtc());
 
   const onPatch: EventFilterPatch = (patch) =>
     setFilters((v) => ({ ...v, ...patch }));
@@ -144,6 +155,25 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
           <ActiveFilterPills filters={activeFilters} onClearAll={clearFilters} />
         </div>
       )}
+
+      {/* The layers strip: the sites layer and the date its zones are read at. */}
+      <div className="mt-1 bg-neutral-900 rounded-lg border border-neutral-700 px-2.5 max-sm:shrink-0 max-sm:pointer-events-auto">
+        <ToggleRow label="Sites" on={sitesShown} onToggle={() => setSitesShown(!sitesShown)} />
+        {sitesShown && (
+          <div className="flex items-center justify-between gap-2 py-1.5">
+            <span className="inline-flex items-center gap-1 text-[11px] text-neutral-500">
+              Zones as of {asOf ? formatDate(asOf) : "today"}
+              <FieldHelp concept="sites_layer" size={12} />
+            </span>
+            {user && (
+              <Link href={NEW_SITE_HREF} className={buttonClasses("ghost")}>
+                <Plus size={14} />
+                New site
+              </Link>
+            )}
+          </div>
+        )}
+      </div>
 
       {filtersOpen && (
         // The one block that shrinks: `min-h-0` lets it go below its content height, and overflow makes

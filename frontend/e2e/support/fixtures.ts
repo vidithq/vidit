@@ -10,6 +10,7 @@
 import type { components } from "@/lib/api-types";
 import type { Approval, OrganizationApproval } from "@/lib/approvals";
 import type { Collection } from "@/lib/collections";
+import type { Site, SiteHistoryEntry, SiteNearbyEvent } from "@/lib/sites";
 import type { Notification, UnreadCount } from "@/lib/notifications";
 import type {
   InviteCandidate,
@@ -574,3 +575,96 @@ export const ONE_PIXEL_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
   "base64",
 );
+
+/** A site with a long name, three observations and an event linked outside its zone: the
+ *  site page's header, map footer and history rows at their widest. Fictional desert coordinates. */
+export const SITE_ID = "88888888-8888-4888-8888-888888888881";
+
+const SITE_ZONE = {
+  type: "Polygon" as const,
+  coordinates: [
+    [
+      [51.0, 20.0],
+      [51.03, 20.0],
+      [51.03, 20.02],
+      [51.0, 20.02],
+      [51.0, 20.0],
+    ] as [number, number][],
+  ],
+};
+
+const SITE_OBSERVATIONS = ["2023-03-10", "2024-02-18", "2025-06-14"].map((captured, i) => ({
+  id: `88888888-8888-4888-8888-88888888889${i}`,
+  zone: SITE_ZONE,
+  captured_on: captured,
+  imagery_provider: "sentinel_2" as const,
+  imagery_url: null,
+  effect: "construction_extension" as const,
+  note: null,
+  author: { id: SIGNED_IN_USER.id, username: SIGNED_IN_USER.username, avatar_url: null },
+  created_at: "2026-01-01T10:00:00Z",
+}));
+
+export const SITE: Site = {
+  id: SITE_ID,
+  name: "Northern desert logistics depot and its fuel storage annex",
+  site_type: "air_defence_position",
+  zone: SITE_ZONE,
+  centroid: { lat: 20.01, lng: 51.015 },
+  observed_on: "2025-06-14",
+  imagery_provider: "sentinel_2",
+  observation_effect: "construction_extension",
+  corroboration_count: 2,
+  is_corroborated: true,
+  owner: { id: SIGNED_IN_USER.id, username: SIGNED_IN_USER.username, avatar_url: null },
+  latest_link_effect: { effect: "destruction", event_date: "2025-09-02", event_id: EVENT_ID },
+  observations: SITE_OBSERVATIONS,
+  linked_events: [
+    {
+      id: EVENT_ID,
+      title: EVENT.title,
+      event_date: "2025-09-02",
+      event_coords: { lat: 20.05, lng: 51.015 },
+      owner: { id: SIGNED_IN_USER.id, username: SIGNED_IN_USER.username, avatar_url: null },
+      effect: "destruction",
+      linked_at: "2026-02-01T10:00:00Z",
+      inside_zone: false,
+      distance_m: 3300,
+      measured_observation_id: SITE_OBSERVATIONS[2].id,
+    },
+  ],
+  created_at: "2026-01-01T10:00:00Z",
+  updated_at: "2026-01-01T10:00:00Z",
+};
+
+export const SITE_HISTORY: SiteHistoryEntry[] = [
+  {
+    kind: "observation_added",
+    recorded_at: "2026-01-01T10:00:00Z",
+    fact_date: "2025-06-14",
+    actor: SITE.owner,
+    observation_id: SITE_OBSERVATIONS[2].id,
+    observation_effect: "construction_extension",
+    imagery_provider: "sentinel_2",
+  },
+  {
+    kind: "link_effect_changed",
+    recorded_at: "2026-02-01T10:00:00Z",
+    fact_date: "2025-09-02",
+    actor: SITE.owner,
+    event: { id: EVENT_ID, title: EVENT.title, event_date: "2025-09-02" },
+    link_effect: "destruction",
+    previous_link_effect: "damage",
+  },
+];
+
+export const SITE_NEARBY: SiteNearbyEvent[] = [
+  {
+    id: COLLECTED_EVENT.id,
+    title: COLLECTED_EVENT.title,
+    event_date: "2025-07-01",
+    event_coords: { lat: 19.99, lng: 51.01 },
+    owner: { id: SIGNED_IN_USER.id, username: SIGNED_IN_USER.username, avatar_url: null },
+    distance_m: 1300,
+  },
+];

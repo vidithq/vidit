@@ -335,6 +335,40 @@ erDiagram
         TIMESTAMPTZ added_at
     }
 
+    sites {
+        UUID id PK
+        UUID owner_id FK "the creator"
+        VARCHAR name "fixed at create"
+        VARCHAR site_type "fixed at create"
+        TIMESTAMPTZ hidden_at "nullable, admin takedown"
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    site_observations {
+        UUID id PK
+        UUID site_id FK
+        UUID author_id FK "nullable, SET NULL"
+        GEOMETRY zone "POLYGON 4326, GIST"
+        DATE captured_on "imagery capture date"
+        VARCHAR imagery_provider
+        TEXT imagery_url "nullable, required for other"
+        VARCHAR effect
+        TEXT note "nullable"
+        TIMESTAMPTZ created_at
+    }
+
+    event_site_links {
+        UUID id PK
+        UUID event_id FK
+        UUID site_id FK
+        VARCHAR effect
+        TIMESTAMPTZ linked_at
+        UUID linked_by_id FK "nullable, SET NULL"
+        TIMESTAMPTZ unlinked_at "nullable, NULL while live"
+        UUID unlinked_by_id FK "nullable, SET NULL"
+    }
+
     follows {
         UUID follower_id FK
         UUID followed_id FK
@@ -543,6 +577,13 @@ erDiagram
     users ||--o{ collections : "owner_id"
     collections ||--o{ collection_events : "collection_id"
     events ||--o{ collection_events : "event_id"
+    users ||--o{ sites : "owner_id"
+    sites ||--o{ site_observations : "site_id"
+    users |o--o{ site_observations : "author_id"
+    sites ||--o{ event_site_links : "site_id"
+    events ||--o{ event_site_links : "event_id"
+    users |o--o{ event_site_links : "linked_by_id"
+    users |o--o{ event_site_links : "unlinked_by_id"
     users ||--o{ follows : "follower_id"
     users ||--o{ follows : "followed_id"
     users ||--o{ notifications : "user_id"
@@ -1299,6 +1340,144 @@ Composite PK: `(collection_id, event_id)`. The pair is the identity, so adding a
 - `ix_collection_events_event_id` on `(event_id)`. The PK's leading `collection_id` serves the forward read, what is on this collection; this covers the reverse, which of my collections hold this event, behind `GET /events/{id}/collections`.
 
 Both foreign keys cascade, so neither a hard-deleted event nor a hard-deleted collection leaves a membership pointing at nothing. Dropping a collection removes its memberships and touches no event: a collection is a view over the analyst's published record, so removing the view is not a judgement on any geolocation.
+
+---
+
+### Sites
+
+A site is a durable place, such as a base, a depot or a radar, with a name and a type. Three tables carry it, and every read derives the site's zone, state and corroboration from them.
+
+```mermaid
+flowchart LR
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
+  classDef read fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`a write, append-only`"]:::spec
+    l2["`a table`"]:::store
+    l3["`the shared predicates`"]:::core
+    l4["`a computed read`"]:::read
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
+  end
+
+  create["`**POST /sites**
+  name, type and the first observation`"]:::spec
+  observe["`**POST /sites/{id}/observations**
+  a dated zone, proven by imagery`"]:::spec
+  link["`**POST /events/{id}/site-links**
+  the event owner links, or changes the effect`"]:::spec
+  unlink["`**DELETE /events/{id}/site-links/{site_id}**
+  stamps unlinked_at`"]:::spec
+
+  sites[("`**sites**
+  name and type, fixed at create`")]:::store
+  observations[("`**site_observations**
+  one zone per captured_on`")]:::store
+  links[("`**event_site_links**
+  one row per period a link held one effect`")]:::store
+
+  zones["`**zones_at**
+  the observation valid on a date`"]:::core
+  live["`**live_links** + **site_linkable_events**
+  unlinked_at IS NULL, published and visible`"]:::core
+
+  state["`**GET /sites**, **GET /sites/{id}**
+  zone, state, corroboration, linked events`"]:::read
+  history["`**GET /sites/{id}/history**
+  every row, on two clocks`"]:::read
+
+  create --> sites
+  create --> observations
+  observe --> observations
+  link --> links
+  unlink --> links
+  observations --> zones --> state
+  links --> live --> state
+  sites --> history
+  observations --> history
+  links --> history
+```
+
+**Nothing about a site is overwritten or deleted.** `site_observations` is append-only, so a correction is a new observation. `event_site_links` is append-only too: an unlink stamps `unlinked_at`, and an effect change closes the live row and opens a new one. The name and the type are fixed at create. Only an erasure removes rows, through the foreign key cascades.
+
+**The zone valid on a date is computed.** It is the observation with the greatest `(captured_on, created_at)` at or before the date (`services/sites.zones_at`). The current zone is the latest observation. The map read takes the zone valid on `as_of`, and a linked event is measured against the zone valid on its `event_date`.
+
+**State comes from observations only.** The read reports the latest observation's `captured_on`, `imagery_provider` and `effect`. The effect of the most recent linked event is reported beside it as `latest_link_effect` and never changes the observed state. No column stores an active or current flag.
+
+**Corroboration is computed.** `corroboration_count` is the number of distinct owners of visible linked events, and a site is corroborated when one of them is not the site owner. Every computed read counts live links to events in `services/event_filters.site_linkable_events` (not soft-deleted, not withheld, `geolocated`), so a closed or withheld event drops out with no write to `event_site_links`.
+
+**History runs on two clocks.** [`GET /sites/{id}/history`](api.md#get-sitesidhistory) builds one feed from the three tables, with no log table of its own. Each entry carries `recorded_at`, when the fact entered Vidit (`created_at`, `linked_at` or `unlinked_at`), and `fact_date`, when it happened on the ground (`captured_on`, or the linked event's `event_date`). Imagery found after the fact keeps its capture date, so the two orders differ.
+
+---
+
+### `sites`
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `UUID` | PK, default `uuid4()` |
+| `owner_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The analyst who created the site. Cascades like `collections.owner_id`, so an erasure takes the site, its observations and its links with it. |
+| `name` | `VARCHAR(255)` | NOT NULL. The width of `events.title`, from the shared `TITLE_MAX_LENGTH`. Fixed at create. |
+| `site_type` | `VARCHAR(30)` | NOT NULL, CHECK `ck_sites_site_type_valid` in `('airbase', 'military_base', 'depot', 'port', 'air_defence_position', 'artillery_position', 'radar', 'fortification', 'other')`, mirroring the `SiteType` alias in [`models/site.py`](../backend/app/models/site.py). Fixed at create. |
+| `hidden_at` | `TIMESTAMPTZ` | nullable. Takedown: NULL = visible, timestamp = withheld from every read but an admin's detail read. The same axis [`collections.hidden_at`](#collections) carries. No endpoint sets it. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL |
+| `updated_at` | `TIMESTAMPTZ` | NOT NULL, SQLAlchemy `onupdate` stamp |
+
+A site whose owner is soft-deleted reads as not found, like a collection.
+
+**Indexes:**
+- `ix_sites_owner_id` on `(owner_id)`. Backs the owner cascade.
+
+---
+
+### `site_observations`
+
+One dated zone of a site, proven by imagery a reader can reproduce: a public provider with its capture date, or a public URL.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `UUID` | PK, default `uuid4()` |
+| `site_id` | `UUID` | FK → `sites.id` ON DELETE CASCADE, NOT NULL |
+| `author_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. Any signed-in analyst may add an observation; an erased author leaves the zone in place. |
+| `zone` | `GEOMETRY(POLYGON, 4326)` | NOT NULL. Every vertex passes the event coordinate bounds (`services/events.validate_coordinates`), and the polygon must be valid with a non-zero area. The API caps it at 1000 vertices. |
+| `captured_on` | `DATE` | NOT NULL. The imagery capture date. The API refuses a date after today (UTC). |
+| `imagery_provider` | `VARCHAR(20)` | NOT NULL, CHECK `ck_site_observations_imagery_provider_valid` in `('google_earth', 'sentinel_2', 'landsat', 'other')` |
+| `imagery_url` | `TEXT` | nullable. An `http` or `https` URL, up to 2000 characters at the API. Required when `imagery_provider` is `other` (`ck_site_observations_other_needs_url`). |
+| `effect` | `VARCHAR(30)` | NOT NULL, default `observed_no_change`, CHECK `ck_site_observations_effect_valid` in `('observed_no_change', 'construction_extension', 'no_visible_activity', 'reoccupation', 'other')`. What the imagery shows, never an intention. |
+| `note` | `TEXT` | nullable. Plain text, up to 2000 characters at the API. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL. The `recorded_at` of the observation's history entry. |
+
+Two observations may share a `captured_on`; `created_at` orders them.
+
+**Indexes:**
+- `idx_site_observations_zone`, GeoAlchemy2's default GIST index on `zone`.
+- `ix_site_observations_site_captured` on `(site_id, captured_on, created_at)`. Backs the pick of the zone valid on a date.
+
+---
+
+### `event_site_links`
+
+One period during which an event was linked to a site with one effect. A link is semantic, not spatial: the event may lie outside the zone.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `UUID` | PK, default `uuid4()` |
+| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, NOT NULL |
+| `site_id` | `UUID` | FK → `sites.id` ON DELETE CASCADE, NOT NULL |
+| `effect` | `VARCHAR(20)` | NOT NULL, CHECK `ck_event_site_links_effect_valid` in `('damage', 'destruction', 'other')` |
+| `linked_at` | `TIMESTAMPTZ` | NOT NULL, server_default `now()` |
+| `linked_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The event owner at link time; event ownership can move. |
+| `unlinked_at` | `TIMESTAMPTZ` | nullable. NULL while the link is live. |
+| `unlinked_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The event owner at unlink time. |
+
+Only the event owner links or unlinks, and only a `geolocated`, visible event can be linked. An effect change stamps `unlinked_at` on the live row and inserts a new row whose `linked_at` equals it, in one transaction under the event row lock. The equal pair is how the history tells an effect change from an unlink.
+
+**Indexes:**
+- `uq_event_site_links_live`, unique on `(event_id, site_id)` WHERE `unlinked_at IS NULL`. One live link per event and site.
+- `ix_event_site_links_site_id` on `(site_id)`. Backs the site reads and the history.
+- `ix_event_site_links_event_id` on `(event_id)`. Backs the event's link list and the event cascade.
 
 ---
 

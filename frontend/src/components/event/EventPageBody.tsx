@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type { ReactNode } from "react";
 
 import type { EventDetail } from "@/types";
 import { formatCoordinates } from "@/lib/coordinates";
@@ -17,9 +18,11 @@ const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
  * filed version on `/events/{id}/vN` (fed by `snapshotToEventView`). The body writes nothing, so a
  * version page needs no gate: the chrome above carries every control that acts on the record.
  */
-export function EventPageBody({ geo }: { geo: EventDetail }) {
+export function EventPageBody({ geo, sites }: { geo: EventDetail; sites?: ReactNode }) {
   return (
     <EventDetailBody geo={geo} variant="page">
+      {/* The live row's site links; a filed version renders none. */}
+      {sites}
       {/* A located row gets the Location module; a coordless event (a `requested` row served by id) has
           no point, so the block is omitted. */}
       {geo.event_coords && (

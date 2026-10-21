@@ -17,6 +17,7 @@ from app.routers.events import (
     import_tweet,
     item,
     read,
+    sites,
     write,
 )
 
@@ -30,5 +31,6 @@ routers = (
     geolocators.router,
     approvals.router,
     approval_requests.router,
+    sites.router,
     item.router,
 )

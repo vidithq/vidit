@@ -41,6 +41,10 @@ import {
   SECOND_COLLECTED_EVENT_DETAIL,
   SECOND_COLLECTED_EVENT_ID,
   SIGNED_IN_USER,
+  SITE,
+  SITE_HISTORY,
+  SITE_ID,
+  SITE_NEARBY,
   X_HANDLE_WITH_DECLINED_REQUEST,
 } from "./fixtures";
 
@@ -83,6 +87,8 @@ const ROUTES: [RegExp, unknown][] = [
     new RegExp(`^/events/${EVENT_ID}/approvals$`),
     { items: EVENT_APPROVALS, viewer_can_approve: false },
   ],
+  // The event's site links: none, so its owner sees the Link to a site row.
+  [new RegExp(`^/events/${EVENT_ID}/site-links$`), []],
   // The owner's pending invitations, which the edit page's Geolocators card reads.
   [new RegExp(`^/events/${EVENT_ID}/geolocator-invites$`), []],
   [
@@ -97,6 +103,10 @@ const ROUTES: [RegExp, unknown][] = [
     new RegExp(`^/collections/${COLLECTION_ID}/events$`),
     [COLLECTED_EVENT, SECOND_COLLECTED_EVENT],
   ],
+  // The site page: the site, its history under either clock, and its unlinked neighbours.
+  [new RegExp(`^/sites/${SITE_ID}$`), SITE],
+  [new RegExp(`^/sites/${SITE_ID}/history$`), SITE_HISTORY],
+  [new RegExp(`^/sites/${SITE_ID}/nearby-events$`), SITE_NEARBY],
   // The organization page as its org manager reads it.
   [new RegExp(`^/organizations/${ORGANIZATION_SLUG}$`), ORGANIZATION],
   [new RegExp(`^/organizations/${ORGANIZATION_SLUG}/members$`), ORGANIZATION_MEMBERS],

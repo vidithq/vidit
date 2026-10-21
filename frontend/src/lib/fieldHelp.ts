@@ -148,6 +148,46 @@ export const FIELD_HELP = {
     text: "The last org manager cannot leave, be removed or become a member. Make another member org manager first.",
     label: "Why can the last org manager not leave?",
   },
+  sites_layer: {
+    text: "Durable places analysts map, such as bases, depots and radars. Below zoom 10 each corroborated site is a square; from zoom 10 the map draws every zone, a site nobody but its owner has linked an event to faded and dashed. Your own uncorroborated sites show at every zoom, faded. A zone turns amber when its latest linked event shows damage and red for destruction. Each zone is the one valid at the end of the event date window.",
+    label: "What is the sites layer?",
+  },
+  site_last_observed: {
+    text: "The capture date and imagery provider of the latest observation of the site. Vidit says when the place was last seen, never whether it is in use today.",
+    label: "What does last observed mean?",
+  },
+  site_type: {
+    text: "What kind of place the site is. It is fixed when the site is created.",
+    label: "What is the site type?",
+  },
+  site_zone: {
+    text: "The area of the site as one polygon, drawn over the imagery that proves it. Click on the map to add corners, then click the first corner or Done to close it. Drag a corner to move it.",
+    label: "What is the zone?",
+  },
+  site_observation: {
+    text: "A dated zone and the imagery that proves it: a public imagery provider with its capture date, or the public URL where the image already appears. Vidit is never the first to publish an image. An observation is never edited: a correction is a new observation.",
+    label: "What is an observation?",
+  },
+  observation_effect: {
+    text: "What the imagery shows at the site, never an intention. Pick Observed, no change when nothing differs from the previous observation.",
+    label: "What is the observation effect?",
+  },
+  link_effect: {
+    text: "What your event shows happening to the site: damage, destruction, or Other for anything else, such as a column leaving it. Describe only what the footage or image shows; your interpretation goes in the proof.",
+    label: "What is the link effect?",
+  },
+  site_corroboration: {
+    text: "The number of different analysts who linked an event to the site. A site linked only by its owner is not corroborated: the map shows it faded, and from zoom 10 only for everyone but its owner.",
+    label: "What is corroboration?",
+  },
+  site_history: {
+    text: "Every observation and every link, unlink and effect change, each with two dates: when it happened on the ground and when it was added to Vidit. Imagery found after the fact keeps its capture date, so the two orders differ.",
+    label: "What is the site history?",
+  },
+  site_nearby: {
+    text: "A spatial computation, not a link: published events within 2 km of the current zone that nobody has linked to this site. Only an event's owner can link it.",
+    label: "What are nearby events?",
+  },
 } as const;
 
 /** A concept key: the single argument every `<FieldHelp>` takes. */
