@@ -6,6 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- The backend image runs each role with one command, `api`, `migrate`, `worker`, `bot` or `sync-conflicts`, so a host only chooses which command to run and when ([#659](https://github.com/vidithq/vidit/pull/659)).
 - The landing roadmap lists the planned outcomes with an In progress or Planned status instead of versions and links to the changelog for what shipped, and the contributor docs point to the issues and their epics for planning ([#635](https://github.com/vidithq/vidit/pull/635)).
 
 ### Removed
