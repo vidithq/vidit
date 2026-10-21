@@ -193,6 +193,11 @@ _READ_LIMITS = [
     (f"/api/v1/collections/{uuid.UUID(int=0)}", 120),
     (f"/api/v1/collections/{uuid.UUID(int=0)}/events", 120),
     ("/api/v1/users/no-such-user/organizations", 120),
+    (f"/api/v1/sites?bbox={WORLD_BBOX}", 60),
+    (f"/api/v1/sites/{uuid.UUID(int=0)}", 120),
+    (f"/api/v1/sites/{uuid.UUID(int=0)}/history", 120),
+    (f"/api/v1/sites/{uuid.UUID(int=0)}/nearby-events", 120),
+    (f"/api/v1/events/{uuid.UUID(int=0)}/site-links", 120),
     (_ORG, 120),
     (f"{_ORG}/members", 120),
     (f"{_ORG}/approvals", 120),
@@ -248,6 +253,11 @@ _QUOTA_ROUTES = [
     "/api/v1/organizations/{slug}/approvals",
     "/api/v1/collections/{collection_id}",
     "/api/v1/collections/{collection_id}/events",
+    "/api/v1/sites",
+    "/api/v1/sites/{site_id}",
+    "/api/v1/sites/{site_id}/history",
+    "/api/v1/sites/{site_id}/nearby-events",
+    "/api/v1/events/{geolocation_id}/site-links",
     "/api/v1/feed",
 ]
 
@@ -373,10 +383,22 @@ def test_read_quota_key_rejects_a_forged_token(user):
 #   `PUT /users/me/x-handle-request` files a request that goes with it;
 # * admin actions write `admin_events` rows, `POST /admin/invite-codes`
 #   mints 30 codes and `POST /admin/product-updates` records one announcement;
-# * `POST /collections` opens 30 collections (dropped by the owner cascade);
+# * `POST /collections` opens 30 collections and `POST /sites` 30 sites (both dropped by the
+#   owner cascade);
 # * the `reap-*` cases delete expired `auth_tokens` / `pending_registrations`.
 
 _MISSING_ID = uuid.UUID(int=0)
+
+_PROBE_ZONE = {
+    "type": "Polygon",
+    "coordinates": [[[-150.0, -60.0], [-149.99, -60.0], [-149.99, -59.99], [-150.0, -60.0]]],
+}
+_PROBE_OBSERVATION = {
+    "zone": _PROBE_ZONE,
+    "captured_on": "2025-01-01",
+    "imagery_provider": "landsat",
+}
+_PROBE_SITE = {"name": "rate limit probe", "site_type": "other", "observation": _PROBE_OBSERVATION}
 
 # A well-formed browser subscription; every probe upserts the one row.
 _PUSH_SUBSCRIPTION = {
@@ -598,6 +620,25 @@ _DOCUMENTED_LIMITS = [
     _Case("put", f"/api/v1/collections/{_MISSING_ID}/events/{_MISSING_ID}", 60),
     _Case("delete", f"/api/v1/collections/{_MISSING_ID}/events/{_MISSING_ID}", 60),
     _Case("get", f"/api/v1/events/{_MISSING_ID}/collections", 120),
+    # The site create stores a row per request; the other probes 404 after the limiter.
+    _Case("post", "/api/v1/sites", 30, "user", {"json": _PROBE_SITE}),
+    _Case("post", "/api/v1/sites/overlaps", 60, "user", {"json": {"zone": _PROBE_ZONE}}),
+    _Case(
+        "post",
+        f"/api/v1/sites/{_MISSING_ID}/observations",
+        30,
+        "user",
+        {"json": _PROBE_OBSERVATION},
+    ),
+    _Case(
+        "post",
+        f"/api/v1/events/{_MISSING_ID}/site-links",
+        60,
+        "user",
+        {"json": {"site_id": str(_MISSING_ID), "effect": "damage"}},
+    ),
+    _Case("delete", f"/api/v1/events/{_MISSING_ID}/site-links/{_MISSING_ID}", 60),
+    _Case("get", f"/api/v1/events/{_MISSING_ID}/site-suggestions", 120),
     _Case("get", f"/api/v1/events/{_MISSING_ID}/geolocator-invites", 120),
     _Case(
         "post",

@@ -28,6 +28,7 @@ from app.models.product_update import (
     ProductUpdateDelivery,
 )
 from app.models.push_subscription import PushSubscription, RevokedPushEndpoint
+from app.models.site import EventSiteLink, Site, SiteObservation
 from app.models.source_archive import SourceArchive
 from app.models.tag import Tag, event_tags
 from app.models.user import User
@@ -51,6 +52,7 @@ __all__ = [
     "EventGeolocator",
     "EventGeolocatorDeparture",
     "EventGeolocatorInvite",
+    "EventSiteLink",
     "EventVersion",
     "InviteCode",
     "Media",
@@ -66,6 +68,8 @@ __all__ = [
     "ProductUpdateConsent",
     "ProductUpdateDelivery",
     "ApprovalRequest",
+    "Site",
+    "SiteObservation",
     "SourceArchive",
     "Tag",
     "User",

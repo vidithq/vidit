@@ -28,6 +28,7 @@ from app.routers import (
     organizations,
     product_updates,
     search,
+    sites,
     social,
     tags,
     users,
@@ -224,6 +225,7 @@ app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["
 app.include_router(product_updates.router, prefix="/api/v1", tags=["product-updates"])
 app.include_router(organizations.router, prefix="/api/v1/organizations", tags=["organizations"])
 app.include_router(search.router, prefix="/api/v1/search", tags=["search"])
+app.include_router(sites.router, prefix="/api/v1/sites", tags=["sites"])
 app.include_router(social.router, prefix="/api/v1", tags=["social"])
 app.include_router(tags.router, prefix="/api/v1/tags", tags=["tags"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
