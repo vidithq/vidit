@@ -13,7 +13,7 @@ import { copyMaplibreWorker } from "./scripts/copy-maplibre-worker.mjs";
  *     passes it explicitly so the value is auditable in run logs).
  *  2. `git describe --tags --always --dirty` — picks up the closest tag and
  *     the commits-past-tag suffix when not exactly on a tag. Requires
- *     fetch-depth: 0 in CI (set in .github/workflows/deploy.yml).
+ *     the full git history (fetch-depth: 0 on a CI checkout).
  *  3. "dev" — final fallback so an env without git history still builds.
  *     The badge renders this verbatim (no "v" prefix).
  */
