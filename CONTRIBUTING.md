@@ -85,7 +85,7 @@ An amend + force-push to fix a missing sign-off often re-triggers only the DCO c
 
 ## Doc-sync rule
 
-- **New work?** Open an issue in `vidithq/vidit` and set its type (Feature, Debt, Task, Bug). When it belongs to an [open epic](https://github.com/vidithq/vidit/issues?q=is%3Aissue%20state%3Aopen%20type%3AEpic), add it to that epic as a sub-issue. Without triage access, name the type and the epic in the issue body. The maintainer schedules it.
+- **New work?** Open an issue in `vidithq/vidit` and set its type (Feature, Debt, Task, Bug). When it belongs to an [open epic](https://github.com/vidithq/vidit/issues?q=is%3Aissue%20state%3Aopen%20type%3AEpic), add it to that epic as a sub-issue. Debt goes under [#636](https://github.com/vidithq/vidit/issues/636) and bugs under [#637](https://github.com/vidithq/vidit/issues/637). Without triage access, name the type and the epic in the issue body. The maintainer schedules it.
 - **Item shipped?** Put `Closes #N` in the PR description so the merge closes the issue. Add an entry to [`CHANGELOG.md`](CHANGELOG.md) under `## Unreleased`, in its Keep a Changelog group: one line that states the outcome for a user, operator or contributor in plain words, followed by the PR link in parentheses. Leave out file paths and mechanism details; the PR carries them. CI rejects a line over 300 characters.
 - **Item descoped?** Comment on its issue with the reason. The maintainer reschedules it or closes it as not planned.
 
