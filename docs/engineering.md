@@ -1,6 +1,6 @@
 # Engineering
 
-Vidit runs as one API, one frontend, three scheduler services built from the backend image, a backup cron, and three buckets. This page describes that system, the repository it is built from, the conventions its code follows, and how a change reaches it.
+A Vidit instance runs the backend image in five roles, a Next.js frontend, a PostgreSQL database, a media bucket behind a CDN, and off-host storage for database dumps. This page describes that system, the repository it is built from, the conventions its code follows, and how a change reaches an instance.
 
 ```mermaid
 flowchart TB
@@ -12,43 +12,38 @@ flowchart TB
   subgraph legend [Legend]
     direction LR
     l1["`an edge a browser meets`"]:::spec
-    l2["`a scheduler service`"]:::shared
-    l3["`the one service taking traffic`"]:::core
+    l2["`a background or scheduled role`"]:::shared
+    l3["`the one role taking traffic`"]:::core
     l4[("`a store`")]:::store
     l1 ~~~ l2 ~~~ l3 ~~~ l4
   end
 
   subgraph traffic [What a reader's browser reaches]
     direction TB
-    reader["`**a browser**
-    vidit.app`"]:::spec
-    vercel["`**Vercel: vidit-frontend**
+    reader["`**a browser**`"]:::spec
+    front["`**frontend**
     Next.js App Router; **proxy.ts** canonicalises the host and runs the default-deny auth wall`"]:::spec
-    cf["`**Cloudflare: the vidit.app zone**
-    api proxied, apex and www DNS-only`"]:::spec
-    api["`**Railway: backend**
-    FastAPI on uvicorn; **alembic upgrade head** runs as the pre-deploy hook`"]:::core
-    reader --> vercel --> cf --> api
+    api["`**api** role
+    FastAPI on uvicorn; the **migrate** role runs before each release`"]:::core
+    reader --> front --> api
   end
 
-  subgraph sched [Scheduler services, same image, no port]
+  subgraph sched [Roles without a port, same image]
     direction TB
-    worker["`**backend-import-worker**
-    always-on: notification_deliveries, product_update_deliveries, archive_import_jobs, then bot_webhook_events`"]:::shared
-    bot["`**backend-x-bot**
+    worker["`**worker**
+    always on: notification_deliveries, product_update_deliveries, archive_import_jobs, then bot_webhook_events`"]:::shared
+    bot["`**bot**
     hourly: run_bot.py reconciles the mentions timeline`"]:::shared
-    conf["`**backend-conflicts**
+    conf["`**sync-conflicts**
     daily: sync_conflicts.py`"]:::shared
-    backup["`**backend-backup**
-    daily: pg_dump`"]:::shared
   end
 
-  db[("`**postgres-db**
-  PostgreSQL 16 + PostGIS 3, public networking off`")]:::store
-  s3[("`**media bucket + CloudFront**
+  db[("`**database**
+  PostgreSQL 16 + PostGIS 3`")]:::store
+  s3[("`**media bucket + CDN**
   evidence objects, versioned and Object-Locked`")]:::store
-  bak[("`**backup bucket**
-  write-only IAM, daily dumps`")]:::store
+  bak[("`**backup storage**
+  daily pg_dump, write-only credentials`")]:::store
 
   reader -- "media reads" --> s3
   api --> db
@@ -57,11 +52,10 @@ flowchart TB
   bot --> db
   conf --> db
   worker --> s3
-  backup --> db
-  backup --> bak
+  db -- "daily dump" --> bak
 ```
 
-Each region of the diagram has a section below. What each piece is and why it was picked is [the tech stack](#tech-stack); the code they all run is [the repository layout](#repository-layout-monorepo), [the backend conventions](#backend-conventions) and [the frontend conventions](#frontend-conventions); the lower band is the three [scheduler services](#scheduler-services) plus the backup cron; the stores and the hosts in front of them are [deployment](#deployment), with the backup bucket's runbook in [`backups.md`](backups.md). The path a change takes to reach the diagram is [CI/CD](#cicd). [Local environment](#local-environment) is the same shape on one machine, with a Docker container standing in for `postgres-db` and `LocalStorage` for the buckets.
+Each region of the diagram has a section below. What each piece is and why it was picked is [the tech stack](#tech-stack); the code they all run is [the repository layout](#repository-layout-monorepo), [the backend conventions](#backend-conventions) and [the frontend conventions](#frontend-conventions); the roles are [backend roles](#backend-roles), and the three without a port are [scheduler services](#scheduler-services); what an instance runs and configures is [deployment](#deployment), and the backup storage is [`backups.md`](backups.md). The path a change takes to reach an instance is [CI/CD](#cicd). [Local environment](#local-environment) is the same shape on one machine, with a Docker container standing in for the database and `LocalStorage` for the buckets.
 
 ---
 
@@ -89,7 +83,7 @@ Each region of the diagram has a section below. What each piece is and why it wa
 
 | Component | Choice |
 |-----------|--------|
-| RDBMS | **PostgreSQL 16**, the same `postgis/postgis:16-3.4` image locally and in production ([`backups.md`](backups.md#automated-backups) explains the `pg_dump` version pin) |
+| RDBMS | **PostgreSQL 16**, the `postgis/postgis:16-3.4` image locally; an instance runs the same major version ([`backups.md`](backups.md#automated-backups) explains the `pg_dump` version pin) |
 | Geospatial extension | **PostGIS 3** |
 
 PostGIS handles coordinates, bounding boxes, and geographic queries (radius, intersection…).
@@ -98,8 +92,8 @@ PostGIS handles coordinates, bounding boxes, and geographic queries (radius, int
 
 | Component | Choice |
 |-----------|--------|
-| Object storage | **AWS S3** (private bucket, eu-west region) |
-| CDN | **AWS CloudFront** (with Origin Access Control) |
+| Object storage | **S3 API** (a private bucket) |
+| CDN | **CloudFront** or another CDN in front of the bucket, named by `CLOUDFRONT_DOMAIN` |
 | Python SDK | `boto3` |
 
 S3 provides the evidence-preservation primitives: Object Lock, versioning and replication. The backend talks to storage through a small `Storage` protocol (`S3Storage` for production, `LocalStorage` for development and CI).
@@ -137,22 +131,24 @@ MapLibre renders only on WebGL2, with alpha, depth and stencil buffers. A browse
 
 ### Hosting
 
-| Service | Platform |
-|---------|----------|
-| Backend (FastAPI API, always-on worker, conflict-sync, bot and backup crons) | **Railway** |
-| Frontend (Next.js) | **Vercel** |
-| Database (PostgreSQL + PostGIS) | **Railway** |
-| Media storage + CDN | **AWS S3 + CloudFront** |
-| DNS | **Cloudflare** |
-| X API (the bot) | **X pay-per-use** |
-| Email, error tracking, uptime | **Resend**, **Sentry**, **UptimeRobot** |
+An instance needs these pieces. [Deployment](#deployment) describes how to run them.
+
+| Piece | Requirement |
+|-------|-------------|
+| Container host | Runs the backend image in each of its [roles](#backend-roles): `api` behind HTTPS, `worker` always on, and `migrate` once per release. |
+| Scheduler | Starts the `bot` role hourly and the `sync-conflicts` role daily. |
+| Database | **PostgreSQL 16** with **PostGIS 3**, reachable from every role. |
+| Object storage | An S3-compatible bucket for media, with versioning and Object Lock, and a CDN in front of it. A second bucket in another region holds the media replica, and off-host storage holds the database dumps ([`backups.md`](backups.md)). |
+| Frontend host | Builds and serves the Next.js app in `frontend/`. |
+| DNS | One host for the frontend and one for the API. The API sets cookies the frontend reads, so both sit under one parent domain ([Particularities](#particularities-non-obvious-behavior-found-during-development)). |
+| External services | The X API for the bot, Resend for email (`EMAIL_PROVIDER=resend`), Sentry for error tracking (optional), and an uptime monitor on `/health`. |
 
 ### Not in the stack
 
 - **Redis or an external cache**: not needed. An in-process TTL+LRU cache serves the points endpoint (see `backend/app/cache.py`).
 - **An external task queue (Celery or similar)**: the always-on worker is a plain loop over the delivery and job tables (see [Scheduler services](#scheduler-services)).
-- **Multi-region compute**: the deployment is single-region. Media is the exception: the media bucket replicates cross-region to a locked replica bucket (see [`backups.md`](backups.md#media-replication)).
-- **Monitoring and observability**: UptimeRobot runs liveness checks on the API health endpoint, and a Sentry SDK runs on both tiers (backend and frontend), opt-in through a DSN environment variable (see [Observability](#observability-whats-wired-and-how-to-turn-it-on)). There is no APM or tracing pipeline.
+- **Multi-region compute**: the roles run in one region. Media is the exception: the media bucket replicates cross-region to a locked replica bucket (see [`backups.md`](backups.md#media-replication)).
+- **Monitoring and observability**: an external uptime monitor checks the API health endpoint, and a Sentry SDK runs on both tiers (backend and frontend), opt-in through a DSN environment variable (see [Observability](#observability-whats-wired-and-how-to-turn-it-on)). There is no APM or tracing pipeline.
 - **Handle-ownership verification**: the curated-onboarding import attributes work to an analyst's `@handle` **without proving the uploader controls it**. X's OAuth consent is too broad for the privacy-conscious audience, and X has no lighter identity integration (no OpenID Connect; OAuth 1.0a is worse). Imports land as detections. There is no ownership proof and no claim or dispute path.
 
 ---
@@ -181,7 +177,6 @@ vidit/
 │   │   └── proxy.ts          # host redirect and auth wall (edge runtime)
 │   ├── e2e/                  # Playwright narrow-viewport suite
 │   └── scripts/              # build helpers and the palette-coverage check
-├── docker/backup/            # backup cron image
 ├── docs/                     # this reference, built by MkDocs
 └── .github/workflows/        # see GitHub Actions
 ```
@@ -508,13 +503,13 @@ Every other frontend copy of a backend rule or of the issue tracker is hand-kept
 
 The chain starts at one baseline migration, the only file whose `down_revision` is `None`. It builds the whole schema in a single step: the `postgis` extension, every table, constraint and index, and the seed rows a fresh database needs (the `capture_source` tag taxonomy and the `Other` conflict escape value). New migrations stack on top of it as usual.
 
-A squash replaces the chain with a new baseline that **keeps the previous head's revision id**. A database whose `alembic_version` already holds that id therefore needs no stamp, and the pre-deploy `alembic upgrade head` runs nothing. Read the deployed revision before merging a squash, and squash only when it matches the head being replaced:
+A squash replaces the chain with a new baseline that **keeps the previous head's revision id**. A database whose `alembic_version` already holds that id therefore needs no stamp, and the `migrate` role runs nothing. Read the deployed revision before merging a squash, and squash only when it matches the head being replaced:
 
 ```sql
 SELECT version_num FROM alembic_version;
 ```
 
-A database at an intermediate revision has no path forward, because the revisions between it and the baseline are gone. Rebuild it: drop the database and run `uv run alembic upgrade head`, or restore a dump taken at the baseline revision. This reaches local databases only, production being at head.
+A database at an intermediate revision has no path forward, because the revisions between it and the baseline are gone. Rebuild it: drop the database and run `uv run alembic upgrade head`, or restore a dump taken at the baseline revision. This reaches local databases only, since a deployed database is at head.
 
 The pytest template database keys its reuse on the alembic head id, which a squash preserves. Drop `<db>_test_tpl` after a squash so the next run rebuilds the template from the baseline.
 
@@ -534,7 +529,7 @@ Keep one short pointer on each side of a hand-kept frontend/backend mirror (the 
 
 ### Docker Compose
 
-`docker-compose.yml` runs the stock `postgis/postgis:16-3.4` image, the same one production runs on Railway, so a production dump restores into it unchanged ([`backups.md`](backups.md#restoring-from-a-backup) lists the extensions). The container is named `vidit-db` and its data volume is mounted at `/var/lib/postgresql/data`.
+`docker-compose.yml` runs the stock `postgis/postgis:16-3.4` image, so a dump from a PostgreSQL 16 instance with PostGIS 3 restores into it unchanged ([`backups.md`](backups.md#restoring-from-a-backup) lists the extensions). The container is named `vidit-db` and its data volume is mounted at `/var/lib/postgresql/data`.
 
 The backend (FastAPI via uvicorn) and the frontend (Next.js dev server) run on the host for hot reload.
 
@@ -570,7 +565,7 @@ The override applies only to the localhost regex. Explicit `CORS_ORIGINS` (produ
 
 ## CI/CD
 
-A change reaches production in two moves, and neither is automatic: checks gate the merge, and a person dispatches the deploy.
+Checks gate every merge to `main`, and nothing deploys on merge: an instance deploys a release tag of `main` when its operator chooses to.
 
 ```mermaid
 flowchart LR
@@ -601,23 +596,16 @@ flowchart LR
   protect["`**branch protection on main**
   seven required checks, linear history, no force-push`"]:::core
   merge["`**merge to main**
-  auto-deploy is off`"]:::shared
-  dispatch["`**deploy.yml**, workflow_dispatch
-  one ref, six parallel jobs`"]:::core
-  rail["`**railway up --detach**
-  five services, then poll railway deployment list to a terminal status`"]:::shared
-  pre["`**alembic upgrade head**
-  the pre-deploy hook, before the new container takes traffic`"]:::core
-  vercel["`**vercel pull, build, deploy --prebuilt --prod**`"]:::shared
-  prod[("`**production**
-  api.vidit.app and vidit.app`")]:::store
+  nothing deploys`"]:::shared
+  tag["`**a release tag**
+  vX.Y.Z on main`"]:::shared
+  deploy["`**an instance deploys the tag**
+  migrate, then api and the other roles; the frontend build`"]:::shared
 
-  pr --> checks --> protect --> merge --> dispatch
-  dispatch --> rail --> pre --> prod
-  dispatch --> vercel --> prod
+  pr --> checks --> protect --> merge --> tag --> deploy
 ```
 
-The checks are [GitHub Actions](#github-actions), the gate is the branch-protection row under [Observability](#observability-whats-wired-and-how-to-turn-it-on), and the six deploy jobs are [Deployment](#deployment).
+The checks are [GitHub Actions](#github-actions), the gate is the branch-protection row under [Observability](#observability-whats-wired-and-how-to-turn-it-on), and the deploy steps are [Deployment](#deployment).
 
 ### GitHub Actions
 
@@ -626,7 +614,6 @@ The checks are [GitHub Actions](#github-actions), the gate is the branch-protect
 | `ci.yml` | Every push to `main` and every PR (no path filters, so required checks always report even on a docs-only PR) | Eleven jobs. `backend-lint`: `uv sync` → `ruff check` → `ruff format --check` → `mypy app` → `vulture` (dead code). `backend-test-shard` (parallel with `backend-lint`, no gate): three runners, each running one third of the suite with `pytest -n 4 --dist worksteal` against its own PostGIS service container (no separate migrate step: the xdist template build runs the migrations, see [Repository layout](#repository-layout-monorepo)). `backend-test`: reports the `Backend tests` check, green only when every shard passed; see [Backend test shards](#backend-test-shards). Three frontend jobs run in parallel, each after its own `npm ci`: `frontend-lint` runs `eslint` → `tsc --noEmit`, `frontend-test` runs `vitest run`, and `frontend-build` runs `next build` with `frontend/.next/cache` restored from the closest earlier run. `frontend` reports the required check `Frontend lint, type-check, test, build`: it runs after the three, even when one fails, and passes only when all three pass. `frontend-e2e`: `npm ci` alongside `npx playwright install-deps chromium` (the browser's apt packages) → `npx playwright install chromium` (the browser cached on the lock file's Playwright version) → `npm run test:e2e` with `frontend/.next/cache` restored from the closest earlier run, the narrow-viewport smoke suite described below; a red run uploads `frontend/test-results/` as an artifact. `api-types`: regenerates `frontend/src/lib/api-types.ts` from the OpenAPI spec and fails on drift. `hygiene`: `jscpd` (duplication), `knip` (dead frontend code), the palette-coverage check, and a changelog check that fails on any `CHANGELOG.md` line over 300 characters. `docs-pairing` (PR-only): fails when the PR does not touch `docs/`; the exemptions are in [CONTRIBUTING *Doc-sync rule*](../CONTRIBUTING.md#doc-sync-rule). Force-pushes cancel the obsolete in-flight run; pushes to `main` run to completion. |
 | `codeql.yml` | Push to `main`, PR to `main`, weekly cron (Monday 06:00 UTC) | CodeQL dataflow analysis on Python + TypeScript/JavaScript with the `security-extended` query suite. Findings post to *Security tab → Code scanning alerts*. The `analyze` job is gated on `!github.event.repository.private`: code scanning is free on public repos but a paid GitHub Advanced Security add-on on private ones, so the job runs on the public repo and skips (rather than fails) anywhere the repository is private, e.g. a private fork. |
 | `pr-title.yml` | PR opened / edited / synchronized | Validates the PR title against Conventional Commits. Stays outside `ci.yml` on purpose: it re-runs on title edits, and bundling it would re-run the full test suite on every edit. |
-| `deploy.yml` | `workflow_dispatch` | See [Deployment](#deployment) below. |
 | `deploy-docs.yml` | Push to `main` touching `docs/**`, `mkdocs.yml`, `requirements-docs.txt` or the workflow; `workflow_dispatch` | Builds the MkDocs Material site from `docs/` ([`mkdocs.yml`](../mkdocs.yml)) and deploys it to GitHub Pages at `docs.vidit.app` (the custom domain comes from `docs/CNAME`). |
 
 Dependabot ([`.github/dependabot.yml`](../.github/dependabot.yml)) opens weekly Monday version-update PRs across `pip`, `npm`, and `github-actions`. It groups related updates (`@sentry/*`, `@blocknote/*`, `@typescript-eslint/*`, `@types/*`, `next + @next/* + eslint-config-next`, and a `minor-and-patch` catch-all) so a busy ecosystem doesn't open ten PRs at once. Major bumps stay individual. Security PRs ship one per advisory regardless. Each ecosystem sets a `cooldown` that delays a version-update PR after the release: 7 days for a major, 3 for a minor and 1 for a patch on `pip` and `npm`, and a flat 7 days on `github-actions`, which has no semver keys. The cooldown applies to version updates only, so security updates open immediately.
@@ -736,70 +723,61 @@ docker build -t vidit-backend backend
 docker run --rm --env-file backend/.env vidit-backend migrate
 ```
 
-Start `api` only after `migrate` succeeds. `worker`, `bot` and `sync-conflicts` wait for the schema to reach the head before their first pass ([Scheduler services](#scheduler-services)), so they can start alongside `migrate`. Any other argument list runs as a plain command, for example `docker run --rm vidit-backend alembic history`. The database backup runs from its own image, [`docker/backup/`](../docker/backup/) ([`backups.md`](backups.md)).
+Start `api` only after `migrate` succeeds. `worker`, `bot` and `sync-conflicts` wait for the schema to reach the head before their first pass ([Scheduler services](#scheduler-services)), so they can start alongside `migrate`. Any other argument list runs as a plain command, for example `docker run --rm vidit-backend alembic history`. The database backup is not a role: [`backups.md`](backups.md) describes what to dump and how.
 
 ### Deployment
 
-| Service | Platform | Identifier | Method |
-|---------|----------|------------|--------|
-| Source | GitHub | [`github.com/vidithq/vidit`](https://github.com/vidithq/vidit): public, AGPL-3.0. Cross-linked from the landing roadmap card, the `/about` AGPL paragraph, and the sidebar header (next to the X + Discord shortcuts). | Direct push to feature branches; `main` is branch-protected, every change lands via PR. |
-| Backend | Railway | project `vidit` / service `backend`; public host `https://api.vidit.app` (Railway-internal `backend.railway.internal`) | Dockerfile build, deployed via the [`deploy` workflow](../.github/workflows/deploy.yml) (`workflow_dispatch`). Auto-deploy on push to `main` is **off**. Each matrix job runs `railway up --detach`, then polls `railway deployment list --service <svc> --json` until the new deployment reaches a terminal status: `SUCCESS` passes the job, `FAILED` / `CRASHED` / `REMOVED` / `SKIPPED` fail it, and a 15-minute poll budget fails it too. The job prints the deployment id and its final status. The workflow pins the Railway CLI version because the step depends on those flags. `railway up --service backend` from the **repo root** works as a manual fallback (the service's Root Directory `backend` navigates into the uploaded snapshot; running from `backend/` uploads a snapshot with no `backend/` subdir and the build fails). |
-| Scheduler services | Railway | services `backend-import-worker` (always-on worker for the email queues, archive imports and bot webhooks), `backend-conflicts` (daily conflict-sync cron), and `backend-x-bot` (mention-pipeline reconciliation cron, hourly); per-service config under [Scheduler services](#scheduler-services) | Same [`deploy` workflow](../.github/workflows/deploy.yml), same repo-root `railway up` snapshot as the API: the five services (these three plus `backend` and `backend-backup`) deploy as parallel matrix jobs (`fail-fast: false`, per-service concurrency group), so the backend deploy costs the slowest service, not the sum. No GitHub source connected: the workflow is their only deploy path, so every service ships the same ref. |
-| Frontend | Vercel | team `vidithq` / project `vidit-frontend`; primary domain `https://vidit.app` (apex); `www.vidit.app`, `vidit-frontend.vercel.app` and any other non-canonical host 308-redirect at the Next.js proxy layer ([`frontend/src/proxy.ts`](../frontend/src/proxy.ts)) so the project alias doesn't accumulate duplicate-content surface in search. | Deployed via the [`deploy` workflow](../.github/workflows/deploy.yml) (`workflow_dispatch`) using `vercel pull` + `vercel build` + `vercel deploy --prebuilt --prod`. `vercel --prod` from `frontend/` works as a manual fallback. Per-deployment hash URLs are SSO-walled; only the project alias is public. |
-| DNS | Cloudflare | `vidit.app` zone. Apex + `www`: **DNS-only** (gray cloud). `api`: **proxied** (orange cloud). `docs`: **DNS-only**. | Apex + `www` A → Vercel `76.76.21.21`; `api` CNAME → Railway; `docs` CNAME → `vidithq.github.io`. Railway and GitHub Pages issue their Let's Encrypt certificates against a DNS-only record, so a record goes proxied only once its certificate exists, and `docs` stays DNS-only. **Bot Fight Mode stays off** on the zone: it serves a managed challenge to Vercel's server-side reads of `api.vidit.app` (user agent `node`, AWS addresses), which are the share-card and `generateMetadata` fetches in [`frontend/src/app/_og/data.ts`](../frontend/src/app/_og/data.ts); challenged, every event and profile unfurls as the fallback card. The Free plan cannot exempt a host from Bot Fight Mode with a security rule, so the switch is the zone-wide toggle. |
-| Database | Railway | managed Postgres + PostGIS, service `postgres-db` (image `postgis/postgis:16-3.4`) | `DATABASE_URL` (with internal `*.railway.internal` host) is auto-injected onto the **`backend`** service when the DB is attached. New consumers wire it as `${{backend.DATABASE_URL}}`. Public networking is **off**; admin scripts run inside the backend container via `railway ssh --service backend`. |
-| Migrations | Railway | N/A | Pre-deploy hook: the `migrate` [role](#backend-roles), `/app/entrypoint.sh migrate` (in [`backend/railway.json`](../backend/railway.json)). Runs *before* the new container takes traffic. The scheduler services run no migration and wait for the head instead (see [Scheduler services](#scheduler-services)). |
-| Media | AWS | bucket `<media-bucket>` (region `eu-west-3`), CloudFront `d10w3bld05vsky.cloudfront.net` (OAC, not OAI). Versioning ON; Object Lock ON with default rule GOVERNANCE / 365 days (bucket-wide). CORS: `GET`/`HEAD` from `https://vidit.app`, plus the `POST` rule below for the presigned archive-import upload. Lifecycle rules and cross-region replication: [`backups.md`](backups.md#media-replication). Every evidence image upload lands **three** sibling objects: the original (post EXIF-strip), `<key>_hero.jpg` (max-dim 1280, JPEG q80), `<key>_thumb.jpg` (max-dim 400, JPEG q80). An avatar lands **one**: a single stripped 400 px JPEG under `avatars/<user id>/`. Frontend renderers derive the hero and thumbnail URLs through [`frontend/src/lib/mediaUrls.ts`](../frontend/src/lib/mediaUrls.ts), a mirror of `derivative_key()` in [`backend/app/services/storage.py`](../backend/app/services/storage.py). | Backend uploads via `boto3` as IAM user `<runtime-iam-user>` (object-level perms only, scoped to the `uploads/`, `bounty_uploads/`, `proof/`, `demo-pool/`, `archive-imports/`, `detected/`, and `avatars/` key prefixes: a feature that introduces a new prefix must extend the user's policy or every write to it fails `AccessDenied`); bucket-level admin uses a separate `<s3-admin>` IAM principal. CloudFront serves the bucket. |
-| Backups | Railway + AWS | Cron service `backend-backup` (image [`docker/backup/`](../docker/backup/)) → bucket `<backup-bucket>` | Schedule, bucket settings, IAM and restore: [`backups.md`](backups.md). |
+The source is [`github.com/vidithq/vidit`](https://github.com/vidithq/vidit): public, AGPL-3.0. The landing roadmap card, the `/about` AGPL paragraph, and the sidebar header (next to the X and Discord shortcuts) link to it. `main` is branch-protected, and every change lands through a PR.
 
-**Operator step: media-bucket CORS for presigned archive uploads.** The archive import POSTs the zip from the browser straight to the bucket (S3 POST policy; see [`ingestion.md`](ingestion.md#archive-import-worker)), so the bucket CORS must allow cross-origin `POST` from the app origins. Apply this configuration on `<media-bucket>` (S3 console → Permissions → CORS, or `aws s3api put-bucket-cors`) and keep the existing `GET`/`HEAD` rule:
+To deploy a release tag to an instance:
 
-```json
-[
-  {
-    "AllowedMethods": ["GET", "HEAD"],
-    "AllowedOrigins": ["https://vidit.app"],
-    "AllowedHeaders": [],
-    "MaxAgeSeconds": 3600
-  },
-  {
-    "AllowedMethods": ["POST"],
-    "AllowedOrigins": ["https://vidit.app"],
-    "AllowedHeaders": ["Content-Type"],
-    "ExposeHeaders": ["ETag"],
-    "MaxAgeSeconds": 3600
-  }
-]
-```
+1. Take a database snapshot when the tag ships a migration ([`backups.md`](backups.md#manual-snapshot-and-rollback)).
+2. Build the backend image from `backend/` at the tag.
+3. Run the `migrate` role once. When it exits non-zero, stop: the schema did not reach the head.
+4. Start `api` with the new image, with `/health` as its healthcheck. Start `worker`, and point the scheduler's `bot` and `sync-conflicts` entries at the new image. The three roles without a port can start alongside `migrate`, since they wait for the schema head ([Scheduler services](#scheduler-services)).
+5. Build the frontend from `frontend/` at the same tag, with its `NEXT_PUBLIC_*` variables set in the build environment, and publish it.
 
-(There's no localhost origin: local development uses `LocalStorage` plus the development upload endpoint, and it never reaches the bucket.)
+A code rollback is the same procedure with the previous tag and no `migrate` step. Undoing a migration is in [`backups.md`](backups.md#manual-snapshot-and-rollback).
 
-**Operator step: `archive-imports/` lifecycle rule.** The worker deletes a staged object at terminal states, but an uploaded-but-never-enqueued object has no job row to trigger that delete. Apply the `archive-imports/` rule [`backups.md`](backups.md#media-lifecycle) describes.
+**Frontend build variables.** Next.js compiles every `NEXT_PUBLIC_*` variable into the bundle at build time, so a change takes a new build. The build reads `NEXT_PUBLIC_API_URL` (required: [`lib/api.ts`](../frontend/src/lib/api.ts) refuses to load without it), `NEXT_PUBLIC_DEMO_VIDEO_URL` (the landing demo video), `NEXT_PUBLIC_MEDIA_HOST` (the proof-image host pin, see [Particularities](#particularities-non-obvious-behavior-found-during-development)), and the Sentry variables under [Observability](#observability-whats-wired-and-how-to-turn-it-on). The version badge reads `NEXT_PUBLIC_BUILD_VERSION`, or `git describe --tags` when it is unset ([`next.config.mjs`](../frontend/next.config.mjs)), so build from a checkout with its tags, or set the variable.
 
-Bucket names follow `<product>-<env>-<region>`. The service is named `backend` because Railway already nests it under `vidit/production`. The Vercel project is `vidit-frontend` because the team scope is `vidithq`.
+**Database.** Give `api`, `worker`, `bot`, `sync-conflicts` and `migrate` the same `DATABASE_URL`. The backend image carries no `pg_dump` or `pg_restore` client, so database dumps and restores run from a `postgres:16` image ([`backups.md`](backups.md)).
+
+**Media bucket.** These settings live on the bucket, not in the code:
+
+- Turn on versioning and Object Lock with a default retention, and serve the bucket through the CDN. `CLOUDFRONT_DOMAIN` names the CDN host.
+- Allow cross-origin `GET` and `HEAD` from the frontend origin, and cross-origin `POST` with the `Content-Type` header and an exposed `ETag`. The archive import posts the zip from the browser straight to the bucket with a presigned POST policy ([`ingestion.md`](ingestion.md#archive-import-worker)). Local development uses `LocalStorage` and the development upload endpoint, so it never reaches the bucket.
+- Add the `archive-imports/` lifecycle rule [`backups.md`](backups.md#media-lifecycle) describes. The worker deletes a staged object at terminal states, but an object that was uploaded and never enqueued has no job row to trigger that delete.
+- Give the API and the worker credentials with object-level permissions on the prefixes the code writes: `uploads/`, `bounty_uploads/`, `proof/`, `demo-pool/`, `archive-imports/`, `detected/` and `avatars/`. A feature that adds a prefix extends that policy, or every write to it fails with `AccessDenied`, and adds a replication rule for it ([`backups.md`](backups.md#media-replication)).
+
+Every evidence image upload writes **three** sibling objects: the original (after the EXIF strip), `<key>_hero.jpg` (max dimension 1280, JPEG q80) and `<key>_thumb.jpg` (max dimension 400, JPEG q80). An avatar writes **one**: a single stripped 400 px JPEG under `avatars/<user id>/`. Frontend renderers derive the hero and thumbnail URLs through [`frontend/src/lib/mediaUrls.ts`](../frontend/src/lib/mediaUrls.ts), a mirror of `derivative_key()` in [`backend/app/services/storage.py`](../backend/app/services/storage.py).
+
+**A proxy or CDN in front of the API.** Set `TRUSTED_PROXY_HOPS` to the number of proxies that append to `X-Forwarded-For` ([Particularities](#particularities-non-obvious-behavior-found-during-development)). Do not serve bot challenges on the API host: the frontend server reads the API for share cards and page metadata ([`frontend/src/app/_og/data.ts`](../frontend/src/app/_og/data.ts)), and a challenged read makes every event and profile unfurl as the fallback card.
+
+**Legal pages.** `/legal` and `/privacy` carry their statutory content inline, so they read no environment variables. The *Hosting providers* section of [`legal/page.tsx`](../frontend/src/app/legal/page.tsx) names the providers that host the platform, each with its role, postal address, and site. The platform is a non-professional publisher under LCEN article 6-III-2, so the pages identify the hosts rather than the publisher. Both pages publish `support@vidit.app` for takedown notices, data requests, and other legal mail. When a hosting provider changes, edit the list in the same commit.
 
 ### Scheduler services
 
-The three services in the table above are built from the backend image with Root Directory `backend`, on the config-as-code path [`backend/railway.scheduler.json`](../backend/railway.scheduler.json). That path is mandatory: with Root Directory `backend` and no config of their own, they auto-discover the API's [`railway.json`](../backend/railway.json), whose alembic pre-deploy replays before every run and whose `/health` healthcheck fails any deploy that is not the API server. A cron service merely replays the pre-deploy, but the always-on worker listens on no port, so the inherited healthcheck fails its deploy outright. Each service sets its start command in its own settings, because the config file is shared. A start command that names a script instead of a [role](#backend-roles) runs unchanged through the entrypoint.
+The `worker`, `bot` and `sync-conflicts` [roles](#backend-roles) run from the backend image and listen on no port. Give them no HTTP healthcheck and no `migrate` step. Configure the host to restart a role that exits non-zero.
 
-All three take `DATABASE_URL=${{backend.DATABASE_URL}}` and `JWT_SECRET=${{backend.JWT_SECRET}}`, because [`config.py`](../backend/app/config.py)'s boot check refuses the placeholder secret against a non-local database. Set `SENTRY_DSN` on each so a failure pages instead of sitting in the logs.
+All three take the API's `DATABASE_URL` and `JWT_SECRET`, because [`config.py`](../backend/app/config.py)'s boot check refuses the placeholder secret against a non-local database. Set `SENTRY_DSN` on each, so a failure reaches Sentry instead of staying in the logs.
 
-Only the API runs migrations, and the five services deploy in parallel, so a scheduler service can start before the API's pre-deploy finishes. Each scheduler entry point calls `wait_for_schema_head` in [`schema_gate.py`](../backend/app/schema_gate.py) before its first pass. It compares the database revision with the alembic script head and polls every 5 seconds while the database is behind. After 10 minutes it reports to Sentry and exits non-zero, and Railway's `ON_FAILURE` policy restarts the service up to three times. A database at a revision the code does not know, as after a code rollback, passes at once.
+Only `migrate` changes the schema, and a host can start these roles before it finishes. Each scheduler entry point calls `wait_for_schema_head` in [`schema_gate.py`](../backend/app/schema_gate.py) before its first pass. It compares the database revision with the alembic script head and polls every 5 seconds while the database is behind. After 10 minutes it reports to Sentry and exits non-zero, and the host's restart policy starts it again. A database at a revision the code does not know, as after a code rollback, passes at once.
 
-**`backend-import-worker`**, always-on, no exposed port. Start command `uv run python scripts/run_import_worker.py`. It also takes the storage variables (`STORAGE_BACKEND`, `S3_BUCKET`, `AWS_*`) and email variables (`EMAIL_*`, `RESEND_API_KEY`, `FRONTEND_URL`) the API takes, plus the six `X_*` credentials and the two reply caps, `BOT_MAX_REPLIES_PER_HOUR` and `BOT_MAX_REPLIES_PER_AUTHOR_PER_HOUR`, since it posts the webhook path's bot replies, the two notification email caps, `NOTIFICATION_EMAIL_DAILY_CAP` and `NOTIFICATION_EMAIL_DAILY_CAP_PER_USER`, the push key pair, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT`, and the product update settings `PRODUCT_UPDATE_EMAIL_DAILY_CAP`, `PRODUCT_UPDATE_EMAIL_BATCH_SIZE` and `EMAIL_PROVIDER_DAILY_QUOTA`, and `API_URL`, the base of the one-click unsubscribe URLs, which `config.py` refuses as a localhost URL when `COOKIE_SECURE` is true. `PRODUCT_UPDATE_EMAIL_DAILY_CAP` and `PRODUCT_UPDATE_EMAIL_BATCH_SIZE` are at least 1. What it drains: the [notification queue](#email) first, then one batch of [product update emails](#product-update-emails), then the jobs and mentions in [`ingestion.md`](ingestion.md#archive-import-worker). An email queue that raises is reported to Sentry and skipped for that pass, so it never holds back the jobs and mentions.
+**`worker`**, always on. It also takes the storage variables (`STORAGE_BACKEND`, `S3_BUCKET`, `AWS_*`) and email variables (`EMAIL_*`, `RESEND_API_KEY`, `FRONTEND_URL`) the API takes, plus the six `X_*` credentials and the two reply caps, `BOT_MAX_REPLIES_PER_HOUR` and `BOT_MAX_REPLIES_PER_AUTHOR_PER_HOUR`, since it posts the webhook path's bot replies, the two notification email caps, `NOTIFICATION_EMAIL_DAILY_CAP` and `NOTIFICATION_EMAIL_DAILY_CAP_PER_USER`, the push key pair, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT`, and the product update settings `PRODUCT_UPDATE_EMAIL_DAILY_CAP`, `PRODUCT_UPDATE_EMAIL_BATCH_SIZE` and `EMAIL_PROVIDER_DAILY_QUOTA`, and `API_URL`, the base of the one-click unsubscribe URLs, which `config.py` refuses as a localhost URL when `COOKIE_SECURE` is true. `PRODUCT_UPDATE_EMAIL_DAILY_CAP` and `PRODUCT_UPDATE_EMAIL_BATCH_SIZE` are at least 1. What it drains: the [notification queue](#email) first, then one batch of [product update emails](#product-update-emails), then the jobs and mentions in [`ingestion.md`](ingestion.md#archive-import-worker). An email queue that raises is reported to Sentry and skipped for that pass, so it never holds back the jobs and mentions.
 
-**`backend-x-bot`**, cron `0 * * * *`, since the webhook owns latency and the cron only reconciles. Start command `uv run python scripts/run_bot.py`. It also takes the six `X_*` credentials, the two `BOT_MAX_REPLIES_*` caps, and `X_WEBHOOK_ENABLED` (see `backend/.env.example`): a bearer token and bot user ID to read, and the four OAuth 1.0a values to post. Without the OAuth values, the bot processes mentions but posts nothing. The process makes one pass, then exits; a failed mentions pull exits non-zero. A missed run is harmless, because the next pass resumes from the ledger. What it runs: [`ingestion.md`](ingestion.md#the-bot).
+**`bot`**, hourly (`0 * * * *`), since the webhook owns latency and the scheduled pass only reconciles. It also takes the six `X_*` credentials, the two `BOT_MAX_REPLIES_*` caps, and `X_WEBHOOK_ENABLED` (see `backend/.env.example`): a bearer token and bot user ID to read, and the four OAuth 1.0a values to post. Without the OAuth values, the bot processes mentions but posts nothing. The process makes one pass, then exits; a failed mentions pull exits non-zero. A missed run is harmless, because the next pass resumes from the ledger. A retry is safe too, but each one pays for another mentions read. What it runs: [`ingestion.md`](ingestion.md#the-bot).
 
-Set the reply caps to the same values on both services. Defaults and behaviour: [`ingestion.md`](ingestion.md#the-bot).
+Set the reply caps to the same values on `worker` and `bot`. Defaults and behaviour: [`ingestion.md`](ingestion.md#the-bot).
 
-**`backend-conflicts`**, a cron. Schedule, start command and behaviour: [`conflicts.md`](conflicts.md).
+**`sync-conflicts`**, daily. Schedule and behaviour: [`conflicts.md`](conflicts.md).
 
 ### X webhook operations
 
 [`manage_x_webhook.py`](../backend/scripts/manage_x_webhook.py) reads the same `X_*` environment variables as the bot:
 
 ```
-uv run python scripts/manage_x_webhook.py register https://api.vidit.app/api/v1/webhooks/x
+uv run python scripts/manage_x_webhook.py register https://<api-host>/api/v1/webhooks/x
 uv run python scripts/manage_x_webhook.py subscribe <webhook_id>   # bind the bot account
 uv run python scripts/manage_x_webhook.py list                     # webhook ids + valid flag
 uv run python scripts/manage_x_webhook.py status <webhook_id>      # subscription check
@@ -807,61 +785,27 @@ uv run python scripts/manage_x_webhook.py revalidate <webhook_id>  # re-run the 
 uv run python scripts/manage_x_webhook.py delete <webhook_id>
 ```
 
-Register the webhook **after** you deploy the endpoint: X fires a Challenge-Response Check (CRC) at register time. Once `register` and `subscribe` succeed, set `X_WEBHOOK_ENABLED=true` on the backend services.
+Register the webhook **after** you deploy the endpoint: X fires a Challenge-Response Check (CRC) at register time. Once `register` and `subscribe` succeed, set `X_WEBHOOK_ENABLED=true` on the backend roles.
 
 X re-runs the CRC hourly, and the endpoint answers it in-request, using pure HMAC with no database access. A failed check deactivates the webhook silently, and two nets catch that. `manage_x_webhook.py list` shows the webhook's `valid` flag. While `X_WEBHOOK_ENABLED=true`, the poll's gap detector catches it live: a mention the poll processes fresh logs a warning and captures a Sentry message (`webhook gap: mention <id> arrived via reconciliation`). For a known outage longer than the poll covers, X's replay API re-delivers up to 24 hours of events on request, manually, from the developer console or API.
-
-### Operating the platform: CLIs
-
-Railway:
-
-```bash
-brew install railway
-railway login           # browser auth, saved per machine
-railway link            # interactive: pick project → environment → service (writes .railway/)
-railway status          # what's currently linked
-railway variables                                # list
-railway variables --set "KEY=value"              # add/update; triggers redeploy
-railway up [--detach]                            # build + deploy from cwd
-railway logs [--build]                           # tail running deployment / latest build
-railway run -- <command>                         # run a one-off in the service env
-```
-
-Vercel:
-
-```bash
-brew install vercel-cli
-vercel login                                      # interactive
-vercel link --yes --scope vidithq --project vidit-frontend
-vercel env ls
-printf 'value' | vercel env add NAME production   # pipe avoids leaking via ps/history
-vercel --prod --yes                               # promote to production
-```
-
-Headless use needs a token from https://vercel.com/account/tokens, passed as `--token="$VERCEL_TOKEN" --scope vidithq` on every command. `--scope` is required in non-interactive shells (no default team).
-
-`NEXT_PUBLIC_*` env vars are baked into the JS bundle at build time. `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_DEMO_VIDEO_URL` (the landing demo video, a CloudFront `.mp4` URL under `landing/` on the media bucket) are passed explicitly into the build from repo **variables** in [`deploy.yml`](../.github/workflows/deploy.yml), because `vercel pull` doesn't reliably surface `NEXT_PUBLIC_*` to `next build`.
-
-**Legal pages.** `/legal` and `/privacy` carry their statutory content inline, so they read no environment variables. The *Hosting providers* section of [`legal/page.tsx`](../frontend/src/app/legal/page.tsx) names the three providers that host the platform, each with its role, postal address, and site: Vercel (the web interface), Railway (the API and the database), and Amazon Web Services (media storage and delivery). The platform is a non-professional publisher under LCEN article 6-III-2, so the pages identify the hosts rather than the publisher. Both pages publish `support@vidit.app` for takedown notices, data requests, and other legal mail. Change a hosting provider, and edit the list in the same commit.
 
 ### Observability: what's wired and how to turn it on
 
 | Piece | State | How to turn on |
 |---|---|---|
-| Backend Sentry | `init_sentry` in [`backend/app/observability.py`](../backend/app/observability.py) boots the SDK for the API ([`main.py`](../backend/app/main.py)) and the three [scheduler services](#scheduler-services), and only when `SENTRY_DSN` is non-empty. The scheduler services send traces at the same `SENTRY_TRACES_SAMPLE_RATE` as the API. Events carry no frame local variables and no request bodies, and `send_default_pii` stays off, so a password or an API credential held in a variable or sent in a request body never reaches an event. The engine sets `hide_parameters`, so database error text carries no bound parameters. | Create a project at sentry.io (Python / FastAPI), copy the DSN, then on Railway `backend` service: `railway variables --set "SENTRY_DSN=https://..." --set "SENTRY_ENVIRONMENT=production"`. Verify: hit a 5xx path or `sentry_sdk.capture_message('hello')` from `railway ssh` and confirm it lands. |
+| Backend Sentry | `init_sentry` in [`backend/app/observability.py`](../backend/app/observability.py) boots the SDK for the API ([`main.py`](../backend/app/main.py)) and the three [scheduler services](#scheduler-services), and only when `SENTRY_DSN` is non-empty. The scheduler services send traces at the same `SENTRY_TRACES_SAMPLE_RATE` as the API. Events carry no frame local variables and no request bodies, and `send_default_pii` stays off, so a password or an API credential held in a variable or sent in a request body never reaches an event. The engine sets `hide_parameters`, so database error text carries no bound parameters. | Create a project at sentry.io (Python / FastAPI), copy the DSN, and set `SENTRY_DSN` and `SENTRY_ENVIRONMENT=production` on `api` and on the three [scheduler services](#scheduler-services). Verify: hit a 5xx path, or run `sentry_sdk.capture_message('hello')` from a shell in an `api` container, and confirm it lands. |
 | Backend logs and request ids | `configure_logging` in [`backend/app/observability.py`](../backend/app/observability.py) runs at the start of the API and of the three scheduler services. Format and routing: [Backend logs](#backend-logs). | On by default. `LOG_LEVEL` sets the level of the `app.*` loggers: `DEBUG`, `INFO` (the default), `WARNING`, `ERROR`, or `CRITICAL`, in any case. |
-| Frontend Sentry | SDK wired in [`frontend/instrumentation-client.ts`](../frontend/instrumentation-client.ts) + [`sentry.server.config.ts`](../frontend/sentry.server.config.ts) + [`sentry.edge.config.ts`](../frontend/sentry.edge.config.ts); booted by [`frontend/instrumentation.ts`](../frontend/instrumentation.ts) which also re-exports `onRequestError = Sentry.captureRequestError` so errors thrown inside nested React Server Components reach Sentry. `Sentry.init(...)` runs only when `NEXT_PUBLIC_SENTRY_DSN` (client) or `SENTRY_DSN` (server / edge) is non-empty. `app/error.tsx` + `app/global-error.tsx` forward caught exceptions via `Sentry.captureException` (React error boundaries are not auto-captured). `next.config.mjs` is wrapped with `withSentryConfig` (with `tunnelRoute: "/monitoring"`, see the ad-blocker note below). | On Vercel set `NEXT_PUBLIC_SENTRY_DSN` (Production) + `SENTRY_DSN` (server runtime) + `NEXT_PUBLIC_SENTRY_ENVIRONMENT=production` + `SENTRY_ENVIRONMENT=production`. For build-time source-map upload also add repo variables `SENTRY_ORG` + `SENTRY_PROJECT` + repo secret `SENTRY_AUTH_TOKEN` ([wired through `deploy.yml`](../.github/workflows/deploy.yml)) and set the same on Vercel. Trigger a `deploy` workflow run. Verification: see [Frontend Sentry verification](#frontend-sentry-verification) below. |
-| Vercel Web Analytics + Speed Insights | `<Analytics />` + `<SpeedInsights />` (the `/next` entrypoints of `@vercel/analytics` / `@vercel/speed-insights`) render in [`frontend/src/app/layout.tsx`](../frontend/src/app/layout.tsx). Cookieless aggregate page-view counts and Core Web Vitals; no cross-site tracking, so no consent banner is required. Both components no-op outside a Vercel deployment. | Vercel dashboard → project → **Analytics** tab → Enable, and **Speed Insights** tab → Enable. The components send nothing until both toggles are on. |
-| Uptime monitor | External. Pings `/health` from outside Railway region to catch outages. | Pick a free tier (UptimeRobot, BetterStack, Hyperping). Add `https://api.vidit.app/health` as an HTTP monitor, 1-5 min cadence, alert routes to owner email + the Vidit Discord webhook. Health endpoint is unauthenticated and returns `{"status":"ok"}`. |
-| CloudWatch budget alarm | External. $20/mo guardrail against a forgotten log-volume spike or a runaway CloudFront-cache-miss bill. | AWS console → Billing → Budgets → Create budget → Cost budget, monthly $20 fixed amount, threshold 80% actual + 100% forecasted → email alert to owner. |
+| Frontend Sentry | SDK wired in [`frontend/instrumentation-client.ts`](../frontend/instrumentation-client.ts) + [`sentry.server.config.ts`](../frontend/sentry.server.config.ts) + [`sentry.edge.config.ts`](../frontend/sentry.edge.config.ts); booted by [`frontend/instrumentation.ts`](../frontend/instrumentation.ts) which also re-exports `onRequestError = Sentry.captureRequestError` so errors thrown inside nested React Server Components reach Sentry. `Sentry.init(...)` runs only when `NEXT_PUBLIC_SENTRY_DSN` (client) or `SENTRY_DSN` (server / edge) is non-empty. `app/error.tsx` + `app/global-error.tsx` forward caught exceptions via `Sentry.captureException` (React error boundaries are not auto-captured). `next.config.mjs` is wrapped with `withSentryConfig` (with `tunnelRoute: "/monitoring"`, see the ad-blocker note below). | On the frontend host, set `NEXT_PUBLIC_SENTRY_DSN` and `NEXT_PUBLIC_SENTRY_ENVIRONMENT=production` in the build environment, and `SENTRY_DSN` and `SENTRY_ENVIRONMENT=production` in the server runtime. For source-map upload, also set `SENTRY_ORG`, `SENTRY_PROJECT` and `SENTRY_AUTH_TOKEN` in the build environment. Rebuild the frontend. Verification: see [Frontend Sentry verification](#frontend-sentry-verification) below. |
+| Vercel Web Analytics + Speed Insights | `<Analytics />` + `<SpeedInsights />` (the `/next` entrypoints of `@vercel/analytics` / `@vercel/speed-insights`) render in [`frontend/src/app/layout.tsx`](../frontend/src/app/layout.tsx). Cookieless aggregate page-view counts and Core Web Vitals; no cross-site tracking, so no consent banner is required. Both components no-op outside a Vercel deployment. | On a Vercel host, enable **Analytics** and **Speed Insights** in the project. The components send nothing until both are on. |
+| Uptime monitor | External. Checks `/health` from outside the API's network, so an outage of the host itself alerts. | Add `https://<api-host>/health` as an HTTP monitor on any uptime service, at a 1 to 5 minute interval. The endpoint is unauthenticated and returns `{"status":"ok"}`. |
 | Branch protection on `main` | External: configured via the branch-protection API; free on public repos (unenforced on free-plan private ones). | Active rule: PRs only, seven required status checks (five `ci.yml` jobs: *Backend lint & format*, *Backend tests*, *Frontend lint, type-check, test, build*, *API types in sync with OpenAPI*, *Hygiene — duplication & dead code*; plus `pr-title.yml`'s *Conventional commit title* and `DCO`), enforced for admins, linear history required, force-push and branch deletion disallowed. *PR touches docs/*, *Frontend narrow-viewport smoke tests*, and the three jobs that *Frontend lint, type-check, test, build* waits on (*Frontend lint & type-check*, *Frontend unit tests*, *Frontend build*), and the three *Backend test shard* jobs that *Backend tests* waits on, run on every PR without being required contexts. No required-review count, because a sole maintainer cannot approve their own PR. `strict` (require branch up to date) is off, so the weekly Dependabot wave merges without per-PR rebases. |
 | Secret scanning + push protection | External: *Settings → Code security*; free on public repos, no config file. | Both enabled. Scanning alerts on provider-pattern tokens/keys anywhere in history and new commits; push protection rejects a push containing one before it lands (bypassable per-push with a logged justification). Alerts surface in *Security tab → Secret scanning*. |
 
 #### Backend logs
 
-Each record prints once as `<timestamp> <level> <logger> [<request id>] <message>`, followed by its traceback if it has one. The lines are plain text, not JSON. Records below `WARNING` print on standard output; `WARNING` and above print on standard error, which Railway shows at level error. Other libraries print from `WARNING`, and uvicorn's loggers keep the level uvicorn gives them (`--log-level`). Uvicorn's access and server records use the same format, and `--no-access-log` keeps the access log off. A `--log-config` that gives the root logger handlers replaces this setup.
+Each record prints once as `<timestamp> <level> <logger> [<request id>] <message>`, followed by its traceback if it has one. The lines are plain text, not JSON. Records below `WARNING` print on standard output; `WARNING` and above print on standard error, so a log collector that reads the stream can file them at level error. Other libraries print from `WARNING`, and uvicorn's loggers keep the level uvicorn gives them (`--log-level`). Uvicorn's access and server records use the same format, and `--no-access-log` keeps the access log off. A `--log-config` that gives the root logger handlers replaces this setup.
 
-[`RequestIdMiddleware`](../backend/app/middleware/request_id.py) wraps the whole API, Starlette's error layer included, and gives each request the id its `X-Request-ID` response header carries (contract: *Request id* in [`api.md`](api.md)). Every record the request emits carries the id, including records from a sync route or a worker thread, and a Sentry event the request raises carries it as the `request_id` tag. A record emitted outside a request shows `-`. To follow one request, search the service logs in Railway for the value of its `X-Request-ID` header.
+[`RequestIdMiddleware`](../backend/app/middleware/request_id.py) wraps the whole API, Starlette's error layer included, and gives each request the id its `X-Request-ID` response header carries (contract: *Request id* in [`api.md`](api.md)). Every record the request emits carries the id, including records from a sync route or a worker thread, and a Sentry event the request raises carries it as the `request_id` tag. A record emitted outside a request shows `-`. To follow one request, search the API logs for the value of its `X-Request-ID` header.
 
 ### Frontend Sentry verification
 
@@ -874,10 +818,10 @@ In an incognito window with extensions disabled:
 
 ### Maintenance runbooks
 
-**Mint an invite code from the host** when no admin account exists yet to mint one at `/admin`:
+**Mint an invite code from the host** when no admin account exists yet to mint one at `/admin`. Run this in an `api` container, which holds the database settings:
 
 ```bash
-railway ssh --service backend -- python <<'EOF'
+python <<'EOF'
 import os, secrets, string
 from datetime import UTC, datetime, timedelta
 
@@ -900,25 +844,15 @@ finally:
 EOF
 ```
 
-**Fill a local database with real data**: run `make import-prod`, which restores the most recent production backup into the local container. Procedure and required variables: [`backups.md`](backups.md#import-production-into-local-dev). For a smaller offline set, `make seed` creates the mock admin and backfills the committed synthetic X archive as machine detections.
-
-**Clean up an orphan Railway domain** (e.g. an auto-generated `*.up.railway.app` host, which leaks the project name to scanners):
-
-```
-Railway dashboard → project `vidit` → service `postgres-db` → Settings → Networking
-→ remove any public domain that isn't actively in use
-```
-
-Public networking on `postgres-db` is off. Delete any public domain with no `DATABASE_PUBLIC_URL` consumer.
+**Fill a local database with test data**: `make seed` creates the mock admin and backfills the committed synthetic X archive as machine detections.
 
 ### Particularities (non-obvious behavior found during development)
 
-- **`postgres://` → `postgresql://`**: Railway injects the legacy scheme, but SQLAlchemy 2 only loads under `postgresql://`. [`backend/app/config.py`](../backend/app/config.py)'s `_normalize_postgres_scheme` swaps the prefix.
-- **`$PORT` not expanded in `railway.json`'s `startCommand`**: Railway passes the literal string `$PORT`. The start command is `/app/entrypoint.sh api`, and the entrypoint expands `${PORT:-8000}`.
-- **`CORS_ORIGINS` is a comma-separated string**, not pydantic's default JSON list. The `cors_origins_list` property parses it. The deployed Vercel alias must be in the list, or browser calls fail at preflight.
-- **`COOKIE_DOMAIN` must be `.vidit.app` in production**: the `vidit_csrf` cookie is set by `api.vidit.app` but read by JavaScript at `vidit.app`. Without the parent-domain scope (`COOKIE_DOMAIN=.vidit.app` on the Railway `backend` service), the double-submit CSRF check can't see the token, and **every mutating request fails** with `CSRF token missing or invalid`.
-- **The Vercel bundle stays up during a backend outage**: static JS loads from the Vercel CDN regardless of Railway state. When you investigate a report that "the site is broken", check `/health` on Railway first.
-- **uvicorn needs `--proxy-headers` behind Railway, AND nothing may read `request.client.host` for security purposes**: without `--proxy-headers --forwarded-allow-ips='*'` (set by the `api` role in [`backend/entrypoint.sh`](../backend/entrypoint.sh)), `request.url.scheme` defaults to `http` and absolute URLs in emails go out broken. With those flags, however, uvicorn populates `request.client.host` from the **left-most** entry of `X-Forwarded-For` (uvicorn's `always_trust=True` branch returns `x_forwarded_for_hosts[0]`). Railway *appends* to `X-Forwarded-For` rather than overwriting it, so the left-most entry is whatever the client sent: fully attacker-controlled. The two callers that need a trustworthy client IP, the slowapi rate limiter and the auth-events audit log, both route through [`services/audit.py::extract_client_ip`](../backend/app/services/audit.py), which parses XFF itself and picks the **right-most** entry (the one the trusted proxy actually wrote). The slowapi side specifically uses the `rate_limit_key` wrapper (same module) as its `key_func`. Without that, an attacker could rotate `X-Forwarded-For: <random>` to mint a fresh per-IP rate-limit bucket per request, or send `X-Forwarded-For: <victim_ip>` to pin a victim's bucket and lock them out, defeating every per-endpoint rate limit. **Never read `request.client.host` directly for rate-limit, auth, or audit purposes**; reach for `extract_client_ip` / `rate_limit_key`. `TRUSTED_PROXY_HOPS` (default `1`, [`config.py`](../backend/app/config.py)) is the number of right-most `X-Forwarded-For` entries written by trusted proxies: `extract_client_ip` reads the entry at that position from the right. Set it to the number of trusted proxies that append to the header in front of the API.
+- **`postgres://` → `postgresql://`**: some hosts inject the legacy scheme, but SQLAlchemy 2 only loads under `postgresql://`. [`backend/app/config.py`](../backend/app/config.py)'s `_normalize_postgres_scheme` swaps the prefix.
+- **`CORS_ORIGINS` is a comma-separated string**, not pydantic's default JSON list. The `cors_origins_list` property parses it. The deployed frontend origin must be in the list, or browser calls fail at preflight.
+- **`COOKIE_DOMAIN` must be the parent domain of the API and frontend hosts**: the `vidit_csrf` cookie is set by the API host but read by JavaScript on the frontend host. With the API on `api.example.org` and the frontend on `example.org`, set `COOKIE_DOMAIN=.example.org`. Without the parent-domain scope, the double-submit CSRF check can't see the token, and **every mutating request fails** with `CSRF token missing or invalid`.
+- **The frontend stays up during a backend outage**: the static bundle loads from the frontend host whatever the API's state. When you investigate a report that "the site is broken", check `/health` first.
+- **uvicorn needs `--proxy-headers` behind a reverse proxy, AND nothing may read `request.client.host` for security purposes**: without `--proxy-headers --forwarded-allow-ips='*'` (set by the `api` role in [`backend/entrypoint.sh`](../backend/entrypoint.sh)), `request.url.scheme` defaults to `http` and absolute URLs in emails go out broken. With those flags, however, uvicorn populates `request.client.host` from the **left-most** entry of `X-Forwarded-For` (uvicorn's `always_trust=True` branch returns `x_forwarded_for_hosts[0]`). Most proxies *append* to `X-Forwarded-For` rather than overwrite it, so the left-most entry is whatever the client sent: fully attacker-controlled. The two callers that need a trustworthy client IP, the slowapi rate limiter and the auth-events audit log, both route through [`services/audit.py::extract_client_ip`](../backend/app/services/audit.py), which parses XFF itself and picks the **right-most** entry (the one the trusted proxy actually wrote). The slowapi side specifically uses the `rate_limit_key` wrapper (same module) as its `key_func`. Without that, an attacker could rotate `X-Forwarded-For: <random>` to mint a fresh per-IP rate-limit bucket per request, or send `X-Forwarded-For: <victim_ip>` to pin a victim's bucket and lock them out, defeating every per-endpoint rate limit. **Never read `request.client.host` directly for rate-limit, auth, or audit purposes**; reach for `extract_client_ip` / `rate_limit_key`. `TRUSTED_PROXY_HOPS` (default `1`, [`config.py`](../backend/app/config.py)) is the number of right-most `X-Forwarded-For` entries written by trusted proxies: `extract_client_ip` reads the entry at that position from the right. Set it to the number of trusted proxies that append to the header in front of the API.
 - **CodeQL false positive on `services/audit.py::log_auth_event`**: the `security-extended` suite raises `py/clear-text-logging-sensitive-data` (high) on the `logger.warning` inside `log_auth_event`, which logs only an event-name constant and a UUID. CodeQL taints the whole login `request` (its body carries the password) and follows it through `log_auth_event_from_request` into the shared call. Any PR adding a new `log_auth_event_from_request` call site makes CodeQL re-attribute the baseline alert as new, turning the (non-required) code-scanning check red. The PR stays mergeable. Editing the log line does not release the alert, because the taint is on reachability, not the arguments. To resolve it, dismiss the alert: `gh api --method PATCH repos/vidithq/vidit/code-scanning/alerts/<n> -f state=dismissed -f dismissed_reason="false positive" -f dismissed_comment="..."` (the reason takes the space form `"false positive"`; the comment caps at 280 characters).
 - **User-influenced strings entering a log line go through [`services/storage.py::scrub_log`](../backend/app/services/storage.py)**: it strips CR/LF so a crafted URL or title cannot forge extra log entries (CodeQL `py/log-injection`). Current callers: the tweet-import router (URL logging on failure) and `storage.sweep_keys` (the caller-supplied `context` phrase, which can embed a detection source URL). Route any new log interpolation of user input through it instead of adding a local scrubber.
 - **`LocalStorage` keeps every key inside its root with a `realpath` + `startswith` check** in [`services/storage.py::LocalStorage._resolve`](../backend/app/services/storage.py). CodeQL does not treat `Path.is_relative_to` as a `py/path-injection` guard, so keep the string form when you change the check.
@@ -954,8 +888,7 @@ When browsers distrust a certificate authority, each runtime below keeps trustin
 
 | Runtime | Trust store | How a distrust reaches production |
 |---------|-------------|-----------------------------------|
-| Backend services (`httpx`, `requests`, `boto3`, `sentry-sdk`) | `certifi` bundle pinned in [`backend/uv.lock`](../backend/uv.lock), not the image's Debian store | Run `uv lock --upgrade-package certifi`, then redeploy every Railway service. |
-| Backup service (`awscli`, `curl`) | Debian `ca-certificates` in [`docker/backup/Dockerfile`](../docker/backup/Dockerfile) | Redeploy `backend-backup`; the build installs the current Debian package. |
-| Frontend server code on Vercel | Root store compiled into Node.js | Vercel ships the Node.js patch release; the repo has nothing to change. |
+| Backend services (`httpx`, `requests`, `boto3`, `sentry-sdk`) | `certifi` bundle pinned in [`backend/uv.lock`](../backend/uv.lock), not the image's Debian store | Run `uv lock --upgrade-package certifi`, then deploy the new image to every backend role. |
+| Frontend server code | Root store compiled into Node.js | Move the frontend host to the Node.js patch release that updates the store; the repo has nothing to change. |
 
 These clients do not check revocation, so a revoked intermediate stays trusted until its root leaves the bundle. To check whether the locked bundle still carries a root, run `grep -c "<root label>" "$(uv run python -m certifi)"` from `backend/`.

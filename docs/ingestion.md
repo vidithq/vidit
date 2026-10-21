@@ -452,7 +452,7 @@ The archive-level numbers in [`archive_zip.py`](../backend/app/services/tweet_in
 | Uncompressed archive | 8 GB total, 200 MB per file | The extract, an anti-zip-bomb guard sized to never bind a legitimate export |
 | Per-media | `MAX_IMAGE_SIZE`, `MAX_VIDEO_SIZE` | Persistence (see [the contract](#the-contract)) |
 
-The zip never crosses the API, so the archive limit is not an HTTP body cap, and `api.vidit.app` sits behind Cloudflare's free-plan 100 MB request cap for read-surface protection. The dev upload endpoint stands in for S3 against local storage, using the same form shape.
+The zip never crosses the API, so the archive limit is not an HTTP body cap, and a request-size cap on a proxy in front of the API does not limit it. The dev upload endpoint stands in for S3 against local storage, using the same form shape.
 
 **The job row.** [`archive_jobs.py`](../backend/app/services/archive_jobs.py) claims the oldest runnable row, the pattern the bot's webhook queue drains with too, and re-checks the staged object's size, since the presign window outlives the enqueue. The terminal states are `done`, with assemble counts stamped, and `failed`, with a terse `error`; both delete the staged object, and the bucket's versioning keeps a noncurrent copy until the lifecycle rule expires it (see [`engineering.md`](engineering.md#deployment)). A job whose owner was soft-deleted, deactivated or left without a handle lands `failed`, so a suspended account accrues no detections, and so does a malformed upload, which the browser strip catches first and the worker validates last. `started_at` doubles as the liveness heartbeat, so a long import never crosses the stale window while it is alive and a reclaim never races a still-running first run, for example two worker instances overlapping during a rolling deploy. A reclaimed run duplicates nothing, because [re-import](#re-import) matching holds every row the first pass wrote.
 
@@ -524,5 +524,5 @@ The provenance leg is the thread's post IDs, not a URL and not the anchor alone.
 
 - [`api.md`](api.md#post-eventsimport-from-tweet) for the `import-from-tweet` and `import-archive` request/response contracts.
 - [`data-model.md`](data-model.md#events) for the `events` table columns and CHECK constraints.
-- [`engineering.md`](engineering.md#scheduler-services) for the Railway services the bot and the import worker run as, and [`engineering.md`](engineering.md#x-webhook-operations) for the webhook runbook.
+- [`engineering.md`](engineering.md#scheduler-services) for the `bot` and `worker` roles the bot and the import worker run as, and [`engineering.md`](engineering.md#x-webhook-operations) for the webhook runbook.
 - [`archival.md`](archival.md) for the archived copies an analyst records against an event's links.
