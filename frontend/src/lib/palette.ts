@@ -14,6 +14,7 @@
 
 import { createAttributePreference } from "./attributePreference";
 import type { components } from "./api-types";
+import type { ThemeId } from "./theme";
 
 export type PaletteId = components["schemas"]["DisplayPreferences"]["palette"];
 
@@ -112,3 +113,15 @@ export const clearPalette = pref.clear;
 export function paletteMapColors(id: PaletteId): PaletteOption["map"] {
   return (PALETTES.find((p) => p.id === id) ?? PALETTES[0]).map;
 }
+
+/** Site zone paints on the map, by theme: the neutral text-secondary grey (`neutral-400`) for
+ *  every zone, and the semantic warning (`amber-500`) and danger (`red-500`) for a zone whose
+ *  latest linked event shows damage or destruction; `halo` is the canvas (`neutral-950`) behind a
+ *  label. Hex of the `globals.css` stops; change both. */
+export const SITE_MAP_COLORS: Record<
+  ThemeId,
+  { zone: string; damage: string; destruction: string; halo: string }
+> = {
+  dark: { zone: "#a3a3a3", damage: "#f59e0b", destruction: "#ef4444", halo: "#0a0a0a" },
+  light: { zone: "#585858", damage: "#f59e0b", destruction: "#ef4444", halo: "#eae8e4" },
+};

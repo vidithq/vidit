@@ -6,6 +6,7 @@ import type { EventDetail } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { EventPageBody } from "@/components/event/EventPageBody";
+import { EventSitesBlock } from "@/components/sites/EventSitesBlock";
 import { useEventActions } from "@/components/event/useEventActions";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { creditProps } from "@/lib/geolocatorCredit";
@@ -41,7 +42,7 @@ export default function EventPage() {
       headerInColumn
     >
       {panels}
-      <EventPageBody geo={geo} />
+      <EventPageBody geo={geo} sites={<EventSitesBlock event={geo} />} />
     </PageShell>
   );
 }

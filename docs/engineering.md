@@ -472,6 +472,9 @@ Every other frontend copy of a backend rule or of the GitHub Project is hand-kep
 | `lib/cardTags.ts` `UNKNOWN_VALUE` | the `Unknown` row of `CAPTURE_SOURCE_TAGS` in the baseline migration (`alembic/versions/g5i7k9m1o3q5_baseline.py`) | feed cards show a *Capture source: Unknown* pill |
 | `lib/conflicts.ts::CONFLICT_OTHER_NAME` | the `Other` conflict row the baseline migration seeds (`alembic/versions/g5i7k9m1o3q5_baseline.py`) | the conflict picker stops offering the escape value |
 | `lib/collections.ts::COLLECTABLE_STATUSES` | `event_filters.collectable_events` | picker offers rows the add verb refuses (409) |
+| `lib/sites.ts::SITE_NAME_MAX_LEN`, `SITE_NOTE_MAX_LEN`, `observationMissing` | `models/event.TITLE_MAX_LENGTH`, `schemas/site.NOTE_MAX_LENGTH`, `schemas/site.SiteObservationCreate` | the site forms accept a value the API refuses |
+| `lib/sites.ts::SITE_MARGIN_KM` | the `margin_m` default of `routers/sites` and `routers/events/sites` | the site page and the link dialog name a distance the reads do not use |
+| `components/sites/EventSitesBlock.tsx` link gate on `geolocated` | `event_filters.site_linkable_events` | the event page offers a link the API refuses (409) |
 | `components/collections/EventPicker.tsx::chronological` | `collections.chronological_key` | the picker orders a collection's events differently from its page |
 | `lib/og.ts::MOSAIC_MAX_TILES` | `collections.COVER_TILES` | a share card draws more tiles than the server sends |
 | `components/event/useEventActions.tsx` credit controls on `geolocated` rows only | `geolocator_credit._require_published` | the Geolocators panel offers an invitation the API refuses (409) |
