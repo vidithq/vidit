@@ -68,6 +68,7 @@ def unlink_site(
 
 
 @router.get("/{geolocation_id}/site-suggestions", response_model=list[SiteSuggestionRead])
+@authenticated_read_quota
 @limiter.limit("120/minute")
 def list_site_suggestions(
     request: Request,

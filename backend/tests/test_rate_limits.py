@@ -258,6 +258,7 @@ _QUOTA_ROUTES = [
     "/api/v1/sites/{site_id}/history",
     "/api/v1/sites/{site_id}/nearby-events",
     "/api/v1/events/{geolocation_id}/site-links",
+    "/api/v1/events/{geolocation_id}/site-suggestions",
     "/api/v1/feed",
 ]
 
