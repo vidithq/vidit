@@ -133,7 +133,7 @@ describe("renderProof", () => {
   });
 
   it("renders any https:// image src when no media host is pinned", () => {
-    const container = renderHtml('<img src="https://d10w3bld05vsky.cloudfront.net/p.jpg">');
+    const container = renderHtml('<img src="https://d1234abcd.cloudfront.net/p.jpg">');
     expect(container.querySelectorAll("img")).toHaveLength(1);
   });
 

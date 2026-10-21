@@ -1,6 +1,6 @@
 # Backups
 
-An instance dumps its database daily to off-host storage, and cross-region replication protects media separately.
+Dump the database daily to off-host storage, and protect media separately with cross-region replication.
 
 ```mermaid
 flowchart LR
@@ -128,7 +128,7 @@ docker compose exec db rm -f /tmp/vidit.dump
 rm -f /tmp/vidit-drill.dump
 ```
 
-The local container runs PG 16, the major version of the instance database, so the drill exercises the version pair a restore uses.
+The local container runs PG 16, the major version Vidit targets, so the drill exercises the version pair a restore uses.
 
 If steps 4 and 5 return plausible counts and the PostGIS smoke test returns `t`, the dump is restorable. Record the date and the dump filename.
 
@@ -161,7 +161,7 @@ Media protection relies on replication, not backup. The database dump never touc
 
 Replicate the media bucket to a replica bucket in another region, with one replication rule per content prefix. The code writes these prefixes: `uploads/`, `bounty_uploads/`, `proof/`, `demo-pool/`, `detected/` (machine-detection media, written through `services/storage.py::detected_media_key`), and `avatars/` (profile pictures, written through `services/storage.py::upload_avatar_image`). Add a rule for any prefix you upload to by hand, such as the one that holds the landing demo video. `avatars/` is personal data, and it is replicated for the same reason `proof/` is: nothing regenerates it, so the copy on the media bucket is the only one.
 
-Exclude `archive-imports/`: it holds staged personal X exports on a 7-day expiry, and replicating it into a locked bucket would retain personal data for a year past the point the source copy expires.
+Exclude `archive-imports/`: it holds staged personal X exports on a 7-day expiry, and replicating it into a locked bucket would retain personal data for the replica's retention period past the point the source copy expires.
 
 A feature that introduces a new content prefix must also add a replication rule for it, the same checklist item the runtime credentials carry (see the media bucket settings in [`engineering.md`](engineering.md#deployment)). A missed rule fails silently: writes succeed, nothing replicates, and the gap surfaces only at restore time.
 
@@ -171,7 +171,7 @@ Protect the replica bucket:
 
 - Turn on Object Lock with a default GOVERNANCE retention, block all public access, and encrypt data at rest.
 - Add a lifecycle rule that aborts incomplete multipart uploads after 7 days. Never expire noncurrent versions there, because they are the recovery copies the overwrite case restores from.
-- Add a bucket policy that denies `s3:DeleteObject`, `s3:DeleteObjectVersion`, `s3:BypassGovernanceRetention`, `s3:PutBucketPolicy`, `s3:DeleteBucketPolicy`, and `s3:DeleteBucket` to every principal except the account root.
+- Add a bucket policy on `<replica-bucket>` that denies `s3:DeleteObject`, `s3:DeleteObjectVersion`, `s3:BypassGovernanceRetention`, `s3:PutBucketPolicy`, `s3:DeleteBucketPolicy`, and `s3:DeleteBucket` to every principal except the account root.
 
 A non-root principal then cannot delete an existing version, bypass the lock, or change the bucket policy. The policy does not cover `s3:PutObject` or `s3:PutLifecycleConfiguration`, so a non-root principal with admin credentials can still write new object versions and schedule a lifecycle change. Deletion of an already-locked version stays impossible until its own retention date, regardless of what a new lifecycle rule schedules.
 
@@ -181,10 +181,10 @@ An object that arrives through replication carries the source object's own reten
 
 ### Media lifecycle
 
-The media bucket carries two lifecycle rules:
+Add two lifecycle rules to the media bucket:
 
-- A bucket-wide rule aborts incomplete multipart uploads after 7 days.
-- The `archive-imports/` rule expires current objects after 7 days, expires noncurrent versions after 7 days (`NoncurrentVersionExpiration`), and aborts incomplete multipart uploads after 7 days. The noncurrent half is required: with versioning on, the import worker's delete writes only a delete marker, so without it every raw personal X export would persist as a noncurrent version. The bucket's Object Lock default retention still sets the earliest date a version can disappear.
+- A bucket-wide rule that aborts incomplete multipart uploads after 7 days.
+- An `archive-imports/` rule that expires current objects after 7 days, expires noncurrent versions after 7 days (`NoncurrentVersionExpiration`), and aborts incomplete multipart uploads after 7 days. Keep the noncurrent half: with versioning on, the import worker's delete writes only a delete marker, so without it every raw personal X export persists as a noncurrent version. The bucket's Object Lock default retention still sets the earliest date a version can disappear.
 
 **Verifying replication is live.** Write a small canary object under a replicated prefix on the media bucket. Wait a few minutes, then compare `ReplicationStatus` through `head-object`: `COMPLETED` on the source object, `REPLICA` on the object at the same key in the replica bucket.
 

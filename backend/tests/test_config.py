@@ -21,7 +21,7 @@ def test_settings_s3_backend_requires_bucket_and_region(monkeypatch):
 def test_settings_s3_backend_requires_bucket_when_only_region_set(monkeypatch):
     _clear_storage_env(monkeypatch)
     monkeypatch.setenv("STORAGE_BACKEND", "s3")
-    monkeypatch.setenv("AWS_REGION", "eu-west-3")
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
     with pytest.raises(ValidationError, match="S3_BUCKET"):
         Settings()
 
@@ -29,15 +29,15 @@ def test_settings_s3_backend_requires_bucket_when_only_region_set(monkeypatch):
 def test_settings_full_s3_config_passes(monkeypatch):
     _clear_storage_env(monkeypatch)
     monkeypatch.setenv("STORAGE_BACKEND", "s3")
-    monkeypatch.setenv("AWS_REGION", "eu-west-3")
-    monkeypatch.setenv("S3_BUCKET", "vidit-prod")
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+    monkeypatch.setenv("S3_BUCKET", "example-bucket")
     settings = Settings()
     assert settings.storage_backend == "s3"
 
 
 def test_settings_rejects_bucket_without_s3_backend(monkeypatch):
     _clear_storage_env(monkeypatch)
-    monkeypatch.setenv("S3_BUCKET", "vidit-prod")
+    monkeypatch.setenv("S3_BUCKET", "example-bucket")
     with pytest.raises(ValidationError, match="S3_BUCKET is set"):
         Settings()
 

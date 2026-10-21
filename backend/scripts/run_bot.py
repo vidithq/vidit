@@ -4,7 +4,7 @@ The hourly net behind the Account Activity webhook (``routers/webhooks``):
 pulls the bot's new mentions and catches anything the webhook dropped, through
 the same pipeline (``services/bot``). A mention the webhook already handled
 counts ``already handled``; while ``X_WEBHOOK_ENABLED`` is true a fresh one
-pages as a webhook gap. For a scheduler (e.g. a Railway cron) or by hand. Exits
+pages as a webhook gap. For a scheduler or by hand. Exits
 non-zero when the pass could not start (missing credentials, pull failed);
 per-mention failures are recorded and counted, not fatal.
 """

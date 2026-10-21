@@ -2,13 +2,8 @@ name: deploy-docs
 
 # Build the MkDocs Material site from docs/ and deploy it to GitHub
 # Pages on every push to main that touches docs source or this
-# workflow. The custom domain docs.vidit.app is wired via the CNAME
-# file at docs/CNAME — MkDocs copies it into the site/ output so
-# GitHub Pages serves it under that domain. DNS: a CNAME record on
-# the Cloudflare zone for `docs` → `vidithq.github.io`, grey cloud
-# (DNS only), so GitHub Pages can issue the Let's Encrypt cert
-# (proxy mode would block validation — same constraint as the apex
-# and `api.` records, see docs/engineering.md → Particularities).
+# workflow. The custom domain comes from docs/CNAME: MkDocs copies it
+# into the site/ output so GitHub Pages serves the site under that domain.
 
 on:
   push:

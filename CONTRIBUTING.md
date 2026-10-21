@@ -91,7 +91,7 @@ An amend + force-push to fix a missing sign-off often re-triggers only the DCO c
 
 Touched a published surface → sync the matching doc. The checklist in [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md) maps each surface to its doc.
 
-CI enforces a floor: every PR must touch something under `docs/` (the `docs-pairing` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)). The checklist pairings are conventions that human review owns; the check does not verify them. A PR with no docs impact (a roadmap change, a CI or meta tweak) can carry the **`no-docs-needed`** label to pass the check; justify it in the PR description. Dependabot PRs are exempt.
+CI enforces a floor: every PR must touch something under `docs/` (the `docs-pairing` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)). The checklist pairings are conventions that human review owns; the check does not verify them. A PR with no docs impact (a CI or meta tweak) can carry the **`no-docs-needed`** label to pass the check; justify it in the PR description. Dependabot PRs are exempt.
 
 ## Security issues
 

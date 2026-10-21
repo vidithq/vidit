@@ -4,41 +4,41 @@ import { displayLinkValue, resolveLinkHref } from "./users";
 
 describe("resolveLinkHref", () => {
   it("links an X or GitHub handle to the account on the platform", () => {
-    expect(resolveLinkHref("x", "LoLManya")).toBe("https://x.com/LoLManya");
-    expect(resolveLinkHref("x", "@LoLManya")).toBe("https://x.com/LoLManya");
+    expect(resolveLinkHref("x", "analyst_example")).toBe("https://x.com/analyst_example");
+    expect(resolveLinkHref("x", "@analyst_example")).toBe("https://x.com/analyst_example");
     expect(resolveLinkHref("github", "@torvalds")).toBe(
       "https://github.com/torvalds"
     );
   });
 
   it("links a profile URL on the platform's own hosts", () => {
-    expect(resolveLinkHref("x", "https://twitter.com/LoLManya")).toBe(
-      "https://x.com/LoLManya"
+    expect(resolveLinkHref("x", "https://twitter.com/analyst_example")).toBe(
+      "https://x.com/analyst_example"
     );
-    expect(resolveLinkHref("x", "https://www.x.com/LoLManya/")).toBe(
-      "https://x.com/LoLManya"
+    expect(resolveLinkHref("x", "https://www.x.com/analyst_example/")).toBe(
+      "https://x.com/analyst_example"
     );
   });
 
   it("links nothing for a URL on a host the platform does not own", () => {
     // The button wears the platform's brand mark, so a foreign host would send readers elsewhere
     // under X's logo.
-    expect(resolveLinkHref("x", "https://nitter.net/LoLManya")).toBeNull();
-    expect(resolveLinkHref("x", "https://x.com.evil.example/LoLManya")).toBeNull();
+    expect(resolveLinkHref("x", "https://nitter.net/analyst_example")).toBeNull();
+    expect(resolveLinkHref("x", "https://x.com.evil.example/analyst_example")).toBeNull();
     expect(resolveLinkHref("github", "https://gitlab.com/torvalds")).toBeNull();
   });
 
   it("links nothing for a URL that carries more than an account", () => {
-    expect(resolveLinkHref("x", "https://x.com/LoLManya/status/1")).toBeNull();
+    expect(resolveLinkHref("x", "https://x.com/analyst_example/status/1")).toBeNull();
     expect(resolveLinkHref("x", "https://x.com/i/flow")).toBeNull();
-    expect(resolveLinkHref("x", "https://x.com/LoLManya?ref=1")).toBeNull();
+    expect(resolveLinkHref("x", "https://x.com/analyst_example?ref=1")).toBeNull();
     expect(resolveLinkHref("github", "https://github.com/orgs/vidithq/people")).toBeNull();
   });
 
   it("links nothing for a value the platform's own rules refuse", () => {
     expect(resolveLinkHref("x", "some user")).toBeNull();
     expect(resolveLinkHref("x", "sixteencharacters")).toBeNull();
-    expect(resolveLinkHref("x", "x.com/LoLManya")).toBeNull();
+    expect(resolveLinkHref("x", "x.com/analyst_example")).toBeNull();
   });
 
   it("links a website, and blocks a scheme an anchor must never carry", () => {
@@ -63,16 +63,16 @@ describe("resolveLinkHref", () => {
 describe("displayLinkValue", () => {
   it("reduces an X or GitHub profile URL to the handle", () => {
     // The icon names the platform, so the host carries nothing.
-    expect(displayLinkValue("x", "https://x.com/LoLManya")).toBe("@LoLManya");
+    expect(displayLinkValue("x", "https://x.com/analyst_example")).toBe("@analyst_example");
     expect(displayLinkValue("github", "https://github.com/torvalds")).toBe(
       "@torvalds"
     );
   });
 
   it("accepts the platforms' other hosts and a trailing slash", () => {
-    expect(displayLinkValue("x", "https://twitter.com/LoLManya")).toBe("@LoLManya");
-    expect(displayLinkValue("x", "https://www.twitter.com/LoLManya/")).toBe(
-      "@LoLManya"
+    expect(displayLinkValue("x", "https://twitter.com/analyst_example")).toBe("@analyst_example");
+    expect(displayLinkValue("x", "https://www.twitter.com/analyst_example/")).toBe(
+      "@analyst_example"
     );
     expect(displayLinkValue("github", "https://www.github.com/torvalds")).toBe(
       "@torvalds"
@@ -87,17 +87,17 @@ describe("displayLinkValue", () => {
 
   it("prints a value that names no account as stored", () => {
     // Text and href share one parse: what the row won't link it won't call a handle.
-    expect(displayLinkValue("x", "https://nitter.net/LoLManya")).toBe(
-      "https://nitter.net/LoLManya"
+    expect(displayLinkValue("x", "https://nitter.net/analyst_example")).toBe(
+      "https://nitter.net/analyst_example"
     );
-    expect(displayLinkValue("x", "https://x.com/LoLManya/status/1")).toBe(
-      "https://x.com/LoLManya/status/1"
+    expect(displayLinkValue("x", "https://x.com/analyst_example/status/1")).toBe(
+      "https://x.com/analyst_example/status/1"
     );
     expect(displayLinkValue("x", "https://x.com/i/flow")).toBe(
       "https://x.com/i/flow"
     );
-    expect(displayLinkValue("x", "https://x.com/@LoLManya")).toBe(
-      "https://x.com/@LoLManya"
+    expect(displayLinkValue("x", "https://x.com/@analyst_example")).toBe(
+      "https://x.com/@analyst_example"
     );
     expect(displayLinkValue("github", "https://github.com/orgs/vidithq/people")).toBe(
       "https://github.com/orgs/vidithq/people"

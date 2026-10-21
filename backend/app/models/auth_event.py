@@ -35,7 +35,7 @@ class AuthEvent(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     event: Mapped[str] = mapped_column(Text, nullable=False)
-    # No IP / User-Agent columns (privacy); network context lives at the Cloudflare edge.
+    # No IP / User-Agent columns: Vidit stores neither, for privacy.
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),

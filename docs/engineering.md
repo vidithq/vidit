@@ -732,14 +732,14 @@ The source is [`github.com/vidithq/vidit`](https://github.com/vidithq/vidit): pu
 To deploy a release tag to an instance:
 
 1. Take a database snapshot when the tag ships a migration ([`backups.md`](backups.md#manual-snapshot-and-rollback)).
-2. Build the backend image from `backend/` at the tag.
+2. Build the backend image from `backend/` at the tag. [`backend/.dockerignore`](../backend/.dockerignore) keeps local `.env` files, virtual environments, local media and caches out of the image.
 3. Run the `migrate` role once. When it exits non-zero, stop: the schema did not reach the head.
 4. Start `api` with the new image, with `/health` as its healthcheck. Start `worker`, and point the scheduler's `bot` and `sync-conflicts` entries at the new image. The three roles without a port can start alongside `migrate`, since they wait for the schema head ([Scheduler services](#scheduler-services)).
 5. Build the frontend from `frontend/` at the same tag, with its `NEXT_PUBLIC_*` variables set in the build environment, and publish it.
 
 A code rollback is the same procedure with the previous tag and no `migrate` step. Undoing a migration is in [`backups.md`](backups.md#manual-snapshot-and-rollback).
 
-**Frontend build variables.** Next.js compiles every `NEXT_PUBLIC_*` variable into the bundle at build time, so a change takes a new build. The build reads `NEXT_PUBLIC_API_URL` (required: [`lib/api.ts`](../frontend/src/lib/api.ts) refuses to load without it), `NEXT_PUBLIC_DEMO_VIDEO_URL` (the landing demo video), `NEXT_PUBLIC_MEDIA_HOST` (the proof-image host pin, see [Particularities](#particularities-non-obvious-behavior-found-during-development)), and the Sentry variables under [Observability](#observability-whats-wired-and-how-to-turn-it-on). The version badge reads `NEXT_PUBLIC_BUILD_VERSION`, or `git describe --tags` when it is unset ([`next.config.mjs`](../frontend/next.config.mjs)), so build from a checkout with its tags, or set the variable.
+**Frontend build variables.** Next.js compiles every `NEXT_PUBLIC_*` variable into the bundle at build time, so a change takes a new build. The build reads `NEXT_PUBLIC_API_URL` (required: [`lib/api.ts`](../frontend/src/lib/api.ts) refuses to load without it), `NEXT_PUBLIC_DEMO_VIDEO_URL` (the landing demo video), `NEXT_PUBLIC_MEDIA_HOST` (the CDN host `next/image` loads media from and the proof-image host pin, see [Particularities](#particularities-non-obvious-behavior-found-during-development); set it wherever the backend sets `CLOUDFRONT_DOMAIN`, since a build without it allows no CDN host), and the Sentry variables under [Observability](#observability-whats-wired-and-how-to-turn-it-on). The version badge reads `NEXT_PUBLIC_BUILD_VERSION`, or `git describe --tags` when it is unset ([`next.config.mjs`](../frontend/next.config.mjs)), so build from a checkout with its tags, or set the variable.
 
 **Database.** Give `api`, `worker`, `bot`, `sync-conflicts` and `migrate` the same `DATABASE_URL`. The backend image carries no `pg_dump` or `pg_restore` client, so database dumps and restores run from a `postgres:16` image ([`backups.md`](backups.md)).
 

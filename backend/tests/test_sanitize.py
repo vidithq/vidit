@@ -228,9 +228,9 @@ def test_local_storage_url_passes_in_dev(dev_media):
 def test_image_src_pinned_to_s3_bucket_when_no_cdn(monkeypatch):
     monkeypatch.setattr(settings, "cloudfront_domain", "")
     monkeypatch.setattr(settings, "storage_backend", "s3")
-    monkeypatch.setattr(settings, "s3_bucket", "vidit-prod")
-    monkeypatch.setattr(settings, "aws_region", "eu-west-3")
-    bucket = '<img src="https://vidit-prod.s3.eu-west-3.amazonaws.com/proof/a.png">'
+    monkeypatch.setattr(settings, "s3_bucket", "example-bucket")
+    monkeypatch.setattr(settings, "aws_region", "us-east-1")
+    bucket = '<img src="https://example-bucket.s3.us-east-1.amazonaws.com/proof/a.png">'
     html = bucket + '<img src="https://attacker.example/pixel.gif">'
     assert sanitize_html(html) == bucket
 

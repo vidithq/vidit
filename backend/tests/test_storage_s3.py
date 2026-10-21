@@ -8,7 +8,7 @@ from moto import mock_aws
 
 from app.services.storage import S3Storage, StorageDeleteError
 
-REGION = "eu-west-3"
+REGION = "us-east-1"
 BUCKET = "vidit-test-bucket"
 
 
@@ -22,10 +22,7 @@ def _upload_file(name: str, content: bytes, content_type: str) -> UploadFile:
 def s3_setup():
     with mock_aws():
         client = boto3.client("s3", region_name=REGION)
-        client.create_bucket(
-            Bucket=BUCKET,
-            CreateBucketConfiguration={"LocationConstraint": REGION},
-        )
+        client.create_bucket(Bucket=BUCKET)
         yield client
 
 

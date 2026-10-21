@@ -1932,7 +1932,7 @@
     "tests/test_storage_s3.py::test_s3_storage_public_url_falls_back_to_s3_domain": 0.04847112507559359,
     "tests/test_storage_s3.py::test_s3_storage_public_url_uses_cloudfront_when_set": 0.042180916760116816,
     "tests/test_storage_s3.py::test_s3_storage_rejects_empty_bucket_or_region[-]": 0.11951979016885161,
-    "tests/test_storage_s3.py::test_s3_storage_rejects_empty_bucket_or_region[-eu-west-3]": 0.001226792111992836,
+    "tests/test_storage_s3.py::test_s3_storage_rejects_empty_bucket_or_region[-us-east-1]": 0.001226792111992836,
     "tests/test_storage_s3.py::test_s3_storage_rejects_empty_bucket_or_region[vidit-test-bucket-]": 0.0010642912238836288,
     "tests/test_storage_s3.py::test_s3_storage_upload_bytes_puts_object_with_content_type": 0.05291237495839596,
     "tests/test_storage_s3.py::test_s3_storage_upload_puts_object_and_returns_s3_url": 0.1788891248870641,

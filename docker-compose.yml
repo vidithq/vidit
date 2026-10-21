@@ -1,6 +1,6 @@
 services:
   db:
-    # The image production runs on Railway (see docs/engineering.md), so a
+    # The database image a deployment runs (see docs/engineering.md), so a
     # production dump restores locally without an extension or archive-format
     # mismatch. It ships postgis, postgis_topology, fuzzystrmatch, and
     # postgis_tiger_geocoder: the only extensions the dump references.

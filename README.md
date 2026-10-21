@@ -102,7 +102,7 @@ make test        # backend pytest
 
 ### Prerequisites
 
-- Docker (for PostgreSQL + PostGIS; local and prod both run `postgis/postgis:16-3.4`, see [`docs/backups.md`](docs/backups.md))
+- Docker (for PostgreSQL + PostGIS; local dev runs `postgis/postgis:16-3.4`, see [`docs/backups.md`](docs/backups.md))
 - Python 3.12+ and [uv](https://github.com/astral-sh/uv)
 - Node.js 20+ and npm
 
