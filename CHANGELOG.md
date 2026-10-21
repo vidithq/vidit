@@ -8,6 +8,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 - The backend image runs each role with one command, `api`, `migrate`, `worker`, `bot` or `sync-conflicts`, so a host only chooses which command to run and when ([#659](https://github.com/vidithq/vidit/pull/659)).
 - The landing roadmap lists the planned outcomes with an In progress or Planned status instead of versions and links to the changelog for what shipped, and the contributor docs point to the issues and their epics for planning ([#635](https://github.com/vidithq/vidit/pull/635)).
+- A frontend build loads media images from a CDN only when `NEXT_PUBLIC_MEDIA_HOST` names it, and the config examples, comments and docs describe what any instance sets instead of one instance's hosting ([#661](https://github.com/vidithq/vidit/pull/661)).
 
 ### Removed
 
@@ -16,6 +17,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Security
 
+- The backend image no longer copies local `.env` files, virtual environments, local media or datasets from the build directory ([#661](https://github.com/vidithq/vidit/pull/661)).
 - The frontend test tooling runs on Vite 8.3.5, which fixes advisories that let a page or a crafted path read files or run commands through a running Vite dev server ([#654](https://github.com/vidithq/vidit/pull/654)).
 - The backend decodes uploaded images with Pillow 13.0.0, which fixes a heap buffer overflow in its JPEG decoder that a crafted upload could trigger ([#653](https://github.com/vidithq/vidit/pull/653)).
 
