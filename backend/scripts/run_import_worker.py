@@ -1,6 +1,6 @@
 """The archive-import worker: drain the job queues, forever.
 
-The always-on Railway service behind ``POST /events/import-archive`` and the X
+The always-on worker role behind ``POST /events/import-archive`` and the X
 webhook: claims ``archive_import_jobs`` rows (``FOR UPDATE SKIP LOCKED``, so a
 second worker is safe), runs the backfill off the API process and emails the
 owner the outcome (``services/archive_jobs``). Each pass also drains

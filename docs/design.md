@@ -373,7 +373,7 @@ flowchart LR
     l1["`a surface that links the page`"]:::spec
     l2["`a shared component`"]:::shared
     l3["`the page`"]:::core
-    l4["`a file the page and the capture script share`"]:::data
+    l4["`a file the page and the screenshot tooling share`"]:::data
     l1 ~~~ l2 ~~~ l3 ~~~ l4
   end
 
@@ -396,7 +396,7 @@ flowchart LR
   shots["`**shots.json**
   per page: file, window, session, markers and their labels`"]:::data
   script["`**screenshot tooling**
-  maintained separately, writes public/guide/ and public/import/`"]:::data
+  run by the maintainer, writes public/guide/ and public/import/`"]:::data
   imp["`**/import**
   #detection, #archive, #paste, #bot`"]:::spec
 
@@ -425,8 +425,8 @@ flowchart LR
 | `#settings` | Your settings | A screenshot of the Notifications card (who can request your approval, the email and push switch per kind), and tiles for the profile, the X handle and display |
 
 - **Anchors are contract.** Other pages and messages link to a section by its id, so keep every id when you edit a heading. Each heading takes `max-sm:scroll-mt-16`, so a jump on a phone lands below the menu chip.
-- **One marker list.** [`shots.json`](../frontend/src/app/_shots/shots.json) groups the screenshots by page, `guide` and `import`, and names each one's file, route, window, session and markers. The layout, Approvals, Feed, Notifications and Submit shots are signed in. A marker is a target element and its legend line. The screenshot tooling, maintained separately, draws a numbered orange disc beside each target and writes the WebP to `frontend/public/<page>/`. [`Shot`](../frontend/src/app/_shots/Shot.tsx) renders one screenshot on either page and numbers the same labels with `NumberedSteps` under the image. Change a marker in the JSON, then re-shoot the screenshots.
-- **Grounded in the product.** The page names only controls that exist, under the labels the product prints. A change to a surface the page shows updates its screenshot or its tile in the same PR.
+- **One marker list.** [`shots.json`](../frontend/src/app/_shots/shots.json) groups the screenshots by page, `guide` and `import`, and names each one's file, route, window, session and markers. The layout, Approvals, Feed, Notifications and Submit shots are signed in. A marker is a target element and its legend line. The screenshot tooling is not part of this repository. It draws a numbered orange disc beside each target and writes the WebP to `frontend/public/<page>/`. [`Shot`](../frontend/src/app/_shots/Shot.tsx) renders one screenshot on either page and numbers the same labels with `NumberedSteps` under the image. Change a marker in the JSON, and the maintainer regenerates the screenshots.
+- **Grounded in the product.** The page names only controls that exist, under the labels the product prints. A change to a surface the page shows updates its tile or its markers in the same PR, and the maintainer regenerates its screenshot.
 
 #### Import and methodology guides
 
@@ -941,7 +941,7 @@ A geolocation opens `/events/{id}` and a request opens `/requests/{id}`.
 
 - `LinkedAccountsLine` is a row of ghost icon buttons, one per platform the profile carries (X, Discord, website, GitHub), each the brand mark alone. Marks rather than printed handles keep the weight on the handle that titles the page.
 - The owner's **Edit profile** is the last control in that row, a `Pencil` in the same square. The row's `gap-1.5` is the event page's action-cluster spacing, the cluster's `gap-2` separates the row from the button beside it, and the row wraps inside the cluster.
-- The account is in each mark's `title` and accessible name (`X / Twitter: @LoLManya`), printed through `displayLinkValue` ([`lib/users.ts`](../frontend/src/lib/users.ts)): an X or GitHub value reads `@handle` whether stored as a profile URL or a bare handle, and a website drops its scheme and trailing slash.
+- The account is in each mark's `title` and accessible name (`X / Twitter: @analyst_example`), printed through `displayLinkValue` ([`lib/users.ts`](../frontend/src/lib/users.ts)): an X or GitHub value reads `@handle` whether stored as a profile URL or a bare handle, and a website drops its scheme and trailing slash.
 - Each platform's `action` decides what its mark does, never how it looks. `link` opens the profile in a new tab through `<OutboundLink>`, so a website on an unknown host asks first. `copy` runs the mark over `useCopyToClipboard`; Discord takes it because the platform publishes no profile URL for a username. The mark flips to a check for the flash while its name holds still.
 - `resolveLinkHref` links an X or GitHub value only when it names an account under the platform's own rules, and a website only when it parses as an http(s) URL. `PATCH /users/me` applies the same rules (see [`api.md`](api.md#patch-usersme)). A stored value the strict parse refuses renders nothing.
 - A profile with no reachable account renders no marks, which leaves Edit profile or Follow alone.

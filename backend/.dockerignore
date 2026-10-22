@@ -1,0 +1,34 @@
+# Keeps local state out of the image built by `COPY . .` in the Dockerfile.
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Virtual environment (the image builds its own with `uv sync`)
+.venv/
+venv/
+
+# Local media storage and raw datasets
+.local-storage/
+datasets/
+tmp/
+
+# Python caches
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.mypy_cache/
+.ruff_cache/
+
+# Test artefacts
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Editor and OS files
+.idea/
+.vscode/
+.DS_Store

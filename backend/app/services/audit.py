@@ -44,7 +44,7 @@ def rate_limit_key(request: Request) -> str:
     """Per-IP rate-limit key for ``slowapi.Limiter``.
 
     ``request.client.host`` (slowapi's default) comes from the left-most ``X-Forwarded-For``
-    entry under uvicorn's always-trust mode. Railway's edge *appends* to that header, so the
+    entry under uvicorn's always-trust mode. the reverse proxy *appends* to that header, so the
     left-most entry is attacker-controlled: a random value mints a fresh bucket per request,
     and a victim's IP locks the victim out. :func:`_client_ip` reads the right-most entry
     instead; never read ``request.client.host`` directly.
@@ -62,8 +62,8 @@ def _client_ip(request: Request) -> str | None:
     Take the RIGHT-most ``X-Forwarded-For`` entry: trusted proxies *append* the observed client
     IP, so it is the only value we can defend. A client can prepend anything.
 
-    Defaults to ONE trusted hop (Railway to backend). Bump ``TRUSTED_PROXY_HOPS`` to 2 when a
-    second trusted proxy (e.g. Cloudflare) lands in front. The value only buckets the rate
+    Defaults to ONE trusted hop: one reverse proxy in front of the backend. Add one to
+    ``TRUSTED_PROXY_HOPS`` per extra trusted proxy in front of it. The value only buckets the rate
     limiter, so a miscount blurs a bucket boundary and is no vulnerability.
 
     Validated via ``ipaddress.ip_address`` so a hostile non-IP header value falls through to

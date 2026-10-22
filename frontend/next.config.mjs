@@ -9,8 +9,8 @@ import { copyMaplibreWorker } from "./scripts/copy-maplibre-worker.mjs";
  * "Beta · v..." badge can show the actually deployed ref.
  *
  * Resolution order:
- *  1. NEXT_PUBLIC_BUILD_VERSION already set in the env (the deploy workflow
- *     passes it explicitly so the value is auditable in run logs).
+ *  1. NEXT_PUBLIC_BUILD_VERSION already set in the build environment (set it
+ *     explicitly so the value is auditable in the build logs).
  *  2. `git describe --tags --always --dirty` — picks up the closest tag and
  *     the commits-past-tag suffix when not exactly on a tag. Requires
  *     the full git history (fetch-depth: 0 on a CI checkout).
@@ -55,15 +55,15 @@ function apiIsLocal() {
 }
 
 /**
- * Hostname of the CDN production media is served from, read the same way as
+ * Hostname a deployment serves media from, read the same way as
  * NEXT_PUBLIC_API_URL above (Next loads the `.env*` files before evaluating
- * this config). Set NEXT_PUBLIC_MEDIA_HOST to point a deployment at its own
- * distribution; the fallback is the distribution declared in
- * `docs/engineering.md`. Bare hostname, no scheme or path: it feeds the
- * `remotePatterns` entry below.
+ * this config). Bare hostname, no scheme or path: it feeds the
+ * `remotePatterns` entry below. Unset, `next/image` allows only the local dev
+ * media host (`localhost:8000`). A deployment sets it in the build
+ * environment: to its CDN host, or to its bucket endpoint when it serves media
+ * from S3 without a CDN.
  */
-const mediaHost =
-  process.env.NEXT_PUBLIC_MEDIA_HOST || "d10w3bld05vsky.cloudfront.net";
+const mediaHost = process.env.NEXT_PUBLIC_MEDIA_HOST;
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -107,13 +107,13 @@ const nextConfig = {
   // avatar URLs from arbitrary domains, etc.) must stay outside the
   // optimizer and render as plain `<img>` instead.
   //
-  // Production media lives behind the CloudFront distribution `mediaHost`
-  // resolves to (see above). Local dev media is served by the FastAPI
+  // Deployed media lives behind the CDN `mediaHost` names (see above), when
+  // set. Local dev media is served by the FastAPI
   // backend's `/local-storage/...` route (see
   // `backend/app/services/storage.py::LocalStorage`).
   images: {
     remotePatterns: [
-      { protocol: "https", hostname: mediaHost },
+      ...(mediaHost ? [{ protocol: "https", hostname: mediaHost }] : []),
       { protocol: "http", hostname: "localhost", port: "8000" },
     ],
     // Next 16's optimizer resolves each upstream host and refuses to fetch when
@@ -121,8 +121,8 @@ const nextConfig = {
     // the `localhost:8000` dev-media host above even though it matches a
     // remotePattern. Re-allow local IPs exactly when the backend is local
     // (keyed off the API host, not NODE_ENV, so a local `next start` still gets
-    // its images); against a deployed backend media is the public CloudFront
-    // host and the guard stays on where it matters.
+    // its images); against a deployed backend media is the public CDN host
+    // and the guard stays on where it matters.
     dangerouslyAllowLocalIP: apiIsLocal(),
   },
   // Security response headers, applied to every route (the authenticated

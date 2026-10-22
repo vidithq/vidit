@@ -39,7 +39,8 @@ def _handler(stream: TextIO, level: int) -> logging.Handler:
 
 def configure_logging() -> None:
     """Print each record once as a ``LOG_FORMAT`` line: below ``WARNING`` on
-    stdout, ``WARNING`` and above on stderr (Railway files stderr as errors).
+    stdout, ``WARNING`` and above on stderr (for a log collector that files stderr
+    as errors).
 
     Uvicorn's loggers that have handlers are handed to the root handlers so
     access and server logs share the format; a logger uvicorn muted stays muted

@@ -1554,7 +1554,7 @@ def test_reject_rate_ignores_a_bot_opened_request(admin_user, regular_user, even
         before_closed_status=STATUS_REQUESTED,
         closed_at=now,
         requested_at=now,
-        source_url="https://t.me/wilddivision82/351",
+        source_url="https://t.me/example_channel/351",
         detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
         detected_via="bot",
     )
@@ -1566,7 +1566,7 @@ def test_reject_rate_ignores_a_bot_opened_request(admin_user, regular_user, even
         geolocated_at=now,
         requested_at=now,
         event_coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://t.me/wilddivision82/352",
+        source_url="https://t.me/example_channel/352",
         detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
         detected_via="bot",
     )

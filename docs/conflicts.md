@@ -19,7 +19,7 @@ flowchart LR
   end
 
   cron["`**sync-conflicts role**
-  daily, suggested 0 6 * * *: sync_conflicts.py, one pass then exit`"]:::spec
+  once a day: sync_conflicts.py, one pass then exit`"]:::spec
   page["`**List of ongoing armed conflicts**
   read through the MediaWiki API: the top-level rows of the three top tiers, skirmishes excluded`"]:::spec
   strict{"`**strict parse**
@@ -65,7 +65,7 @@ Each paragraph below takes one node of the diagram, and the two runners are name
 - `uv run python scripts/seed_conflicts.py [--dry-run]` runs **once at setup**. It performs a Wikidata SPARQL pull of historical conflicts since 1914, about 700 to 850 rows, using a P31 type allowlist: wars, civil wars, armed conflicts, rebellions, insurgencies, and the relevant margins. It excludes battles, operations, and coup attempts. Rows with missing QIDs insert as `source='seed'`, `ongoing=false`. It never modifies existing rows, since the sync owns them. It is idempotent and safe to re-run.
 - `uv run python scripts/sync_conflicts.py` runs one pass of the Wikipedia sync described above, daily through the scheduler below or by hand.
 
-**Scheduler config.** The sync runs as the `sync-conflicts` [role](engineering.md#backend-roles) of the backend image, once a day. The suggested schedule is `0 6 * * *`. The role takes the variables every scheduler service takes (see [`engineering.md`](engineering.md#scheduler-services)). The process makes one pass and exits. A strict-parse abort exits non-zero, and when `SENTRY_DSN` is set, it is captured to Sentry. A missed run is harmless: the sync is idempotent, and the 14-day grace period absorbs multi-day gaps.
+**Scheduler config.** The sync runs as the `sync-conflicts` [role](engineering.md#backend-roles) of the backend image, once a day. The role takes the variables every scheduler service takes (see [`engineering.md`](engineering.md#scheduler-services)). The process makes one pass and exits. A strict-parse abort exits non-zero, and when `SENTRY_DSN` is set, it is captured to Sentry. A missed run is harmless: the sync is idempotent, and the 14-day grace period absorbs multi-day gaps.
 
 ## See also
 

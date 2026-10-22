@@ -304,8 +304,8 @@ export default function ImportGuidePage() {
                 label: "your copy, kept only if the channel post serves none",
               }}
             >
-              {"Wild Division work in the 82nd Brigade sector\n"}
-              <MockPostLink>t.me/wilddivision82/351</MockPostLink>
+              {"Drone unit work near the river crossing\n"}
+              <MockPostLink>t.me/example_channel/351</MockPostLink>
               {"\n"}
               <MockPostLink>@viditbot</MockPostLink>
             </MockPost>

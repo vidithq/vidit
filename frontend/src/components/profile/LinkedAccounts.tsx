@@ -102,10 +102,10 @@ export function LinkedAccountsFields({ edit }: { edit: ProfileEditState }) {
  * Where to reach the analyst: one ghost icon button per linked platform, the brand mark alone, in
  * the header action cluster right of the handle (above the work, like the event page's share
  * controls). The account each mark reaches is in its `title` and accessible name
- * (`X / Twitter: @LoLManya`). The row is the site's one icon control, the owner's Edit profile
+ * (`X / Twitter: @analyst_example`). The row is the site's one icon control, the owner's Edit profile
  * included.
  *
- * The name prints `displayLinkValue`, not the stored string, so an X value reads `@LoLManya`
+ * The name prints `displayLinkValue`, not the stored string, so an X value reads `@analyst_example`
  * whether stored as a URL or a bare handle.
  *
  * `action` decides what the mark does, never how it looks. `copy` is `<CopyHandle>` (Discord: no

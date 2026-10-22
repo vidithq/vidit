@@ -698,7 +698,7 @@ Indexes:
 - `ix_auth_events_user_id_created_at` on `(user_id, created_at)`. Supports the forensics query "what did this user do, latest first".
 - `ix_auth_events_event_created_at` on `(event, created_at)`. Supports the query "did event X spike recently".
 
-The table stores no IP address or User-Agent. Vidit drops them for privacy; network context lives only at the Cloudflare edge. There is no retention policy.
+The table stores no IP address or User-Agent: Vidit stores neither, for privacy. There is no retention policy.
 
 ---
 
@@ -1317,7 +1317,7 @@ Every uploaded file for an event, source footage and proof-body images alike, sp
 | `original_filename` | `TEXT` | nullable. The client-supplied filename, for example `IMG_1234.jpg`. Surfaced on the public read API so investigators can trace evidence back to a source post by filename. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
-`uploaded_ip` and `uploaded_user_agent` are **not stored**. Vidit drops them for privacy; network context lives only at the Cloudflare edge.
+`uploaded_ip` and `uploaded_user_agent` are **not stored**: Vidit stores no IP address or User-Agent, for privacy.
 
 **Indexes:**
 - `ix_media_sha256` on `(sha256) WHERE sha256 IS NOT NULL`: a partial index for "find every row with this content hash" audit and dedup queries. Covers only the rows that carry a hash.
