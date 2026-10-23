@@ -2,6 +2,12 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Fixed
+
+- Per-IP rate limits hold behind a proxy that overwrites `X-Forwarded-For`: set `CLIENT_IP_HEADER` to the header it fills with the client IP.
+
 ## v0.7.4, 2026-10-22
 
 ### Changed

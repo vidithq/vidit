@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     # ``-trusted_proxy_hops``: 1 for one reverse proxy in front of the backend,
     # plus one per extra trusted proxy.
     trusted_proxy_hops: int = 1
+    # Header the edge proxy overwrites with the client IP on every request, for
+    # a proxy that overwrites ``X-Forwarded-For`` instead of appending to it.
+    # Takes precedence over ``trusted_proxy_hops`` when set. Empty: unused.
+    client_ip_header: str = ""
 
     # Transactional email. `console` logs instead of sending; `resend` needs
     # RESEND_API_KEY and a verified `EMAIL_FROM` domain.

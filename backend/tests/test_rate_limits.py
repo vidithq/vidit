@@ -18,6 +18,7 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 
+from app.config import settings
 from app.database import SessionLocal
 from app.main import (
     RATE_LIMITED_CODE,
@@ -142,6 +143,18 @@ def test_limit_is_per_endpoint_not_a_global_floor(live_limiter, user):
     assert client.patch(ME, json={"bio": "x"}, headers=headers).status_code == 429
     profile = client.get(f"/api/v1/users/{user.username}", headers=headers)  # 120/min
     assert profile.status_code == 200
+
+
+def test_login_limit_holds_behind_a_proxy_that_overwrites_xff(live_limiter, monkeypatch):
+    # The proxy rewrites X-Forwarded-For to its upstream hop, which rotates per
+    # request, and writes the client IP to CLIENT_IP_HEADER.
+    monkeypatch.setattr(settings, "client_ip_header", "X-Real-IP")
+    body = {"email": "nobody@example.com", "password": "not-a-password"}
+    for i in range(5):
+        headers = {"X-Forwarded-For": f"192.0.2.{i + 1}", "X-Real-IP": "2001:db8::7"}
+        assert client.post("/api/v1/auth/login", json=body, headers=headers).status_code == 401
+    headers = {"X-Forwarded-For": "192.0.2.6", "X-Real-IP": "2001:db8::7"}
+    _assert_throttled(client.post("/api/v1/auth/login", json=body, headers=headers))
 
 
 def test_disabled_limiter_never_blocks(user):

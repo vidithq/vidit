@@ -20,7 +20,8 @@ case "$role" in
         # real client IP (rate limits, audit log) may read
         # request.client.host: it goes through services.audit._client_ip,
         # which takes the right-most entry the trusted proxy wrote. Set
-        # TRUSTED_PROXY_HOPS when a second trusted proxy sits in front.
+        # TRUSTED_PROXY_HOPS when a second trusted proxy sits in front, or
+        # CLIENT_IP_HEADER when the edge proxy overwrites the header instead.
         exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}" \
             --proxy-headers --forwarded-allow-ips='*'
         ;;

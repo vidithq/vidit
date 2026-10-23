@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.datastructures import Headers
 
 from app.database import SessionLocal
 from app.main import app
@@ -353,7 +354,7 @@ def test_audit_failure_does_not_break_login_db_layer(client, existing_user, monk
 
 class _FakeRequest:
     def __init__(self, *, headers: dict[str, str], client_host: str | None = None):
-        self.headers = headers
+        self.headers = Headers(headers)
         self.client = type("c", (), {"host": client_host})() if client_host else None
 
 
@@ -441,6 +442,35 @@ def test_rate_limit_key_clamps_when_chain_is_shorter_than_hops(monkeypatch):
         client_host="172.16.0.1",
     )
     assert audit.rate_limit_key(req) == "10.0.0.1"
+
+
+def test_rate_limit_key_prefers_client_ip_header_over_rotating_xff(monkeypatch):
+    """A proxy that overwrites XFF with a rotating upstream hop still yields one key per client."""
+    from app.config import settings as _settings
+
+    monkeypatch.setattr(_settings, "client_ip_header", "X-Real-IP")
+    keys = {
+        audit.rate_limit_key(
+            _FakeRequest(headers={"x-forwarded-for": hop, "x-real-ip": "2001:db8::7"})
+        )
+        for hop in ("192.0.2.1", "192.0.2.2", "192.0.2.3")
+    }
+    assert keys == {"2001:db8::7"}
+
+
+def test_rate_limit_key_ignores_client_ip_header_when_unset():
+    """With CLIENT_IP_HEADER empty, a client-sent header never picks the bucket."""
+    req = _FakeRequest(headers={"x-forwarded-for": "203.0.113.7", "x-real-ip": "1.2.3.4"})
+    assert audit.rate_limit_key(req) == "203.0.113.7"
+
+
+def test_rate_limit_key_falls_back_when_client_ip_header_is_missing_or_garbage(monkeypatch):
+    from app.config import settings as _settings
+
+    monkeypatch.setattr(_settings, "client_ip_header", "X-Real-IP")
+    missing = _FakeRequest(headers={"x-forwarded-for": "203.0.113.7"})
+    garbage = _FakeRequest(headers={"x-forwarded-for": "203.0.113.7", "x-real-ip": "not-an-ip"})
+    assert audit.rate_limit_key(missing) == audit.rate_limit_key(garbage) == "203.0.113.7"
 
 
 def test_hsts_header_on_csrf_rejection(client, existing_user):

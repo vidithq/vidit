@@ -66,10 +66,19 @@ def _client_ip(request: Request) -> str | None:
     ``TRUSTED_PROXY_HOPS`` per extra trusted proxy in front of it. The value only buckets the rate
     limiter, so a miscount blurs a bucket boundary and is no vulnerability.
 
+    A proxy that overwrites ``X-Forwarded-For`` with its own peer leaves only the address of the
+    hop in front of it there; behind a CDN that address rotates per request, and so would the
+    bucket. ``CLIENT_IP_HEADER`` names a header such a proxy overwrites with the client IP; it
+    wins when set. Name only a header the proxy overwrites, or the client picks its bucket.
+
     Validated via ``ipaddress.ip_address`` so a hostile non-IP header value falls through to
     the next candidate instead of minting attacker-chosen bucket keys.
     """
     candidates: list[str] = []
+    if settings.client_ip_header:
+        direct = request.headers.get(settings.client_ip_header)
+        if direct:
+            candidates.append(direct.strip())
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
         entries = [e.strip() for e in forwarded.split(",") if e.strip()]
