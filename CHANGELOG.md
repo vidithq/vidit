@@ -6,7 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
-- Per-IP rate limits hold behind a proxy that overwrites `X-Forwarded-For`: set `CLIENT_IP_HEADER` to the header it fills with the client IP.
+- Per-IP rate limits hold behind a proxy that overwrites `X-Forwarded-For`: set `CLIENT_IP_HEADER` to the header it fills with the client IP ([#689](https://github.com/vidithq/vidit/pull/689)).
 
 ## v0.7.4, 2026-10-22
 
