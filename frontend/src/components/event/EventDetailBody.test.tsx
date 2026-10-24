@@ -140,7 +140,7 @@ describe("EventDetailBody", () => {
     expect(within(first).getByText("Direct")).toBeInTheDocument();
     expect(within(first).getByText("Drone")).toBeInTheDocument();
     expect(within(first).getByText("1 Jun 2026, 09:30 UTC")).toBeInTheDocument();
-    expect(within(first).getByText("48.020000, 37.790000")).toBeInTheDocument();
+    expect(within(first).getByText("48.0200, 37.7900")).toBeInTheDocument();
     expect(within(first).getByText("armor")).toBeInTheDocument();
     // An untitled source reads Untitled, and a source without a file says so in place of the file.
     const second = block(2);
@@ -167,7 +167,7 @@ describe("EventDetailBody", () => {
       "href",
       "https://t.me/channel/12345"
     );
-    expect(within(first).getByText("1 Jun 2026")).toBeInTheDocument();
+    expect(within(first).getByText("Posted 1 Jun 2026")).toBeInTheDocument();
     expect(
       within(first).getByRole("link", { name: "Wayback Machine copy of source 1, link 1, t.me" })
     ).toHaveAttribute("href", "https://web.archive.org/web/2026/https://t.me/channel/12345");

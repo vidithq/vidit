@@ -45,7 +45,7 @@ export function DetailRow({
   children,
   compact = false,
   align = "stretch",
-  stacked = false,
+  wrapLabel = false,
   className = "",
 }: {
   label: ReactNode;
@@ -56,8 +56,9 @@ export function DetailRow({
   children?: ReactNode;
   compact?: boolean;
   align?: "stretch" | "center" | "start";
-  /** The label on its own line and the value full width under it, for a list of values. */
-  stacked?: boolean;
+  /** For a value that holds one line at its full width (`shrink-0 ml-auto`): the label wraps
+   *  to its longest word first, then the value drops under it, right-aligned. */
+  wrapLabel?: boolean;
   className?: string;
 }) {
   // Label left, value right, on one line at every width. At 320px the content
@@ -67,9 +68,12 @@ export function DetailRow({
   // the only channel (a value child adds no margin). The label never shrinks.
   //
   // No `flex-wrap`: it would drop a truncating value to its own line before
-  // `truncate` engaged.
+  // `truncate` engaged. `wrapLabel` is the exception, for a value that never
+  // truncates: the label's basis is its longest word, so the value drops to a
+  // line of its own only when even the wrapped label leaves it no room.
   const rowClass = cn(
-    stacked ? "flex flex-col gap-y-1.5" : "flex justify-between gap-x-4",
+    "flex justify-between gap-x-4",
+    wrapLabel && "flex-wrap gap-y-1",
     "*:min-w-0",
     align === "center" && "items-center",
     align === "start" && "items-start",
@@ -80,7 +84,13 @@ export function DetailRow({
   const blank = value === undefined || value === null || value === "";
   return (
     <div className={rowClass}>
-      <span className={cn(text, "text-neutral-500 inline-flex shrink-0 items-center gap-1")}>
+      <span
+        className={cn(
+          text,
+          "text-neutral-500 inline-flex items-center gap-1",
+          wrapLabel ? "grow basis-[min-content]" : "shrink-0",
+        )}
+      >
         {label}
         {concept && <FieldHelp concept={concept} />}
       </span>

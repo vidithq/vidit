@@ -79,48 +79,48 @@ describe("SourceBlock", () => {
       "Title",
       "Level",
       "Sensor",
-      "Captured",
       "Sensor position",
-      "Published",
+      "Captured",
+      "Links (1)",
       "Tags",
     ]);
     expect(within(block).getByText("1 Jun 2026, 09:30 UTC")).toBeInTheDocument();
-    expect(within(block).getByText("48.020000, 37.790000")).toBeInTheDocument();
+    expect(within(block).getByText("48.0200, 37.7900")).toBeInTheDocument();
     expect(within(block).getByRole("button", { name: "Copy coordinates" })).toBeInTheDocument();
     expect(within(block).getByText("armor")).toBeInTheDocument();
   });
 
-  it("reads Published for one link, with its short form, post date and archived copy", () => {
+  it("shows one link with its short form, archived copy and post date", () => {
     const block = renderBlock({
       links: [
         { url: "https://t.me/channel/12345", posted_at: "2026-06-01T10:05:00Z", archived: ARCHIVED },
       ],
     });
-    expect(within(block).getByText("Published")).toBeInTheDocument();
+    expect(within(block).getByText("Links (1)")).toBeInTheDocument();
     expect(within(block).getByRole("link", { name: "t.me/channel/12345" })).toHaveAttribute(
       "href",
       "https://t.me/channel/12345"
     );
-    expect(within(block).getByText("1 Jun 2026")).toBeInTheDocument();
+    expect(within(block).getByText("Posted 1 Jun 2026")).toBeInTheDocument();
     expect(
       within(block).getByRole("link", { name: "Wayback Machine copy of source 1, t.me" })
     ).toHaveAttribute("href", ARCHIVED.url);
   });
 
-  it("counts the places for several links, one line each", () => {
+  it("counts several links, one item each", () => {
     const block = renderBlock({
       links: [
         { url: "https://t.me/channel/12345", posted_at: "2026-06-01T10:05:00Z", archived: ARCHIVED },
         { url: "https://www.youtube.com/watch?v=abc", posted_at: null, archived: null },
       ],
     });
-    expect(within(block).getByText("Published in 2 places")).toBeInTheDocument();
+    expect(within(block).getByText("Links (2)")).toBeInTheDocument();
     const items = within(within(block).getByRole("list", { name: "Links of source 1" })).getAllByRole(
       "listitem"
     );
     expect(items).toHaveLength(2);
     expect(within(items[1]).getByRole("link", { name: "youtube.com/watch?v=abc" })).toBeInTheDocument();
-    expect(within(items[1]).getByText("date unknown")).toBeInTheDocument();
+    expect(within(items[1]).getByText("Date unknown")).toBeInTheDocument();
     expect(
       within(items[1]).getByRole("button", {
         name: "No archived copy of source 1, link 2, www.youtube.com",

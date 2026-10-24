@@ -7,11 +7,13 @@ import { CopyButton } from "@/components/ui/CopyButton";
 import { OutboundLink } from "@/components/ui/OutboundLink";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
+import { cn } from "@/lib/cn";
 import { formatCoordinates, mapsUrl } from "@/lib/coordinates";
 
 /** What the map control says while the pair cannot be opened (its name carries the state; the mark only says "maps"). */
 const NO_MAP_LINK = "No map link until the coordinate pair is complete";
 const MAP_LINK = "View on Maps";
+const SMALL_SHAPE = "sm:size-6";
 
 /**
  * The two things anyone does with a coordinate pair: check it against satellite imagery, or take
@@ -25,35 +27,49 @@ const MAP_LINK = "View on Maps";
  * A null pair (half-typed or out of bounds) keeps both controls in place and disabled, so the
  * field never jumps and grey says the point isn't usable yet. The map link becomes a button then:
  * a disabled anchor isn't a thing.
+ *
+ * `small` is the 24px desktop square (the phone keeps its tap floor), for a dense row. Its
+ * negative margin keeps the square from growing the line.
  */
 export function CoordinateActions({
   lat,
   lng,
+  small = false,
 }: {
   /** Null while the pair is half-typed or out of bounds: both controls grey. */
   lat: number | null;
   lng: number | null;
+  small?: boolean;
 }) {
   const point = lat === null || lng === null ? null : { lat, lng };
+  const shape = small ? SMALL_SHAPE : "";
+  const mark = small ? 12 : 14;
 
   return (
-    <span className="inline-flex items-center gap-0.5">
+    <span className={cn("inline-flex items-center gap-0.5", small && "-my-1.5")}>
       {point ? (
         <Tooltip label={MAP_LINK}>
           <OutboundLink
             href={mapsUrl(point.lat, point.lng)}
             aria-label={MAP_LINK}
-            className={buttonClasses("ghost", { icon: true })}
+            className={buttonClasses("ghost", { icon: true, className: shape })}
           >
-            <ExternalLink size={14} />
+            <ExternalLink size={mark} />
           </OutboundLink>
         </Tooltip>
       ) : (
-        <Button icon variant="ghost" disabled aria-label={NO_MAP_LINK} title={NO_MAP_LINK}>
-          <ExternalLink size={14} />
+        <Button
+          icon
+          variant="ghost"
+          disabled
+          aria-label={NO_MAP_LINK}
+          title={NO_MAP_LINK}
+          className={shape}
+        >
+          <ExternalLink size={mark} />
         </Button>
       )}
-      <CopyCoordinates point={point} />
+      <CopyCoordinates point={point} className={shape} mark={mark} />
     </span>
   );
 }
@@ -63,24 +79,51 @@ export function CoordinateActions({
  * narrow phone row, so it wraps the actions onto a second line instead of pushing the page
  * sideways; `min-w-0` lets it shrink so the wrap happens, and `justify-end` keeps the wrapped
  * line flush right.
+ *
+ * `compact` fits a narrow card on one line that never wraps: the pair at 4 decimals in small
+ * text, then the `small` actions. The copy still carries 6 decimals.
  */
-export function CoordinateValue({ lat, lng }: { lat: number; lng: number }) {
+export function CoordinateValue({
+  lat,
+  lng,
+  compact = false,
+}: {
+  lat: number;
+  lng: number;
+  compact?: boolean;
+}) {
   return (
-    <span className="flex min-w-0 flex-wrap items-center justify-end gap-x-2 gap-y-1">
-      <span className="font-mono text-sm text-neutral-200">{formatCoordinates(lat, lng)}</span>
-      <CoordinateActions lat={lat} lng={lng} />
+    <span
+      className={cn(
+        "flex items-center justify-end",
+        compact ? "ml-auto shrink-0 gap-x-1 whitespace-nowrap" : "min-w-0 flex-wrap gap-x-2 gap-y-1",
+      )}
+    >
+      <span className={cn("font-mono text-neutral-200", compact ? "text-xs" : "text-sm")}>
+        {formatCoordinates(lat, lng, compact ? 4 : 6)}
+      </span>
+      <CoordinateActions lat={lat} lng={lng} small={compact} />
     </span>
   );
 }
 
 /** The pair on the clipboard, confirmed by `CopyButton`, the app's one copy confirmation. */
-function CopyCoordinates({ point }: { point: { lat: number; lng: number } | null }) {
+function CopyCoordinates({
+  point,
+  className,
+  mark,
+}: {
+  point: { lat: number; lng: number } | null;
+  className: string;
+  mark: number;
+}) {
   const { copied, copy } = useCopyToClipboard();
   return (
     <CopyButton
       label="Copy coordinates"
       announce="Coordinates copied"
-      icon={<Copy size={14} />}
+      icon={<Copy size={mark} />}
+      className={className}
       copied={copied}
       // Nothing to write while the pair is incomplete: the control is grey and inert.
       disabled={point === null}

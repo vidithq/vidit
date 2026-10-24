@@ -78,9 +78,9 @@ export function parsePastedCoordinates(text: string): CoordinatePair | null {
 }
 
 /** The one coordinate rendering, shared by the detail page and the copy button so a copied
- *  pair pastes back into the inputs. */
-export function formatCoordinates(lat: number, lng: number): string {
-  return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+ *  pair pastes back into the inputs. A narrow row passes fewer `decimals`; the copy keeps 6. */
+export function formatCoordinates(lat: number, lng: number, decimals = 6): string {
+  return `${lat.toFixed(decimals)}, ${lng.toFixed(decimals)}`;
 }
 
 /** External map link for checking a point against satellite imagery. */

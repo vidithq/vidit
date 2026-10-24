@@ -15,7 +15,7 @@ import { LEVEL_LABELS, SENSOR_LABELS, shownSensor, type Source } from "@/lib/sou
 /**
  * One source of an event on a reading surface, read like the event's Details card: its file
  * (behind its own graphic gate when this source is flagged) or a *No file* box, then one row
- * each for the title, level, sensor, capture time, sensor position, links and tags. A row with
+ * each for the title, level, sensor, sensor position, capture time, links and tags. A row with
  * no value drops out, except the title, which reads *Untitled*.
  *
  * `compact` is the map panel's density: `thumbnail` media and bare rows in a `LIST_TILE`.
@@ -86,6 +86,17 @@ function SourceRows({
           value={SENSOR_LABELS[sensor]}
         />
       )}
+      {position && (
+        <DetailRow
+          label="Sensor position"
+          concept="sensor_position"
+          compact={compact}
+          align="center"
+          wrapLabel
+        >
+          <CoordinateValue lat={position.lat} lng={position.lng} compact />
+        </DetailRow>
+      )}
       {source.captured_at && (
         <DetailRow
           label="Captured"
@@ -94,29 +105,26 @@ function SourceRows({
           value={formatInstant(source.captured_at)}
         />
       )}
-      {position && (
-        <DetailRow label="Sensor position" concept="sensor_position" compact={compact} align="center">
-          <CoordinateValue lat={position.lat} lng={position.lng} />
-        </DetailRow>
-      )}
       {links.length > 0 && (
         <DetailRow
-          label={links.length > 1 ? `Published in ${links.length} places` : "Published"}
+          label={`Links (${links.length})`}
           concept="source_links"
           compact={compact}
-          stacked
+          align="start"
         >
-          <ul className="space-y-1" aria-label={`Links of source ${index + 1}`}>
+          <ul className="space-y-1.5 text-right" aria-label={`Links of source ${index + 1}`}>
             {links.map((link, i) => (
-              <li key={link.url} className="flex items-baseline gap-x-2">
-                <SourceLabel url={link.url} variant="link" withPath className="mr-auto text-sm" />
-                <span className={cn(META_LINE, "shrink-0")}>
-                  {link.posted_at ? formatInstantDate(link.posted_at) : "date unknown"}
-                </span>
-                <ArchivedCopies
-                  copy={link.archived}
-                  describes={linkDescription(index, safeHostname(link.url), i, links.length)}
-                />
+              <li key={link.url}>
+                <div className="flex items-center justify-end">
+                  <SourceLabel url={link.url} variant="link" withPath className="text-sm" />
+                  <ArchivedCopies
+                    copy={link.archived}
+                    describes={linkDescription(index, safeHostname(link.url), i, links.length)}
+                  />
+                </div>
+                <p className={META_LINE}>
+                  {link.posted_at ? `Posted ${formatInstantDate(link.posted_at)}` : "Date unknown"}
+                </p>
               </li>
             ))}
           </ul>

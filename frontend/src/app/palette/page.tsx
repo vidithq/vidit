@@ -115,7 +115,7 @@ import {
   TOOLTIP_SURFACE,
 } from "@/components/ui/styles";
 import { Button, buttonClasses, DANGER_CONFIRM } from "@/components/ui/Button";
-import { CoordinateActions } from "@/components/event/CoordinateActions";
+import { CoordinateActions, CoordinateValue } from "@/components/event/CoordinateActions";
 import { DateTimeInput } from "@/components/ui/DateTimeInput";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Switch } from "@/components/ui/Switch";
@@ -1502,7 +1502,7 @@ export default function PalettePage() {
             </Card>
           </Item>
 
-          <Item name="<DetailCard> + <DetailRow> + <DetailPills>" usage="Label / value rows on the event and request detail pages and on each source block. <DetailCard> takes an optional `lead` slot above the rows (a source's file) and a `label` that makes it a named region. <DetailRow> takes `empty`, shown muted for an empty value (Untitled), and `stacked`, which puts the label on its own line over a full-width value (a source's list of links). <DetailPills> is a row value made of pills (conflicts, tags), wrapping flush right.">
+          <Item name="<DetailCard> + <DetailRow> + <DetailPills>" usage="Label / value rows on the event and request detail pages and on each source block. <DetailCard> takes an optional `lead` slot above the rows (a source's file) and a `label` that makes it a named region. <DetailRow> takes `empty`, shown muted for an empty value (Untitled), and `wrapLabel`, for a value that holds one line at its full width: the label wraps instead when the row runs short (a source's Sensor position). <DetailPills> is a row value made of pills (conflicts, tags), wrapping flush right.">
             <div className="w-full max-w-md space-y-4">
               <DetailCard>
                 <DetailRow label="Status" concept="status">
@@ -1513,8 +1513,8 @@ export default function PalettePage() {
               </DetailCard>
               <DetailCard lead={<p className="text-sm text-neutral-500">Lead slot</p>}>
                 <DetailRow label="Title" value="" empty="Untitled" />
-                <DetailRow label="Published in 2 places" stacked>
-                  <p className="text-sm text-neutral-200">One value per line, full width</p>
+                <DetailRow label="Sensor position" align="center" wrapLabel>
+                  <CoordinateValue lat={48.0201} lng={37.7951} compact />
                 </DetailRow>
                 <DetailRow label="Tags" align="start">
                   <DetailPills items={[{ id: "t1", name: "armor" }, { id: "t2", name: "night" }]} />
@@ -1783,7 +1783,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SourceBlock> / <SourceBlocks>" usage="One source of an event on a reading surface (components/sources/SourceBlock.tsx), read like the event's Details card: a <DetailCard> region named Source N, its file in the lead slot through <MediaGallery> (behind its own <GraphicContentGate> when this source is flagged, a No file box without one), then <DetailRow>s for Title (Untitled when empty), Level as a <Pill>, Sensor (none without a file, and Unknown dropped), Captured, Sensor position with <CoordinateActions>, Published (Published in N places for two or more links; each link through <SourceLabel withPath> with its post date or date unknown and its <ArchivedCopies> mark) and Tags as <DetailPills>. A row with no value drops out, except Title. The map panel keeps a LIST_TILE with bare compact rows. <SourceBlocks> renders the event's blocks in API order: a <HorizontalScroller> row under a Sources (N) eyebrow in the page variant of <EventDetailBody>, a vertical stack under Sources in its panel variant.">
+          <Item name="<SourceBlock> / <SourceBlocks>" usage="One source of an event on a reading surface (components/sources/SourceBlock.tsx), read like the event's Details card: a <DetailCard> region named Source N, its file in the lead slot through <MediaGallery> (behind its own <GraphicContentGate> when this source is flagged, a No file box without one), then <DetailRow>s for Title (Untitled when empty), Level as a <Pill>, Sensor (none without a file, and Unknown dropped), Sensor position (the compact <CoordinateValue>: 4 decimals and the small <CoordinateActions> on one line, under wrapLabel), Captured, Links (N) (right-aligned, each link through <SourceLabel withPath> followed by its <ArchivedCopies> mark, with Posted and its date or Date unknown under it) and Tags as <DetailPills>. A row with no value drops out, except Title. The map panel keeps a LIST_TILE with bare compact rows. <SourceBlocks> renders the event's blocks in API order: a <HorizontalScroller> row under a Sources (N) eyebrow in the page variant of <EventDetailBody>, a vertical stack under Sources in its panel variant.">
             <div className="w-full max-w-2xl">
               <SourceBlocks sources={[MOCK_SOURCE, MOCK_CONTEXT_SOURCE]} alt="Strike on a depot" />
             </div>
