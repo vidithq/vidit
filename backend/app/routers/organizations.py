@@ -1,5 +1,4 @@
 import asyncio
-import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 
@@ -217,19 +216,19 @@ def create_organization_invite(
     return OrganizationInviteRead.model_validate(row)
 
 
-@router.delete("/{slug}/invites/{invite_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{slug}/invites/{username}", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("60/minute")
 def cancel_organization_invite(
     request: Request,
     slug: str,
-    invite_id: uuid.UUID,
+    username: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
     """Withdraw a pending invite. Org managers and site admins only."""
     with _typed_errors():
         org = organizations_service.get_managed(db, slug, current_user)
-        organizations_service.cancel_invite(db, org, invite_id=invite_id)
+        organizations_service.cancel_invite(db, org, username=username)
     db.commit()
 
 

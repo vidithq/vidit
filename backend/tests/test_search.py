@@ -1195,7 +1195,15 @@ def seed_org(db):
         db.add(org)
         db.flush()
         for user in members:
-            db.add(OrganizationMember(organization_id=org.id, user_id=user.id, role="member"))
+            db.add(
+                OrganizationMember(
+                    organization_id=org.id,
+                    user_id=user.id,
+                    state="active",
+                    role="member",
+                    joined_at=datetime.now(UTC),
+                )
+            )
         db.commit()
         made.append(org.id)
         return org.id

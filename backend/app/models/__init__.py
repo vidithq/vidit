@@ -16,7 +16,7 @@ from app.models.follow import Follow
 from app.models.invite_code import InviteCode
 from app.models.media import Media
 from app.models.notification import Notification, NotificationDelivery
-from app.models.organization import Organization, OrganizationInvite, OrganizationMember
+from app.models.organization import Organization, OrganizationMember
 from app.models.password_reset_token import PasswordResetToken
 from app.models.pending_registration import PendingRegistration
 from app.models.source_archive import SourceArchive
@@ -44,7 +44,6 @@ __all__ = [
     "Notification",
     "NotificationDelivery",
     "Organization",
-    "OrganizationInvite",
     "OrganizationMember",
     "PendingRegistration",
     "ApprovalRequest",

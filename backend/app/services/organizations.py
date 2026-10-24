@@ -9,6 +9,7 @@ so two concurrent writes cannot both pass the last-manager check.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy import ColumnExpressionArgument, Select, case, func, select
 from sqlalchemy.exc import IntegrityError
@@ -19,7 +20,6 @@ from app.models.approval_request import ApprovalRequest
 from app.models.event import Event
 from app.models.organization import (
     Organization,
-    OrganizationInvite,
     OrganizationMember,
     OrganizationRole,
 )
@@ -129,12 +129,19 @@ def _live_user(db: Session, username: str) -> User:
     return user
 
 
+def _row(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> OrganizationMember | None:
+    """The analyst's row in the organization, an invitation or a membership."""
+    return db.get(OrganizationMember, (org_id, user_id))
+
+
 def _membership(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> OrganizationMember | None:
-    return (
-        db.query(OrganizationMember)
-        .filter(OrganizationMember.organization_id == org_id, OrganizationMember.user_id == user_id)
-        .first()
-    )
+    row = _row(db, org_id, user_id)
+    return row if row is not None and row.state == "active" else None
+
+
+def _invitation(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> OrganizationMember | None:
+    row = _row(db, org_id, user_id)
+    return row if row is not None and row.state == "invited" else None
 
 
 def is_organization_manager(db: Session, *, org_id: uuid.UUID, user_id: uuid.UUID) -> bool:
@@ -158,7 +165,11 @@ def live_member_ids(
     return (
         select(OrganizationMember.user_id)
         .join(User, User.id == OrganizationMember.user_id)
-        .where(OrganizationMember.organization_id == org_id, User.deleted_at.is_(None))
+        .where(
+            OrganizationMember.organization_id == org_id,
+            OrganizationMember.state == "active",
+            User.deleted_at.is_(None),
+        )
     )
 
 
@@ -201,7 +212,11 @@ def _live_members(db: Session, org_id: uuid.UUID):
     return (
         db.query(OrganizationMember)
         .join(User, User.id == OrganizationMember.user_id)
-        .filter(OrganizationMember.organization_id == org_id, User.deleted_at.is_(None))
+        .filter(
+            OrganizationMember.organization_id == org_id,
+            OrganizationMember.state == "active",
+            User.deleted_at.is_(None),
+        )
     )
 
 
@@ -216,7 +231,9 @@ def hand_over_manager_roles(db: Session, *, leaving_user_id: uuid.UUID) -> None:
     org_ids = [
         org_id
         for (org_id,) in db.query(OrganizationMember.organization_id).filter(
-            OrganizationMember.user_id == leaving_user_id, OrganizationMember.role == "manager"
+            OrganizationMember.user_id == leaving_user_id,
+            OrganizationMember.state == "active",
+            OrganizationMember.role == "manager",
         )
     ]
     for org_id in sorted(org_ids):
@@ -244,7 +261,7 @@ def live_member_counts(db: Session):
             func.count().filter(OrganizationMember.role == "manager").label("managers"),
         )
         .join(User, User.id == OrganizationMember.user_id)
-        .filter(User.deleted_at.is_(None))
+        .filter(OrganizationMember.state == "active", User.deleted_at.is_(None))
         .group_by(OrganizationMember.organization_id)
         .subquery()
     )
@@ -290,7 +307,15 @@ def create_organization(db: Session, *, actor: User, body: OrganizationCreate) -
     apply_update(org, body)
     db.add(org)
     db.flush()
-    db.add(OrganizationMember(organization_id=org.id, user_id=first_manager.id, role="manager"))
+    db.add(
+        OrganizationMember(
+            organization_id=org.id,
+            user_id=first_manager.id,
+            state="active",
+            role="manager",
+            joined_at=datetime.now(UTC),
+        )
+    )
     admin_service.log_admin_event(
         db,
         actor_id=actor.id,
@@ -319,15 +344,14 @@ def appoint_manager(
     an org manager without an invite, as the first org manager does at creation. ``org`` must be
     locked by the caller. 404 ``user_not_found`` for an unknown or soft-deleted analyst."""
     user = _live_user(db, username)
-    member = _membership(db, org.id, user.id)
+    member = _row(db, org.id, user.id)
     if member is None:
-        member = OrganizationMember(organization_id=org.id, user_id=user.id, role="manager")
+        member = OrganizationMember(organization_id=org.id, user_id=user.id)
         db.add(member)
-        db.query(OrganizationInvite).filter(
-            OrganizationInvite.organization_id == org.id, OrganizationInvite.user_id == user.id
-        ).delete(synchronize_session=False)
-    else:
-        member.role = "manager"
+    if member.state != "active":
+        member.state = "active"
+        member.joined_at = datetime.now(UTC)
+    member.role = "manager"
     db.flush()
     admin_service.log_admin_event(
         db,
@@ -370,9 +394,9 @@ def delete_organization(db: Session, *, actor: User, slug: str) -> dict[str, obj
         .filter(ApprovalRequest.target_organization_id == org.id)
         .delete(synchronize_session=False)
     )
-    db.query(OrganizationInvite).filter(OrganizationInvite.organization_id == org.id).delete(
-        synchronize_session=False
-    )
+    db.query(OrganizationMember).filter(
+        OrganizationMember.organization_id == org.id, OrganizationMember.state == "invited"
+    ).delete(synchronize_session=False)
     members = (
         db.query(OrganizationMember)
         .filter(OrganizationMember.organization_id == org.id)
@@ -415,15 +439,7 @@ def build_read(db: Session, org: Organization, *, viewer: User | None) -> Organi
     if viewer is not None:
         member = _membership(db, org.id, viewer.id)
         role = member.role if member is not None else None
-        invited = (
-            db.query(OrganizationInvite.id)
-            .filter(
-                OrganizationInvite.organization_id == org.id,
-                OrganizationInvite.user_id == viewer.id,
-            )
-            .first()
-            is not None
-        )
+        invited = _invitation(db, org.id, viewer.id) is not None
         can_manage = role == "manager"
     return OrganizationRead(
         id=org.id,
@@ -463,52 +479,61 @@ def list_memberships(db: Session, user: User) -> list[OrganizationMembershipRead
         db.query(OrganizationMember)
         .join(Organization, Organization.id == OrganizationMember.organization_id)
         .options(joinedload(OrganizationMember.organization))
-        .filter(OrganizationMember.user_id == user.id)
+        .filter(OrganizationMember.user_id == user.id, OrganizationMember.state == "active")
         .order_by(Organization.name)
         .all()
     )
-    return [
-        OrganizationMembershipRead(
-            organization=OrganizationRef.model_validate(row.organization),
-            role=row.role,
-            joined_at=row.joined_at,
+    reads = []
+    for row in rows:
+        assert row.joined_at is not None  # ck_organization_members_state_stamp
+        reads.append(
+            OrganizationMembershipRead(
+                organization=OrganizationRef.model_validate(row.organization),
+                role=row.role,
+                joined_at=row.joined_at,
+            )
         )
-        for row in rows
-    ]
+    return reads
 
 
 def invite_candidates(db: Session, org: Organization, *, inviter: User) -> list[User]:
     """Analysts ``inviter`` may invite: in mutual follow, live, neither member nor invited."""
-    members = db.query(OrganizationMember.user_id).filter(
+    present = db.query(OrganizationMember.user_id).filter(
         OrganizationMember.organization_id == org.id
-    )
-    invited = db.query(OrganizationInvite.user_id).filter(
-        OrganizationInvite.organization_id == org.id
     )
     return (
         db.query(User)
         .filter(
             User.id.in_(social.mutual_follow_ids(inviter.id)),
             User.deleted_at.is_(None),
-            User.id.not_in(members),
-            User.id.not_in(invited),
+            User.id.not_in(present),
         )
         .order_by(User.username)
         .all()
     )
 
 
-def invite(db: Session, org: Organization, *, inviter: User, username: str) -> OrganizationInvite:
+def invite(db: Session, org: Organization, *, inviter: User, username: str) -> OrganizationMember:
     """Invite ``username`` and notify them. Only an org manager invites, and only
     an analyst in mutual follow with them."""
     if not is_organization_manager(db, org_id=org.id, user_id=inviter.id):
         raise NotOrganizationManagerError("Only an org manager can invite")
     invitee = _live_user(db, username)
-    if _membership(db, org.id, invitee.id) is not None:
+    existing = _row(db, org.id, invitee.id)
+    if existing is not None and existing.state == "active":
         raise AlreadyMemberError("Already a member")
     if not social.is_mutual_follow(db, a_id=inviter.id, b_id=invitee.id):
         raise NotMutualFollowError("You can invite only an analyst you follow who follows you back")
-    row = OrganizationInvite(organization_id=org.id, user_id=invitee.id, invited_by_id=inviter.id)
+    if existing is not None:
+        raise AlreadyInvitedError("Already invited")
+    row = OrganizationMember(
+        organization_id=org.id,
+        user_id=invitee.id,
+        invited_by_id=inviter.id,
+        state="invited",
+        role="member",
+        invited_at=datetime.now(UTC),
+    )
     try:
         with db.begin_nested():
             db.add(row)
@@ -520,50 +545,57 @@ def invite(db: Session, org: Organization, *, inviter: User, username: str) -> O
 
 def list_invites(db: Session, org: Organization) -> list[OrganizationInviteRead]:
     rows = (
-        db.query(OrganizationInvite)
-        .join(User, User.id == OrganizationInvite.user_id)
-        .options(joinedload(OrganizationInvite.user), joinedload(OrganizationInvite.invited_by))
-        .filter(OrganizationInvite.organization_id == org.id, User.deleted_at.is_(None))
-        .order_by(OrganizationInvite.created_at.desc())
+        db.query(OrganizationMember)
+        .join(User, User.id == OrganizationMember.user_id)
+        .options(joinedload(OrganizationMember.user), joinedload(OrganizationMember.invited_by))
+        .filter(
+            OrganizationMember.organization_id == org.id,
+            OrganizationMember.state == "invited",
+            User.deleted_at.is_(None),
+        )
+        .order_by(OrganizationMember.invited_at.desc())
         .all()
     )
     return [OrganizationInviteRead.model_validate(row) for row in rows]
 
 
-def cancel_invite(db: Session, org: Organization, *, invite_id: uuid.UUID) -> None:
-    deleted = (
-        db.query(OrganizationInvite)
-        .filter(OrganizationInvite.id == invite_id, OrganizationInvite.organization_id == org.id)
-        .delete(synchronize_session=False)
-    )
-    if not deleted:
+def cancel_invite(db: Session, org: Organization, *, username: str) -> None:
+    """Withdraw the pending invitation of ``username`` (404 ``invite_not_found``)."""
+    invitee = get_live_by_username(db, username)
+    row = _invitation(db, org.id, invitee.id) if invitee is not None else None
+    if row is None:
         raise InviteNotFoundError("Invite not found")
+    db.delete(row)
 
 
-def _take_invite(db: Session, org: Organization, user: User) -> OrganizationInvite:
+def _locked_invitation(db: Session, org: Organization, user: User) -> OrganizationMember:
     row = (
-        db.query(OrganizationInvite)
-        .filter(OrganizationInvite.organization_id == org.id, OrganizationInvite.user_id == user.id)
+        db.query(OrganizationMember)
+        .filter(
+            OrganizationMember.organization_id == org.id,
+            OrganizationMember.user_id == user.id,
+            OrganizationMember.state == "invited",
+        )
         .with_for_update()
         .first()
     )
     if row is None:
         raise InviteNotFoundError("No pending invite")
-    db.delete(row)
     return row
 
 
 def accept_invite(db: Session, org: Organization, *, user: User) -> None:
-    """Join as a member and tell the inviter. The invite row goes."""
-    row = _take_invite(db, org, user)
-    if _membership(db, org.id, user.id) is None:
-        db.add(OrganizationMember(organization_id=org.id, user_id=user.id, role="member"))
+    """Join as a member and tell the inviter. The row turns ``active``."""
+    row = _locked_invitation(db, org, user)
+    row.state = "active"
+    row.role = "member"
+    row.joined_at = datetime.now(UTC)
     notifications.notify_organization_invite_accepted(db, invite=row, member_id=user.id)
 
 
 def decline_invite(db: Session, org: Organization, *, user: User) -> None:
     """Drop the invite. Nobody is notified."""
-    _take_invite(db, org, user)
+    db.delete(_locked_invitation(db, org, user))
 
 
 def _member_or_404(db: Session, org: Organization, username: str) -> OrganizationMember:

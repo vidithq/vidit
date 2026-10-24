@@ -218,7 +218,9 @@ def _can_act_for(geo: Event) -> ColumnElement[bool]:
 
 
 def _member_of(user_id: uuid.UUID):
-    return select(OrganizationMember.organization_id).where(OrganizationMember.user_id == user_id)
+    return select(OrganizationMember.organization_id).where(
+        OrganizationMember.user_id == user_id, OrganizationMember.state == "active"
+    )
 
 
 def _require_requester(db: Session, *, geo: Event, requester: User) -> None:

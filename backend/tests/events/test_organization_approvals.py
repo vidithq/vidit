@@ -18,7 +18,7 @@ from app.models.audit_log import AuditLog
 from app.models.event import Event, EventGeolocator
 from app.models.follow import Follow
 from app.models.notification import Notification, NotificationDelivery
-from app.models.organization import Organization, OrganizationInvite, OrganizationMember
+from app.models.organization import Organization, OrganizationMember
 from app.models.user import User
 from app.services import email, notification_delivery, organizations
 from app.services.approval_requests import REFUSAL_MESSAGE
@@ -76,9 +76,25 @@ def make_org(db):
         db.add(org)
         db.flush()
         for user in managers:
-            db.add(OrganizationMember(organization_id=org.id, user_id=user.id, role="manager"))
+            db.add(
+                OrganizationMember(
+                    organization_id=org.id,
+                    user_id=user.id,
+                    state="active",
+                    role="manager",
+                    joined_at=datetime.now(UTC),
+                )
+            )
         for user in members:
-            db.add(OrganizationMember(organization_id=org.id, user_id=user.id, role="member"))
+            db.add(
+                OrganizationMember(
+                    organization_id=org.id,
+                    user_id=user.id,
+                    state="active",
+                    role="member",
+                    joined_at=datetime.now(UTC),
+                )
+            )
         db.commit()
         made.append(org.id)
         return org
@@ -634,7 +650,16 @@ def test_deleting_an_organization_removes_everything_in_its_name(
     monkeypatch.setattr(organizations, "sweep_keys", lambda keys, **_: swept.append(list(keys)))
     manager, member, invitee, outsider = make_user(), make_user(), make_user(), make_user()
     org = make_org(managers=[manager], members=[member], audience="everyone")
-    db.add(OrganizationInvite(organization_id=org.id, user_id=invitee.id, invited_by_id=manager.id))
+    db.add(
+        OrganizationMember(
+            organization_id=org.id,
+            user_id=invitee.id,
+            invited_by_id=manager.id,
+            state="invited",
+            role="member",
+            invited_at=datetime.now(UTC),
+        )
+    )
     db.commit()
     picture = client.put(
         f"{_ORGS}/{org.slug}/avatar",
@@ -654,7 +679,7 @@ def test_deleting_an_organization_removes_everything_in_its_name(
     db.expire_all()
     assert db.get(Organization, org_id) is None
     assert db.query(OrganizationMember).filter_by(organization_id=org_id).count() == 0
-    assert db.query(OrganizationInvite).filter_by(organization_id=org_id).count() == 0
+    assert db.query(OrganizationMember).filter_by(organization_id=org_id).count() == 0
     assert db.query(ApprovalRequest).filter_by(target_organization_id=org_id).count() == 0
     assert db.query(EventApproval).filter_by(organization_id=org_id).count() == 0
     assert db.query(EventApproval).filter_by(event_id=first.id).count() == 1

@@ -663,8 +663,20 @@ def led_organization(db, author, make_user):
     member = make_user()
     db.add_all(
         [
-            OrganizationMember(organization_id=org.id, user_id=author.id, role="manager"),
-            OrganizationMember(organization_id=org.id, user_id=member.id, role="member"),
+            OrganizationMember(
+                organization_id=org.id,
+                user_id=author.id,
+                state="active",
+                role="manager",
+                joined_at=datetime.now(UTC),
+            ),
+            OrganizationMember(
+                organization_id=org.id,
+                user_id=member.id,
+                state="active",
+                role="member",
+                joined_at=datetime.now(UTC),
+            ),
         ]
     )
     db.commit()

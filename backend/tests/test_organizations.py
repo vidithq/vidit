@@ -14,7 +14,7 @@ from app.main import app
 from app.models.audit_log import AuditLog
 from app.models.follow import Follow
 from app.models.notification import Notification
-from app.models.organization import Organization, OrganizationInvite, OrganizationMember
+from app.models.organization import Organization, OrganizationMember
 from app.models.user import User
 from app.services.auth import hash_password
 from tests._fixtures import TINY_JPEG
@@ -320,7 +320,7 @@ def test_accept_joins_and_notifies_both_sides(db, org, org_manager, make_user):
     assert client.post(f"{_org(org['slug'])}/invite/accept", headers=headers).status_code == 204
     page = client.get(_org(org["slug"])).json()
     assert (page["viewer_role"], page["viewer_invited"]) == ("member", False)
-    assert db.query(OrganizationInvite).filter_by(user_id=invitee.id).count() == 0
+    assert db.get(OrganizationMember, (uuid.UUID(org["id"]), invitee.id)).state == "active"
 
     accepted = (
         db.query(Notification)
@@ -339,7 +339,6 @@ def test_decline_drops_the_invite_silently(db, org, org_manager, make_user):
     assert _invite(org_manager, org["slug"], invitee).status_code == 201
     headers = login_as(client, invitee)
     assert client.post(f"{_org(org['slug'])}/invite/decline", headers=headers).status_code == 204
-    assert db.query(OrganizationInvite).filter_by(user_id=invitee.id).count() == 0
     assert db.query(OrganizationMember).filter_by(user_id=invitee.id).count() == 0
     assert db.query(Notification).filter_by(user_id=org_manager.id).count() == 0
 
@@ -347,9 +346,10 @@ def test_decline_drops_the_invite_silently(db, org, org_manager, make_user):
 def test_org_manager_cancels_an_invite(db, org, org_manager, make_user):
     invitee = make_user()
     _follow_both(db, org_manager, invitee)
-    invite_id = _invite(org_manager, org["slug"], invitee).json()["id"]
+    invited = _invite(org_manager, org["slug"], invitee).json()
+    assert invited["user"]["username"] == invitee.username and "invited_at" in invited
     headers = login_as(client, org_manager)
-    path = f"{_org(org['slug'])}/invites/{invite_id}"
+    path = f"{_org(org['slug'])}/invites/{invitee.username}"
     assert client.delete(path, headers=headers).status_code == 204
     assert client.delete(path, headers=headers).status_code == 404
 

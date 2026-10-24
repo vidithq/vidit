@@ -30,7 +30,7 @@ from app.models.notification import (
     NotificationDelivery,
     NotificationKind,
 )
-from app.models.organization import OrganizationInvite
+from app.models.organization import OrganizationMember
 from app.models.user import User
 from app.schemas.notification import (
     ApprovalRequestOutcome,
@@ -185,7 +185,7 @@ def notify_ownership_transferred(db: Session, *, event: Event, heir_id: uuid.UUI
     _emit(db, recipient_id=heir_id, kind="ownership_transferred", event_id=event.id)
 
 
-def notify_organization_invite(db: Session, *, invite: OrganizationInvite) -> None:
+def notify_organization_invite(db: Session, *, invite: OrganizationMember) -> None:
     """Tell the invitee that an org manager invited them to join."""
     _emit(
         db,
@@ -197,7 +197,7 @@ def notify_organization_invite(db: Session, *, invite: OrganizationInvite) -> No
 
 
 def notify_organization_invite_accepted(
-    db: Session, *, invite: OrganizationInvite, member_id: uuid.UUID
+    db: Session, *, invite: OrganizationMember, member_id: uuid.UUID
 ) -> None:
     """Tell the org manager who sent ``invite`` that it was accepted.
 
