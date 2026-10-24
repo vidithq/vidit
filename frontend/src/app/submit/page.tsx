@@ -267,7 +267,7 @@ function SubmitForm() {
 
   const publishGeolocation = async () => {
     resetActions();
-    // A pending or failed curated-tags or conflicts load is recoverable, not a missing field:
+    // A pending or failed conflicts load is recoverable, not a missing field:
     // surface it in the banner (Retry lives above), not the outlines.
     if (form.taxonomy.blockedMessage !== null) {
       geolocationMutation.setError(form.taxonomy.blockedMessage);

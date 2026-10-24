@@ -14,9 +14,6 @@
 # consumer vulture can't trace.
 # ── SQLAlchemy Mapped[...] columns ────────────────────────────────────────────
 # Populated from the DB row on ORM load; no line in app/ reads them by name.
-# ``position`` is read only through the relationship's string order_by.
-position  # app/models/event.py EventSourceLink
-original_filename  # app/models/media.py, and schemas/media.py
 processed_at  # app/models/bot_mention.py, audit stamp written at insert only
 # ``edited_by_id`` is read only through the `edited_by` relationship.
 edited_by_id  # app/models/event.py EventVersion
@@ -29,11 +26,9 @@ email_verified_at  # app/models/user.py, audit stamp written at registration onl
 resolved_by_id  # app/models/content_report.py, stamped by services/reports.resolve_report
 updated_at  # app/models/event.py, SQLAlchemy ``onupdate`` stamp
 requested_at  # app/models/event.py, state-entry stamp
-detected_at  # app/models/event.py, state-entry stamp
 geolocated_at  # app/models/event.py, state-entry stamp
 finished_at  # app/models/archive_import_job.py, stamped by services/archive_jobs
 added_at  # app/models/collection.py CollectionEvent, stamped when an event joins
-created_by_id  # app/models/organization.py, stamped by services/organizations.create_organization
 
 # ── ASGI middleware override ──────────────────────────────────────────────────
 # Starlette calls dispatch(); never referenced by name.
@@ -109,7 +104,7 @@ processed_detection_count  # models/archive_import_job.py + schemas/event.py: wo
 detection_count  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
 redacted  # schemas/event.py EventVersionRead (wire field, built in routers/events/_common.py)
 # Written by ``services/versions.redact_version``, read by nothing in ``app/``;
-# the readable trail is the ``admin_events`` row the same write files.
+# the readable trail is the ``audit_log`` row the same write files.
 redacted_by_id  # models/event.py EventVersion
 analysts  # schemas/approval_request.py ApprovalRequestTargetList (wire field)
 approval  # schemas/approval.py OrganizationApprovalRead (wire field)

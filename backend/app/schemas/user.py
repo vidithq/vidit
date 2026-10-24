@@ -191,7 +191,7 @@ class UserProfile(BaseModel):
 
 
 class TagCount(BaseModel):
-    """One (name, count) entry for a conflict, capture-source or source-host tally."""
+    """One (name, count) entry for a conflict, source-kind or source-host tally."""
 
     name: str
     count: int

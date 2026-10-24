@@ -25,8 +25,8 @@ export const FORM_INVALID_FIELD = "!border-red-500/80 ring-1 ring-red-500/30";
 // Append to the existing label class.
 export const FORM_INVALID_LABEL = "!text-red-400";
 
-// One item of an admin list (a pending X handle request, a report, a stat, the user
-// actions): a bordered tile on the panel. Spacing between its lines stays at the call site.
+// One item of an admin list (a report, a stat, the user actions): a bordered tile on
+// the panel. Spacing between its lines stays at the call site.
 export const LIST_TILE = "border border-neutral-800 rounded-md p-3";
 
 // The one error banner, used by every form, auth card and admin panel.

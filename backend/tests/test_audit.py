@@ -1,4 +1,4 @@
-"""HSTS header, `auth_events` audit rows, and the rate-limit key's right-most-XFF extraction."""
+"""HSTS header, account-action `audit_log` rows, and the rate-limit key's right-most-XFF extraction."""
 
 from __future__ import annotations
 
@@ -401,7 +401,7 @@ def test_rate_limit_key_rejects_garbage_values():
     """Malformed X-Forwarded-For never becomes a bucket key (``ipaddress.ip_address`` gates it)."""
     for hostile in [
         "not-an-ip",
-        "127.0.0.1; DROP TABLE auth_events",
+        "127.0.0.1; DROP TABLE audit_log",
         "999.999.999.999",
         "<script>",
         "",

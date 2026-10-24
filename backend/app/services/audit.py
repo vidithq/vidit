@@ -45,7 +45,7 @@ def rate_limit_key(request: Request) -> str:
     """Per-IP rate-limit key for ``slowapi.Limiter``.
 
     ``request.client.host`` (slowapi's default) comes from the left-most ``X-Forwarded-For``
-    entry under uvicorn's always-trust mode. the reverse proxy *appends* to that header, so the
+    entry under uvicorn's always-trust mode. The reverse proxy *appends* to that header, so the
     left-most entry is attacker-controlled: a random value mints a fresh bucket per request,
     and a victim's IP locks the victim out. :func:`_client_ip` reads the right-most entry
     instead; never read ``request.client.host`` directly.

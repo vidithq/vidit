@@ -34,10 +34,10 @@ test.describe("shared event link", () => {
     const share = page.getByRole("button", { name: "Share", exact: true });
     await expectNarrowViewportLayout(page, share);
     const titleBox = (await page.getByRole("heading", { level: 1 }).boundingBox())!;
-    const cardBox = (await page.getByRole("region", { name: "Approvals" }).boundingBox())!;
+    const approvalsBox = (await page.getByRole("region", { name: "Approvals" }).boundingBox())!;
     const shareBox = (await share.boundingBox())!;
     expect(shareBox.y).toBeGreaterThan(titleBox.y);
-    expect(shareBox.y + shareBox.height).toBeLessThanOrEqual(cardBox.y);
+    expect(shareBox.y + shareBox.height).toBeLessThanOrEqual(approvalsBox.y);
 
     // A signed-out reader has no primary action, and the stamps stay under the actions row.
     await expect(page.getByRole("link", { name: /^Edit/ })).toHaveCount(0);
@@ -73,17 +73,17 @@ test.describe("shared event link", () => {
     await mockApi(page);
     await page.goto(`/events/${EVENT_ID}`);
 
-    const card = page.getByRole("region", { name: "Approvals" });
-    await expect(card.getByRole("list", { name: "Approved by" })).toBeVisible();
-    const cardBox = await card.boundingBox();
+    const approvals = page.getByRole("region", { name: "Approvals" });
+    await expect(approvals.getByRole("list", { name: "Approved by" })).toBeVisible();
+    const approvalsBox = await approvals.boundingBox();
     const mediaBox = await page.getByRole("heading", { name: "Sources" }).boundingBox();
-    expect(cardBox!.y + cardBox!.height).toBeLessThanOrEqual(mediaBox!.y);
+    expect(approvalsBox!.y + approvalsBox!.height).toBeLessThanOrEqual(mediaBox!.y);
 
     // Every stamp, oldest first, each a link to its signer's page; no bubble and no count.
-    const stamps = card.getByRole("list", { name: "Approved by" });
+    const stamps = approvals.getByRole("list", { name: "Approved by" });
     await expect(stamps.getByRole("link")).toHaveCount(EVENT_APPROVALS.length);
     await expect(stamps.getByRole("button")).toHaveCount(0);
-    await expect(card).not.toContainText(/\d/);
+    await expect(approvals).not.toContainText(/\d/);
     const username = EVENT_APPROVALS[0].reviewer!.username;
     const first = stamps.getByRole("link", { name: new RegExp(`^${username} approved v`) });
     await expect(first).toHaveAttribute("href", `/profile/${username}`);

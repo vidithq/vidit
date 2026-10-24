@@ -360,10 +360,10 @@ def test_read_quota_key_rejects_a_forged_token(user):
 # unparseable date, unknown invite code), so none stores evidence.
 #
 # Some groups still write, each reaped by a fixture:
-# * `/auth/login` writes an `auth_events` row per attempt;
+# * `/auth/login` writes an `audit_log` row per attempt;
 # * `PATCH /users/me`, `PATCH /users/me/preferences`, `POST /notifications/read` and
 #   `DELETE /users/me/avatar` touch the throwaway `user` row;
-# * admin actions write `admin_events` rows, `POST /admin/invite-codes`
+# * admin actions write `audit_log` rows, `POST /admin/invite-codes`
 #   mints 30 codes;
 # * `POST /collections` opens 30 collections (dropped by the owner cascade);
 # * the `reap-*` cases delete expired `password_reset_tokens` / `pending_registrations`.

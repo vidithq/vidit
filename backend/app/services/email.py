@@ -276,7 +276,7 @@ def completion_digest_email(*, to: str, count: int, link: str) -> Email:
                 "waits on the two calls only you can make: which conflict it belongs to, and "
                 "what the footage was shot with.",
                 "Open the queue and choose Start reviewing to go through them one by one: "
-                "set the conflict and the capture source, then publish each.",
+                "set the conflict and the source kind, then publish each.",
             ],
             action=Action("Open your detections", link),
         ),

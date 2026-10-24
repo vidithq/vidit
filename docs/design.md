@@ -121,7 +121,7 @@ The accent is **tinted-on-dark**, never a flat `bg-orange-500` fill for buttons 
 |------|-------|----------|-------|
 | Danger | `#ef4444` | `red-500` | Errors, deletions (`FORM_ERROR_BANNER`) |
 | Success / info | accent `500` | `orange-500` | Confirmations + info notices (`FORM_SUCCESS_BANNER`). Accent, not green: a confirmation next to red destructive actions shouldn't read as celebratory. |
-| Warning | `#f59e0b` | `amber-500` | Non-blocking caution (`WARNING_CALLOUT`): duplicate probe, curated-tags load failure, tweet-import notice. Colour only; layout at the call site. |
+| Warning | `#f59e0b` | `amber-500` | Non-blocking caution (`WARNING_CALLOUT`): duplicate probe, conflicts load failure, tweet-import notice. Colour only; layout at the call site. |
 
 ## Accent recipe
 

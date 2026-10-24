@@ -22,7 +22,7 @@ import { useMapState } from "@/contexts/MapStateContext";
 import { TimelineScrubber } from "@/components/map/TimelineScrubber";
 
 interface FilterPanelProps {
-  /** Live tag taxonomy driving the capture-source + free chip buckets. */
+  /** Live tag taxonomy driving the tag chips. */
   tags: Tag[];
   /** Conflicts carried by at least one live event (`/conflicts?used=true`), server-ordered: ongoing first, then name. */
   conflicts: Conflict[];

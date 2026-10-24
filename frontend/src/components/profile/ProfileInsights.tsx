@@ -21,7 +21,7 @@ function ChartNote({ children }: { children: ReactNode }) {
 
 /**
  * The shape-of-work section on the public profile: two live-status counts and the leading conflict
- * and capture source as four tiles, the source-origin bar, and the month grid, all from
+ * and source kind as four tiles, the source-origin bar, and the month grid, all from
  * `GET /users/{username}/stats`. Renders nothing until stats arrive, for a profile with no events,
  * or after a failed fetch (it never blocks the profile).
  *
