@@ -17,7 +17,7 @@ from app.database import Base, literal_check
 
 # Why a viewer flagged an event or collection. ``illegal_content`` is the legal
 # escalation; ``graphic_not_flagged`` is footage of death, injury or human
-# remains without the author's ``events.is_graphic``; ``copyright`` and
+# remains without the author's ``sources.is_graphic``; ``copyright`` and
 # ``privacy`` are third-party rights claims; ``other`` relies on ``details``.
 # One set for both targets. Value-domain source of truth for the column, the
 # Create schema and the generated frontend type.

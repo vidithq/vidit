@@ -19,8 +19,9 @@ from app.models.notification import Notification, NotificationDelivery
 from app.models.organization import Organization, OrganizationMember
 from app.models.password_reset_token import PasswordResetToken
 from app.models.pending_registration import PendingRegistration
-from app.models.source_archive import SourceArchive
+from app.models.source import Source, SourceLink, source_tags
 from app.models.tag import Tag, event_tags
+from app.models.upload import Upload
 from app.models.user import User
 from app.models.user_preferences import UserPreferences
 
@@ -47,10 +48,13 @@ __all__ = [
     "OrganizationMember",
     "PendingRegistration",
     "ApprovalRequest",
-    "SourceArchive",
+    "Source",
+    "SourceLink",
     "Tag",
     "User",
+    "Upload",
     "UserPreferences",
     "event_conflicts",
     "event_tags",
+    "source_tags",
 ]

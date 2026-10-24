@@ -5,7 +5,6 @@ from typing import Literal
 from geoalchemy2 import Geometry
 from sqlalchemy import (
     BigInteger,
-    Boolean,
     CheckConstraint,
     ColumnElement,
     Date,
@@ -28,6 +27,7 @@ from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base, literal_check
+from app.models.source import Source, source_order
 
 # Lifecycle status (value-domain source of truth: the ORM column, the Read
 # schemas and the generated frontend type derive from it).
@@ -55,13 +55,8 @@ BeforeClosedStatus = Literal["requested", "detected", "geolocated"]
 # ``ck_event_detections_via_valid``.
 DetectedVia = Literal["bot", "paste", "archive"]
 
-# Field-length ceilings for the create / edit forms. ``SOURCE_URL`` is an input
-# cap only: the column is unbounded ``Text``.
+# Field-length ceiling for the create / edit forms.
 TITLE_MAX_LENGTH = 255
-SOURCE_URL_MAX_LENGTH = 2000
-# Ceiling on ``event_source_links`` rows per event; a submission past it is
-# rejected, not truncated.
-MAX_SECONDARY_SOURCE_LINKS = 10
 
 
 # Where an analyst stands on one event's credit. ``invited``: the owner asked
@@ -127,12 +122,12 @@ class EventVersion(Base):
     lands. ``version_no`` is the version this row holds, so an event at version
     3 carries snapshots 1 and 2 plus the live row.
 
-    ``snapshot`` holds the fields the edit form writes
+    ``snapshot`` holds the fields the edit form writes, its sources included
     (``services/versions.build_snapshot``). Media rows are not versioned, so a
     ``proof`` row a snapshot points at is never hard-deleted while the snapshot
-    exists (``services/versions.referenced_media_urls``). The ``source`` row
-    cannot stay (one per event), so the snapshot describes it and its file
-    outlives the row (``services/versions.referenced_source_media``).
+    exists (``services/versions.referenced_media_urls``). A source an edit drops
+    goes with its row, so the snapshot describes it and its file outlives the row
+    (``services/versions.referenced_source_media``).
 
     Redaction is the one write a filed row takes: an admin blanks ``snapshot``
     and ``note`` and stamps ``redacted_at`` / ``redacted_by_id``. The row and
@@ -180,28 +175,6 @@ class EventVersion(Base):
     )
 
 
-class EventSourceLink(Base):
-    """One secondary source link: the same media mirrored on another network,
-    or another post from the same point of view.
-
-    The primary anchor stays the scalar ``Event.source_url``. These extras are
-    replaced wholesale by the geolocate transition and every later correction,
-    while the anchor moves only on its own field (and files a version).
-    ``position`` is part of the PK, so stored order is read order.
-    """
-
-    __tablename__ = "event_source_links"
-
-    event_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
-    )
-    position: Mapped[int] = mapped_column(Integer, primary_key=True)
-    # Unbounded ``Text``; the API caps input at ``SOURCE_URL_MAX_LENGTH``.
-    url: Mapped[str] = mapped_column(Text, nullable=False)
-
-    event = relationship("Event", back_populates="source_links")
-
-
 class EventDetection(Base):
     """Where a machine-written event came from: the post it was imported from, its thread and
     the entry that read it. One row per imported event, written once at creation
@@ -214,8 +187,8 @@ class EventDetection(Base):
         ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
     )
     via: Mapped[DetectedVia | None] = mapped_column(String(20), nullable=True)
-    # The post's URL, built from its id (``tweet_ingest.urls.canonical_tweet_url``).
-    # ``events.source_url`` is the footage origin.
+    # The post's URL, built from its id (``tweet_ingest.urls.canonical_tweet_url``). Not a
+    # source: the event's sources are the footage it rests on.
     from_url: Mapped[str] = mapped_column(Text, nullable=False)
     # The re-import match anchor.
     from_post_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
@@ -273,24 +246,12 @@ class Event(Base):
     # What the footage shows. Required at ``geolocated`` (``ck_events_coords_status``).
     # One point per event.
     coords = mapped_column(Geometry("POINT", srid=4326), nullable=True, index=True)
-    # Where the footage was shot from. Unindexed: no spatial read uses it.
-    capture_source_coords = mapped_column(
-        Geometry("POINT", srid=4326, spatial_index=False), nullable=True
-    )
-    # The declared footage source. A detection may carry none; the other states
-    # require it (``ck_events_source_url_status``, ``services/events.geolocate``).
-    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Sanitised HTML (``services/sanitize.sanitize_html``); ``""`` is an empty body.
     proof: Mapped[str] = mapped_column(Text, nullable=False, default="")
     # Often unknown for a ``requested`` event; required at ``geolocated``.
     occurred_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     # UTC time of day. May stand alone: an hour can be known before the day.
     occurred_time: Mapped[time | None] = mapped_column(Time, nullable=True)
-    # When the original source posted the media (UTC instant). Distinct from
-    # ``occurred_date`` and ``created_at``. NULL unless actually known.
-    source_posted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
     # Per-state entry stamps, set on entry and never cleared; the
     # ``geolocated`` / ``closed`` ones are tied to ``status`` by CHECKs.
     requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -342,12 +303,6 @@ class Event(Base):
     # Takedown after a content report: withheld from public reads alongside
     # ``deleted_at``, but reversible by an admin.
     hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # TRUE when the footage shows death, injury or human remains. Set by the
-    # author, overridable by an admin. Read surfaces cover flagged imagery until
-    # the viewer opts in, so the column is public.
-    is_graphic: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, server_default=text("false")
-    )
     # Which version this row IS. Incremented under the row lock by
     # ``services/events.save_version``, which first files the superseded state as
     # an ``EventVersion``. A public address (``/events/{id}/v{n}``), so it only
@@ -356,9 +311,27 @@ class Event(Base):
         Integer, nullable=False, default=1, server_default=text("1")
     )
 
+    @hybrid_property
+    def is_graphic(self) -> bool:
+        """Whether any source shows death, injury or human remains (``Source.is_graphic``)."""
+        return any(source.is_graphic for source in self.sources)
+
+    @is_graphic.inplace.expression
+    @classmethod
+    def _is_graphic_expression(cls) -> ColumnElement[bool]:
+        return exists().where(Source.event_id == cls.id, Source.is_graphic.is_(True))
+
     owner = relationship("User", foreign_keys=[owner_id], back_populates="events")
     requested_by = relationship("User", foreign_keys=[requested_by_id])
+    # Proof-body images only; a source's file hangs off its source.
     media = relationship("Media", back_populates="event", cascade="all, delete-orphan")
+    # In their derived order (``models/source.source_order``).
+    sources = relationship(
+        "Source",
+        back_populates="event",
+        cascade="all, delete-orphan",
+        order_by=lambda: source_order(),
+    )
     tags = relationship("Tag", secondary="event_tags", back_populates="events")
     conflicts = relationship("Conflict", secondary="event_conflicts", back_populates="events")
     # The credit: ``active`` rows only, earliest first.
@@ -367,18 +340,6 @@ class Event(Base):
         primaryjoin="and_(Event.id == EventGeolocator.event_id, EventGeolocator.state == 'active')",
         viewonly=True,
         order_by="EventGeolocator.joined_at",
-    )
-    # Links the owner recorded an archived copy for (``models.source_archive``).
-    archives = relationship(
-        "SourceArchive",
-        back_populates="event",
-        cascade="all, delete-orphan",
-    )
-    source_links = relationship(
-        "EventSourceLink",
-        back_populates="event",
-        cascade="all, delete-orphan",
-        order_by="EventSourceLink.position",
     )
     # Where a machine-written row came from; None for a human submit.
     detection = relationship(
@@ -397,11 +358,6 @@ class Event(Base):
         CheckConstraint(
             "status <> 'geolocated' OR coords IS NOT NULL",
             name="ck_events_coords_status",
-        ),
-        # Requested and geolocated rows need a source URL.
-        CheckConstraint(
-            "status NOT IN ('requested', 'geolocated') OR source_url IS NOT NULL",
-            name="ck_events_source_url_status",
         ),
         # Stamps tied to status so a path that forgets one is rejected.
         CheckConstraint(
