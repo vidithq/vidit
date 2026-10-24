@@ -10,8 +10,6 @@ from app.models.content_report import ContentReport
 from app.models.event import (
     Event,
     EventGeolocator,
-    EventGeolocatorDeparture,
-    EventGeolocatorInvite,
     EventVersion,
 )
 from app.models.follow import Follow
@@ -40,8 +38,6 @@ __all__ = [
     "Event",
     "EventApproval",
     "EventGeolocator",
-    "EventGeolocatorDeparture",
-    "EventGeolocatorInvite",
     "EventVersion",
     "InviteCode",
     "Media",

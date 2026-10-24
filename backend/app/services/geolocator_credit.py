@@ -1,8 +1,8 @@
 """Shared credit on a published event: invitations, removals and the erasure hand-over.
 
-The owner of a ``geolocated`` event invites another analyst, who accepts or declines. A pending
-invitation is an ``event_geolocator_invites`` row; accepting deletes it and inserts the
-``event_geolocators`` row in one transaction. Credit carries no write right: editing, filing a
+The owner of a ``geolocated`` event invites another analyst, who accepts or declines. Each
+analyst holds one ``event_geolocators`` row per event, whose ``state`` moves between
+``invited``, ``active`` and ``departed``. Credit carries no write right: editing, filing a
 version and closing stay with the owner (``permissions.ensure_owner``).
 
 Every write here locks the event row first, the way the lifecycle verbs do, so an invitation, an
@@ -16,19 +16,12 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from sqlalchemy import delete, func, select, update
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models.approval import EventApproval
 from app.models.approval_request import ApprovalRequest
 from app.models.collection import Collection, CollectionEvent
-from app.models.event import (
-    STATUS_GEOLOCATED,
-    Event,
-    EventGeolocator,
-    EventGeolocatorDeparture,
-    EventGeolocatorInvite,
-)
+from app.models.event import STATUS_GEOLOCATED, Event, EventGeolocator
 from app.models.user import User
 from app.schemas.user import AuthorRef
 from app.services import notifications
@@ -108,41 +101,52 @@ def _require_published(geo: Event) -> None:
         raise EventNotPublishedError("Only a published geolocation shares its credit")
 
 
-def _invite_row(db: Session, event_id: uuid.UUID, user_id: uuid.UUID) -> EventGeolocatorInvite:
-    row = db.get(EventGeolocatorInvite, (event_id, user_id))
-    if row is None:
+def _state(db: Session, event_id: uuid.UUID, user_id: uuid.UUID) -> EventGeolocator | None:
+    return db.get(EventGeolocator, (event_id, user_id))
+
+
+def _invite_row(db: Session, event_id: uuid.UUID, user_id: uuid.UUID) -> EventGeolocator:
+    row = _state(db, event_id, user_id)
+    if row is None or row.state != "invited":
         raise InviteNotFoundError("No pending invitation")
     return row
 
 
 def has_pending_invite(db: Session, *, event_id: uuid.UUID, user_id: uuid.UUID) -> bool:
-    return db.get(EventGeolocatorInvite, (event_id, user_id)) is not None
+    row = _state(db, event_id, user_id)
+    return row is not None and row.state == "invited"
 
 
-def list_invites(db: Session, *, geo: Event, viewer: User) -> list[EventGeolocatorInvite]:
+def list_invites(db: Session, *, geo: Event, viewer: User) -> list[EventGeolocator]:
     """The pending invitations on ``geo`` that ``viewer`` may see, oldest first.
 
     The owner sees every one; anyone else sees only their own. An invitee whose account is
     soft-deleted is left out.
     """
     query = (
-        db.query(EventGeolocatorInvite)
-        .join(User, User.id == EventGeolocatorInvite.user_id)
-        .options(joinedload(EventGeolocatorInvite.user))
-        .filter(EventGeolocatorInvite.event_id == geo.id, User.deleted_at.is_(None))
+        db.query(EventGeolocator)
+        .join(User, User.id == EventGeolocator.user_id)
+        .options(joinedload(EventGeolocator.user))
+        .filter(
+            EventGeolocator.event_id == geo.id,
+            EventGeolocator.state == "invited",
+            User.deleted_at.is_(None),
+        )
     )
     if geo.owner_id != viewer.id:
-        query = query.filter(EventGeolocatorInvite.user_id == viewer.id)
-    return query.order_by(EventGeolocatorInvite.created_at).all()
+        query = query.filter(EventGeolocator.user_id == viewer.id)
+    return query.order_by(EventGeolocator.invited_at).all()
 
 
-def invite(db: Session, *, geo: Event, owner: User, username: str) -> EventGeolocatorInvite:
+def invite(db: Session, *, geo: Event, owner: User, username: str) -> EventGeolocator:
     """Invite ``username`` to share the credit of ``geo`` and notify them.
 
     Owner-only (403) and ``geolocated`` only (409 ``invalid_state``). An unknown or
     soft-deleted username is 404 ``user_not_found``; a current geolocator, the owner included,
     409 ``already_geolocator``; a pending invitation 409 ``already_invited``; past
-    :data:`MAX_EVENT_GEOLOCATORS` 409 ``too_many_geolocators``.
+    :data:`MAX_EVENT_GEOLOCATORS` (invited and active, live analysts only) 409
+    ``too_many_geolocators``. A former geolocator's row turns ``invited`` and keeps
+    ``departed_at``.
     """
     geo = lock_event(db, geo.id)
     ensure_owner(geo, owner)
@@ -150,29 +154,33 @@ def invite(db: Session, *, geo: Event, owner: User, username: str) -> EventGeolo
     invitee = get_live_by_username(db, username)
     if invitee is None:
         raise InviteeNotFoundError("No analyst with that username")
-    if db.get(EventGeolocator, (geo.id, invitee.id)) is not None or invitee.id == geo.owner_id:
+    row = _state(db, geo.id, invitee.id)
+    if invitee.id == geo.owner_id or (row is not None and row.state == "active"):
         raise AlreadyGeolocatorError("This analyst is already a geolocator of this event")
-    if db.get(EventGeolocatorInvite, (geo.id, invitee.id)) is not None:
+    if row is not None and row.state == "invited":
         raise AlreadyInvitedError("This analyst already has a pending invitation")
     # Live analysts only: a banned co-geolocator or invitee prints on no byline.
-    credited = db.scalar(
+    held = db.scalar(
         select(func.count())
         .select_from(EventGeolocator)
         .join(User, User.id == EventGeolocator.user_id)
-        .where(EventGeolocator.event_id == geo.id, User.deleted_at.is_(None))
+        .where(
+            EventGeolocator.event_id == geo.id,
+            EventGeolocator.state.in_(("invited", "active")),
+            User.deleted_at.is_(None),
+        )
     )
-    pending = db.scalar(
-        select(func.count())
-        .select_from(EventGeolocatorInvite)
-        .join(User, User.id == EventGeolocatorInvite.user_id)
-        .where(EventGeolocatorInvite.event_id == geo.id, User.deleted_at.is_(None))
-    )
-    if (credited or 0) + (pending or 0) >= MAX_EVENT_GEOLOCATORS:
+    if (held or 0) >= MAX_EVENT_GEOLOCATORS:
         raise TooManyGeolocatorsError(
             f"An event carries at most {MAX_EVENT_GEOLOCATORS} geolocators and invitations"
         )
-    row = EventGeolocatorInvite(event_id=geo.id, user_id=invitee.id)
-    db.add(row)
+    now = datetime.now(UTC)
+    if row is None:
+        row = EventGeolocator(event_id=geo.id, user_id=invitee.id, state="invited", invited_at=now)
+        db.add(row)
+    else:
+        row.state = "invited"
+        row.invited_at = now
     notifications.notify_co_geolocator_invite(db, event=geo, invitee_id=invitee.id)
     db.commit()
     db.refresh(row)
@@ -186,8 +194,17 @@ def withdraw(db: Session, *, geo: Event, owner: User, username: str) -> None:
     invitee = get_live_by_username(db, username)
     if invitee is None:
         raise InviteNotFoundError("No pending invitation")
-    db.delete(_invite_row(db, geo.id, invitee.id))
+    _end_invitation(db, _invite_row(db, geo.id, invitee.id))
     db.commit()
+
+
+def _end_invitation(db: Session, row: EventGeolocator) -> None:
+    """A declined or withdrawn invitation: a former geolocator's row returns to ``departed``,
+    anyone else's goes."""
+    if row.departed_at is not None:
+        row.state = "departed"
+    else:
+        db.delete(row)
 
 
 def accept(db: Session, *, geo: Event, user: User) -> Event:
@@ -200,8 +217,8 @@ def accept(db: Session, *, geo: Event, user: User) -> Event:
     geo = lock_event(db, geo.id)
     invitation = _invite_row(db, geo.id, user.id)
     _require_published(geo)
-    db.delete(invitation)
-    db.add(EventGeolocator(event_id=geo.id, user_id=user.id))
+    invitation.state = "active"
+    invitation.joined_at = datetime.now(UTC)
     delete_approvals_on_join(db, geo=geo, user=user)
     db.execute(
         delete(ApprovalRequest).where(
@@ -218,7 +235,7 @@ def accept(db: Session, *, geo: Event, user: User) -> Event:
 def decline(db: Session, *, geo: Event, user: User) -> None:
     """Drop ``user``'s pending invitation (404 ``invite_not_found``)."""
     geo = lock_event(db, geo.id)
-    db.delete(_invite_row(db, geo.id, user.id))
+    _end_invitation(db, _invite_row(db, geo.id, user.id))
     db.commit()
 
 
@@ -242,31 +259,24 @@ def remove(db: Session, *, geo: Event, actor: User, username: str) -> None:
 
     The owner cannot leave (409 ``owner_cannot_leave``); anyone else removing someone else is
     403. A removed analyst's collections drop the event in the same transaction, since a
-    collection holds only credited work, and an ``event_geolocator_departures`` row records the
-    departure, so they never approve the event. The open approval requests they sent about the
+    collection holds only credited work, and their row turns ``departed``, so they never
+    approve the event. The open approval requests they sent about the
     event are withdrawn, since only a geolocator asks for one; they keep counting toward the
     daily cap. The owner's removal notifies the analyst
     removed.
     """
     geo = lock_event(db, geo.id)
     target = db.query(User).filter(User.username == username).first()
-    if target is None or db.get(EventGeolocator, (geo.id, target.id)) is None:
+    credit = _state(db, geo.id, target.id) if target is not None else None
+    if target is None or credit is None or credit.state != "active":
         raise GeolocatorNotFoundError("This analyst is not a geolocator of this event")
     if target.id == geo.owner_id:
         raise OwnerCannotLeaveError("The owner stays a geolocator of their event")
     if target.id != actor.id:
         ensure_owner(geo, actor)
         notifications.notify_co_geolocator_removed(db, event=geo, removed_id=target.id)
-    db.execute(
-        delete(EventGeolocator).where(
-            EventGeolocator.event_id == geo.id, EventGeolocator.user_id == target.id
-        )
-    )
-    db.execute(
-        insert(EventGeolocatorDeparture)
-        .values(event_id=geo.id, user_id=target.id, created_at=datetime.now(UTC))
-        .on_conflict_do_nothing(index_elements=["event_id", "user_id"])
-    )
+    credit.state = "departed"
+    credit.departed_at = credit.departed_at or datetime.now(UTC)
     db.execute(
         update(ApprovalRequest)
         .where(
@@ -314,9 +324,10 @@ def hand_over_owned_events(db: Session, *, owner: User, events: Sequence[Event])
         .where(
             EventGeolocator.event_id.in_([geo.id for geo in live]),
             EventGeolocator.user_id != owner.id,
+            EventGeolocator.state == "active",
             User.deleted_at.is_(None),
         )
-        .order_by(EventGeolocator.event_id, EventGeolocator.created_at, EventGeolocator.user_id)
+        .order_by(EventGeolocator.event_id, EventGeolocator.joined_at, EventGeolocator.user_id)
         .distinct(EventGeolocator.event_id)
     ).all()
     heir_by_event = {event_id: user_id for event_id, user_id in heirs}

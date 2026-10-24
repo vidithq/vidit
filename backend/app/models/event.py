@@ -63,8 +63,26 @@ SOURCE_URL_MAX_LENGTH = 2000
 MAX_SECONDARY_SOURCE_LINKS = 10
 
 
-class _EventAnalystPair:
-    """One analyst on one event, both cascading: the shape of a credit and of an invitation."""
+# Where an analyst stands on one event's credit. ``invited``: the owner asked
+# them to share it. ``active``: they hold it. ``departed``: they held it and
+# lost it (removed by the owner, or left). A departed analyst may be invited
+# again: the row keeps ``departed_at``, declining returns it to ``departed``,
+# accepting makes it ``active``.
+GeolocatorState = Literal["invited", "active", "departed"]
+
+
+class EventGeolocator(Base):
+    """One analyst's standing on one event's geolocation credit, one row per pair.
+
+    ``active`` rows are the credit: who vouched the location. The owner of a
+    ``geolocated`` event always holds an ``active`` row, so an erasure hands a
+    co-credited event to the earliest other geolocator rather than leaving it
+    below one. A transition updates the row (``services/geolocator_credit``).
+    A former geolocator is no more independent of the work than a current one,
+    so neither approves the event nor is asked to approve it.
+    """
+
+    __tablename__ = "event_geolocators"
 
     event_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
@@ -72,68 +90,32 @@ class _EventAnalystPair:
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
+    state: Mapped[GeolocatorState] = mapped_column(String(20), nullable=False)
+    invited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    joined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The first departure; a later one leaves it as it is.
+    departed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-
-class EventGeolocator(_EventAnalystPair, Base):
-    """Durable credit for the geolocation: who vouched the location.
-
-    Written at the ``geolocate`` transition (at least one row) and when an
-    invited analyst accepts (``EventGeolocatorInvite``). The owner is always
-    among these rows: an erasure hands a co-credited event to the earliest
-    other geolocator rather than leaving it below one. The composite PK makes
-    credit idempotent.
-    """
-
-    __tablename__ = "event_geolocators"
-
-    event = relationship("Event", back_populates="geolocators")
+    event = relationship("Event", viewonly=True)
     user = relationship("User")
 
     __table_args__ = (
+        literal_check("state", GeolocatorState, "ck_event_geolocators_state_valid"),
+        CheckConstraint(
+            "(state <> 'invited' OR invited_at IS NOT NULL)"
+            " AND (state <> 'active' OR joined_at IS NOT NULL)"
+            " AND (state <> 'departed' OR departed_at IS NOT NULL)",
+            name="ck_event_geolocators_state_stamp",
+        ),
         # Serves the "a user's geolocations" profile query.
-        Index("ix_event_geolocators_user_created_at", "user_id", "created_at"),
-    )
-
-
-class EventGeolocatorInvite(_EventAnalystPair, Base):
-    """A pending invitation to share the geolocation credit of a published event.
-
-    The owner writes the row; the invitee accepts or declines it. Accepting
-    deletes it and inserts the ``event_geolocators`` row in one transaction, and
-    declining or a withdrawal deletes it, so a row exists only while pending
-    (``services/geolocator_credit``). The composite PK allows one pending
-    invitation per analyst and event.
-    """
-
-    __tablename__ = "event_geolocator_invites"
-
-    user = relationship("User")
-
-    __table_args__ = (
-        # Backs the cascade of an erased invitee.
-        Index("ix_event_geolocator_invites_user_id", "user_id"),
-    )
-
-
-class EventGeolocatorDeparture(_EventAnalystPair, Base):
-    """An analyst who held credit on an event and lost it: the owner removed them, or they left.
-
-    Written by ``services/geolocator_credit.remove`` in the transaction that deletes the
-    ``event_geolocators`` row. ``created_at`` is the first departure; a later one leaves the row
-    as it is. A former geolocator is no more independent of the work than a current one, so
-    neither approves the event nor is asked to approve it.
-    """
-
-    __tablename__ = "event_geolocator_departures"
-
-    __table_args__ = (
+        Index(
+            "ix_event_geolocators_user_id_joined_at",
+            "user_id",
+            "joined_at",
+            postgresql_where=text("state = 'active'"),
+        ),
         # Backs the cascade of an erased analyst.
-        Index("ix_event_geolocator_departures_user_id", "user_id"),
+        Index("ix_event_geolocators_user_id", "user_id"),
     )
 
 
@@ -356,11 +338,12 @@ class Event(Base):
     media = relationship("Media", back_populates="event", cascade="all, delete-orphan")
     tags = relationship("Tag", secondary="event_tags", back_populates="events")
     conflicts = relationship("Conflict", secondary="event_conflicts", back_populates="events")
+    # The credit: ``active`` rows only, earliest first.
     geolocators = relationship(
         "EventGeolocator",
-        back_populates="event",
-        cascade="all, delete-orphan",
-        order_by="EventGeolocator.created_at",
+        primaryjoin="and_(Event.id == EventGeolocator.event_id, EventGeolocator.state == 'active')",
+        viewonly=True,
+        order_by="EventGeolocator.joined_at",
     )
     # Links the owner recorded an archived copy for (``models.source_archive``).
     archives = relationship(

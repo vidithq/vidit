@@ -148,7 +148,11 @@ def proof_file_part(filename: str = "proof-1.jpg") -> tuple[str, tuple[str, byte
 def published_geo(db, owner: User, **kw) -> Event:
     """A geolocated event ``owner`` holds the owner credit row of, as a published event does."""
     geo = _make_geo(db, author=owner, **kw)
-    db.add(EventGeolocator(event_id=geo.id, user_id=owner.id))
+    db.add(
+        EventGeolocator(
+            event_id=geo.id, user_id=owner.id, state="active", joined_at=datetime.now(UTC)
+        )
+    )
     db.commit()
     return geo
 

@@ -89,7 +89,8 @@ APPROVAL_ERROR_STATUS: dict[str, int] = {
 
 def is_geolocator(db: Session, *, geo: Event, user_id: uuid.UUID) -> bool:
     """Whether ``user_id`` is credited on ``geo``: its owner or an accepted co-geolocator."""
-    return geo.owner_id == user_id or db.get(EventGeolocator, (geo.id, user_id)) is not None
+    credit = db.get(EventGeolocator, (geo.id, user_id))
+    return geo.owner_id == user_id or (credit is not None and credit.state == "active")
 
 
 def ever_credited(db: Session, *, geo: Event, user_id: uuid.UUID) -> bool:

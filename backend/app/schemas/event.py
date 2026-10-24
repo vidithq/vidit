@@ -326,7 +326,7 @@ class GeolocatorInviteRead(BaseModel):
     """One pending invitation to share an event's geolocation credit."""
 
     user: AuthorRef
-    created_at: datetime
+    invited_at: datetime
 
     model_config = {"from_attributes": True}
 

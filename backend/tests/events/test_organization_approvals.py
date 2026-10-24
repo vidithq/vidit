@@ -191,7 +191,9 @@ def test_a_new_version_asks_no_org_manager_who_holds_credit(
     org = make_org(managers=[acting, co])
     geo = _published_with_floor(db, author, conflict, capture_source_tag)
     assert _approve(geo, acting, org).status_code == 201
-    db.add(EventGeolocator(event_id=geo.id, user_id=co.id))
+    db.add(
+        EventGeolocator(event_id=geo.id, user_id=co.id, state="active", joined_at=datetime.now(UTC))
+    )
     db.commit()
 
     saved = _save_version(geo.id, author, data=_form(conflict, capture_source_tag))
@@ -204,7 +206,9 @@ def test_org_managers_who_hold_credit_are_not_asked(db, author, make_user, make_
     outsider, co = make_user(), make_user()
     org = make_org(managers=[outsider, co], audience="everyone")
     geo = published_geo(db, author)
-    db.add(EventGeolocator(event_id=geo.id, user_id=co.id))
+    db.add(
+        EventGeolocator(event_id=geo.id, user_id=co.id, state="active", joined_at=datetime.now(UTC))
+    )
     db.commit()
 
     assert _ask(geo, author, org).status_code == 201
@@ -268,7 +272,9 @@ def test_a_geolocator_cannot_approve_for_an_organization(db, author, make_user, 
     co = make_user()
     org = make_org(managers=[author, co])
     geo = published_geo(db, author)
-    db.add(EventGeolocator(event_id=geo.id, user_id=co.id))
+    db.add(
+        EventGeolocator(event_id=geo.id, user_id=co.id, state="active", joined_at=datetime.now(UTC))
+    )
     db.commit()
 
     for user in (author, co):

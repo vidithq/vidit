@@ -109,7 +109,11 @@ def test_the_analyst_who_requested_a_fulfilled_event_may_approve_it(db, author, 
 
 def test_geolocators_cannot_approve(db, author, second_user):
     geo = published_geo(db, author)
-    db.add(EventGeolocator(event_id=geo.id, user_id=second_user.id))
+    db.add(
+        EventGeolocator(
+            event_id=geo.id, user_id=second_user.id, state="active", joined_at=datetime.now(UTC)
+        )
+    )
     db.commit()
     for user in (author, second_user):
         response = approve(geo, user)
@@ -125,7 +129,11 @@ def test_the_list_says_whether_the_caller_may_approve(db, author, second_user, m
     assert _may_approve(geo, None) is False
 
     former = make_user()
-    db.add(EventGeolocator(event_id=geo.id, user_id=former.id))
+    db.add(
+        EventGeolocator(
+            event_id=geo.id, user_id=former.id, state="active", joined_at=datetime.now(UTC)
+        )
+    )
     db.commit()
     assert _may_approve(geo, former) is False
     left = client.delete(

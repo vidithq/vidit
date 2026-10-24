@@ -29,7 +29,6 @@ from app.models.event import (
     STATUS_REQUESTED,
     Event,
     EventGeolocator,
-    EventGeolocatorDeparture,
 )
 from app.models.media import Media
 from app.models.organization import Organization
@@ -102,12 +101,13 @@ def credited_to(user_ids: Iterable[Any] | Select[Any]) -> ColumnElement[bool]:
 
 def ever_credited_ids(event_id: uuid.UUID) -> CompoundSelect:
     """The analysts who hold or held credit on the event: its owner, its co-geolocators and those
-    who lost credit (``event_geolocator_departures``). None of them approves it or is asked to."""
+    who lost credit (a ``departed`` row, or an ``invited`` one that keeps ``departed_at``). None
+    of them approves it or is asked to."""
     return union(
         select(Event.owner_id).where(Event.id == event_id),
-        select(EventGeolocator.user_id).where(EventGeolocator.event_id == event_id),
-        select(EventGeolocatorDeparture.user_id).where(
-            EventGeolocatorDeparture.event_id == event_id
+        select(EventGeolocator.user_id).where(
+            EventGeolocator.event_id == event_id,
+            or_(EventGeolocator.state != "invited", EventGeolocator.departed_at.is_not(None)),
         ),
     )
 
@@ -117,14 +117,16 @@ def published_credited_to(user_ids: Iterable[Any] | Select[Any]) -> ColumnElemen
 
     :func:`credited_to` ORs the owner leg with a correlated EXISTS, which keeps the planner off
     both indexes. Here each leg is its own indexed lookup (``ix_events_owner_id`` and
-    ``ix_event_geolocators_user_created_at``) and the event ids meet in one IN. Reads that count
+    ``ix_event_geolocators_user_id_joined_at``) and the event ids meet in one IN. Reads that count
     only published work use it; :func:`credited_to` stays for the reads that count detected
     and requested rows too.
     """
     owned = aliased(Event)
     credited = union(
         select(owned.id).where(owned.owner_id.in_(user_ids)),
-        select(EventGeolocator.event_id).where(EventGeolocator.user_id.in_(user_ids)),
+        select(EventGeolocator.event_id).where(
+            EventGeolocator.user_id.in_(user_ids), EventGeolocator.state == "active"
+        ),
     )
     return and_(published_events(), Event.id.in_(credited))
 

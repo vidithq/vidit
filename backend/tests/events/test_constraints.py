@@ -256,14 +256,22 @@ def test_event_geolocators_reverse_query_by_user(db, author, second_user):
     newer = _make_geo(db, author=author)
     unrelated = _make_geo(db, author=author)  # second_user never geolocated this one
 
-    db.add(EventGeolocator(event_id=older.id, user_id=second_user.id))
-    db.add(EventGeolocator(event_id=newer.id, user_id=second_user.id))
+    db.add(
+        EventGeolocator(
+            event_id=older.id, user_id=second_user.id, state="active", joined_at=datetime.now(UTC)
+        )
+    )
+    db.add(
+        EventGeolocator(
+            event_id=newer.id, user_id=second_user.id, state="active", joined_at=datetime.now(UTC)
+        )
+    )
     db.commit()
 
     rows = (
         db.query(EventGeolocator)
         .filter(EventGeolocator.user_id == second_user.id)
-        .order_by(EventGeolocator.created_at.desc())
+        .order_by(EventGeolocator.joined_at.desc())
         .all()
     )
     event_ids = {r.event_id for r in rows}

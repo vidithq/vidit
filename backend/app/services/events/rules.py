@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
@@ -112,4 +113,10 @@ def _credit_geolocator(db: Session, geo: Event, user: User) -> None:
     ``admin.hard_delete_user``). Every geolocating path goes through here.
     """
     geo.owner_id = user.id
-    db.add(EventGeolocator(event_id=geo.id, user_id=user.id))
+    db.flush()
+    credit = db.get(EventGeolocator, (geo.id, user.id))
+    if credit is None:
+        credit = EventGeolocator(event_id=geo.id, user_id=user.id)
+        db.add(credit)
+    credit.state = "active"
+    credit.joined_at = datetime.now(UTC)

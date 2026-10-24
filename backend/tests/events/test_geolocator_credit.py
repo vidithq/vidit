@@ -10,7 +10,7 @@ import pytest
 
 from app.config import settings
 from app.models.collection import Collection, CollectionEvent
-from app.models.event import STATUS_CLOSED, Event, EventGeolocator, EventGeolocatorInvite
+from app.models.event import STATUS_CLOSED, Event, EventGeolocator
 from app.models.notification import Notification, NotificationDelivery
 from app.models.organization import Organization, OrganizationMember
 from app.models.user import User
@@ -52,7 +52,11 @@ def make_user(db):
 
 
 def _credit(db, geo: Event, user: User, *, at: datetime | None = None) -> None:
-    db.add(EventGeolocator(event_id=geo.id, user_id=user.id, created_at=at or datetime.now(UTC)))
+    db.add(
+        EventGeolocator(
+            event_id=geo.id, user_id=user.id, state="active", joined_at=at or datetime.now(UTC)
+        )
+    )
     db.commit()
 
 
@@ -170,7 +174,8 @@ def test_accept_credits_the_invitee(db, author, second_user):
 
     assert _geolocator_names(geo) == [author.username, second_user.username]
     db.expire_all()
-    assert db.get(EventGeolocatorInvite, (geo.id, second_user.id)) is None
+    row = db.get(EventGeolocator, (geo.id, second_user.id))
+    assert (row.state, row.joined_at is not None) == ("active", True)
     login_as(client, second_user)
     assert client.get(f"{_EVENTS}/{geo.id}").json()["viewer_invite_pending"] is False
     assert _answer(geo, second_user, "accept").json()["detail"]["code"] == "invite_not_found"
@@ -200,7 +205,8 @@ def test_decline_and_withdraw_drop_the_invitation(db, author, second_user, make_
     assert client.delete(path, headers=headers).status_code == 404
 
     db.expire_all()
-    assert db.query(EventGeolocatorInvite).filter_by(event_id=geo.id).count() == 0
+    assert db.query(EventGeolocator).filter_by(event_id=geo.id, state="invited").count() == 0
+    assert db.get(EventGeolocator, (geo.id, second_user.id)) is None
     assert _geolocator_names(geo) == [author.username]
 
 
@@ -359,6 +365,65 @@ def test_removal_refusals(db, author, second_user, make_user):
         headers=login_as(client, make_user()),
     )
     assert stranger.status_code == 403
+
+
+def _row(db, geo: Event, user: User) -> EventGeolocator | None:
+    db.expire_all()
+    return db.get(EventGeolocator, (geo.id, user.id))
+
+
+def test_a_departure_updates_the_row_and_keeps_the_first_departure(db, author, second_user):
+    geo = published_geo(db, author)
+    _credit(db, geo, second_user)
+    path = f"{_EVENTS}/{geo.id}/geolocators/{second_user.username}"
+    assert client.delete(path, headers=login_as(client, second_user)).status_code == 204
+    row = _row(db, geo, second_user)
+    assert row is not None and row.state == "departed"
+    first_departure = row.departed_at
+    assert first_departure is not None
+
+    assert _invite(geo, author, second_user.username).status_code == 201
+    row = _row(db, geo, second_user)
+    assert (row.state, row.departed_at) == ("invited", first_departure)
+    assert _answer(geo, second_user, "accept").status_code == 204
+    row = _row(db, geo, second_user)
+    assert (row.state, row.departed_at) == ("active", first_departure)
+    assert client.delete(path, headers=login_as(client, second_user)).status_code == 204
+    assert _row(db, geo, second_user).departed_at == first_departure
+
+
+def test_a_former_geolocator_who_declines_returns_to_departed(db, author, second_user):
+    geo = published_geo(db, author)
+    _credit(db, geo, second_user)
+    path = f"{_EVENTS}/{geo.id}/geolocators/{second_user.username}"
+    assert client.delete(path, headers=login_as(client, author)).status_code == 204
+    assert _invite(geo, author, second_user.username).status_code == 201
+    assert _answer(geo, second_user, "decline").status_code == 204
+    row = _row(db, geo, second_user)
+    assert row is not None and row.state == "departed"
+    assert _geolocator_names(geo) == [author.username]
+
+
+def test_a_withdrawn_reinvitation_returns_to_departed(db, author, second_user):
+    geo = published_geo(db, author)
+    _credit(db, geo, second_user)
+    path = f"{_EVENTS}/{geo.id}/geolocators/{second_user.username}"
+    assert client.delete(path, headers=login_as(client, author)).status_code == 204
+    assert _invite(geo, author, second_user.username).status_code == 201
+    withdraw = f"{_EVENTS}/{geo.id}/geolocator-invites/{second_user.username}"
+    assert client.delete(withdraw, headers=login_as(client, author)).status_code == 204
+    assert _row(db, geo, second_user).state == "departed"
+
+
+def test_the_invitations_list_reads_the_invited_rows(db, author, second_user):
+    geo = published_geo(db, author)
+    assert _invite(geo, author, second_user.username).status_code == 201
+    listed = client.get(
+        f"{_EVENTS}/{geo.id}/geolocator-invites", headers=login_as(client, author)
+    ).json()
+    assert [(i["user"]["username"], "invited_at" in i) for i in listed] == [
+        (second_user.username, True)
+    ]
 
 
 # ── Read surfaces ────────────────────────────────────────────────────
