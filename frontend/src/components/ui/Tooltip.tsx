@@ -65,7 +65,11 @@ function useTooltip(label: string, hidden: boolean) {
       onPointerEnter: (e: PointerEvent) => {
         if (e.pointerType === "mouse") wrapperProps.onMouseEnter();
       },
-      onPointerLeave: () => wrapperProps.onMouseLeave(),
+      // A lifted finger fires `pointerleave` before its click: un-pinning there would close the
+      // bubble a first tap opened, so the second tap would pin it again instead of acting.
+      onPointerLeave: (e: PointerEvent) => {
+        if (e.pointerType === "mouse") wrapperProps.onMouseLeave();
+      },
       onFocus: (e: FocusEvent) => {
         if (focusVisible(e.currentTarget)) anchorProps.onFocus();
       },
