@@ -172,28 +172,6 @@ def _new_follower(n: Notification) -> _Copy:
     )
 
 
-def _x_handle_request_approved(_n: Notification) -> _Copy:
-    return _Copy(
-        title="Your X handle change was approved",
-        text="An admin linked the X handle you requested to your Vidit account. "
-        "The Vidit bot and the archive import now credit posts from that handle to you.",
-        action="Open your settings",
-        path="/settings",
-        setting="X handle change approved",
-    )
-
-
-def _x_handle_request_declined(_n: Notification) -> _Copy:
-    return _Copy(
-        title="Your X handle change was declined",
-        text="An admin declined the X handle you requested. Your settings show the reason, "
-        "and you can send a new request from there.",
-        action="Open your settings",
-        path="/settings",
-        setting="X handle change declined",
-    )
-
-
 def _co_geolocator_invite(n: Notification) -> _Copy:
     actor, title = n.actor.username, n.event.title
     return _Copy(
@@ -345,8 +323,6 @@ def _organization_approval_removed(n: Notification) -> _Copy:
 _COPY: dict[NotificationKind, Callable[[Notification], _Copy]] = {
     "request_fulfilled": _request_fulfilled,
     "new_follower": _new_follower,
-    "x_handle_request_approved": _x_handle_request_approved,
-    "x_handle_request_declined": _x_handle_request_declined,
     "co_geolocator_invite": _co_geolocator_invite,
     "co_geolocator_removed": _co_geolocator_removed,
     "ownership_transferred": _ownership_transferred,

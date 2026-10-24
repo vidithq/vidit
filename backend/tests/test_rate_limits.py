@@ -367,8 +367,7 @@ def test_read_quota_key_rejects_a_forged_token(user):
 # Some groups still write, each reaped by a fixture:
 # * `/auth/login` writes an `auth_events` row per attempt;
 # * `PATCH /users/me`, `PATCH /users/me/preferences`, `POST /notifications/read` and
-#   `DELETE /users/me/avatar` touch the throwaway `user` row, and
-#   `PUT /users/me/x-handle-request` files a request that goes with it;
+#   `DELETE /users/me/avatar` touch the throwaway `user` row;
 # * admin actions write `admin_events` rows, `POST /admin/invite-codes`
 #   mints 30 codes and `POST /admin/product-updates` records one announcement;
 # * `POST /collections` opens 30 collections (dropped by the owner cascade);
@@ -550,7 +549,6 @@ _DOCUMENTED_LIMITS = [
     _Case("get", f"{ME}/preferences", 120),
     _Case("patch", f"{ME}/preferences", 60, "user", {"json": {"display": {"theme": "dark"}}}),
     _Case("get", f"{ME}/x-handle", 120),
-    _Case("put", f"{ME}/x-handle-request", 10, "user", {"json": {"x_handle": "rl_probe"}}),
     _Case("get", f"{ME}/invite-codes", 120),
     # Minting is off for the probe account, so no request mints or meets the daily quota.
     _Case("post", f"{ME}/invite-codes", 30, "user_minting_off", {"json": {"x_handle": "rl_probe"}}),
@@ -667,14 +665,6 @@ _DOCUMENTED_LIMITS = [
         60,
         "admin",
         {"json": {"enabled": False}},
-    ),
-    _Case("post", f"/api/v1/admin/x-handle-requests/{_MISSING_ID}/approve", 60, "admin"),
-    _Case(
-        "post",
-        f"/api/v1/admin/x-handle-requests/{_MISSING_ID}/decline",
-        60,
-        "admin",
-        {"json": {"reason": "probe"}},
     ),
     _Case("delete", f"/api/v1/admin/users/{_MISSING_ID}", 30, "admin"),
     _Case("delete", f"/api/v1/admin/users/{_MISSING_ID}/detected-events", 30, "admin"),

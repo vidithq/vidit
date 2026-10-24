@@ -31,7 +31,6 @@ from app.models.source_archive import SourceArchive
 from app.models.tag import Tag, event_tags
 from app.models.user import User
 from app.models.user_preferences import UserPreferences
-from app.models.x_handle_request import XHandleRequest
 
 __all__ = [
     "AdminEvent",
@@ -67,7 +66,6 @@ __all__ = [
     "Tag",
     "User",
     "UserPreferences",
-    "XHandleRequest",
     "event_conflicts",
     "event_tags",
 ]

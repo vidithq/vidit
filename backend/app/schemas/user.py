@@ -162,6 +162,12 @@ class UserRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class XHandleRead(BaseModel):
+    """Body of ``GET /users/me/x-handle``."""
+
+    x_handle: str | None
+
+
 class UserProfile(BaseModel):
     """Public profile payload for ``GET /users/{username}``.
 

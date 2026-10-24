@@ -18,12 +18,11 @@ from app.schemas.invite_code import (
 )
 from app.schemas.organization import OrganizationMembershipRead
 from app.schemas.preferences import UserPreferencesRead, UserPreferencesUpdate
-from app.schemas.user import UserProfile, UserRead, UserStatsRead, UserUpdate
-from app.schemas.x_handle_request import XHandleRead, XHandleRequestCreate
+from app.schemas.user import UserProfile, UserRead, UserStatsRead, UserUpdate, XHandleRead
 from app.services import collections as collections_service
 from app.services import organizations as organizations_service
 from app.services import preferences as preferences_service
-from app.services import social, sponsored_invites, user_stats, x_handle_requests
+from app.services import social, sponsored_invites, user_stats
 from app.services import users as users_service
 from app.services.pagination import page_size
 
@@ -123,28 +122,10 @@ def update_my_preferences(
 @limiter.limit("120/minute")
 def get_my_x_handle(
     request: Request,
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> XHandleRead:
-    """The X handle bound to your account, and your change request if any."""
-    return x_handle_requests.read_own(db, user=current_user)
-
-
-@router.put("/me/x-handle-request", response_model=XHandleRead)
-@limiter.limit("10/hour")
-def put_my_x_handle_request(
-    request: Request,
-    body: XHandleRequestCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> XHandleRead:
-    """Ask an admin to bind a new X handle; replaces your earlier request."""
-    try:
-        return x_handle_requests.submit(
-            db, user=current_user, x_handle=body.x_handle, reason=body.reason
-        )
-    except x_handle_requests.XHandleUnchangedError as exc:
-        raise_typed_error(exc, x_handle_requests.SELF_ERROR_STATUS)
+    """The X handle bound to your account. Only an admin links or changes it."""
+    return XHandleRead(x_handle=current_user.x_handle)
 
 
 @router.get("/me/invite-codes", response_model=SponsoredInviteCodeList)

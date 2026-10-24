@@ -21,8 +21,6 @@ from app.database import Base, literal_check
 NotificationKind = Literal[
     "request_fulfilled",
     "new_follower",
-    "x_handle_request_approved",
-    "x_handle_request_declined",
     "co_geolocator_invite",
     "co_geolocator_removed",
     "ownership_transferred",
@@ -44,8 +42,6 @@ NotificationKind = Literal[
 NOTIFICATION_KINDS: dict[NotificationKind, bool] = {
     "request_fulfilled": True,
     "new_follower": False,
-    "x_handle_request_approved": True,
-    "x_handle_request_declined": True,
     "co_geolocator_invite": True,
     "co_geolocator_removed": False,
     "ownership_transferred": True,

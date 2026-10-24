@@ -69,8 +69,7 @@ BUILDERS: dict[str, Callable[[], email.Email]] = {
     ),
     "request_fulfilled": lambda: _notification_email("request_fulfilled"),
     "new_follower": lambda: _notification_email("new_follower"),
-    "x_handle_request_approved": lambda: _notification_email("x_handle_request_approved"),
-    "x_handle_request_declined": lambda: _notification_email("x_handle_request_declined"),
+    "co_geolocator_invite": lambda: _notification_email("co_geolocator_invite"),
     "product_update": lambda: email.product_update_email(
         to="a@example.com",
         label="1.0.0",
