@@ -66,11 +66,11 @@ function serve(rows: Approval[], extra: Record<string, unknown> = {}) {
 
 function Panel({ geo = event }: { geo?: EventDetail }) {
   const approvals = useApiResource<ApprovalList>(allApprovalsPath(geo.id));
-  const { summary, requests } = useEventApprovals(geo, approvals);
+  const { summary, requestAction } = useEventApprovals(geo, approvals);
   return (
     <>
       {summary}
-      {requests}
+      {requestAction}
     </>
   );
 }
@@ -378,14 +378,13 @@ describe("useEventApprovals", () => {
     expect(screen.queryByRole("button", { name: "Approve as Bellingcat" })).toBeNull();
   });
 
-  it("holds a geolocator's approval requests in a section of their own", async () => {
+  it("gives a geolocator Request approval, and no section under the actions", async () => {
     api.viewer = ANA;
     serve([]);
     render(<Panel />);
 
-    const section = await screen.findByRole("region", { name: "Approval requests" });
-    expect(within(section).getByRole("heading", { name: "Approval requests" })).toBeInTheDocument();
-    expect(within(section).getByRole("button", { name: "Request approval" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Request approval" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Approval requests" })).toBeNull();
     // No stamp and no Approve for a geolocator: nothing shows under the actions.
     expect(screen.queryByRole("region", { name: "Approvals" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
@@ -414,7 +413,7 @@ describe("useEventApprovals", () => {
     expect(screen.getByRole("link", { name: "ana" })).toHaveAttribute("href", "/profile/ana");
     const decline = screen.getByRole("button", { name: "Decline" });
     expect(decline.closest("div")).toBe(screen.getByRole("button", { name: "Approve" }).parentElement);
-    expect(screen.queryByRole("heading", { name: "Approval requests" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Request approval" })).toBeNull();
   });
 });
 

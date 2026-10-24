@@ -1859,7 +1859,7 @@ export default function PalettePage() {
             />
           </Item>
 
-          <Item name="<ConfirmDialog>" usage="The confirmation step before a final action: a centred MediaOverlay dialog with a Card, its title, a body saying what the action does and what cannot be undone, then Cancel (the initial focus, so Enter on open sends nothing) and the primary confirm. Cancel, Escape and a backdrop click close it; the caller owns the request, and `busy` and `error` show it in flight and refused. Approve opens it, since an approval is final.">
+          <Item name="<ConfirmDialog>" usage="The confirmation step before a final action: a centred MediaOverlay dialog with a Card, its title, a body saying what the action does and what cannot be undone, then Cancel (the initial focus, so Enter on open sends nothing) and the primary confirm. Cancel, Escape and a backdrop click close it; the caller owns the request, and `busy` and `error` show it in flight and refused, while `confirmDisabled` holds the confirm until an input the dialog carries is complete. Approve opens it, since an approval is final, and Request approval opens it over the open requests and the picker of whom to ask.">
             <Button variant="secondary" onClick={() => setConfirmOpen(true)}>
               Approve
             </Button>

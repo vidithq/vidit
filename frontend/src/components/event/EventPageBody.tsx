@@ -1,6 +1,5 @@
 "use client";
 
-import type { ReactNode } from "react";
 import dynamic from "next/dynamic";
 
 import type { EventDetail } from "@/types";
@@ -13,30 +12,12 @@ const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
 
 /**
  * The full-page render of one event: the shared `EventDetailBody`, with the page's Location module
- * and then `approvalRequests` at the top of its side column. It takes a view, not an id, so the
- * same markup renders the live row on `/events/{id}` and a filed version on `/events/{id}/vN` (fed
- * by `snapshotToEventView`). The body writes nothing, so a version page needs no gate: the chrome
+ * at the top of its side column. It takes a view, not an id, so the same markup renders the live
+ * row on `/events/{id}` and a filed version on `/events/{id}/vN` (fed by `snapshotToEventView`). The body writes nothing, so a version page needs no gate: the chrome
  * above carries every control that acts on the record, and the approvals.
  */
-export function EventPageBody({
-  geo,
-  approvalRequests,
-}: {
-  geo: EventDetail;
-  approvalRequests?: ReactNode;
-}) {
-  return (
-    <EventDetailBody
-      geo={geo}
-      variant="page"
-      side={
-        <>
-          <EventLocation geo={geo} />
-          {approvalRequests}
-        </>
-      }
-    />
-  );
+export function EventPageBody({ geo }: { geo: EventDetail }) {
+  return <EventDetailBody geo={geo} variant="page" side={<EventLocation geo={geo} />} />;
 }
 
 /** The Location module: the map with its coordinates row fused to its foot. A coordless event (a

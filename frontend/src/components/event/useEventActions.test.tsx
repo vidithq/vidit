@@ -87,14 +87,13 @@ function Harness({
   beforeClosedStatus?: BeforeClosedStatus | null;
   versionNo?: number;
 }) {
-  const { panels, actions, approvalRequests } = useEventActions({
+  const { panels, actions } = useEventActions({
     event: eventFixture(status, beforeClosedStatus, versionNo),
     surface,
   });
   return (
     <>
       {actions}
-      {approvalRequests}
       {panels}
     </>
   );
@@ -133,13 +132,14 @@ const rowControls = () =>
   );
 
 describe("the event actions per reader", () => {
-  it("gives the owner the version, Edit, Share and Add to collection, and no report", async () => {
+  it("gives the owner the version, Edit, Share, Add to collection and Request approval, and no report", async () => {
     renderAs(OWNER, { status: "geolocated", surface: "event" });
     expect(rowControls()).toEqual([
       "v1: choose a version",
       "Edit",
       "Share",
       "Add to collection",
+      "Request approval",
     ]);
     expect(within(row()).getByRole("link", { name: "Edit" })).toHaveAttribute(
       "href",
@@ -158,7 +158,7 @@ describe("the event actions per reader", () => {
 
   // Credit only: a co-geolocator shelves the row and reads its geolocators (where they leave),
   // and never edits, closes or approves it.
-  it("gives a co-geolocator Add to collection and Geolocators beside Share and Report", async () => {
+  it("gives a co-geolocator Add to collection, Geolocators and Request approval beside Share and Report", async () => {
     renderAs(CO_GEOLOCATOR, { status: "geolocated", surface: "event" });
     await approvalsRead();
     expect(rowControls()).toEqual([
@@ -166,6 +166,7 @@ describe("the event actions per reader", () => {
       "Share",
       "Add to collection",
       "Geolocators",
+      "Request approval",
       "Report",
     ]);
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();

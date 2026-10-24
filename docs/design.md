@@ -267,7 +267,7 @@ The vocabulary:
 - [`<Select>`](../frontend/src/components/ui/Input.tsx) is the pick-one-from-a-short-list field. It runs `<Input>`'s shape recipe under a custom caret, so a select and a text field on one row stay alike.
 - [`<LinkListInput>`](../frontend/src/components/ui/LinkListInput.tsx) is the ordered list of URL fields (each source editor's links): one `<Input>` per row with a per-row remove, and an add button that disables at its `max`. A row is the caller's own value, read and written through `urlOf` and `withUrl`, so what else a row carries moves with it through every add and removal. Three optional slots dress a row: a mark inside its URL field (`trailing`), a line always under it (`detail`), and a line under it while the row is toggled open (`expansion`). The list owns which rows are open, and every row starts closed.
 - [`<MergeAction>`](../frontend/src/components/ui/MergeAction.tsx) folds one item of a list into another. **Merge** opens a `<Select>` of the item to keep and a confirming **Merge** beside **Cancel**, so a stray click merges nothing. The caller does the merge.
-- [`<ConfirmDialog>`](../frontend/src/components/ui/ConfirmDialog.tsx) is the confirmation step before a final action: `MediaOverlay`'s dialog variant around a `<Card>` with an accent border, as the outbound link dialog. It holds a title, a body that says what the action does and what cannot be undone, then **Cancel** and the primary confirm. **Cancel** takes the initial focus, so Enter on open sends nothing. **Cancel**, Escape and a click on the backdrop close it. The caller owns the request: `busy` holds both buttons while it runs, and `error` prints its refusal inside the dialog.
+- [`<ConfirmDialog>`](../frontend/src/components/ui/ConfirmDialog.tsx) is the confirmation step before a final action: `MediaOverlay`'s dialog variant around a `<Card>` with an accent border, as the outbound link dialog. It holds a title, a body that says what the action does and what cannot be undone, then **Cancel** and the primary confirm. **Cancel** takes the initial focus, so Enter on open sends nothing. **Cancel**, Escape and a click on the backdrop close it. The caller owns the request: `busy` holds both buttons while it runs, `error` prints its refusal inside the dialog, and `confirmDisabled` holds the confirm button while an input the dialog carries is incomplete (the target of **Request approval**).
 
 #### Outbound links
 
@@ -707,11 +707,9 @@ flowchart TB
       direction TB
       location["`**Location**
       map and Coordinates`"]:::spec
-      requests["`**Approval requests**
-      a geolocator's, no card`"]:::spec
       details["`**Details card**
       no Author row`"]:::spec
-      location --> requests --> details
+      location --> details
     end
   end
 
@@ -723,14 +721,14 @@ The event page, a version page and the request page share one layout: [`<PageShe
 - **First row.** The header (back, title, byline) heads the main column. The actions head the side column, level with the title: the actions row, the approvals and a pending invitation on the event page, the actions row and **Geolocate** on the request page, and the version selector and that version's approvals on a version page (see [Event actions and approvals](#event-actions-and-approvals)).
 - **Between the rows.** The panels the actions row opens, and the version banner on a version page, take the full width.
 - **Main column.** The sources, then the proof. One source takes the whole sources area (see [Source blocks](#source-blocks)).
-- **Side column.** The Location module (the map, `h-56`, with its **Coordinates** row), then a geolocator's **Approval requests**, then the **Details** card. The request page has no Location module, and only a geolocator of a published event reads the approval requests.
+- **Side column.** The Location module (the map, `h-56`, with its **Coordinates** row), then the **Details** card. The request page has no Location module.
 - **Details.** The card carries no Author row: the byline in the header credits the author and every geolocator.
 - **Level tops.** The Sources and Location modules start at one height. With two or more sources, the sources header row is as tall as the scroller's 32px buttons, so the Location heading takes a row of the same height.
-- **Below `lg`.** The columns stack in reading order: the header, the actions and the approvals, the sources, the proof, the Location module, the approval requests and the **Details** card.
+- **Below `lg`.** The columns stack in reading order: the header, the actions and the approvals, the sources, the proof, the Location module and the **Details** card.
 
 #### Event actions and approvals
 
-The side column's top is where you act on an event; the rest of the page is what you read. The event page opens it with a row of icon controls (the actions row), then the approvals of a published event, then a pending geolocator invitation. The request page opens it with the same row, then **Geolocate**. A geolocator's approval requests sit lower in the side column, under the Location module (see [Event page layout](#event-page-layout)). The title and the byline head the main column and carry no controls. [`useEventActions`](../frontend/src/components/event/useEventActions.tsx) assembles the controls and returns three nodes: the actions (the approvals included), the approval requests, and the panels the row's toggles open. A page renders those nodes instead of building controls of its own.
+The side column's top is where you act on an event; the rest of the page is what you read. The event page opens it with a row of icon controls (the actions row), then the approvals of a published event, then a pending geolocator invitation. The request page opens it with the same row, then **Geolocate**. The title and the byline head the main column and carry no controls. [`useEventActions`](../frontend/src/components/event/useEventActions.tsx) assembles the controls and returns two nodes: the actions (the approvals included) and the panels the row's toggles open. A page renders those nodes instead of building controls of its own.
 
 ```mermaid
 flowchart TB
@@ -761,9 +759,11 @@ flowchart TB
     the owner and co-geolocators`"]:::spec
     credit["`**Geolocators**
     a co-geolocator`"]:::spec
+    ask["`**Request approval**
+    a geolocator of a published row`"]:::spec
     report["`**Report**
     every reader but the owner`"]:::spec
-    versions ~~~ edit ~~~ share ~~~ collect ~~~ credit ~~~ report
+    versions ~~~ edit ~~~ share ~~~ collect ~~~ credit ~~~ ask ~~~ report
   end
 
   menu["`**ActionMenu**`"]:::shared
@@ -779,15 +779,14 @@ flowchart TB
   under the row, for an invited analyst`"]:::spec
   approvals["`**Approvals**
   under the row, no card`"]:::spec
-  requests["`**Approval requests**
-  a geolocator's, under the Location module`"]:::spec
+  dialog["`**ConfirmDialog**
+  the open requests and the picker`"]:::shared
   geolocate["`**Geolocate**
   request page: under the row`"]:::spec
 
   hook --> header
   hook --> approvals
   hook --> invite
-  hook --> requests
   hook --> geolocate
   menu --> versions
   copy --> share
@@ -795,6 +794,7 @@ flowchart TB
   edit --> editpage
   collect --> panels
   credit --> panels
+  ask --> dialog
   report --> panels
 ```
 
@@ -807,6 +807,7 @@ The actions row holds these controls, left to right, each shown only to the read
 | Share | Every reader | One click shares. See **Share** below. |
 | Add to collection | The owner and every co-geolocator of a row a collection may hold | An icon toggle that opens the collection picker at the top of the main column (see [Collections](#collections)). |
 | Geolocators | A co-geolocator of a published row | An icon toggle that opens the Geolocators panel at the top of the main column, where they leave. |
+| Request approval | A geolocator of a published row (the owner or a co-geolocator), on the event page | An icon button (lucide `ClipboardCheck`) that opens a dialog to ask an analyst or an organization to approve the live version. See **Approval requests** below. |
 | Report | Every reader but the owner, signed out included | The red flag ([`useReportContent`](../frontend/src/components/report/useReportContent.tsx)) that opens the report form at the top of the main column. Reporting your own event says nothing an edit or a close could not. |
 
 [`VersionSelector`](../frontend/src/components/event/VersionSelector.tsx) lists the versions from the live version number, so it reads nothing. It is not an owner control: the other controls act on the record, and this one reads it. Every reader gets it, because a corrected record is auditable only when anyone can walk the corrections. The map panel and the forms show one version by construction and carry none.
@@ -819,7 +820,7 @@ A toggle wears the active-row paint while its panel is open, and the panel takes
 
 **Shared credit.** The Geolocators panel ([`GeolocatorsPanel`](../frontend/src/components/event/GeolocatorCredit.tsx)) lists the event's geolocators, owner first. The owner invites an analyst picked in an `<AccountPicker>` (the author typeahead, or an exact username committed with Enter), withdraws a pending invitation and removes a co-geolocator there, on the edit page; a co-geolocator opens the same list from the event page's actions row, with a **Leave** button on their own row. An analyst the owner invited reads a **Geolocator invitation** card at the top of the event page's side column instead, under the actions row, with **Accept** and **Decline** ([`GeolocatorInviteCard`](../frontend/src/components/event/GeolocatorCredit.tsx)); the invitation's notification links to the event page. Every byline of the event credits every geolocator.
 
-**Approvals.** A published event's approvals of its live version sit right under the actions row, on the page background with no card. A geolocator's approval requests sit under the Location module. Outdated approvals are read on each version's page, which the version selector opens.
+**Approvals.** A published event's approvals of its live version sit right under the actions row, on the page background with no card. A geolocator asks for approval from **Request approval** in the actions row. Outdated approvals are read on each version's page, which the version selector opens.
 
 ```mermaid
 flowchart LR
@@ -840,7 +841,7 @@ flowchart LR
   hook["`**useEventActions**
   fetches once`"]:::shared
   card["`**useEventApprovals**
-  the live version only, two nodes`"]:::shared
+  the live version only, the summary and Request approval`"]:::shared
   stamps["`**ApprovedBy** through **AvatarStack checked**
   every stamp with an accent check, no label, no count`"]:::spec
   page["`**Profile or organization page**
@@ -851,8 +852,8 @@ flowchart LR
   Approve, Approve as each of your organizations`"]:::spec
   confirm["`**Confirmation step**
   names the version, says the approval is final, then sends it`"]:::spec
-  requests["`**ApprovalRequestsSection**
-  who asked you and Decline beside Approve, a geolocator's requests`"]:::spec
+  requests["`**ApprovalRequests**
+  who asked you and Decline beside Approve, a geolocator's Request approval dialog`"]:::spec
   remove["`**Delete on a stamp**
   site admin, opens a ConfirmDialog`"]:::spec
   vn["`**VersionApprovals** on /events/{id}/vN
@@ -869,12 +870,12 @@ flowchart LR
   own -->|"v1 link"| vn
 ```
 
-- **Layout.** [`useEventApprovals`](../frontend/src/components/event/EventApprovals.tsx) returns two nodes over one read of the approval requests. The summary, a `<section>` named *Approvals*, sits right under the actions row in the side column's first row, on the page background with no card and no border. From `lg` up it aligns to the side column's right edge, under the right-aligned row. It renders nothing when the live version has no approval and the reader has nothing to act on (no **Approve**, no request, no outdated approval of their own). The geolocator's approval requests sit under the Location module (see [Event page layout](#event-page-layout)).
+- **Layout.** [`useEventApprovals`](../frontend/src/components/event/EventApprovals.tsx) returns two nodes over one read of the approval requests: the summary, and **Request approval** for the actions row. The summary, a `<section>` named *Approvals*, sits right under the actions row in the side column's first row, on the page background with no card and no border. From `lg` up it aligns to the side column's right edge, under the right-aligned row. It renders nothing when the live version has no approval and the reader has nothing to act on (no **Approve**, no request, no outdated approval of their own).
 - **Stamps.** [`ApprovedBy`](../frontend/src/components/event/Approvals.tsx) shows the stamps with no label and no count: the page never prints how many approvals an event holds. [`ApprovalStamps`](../frontend/src/components/event/Approvals.tsx) renders the live version's approvals (those that existed at closing, on a closed event) as an [`<AvatarStack checked>`](../frontend/src/components/ui/AvatarStack.tsx) named *Approved by* for screen readers: every stamp, 28px pictures set apart (`spacing="gap"`), oldest first, wrapping onto further lines, with no **+N** bubble. Each picture carries an accent check badge on its bottom-right corner. An analyst's approval shows the reviewer's picture in a circle, or the `<Avatar>` initial without one. An organization's approval shows the organization's picture in a rounded square. Each stamp is a link to the reviewer's profile or the organization's page. Its name, which a [`<Tooltip>`](../frontend/src/components/ui/Tooltip.tsx) shows on hover or keyboard focus, says who approved which version when: *maya approved v2 on 15 Oct 2026*, or *Open Source Watch (maya) approved v2 on 15 Oct 2026* for an organization, without the member once that account is erased. A `?` ends the row (the `approval` concept): an approval means an analyst or an organization checked the geolocation and agrees with it, it covers one version, and it is final. While the live version has no approval, the `?` sits beside **Approve** instead, and shows only with it.
 - **Your outdated approval.** A reader whose own approval covers an earlier version reads one line above **Approve**: *You approved v1. Changed since: Title, Proof.* ([`YourOutdatedApproval`](../frontend/src/components/event/Approvals.tsx), the version history's own `changedFields` through `changesSince`). The version links to its page.
 - **Approve.** A secondary **Approve** shows only to a reader who may approve: the API's `viewer_can_approve` is true, so a former geolocator never sees a button the API refuses, and `canApprove` finds no approval of the live version by the reader, or by an organization they are a member of (`approveOptions` in [`lib/approvals.ts`](../frontend/src/lib/approvals.ts)). [`ApproveButtons`](../frontend/src/components/event/Approvals.tsx) has a leading `Stamp` icon and sits beside one **Approve as <organization>** per organization the reader is a member of, whatever their role, that has not approved the version ([`useMemberOrganizations`](../frontend/src/hooks/useMemberOrganizations.ts)). An approval is final, so a click opens a confirmation step, a [`<ConfirmDialog>`](../frontend/src/components/ui/ConfirmDialog.tsx), before anything is sent. The step names the version, names the organization when there is one, and says that the approval is final. The approval is sent only when the reader confirms, and **Cancel** sends nothing. A `version_mismatch` refusal prints the error with a **Reload** button, since the live version moved on since the page loaded. The new stamp is the confirmation: no banner follows an approval. **Approve** sits on its own line under the stamps, and no reader can withdraw an approval.
 - **Admin deletion.** For a site admin (`useAdmin`), each stamp carries a delete control on its top-right corner: the `remove` disc of `<AvatarStack>`, revealed on hover or keyboard focus, named *Delete approval by <signer>*. It opens a [`<ConfirmDialog>`](../frontend/src/components/ui/ConfirmDialog.tsx) that names the version and the signer, says the deletion cannot be undone and says the reviewer can approve again. Confirming calls [`DELETE /admin/approvals/{approval_id}`](api.md#delete-adminapprovalsapproval_id) and refetches the list, and **Cancel** sends nothing. An `approval_not_found` refusal prints *This approval no longer exists* inside the dialog, which stays open. No other reader sees the control.
-- **Approval requests.** [`ApprovalRequestsSection`](../frontend/src/components/event/ApprovalRequestsSection.tsx) serves the requests. A geolocator sees the open requests under an **Approval requests** heading in the side column, under the Location module, with no card, and a secondary **Request approval**, which expands an `<AccountPicker>` in place with focus on its field. The list holds the analysts and organizations the server suggests; an exact username or slug the server leaves out shows the reason as the list's muted row, and a send error clears once the query changes. **Cancel** collapses the picker, and sending a request collapses it too. An analyst asked, or any member of an organization asked, reads who asked just above **Approve**, with no heading of its own ([`IncomingRequests`](../frontend/src/components/event/ApprovalRequestsSection.tsx)): one line holds the requesters' pictures and names side by side, each linked to the profile, then *asked for your approval*. A request to an organization reads *maya asked Open Source Watch for approval*, with the organization's logo and a link to its page. A ghost **Decline** sits beside **Approve** and declines every request addressed to the reader; its tooltip says the requester is notified. An approval refetches the requests, since it resolves the reader's own.
+- **Approval requests.** [`ApprovalRequests.tsx`](../frontend/src/components/event/ApprovalRequests.tsx) serves the requests. A geolocator of a published event, the one reader who can send a request (`canRequestApproval`), gets **Request approval** in the actions row (`RequestApprovalAction`). It opens a [`<ConfirmDialog>`](../frontend/src/components/ui/ConfirmDialog.tsx) titled *Request approval* that holds the open requests under **Open requests** (who is asked, by whom and since when, or *No open requests.*), then an `<AccountPicker>` to pick whom to ask. **Cancel** takes the initial focus, and the list opens when the field takes focus. The list holds the analysts and organizations the server suggests; an exact username or slug the server leaves out shows the reason as the list's muted row, and a send error prints inside the dialog and clears once the query changes. The confirm button reads *Ask for approval* and stays disabled until a target is picked (`confirmDisabled`), then reads *Ask <name>*. Sending a request closes the dialog and rereads the open requests. An analyst asked, or any member of an organization asked, reads who asked just above **Approve**, with no heading of its own ([`IncomingRequests`](../frontend/src/components/event/ApprovalRequests.tsx)): one line holds the requesters' pictures and names side by side, each linked to the profile, then *asked for your approval*. A request to an organization reads *maya asked Open Source Watch for approval*, with the organization's logo and a link to its page. A ghost **Decline** sits beside **Approve** and declines every request addressed to the reader; its tooltip says the requester is notified. An approval refetches the requests, since it resolves the reader's own.
 - **Filed versions.** A filed version's page (`/events/{id}/vN`) carries the version selector at the top of its side column, then that version's approvals in the same compact form ([`VersionApprovals`](../frontend/src/components/event/Approvals.tsx)): the checked stamps and the `?`, read-only, with a site admin's delete control on each stamp (see **Admin deletion**). The page shows nothing there when the version held none.
 
 A notification carries no action. Each notification row links to the screen where you act: an approval request or a re-approval request to the event page, whose approvals hold **Approve** and **Decline**; a co-geolocator invitation to the event page, whose **Geolocator invitation** card holds **Accept** and **Decline**; an organization invite to the organization page, whose invite answer holds **Accept** and **Decline**. An answered request's row adds *Approved* or *Declined* to its label. Each row is a `<LinkRow variant="arrow">`: its delete control is a muted trash icon button inside the block, left of the arrow, named *Delete notification* with the tooltip *Delete*, that turns red on hover, deletes the row ([`DELETE /notifications/{id}`](api.md#delete-notificationsid)), and reloads the list and the sidebar dot. At 375px the sentence wraps and the trash and the arrow keep their place at the right edge.

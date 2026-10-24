@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ClipboardCheck } from "lucide-react";
 
 import type { EventDetail } from "@/types";
 import { useAuth } from "@/contexts/AuthContext";
@@ -10,7 +11,6 @@ import { useMutation } from "@/hooks/useMutation";
 import { formatDate } from "@/lib/format";
 import { organizationByline, type OrganizationRef } from "@/lib/organizations";
 import {
-  canRequestApproval,
   declineApprovalRequest,
   requestApproval,
   approvalRequestTargetsPath,
@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/AccountPicker";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button } from "@/components/ui/Button";
-import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 
@@ -70,66 +70,6 @@ function searchTargets(eventId: string, query: string) {
       ],
       note: targets.refusal,
     }),
-  );
-}
-
-/** The geolocator's picker: analysts who follow the reader, organizations an org manager of which
- *  follows them, and an exact username or slug, whose request may still be refused. An exact match
- *  the server leaves out shows its refusal as the list's muted row. */
-function RequestApprovalForm({
-  eventId,
-  onSent,
-  onCancel,
-}: {
-  eventId: string;
-  onSent: () => void;
-  onCancel: () => void;
-}) {
-  const [selected, setSelected] = useState<Account | null>(null);
-  const send = useMutation((target: ApprovalRequestTarget) => requestApproval(eventId, target), {
-    fallback: "Failed to send the approval request",
-    onSuccess: () => {
-      setSelected(null);
-      onSent();
-    },
-  });
-
-  return (
-    <div className="space-y-2">
-      <label htmlFor={TARGET_FIELD_ID} className={FORM_LABEL}>
-        Ask an analyst or an organization to approve this version
-      </label>
-      <AccountPicker
-        id={TARGET_FIELD_ID}
-        search={(query) => searchTargets(eventId, query)}
-        selected={selected}
-        onSelect={setSelected}
-        onClear={() => {
-          setSelected(null);
-          send.reset();
-        }}
-        onQueryChange={send.reset}
-        placeholder="Search analysts and organizations"
-        emptyText="No analyst or organization to suggest. Suggestions are analysts who follow you and organizations whose org managers follow you. Type an exact username or slug to ask someone else."
-        autoFocus
-      />
-      <div className="flex flex-wrap gap-2">
-        <Button
-          onClick={() => selected && void send.run(targetOf(selected))}
-          disabled={send.loading || !selected}
-        >
-          {selected ? `Ask ${accountName(selected)}` : "Ask for approval"}
-        </Button>
-        <Button variant="ghost" onClick={onCancel} disabled={send.loading}>
-          Cancel
-        </Button>
-      </div>
-      {send.error && (
-        <div className={FORM_ERROR_BANNER} role="alert">
-          {send.error}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -240,57 +180,107 @@ export function DeclineRequests({
   );
 }
 
-/**
- * A geolocator's approval requests on a published event, a section of the event page's side
- * column under the Location module: the open requests, and a form that asks an analyst or an
- * organization to approve the live version.
- */
-export function ApprovalRequestsSection({
-  event,
+/** The geolocator's dialog: the open requests, then a picker over analysts who follow the
+ *  reader, organizations an org manager of which follows them, and an exact username or slug,
+ *  whose request may still be refused. An exact match the server leaves out shows its refusal as
+ *  the list's muted row. A sent request closes the dialog and rereads the open requests. */
+function RequestApprovalDialog({
+  eventId,
   requests: { requests, rows },
+  onClose,
+}: {
+  eventId: string;
+  requests: ApprovalRequests;
+  onClose: () => void;
+}) {
+  const [selected, setSelected] = useState<Account | null>(null);
+  const { refetch } = requests;
+  const send = useMutation((target: ApprovalRequestTarget) => requestApproval(eventId, target), {
+    fallback: "Failed to send the approval request",
+    onSuccess: () => {
+      refetch();
+      onClose();
+    },
+  });
+
+  return (
+    <ConfirmDialog
+      title="Request approval"
+      confirmLabel={selected ? `Ask ${accountName(selected)}` : "Ask for approval"}
+      busyLabel="Sending…"
+      busy={send.loading}
+      confirmDisabled={!selected}
+      error={send.error ?? requests.error}
+      onConfirm={() => selected && void send.run(targetOf(selected))}
+      onCancel={onClose}
+    >
+      <section aria-label="Open requests">
+        <h3 className={FORM_LABEL}>Open requests</h3>
+        {rows.length > 0 ? (
+          <div className="divide-y divide-neutral-800">
+            {rows.map((request) => (
+              <RequestRow key={request.id} request={request} />
+            ))}
+          </div>
+        ) : (
+          requests.data && <p className="py-2 text-sm text-neutral-500">No open requests.</p>
+        )}
+      </section>
+      <div className="space-y-1.5">
+        <label htmlFor={TARGET_FIELD_ID} className={FORM_LABEL}>
+          Ask an analyst or an organization to approve this version
+        </label>
+        <AccountPicker
+          id={TARGET_FIELD_ID}
+          search={(query) => searchTargets(eventId, query)}
+          selected={selected}
+          onSelect={setSelected}
+          onClear={() => {
+            setSelected(null);
+            send.reset();
+          }}
+          onQueryChange={send.reset}
+          placeholder="Search analysts and organizations"
+          emptyText="No analyst or organization to suggest. Suggestions are analysts who follow you and organizations whose org managers follow you. Type an exact username or slug to ask someone else."
+        />
+      </div>
+    </ConfirmDialog>
+  );
+}
+
+/**
+ * **Request approval** in the event's actions row: an icon that opens the dialog holding the open
+ * requests and the picker that asks an analyst or an organization to approve the live version.
+ * The caller renders it for a reader who may send a request (`canRequestApproval`).
+ */
+export function RequestApprovalAction({
+  event,
+  requests,
 }: {
   event: EventDetail;
   requests: ApprovalRequests;
 }) {
-  const { user } = useAuth();
-  const geolocator = canRequestApproval(event, user?.id);
-  const [asking, setAsking] = useState(false);
-  const { refetch } = requests;
-  if (!geolocator) return null;
-
+  const [open, setOpen] = useState(false);
   return (
-    <section aria-label="Approval requests" className="space-y-3">
-      <SectionEyebrow title="Approval requests" margin="none" />
-      {rows.length > 0 ? (
-        <div className="divide-y divide-neutral-800">
-          {rows.map((request) => (
-            <RequestRow key={request.id} request={request} />
-          ))}
-        </div>
-      ) : (
-        requests.data && <p className="text-sm text-neutral-500">No open requests.</p>
-      )}
-      {asking ? (
-        <RequestApprovalForm
+    <>
+      <Tooltip label="Request approval">
+        <Button
+          icon
+          variant="ghost"
+          aria-label="Request approval"
+          aria-haspopup="dialog"
+          onClick={() => setOpen(true)}
+        >
+          <ClipboardCheck size={14} />
+        </Button>
+      </Tooltip>
+      {open && (
+        <RequestApprovalDialog
           eventId={event.id}
-          onSent={() => {
-            setAsking(false);
-            refetch();
-          }}
-          onCancel={() => setAsking(false)}
+          requests={requests}
+          onClose={() => setOpen(false)}
         />
-      ) : (
-        <div>
-          <Button variant="secondary" onClick={() => setAsking(true)}>
-            Request approval
-          </Button>
-        </div>
       )}
-      {requests.error && (
-        <div className={FORM_ERROR_BANNER} role="alert">
-          {requests.error}
-        </div>
-      )}
-    </section>
+    </>
   );
 }

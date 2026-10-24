@@ -5,6 +5,7 @@ import { useState, type ReactNode } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMemberOrganizations } from "@/hooks/useMemberOrganizations";
 import type { ApiResource } from "@/hooks/useApiResource";
+import { canRequestApproval } from "@/lib/approvalRequests";
 import { approvalBefore, approveOptions, type ApprovalList } from "@/lib/approvals";
 import type { EventDetail } from "@/types";
 import { FieldHelp } from "@/components/ui/FieldHelp";
@@ -15,11 +16,11 @@ import {
   YourOutdatedApproval,
 } from "@/components/event/Approvals";
 import {
-  ApprovalRequestsSection,
   DeclineRequests,
   IncomingRequests,
+  RequestApprovalAction,
   useApprovalRequests,
-} from "@/components/event/ApprovalRequestsSection";
+} from "@/components/event/ApprovalRequests";
 
 /**
  * A published event's approvals, about the live version only, as two nodes that share one read of
@@ -30,7 +31,9 @@ import {
  *   (and **Approve as <organization>**) for a reader who may approve, with **Decline** beside it.
  *   Null when none of these applies, so an event without approvals shows nothing to a reader who
  *   cannot approve it.
- * - `requests`, a geolocator's approval requests, for the side column under the Location module.
+ * - `requestAction`, **Request approval** for a reader who may send a request (a geolocator), for
+ *   the actions row: it opens the dialog holding the open requests and the picker that sends one.
+ *   Null for every other reader.
  *
  * Outdated approvals are read on each version's page. `event` is null while the row loads and on
  * a surface without approvals: both nodes are null then.
@@ -39,12 +42,12 @@ export function useEventApprovals(
   event: EventDetail | null,
   /** Every version's approvals, fetched once by `useEventActions`. */
   approvals: ApiResource<ApprovalList>,
-): { summary: ReactNode; requests: ReactNode } {
+): { summary: ReactNode; requestAction: ReactNode } {
   const { user } = useAuth();
   const memberOf = useMemberOrganizations();
   const [approvedCount, setApprovedCount] = useState(0);
   const incoming = useApprovalRequests(event, memberOf, approvedCount);
-  if (!event) return { summary: null, requests: null };
+  if (!event) return { summary: null, requestAction: null };
 
   const rows = approvals.data?.items ?? [];
   // The live version's approvals: current, or, on a closed event, those it held when it closed.
@@ -100,5 +103,8 @@ export function useEventApprovals(
       )}
     </section>
   );
-  return { summary, requests: <ApprovalRequestsSection event={event} requests={incoming} /> };
+  const requestAction = canRequestApproval(event, user?.id) && (
+    <RequestApprovalAction event={event} requests={incoming} />
+  );
+  return { summary, requestAction };
 }

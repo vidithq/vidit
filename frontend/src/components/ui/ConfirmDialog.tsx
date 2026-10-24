@@ -13,7 +13,8 @@ import { MediaOverlay } from "./MediaLightbox";
  * Enter on open sends nothing; **Cancel**, Escape and a click on the backdrop close it.
  *
  * The caller owns the open state and the request: `onConfirm` runs it, `busy` holds the buttons
- * while it is in flight, and `error` prints its refusal inside the dialog.
+ * while it is in flight, and `error` prints its refusal inside the dialog. `confirmDisabled` holds
+ * the confirm button while an input the dialog carries is incomplete.
  */
 export function ConfirmDialog({
   title,
@@ -21,6 +22,7 @@ export function ConfirmDialog({
   confirmLabel,
   busyLabel,
   busy = false,
+  confirmDisabled = false,
   error = null,
   onConfirm,
   onCancel,
@@ -32,6 +34,7 @@ export function ConfirmDialog({
   /** The confirm button's text while `busy`. */
   busyLabel?: ReactNode;
   busy?: boolean;
+  confirmDisabled?: boolean;
   error?: string | null;
   onConfirm: () => void;
   onCancel: () => void;
@@ -50,7 +53,7 @@ export function ConfirmDialog({
           <Button variant="ghost" data-overlay-close="" onClick={onCancel} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={onConfirm} disabled={busy}>
+          <Button variant="primary" onClick={onConfirm} disabled={busy || confirmDisabled}>
             {busy && busyLabel ? busyLabel : confirmLabel}
           </Button>
         </div>

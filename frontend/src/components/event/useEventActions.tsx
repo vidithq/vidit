@@ -34,14 +34,15 @@ import type { EventDetail } from "@/types";
  * 3. **Share**.
  * 4. **Add to collection** for the owner and every co-geolocator, and **Geolocators** for a
  *    co-geolocator (where they leave). Each opens a panel under the header.
- * 5. **Report** for every reader but the owner.
+ * 5. **Request approval** for a geolocator of a published row, on the event page. It opens a
+ *    dialog with the open requests and the picker that sends one.
+ * 6. **Report** for every reader but the owner.
  *
  * The actions are that row, then a published row's approvals on the event page (the stamps,
- * Approve) and a pending geolocator invitation, or **Geolocate** on an open request's page. A
- * geolocator's approval requests come apart, under the Location module.
+ * Approve) and a pending geolocator invitation, or **Geolocate** on an open request's page.
  *
- * The hook returns nodes rather than rendering them because the actions, the approval requests
- * and the panels land in different slots. Called before a surface's early returns, with `event` null
+ * The hook returns nodes rather than rendering them because the actions and the panels land in
+ * different slots. Called before a surface's early returns, with `event` null
  * while the row loads, so hook order is stable.
  */
 
@@ -86,8 +87,6 @@ export interface EventActions {
   panels: ReactNode;
   /** The block heading the page's side column. */
   actions: ReactNode;
-  /** A geolocator's approval requests on the event page, for the side column. */
-  approvalRequests: ReactNode;
 }
 
 /** A panel a row toggle opens. It mounts when opened and takes focus then, so a keyboard or
@@ -131,7 +130,7 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
   }, [event?.id]);
 
   if (!event || !tiers) {
-    return { panels: null, actions: null, approvalRequests: null };
+    return { panels: null, actions: null };
   }
 
   const isOpenRequest = event.status === "requested";
@@ -202,6 +201,9 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
         {toggle(crediting, setCrediting, "Geolocators", CREDIT_PANEL_ID, <Users size={14} />)}
       </Fragment>
     ),
+    eventApprovals.requestAction && (
+      <Fragment key="request-approval">{eventApprovals.requestAction}</Fragment>
+    ),
     canReport && <Fragment key="report">{report.trigger}</Fragment>,
   ].filter(Boolean);
 
@@ -266,6 +268,5 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
         {geolocate && <div className="flex lg:justify-end">{geolocate}</div>}
       </div>
     ),
-    approvalRequests: eventApprovals.requests,
   };
 }

@@ -19,12 +19,13 @@ vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: api.viewer }),
 }));
 
+import { canRequestApproval } from "@/lib/approvalRequests";
 import {
-  ApprovalRequestsSection,
   DeclineRequests,
   IncomingRequests,
+  RequestApprovalAction,
   useApprovalRequests,
-} from "./ApprovalRequestsSection";
+} from "./ApprovalRequests";
 
 const ANA = { id: "u1", username: "ana" };
 const BO = { id: "u2", username: "bo" };
@@ -75,8 +76,8 @@ function serve(
   });
 }
 
-/** The requests as the event page lays them out: who asked the reader, Decline, and the
- *  geolocator's section. */
+/** The requests as the event page lays them out: who asked the reader, Decline, and a
+ *  geolocator's Request approval. */
 function Requests() {
   const requests = useApprovalRequests(event, useMemberOrganizations(), 0);
   const { mine } = requests;
@@ -86,26 +87,32 @@ function Requests() {
       {mine.length > 0 && (
         <DeclineRequests eventId="e1" requests={mine} onAnswered={requests.requests.refetch} />
       )}
-      <ApprovalRequestsSection event={event} requests={requests} />
+      {canRequestApproval(event, api.viewer?.id) && (
+        <RequestApprovalAction event={event} requests={requests} />
+      )}
     </>
   );
 }
 
-describe("<ApprovalRequestsSection>", () => {
+const dialog = () => screen.getByRole("dialog", { name: "Request approval" });
+
+describe("<RequestApprovalAction>", () => {
   beforeEach(() => {
     api.apiFetch.mockReset();
     api.viewer = null;
   });
 
-  it("lets a geolocator pick an eligible analyst and ask for approval", async () => {
+  it("lets a geolocator pick an eligible analyst in the dialog and ask for approval", async () => {
     api.viewer = ANA;
     serve([request()]);
     render(<Requests />);
 
-    expect(await screen.findByText(/asked by ana/)).toBeInTheDocument();
+    expect(screen.queryByText(/asked by ana/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Request approval" }));
+    expect(await within(dialog()).findByText(/asked by ana/)).toBeInTheDocument();
+    fireEvent.focus(within(dialog()).getByLabelText(/Ask an analyst or an organization/));
     fireEvent.click(await screen.findByRole("option", { name: "cy" }));
-    fireEvent.click(screen.getByRole("button", { name: "Ask cy" }));
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Ask cy" }));
 
     await waitFor(() =>
       expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/approval-requests", {
@@ -113,21 +120,27 @@ describe("<ApprovalRequestsSection>", () => {
         body: JSON.stringify({ username: "cy" }),
       }),
     );
-    // Sent: the form collapses back to its button.
-    expect(await screen.findByRole("button", { name: "Request approval" })).toBeInTheDocument();
+    // Sent: the dialog closes and the open requests are read again.
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const reads = () =>
+      api.apiFetch.mock.calls.filter(
+        ([path, init]) => path === "/events/e1/approval-requests" && init?.method !== "POST",
+      );
+    await waitFor(() => expect(reads()).toHaveLength(2));
   });
 
-  it("keeps the request form collapsed until asked, and Cancel collapses it again", async () => {
+  it("opens the dialog with the focus on Cancel, and Cancel closes it", async () => {
     api.viewer = ANA;
     serve([]);
     render(<Requests />);
 
-    expect(await screen.findByText("No open requests.")).toBeInTheDocument();
-    expect(screen.queryByLabelText(/Ask an analyst or an organization/)).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Request approval" }));
-    expect(screen.getByLabelText(/Ask an analyst or an organization/)).toHaveFocus();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByLabelText(/Ask an analyst or an organization/)).toBeNull();
+    expect(await within(dialog()).findByText("No open requests.")).toBeInTheDocument();
+    const cancel = within(dialog()).getByRole("button", { name: "Cancel" });
+    expect(cancel).toHaveFocus();
+    fireEvent.click(cancel);
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("lets a geolocator ask an organization", async () => {
@@ -135,11 +148,12 @@ describe("<ApprovalRequestsSection>", () => {
     serve([request({ target: null, target_organization: BELLINGCAT })]);
     render(<Requests />);
 
-    expect(await screen.findByRole("link", { name: "Bellingcat" })).toHaveAttribute(
+    fireEvent.click(screen.getByRole("button", { name: "Request approval" }));
+    expect(await within(dialog()).findByRole("link", { name: "Bellingcat" })).toHaveAttribute(
       "href",
       "/organizations/bellingcat",
     );
-    fireEvent.click(screen.getByRole("button", { name: "Request approval" }));
+    fireEvent.focus(within(dialog()).getByLabelText(/Ask an analyst or an organization/));
     fireEvent.click(await screen.findByRole("option", { name: /Bellingcat/ }));
     fireEvent.click(screen.getByRole("button", { name: "Ask Bellingcat" }));
 
@@ -156,10 +170,11 @@ describe("<ApprovalRequestsSection>", () => {
     serve([], { analysts: [], organizations: [] });
     render(<Requests />);
 
-    expect(await screen.findByText("No open requests.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Request approval" }));
+    expect(await within(dialog()).findByText("No open requests.")).toBeInTheDocument();
+    fireEvent.focus(within(dialog()).getByLabelText(/Ask an analyst or an organization/));
     expect(await screen.findByText(/No analyst or organization to suggest/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ask for approval" })).toBeDisabled();
+    expect(within(dialog()).getByRole("button", { name: "Ask for approval" })).toBeDisabled();
   });
 
   it("shows why an exact match cannot be asked, and drops a send error once the query changes", async () => {
@@ -183,6 +198,7 @@ describe("<ApprovalRequestsSection>", () => {
     render(<Requests />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Request approval" }));
+    fireEvent.focus(within(dialog()).getByLabelText(/Ask an analyst or an organization/));
     fireEvent.click(await screen.findByRole("option", { name: "cy" }));
     fireEvent.click(screen.getByRole("button", { name: "Ask cy" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Failed to send the approval request");
