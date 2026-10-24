@@ -7,7 +7,7 @@ from app.ratelimit import authenticated_read_quota, limiter
 from app.routers.events._common import build_event_list
 from app.schemas.event import FeedItemRead
 from app.services import social
-from app.services.event_filters import AUTHOR_FILTER_PATTERN
+from app.services.event_filters import AUTHOR_FILTER_PATTERN, validate_source_filters
 from app.services.pagination import (
     decode_cursor,
     encode_cursor,
@@ -30,7 +30,8 @@ def get_feed(
     cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
     kind: list[FeedKind] | None = Query(None),
     conflict: list[str] | None = Query(None),
-    capture_source: list[str] | None = Query(None),
+    sensor: list[str] | None = Query(None),
+    level: list[str] | None = Query(None),
     tag: list[str] | None = Query(None),
     approved: bool = Query(False),
     approved_by: str | None = Query(None, pattern=AUTHOR_FILTER_PATTERN),
@@ -43,10 +44,11 @@ def get_feed(
     ``scope=following`` (default) keeps the geolocations credited to analysts
     the current user follows and the requests they own, and is empty when they
     follow nobody; ``scope=all`` keeps every row. ``kind``, ``conflict``,
-    ``capture_source``, ``tag``, ``approved``, ``approved_by`` and
+    ``sensor``, ``level``, ``tag``, ``approved``, ``approved_by`` and
     ``approved_by_org`` narrow the rows as on ``GET /events``. Cursor-paged, capped at 100 rows; the
     ``Link: rel="next"`` cursor is present exactly when a next page holds a row.
     """
+    validate_source_filters(sensor, level)
     size = page_size(limit)
     window = social.get_feed(
         db,
@@ -56,7 +58,8 @@ def get_feed(
         cursor=decode_cursor(cursor) if cursor is not None else None,
         kind=kind,
         conflict=conflict,
-        capture_source=capture_source,
+        sensor=sensor,
+        level=level,
         tag=tag,
         approved=approved,
         approved_by=approved_by,

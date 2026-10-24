@@ -65,9 +65,8 @@ class SearchRequestHit(BaseModel):
     id: uuid.UUID
     title: str
     title_highlight: str
-    # Required-nullable; a ``requested`` hit always has one today
-    # (``ck_events_source_url_status``).
-    source_url: str | None
+    # Every link of the request's sources, in source order.
+    source_urls: list[str]
     # ``requested``, or ``closed`` once withdrawn.
     status: EventStatus
     created_at: datetime

@@ -22,7 +22,7 @@ from app.services.event_filters import (
 )
 from app.services.geolocator_credit import CREDIT_LOAD
 from app.services.pagination import keyset_before
-from app.services.thumbnails import thumbnail_media_criteria
+from app.services.thumbnails import thumbnail_loads
 
 FeedScope = Literal["following", "all"]
 FeedKind = Literal["geolocation", "request"]
@@ -105,7 +105,8 @@ def get_feed(
     cursor: tuple[datetime, uuid.UUID] | None = None,
     kind: list[FeedKind] | None = None,
     conflict: list[str] | None = None,
-    capture_source: list[str] | None = None,
+    sensor: list[str] | None = None,
+    level: list[str] | None = None,
     tag: list[str] | None = None,
     approved: bool = False,
     approved_by: str | None = None,
@@ -120,7 +121,7 @@ def get_feed(
     geolocations credited to an analyst ``user_id`` follows (owner or co-geolocator) and the
     requests such an analyst owns; ``"all"`` keeps every row.
 
-    ``kind`` keeps the named kinds (both when empty). ``conflict``, ``capture_source`` and ``tag``
+    ``kind`` keeps the named kinds (both when empty). ``conflict``, ``sensor``, ``level`` and ``tag``
     narrow through :func:`services.event_filters.taxonomy_predicates`, and ``approved``,
     ``approved_by`` and ``approved_by_org`` through
     :func:`services.event_filters.approval_predicates`, as on ``GET /events``.
@@ -156,13 +157,13 @@ def get_feed(
             joinedload(Event.owner),
             selectinload(Event.tags),
             selectinload(Event.conflicts),
-            selectinload(Event.media.and_(thumbnail_media_criteria())),
+            *thumbnail_loads(),
             CREDIT_LOAD,
         )
         .filter(
             *visible_events(),
             or_(*legs),
-            *taxonomy_predicates(conflict=conflict, capture_source=capture_source, tag=tag),
+            *taxonomy_predicates(conflict=conflict, sensor=sensor, level=level, tag=tag),
             *approval_predicates(
                 approved=approved, approved_by=approved_by, approved_by_org=approved_by_org
             ),
@@ -223,7 +224,7 @@ def list_published_geolocations(
             joinedload(Event.owner),
             selectinload(Event.tags),
             selectinload(Event.conflicts),
-            selectinload(Event.media.and_(thumbnail_media_criteria())),
+            *thumbnail_loads(),
             CREDIT_LOAD,
         )
         .filter(*credited_and_published)

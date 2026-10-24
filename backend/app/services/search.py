@@ -19,8 +19,8 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import func, literal_column, text
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import ColumnElement, func, literal_column, or_, text
+from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.sql.elements import ColumnClause
 
 from app.models.collection import Collection
@@ -31,6 +31,7 @@ from app.models.event import (
     Event,
 )
 from app.models.organization import Organization
+from app.models.source import Source, SourceLink
 from app.models.user import User
 from app.schemas.collection import CollectionRead
 from app.services import organizations
@@ -46,7 +47,7 @@ from app.services.event_filters import (
     visible_events,
 )
 from app.services.geolocator_credit import CREDIT_LOAD, live_geolocators
-from app.services.thumbnails import pick_thumbnail, thumbnail_media_criteria
+from app.services.thumbnails import pick_thumbnail, thumbnail_loads
 
 # ``ts_headline`` sentinels: STX / ETX, not an ASCII marker like ``[[HL]]``,
 # which a user could type into a bio to corrupt highlights. Planted STX / ETX
@@ -71,8 +72,6 @@ def _strip_sentinels(col: str) -> str:
 # ``$1::regconfig`` would not match the index expression tree. The events and
 # collections vectors use ORM ``func`` calls to compose with the shared
 # filters; the users and organizations ones are raw SQL (no event filters).
-#
-# ``source_url`` is excluded (see the migration docstring).
 _TS_CONFIG: ColumnClause[str] = literal_column("'simple'")
 _USER_TSVECTOR = "to_tsvector('simple', coalesce(username, '') || ' ' || coalesce(bio, ''))"
 _ORGANIZATION_TSVECTOR = "to_tsvector('simple', coalesce(name, '') || ' ' || coalesce(slug, '') || ' ' || coalesce(bio, ''))"
@@ -81,6 +80,22 @@ _ORGANIZATION_TSVECTOR = "to_tsvector('simple', coalesce(name, '') || ' ' || coa
 def _geo_tsvector():
     """``to_tsvector('simple', coalesce(title, ''))``, equal to the migration's index expression."""
     return func.to_tsvector(_TS_CONFIG, func.coalesce(Event.title, literal_column("''")))
+
+
+def _source_tsvector():
+    """``to_tsvector('simple', coalesce(title, ''))`` over ``sources``, equal to
+    ``ix_sources_search_fts``."""
+    return func.to_tsvector(_TS_CONFIG, func.coalesce(Source.title, literal_column("''")))
+
+
+def _event_match(q: str, tsquery: ColumnElement) -> ColumnElement[bool]:
+    """An event matches on its title, a source title (both FTS), or a source URL containing
+    the query (case-insensitive), so a pasted link finds the events that cite it."""
+    return or_(
+        _geo_tsvector().op("@@")(tsquery),
+        Event.sources.any(_source_tsvector().op("@@")(tsquery)),
+        Event.sources.any(Source.links.any(SourceLink.url.icontains(q, autoescape=True))),
+    )
 
 
 def _collection_tsvector():
@@ -108,8 +123,9 @@ def _search_events(
 ) -> tuple[list[uuid.UUID], dict[uuid.UUID, str], int]:
     """Run the FTS over ``events`` and return ``(ids, highlights, total)``.
 
-    ``ids`` are ranked (``ts_rank`` desc, ``created_at`` desc), ``highlights``
-    maps id to its ``ts_headline`` title, ``total`` is the pre-``LIMIT`` count
+    The query matches an event's title, its sources' titles and its source URLs
+    (:func:`_event_match`). ``ids`` are ranked (``ts_rank`` of the title desc,
+    ``created_at`` desc), ``highlights`` maps id to its ``ts_headline`` title, ``total`` is the pre-``LIMIT`` count
     (``COUNT(*) OVER ()``). Soft-deleted rows are excluded in ``filters.apply``.
 
     With active filters and an empty ``query`` the FTS predicate drops: browse
@@ -129,7 +145,7 @@ def _search_events(
         ).label("title_highlight")
         stmt = db.query(Event.id, headline, func.count().over().label("total_count"))
         stmt = filters.apply(stmt, view=view).filter(*extra_criteria)
-        stmt = stmt.filter(_geo_tsvector().op("@@")(tsquery))
+        stmt = stmt.filter(_event_match(q, tsquery))
         stmt = stmt.order_by(func.ts_rank(_geo_tsvector(), tsquery).desc(), Event.created_at.desc())
     else:
         stmt = db.query(
@@ -183,7 +199,7 @@ def search_geolocations(
         )
         .options(
             joinedload(Event.owner),
-            joinedload(Event.media.and_(thumbnail_media_criteria())),
+            *thumbnail_loads(),
             joinedload(Event.tags),
             CREDIT_LOAD,
         )
@@ -198,7 +214,7 @@ def search_geolocations(
         if row is None:  # soft-deleted between SELECTs
             continue
         geo = row.Event
-        thumb = pick_thumbnail(geo.media)
+        thumb = pick_thumbnail(geo)
         out.append(
             {
                 "id": geo.id,
@@ -240,7 +256,8 @@ def search_requests(
         db.query(Event)
         .options(
             joinedload(Event.owner),
-            joinedload(Event.media.and_(thumbnail_media_criteria())),
+            *thumbnail_loads(),
+            selectinload(Event.sources).selectinload(Source.links),
             joinedload(Event.tags),
         )
         .filter(Event.id.in_(ids))
@@ -253,13 +270,13 @@ def search_requests(
         geo = geo_by_id.get(hit_id)
         if geo is None:
             continue
-        thumb = pick_thumbnail(geo.media)
+        thumb = pick_thumbnail(geo)
         out.append(
             {
                 "id": geo.id,
                 "title": geo.title,
                 "title_highlight": highlight_by_id[hit_id],
-                "source_url": geo.source_url,
+                "source_urls": [link.url for source in geo.sources for link in source.links],
                 "status": geo.status,
                 "created_at": geo.created_at,
                 "is_graphic": geo.is_graphic,
@@ -534,6 +551,34 @@ def suggest_authors(db: Session, *, query: str, limit: int = 8) -> list[str]:
         .all()
     )
     return [r.username for r in rows]
+
+
+def find_sources(db: Session, *, query: str, limit: int) -> list[Source]:
+    """The source picker: sources of visible events whose title or a URL contains ``query``.
+
+    Case-insensitive substring, newest first, with links, tags, file and event loaded.
+    """
+    q = query.strip()
+    return (
+        db.query(Source)
+        .join(Event, Event.id == Source.event_id)
+        .options(
+            selectinload(Source.links),
+            selectinload(Source.tags),
+            selectinload(Source.media),
+            joinedload(Source.event),
+        )
+        .filter(
+            *visible_events(),
+            or_(
+                Source.title.icontains(q, autoescape=True),
+                Source.links.any(SourceLink.url.icontains(q, autoescape=True)),
+            ),
+        )
+        .order_by(Source.created_at.desc(), Source.id.desc())
+        .limit(limit)
+        .all()
+    )
 
 
 # Allowed ``type`` values, re-exported by the router for its 422 message.

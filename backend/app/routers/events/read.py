@@ -25,7 +25,7 @@ from app.models.event import (
 )
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
-from app.routers.events._common import build_event_list, build_event_read
+from app.routers.events._common import SOURCE_LOAD, build_event_list, build_event_read
 from app.schemas.event import (
     EventList,
     EventListSort,
@@ -39,6 +39,7 @@ from app.services.event_filters import (
     parse_bbox,
     snap_bbox,
     validate_media_types,
+    validate_source_filters,
     validate_status_filter,
     visible_events,
 )
@@ -53,7 +54,7 @@ from app.services.pagination import (
     page_size,
     paged,
 )
-from app.services.thumbnails import thumbnail_media_criteria
+from app.services.thumbnails import thumbnail_loads
 
 router = APIRouter()
 
@@ -62,7 +63,8 @@ def _build_points_cache_key(
     *,
     bbox: tuple[float, float, float, float],
     conflict: list[str] | None,
-    capture_source: list[str] | None,
+    sensor: list[str] | None,
+    level: list[str] | None,
     tag: list[str] | None,
     occurred_date_from: str | None,
     occurred_date_to: str | None,
@@ -90,7 +92,8 @@ def _build_points_cache_key(
         [
             list(bbox),
             sorted(conflict) if conflict else None,
-            sorted(capture_source) if capture_source else None,
+            sorted(sensor) if sensor else None,
+            sorted(level) if level else None,
             sorted(tag) if tag else None,
             occurred_date_from,
             occurred_date_to,
@@ -116,7 +119,8 @@ def list_points(
     bbox: str = Query(..., description="south,west,north,east, four floats"),
     # Multi-value (``?tag=a&tag=b``); a single value parses to a one-item list.
     conflict: list[str] | None = Query(None),
-    capture_source: list[str] | None = Query(None),
+    sensor: list[str] | None = Query(None),
+    level: list[str] | None = Query(None),
     tag: list[str] | None = Query(None),
     occurred_date_from: str | None = None,
     occurred_date_to: str | None = None,
@@ -143,13 +147,15 @@ def list_points(
     snapped bbox + filter combination (:func:`snap_bbox`).
     """
     validate_media_types(media)
+    validate_source_filters(sensor, level)
     # Parse before any cache work so a malformed box 422s instead of being
     # cached. The snapped box feeds both the key and the predicate.
     bounds = snap_bbox(parse_bbox(bbox))
     cache_key = _build_points_cache_key(
         bbox=bounds,
         conflict=conflict,
-        capture_source=capture_source,
+        sensor=sensor,
+        level=level,
         tag=tag,
         occurred_date_from=occurred_date_from,
         occurred_date_to=occurred_date_to,
@@ -181,7 +187,8 @@ def list_points(
     q = apply_filters(
         q,
         conflict=conflict,
-        capture_source=capture_source,
+        sensor=sensor,
+        level=level,
         tag=tag,
         occurred_date_from=occurred_date_from,
         occurred_date_to=occurred_date_to,
@@ -235,7 +242,8 @@ def list_events(
     # Multi-value, any-match; a single value parses to a one-item list.
     status: list[str] | None = Query(None),
     conflict: list[str] | None = Query(None),
-    capture_source: list[str] | None = Query(None),
+    sensor: list[str] | None = Query(None),
+    level: list[str] | None = Query(None),
     tag: list[str] | None = Query(None),
     bbox: str | None = None,
     occurred_date_from: str | None = None,
@@ -268,6 +276,7 @@ def list_events(
             status_code=422, detail=f"view must be one of: {', '.join(sorted(VIEWS))}"
         )
     validate_status_filter(status)
+    validate_source_filters(sensor, level)
     size = page_size(limit)
 
     # Step 1: ids with the limit (no row-inflating joins)
@@ -276,7 +285,8 @@ def list_events(
         view=view,
         status=status,
         conflict=conflict,
-        capture_source=capture_source,
+        sensor=sensor,
+        level=level,
         tag=tag,
         occurred_date_from=occurred_date_from,
         occurred_date_to=occurred_date_to,
@@ -326,7 +336,7 @@ def list_events(
             selectinload(Event.owner),
             selectinload(Event.tags),
             selectinload(Event.conflicts),
-            selectinload(Event.media.and_(thumbnail_media_criteria())),
+            *thumbnail_loads(),
             CREDIT_LOAD,
         )
         .filter(Event.id.in_(ids))
@@ -410,8 +420,6 @@ def list_detections(
             Event,
             ST_Y(Event.coords).label("lat"),
             ST_X(Event.coords).label("lng"),
-            ST_Y(Event.capture_source_coords).label("capture_lat"),
-            ST_X(Event.capture_source_coords).label("capture_lng"),
         )
         # Loader rule for every paged event query: ``selectinload`` for
         # many-to-many / one-to-many sets, since ``joinedload`` would
@@ -422,10 +430,10 @@ def list_detections(
             joinedload(Event.requested_by),
             selectinload(Event.tags),
             selectinload(Event.conflicts),
-            selectinload(Event.media.and_(thumbnail_media_criteria())),
+            *thumbnail_loads(),
             CREDIT_LOAD,
-            selectinload(Event.archives),
-            selectinload(Event.source_links),
+            SOURCE_LOAD,
+            selectinload(Event.detection),
         )
         .filter(*page_filters)
         .order_by(Event.created_at.desc(), Event.id.desc())
@@ -433,10 +441,7 @@ def list_detections(
         .limit(per_page)
     )
 
-    items = [
-        build_event_read(geo, lat=lat, lng=lng, capture_lat=capture_lat, capture_lng=capture_lng)
-        for geo, lat, lng, capture_lat, capture_lng in window.all()
-    ]
+    items = [build_event_read(geo, lat=lat, lng=lng) for geo, lat, lng in window.all()]
 
     return PaginatedEventDetails(
         items=items,

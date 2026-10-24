@@ -12,7 +12,7 @@ import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass, fields
 from datetime import date, timedelta
-from typing import Any
+from typing import Any, get_args
 
 from fastapi import HTTPException
 from geoalchemy2.functions import ST_MakeEnvelope, ST_Within
@@ -32,6 +32,7 @@ from app.models.event import (
 )
 from app.models.media import Media
 from app.models.organization import Organization
+from app.models.source import SENSORS, Source, SourceLevel
 from app.models.tag import Tag
 from app.models.user import User
 
@@ -190,6 +191,11 @@ AUTHOR_FILTER_PATTERN = r"^[A-Za-z0-9_-]{1,50}$"
 # Accepted ``media`` filter values (the ``Media.kind`` domain); a typo returns 422.
 MEDIA_TYPES = frozenset({"image", "video"})
 
+# Accepted ``sensor`` and ``level`` filter values (the ``Source.sensor`` and ``Source.level``
+# domains); a typo returns 422.
+SENSOR_VALUES = frozenset(SENSORS)
+LEVEL_VALUES = frozenset(get_args(SourceLevel))
+
 # Accepted ``status`` filter values (the ``Event.status`` domain); a typo returns 422. The
 # predicate only narrows within the caller's view, so a value the view can't contain returns
 # empty. Hand-kept FE mirror: ``STATUS_FILTER_OPTIONS`` in
@@ -253,6 +259,19 @@ def validate_media_types(media: list[str] | None) -> None:
             status_code=422,
             detail=f"media must be one of: {', '.join(sorted(MEDIA_TYPES))}",
         )
+
+
+def validate_source_filters(sensor: list[str] | None, level: list[str] | None) -> None:
+    """422 on a ``sensor`` or ``level`` value outside its domain."""
+    for field, values, domain in (
+        ("sensor", sensor, SENSOR_VALUES),
+        ("level", level, LEVEL_VALUES),
+    ):
+        if values and not set(values) <= domain:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{field} must be one of: {', '.join(sorted(domain))}",
+            )
 
 
 def validate_status_filter(status: list[str] | None) -> None:
@@ -345,26 +364,34 @@ def bbox_predicate(bounds: tuple[float, float, float, float]):
 def taxonomy_predicates(
     *,
     conflict: list[str] | None = None,
-    capture_source: list[str] | None = None,
+    sensor: list[str] | None = None,
+    level: list[str] | None = None,
     tag: list[str] | None = None,
 ) -> list[ColumnElement[bool]]:
-    """The ``conflict``, ``capture_source`` and ``tag`` predicates, one per non-empty list.
+    """The ``conflict``, ``sensor``, ``level`` and ``tag`` predicates, one per non-empty list.
 
     Any-match (OR) within a list, all-match (AND) across lists. ``conflict`` matches the
     ``conflicts`` referential (its own join, so a same-named free tag can't poison it);
-    ``capture_source`` pins the tag's category for the same reason; ``tag`` matches any category.
-    :func:`apply_filters` and the feed (:func:`services.social.get_feed`) both read them.
+    ``sensor`` and ``level`` keep an event with a source of that sensor or level; ``tag`` matches
+    a tag on the event or on one of its sources. :func:`apply_filters` and the feed
+    (:func:`services.social.get_feed`) both read them. Callers gate ``sensor`` and ``level``
+    through :func:`validate_source_filters`.
     """
     # ``.any(...)`` lowers to EXISTS, so it doesn't row-multiply like a JOIN.
     predicates: list[ColumnElement[bool]] = []
     if conflict:
         predicates.append(Event.conflicts.any(Conflict.name.in_(conflict)))
-    if capture_source:
-        predicates.append(
-            Event.tags.any(and_(Tag.name.in_(capture_source), Tag.category == "capture_source"))
-        )
+    if sensor:
+        predicates.append(Event.sources.any(Source.sensor.in_(sensor)))
+    if level:
+        predicates.append(Event.sources.any(Source.level.in_(level)))
     if tag:
-        predicates.append(Event.tags.any(Tag.name.in_(tag)))
+        predicates.append(
+            or_(
+                Event.tags.any(Tag.name.in_(tag)),
+                Event.sources.any(Source.tags.any(Tag.name.in_(tag))),
+            )
+        )
     return predicates
 
 
@@ -429,7 +456,8 @@ def apply_filters(
     view: str = "located",
     status: list[str] | None = None,
     conflict: list[str] | None = None,
-    capture_source: list[str] | None = None,
+    sensor: list[str] | None = None,
+    level: list[str] | None = None,
     tag: list[str] | None = None,
     occurred_date_from: str | None = None,
     occurred_date_to: str | None = None,
@@ -453,7 +481,7 @@ def apply_filters(
     may carry an approximate guess and must not leak into the located catalog. Callers gate
     values through :func:`validate_status_filter`.
 
-    ``conflict``, ``capture_source`` and ``tag`` take lists of names (see
+    ``conflict``, ``sensor``, ``level`` and ``tag`` take lists of values (see
     :func:`taxonomy_predicates`).
 
     ``approved``, ``approved_by`` and ``approved_by_org`` keep approved events (see
@@ -468,7 +496,7 @@ def apply_filters(
         query = query.filter(Event.status.in_(status))
 
     query = query.filter(
-        *taxonomy_predicates(conflict=conflict, capture_source=capture_source, tag=tag)
+        *taxonomy_predicates(conflict=conflict, sensor=sensor, level=level, tag=tag)
     )
 
     # Parse dates up front so a typo is a 422, not a Postgres ``InvalidDatetimeFormat`` 500.
@@ -492,8 +520,14 @@ def apply_filters(
         query = apply_author_filter(query, author)
 
     if media:
-        # EXISTS, so an event with several attachments isn't row-multiplied.
-        query = query.filter(Event.media.any(Media.kind.in_(media)))
+        # EXISTS, so an event with several files isn't row-multiplied: a source's file or a
+        # proof image.
+        query = query.filter(
+            or_(
+                Event.sources.any(Source.media.has(Media.kind.in_(media))),
+                Event.media.any(Media.kind.in_(media)),
+            )
+        )
 
     query = query.filter(
         *approval_predicates(
@@ -519,7 +553,8 @@ class EventFilters:
 
     status: list[str] | None = None
     conflict: list[str] | None = None
-    capture_source: list[str] | None = None
+    sensor: list[str] | None = None
+    level: list[str] | None = None
     tag: list[str] | None = None
     occurred_date_from: str | None = None
     occurred_date_to: str | None = None
