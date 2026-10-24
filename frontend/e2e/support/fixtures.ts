@@ -151,6 +151,32 @@ export const EVENT: EventDetail = {
 };
 
 /**
+ * The shared event with four sources, which the page lays out as a sideways row. The first
+ * carries a capture position and a second, long link, so its rows hold the longest values a
+ * source card shows.
+ */
+export const EVENT_WITH_SOURCES: EventDetail = {
+  ...EVENT,
+  sources: [1, 2, 3, 4].map((n) => ({
+    ...EVENT.sources[0],
+    id: `55555555-5555-4555-8555-55555555557${n}`,
+    title: `Source footage ${n}`,
+    capture_position: n === 1 ? { lat: 48.464712, lng: 35.046245 } : null,
+    links:
+      n === 1
+        ? [
+            ...EVENT.sources[0].links,
+            {
+              url: "https://www.gettyimages.com/detail/news-photo/residential-street-after-the-strike-2299208753",
+              posted_at: null,
+              archived: null,
+            },
+          ]
+        : EVENT.sources[0].links,
+  })),
+};
+
+/**
  * The one open request the board serves, carrying the long tag. The request
  * card is the narrowest content column in the product (about 150px at 320px,
  * beside a thumbnail and a status badge), which is where a tag that does not

@@ -193,3 +193,17 @@ export async function grantSession(context: BrowserContext): Promise<void> {
     { name: CSRF_COOKIE, value: CSRF_TOKEN, url: APP_ORIGIN },
   ]);
 }
+
+/**
+ * Answer one API path with `body` instead of its fixture, for a spec that needs another shape of
+ * the same row (a site admin, an event with more sources). Register it after `mockApi`: the route
+ * registered last is tried first.
+ */
+export async function answerWith(page: Page, path: string, body: unknown): Promise<void> {
+  const target = new URL(`${API_BASE_URL}${path}`);
+  // Matched on the origin and path, so a query string does not slip past the override.
+  const matches = (url: URL) => url.origin === target.origin && url.pathname === target.pathname;
+  await page.route(matches, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) }),
+  );
+}

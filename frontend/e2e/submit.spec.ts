@@ -61,6 +61,41 @@ test.describe("submit", () => {
     await expectNarrowViewportLayout(page, createDetection);
   });
 
+  test("fits the source editors, their merge and the source picker into 320px", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 568 });
+    await page.goto("/submit");
+
+    await page.getByRole("button", { name: "Add a source" }).click();
+    const first = page.getByRole("region", { name: "Source 1" });
+    await first.getByLabel("Kind", { exact: true }).selectOption({ label: "Smartphone" });
+    await first.getByLabel("Source 1 link 1", { exact: true }).fill("https://t.me/channel/12345");
+    await first.getByRole("button", { name: "Merge Source 1" }).click();
+    await page.getByRole("button", { name: "Copy an existing source" }).click();
+    await expect(page.getByPlaceholder("Paste a URL or type part of a title")).toBeVisible();
+    await expectNarrowViewportLayout(page, page.getByRole("button", { name: "Add a source" }));
+
+    // Every control of the editor stays inside its tile, the merge pick included.
+    const tile = (await first.boundingBox())!;
+    const controls = first.locator("input:visible, select:visible, button:visible");
+    for (const control of await controls.all()) {
+      const box = (await control.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(tile.x);
+      expect(box.x + box.width).toBeLessThanOrEqual(tile.x + tile.width + 0.5);
+    }
+    await expect(first.getByLabel("Source to keep when merging Source 1")).toBeVisible();
+    await expect(first.getByLabel("Latitude", { exact: true })).toBeVisible();
+
+    // The level options keep their whole labels and the phone tap height.
+    for (const option of await first.getByRole("group", { name: "Source 1 level" }).getByRole("button").all()) {
+      const fits = await option.evaluate((el) => el.scrollWidth <= el.clientWidth);
+      expect(fits, `${await option.textContent()} is cut`).toBe(true);
+    }
+    for (const name of ["Remove source 1", "Remove source 1 link 1", "Add source 1 link"]) {
+      const box = (await first.getByRole("button", { name, exact: true }).boundingBox())!;
+      expect(box.height, name).toBeGreaterThanOrEqual(36);
+    }
+  });
+
   // A source's capture time is the longest value a form here asks for, and it
   // wears a mark. At 320px the field is about 228px wide inside its editor, so
   // the room the mark leaves is what decides whether the reader can see the

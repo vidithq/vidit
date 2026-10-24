@@ -57,6 +57,12 @@ test.describe("settings", () => {
       expect(box.height).toBeGreaterThanOrEqual(36);
       expect(box.x + box.width).toBeLessThanOrEqual(viewportWidth);
     }
+    // The longest option, *People I follow*, keeps its whole label at 320px.
+    const senders = page.getByRole("group", { name: "Accept approval requests from" });
+    for (const option of await senders.getByRole("button").all()) {
+      const fits = await option.evaluate((el) => el.scrollWidth <= el.clientWidth);
+      expect(fits, `${await option.textContent()} is cut`).toBe(true);
+    }
     await expectNoHorizontalOverflow(page);
   });
 });
