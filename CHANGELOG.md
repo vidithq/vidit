@@ -11,6 +11,8 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - `GET /sources` finds an existing source by URL or title, and an event form copies it onto another event without storing its file twice.
 - Search matches source titles and source URLs, and the map, list, search and feed filters take `source_kind` and `level`.
 - The feed shows machine detections from the analysts you follow, or from everyone on All, and a **Show detections** switch in its Kind filter hides them; `GET /feed` takes `kind=detected`.
+- A source can be of kind aircraft: images or video taken from a plane or a helicopter, historical aerial photos included.
+- A satellite or aircraft source is checked against a list of imagery providers and warns, without blocking, when a reader could not reopen the image at its date; the form names each provider, how to reopen it and its credit as you type, and `POST /sources/check` runs the same check.
 
 ### Changed
 

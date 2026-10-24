@@ -164,7 +164,7 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
     [context_row] = _rows_for(db, owner, "context_links")
     assert [(s.level, s.kind, s.title) for s in context_row.sources] == [
         ("direct", "unknown", ""),
-        ("context", "satellite", "Google Earth"),
+        ("context", "satellite", "Google Earth web"),
         ("context", "article", ""),
     ]
     [imagery_row] = _rows_for(db, owner, "context_link_only")

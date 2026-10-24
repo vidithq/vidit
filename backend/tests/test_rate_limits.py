@@ -533,6 +533,7 @@ _DOCUMENTED_LIMITS = [
         {"files": {"file": ("probe.txt", b"probe", "text/plain")}},
     ),
     _Case("get", "/api/v1/sources", 60, "user", {"params": {"q": "rate-limit-probe"}}),
+    _Case("post", "/api/v1/sources/check", 120, "user", {"json": {"kind": "satellite"}}),
     _Case("patch", ME, 30, "user", {"json": {"bio": "probe"}}),
     # The PUT probe is `text/plain`: rejected before any storage write.
     _Case(

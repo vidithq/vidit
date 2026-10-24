@@ -18,6 +18,8 @@ from datetime import UTC, datetime
 from typing import Literal
 from urllib.parse import urlparse
 
+from app.services.imagery import PROVIDERS
+
 from .errors import InvalidTweetUrl
 
 # ── Hosts ─────────────────────────────────────────────────────────────────
@@ -83,7 +85,7 @@ def x_status_posted_at(url: str, *, now: datetime | None = None) -> datetime | N
     return posted_at
 
 
-ContextKind = Literal["satellite", "article", "other"]
+ContextKind = Literal["satellite", "aircraft", "article", "other"]
 
 
 @dataclass(frozen=True)
@@ -98,16 +100,14 @@ class ContextHost:
 # Hosts that never carry the filmed act, each with the path prefix it covers (``""`` for the
 # whole host). A host matches itself and its subdomains (:func:`_host_matches_base`). Closed on
 # purpose: a news site can host the only copy of the footage, so no open-ended rule demotes a
-# link to context. ``docs/ingestion.md`` lists the same table.
+# link to context. Every imagery provider (``services/imagery.PROVIDERS``) comes first, of its
+# first kind and titled with its name; ``docs/ingestion.md`` lists the rest.
 CONTEXT_HOSTS: tuple[tuple[str, str, ContextHost], ...] = (
-    ("earth.google.com", "", ContextHost("satellite", "Google Earth")),
-    ("google.com", "/earth", ContextHost("satellite", "Google Earth")),
-    ("browser.dataspace.copernicus.eu", "", ContextHost("satellite", "Copernicus Browser")),
-    ("sentinel-hub.com", "", ContextHost("satellite", "Sentinel Hub")),
-    ("firms.modaps.eosdis.nasa.gov", "", ContextHost("satellite", "NASA FIRMS")),
-    ("worldview.earthdata.nasa.gov", "", ContextHost("satellite", "NASA Worldview")),
-    ("livingatlas.arcgis.com", "/wayback", ContextHost("satellite", "Esri Wayback")),
-    ("earthexplorer.usgs.gov", "", ContextHost("satellite", "USGS EarthExplorer")),
+    *(
+        (base, prefix, ContextHost(provider.kinds[0], provider.name))
+        for provider in PROVIDERS
+        for base, prefix in provider.hosts
+    ),
     ("mapcarta.com", "", ContextHost("other")),
     ("geoview.info", "", ContextHost("other")),
     ("oct7map.com", "", ContextHost("other")),

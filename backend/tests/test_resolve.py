@@ -248,13 +248,17 @@ def test_an_x_status_link_is_dated_off_its_id(url, expected):
 @pytest.mark.parametrize(
     ("url", "kind", "title"),
     [
-        ("https://earth.google.com/web/@48.1,37.8,50a", "satellite", "Google Earth"),
-        ("https://www.google.com/earth/about/versions/", "satellite", "Google Earth"),
+        ("https://earth.google.com/web/@48.1,37.8,50a", "satellite", "Google Earth web"),
+        ("https://www.google.com/earth/about/versions/", "satellite", "Google Earth web"),
         ("https://browser.dataspace.copernicus.eu/?lat=1", "satellite", "Copernicus Browser"),
-        ("https://apps.sentinel-hub.com/eo-browser/", "satellite", "Sentinel Hub"),
+        ("https://apps.sentinel-hub.com/eo-browser/", "satellite", "Sentinel Hub EO Browser"),
         ("https://firms.modaps.eosdis.nasa.gov/map/#d:24hrs", "satellite", "NASA FIRMS"),
         ("https://worldview.earthdata.nasa.gov/?t=2022-04-20", "satellite", "NASA Worldview"),
-        ("https://livingatlas.arcgis.com/wayback/#active=1", "satellite", "Esri Wayback"),
+        (
+            "https://livingatlas.arcgis.com/wayback/#active=1",
+            "satellite",
+            "Esri World Imagery Wayback",
+        ),
         (
             "https://earthexplorer.usgs.gov/scene/metadata/full/a/b/",
             "satellite",
@@ -298,7 +302,7 @@ def test_a_context_link_settles_no_source_and_lands_as_context():
     assert detection.source_posted_at == _SNOWFLAKE_AT
     assert detection.warnings == []
     assert detection.secondary_sources == [
-        LinkSource(url=earth, level="context", kind="satellite", title="Google Earth")
+        LinkSource(url=earth, level="context", kind="satellite", title="Google Earth web")
     ]
 
 

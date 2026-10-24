@@ -84,6 +84,7 @@ SOURCE_KINDS = (
     "camera",
     "static_camera",
     "drone",
+    "aircraft",
     "satellite",
     "dashcam",
     "body_cam",

@@ -543,3 +543,57 @@ def test_the_media_read_names_a_source_file_and_a_proof_image(db, author, confli
     assert created.json()["sources"][0]["media"]["role"] == "source"
     event = db.get(Event, uuid.UUID(created.json()["id"]))
     assert [MediaRead.model_validate(m).role for m in event.media] == ["proof"]
+
+
+# ── Imagery warnings ─────────────────────────────────────────────────────────
+
+
+MAPS_LINK = "https://www.google.com/maps/@47.09,37.54,500m/data=!3m1!1e3"
+
+
+def test_an_imagery_source_carries_warnings_and_still_publishes(author, conflict):
+    sources = sources_field(
+        source_spec(upload_id=stage_file(author)),
+        source_spec(MAPS_LINK, level="context", kind="satellite"),
+        source_spec("https://aerial.example/frame/1", level="context", kind="aircraft"),
+    )
+    response = _create(author, conflict, sources)
+    assert response.status_code == 201, response.text
+    footage, satellite, aircraft = response.json()["sources"]
+    assert footage["warnings"] == []
+    assert [(w["code"], w["url"]) for w in satellite["warnings"]] == [
+        ("provider_not_reopenable", MAPS_LINK),
+        ("capture_date_missing", None),
+    ]
+    assert aircraft["kind"] == "aircraft"
+    assert [w["code"] for w in aircraft["warnings"]] == ["provider_unknown", "capture_date_missing"]
+    read = client.get(f"/api/v1/events/{response.json()['id']}").json()
+    assert read["sources"][1]["warnings"] == satellite["warnings"]
+
+
+def test_the_check_names_each_links_provider_and_the_warnings(author):
+    earth = "https://earth.google.com/web/@47.09,37.54,50a,2000d,35y,0h,0t,0r"
+    response = client.post(
+        "/api/v1/sources/check",
+        headers=login_as(client, author),
+        json={
+            "kind": "satellite",
+            "captured_at": "2024-07-12T10:00",
+            "links": [{"url": earth}, {"url": "https://news.example/a", "snapshot_url": None}],
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    first, second = body["links"]
+    assert first["provider"]["id"] == "google_earth"
+    assert first["provider"]["credit"] and first["provider"]["help"]
+    assert second == {"url": "https://news.example/a", "provider": None}
+    assert [(w["code"], w["url"]) for w in body["warnings"]] == [("permalink_shape", earth)]
+
+
+def test_the_check_needs_an_account_and_an_imagery_kind(author):
+    assert client.post("/api/v1/sources/check", json={"kind": "satellite"}).status_code == 401
+    response = client.post(
+        "/api/v1/sources/check", headers=login_as(client, author), json={"kind": "drone"}
+    )
+    assert response.status_code == 422

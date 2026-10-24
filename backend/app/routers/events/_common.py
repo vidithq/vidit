@@ -6,6 +6,7 @@ routers), the projection helpers, :func:`resolve_live_event` and
 """
 
 import uuid
+from datetime import datetime
 from typing import NoReturn
 
 from fastapi import HTTPException
@@ -28,10 +29,12 @@ from app.schemas.source import (
     SourceCreate,
     SourceLinkRead,
     SourceRead,
+    SourceWarning,
 )
 from app.services.event_filters import visible_events
 from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
 from app.services.geolocator_credit import live_geolocators
+from app.services.imagery import LinkCheck, source_warnings
 from app.services.source_archive import SnapshotRejected, provider_of
 from app.services.thumbnails import pick_thumbnail
 from app.services.uploads import UPLOAD_ERROR_STATUS
@@ -239,7 +242,19 @@ def build_source_read(source: Source) -> SourceRead:
         links=links,
         tags=source.tags,
         media=source.media,
+        warnings=warning_reads(
+            source.kind,
+            source.captured_at,
+            [LinkCheck(link.url, archived=link.snapshot_url is not None) for link in source.links],
+        ),
     )
+
+
+def warning_reads(
+    kind: str, captured_at: datetime | None, links: list[LinkCheck]
+) -> list[SourceWarning]:
+    """The imagery warnings of a source, stored or as the form holds it."""
+    return [SourceWarning.model_validate(w) for w in source_warnings(kind, captured_at, links)]
 
 
 def build_event_read(

@@ -8,6 +8,7 @@ Technical reference for [Vidit](https://vidit.app), an OSINT/GEOINT geolocation 
 - [**Data model**](data-model.md): entities, relationships, lifecycle.
 - [**Ingestion**](ingestion.md): the tweet-to-event contract, recognized signals, bot and archive formats.
 - [**Archival**](archival.md): archived copies of an event's source links.
+- [**Imagery**](imagery.md): the imagery providers a satellite or aircraft source is checked against, and its warnings.
 - [**Conflicts**](conflicts.md): the conflict referential and its daily sync.
 - [**Engineering**](engineering.md): stack, repo layout, local environment, deployment, operational particularities.
 - [**Design**](design.md): UI principles, theme, design decisions.

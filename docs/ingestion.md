@@ -244,17 +244,12 @@ A mirror is a footage candidate: a `direct` source of kind `unknown`. A context 
 
 | Host | Path | Kind | Title |
 |---|---|---|---|
-| `earth.google.com` | any | `satellite` | Google Earth |
-| `google.com` | `/earth` | `satellite` | Google Earth |
-| `browser.dataspace.copernicus.eu` | any | `satellite` | Copernicus Browser |
-| `sentinel-hub.com` | any | `satellite` | Sentinel Hub |
-| `firms.modaps.eosdis.nasa.gov` | any | `satellite` | NASA FIRMS |
-| `worldview.earthdata.nasa.gov` | any | `satellite` | NASA Worldview |
-| `livingatlas.arcgis.com` | `/wayback` | `satellite` | Esri Wayback |
-| `earthexplorer.usgs.gov` | any | `satellite` | USGS EarthExplorer |
+| Every host of an [imagery provider](imagery.md#providers) | the provider's | `aircraft` for an aircraft archive, `satellite` otherwise | the provider's name, such as Google Earth web or Copernicus Browser |
 | `mapcarta.com`, `geoview.info`, `oct7map.com`, `3rbmap.com` | any | `other` | none |
 | `wikipedia.org` | any | `article` | none |
 | `gofundme.com` | any | `other` | none |
+
+A Google Maps link sits on the provider list but reads as the coordinate first, so it never becomes a source.
 
 A news or official site stays a footage candidate: it can host the only copy of the footage. The review raises a context source to `indirect` when the imagery shows the aftermath.
 
@@ -306,7 +301,7 @@ Each row is one input shape and the outcome the engine produces for it. The thre
 | Coordinate only in the quoted post (`quote_coord_in_quoted`) | `0`, no coordinate (`coords_missing`); no request for the bot, a coordinate in the quoted post is a geolocation |
 | `T:` / `C:` / `S:` marker lines (`marker_lines`) | 1 detection, the markers kept as text |
 | `Source:` line naming one of two links | 1 detection, source empty, two mirrors |
-| Third-party X status link, a Google Earth link and a Wikipedia link (`context_links`) | 1 detection, source is the status dated off its ID, two context sources: `satellite` titled Google Earth, then `article` |
+| Third-party X status link, a Google Earth link and a Wikipedia link (`context_links`) | 1 detection, source is the status dated off its ID, two context sources: `satellite` titled Google Earth web, then `article` |
 | Sole Copernicus Browser link (`context_link_only`) | 1 detection, source empty (`source_missing`), one `satellite` context source titled Copernicus Browser |
 | Two links, no `Source:` line | 1 detection, source empty, two mirrors |
 | Sole link off the chase vocabulary (TikTok, Instagram, an article) | 1 detection, source is the link |

@@ -30,7 +30,8 @@ SourceLevel = Literal["direct", "indirect", "context"]
 EVIDENCE_LEVELS: tuple[SourceLevel, ...] = ("direct", "indirect")
 
 # Where a source comes from: what captured it (``camera`` is a handheld or press camera,
-# ``static_camera`` a CCTV or webcam) or the kind of document it is. Whether its file is a photo
+# ``static_camera`` a CCTV or webcam, ``aircraft`` a plane or helicopter, historical aerial
+# photos included) or the kind of document it is. Whether its file is a photo
 # or a video is the file's own ``media.kind``. Closed list; value-domain source of truth for the
 # column, the schemas, the ``source_kind`` filter and the generated frontend type. ``unknown``
 # keeps the choice satisfiable for a source of uncertain provenance.
@@ -39,6 +40,7 @@ SourceKind = Literal[
     "camera",
     "static_camera",
     "drone",
+    "aircraft",
     "satellite",
     "dashcam",
     "body_cam",

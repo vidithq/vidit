@@ -21,6 +21,7 @@ from app.models.source import (
 )
 from app.schemas.media import MediaRead
 from app.schemas.tag import TagRead
+from app.services.imagery import ImageryKind, ProviderGroup, SourceWarningCode
 
 SourceUrl = Annotated[str, StringConstraints(max_length=SOURCE_URL_MAX_LENGTH)]
 
@@ -118,6 +119,18 @@ class SourceLinkRead(BaseModel):
     archived: ArchivedLinkRead | None
 
 
+class SourceWarning(BaseModel):
+    """What keeps a reader from reopening a satellite or aircraft image (``services/imagery``).
+    Never blocks a write."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    code: SourceWarningCode
+    message: str
+    # The link it is about; NULL for the whole source.
+    url: str | None
+
+
 class SourceRead(BaseModel):
     """One source of an event, in the event's derived source order."""
 
@@ -133,6 +146,8 @@ class SourceRead(BaseModel):
     tags: list[TagRead]
     # NULL for a URL-only source.
     media: MediaRead | None
+    # Empty unless the kind is ``satellite`` or ``aircraft``.
+    warnings: list[SourceWarning]
 
 
 class SourcePickRead(SourceRead):
@@ -152,3 +167,48 @@ class UploadRead(BaseModel):
     # Where the stored file renders, so the form can preview it.
     storage_url: str
     expires_at: datetime
+
+
+class SourceCheckLink(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    url: SourceUrl
+    snapshot_url: SourceUrl | None = None
+
+
+class SourceCheck(BaseModel):
+    """A source as the form holds it, for ``POST /sources/check``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # The check covers these kinds alone.
+    kind: ImageryKind
+    captured_at: UtcDatetime | None = None
+    links: list[SourceCheckLink] = Field(default_factory=list, max_length=_LIST_PARSE_CEILING)
+
+
+class ImageryProviderRead(BaseModel):
+    """One imagery provider of ``services/imagery.PROVIDERS``."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    group: ProviderGroup
+    # ``""`` for a provider that cannot be reopened.
+    credit: str
+    # How a reader reopens the image, or why no reader can.
+    help: str
+
+
+class SourceLinkCheckRead(BaseModel):
+    url: str
+    # NULL for an unlisted link.
+    provider: ImageryProviderRead | None
+
+
+class SourceCheckRead(BaseModel):
+    """The provider each link opens and the warnings the source would carry."""
+
+    links: list[SourceLinkCheckRead]
+    warnings: list[SourceWarning]

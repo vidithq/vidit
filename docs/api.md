@@ -241,6 +241,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `GET /events/import-archive/{job_id}` | 60/min |
 | `POST /uploads` | 30/min |
 | `GET /sources` | 60/min |
+| `POST /sources/check` | 120/min |
 | `POST /events`, `POST /events/requests`, `POST /events/{id}/request` | 30/min |
 | `POST /events/{id}/geolocate`, `POST /events/{id}/versions` | 30/min |
 | `POST /events/batch-complete` | 10/min |
@@ -651,7 +652,7 @@ flowchart LR
 | `id` | A stored source of this event, to update in place. Omit it to create a source. An id that is not one of the event's sources, or that repeats, is `source_not_found` |
 | `title` | Optional, at most 255 characters, stripped. `""` is no title |
 | `level` | Required. `direct` (the act while it happens), `indirect` (its direct consequences, after the fact) or `context` (anything else). See [`data-model.md`](data-model.md#sources) |
-| `kind` | Required. Where the source comes from: `smartphone`, `camera` (a handheld or press camera), `static_camera` (CCTV or a webcam), `drone`, `satellite`, `dashcam`, `body_cam`, `article`, `official_statement`, `other` or `unknown`. Whether its file is a photo or a video is the file's own `kind` (`media.kind`). Use `unknown` when the provenance is uncertain |
+| `kind` | Required. Where the source comes from: `smartphone`, `camera` (a handheld or press camera), `static_camera` (CCTV or a webcam), `drone`, `aircraft` (a plane or a helicopter, historical aerial photos included), `satellite`, `dashcam`, `body_cam`, `article`, `official_statement`, `other` or `unknown`. Whether its file is a photo or a video is the file's own `kind` (`media.kind`). Use `unknown` when the provenance is uncertain |
 | `captured_at` | `YYYY-MM-DDTHH:MM`, read as UTC: when the media was captured. Optional |
 | `capture_position` | `{lat, lng}`: where a capture was shot from. Optional; a value out of range is `invalid_coordinates` |
 | `is_graphic` | `true` when the media shows death, injury or human remains. Defaults to `false`. On a stored source it only rises: `false` keeps a set flag, and only [`PATCH /admin/events/{id}/moderation`](#patch-admineventsidmoderation) clears it |
@@ -665,6 +666,20 @@ A source names one file, through `upload_id` or `media_id`, or none; both is a 4
 **The posted list replaces the stored one.** An entry with `id` updates that source in place, an entry without one creates a source, and a stored source the list leaves out is deleted with its links, tags and file row. Its stored object stays while a copy or a readable version names it ([`data-model.md`](data-model.md#media)). A source's links are replaced whole too, so post back each link's `snapshot_url` to keep its copy. The order is derived (level, then `captured_at`), so the posted order is not stored.
 
 **Every source a person writes needs a URL.** A source posted with no link left after the blanks and repeats are dropped is `source_link_required`. Machine sources may lack one until they are published.
+
+### Imagery warnings
+
+A source of kind `satellite` or `aircraft` carries `warnings`: what keeps a reader from reopening its image at its date, checked against the [imagery providers](imagery.md). Each warning is `{code, message, url}`; `url` names the link it is about, `null` the whole source, and `message` is the sentence the form shows. A warning never blocks a write or a publication. Every other kind carries `[]`.
+
+| Code | Case |
+|---|---|
+| `short_link` | A link on a shortener host. Store the expanded link |
+| `provider_not_reopenable` | A link on a provider no reader can reopen at the image's date: a dateless basemap, an account-only viewer, a composite or a closed service. The message names the provider to use instead |
+| `permalink_shape` | A link on an accepted provider that lacks what reopens the image, such as the date or the release. The message names what is missing |
+| `provider_unknown` | No link opens a listed provider, and a link on an unlisted host carries no archived copy. One per source |
+| `capture_date_missing` | No `captured_at`. One per source |
+
+The form runs the same check while the analyst types, through [`POST /sources/check`](#post-sourcescheck).
 
 ### Event write errors
 
@@ -744,6 +759,55 @@ To copy a pick, post a new source whose `media_id` is the pick's `media.id`, wit
 |------|------|
 | 422 | `q` shorter than 3 or longer than 2000 characters, or `limit` outside [1, 20] |
 
+### `POST /sources/check` 🔒
+
+The imagery provider check of a source as the form holds it: the provider each link opens and the [warnings](#imagery-warnings) the source would carry once saved. Writes nothing. The event form calls it once typing pauses on a `satellite` or `aircraft` source.
+
+**Request body (JSON):**
+```json
+{
+  "kind": "satellite",
+  "captured_at": "2024-07-12T10:00",
+  "links": [
+    { "url": "https://earth.google.com/web/@47.0951,37.5413,50a,2000d,35y,0h,0t,0r", "snapshot_url": null }
+  ]
+}
+```
+
+`kind` is `satellite` or `aircraft`. `captured_at` and each link's `snapshot_url` are optional and read as in [`SourceCreate`](#sources); a `snapshot_url` is not validated here, only its presence counts.
+
+**Response 200:** a `SourceCheckRead`.
+```json
+{
+  "links": [
+    {
+      "url": "https://earth.google.com/web/@47.0951,37.5413,50a,2000d,35y,0h,0t,0r",
+      "provider": {
+        "id": "google_earth",
+        "name": "Google Earth web",
+        "group": "accepted",
+        "credit": "Google and every provider listed in Data attribution",
+        "help": "Turn on historical imagery, step to the capture day and copy the link: it carries the date. Google Earth Pro has no link, so reopen the same date in Google Earth web."
+      }
+    }
+  ],
+  "warnings": [
+    {
+      "code": "permalink_shape",
+      "message": "Google Earth web: The link carries no imagery date. Turn on historical imagery, step to the capture day, and copy the link again.",
+      "url": "https://earth.google.com/web/@47.0951,37.5413,50a,2000d,35y,0h,0t,0r"
+    }
+  ]
+}
+```
+
+`provider` is `null` for an unlisted link. `group` is `accepted`, `other`, `aircraft_archive` or `not_reopenable`; `credit` is `""` for `not_reopenable`. [`imagery.md`](imagery.md) lists every provider.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 422 | A `kind` other than `satellite` or `aircraft`, more than 100 links, a URL over 2000 characters, or an unknown field |
+
 ### `GET /events`
 
 List one lifecycle view, newest or oldest first, as `EventList` cards (no full proof).
@@ -754,7 +818,7 @@ List one lifecycle view, newest or oldest first, as `EventList` cards (no full p
 | `view` | string | `located` (default, the catalog: `geolocated` + `detected` rows, plus a `closed` row whose `before_closed_status` was `detected`) or `requested` (the open-call queue: `requested` rows, plus a `closed` row whose `before_closed_status` was `requested`). A retraction (`closed` off `geolocated`) is in neither and is reachable by its own URL. Anything else → 422. |
 | `status` | string (repeatable) | Narrows within the view, for example `?view=requested&status=closed`. Repeat to OR within the bucket. Values outside `requested` / `detected` / `geolocated` / `closed` return 422; a value the view can't contain returns an empty list. |
 | `conflict` | string (repeatable) | Filter by [conflict](#conflicts) name (`conflicts.name`). OR within the bucket, AND across buckets. |
-| `source_kind` | string (repeatable) | Keeps an event with a source of this [kind](#sources): `smartphone`, `camera`, `static_camera`, `drone`, `satellite`, `dashcam`, `body_cam`, `article`, `official_statement`, `other` or `unknown`. Same OR / AND semantics. Any other value returns 422. |
+| `source_kind` | string (repeatable) | Keeps an event with a source of this [kind](#sources): `smartphone`, `camera`, `static_camera`, `drone`, `aircraft`, `satellite`, `dashcam`, `body_cam`, `article`, `official_statement`, `other` or `unknown`. Same OR / AND semantics. Any other value returns 422. |
 | `level` | string (repeatable) | Keeps an event with a source of this evidence level: `direct`, `indirect` or `context`. Same OR / AND semantics. Any other value returns 422. |
 | `tag` | string (repeatable) | Filter by tag name, on the event or on one of its sources. Same OR / AND semantics. |
 | `bbox` | string | `south,west,north,east` (four comma-separated floats). 422 on malformed input; latitudes in [-90, 90], longitudes in [-180, 180], south ≤ north, west ≤ east. |
@@ -1023,7 +1087,8 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
         "kind": "video",
         "sha256": "f7c3bcd13f00e8a4b2d4e9b3f1a2c5d6e7f8901234567890abcdef1234567890",
         "original_filename": "IMG_2034.MOV"
-      }
+      },
+      "warnings": []
     }
   ],
   "proof": "<p>Matched the ridgeline and the pylon.</p><img src=\"https://media.example/proof/…jpg\">",
@@ -1062,6 +1127,7 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
 | `sources[].media` | The source's file, `null` for a source that is only URLs. A proof image lives inline in the `proof` HTML as an `img` src |
 | `sources[].media.role` | `source` for a source's file, `proof` for a proof image, derived from the row's parent. Every `MediaRead` carries it, `thumbnail` and snapshot `proof_media` included. Only a `source` image has `_hero` / `_thumb` derivatives, so read a `proof` `storage_url` as is |
 | `sources[].kind` | `unknown` on a machine source until review |
+| `sources[].warnings` | On a `satellite` or `aircraft` source, what keeps a reader from reopening its image. See [Imagery warnings](#imagery-warnings). Every write answers them too |
 | `detected_from_url` | The post an imported row came from; `null` for a human submit. Read from the event's [`event_detections`](data-model.md#event_detections) row. Not a source |
 | `detected_via` | The ingest entry that produced a machine detection: `bot`, `paste` or `archive`. Stamped once at creation; `null` for a human submit and for a machine row that names no entry. Read from the `event_detections` row |
 | `requested_by` | The analyst who opened the request; `null` on a directly created event |
