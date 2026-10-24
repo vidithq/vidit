@@ -1,0 +1,28 @@
+{
+  "id_str": "8950000000000000001",
+  "created_at": "2026-05-20T08:15:00.000Z",
+  "user": { "screen_name": "ridge_finch" },
+  "text": "Geolocated 50.412300, 30.512400 warehouse fire\nSource: https://t.co/fakeSRC\nImagery: https://t.co/fakeGE\nSite: https://t.co/fakeWIKI",
+  "mediaDetails": [
+    {
+      "type": "photo",
+      "media_url_https": "https://pbs.twimg.com/media/FAKEOP97.jpg"
+    }
+  ],
+  "entities": {
+    "urls": [
+      {
+        "url": "https://t.co/fakeSRC",
+        "expanded_url": "https://x.com/front_owl/status/1790000000000000002"
+      },
+      {
+        "url": "https://t.co/fakeGE",
+        "expanded_url": "https://earth.google.com/web/@50.4123,30.5124,150a,800d,35y,0h,0t,0r"
+      },
+      {
+        "url": "https://t.co/fakeWIKI",
+        "expanded_url": "https://en.wikipedia.org/wiki/Example_warehouse"
+      }
+    ]
+  }
+}

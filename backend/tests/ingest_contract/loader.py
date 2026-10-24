@@ -17,7 +17,7 @@ from typing import Any
 
 import httpx
 
-from app.services.tweet_ingest import Resolution, acquire_thread, read_tweets, stitch
+from app.services.tweet_ingest import Detection, Resolution, acquire_thread, read_tweets, stitch
 from app.services.tweet_ingest.records import TweetRecord
 from app.services.tweet_ingest.syndication import _cache_clear
 from app.services.tweet_ingest.urls import TELEGRAM_HOST_RE
@@ -83,11 +83,25 @@ def expected_for_path(typology: str, path: str) -> dict[str, Any]:
     return {**expected, **overrides}
 
 
+def secondary_sources_of(detection: Detection) -> list[dict[str, Any]]:
+    """A detection's mirrors and context links in ``expected.json``'s shape."""
+    return [
+        {
+            "url": extra.url,
+            "level": extra.level,
+            "kind": extra.kind,
+            "title": extra.title,
+            "posted_at": extra.posted_at.isoformat() if extra.posted_at else None,
+        }
+        for extra in detection.secondary_sources
+    ]
+
+
 def assert_resolution_matches(typology: str, path: str, resolution: Resolution) -> None:
     """Assert one entry's resolution answers the typology's expectation.
 
-    One detection per coordinate, each carrying the title, source, mirrors, warnings and
-    media split the expectation names. ``paths.<path>.reason`` pins that entry's refusal.
+    One detection per coordinate, each carrying the title, source, mirrors and context links,
+    warnings and media split the expectation names. ``paths.<path>.reason`` pins that entry's refusal.
 
     An ``expected["request"]`` block pins the second exit (the draft a coordinate-less
     thread yields); a typology without one must yield none. Only the bot asks for the exit
@@ -111,7 +125,7 @@ def assert_resolution_matches(typology: str, path: str, resolution: Resolution) 
     for detection in resolution.detections:
         assert detection.title == expected["title"], typology
         assert detection.source_url == expected["source_url"], typology
-        assert detection.secondary_source_urls == expected["secondary_source_urls"], typology
+        assert secondary_sources_of(detection) == expected["secondary_sources"], typology
         assert detection.warnings == expected["warnings"], typology
         assert [[m.kind, m.origin] for m in detection.source_media] == [
             list(pair) for pair in expected["source_media"]

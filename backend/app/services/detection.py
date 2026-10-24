@@ -41,7 +41,7 @@ from app.models.event import (
     EventVersion,
 )
 from app.models.media import Media, MediaRole
-from app.models.source import Source, SourceLink
+from app.models.source import EVIDENCE_LEVELS, Source, SourceLink
 from app.models.user import User
 from app.schemas.source import SourceCreate, SourceLinkCreate
 from app.services import uploads
@@ -379,10 +379,11 @@ async def _store_media(
 
 
 def _import_sources(detection: Detection, source_media: Media | None) -> list[Source]:
-    """The sources a detection declares, all ``direct`` and ``unknown`` (a review names the kind).
+    """The sources a detection declares, spaced a microsecond apart so they keep its order.
 
-    The declared source (its URL and post time, and the footage) when there is one, then one
-    source per mirror. Spaced a microsecond apart so the declared one sorts first.
+    The declared source (its URL and post time, and the footage) when there is one, ``direct``
+    and ``unknown`` (a review names the kind); then one source per mirror or context link, with
+    the level, kind, title and post time the resolution gave it.
     """
     now = datetime.now(UTC)
     sources: list[Source] = []
@@ -400,32 +401,48 @@ def _import_sources(detection: Detection, source_media: Media | None) -> list[So
                 media=source_media,
             )
         )
-    for offset, url in enumerate(detection.secondary_source_urls, start=1):
+    for offset, extra in enumerate(detection.secondary_sources, start=1):
         sources.append(
             Source(
-                level="direct",
-                kind="unknown",
+                level=extra.level,
+                kind=extra.kind,
+                title=extra.title,
                 created_at=now + timedelta(microseconds=offset),
-                links=[SourceLink(url=url)],
+                links=[SourceLink(url=extra.url, posted_at=extra.posted_at)],
             )
         )
     return sources
 
 
-def _import_shape(sources: Sequence[Source]) -> list[list[tuple[str, datetime | None]]]:
-    """The links of each source, in order: what an import owns of a row's sources."""
-    return [[(link.url, link.posted_at) for link in source.links] for source in sources]
+# What an import owns of one source: its level, kind, title and ``(url, posted_at)`` links.
+_SourceShape = tuple[str, str, str, list[tuple[str, datetime | None]]]
 
 
-def _declared_shape(
-    detection: Detection, has_footage: bool
-) -> list[list[tuple[str, datetime | None]]]:
-    shape: list[list[tuple[str, datetime | None]]] = []
+def _import_shape(sources: Sequence[Source]) -> list[_SourceShape]:
+    """What an import owns of a row's sources, in order."""
+    return [
+        (
+            source.level,
+            source.kind,
+            source.title,
+            [(link.url, link.posted_at) for link in source.links],
+        )
+        for source in sources
+    ]
+
+
+def _declared_shape(detection: Detection, has_footage: bool) -> list[_SourceShape]:
+    shape: list[_SourceShape] = []
     if detection.source_url is not None:
-        shape.append([(detection.source_url, detection.source_posted_at)])
+        shape.append(
+            ("direct", "unknown", "", [(detection.source_url, detection.source_posted_at)])
+        )
     elif has_footage:
-        shape.append([])
-    shape += [[(url, None)] for url in detection.secondary_source_urls]
+        shape.append(("direct", "unknown", "", []))
+    shape += [
+        (extra.level, extra.kind, extra.title, [(extra.url, extra.posted_at)])
+        for extra in detection.secondary_sources
+    ]
     return shape
 
 
@@ -466,7 +483,7 @@ async def _persist_one(
         db.flush()  # populate geo.id for media keys + the Media FK
 
         source_media, proof_image_urls = await _store_media(db, geo, resolved, uploaded_keys)
-        # Mirrors already normalized and capped by the resolution.
+        # Mirrors and context links already normalized and capped by the resolution.
         geo.sources = _import_sources(detection, source_media)
         if proof_image_urls:
             geo.proof = html_from_text(detection.proof_text, image_srcs=proof_image_urls)
@@ -635,14 +652,16 @@ def _id_chunks(ids: list[uuid.UUID]) -> Iterator[list[uuid.UUID]]:
 
 
 def _rows_without_footage(db: Session, ids: list[uuid.UUID]) -> set[uuid.UUID]:
-    """The rows none of whose sources carries a file, read off the durable rows."""
+    """The rows none of whose direct or indirect sources carries a file, read off the durable
+    rows: the set the publish floor reads (``EVIDENCE_LEVELS``), so a context file is no footage.
+    """
     stored: set[uuid.UUID] = set()
     for chunk in _id_chunks(ids):
         stored.update(
             event_id
             for (event_id,) in db.query(Source.event_id)
             .join(Media, Media.source_id == Source.id)
-            .filter(Source.event_id.in_(chunk))
+            .filter(Source.event_id.in_(chunk), Source.level.in_(EVIDENCE_LEVELS))
         )
     return set(ids) - stored
 
@@ -878,7 +897,8 @@ async def open_request(
     ``events.create_request`` like a person's request, plus provenance (``event_detections.via='bot'``)
     so a second mention recognises it. The footage is the draft's ordered candidates; the first
     that fetches is staged like a person's upload (``uploads.stage_upload``, which validates
-    it) and becomes the file of the declared source. Each mirror becomes a source of its own.
+    it) and becomes the file of the declared source. Each mirror and context link becomes a source
+    of its own.
 
     A coordinate-less re-tag lands on the existing row through :func:`_existing_row_for` and
     moves nothing. A coordinate-bearing tag on the same source takes the detections' path and
@@ -934,8 +954,13 @@ async def open_request(
                     upload_id=staged.id,
                 ),
                 *(
-                    SourceCreate(level="direct", kind="unknown", links=[SourceLinkCreate(url=url)])
-                    for url in draft.secondary_source_urls
+                    SourceCreate(
+                        level=extra.level,
+                        kind=extra.kind,
+                        title=extra.title,
+                        links=[SourceLinkCreate(url=extra.url, posted_at=extra.posted_at)],
+                    )
+                    for extra in draft.secondary_sources
                 ),
             ],
             proof_files=[],

@@ -1,0 +1,37 @@
+{
+  "description": "Coordinate, a third-party X status link, a Google Earth link and a Wikipedia link, plus one annotation photo. The two context-host links never count as footage candidates, so the status is the sole candidate and becomes the source; no fixture serves it, so the chase degrades to link-only, and the status id still dates it with no fetch. The Google Earth link becomes a context source of kind satellite titled Google Earth, the Wikipedia link a context source of kind article. No ambiguity is raised.",
+  "coords": [
+    [
+      50.4123,
+      30.5124
+    ]
+  ],
+  "source_url": "https://x.com/front_owl/status/1790000000000000002",
+  "secondary_sources": [
+    {
+      "url": "https://earth.google.com/web/@50.4123,30.5124,150a,800d,35y,0h,0t,0r",
+      "level": "context",
+      "kind": "satellite",
+      "title": "Google Earth",
+      "posted_at": null
+    },
+    {
+      "url": "https://en.wikipedia.org/wiki/Example_warehouse",
+      "level": "context",
+      "kind": "article",
+      "title": "",
+      "posted_at": null
+    }
+  ],
+  "source_posted_at": "2024-05-13T12:43:51+00:00",
+  "occurred_date": "2026-05-20",
+  "title": "Geolocated 50.412300, 30.512400 warehouse fire",
+  "source_media": [],
+  "proof_media": [
+    [
+      "image",
+      "op"
+    ]
+  ],
+  "warnings": []
+}

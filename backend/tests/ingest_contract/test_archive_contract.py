@@ -14,7 +14,7 @@ Offline: media bytes come from ``TINY_JPEG`` / ``TINY_MP4`` and the chased-sourc
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 import pytest
@@ -106,12 +106,12 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
     outcome = await backfill_from_archive(db, owner=owner, archive_dir=archive)
 
     # One row per coordinate-bearing typology, two for multi_coord, none for
-    # no_coord: 9 single + 2 (multi) + 0 = 11.
-    assert len(outcome.created) == 11
+    # no_coord: 11 single + 2 (multi) + 0 = 13.
+    assert len(outcome.created) == 13
     assert len(outcome.skipped) == 0 and outcome.failed == 0
 
     rows = db.query(Event).filter(Event.owner_id == owner.id).all()
-    assert len(rows) == 11
+    assert len(rows) == 13
     assert all(r.status == STATUS_DETECTED for r in rows)
     assert all(r.proof for r in rows)
 
@@ -144,17 +144,33 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
     assert mention_row.title == loader.load_expected("mention_prefix")["title"]
 
     # Link typologies: one direct source with the declared link and no file (not chased here).
+    # Only a real X status id dates its link without the chase.
     link_expected = {
-        "telegram_link": "https://t.me/somechannel/12345",
-        "youtube_link": "https://www.youtube.com/watch?v=FAKEVIDEO01",
-        "x_status_link": "https://x.com/source_gull/status/8500000000000000002",
-        "marker_lines": "https://x.com/warfootage/status/1783000000000000002",
+        "telegram_link": ("https://t.me/somechannel/12345", None),
+        "youtube_link": ("https://www.youtube.com/watch?v=FAKEVIDEO01", None),
+        "x_status_link": ("https://x.com/source_gull/status/8500000000000000002", None),
+        "marker_lines": (
+            "https://x.com/warfootage/status/1783000000000000002",
+            datetime(2024, 4, 24, 5, 8, 21, tzinfo=UTC),
+        ),
     }
-    for typology, url in link_expected.items():
+    for typology, (url, posted_at) in link_expected.items():
         [row] = _rows_for(db, owner, typology)
-        assert _source_links(row) == [[(url, None)]], typology
+        assert _source_links(row) == [[(url, posted_at)]], typology
         assert [(s.level, s.kind) for s in row.sources] == [("direct", "unknown")], typology
         assert _source_files(db, row) == [], typology
+
+    # Context-host links: each a context source after the footage, never the footage itself.
+    [context_row] = _rows_for(db, owner, "context_links")
+    assert [(s.level, s.kind, s.title) for s in context_row.sources] == [
+        ("direct", "unknown", ""),
+        ("context", "satellite", "Google Earth"),
+        ("context", "article", ""),
+    ]
+    [imagery_row] = _rows_for(db, owner, "context_link_only")
+    assert [(s.level, s.kind, s.title) for s in imagery_row.sources] == [
+        ("context", "satellite", "Copernicus Browser")
+    ]
 
     # Media roles + proof-image injection, per typology.
     # referenceless: 2 proof images, both injected into the proof.
@@ -206,7 +222,7 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
 
     # Re-running the same archive is a no-op (idempotent on permalink + coord).
     again = await backfill_from_archive(db, owner=owner, archive_dir=archive)
-    assert again.created == [] and len(again.skipped) == 11
+    assert again.created == [] and len(again.skipped) == 13
 
 
 async def test_x_status_link_chase_persists_source_media(db, owner, tmp_path, monkeypatch):
@@ -409,7 +425,7 @@ def _bare_detection(tweet_id: str, permalink: str) -> Detection:
         occurred_date=date(2026, 3, 4),
         source_posted_at=None,
         detected_post_at=datetime.fromisoformat("2026-03-04T13:20:00+00:00"),
-        secondary_source_urls=[],
+        secondary_sources=[],
         source_media=[],
         proof_media=[
             ParsedMedia(

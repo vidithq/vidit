@@ -1,0 +1,32 @@
+{
+  "description": "Coordinate, one annotation photo and a sole Copernicus Browser link. The link sits on a context host, so it is no footage candidate: the source stays empty, the detection warns source_missing, and the link lands as a context source of kind satellite titled Copernicus Browser.",
+  "coords": [
+    [
+      47.1012,
+      37.5401
+    ]
+  ],
+  "source_url": null,
+  "secondary_sources": [
+    {
+      "url": "https://browser.dataspace.copernicus.eu/?zoom=14&lat=47.1012&lng=37.5401&datasetId=S2_L2A_CDAS",
+      "level": "context",
+      "kind": "satellite",
+      "title": "Copernicus Browser",
+      "posted_at": null
+    }
+  ],
+  "source_posted_at": null,
+  "occurred_date": "2026-05-21",
+  "title": "Burn scar at 47.101200, 37.540100 after the strike",
+  "source_media": [],
+  "proof_media": [
+    [
+      "image",
+      "op"
+    ]
+  ],
+  "warnings": [
+    "source_missing"
+  ]
+}

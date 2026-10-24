@@ -95,9 +95,9 @@ flowchart LR
   refuse["`**refusal**
   coords_missing, coords_invalid, post_unreadable`"]:::spec
   src["`**resolve_source**
-  a sole quote outranks links, else the sole candidate; several leave it empty`"]:::core
+  a sole quote outranks links, else the sole footage candidate; several leave it empty`"]:::core
   sec["`**resolve_secondary_sources**
-  every candidate the source slot did not take`"]:::shared
+  every footage candidate the source slot did not take, then the context links`"]:::shared
   media["`**split_media**
   the source's media, or the first own video; everything else is a proof image`"]:::shared
   title["`**derive_title, clean_proof_text**
@@ -133,7 +133,8 @@ Each derived field fills on a signal in that text, or stays empty:
 | Field | Rule |
 |---|---|
 | Coordinate | Four extractors ([`extract.py`](../backend/app/services/tweet_ingest/extract.py)) run in the order below; position in the line does not matter and there is no cap. Several coordinates make several detections and raise `several_coordinates`. |
-| `source_url` | Every link is a candidate whatever its host, minus three that point at no footage: a status link back to the analyst's own post, an X link naming no status, and a Google Maps link, which is where the coordinate came from. A quote is itself a candidate, so two quoted posts are two candidates. Several candidates raise `source_ambiguous` and all of them land as [secondary source links](#secondary-source-links); none raises `source_missing`. |
+| `source_url` | Every link is a footage candidate whatever its host, minus four kinds that point at no footage: a status link back to the analyst's own post, an X link naming no status, a Google Maps link, which is where the coordinate came from, and a link on a [context host](#context-hosts). A quote is itself a candidate, so two quoted posts are two candidates. Several candidates raise `source_ambiguous` and all of them land as [mirrors](#mirrors-and-context-links); none raises `source_missing`, whatever context links the post carries. |
+| Link post date | An X status link, on the source or a mirror, is dated off its status ID: the ID holds the post's millisecond above bit 22 (`urls.x_status_posted_at`), so the date needs no fetch and is cut to the second. A pre-snowflake ID or an instant in the future dates nothing. Any other link is dated only when [the chase](#the-chase) served its post date. |
 | `from_url` of the [`event_detections`](data-model.md#event_detections) row (`detected_from_url` on the wire) | The thread's own permalink. Provenance, never the source. |
 | Source media | The media of the post the source names and nothing else, so another quoted post's media is dropped rather than filed as annotation. One file for the declared source (one file per source, `uq_media_source_id`); with no quote, the chased post's media fills the slot, else the thread's first own video. Photos are never promoted: the proof embeds images only, so a video left in the annotation slot is dropped at persistence. |
 | Title | Cut at 120 characters on a word boundary. Nothing inside the qualifying line is stripped, so a hashtag, a mention, a link or a coordinate inside it stays. No line qualifying leaves it empty for review. |
@@ -231,9 +232,31 @@ Every chase is fail-soft: a refusing upstream reads as "no footage", never as a 
 
 **Retries.** Every outgoing fetch shares one schedule ([`retry.py`](../backend/app/services/tweet_ingest/retry.py)): three attempts, pausing 1 s then 3 s, never sleeping more than 6 s in total, honouring a longer `Retry-After` within that budget. Only a throttled or unreachable upstream earns a retry; a post that is gone, a restricted one and a payload that will not parse come back on the first attempt.
 
-### Secondary source links
+### Mirrors and context links
 
-`secondary_source_urls` ([`resolve_secondary_sources`](../backend/app/services/tweet_ingest/resolve.py)) holds the candidates the source slot did not take, in order, with blanks and repeats dropped and the list cut to 9, so the declared source and the mirrors fit the 10 sources an event holds. The analyst keeps, merges or drops them at review. Each becomes a source of its own on the row (see [What a detection writes](#what-a-detection-writes)).
+`secondary_sources` ([`resolve_secondary_sources`](../backend/app/services/tweet_ingest/resolve.py)) holds the footage candidates the source slot did not take, in order, then the context links, with blanks and repeats dropped. The list is cut to 9, footage candidates first, so the declared source and the rest fit the 10 sources an event holds. The analyst keeps, merges or drops them at review. Each becomes a source of its own on the row (see [What a detection writes](#what-a-detection-writes)).
+
+A mirror is a footage candidate: a `direct` source of kind `unknown`. A context link is a `context` source of its host's kind.
+
+### Context hosts
+
+`CONTEXT_HOSTS` ([`urls.py`](../backend/app/services/tweet_ingest/urls.py)) is a closed list of hosts that never carry the filmed act. A host covers itself and its subdomains, and a path prefix narrows it where the host serves other products. A link on one of them is never a footage candidate, so it neither fills the source slot nor makes the source ambiguous, and the chase never fetches it.
+
+| Host | Path | Kind | Title |
+|---|---|---|---|
+| `earth.google.com` | any | `satellite` | Google Earth |
+| `google.com` | `/earth` | `satellite` | Google Earth |
+| `browser.dataspace.copernicus.eu` | any | `satellite` | Copernicus Browser |
+| `sentinel-hub.com` | any | `satellite` | Sentinel Hub |
+| `firms.modaps.eosdis.nasa.gov` | any | `satellite` | NASA FIRMS |
+| `worldview.earthdata.nasa.gov` | any | `satellite` | NASA Worldview |
+| `livingatlas.arcgis.com` | `/wayback` | `satellite` | Esri Wayback |
+| `earthexplorer.usgs.gov` | any | `satellite` | USGS EarthExplorer |
+| `mapcarta.com`, `geoview.info`, `oct7map.com`, `3rbmap.com` | any | `other` | none |
+| `wikipedia.org` | any | `article` | none |
+| `gofundme.com` | any | `other` | none |
+
+A news or official site stays a footage candidate: it can host the only copy of the footage. The review raises a context source to `indirect` when the imagery shows the aftermath.
 
 Two links count as one when they share an identity. An X status keys on its status ID, so `x.com`, `twitter.com`, trailing-slash and query variants of one status are one link. Every other host keys on host plus path plus the query minus tracking parameters (`utm_*`, `si`, `s`, `t`, `ref*`, `feature`, `fbclid`, `gclid`, `igshid`): `watch?v=AAA` and `watch?v=BBB` are two links, `watch?v=AAA&si=…` is one link shared twice. The candidate whose identity matches the resolved `source_url` is excluded.
 
@@ -243,17 +266,17 @@ A warning is not a refusal: the detection lands either way, and review answers i
 
 | Warning | Raised when |
 |---|---|
-| `source_ambiguous` | Several candidate links, so `source_url` stayed empty and all of them landed as secondary links. |
-| `source_missing` | No candidate link and no quote. |
+| `source_ambiguous` | Several footage candidates, so `source_url` stayed empty and each landed as a source of its own. |
+| `source_missing` | No footage candidate: no quote, and no link off the context hosts. A context link does not count. |
 | `several_coordinates` | One thread carried several coordinates, so it produced one detection each. |
 
 `persist_detections` raises what the row it wrote ended up with, on every created or updated row:
 
 | Warning | Raised when |
 |---|---|
-| `source_footage_missing` | No source file landed: a link-only source, a media-less or restricted source post, or a fetch that came back short. |
+| `source_footage_missing` | No `direct` or `indirect` source carries a file, the set the [evidence floor](api.md#evidence-floor) reads: a link-only source, a media-less or restricted source post, or a fetch that came back short. |
 | `source_fetch_failed` | Same empty source slot, but the chase died on an upstream that would not answer, the retries already spent. The footage may well exist, so importing the post again later is a repair; the two footage codes never appear together. |
-| `source_date_unknown` | The source's post date came back unknown, so the provisional event date anchors on the analyst's own post alone. |
+| `source_date_unknown` | The source's post date is unknown: a source off X whose chase served no date. The provisional event date anchors on the analyst's own post alone. |
 | `duplicate_media` | The row's media already exists on another event, by exact `Media.sha256` equality against every event outside the pass. |
 
 The footage and date warnings are dropped on a detection already carrying `source_ambiguous` or `source_missing`, since an empty source slot already says why there is neither footage nor date. Only created and updated rows count, so a pass that wrote nothing reports no warnings.
@@ -283,6 +306,8 @@ Each row is one input shape and the outcome the engine produces for it. The thre
 | Coordinate only in the quoted post (`quote_coord_in_quoted`) | `0`, no coordinate (`coords_missing`); no request for the bot, a coordinate in the quoted post is a geolocation |
 | `T:` / `C:` / `S:` marker lines (`marker_lines`) | 1 detection, the markers kept as text |
 | `Source:` line naming one of two links | 1 detection, source empty, two mirrors |
+| Third-party X status link, a Google Earth link and a Wikipedia link (`context_links`) | 1 detection, source is the status dated off its ID, two context sources: `satellite` titled Google Earth, then `article` |
+| Sole Copernicus Browser link (`context_link_only`) | 1 detection, source empty (`source_missing`), one `satellite` context source titled Copernicus Browser |
 | Two links, no `Source:` line | 1 detection, source empty, two mirrors |
 | Sole link off the chase vocabulary (TikTok, Instagram, an article) | 1 detection, source is the link |
 | Sole X profile link (`x_profile_link`) | 1 detection, source empty |
@@ -314,12 +339,13 @@ A `detected` row is **public on every read surface from the moment it lands**, b
 
 ### What a detection writes
 
-[`detection.persist_detections`](../backend/app/services/detection.py) turns the `Detection`'s source fields into [sources](data-model.md#sources) on the row. Every machine source is `direct` and of kind `unknown`, with no title, no capture time and no capture position: the review names the kind, at the form or per row in [`POST /events/batch-complete`](api.md#post-eventsbatch-complete).
+[`detection.persist_detections`](../backend/app/services/detection.py) turns the `Detection`'s source fields into [sources](data-model.md#sources) on the row, in the order below. No machine source carries a capture time or a capture position. A footage source is `direct` and of kind `unknown`, with no title: the review names the kind, at the form or per row in [`POST /events/batch-complete`](api.md#post-eventsbatch-complete).
 
 | `Detection` field | Becomes |
 |---|---|
-| `source_url`, its post date, and the source media | One source holding the footage file and one link with that URL and date. With footage and no `source_url`, the source holds the file and no link, which the review must fill. With neither, no source |
-| Each `secondary_source_urls` entry | One more source, with that one link and no file |
+| `source_url`, its post date, and the source media | One `direct` source holding the footage file and one link with that URL and date. With footage and no `source_url`, the source holds the file and no link: the source is incomplete, and the review adds a link before the detection publishes. With neither, no source |
+| Each mirror in `secondary_sources` | One `direct` source of kind `unknown`, with that one link, dated when it is an X status, and no file |
+| Each context link in `secondary_sources` | One `context` source of its [host's](#context-hosts) kind and title, with that one link and no file |
 | Proof images | `media` rows on the event, inline in the proof body; never a source |
 
 A source the import wrote is no different from one an analyst wrote: the review edits, merges, copies or drops it like any other.
@@ -379,7 +405,7 @@ A row that lands `done` carries its `outcome` whatever the result, and the worke
 
 **A reply only inherits its parent's tag.** X opens a reply with the parent's author and the parent's mentions minus the replier, so an analyst answering a colleague whose post tagged the bot mentions the bot without typing a character. A mention counts as a tag only where its author typed it. On a post that is not a reply, every `@ViditBot` is typed. On a reply, one sitting past that leading run of mentions is typed, which is every analyst who writes their sentence and tags after it, the dot-mention `.@ViditBot` included, since the period is a character X never writes into a prefix. A reply whose only `@ViditBot` sits inside the run is settled by its parent, read once through syndication: a parent that mentions the bot, the bot's own post included, is where the tag came from, so the bot acquires nothing, answers nothing and ledgers the mention `inherited`. A parent that mentions the bot nowhere leaves the tag typed, which is what keeps the bare `@ViditBot` under the analyst's own coordinate post, and [the climb](#what-acquisition-reads) it opens, working. A parent syndication will not serve reads as inherited as well, since silence beats a refusal on a thread the tag may never have been meant for. The rule holds inside the analyst's own thread: a follow-up under a post they already tagged inherits that tag, and a re-tag they mean is typed after the prefix. The parent read is the rule's only cost, one free syndication call, spent only where the text cannot settle it.
 
-**A coordinate-less mirror post opens a request.** An analyst who re-uploads someone else's footage and links the original has posted everything a request needs except the geolocation, which is what a request asks for. The bot reads that off the same resolution the detections come from ([`resolve.RequestDraft`](../backend/app/services/tweet_ingest/resolve.py)) and writes it through [`detection.open_request`](../backend/app/services/detection.py), which calls the same `events.create_request` a person's request goes through: the row is owned by and credited to the analyst, stamped `requested_at`, carrying one `direct` source that holds the post it points at as its link and the thread's footage as its file, staged through the same upload a person's file takes, plus one source per mirror, with no coordinate. Six conditions hold together, and any one of them failing opens no request: the tagged post carries a usable id, the chase for the source did not fail transiently, the thread resolves a source, no quoted post carries a coordinate, the thread carries footage, and the title is not empty. The source's host decides what gets fetched, never whether a request opens: an X status and a public `t.me` post are chased, so their own clip and post date fill the row, and every other host is stored as the post wrote it with no date, which makes the analyst's own upload the only footage such a thread can offer. One of the six names itself back, as the `request_not_possible` the ❌ reply carries: the post points at a source and carries no footage to store. The other five leave the mention at `coords_missing`, and so does a post that declared no source at all, since a re-tag, a rewrite or a link is what answers each of those and none of them is a request the bot refused to open. A coordinate anywhere in the thread, own post or quoted post, is a geolocation, never a request. A coordinate-less thread whose read was [truncated](#what-acquisition-reads) opens no request either, since the coordinate may sit in a post the read never reached; the mention earns `thread_truncated`. The row also carries the [`event_detections`](data-model.md#event_detections) row a detection carries, its `via` reading `bot`. What a re-tag does then depends on what it carries: a coordinate-less re-tag, of the same post or of a repost of it, lands on the row and moves nothing, so the bot stays silent; a tag carrying the coordinate the analyst has since worked out is a geolocation, so it takes the detections' path and lands a `detected` row beside the open request, which stays its owner's to withdraw. A soft-deleted row never matches: a takedown must not fence the owner off from mirroring that footage again.
+**A coordinate-less mirror post opens a request.** An analyst who re-uploads someone else's footage and links the original has posted everything a request needs except the geolocation, which is what a request asks for. The bot reads that off the same resolution the detections come from ([`resolve.RequestDraft`](../backend/app/services/tweet_ingest/resolve.py)) and writes it through [`detection.open_request`](../backend/app/services/detection.py), which calls the same `events.create_request` a person's request goes through: the row is owned by and credited to the analyst, stamped `requested_at`, carrying one `direct` source that holds the post it points at as its link and the thread's footage as its file, staged through the same upload a person's file takes, plus one source per mirror and per context link, with no coordinate. Six conditions hold together, and any one of them failing opens no request: the tagged post carries a usable id, the chase for the source did not fail transiently, the thread resolves a source, no quoted post carries a coordinate, the thread carries footage, and the title is not empty. The source's host decides what gets fetched, never whether a request opens: an X status and a public `t.me` post are chased, so their own clip and post date fill the row, and every other host is stored as the post wrote it with no date, which makes the analyst's own upload the only footage such a thread can offer. One of the six names itself back, as the `request_not_possible` the ❌ reply carries: the post points at a source and carries no footage to store. The other five leave the mention at `coords_missing`, and so does a post that declared no source at all, since a re-tag, a rewrite or a link is what answers each of those and none of them is a request the bot refused to open. A coordinate anywhere in the thread, own post or quoted post, is a geolocation, never a request. A coordinate-less thread whose read was [truncated](#what-acquisition-reads) opens no request either, since the coordinate may sit in a post the read never reached; the mention earns `thread_truncated`. The row also carries the [`event_detections`](data-model.md#event_detections) row a detection carries, its `via` reading `bot`. What a re-tag does then depends on what it carries: a coordinate-less re-tag, of the same post or of a repost of it, lands on the row and moves nothing, so the bot stays silent; a tag carrying the coordinate the analyst has since worked out is a geolocation, so it takes the detections' path and lands a `detected` row beside the open request, which stays its owner's to withdraw. A soft-deleted row never matches: a takedown must not fence the owner off from mirroring that footage again.
 
 The footage is the draft's ordered candidates, the source's media first and the analyst's own video behind it, and the first that fetches fills the slot. A source whose chase could not be read at all is refused rather than drafted, so the next tag retries it; a source whose chase answered with nothing to take is drafted anyway, the analyst's own copy filling the footage slot, so the row lands with footage and the reply carries no `source_fetch_failed`. A clip the evidence intake refuses earns the ❌ reply naming `footage_unusable`, never the one naming a missing coordinate.
 
@@ -532,7 +558,7 @@ The provenance leg is the thread's post IDs, not a URL and not the anchor alone.
 | `closed` | Skipped, whichever state it left. A rejected detection stays rejected, so nobody rejects the same post twice; a withdrawn request is not the import's to reopen; and a retraction is published work its owner took back, so the published-work rule above keeps holding after the close. |
 | No match | A new `detected` row. |
 
-**What an update rewrites.** The row keeps its id, its owner, its `created_at` and `detected_at` stamps, its `event_detections` row (`from_post_id`, `from_url`, `thread_post_ids` and `via`) and its place in the detections queue, so a bot tag landing on a detection the archive created updates it and still reads `archive`. The import overwrites what it owns: the title, the coordinate, the event date, the sources (the declared one with its post date, and one per mirror), the `post_at` of its `event_detections` row, the proof, and the media. A source list whose links moved is rebuilt whole, the footage file carried onto the new declared source. Every field edit is welded to the `geolocated` promotion, so an open detection carries no analyst work to lose.
+**What an update rewrites.** The row keeps its id, its owner, its `created_at` and `detected_at` stamps, its `event_detections` row (`from_post_id`, `from_url`, `thread_post_ids` and `via`) and its place in the detections queue, so a bot tag landing on a detection the archive created updates it and still reads `archive`. The import overwrites what it owns: the title, the coordinate, the event date, the sources (the declared one with its post date, one per mirror and one per context link), the `post_at` of its `event_detections` row, the proof, and the media. A source list whose links, post dates, levels, kinds or titles moved is rebuilt whole, the footage file carried onto the new declared source. Every field edit is welded to the `geolocated` promotion, so an open detection carries no analyst work to lose.
 
 **A short fetch keeps the stored media.** A media the fetch cannot turn into bytes leaves the resolution short of what the post declares, which reads exactly like a post whose media is gone, so the row's media stays as it stands; the other fields still update, and a pass that moves nothing else counts the row `skipped`. Media compares by `Media.sha256`, so re-running the same export leaves `updated_at` where it was and creates no storage objects.
 

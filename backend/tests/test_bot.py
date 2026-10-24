@@ -1360,7 +1360,7 @@ def test_compose_reply_carries_one_line_per_warning_and_stays_in_the_cap():
         assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
 
     ambiguous = compose_reply(event_id, detections=2, warnings=[SOURCE_AMBIGUOUS, DUPLICATE_MEDIA])
-    assert "Several possible sources" in ambiguous
+    assert "Several source links" in ambiguous
     assert "The source served no footage" not in ambiguous and "post date" not in ambiguous
     assert reply_weighted_len(ambiguous) <= REPLY_MAX_WEIGHTED_LEN
 

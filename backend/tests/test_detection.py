@@ -27,7 +27,12 @@ from app.models.media import Media
 from app.models.source import Source, SourceLink
 from app.models.user import User
 from app.services.auth import hash_password
-from app.services.detection import Outcome, backfill_from_archive, persist_detections
+from app.services.detection import (
+    Outcome,
+    _write_warnings,
+    backfill_from_archive,
+    persist_detections,
+)
 from app.services.sanitize import extract_image_srcs, html_text
 from app.services.storage import get_storage
 from app.services.tweet_ingest import (
@@ -41,6 +46,7 @@ from app.services.tweet_ingest import (
     ParsedMedia,
     Resolution,
 )
+from app.services.tweet_ingest.resolve import LinkSource
 from tests._fixtures import TINY_JPEG, stored_bytes, stored_path
 
 ARCHIVE = Path(__file__).parent / "data" / "synthetic_archive"
@@ -161,6 +167,7 @@ def _detection(
     source_posted_at: datetime | None = None,
     source_fetch_failed: bool = False,
     secondary_source_urls: list[str] | None = None,
+    secondary_sources: list[LinkSource] | None = None,
     title: str = "Strike at Bakhmut",
     proof_text: str = "Strike at Bakhmut\nGeolocated by analyst",
 ) -> Detection:
@@ -180,7 +187,11 @@ def _detection(
         occurred_date=date(2025, 11, 12),
         source_posted_at=source_posted_at,
         detected_post_at=datetime(2025, 11, 12, 14, 33, tzinfo=UTC),
-        secondary_source_urls=secondary_source_urls or [],
+        secondary_sources=(
+            secondary_sources
+            if secondary_sources is not None
+            else [LinkSource(url=url) for url in secondary_source_urls or []]
+        ),
         source_media=media or [],
         proof_media=proof_media or [],
         source_fetch_failed=source_fetch_failed,
@@ -302,6 +313,61 @@ async def test_each_mirror_lands_as_its_own_direct_source_after_the_declared_one
         ("direct", "unknown", [("https://t.me/channel/11", None)], False),
         ("direct", "unknown", [("https://www.youtube.com/watch?v=M1", None)], False),
     ]
+
+
+_EARTH = LinkSource(
+    url="https://earth.google.com/web/@48.5,34.5,50a",
+    level="context",
+    kind="satellite",
+    title="Google Earth",
+)
+
+
+async def test_a_context_link_lands_as_a_context_source_with_its_kind_and_title(db, owner):
+    """A dated mirror keeps its post time; a context link keeps its level, kind and title."""
+    mirror = LinkSource(url="https://x.com/m/status/9", posted_at=datetime(2024, 5, 1, tzinfo=UTC))
+    sourced = _detection(
+        source_url="https://x.com/src/status/9", secondary_sources=[mirror, _EARTH]
+    )
+    outcome = await _persist(db, owner=owner, detections=[sourced], fetch_media=_image_fetcher)
+    geo = _row(db, outcome.created[0])
+    assert [(s.level, s.kind, s.title) for s in geo.sources] == [
+        ("direct", "unknown", ""),
+        ("direct", "unknown", ""),
+        ("context", "satellite", "Google Earth"),
+    ]
+    assert [link.posted_at for link in geo.sources[1].links] == [mirror.posted_at]
+
+
+async def test_a_re_import_rebuilds_a_mirror_the_resolution_now_reads_as_context(db, owner):
+    """The re-import shape reads level, kind and title, not only the links."""
+    before = _detection(source_url="https://x.com/src/status/9", secondary_source_urls=[_EARTH.url])
+    await _persist(db, owner=owner, detections=[before], fetch_media=_image_fetcher)
+
+    after = dataclasses.replace(before, secondary_sources=[_EARTH])
+    outcome = await _persist(db, owner=owner, detections=[after], fetch_media=_image_fetcher)
+
+    assert len(outcome.updated) == 1
+    geo = _row(db, outcome.updated[0])
+    assert [(s.level, s.kind) for s in geo.sources] == [
+        ("direct", "unknown"),
+        ("context", "satellite"),
+    ]
+
+
+async def test_a_file_on_a_context_source_is_no_footage(db, owner):
+    """The footage warning reads direct and indirect sources only, as the publish floor does."""
+    sourced = _detection(source_url="https://x.com/src/status/9", media=[_img()])
+    outcome = await _persist(db, owner=owner, detections=[sourced], fetch_media=_image_fetcher)
+    assert SOURCE_FOOTAGE_MISSING not in outcome.warnings
+    geo = _row(db, outcome.created[0])
+    geo.sources[0].level = "context"
+    db.commit()
+
+    assert _write_warnings(db, [(geo.id, sourced)]) == {
+        SOURCE_FOOTAGE_MISSING: 1,
+        SOURCE_DATE_UNKNOWN: 1,
+    }
 
 
 async def test_two_fetchable_source_media_store_one_file_on_the_declared_source(db, owner):
@@ -896,7 +962,10 @@ async def test_reimporting_the_same_detection_twice_writes_nothing(db, owner):
     # Idempotence: no field churn, re-upload, new objects, or ``updated_at`` move.
     detection = _detection(
         source_url="https://t.me/chan/1",
-        secondary_source_urls=["https://www.youtube.com/watch?v=M1"],
+        secondary_sources=[
+            LinkSource(url="https://x.com/m/status/9", posted_at=datetime(2024, 5, 1, tzinfo=UTC)),
+            _EARTH,
+        ],
         media=[_img()],
         proof_media=[_img()],
     )
