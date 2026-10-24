@@ -56,7 +56,7 @@
       "viewport": { "width": 1440, "height": 900 },
       "clip": { "x": 120, "y": 0, "width": 1220, "height": 320 },
       "dpr": 1,
-      "alt": "Another analyst's geolocation, signed in, with its Approvals card numbered",
+      "alt": "Another analyst's geolocation, signed in, with its approvals numbered",
       "markers": [
         { "target": "section[aria-label=\"Approvals\"]", "place": "top-left", "label": "Each stamp backs the current version." },
         { "target": "section[aria-label=\"Approvals\"] >> role=button[name=\"Approve\"]", "place": "right", "label": "Approve adds your stamp, once you confirm." }

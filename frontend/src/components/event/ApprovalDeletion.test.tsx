@@ -31,7 +31,8 @@ vi.mock("@/contexts/AdminContext", () => ({
 }));
 
 import { ApiError } from "@/lib/api";
-import { ApprovalsCard } from "./ApprovalsCard";
+import { VersionApprovals } from "./Approvals";
+import { useEventApprovals } from "./EventApprovals";
 
 const ALL = "/events/e1/approvals?all_versions=true";
 const event = { ...eventDetail("e1", "Bridge strike"), version_no: 2, geolocators: [] };
@@ -46,7 +47,7 @@ const approval: Approval = {
 
 function Panel() {
   const approvals = useApiResource<ApprovalList>(allApprovalsPath(event.id));
-  return <ApprovalsCard event={event} approvals={approvals} />;
+  return <>{useEventApprovals(event, approvals).summary}</>;
 }
 
 let rows: Approval[];
@@ -74,10 +75,34 @@ describe("deleting an approval", () => {
     expect(screen.queryByRole("button", { name: /Delete approval/ })).toBeNull();
   });
 
-  it("shows a delete control per approval to a site admin", async () => {
+  it("puts a delete control on each stamp for a site admin", async () => {
     api.admin = true;
     render(<Panel />);
-    expect(await trash()).toBeInTheDocument();
+    const control = await trash();
+    const stamp = within(screen.getByRole("list", { name: "Approved by" })).getByRole("listitem");
+    expect(stamp).toContainElement(control);
+    expect(control.className).toContain("group-hover:opacity-100");
+  });
+
+  it("deletes from a filed version's stamps", async () => {
+    api.admin = true;
+    const V1 = "/events/e1/approvals?version_no=1";
+    rows = [{ ...approval, version_no: 1, current: false }];
+    api.apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+      if (init?.method === "DELETE") {
+        rows = [];
+        return Promise.resolve(undefined);
+      }
+      return Promise.resolve(path === V1 ? { items: rows, viewer_can_approve: false } : []);
+    });
+    const { container } = render(<VersionApprovals event={event} versionNo={1} />);
+    fireEvent.click(await trash());
+    expect(screen.getByRole("dialog")).toHaveTextContent("approval of version 1 by bo");
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete approval" }),
+    );
+    await waitFor(() => expect(container).toBeEmptyDOMElement());
+    expect(deleteCalls()).toEqual([["/admin/approvals/a1", { method: "DELETE" }]]);
   });
 
   it("deletes after the confirmation and refreshes the list", async () => {
@@ -91,7 +116,9 @@ describe("deleting an approval", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete approval" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(deleteCalls()).toEqual([["/admin/approvals/a1", { method: "DELETE" }]]);
-    expect(await screen.findByText("No approvals yet")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByRole("list", { name: "Approved by" })).toBeNull(),
+    );
   });
 
   it("sends nothing on cancel", async () => {

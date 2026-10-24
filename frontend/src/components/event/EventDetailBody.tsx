@@ -31,7 +31,7 @@ interface EventDetailBodyProps {
    * the Details card with the request-trace row in the side column.
    */
   variant: "panel" | "page";
-  /** The page variant's side column above Details (the Location module, the Approvals card). */
+  /** The page variant's side column above Details (the Location module, the approval requests). */
   side?: ReactNode;
 }
 

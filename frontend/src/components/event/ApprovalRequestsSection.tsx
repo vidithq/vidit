@@ -134,15 +134,16 @@ function RequestApprovalForm({
 }
 
 /** The open approval requests on a published event, and `mine`: those addressed to the reader or
- *  to an organization in `memberOf`. `refreshKey` changes when an approval may have resolved one. */
+ *  to an organization in `memberOf`. `refreshKey` changes when an approval may have resolved one.
+ *  Reads nothing while `event` is null. */
 export function useApprovalRequests(
-  event: EventDetail,
+  event: EventDetail | null,
   memberOf: OrganizationRef[],
   refreshKey: number,
 ) {
   const { user } = useAuth();
   const requests = useApiResource<ApprovalRequest[]>(
-    user && event.status === "geolocated" ? approvalRequestsPath(event.id) : null,
+    user && event?.status === "geolocated" ? approvalRequestsPath(event.id) : null,
   );
   const { refetch } = requests;
   useEffect(() => {
@@ -240,9 +241,9 @@ export function DeclineRequests({
 }
 
 /**
- * A geolocator's approval requests on a published event, the last section of its Approvals card:
- * the open requests, and a form that asks an analyst or an organization to approve the live
- * version.
+ * A geolocator's approval requests on a published event, a section of the event page's side
+ * column under the Location module: the open requests, and a form that asks an analyst or an
+ * organization to approve the live version.
  */
 export function ApprovalRequestsSection({
   event,
@@ -258,8 +259,8 @@ export function ApprovalRequestsSection({
   if (!geolocator) return null;
 
   return (
-    <section className="space-y-3 border-t border-neutral-800 pt-4">
-      <SectionEyebrow as="h3" title="Approval requests" margin="none" />
+    <section aria-label="Approval requests" className="space-y-3">
+      <SectionEyebrow title="Approval requests" margin="none" />
       {rows.length > 0 ? (
         <div className="divide-y divide-neutral-800">
           {rows.map((request) => (

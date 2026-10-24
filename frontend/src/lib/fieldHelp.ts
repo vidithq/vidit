@@ -136,12 +136,12 @@ export const FIELD_HELP = {
     text: "Opens the submit page with this request's sources filled in. Publishing your geolocation answers the request, and you become the owner of the event.",
     label: "What does Geolocate do?",
   },
-  approval_version: {
-    text: "An approval covers one version. When the event gets a new version, approvers are asked to approve again.",
-    label: "What does an approval cover?",
+  approval: {
+    text: "An approval means an analyst or an organization checked this geolocation and agrees with it. It covers one version: when the event gets a new version, approvers are asked to approve again. An approval is final.",
+    label: "What is an approval?",
   },
   approval_filter: {
-    text: "Keeps the events whose current version holds an approval nobody revoked: any approval, or the one an analyst or an organization gave. An approval of an earlier version does not count.",
+    text: "Keeps the events whose current version holds an approval: any approval, or the one an analyst or an organization gave. An approval of an earlier version does not count.",
     label: "Which approvals count?",
   },
   last_org_manager: {

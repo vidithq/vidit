@@ -8,9 +8,9 @@ import {
 
 const NONE: OrganizationRef[] = [];
 
-/** The organizations the signed-in analyst is a member of, the ones they act for (approve, revoke
- *  its approval, answer its approval requests), whatever their role. Empty while loading and when
- *  signed out. Mirrors backend organizations.is_organization_member; change both. */
+/** The organizations the signed-in analyst is a member of, the ones they act for (approve, answer
+ *  its approval requests), whatever their role. Empty while loading and when signed out. Mirrors
+ *  backend organizations.is_organization_member; change both. */
 export function useMemberOrganizations(): OrganizationRef[] {
   const { user } = useAuth();
   const { data } = useApiResource<OrganizationMembership[]>(

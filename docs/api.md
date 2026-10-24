@@ -1618,7 +1618,7 @@ flowchart LR
   join -.-> received
 ```
 
-An approval is a dated attestation that one version of a published event holds. It binds to the pair `(event_id, version_no)` and is **current** while that version is the event's live version. An approval is final: no endpoint revokes it. Saving a new version ends every current approval of the event without changing its row, an archive-only save included. The approval stays readable on the version it covered, and the live version shows none until someone approves it again.
+An approval is a dated attestation that one version of a published event holds. It binds to the pair `(event_id, version_no)` and is **current** while that version is the event's live version. An approval is final. Saving a new version ends every current approval of the event without changing its row, an archive-only save included. The approval stays readable on the version it covered, and the live version shows none until someone approves it again.
 
 - **Who approves.** Any signed-in analyst except the event's current and former geolocators: its owner, every analyst credited through [shared credit](#shared-credit), and every analyst who left the credit or was removed from it. The analyst who opened a fulfilled request is not a geolocator, so they may approve it. A closed event takes no new approval and keeps the ones it has.
 - **Organization approvals.** Any member of an [organization](#organizations), whatever their role, approves in its name by sending the organization's slug. The approval records the member as its `reviewer`. A member who is or was a geolocator of the event cannot approve it for any organization. An analyst outside the organization cannot approve in its name. A member who leaves or is removed leaves the organization's past approvals as they are.
@@ -1658,7 +1658,7 @@ The approvals of the event, ordered by version and then oldest first. At most 50
 | Param | Meaning |
 |---|---|
 | `version_no` | Keep one version. Omitted without `reviewer` or `all_versions`, it is the live version. |
-| `all_versions` | `true` lists every version's approvals. The event page reads the list this way for its Approvals card. |
+| `all_versions` | `true` lists every version's approvals. The event page reads the list this way for its approvals. |
 | `reviewer` | Keep one analyst's own approvals, by username, 1 to 50 characters, without the ones they placed for an organization. Without `version_no`, every version is listed. |
 
 **Response 200 (`ApprovalList`):**
@@ -3299,7 +3299,7 @@ Turn minting invite codes from Settings ([`POST /users/me/invite-codes`](#post-u
 
 ### `DELETE /admin/approvals/{approval_id}` 🛡️
 
-Delete one approval, an analyst's own or one placed for an organization. An approval is final: its reviewer cannot revoke it, so a site admin deletes one that should not stand. The `approval_received` notifications that reported it go with it, and the reviewer or the organization can approve that version again. The route works on any event, a withheld one included. Audited as `approval_deleted` (target `geolocation_id`, `approval_id`, `reviewer_id`, `organization_id`, `version_no`).
+Delete one approval, an analyst's own or one placed for an organization. An approval is final, so a site admin deletes one that should not stand. The `approval_received` notifications that reported it go with it, and the reviewer or the organization can approve that version again. The route works on any event, a withheld one included. Audited as `approval_deleted` (target `geolocation_id`, `approval_id`, `reviewer_id`, `organization_id`, `version_no`).
 
 **Response 204:** no body.
 

@@ -30,7 +30,7 @@ vi.mock("@/contexts/AuthContext", () => ({
 }));
 
 import { ApprovalStamps, VersionApprovals } from "./Approvals";
-import { ApprovalsCard } from "./ApprovalsCard";
+import { useEventApprovals } from "./EventApprovals";
 
 const ANA = { id: "u1", username: "ana" };
 const BO = { id: "u2", username: "bo" };
@@ -66,14 +66,20 @@ function serve(rows: Approval[], extra: Record<string, unknown> = {}) {
 
 function Panel({ geo = event }: { geo?: EventDetail }) {
   const approvals = useApiResource<ApprovalList>(allApprovalsPath(geo.id));
-  return <ApprovalsCard event={geo} approvals={approvals} />;
+  const { summary, requests } = useEventApprovals(geo, approvals);
+  return (
+    <>
+      {summary}
+      {requests}
+    </>
+  );
 }
 
-/** The stamps in the Approvals card, as their link names. */
+/** The stamps under the actions, as who signed each: the link name before *approved vN on*. */
 const stampNames = async () =>
   within(await screen.findByRole("list", { name: "Approved by" }))
     .getAllByRole("link")
-    .map((l) => l.getAttribute("aria-label"));
+    .map((l) => l.getAttribute("aria-label")?.split(" approved ")[0]);
 
 /** Confirm the approval the dialog asks about. */
 const confirmApproval = () =>
@@ -90,7 +96,7 @@ beforeEach(() => {
 
 describe("<ApprovalStamps>", () => {
   it("renders nothing for an empty list", () => {
-    const { container } = render(<ApprovalStamps approvals={[]} onOverflow={vi.fn()} />);
+    const { container } = render(<ApprovalStamps approvals={[]} />);
     expect(container).toBeEmptyDOMElement();
   });
 
@@ -98,64 +104,70 @@ describe("<ApprovalStamps>", () => {
     render(
       <ApprovalStamps
         approvals={[approval(), approval({ id: "a2", reviewer: CY, organization: BELLINGCAT })]}
-        onOverflow={vi.fn()}
+       
       />,
     );
     const stamps = within(screen.getByRole("list", { name: "Approved by" })).getAllByRole("link");
     expect(stamps.map((s) => [s.getAttribute("aria-label"), s.getAttribute("href")])).toEqual([
-      ["bo", "/profile/bo"],
-      ["Bellingcat", "/organizations/bellingcat"],
+      ["bo approved v2 on 15 Oct 2026", "/profile/bo"],
+      ["Bellingcat (cy) approved v2 on 15 Oct 2026", "/organizations/bellingcat"],
     ]);
     expect(stamps[0].className).toContain("rounded-full");
     expect(stamps[1].className).toContain("rounded-md");
     expect(screen.queryByRole("button")).toBeNull();
   });
   it("opens no card on a click", () => {
-    render(<ApprovalStamps approvals={[approval()]} onOverflow={vi.fn()} />);
-    fireEvent.click(screen.getByRole("link", { name: "bo" }));
+    render(<ApprovalStamps approvals={[approval()]} />);
+    fireEvent.click(screen.getByRole("link", { name: /^bo approved/ }));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
   it("stamps an organization approval whose acting org manager was erased", () => {
     render(
       <ApprovalStamps
         approvals={[approval({ organization: BELLINGCAT, reviewer: null })]}
-        onOverflow={vi.fn()}
+       
       />,
     );
-    expect(screen.getByRole("link", { name: "Bellingcat" })).toHaveAttribute(
+    expect(
+      screen.getByRole("link", { name: "Bellingcat approved v2 on 15 Oct 2026" }),
+    ).toHaveAttribute(
       "href",
       "/organizations/bellingcat",
     );
   });
-  it("shows five and folds the rest into a bubble", () => {
-    const onOverflow = vi.fn();
-    const rows = Array.from({ length: 7 }, (_, i) =>
+  it("shows every stamp with a check badge and no count", () => {
+    const rows = Array.from({ length: 20 }, (_, i) =>
       approval({ id: `a${i}`, reviewer: { id: `r${i}`, username: `r${i}` } }),
     );
-    render(<ApprovalStamps approvals={rows} onOverflow={onOverflow} />);
-    expect(screen.getAllByRole("link")).toHaveLength(5);
-    const more = screen.getByRole("button", { name: "Show 2 more approvals" });
-    expect(more).toHaveTextContent("+2");
-    fireEvent.click(more);
-    expect(onOverflow).toHaveBeenCalledOnce();
+    const { container } = render(<ApprovalStamps approvals={rows} />);
+    const links = screen.getAllByRole("link");
+    expect(links).toHaveLength(20);
+    expect(links.every((l) => l.querySelector("svg.lucide-check"))).toBe(true);
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(container).not.toHaveTextContent(/\d/);
   });
 });
 
-describe("<ApprovalsCard>", () => {
-  it("stamps the live version's standing approvals, with no status line and no note", async () => {
+describe("useEventApprovals", () => {
+  it("stamps the live version's standing approvals with no label, count or card", async () => {
     serve([approval(), approval({ id: "a2", reviewer: CY })]);
     render(<Panel />);
 
     expect(await stampNames()).toEqual(["bo", "cy"]);
-    expect(screen.queryByText(/^Approved ·/)).toBeNull();
-    expect(screen.queryByText("No approvals yet")).toBeNull();
+    const summary = screen.getByRole("region", { name: "Approvals" });
+    expect(summary).not.toHaveTextContent(/Approved by|approvals|\d/i);
+    expect(summary.className).not.toMatch(/border|bg-/);
+    expect(
+      within(summary).getByRole("button", { name: "What is an approval?" }),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Skyline matches")).toBeNull();
   });
-  it("says when no approval stands yet, in place of the stamps", async () => {
+  it("shows nothing while no approval stands and the reader cannot approve", async () => {
     serve([approval({ id: "v1", version_no: 1, current: false })]);
     render(<Panel />);
 
-    expect(await screen.findByText("No approvals yet")).toBeInTheDocument();
+    await waitFor(() => expect(listReads()).toBe(1));
+    expect(screen.queryByRole("region", { name: "Approvals" })).toBeNull();
     expect(screen.queryByRole("list", { name: "Approved by" })).toBeNull();
   });
 
@@ -164,12 +176,17 @@ describe("<ApprovalsCard>", () => {
     serve([]);
     render(<Panel />);
 
-    expect(await screen.findByText("No approvals yet")).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole("button", { name: "Approve" }));
+    const approve = await screen.findByRole("button", { name: "Approve" });
+    expect(screen.queryByRole("list", { name: "Approved by" })).toBeNull();
+    // The help sits beside Approve while no stamp shows.
+    expect(approve.parentElement).toContainElement(
+      screen.getByRole("button", { name: "What is an approval?" }),
+    );
+    fireEvent.click(approve);
     // Nothing is sent before the reader confirms: an approval is final.
     const dialog = screen.getByRole("dialog", { name: "Approve this version?" });
     expect(dialog).toHaveTextContent("You approve version 2 of this geolocation.");
-    expect(dialog).toHaveTextContent(/you cannot revoke it/);
+    expect(dialog).toHaveTextContent("An approval is final.");
     expect(api.apiFetch).not.toHaveBeenCalledWith("/events/e1/approvals", expect.anything());
     expect(screen.queryByRole("textbox")).toBeNull();
 
@@ -262,7 +279,7 @@ describe("<ApprovalsCard>", () => {
     serve([approval({ id: "a0", version_no: 1, current: false })]);
     render(<Panel />);
 
-    expect(await screen.findByText("No approvals yet")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Approve" })).toBeInTheDocument();
     expect(screen.queryByText(/You approved/)).toBeNull();
   });
 
@@ -304,20 +321,13 @@ describe("<ApprovalsCard>", () => {
       approval({ id: `a${i}`, reviewer: { id: `r${i}`, username: `r${i}` } }),
     );
 
-  it("shows two rows of stamps in full rather than a +1 bubble", async () => {
-    serve(reviews(14));
+  it("shows every stamp, with no bubble and no count", async () => {
+    serve(reviews(20));
     render(<Panel />);
 
-    expect(await stampNames()).toHaveLength(14);
+    expect(await stampNames()).toHaveLength(20);
     expect(screen.queryByRole("button", { name: /more approvals/ })).toBeNull();
-  });
-
-  it("shows every stamp from the overflow bubble", async () => {
-    serve(reviews(15));
-    render(<Panel />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "Show 2 more approvals" }));
-    expect(await stampNames()).toHaveLength(15);
+    expect(screen.getByRole("region", { name: "Approvals" })).not.toHaveTextContent(/\d/);
   });
 
   it("stamps a closed event's approvals that stood when it closed", async () => {
@@ -326,7 +336,6 @@ describe("<ApprovalsCard>", () => {
     render(<Panel geo={closedEvent} />);
 
     expect(await stampNames()).toEqual(["bo"]);
-    expect(screen.queryByText("No approvals yet")).toBeNull();
   });
 
   it("lets a member approve as each organization they belong to, whatever their role", async () => {
@@ -364,19 +373,21 @@ describe("<ApprovalsCard>", () => {
     });
     render(<Panel />);
 
-    expect(await stampNames()).toEqual(["Bellingcat", "ana"]);
+    expect(await stampNames()).toEqual(["Bellingcat (bo)", "ana"]);
     expect(await screen.findByRole("button", { name: "Approve" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Approve as Bellingcat" })).toBeNull();
-    expect(screen.queryByRole("button", { name: /^Revoke/ })).toBeNull();
   });
 
-  it("holds the approval requests of a published event", async () => {
+  it("holds a geolocator's approval requests in a section of their own", async () => {
     api.viewer = ANA;
     serve([]);
     render(<Panel />);
 
-    expect(await screen.findByRole("heading", { name: "Approval requests" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Request approval" })).toBeInTheDocument();
+    const section = await screen.findByRole("region", { name: "Approval requests" });
+    expect(within(section).getByRole("heading", { name: "Approval requests" })).toBeInTheDocument();
+    expect(within(section).getByRole("button", { name: "Request approval" })).toBeInTheDocument();
+    // No stamp and no Approve for a geolocator: nothing shows under the actions.
+    expect(screen.queryByRole("region", { name: "Approvals" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
   });
 
@@ -408,7 +419,7 @@ describe("<ApprovalsCard>", () => {
 });
 
 describe("<VersionApprovals>", () => {
-  it("lists a filed version's approvals read-only", async () => {
+  it("stamps a filed version's approvals read-only", async () => {
     api.viewer = BO;
     api.apiFetch.mockImplementation((path: string) =>
       Promise.resolve(
@@ -425,8 +436,9 @@ describe("<VersionApprovals>", () => {
     );
     render(<VersionApprovals event={event} versionNo={1} />);
 
-    expect(await screen.findAllByText("Outdated")).toHaveLength(2);
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(await stampNames()).toEqual(["bo", "cy"]);
+    expect(screen.getByRole("link", { name: "cy approved v1 on 15 Oct 2026" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Delete approval|Approve/ })).toBeNull();
     expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/approvals?version_no=1", expect.anything());
   });
   it("stays hidden when the version held no approval", async () => {

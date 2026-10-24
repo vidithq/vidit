@@ -75,7 +75,7 @@ function serve(
   });
 }
 
-/** The requests as the Approvals card lays them out: who asked the reader, Decline, and the
+/** The requests as the event page lays them out: who asked the reader, Decline, and the
  *  geolocator's section. */
 function Requests() {
   const requests = useApprovalRequests(event, useMemberOrganizations(), 0);

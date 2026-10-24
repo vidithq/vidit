@@ -19,7 +19,7 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { ACCENT_SURFACE } from "@/components/ui/styles";
 import { EventShare } from "@/components/event/EventShare";
 import { GeolocatorInviteCard, GeolocatorsPanel } from "@/components/event/GeolocatorCredit";
-import { ApprovalsCard } from "@/components/event/ApprovalsCard";
+import { useEventApprovals } from "@/components/event/EventApprovals";
 import { VersionSelector } from "@/components/event/VersionSelector";
 import { useReportContent } from "@/components/report/useReportContent";
 import type { EventDetail } from "@/types";
@@ -27,7 +27,7 @@ import type { EventDetail } from "@/types";
 /**
  * The controls of one event, assembled once so no surface hand-assembles a row and controls can't
  * drift between them. They head the page's side column (`docs/design.md`, Event actions and
- * Approvals card), as a row of icon controls, left to right:
+ * approvals), as a row of icon controls, left to right:
  *
  * 1. **The version selector**, on the event page of a published row.
  * 2. **Edit**, an icon, for the owner. Closing and the geolocators live on the edit page.
@@ -36,12 +36,12 @@ import type { EventDetail } from "@/types";
  *    co-geolocator (where they leave). Each opens a panel under the header.
  * 5. **Report** for every reader but the owner.
  *
- * The actions are that row, then a pending geolocator invitation on the event page, or
- * **Geolocate** on an open request's page. The Approvals card of a published row (status,
- * approvals, Approve, approval requests) comes apart, under the Location module.
+ * The actions are that row, then a published row's approvals on the event page (the stamps,
+ * Approve) and a pending geolocator invitation, or **Geolocate** on an open request's page. A
+ * geolocator's approval requests come apart, under the Location module.
  *
- * The hook returns nodes rather than rendering them because the actions, the Approvals card and
- * the panels land in different slots. Called before a surface's early returns, with `event` null
+ * The hook returns nodes rather than rendering them because the actions, the approval requests
+ * and the panels land in different slots. Called before a surface's early returns, with `event` null
  * while the row loads, so hook order is stable.
  */
 
@@ -51,7 +51,7 @@ export type ActionSurface = "event" | "request";
 // One flag per control family per surface. `utilities` is Share and Report, which any reader of
 // the record may use. `flow` is geolocating an open request. `edit` is the owner's way to the edit
 // page. `collect` shelves the row on one of the reader's collections. `history` (the version
-// selector), `credit` and `approvals` (the Approvals card) belong to the event page, the one
+// selector), `credit` and `approvals` (the approvals under the row) belong to the event page, the one
 // surface serving the published record.
 const TIERS: Record<
   ActionSurface,
@@ -86,8 +86,8 @@ export interface EventActions {
   panels: ReactNode;
   /** The block heading the page's side column. */
   actions: ReactNode;
-  /** The event page's Approvals card, for the side column. */
-  approvals: ReactNode;
+  /** A geolocator's approval requests on the event page, for the side column. */
+  approvalRequests: ReactNode;
 }
 
 /** A panel a row toggle opens. It mounts when opened and takes focus then, so a keyboard or
@@ -121,6 +121,7 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
   const approvals = useApiResource<ApprovalList>(
     showsApprovals ? allApprovalsPath(event.id) : null,
   );
+  const eventApprovals = useEventApprovals(showsApprovals ? event : null, approvals);
 
   // This hook survives a client navigation between rows, so per-event state follows the row, not
   // the mount: otherwise the next row opens with the previous one's panel open.
@@ -130,7 +131,7 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
   }, [event?.id]);
 
   if (!event || !tiers) {
-    return { panels: null, actions: null, approvals: null };
+    return { panels: null, actions: null, approvalRequests: null };
   }
 
   const isOpenRequest = event.status === "requested";
@@ -252,6 +253,7 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
     actions: (
       <div className="space-y-4">
         {row("lg:justify-end")}
+        {eventApprovals.summary}
         {invited && (
           <GeolocatorInviteCard
             event={event}
@@ -264,6 +266,6 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
         {geolocate && <div className="flex lg:justify-end">{geolocate}</div>}
       </div>
     ),
-    approvals: showsApprovals && <ApprovalsCard event={event} approvals={approvals} />,
+    approvalRequests: eventApprovals.requests,
   };
 }

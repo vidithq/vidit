@@ -19,8 +19,8 @@ import { eventHref } from "@/lib/routes";
 
 /**
  * One filed version at `/events/{id}/vN`: the canonical body fed the version's
- * snapshot, read-only. The side column opens with the version selector and no
- * action (those act on the record). Three
+ * snapshot, read-only. The side column opens with the version selector and the
+ * version's approvals, and no action (those act on the record). Three
  * reads: the event, the version, and the version below (it holds the edit's
  * byline and date).
  */
@@ -63,7 +63,6 @@ export default function EventVersionPage() {
   if (number > 1 && !producedBy && !producedByError) return <PageLoading />;
 
   const version = eventVersion(geo, number, { own: row, producedBy });
-  const approvals = <VersionApprovals event={geo} versionNo={number} />;
 
   return (
     <PageShell
@@ -71,22 +70,22 @@ export default function EventVersionPage() {
       title={version.view?.title ?? geo.title}
       subtitle={<AuthorByline {...creditProps(geo)} coAuthorsAs="avatars" avatar />}
       headerSide={
-        <div className="flex lg:justify-end">
-          <VersionSelector eventId={geo.id} liveVersion={geo.version_no} selected={number} />
+        <div className="space-y-4">
+          <div className="flex lg:justify-end">
+            <VersionSelector eventId={geo.id} liveVersion={geo.version_no} selected={number} />
+          </div>
+          <VersionApprovals event={geo} versionNo={number} />
         </div>
       }
     >
       <EventVersionBanner eventId={geo.id} version={version} total={geo.version_no} />
       {version.view ? (
-        <EventPageBody geo={version.view} approvals={approvals} />
+        <EventPageBody geo={version.view} />
       ) : (
-        <>
-          <EmptyState>
-            An administrator redacted this version, so its content is no longer
-            served. The version keeps its number and its place in the history.
-          </EmptyState>
-          {approvals}
-        </>
+        <EmptyState>
+          An administrator redacted this version, so its content is no longer
+          served. The version keeps its number and its place in the history.
+        </EmptyState>
       )}
     </PageShell>
   );

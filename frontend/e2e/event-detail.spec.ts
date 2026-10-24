@@ -39,7 +39,7 @@ test.describe("shared event link", () => {
     expect(shareBox.y).toBeGreaterThan(titleBox.y);
     expect(shareBox.y + shareBox.height).toBeLessThanOrEqual(cardBox.y);
 
-    // A signed-out reader has no primary action, and the stamps stay in the Approvals card.
+    // A signed-out reader has no primary action, and the stamps stay under the actions row.
     await expect(page.getByRole("link", { name: /^Edit/ })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /^Approve\b/ })).toHaveCount(0);
 
@@ -69,7 +69,7 @@ test.describe("shared event link", () => {
     await expectNarrowViewportLayout(page, page.getByRole("button", { name: "Send report" }));
   });
 
-  test("stacks the Approvals card under the title, before the sources", async ({ page }) => {
+  test("stacks the approvals under the actions, before the sources", async ({ page }) => {
     await mockApi(page);
     await page.goto(`/events/${EVENT_ID}`);
 
@@ -79,19 +79,16 @@ test.describe("shared event link", () => {
     const mediaBox = await page.getByRole("heading", { name: "Sources" }).boundingBox();
     expect(cardBox!.y + cardBox!.height).toBeLessThanOrEqual(mediaBox!.y);
 
-    // Two rows of stamps, oldest first, each a link to its signer's page, the bubble for the
-    // rest taking the last slot.
+    // Every stamp, oldest first, each a link to its signer's page; no bubble and no count.
     const stamps = card.getByRole("list", { name: "Approved by" });
-    await expect(stamps.getByRole("link")).toHaveCount(13);
+    await expect(stamps.getByRole("link")).toHaveCount(EVENT_APPROVALS.length);
+    await expect(stamps.getByRole("button")).toHaveCount(0);
+    await expect(card).not.toContainText(/\d/);
     const username = EVENT_APPROVALS[0].reviewer!.username;
-    const first = stamps.getByRole("link", { name: username, exact: true });
+    const first = stamps.getByRole("link", { name: new RegExp(`^${username} approved v`) });
     await expect(first).toHaveAttribute("href", `/profile/${username}`);
     expect((await first.boundingBox())?.width).toBe(28);
-    await expectNarrowViewportLayout(page, stamps.getByRole("button", { name: "Show 3 more approvals" }));
-
-    // The bubble shows the rest of the stamps, which wrap inside the card.
-    await stamps.getByRole("button", { name: "Show 3 more approvals" }).click();
-    await expect(stamps.getByRole("link")).toHaveCount(EVENT_APPROVALS.length);
+    // The stamps wrap inside the side column.
     await expectNarrowViewportLayout(page, stamps.getByRole("link").last());
   });
 

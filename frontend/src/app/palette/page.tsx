@@ -921,7 +921,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<AvatarStack>" usage="A row of 28px pictures: the approval stamps in the event page's Approvals card and the organization logos in a profile header, oldest first, overlapping by default; spacing=gap sets them apart and wraps them onto further lines (the Approvals card). An organization (variant=organization) takes the rounded square, an analyst the circle. Each picture is a link to its href (the profile or the organization's page) named by its label, which a <Tooltip> shows on hover or keyboard focus (the handle on a stamp, the role on a logo). At most max (5 by default) show; the rest fold into a +N bubble, a button when onOverflow is set (the Approvals card expands its full approval list) and plain text otherwise. Renders nothing for an empty list.">
+          <Item name="<AvatarStack>" usage="A row of 28px pictures: the approval stamps under the event page's actions and the organization logos in a profile header, oldest first, overlapping by default; spacing=gap sets them apart and wraps them onto further lines (the approval stamps). checked puts a 14px check badge in the reader's accent on each picture's bottom-right corner, ringed in the page colour (the approval stamps). An organization (variant=organization) takes the rounded square, an analyst the circle. Each picture is a link to its href (the profile or the organization's page) named by its label, which a <Tooltip> shows on hover or keyboard focus (who approved which version when, on a stamp; the role on a logo). An item's remove puts a 20px remove disc on the picture's top-right corner, revealed by HOVER_REVEAL on hover or keyboard focus (a site admin's delete of a stamp). At most max (5 by default) show; the rest fold into a +N bubble, a button when onOverflow is set and plain text otherwise; the approval stamps pass every item, so no count shows. Renders nothing for an empty list.">
             <Variant label="analysts and an organization, max=3 with onOverflow (+N opens the panel)">
               <AvatarStack
                 label="Approved by"
@@ -931,15 +931,27 @@ export default function PalettePage() {
                 items={paletteApprovalStamps(PALETTE_APPROVERS.slice(0, 5))}
               />
             </Variant>
-            <Variant label="spacing=gap: pictures set apart, wrapping onto a second line (the event page's Approvals card)">
+            <Variant label="spacing=gap and checked: pictures set apart with an accent check, wrapping onto a second line (the event page's approval stamps)">
               <div className="w-56">
                 <AvatarStack
                   label="Approved by"
                   max={PALETTE_APPROVERS.length}
                   spacing="gap"
+                  checked
                   items={paletteApprovalStamps(PALETTE_APPROVERS)}
                 />
               </div>
+            </Variant>
+            <Variant label="remove on each item: hover or focus a picture for its corner control (a site admin's stamps)">
+              <AvatarStack
+                label="Approved by"
+                spacing="gap"
+                checked
+                items={paletteApprovalStamps(PALETTE_APPROVERS.slice(0, 3)).map((stamp) => ({
+                  ...stamp,
+                  remove: { label: `Delete approval by ${stamp.name}`, onClick: () => {} },
+                }))}
+              />
             </Variant>
             <Variant label="organization logos with role labels (the profile header)">
               <AvatarStack
@@ -1859,7 +1871,7 @@ export default function PalettePage() {
                 onCancel={() => setConfirmOpen(false)}
               >
                 <p>You approve version 2 of this geolocation.</p>
-                <p>An approval is final: you cannot revoke it.</p>
+                <p>An approval is final.</p>
               </ConfirmDialog>
             )}
           </Item>

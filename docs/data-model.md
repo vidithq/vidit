@@ -769,7 +769,7 @@ An analyst is *ever credited* on an event when they are its owner, hold a row th
 
 ### `event_approvals`
 
-An analyst's attestation, or an organization's through any of its members, that one version of a published event holds, written through [`/events/{id}/approvals`](api.md#approvals). A row is current while `version_no` equals `events.version_no`, so a new version ends it without a write and the row stays readable on the version it covered. An approval is final: no endpoint revokes it. Three paths delete a row: the reviewer accepts a co-geolocator invitation for the event (every version, including the approvals the reviewer placed for an organization), a site admin calls [`DELETE /admin/approvals/{approval_id}`](api.md#delete-adminapprovalsapproval_id), or the event, the reviewer or the organization is hard-deleted. The `approval_received` notifications that reported the row go with it.
+An analyst's attestation, or an organization's through any of its members, that one version of a published event holds, written through [`/events/{id}/approvals`](api.md#approvals). A row is current while `version_no` equals `events.version_no`, so a new version ends it without a write and the row stays readable on the version it covered. An approval is final. Three paths delete a row: the reviewer accepts a co-geolocator invitation for the event (every version, including the approvals the reviewer placed for an organization), a site admin calls [`DELETE /admin/approvals/{approval_id}`](api.md#delete-adminapprovalsapproval_id), or the event, the reviewer or the organization is hard-deleted. The `approval_received` notifications that reported the row go with it.
 
 | Column | Type | Constraints |
 |--------|------|-------------|

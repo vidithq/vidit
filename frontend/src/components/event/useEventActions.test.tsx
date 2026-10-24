@@ -87,14 +87,14 @@ function Harness({
   beforeClosedStatus?: BeforeClosedStatus | null;
   versionNo?: number;
 }) {
-  const { panels, actions, approvals } = useEventActions({
+  const { panels, actions, approvalRequests } = useEventActions({
     event: eventFixture(status, beforeClosedStatus, versionNo),
     surface,
   });
   return (
     <>
       {actions}
-      {approvals}
+      {approvalRequests}
       {panels}
     </>
   );
@@ -106,6 +106,15 @@ function renderAs(viewer: Viewer, props: Parameters<typeof Harness>[0]) {
 }
 
 const row = () => screen.getByRole("group", { name: "Event actions" });
+
+/** Waits until the approvals the event page reads have landed. */
+const approvalsRead = () =>
+  waitFor(() =>
+    expect(api.apiFetch).toHaveBeenCalledWith(
+      "/events/e1/approvals?all_versions=true",
+      expect.anything(),
+    ),
+  );
 
 const stamp = (id: string, username: string, over: Partial<Approval> = {}): Approval => ({
   id,
@@ -136,11 +145,11 @@ describe("the event actions per reader", () => {
       "href",
       "/events/e1/edit",
     );
-    await screen.findByText("No approvals yet");
+    await approvalsRead();
   });
 
-  // Approving starts from the Approvals card, after reading the record.
-  it("gives an analyst who may approve the version, Share and Report; Approve waits in the card", async () => {
+  // Approving starts from the approvals under the row, after reading the record.
+  it("gives an analyst who may approve the version, Share and Report; Approve waits under the row", async () => {
     renderAs(ANALYST, { status: "geolocated", surface: "event" });
     const card = await screen.findByRole("region", { name: "Approvals" });
     expect(await within(card).findByRole("button", { name: "Approve" })).toBeInTheDocument();
@@ -151,7 +160,7 @@ describe("the event actions per reader", () => {
   // and never edits, closes or approves it.
   it("gives a co-geolocator Add to collection and Geolocators beside Share and Report", async () => {
     renderAs(CO_GEOLOCATOR, { status: "geolocated", surface: "event" });
-    await screen.findByText("No approvals yet");
+    await approvalsRead();
     expect(rowControls()).toEqual([
       "v1: choose a version",
       "Share",
@@ -164,14 +173,14 @@ describe("the event actions per reader", () => {
 
   it("gives a signed-out reader the version, Share and Report", async () => {
     renderAs(null, { status: "geolocated", surface: "event" });
-    await screen.findByText("No approvals yet");
+    await approvalsRead();
     expect(rowControls()).toEqual(["v1: choose a version", "Share", "Report"]);
   });
 
   it("carries no menu, no close, no stamps and no approve control in the row", async () => {
     api.approvals = [stamp("a1", "maya")];
     renderAs(OWNER, { status: "geolocated", surface: "event" });
-    await screen.findByRole("link", { name: "maya" });
+    await screen.findByRole("link", { name: /^maya approved/ });
     expect(within(row()).queryByRole("button", { name: "More actions" })).toBeNull();
     expect(within(row()).queryByRole("button", { name: /^Close/ })).toBeNull();
     expect(within(row()).queryByRole("list", { name: "Approved by" })).toBeNull();
@@ -306,10 +315,12 @@ describe("the version selector", () => {
   });
 });
 
-describe("the Approvals card", () => {
-  it("comes with the event page of a published row", async () => {
+describe("the approvals under the actions row", () => {
+  it("comes with the event page of a published row, right under the row", async () => {
+    api.approvals = [stamp("a1", "maya")];
     renderAs(null, { status: "geolocated", surface: "event" });
-    expect(await screen.findByRole("region", { name: "Approvals" })).toBeInTheDocument();
+    const approvals = await screen.findByRole("region", { name: "Approvals" });
+    expect(approvals.previousElementSibling).toBe(row());
   });
 
   it.each<[ActionSurface, EventStatus]>([

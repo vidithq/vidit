@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, type ComponentProps } from "react";
 import Link from "next/link";
-import { Stamp, Trash2 } from "lucide-react";
+import { Stamp } from "lucide-react";
 
 import { useAdmin } from "@/contexts/AdminContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -22,12 +22,10 @@ import { eventVersionHref, eventVersionPath } from "@/lib/events";
 import { formatDate } from "@/lib/format";
 import { organizationByline, type OrganizationRef } from "@/lib/organizations";
 import type { EventDetail, EventVersion } from "@/types";
-import { AuthorByline } from "@/components/ui/AuthorByline";
 import { AvatarStack, type AvatarStackItem } from "@/components/ui/AvatarStack";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Pill } from "@/components/ui/Pill";
-import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
@@ -36,48 +34,6 @@ import { profileHref } from "@/lib/routes";
 export function ApprovalState({ approval }: { approval: Approval }) {
   if (approval.current) return <Pill tone="accent">Current</Pill>;
   return <Pill tone="neutral">Outdated</Pill>;
-}
-
-/** One approval: who placed it (an organization signs with its name, its acting member
- *  beside it, or "on behalf of" it once that account is erased) and when. */
-export function ApprovalRow({
-  approval,
-  action,
-}: {
-  approval: Approval;
-  /** A control at the row's end, such as a site admin's delete. */
-  action?: ReactNode;
-}) {
-  return (
-    <div className="space-y-1 py-2">
-      <span className="flex min-w-0 flex-wrap items-center gap-2">
-        {approval.organization ? (
-          <>
-            <AuthorByline
-              author={organizationByline(approval.organization)}
-              prefix={false}
-              avatar
-              className="text-sm"
-            />
-            <span className="text-[11px] text-neutral-500">
-              {approval.reviewer ? (
-                <AuthorByline author={approval.reviewer} />
-              ) : (
-                `on behalf of ${approval.organization.name}`
-              )}
-            </span>
-          </>
-        ) : (
-          approval.reviewer && (
-            <AuthorByline author={approval.reviewer} prefix={false} avatar className="text-sm" />
-          )
-        )}
-        <ApprovalState approval={approval} />
-        <span className="text-[11px] text-neutral-500">{formatDate(approval.created_at)}</span>
-        {action && <span className="ml-auto">{action}</span>}
-      </span>
-    </div>
-  );
 }
 
 /** Who an approval speaks for, for the deletion dialog. */
@@ -94,84 +50,35 @@ function deleteErrorMessage(err: unknown): string | undefined {
   return undefined;
 }
 
-/**
- * A site admin's delete control for one approval: a muted trash button that opens a
- * [`ConfirmDialog`] saying the deletion cannot be undone and that the reviewer can approve again.
- * Renders nothing for anyone else.
- */
-export function DeleteApprovalAction({
+/** The [`ConfirmDialog`] of a site admin's delete: it says the deletion cannot be undone and that
+ *  the reviewer can approve again. */
+function DeleteApprovalDialog({
   approval,
   onDeleted,
+  onCancel,
 }: {
   approval: Approval;
   onDeleted: () => void;
+  onCancel: () => void;
 }) {
-  const { isAdmin } = useAdmin();
-  const [open, setOpen] = useState(false);
   const remove = useMutation(() => deleteApproval(approval.id), {
     fallback: "Failed to delete the approval",
     onError: deleteErrorMessage,
-    onSuccess: () => {
-      setOpen(false);
-      onDeleted();
-    },
+    onSuccess: onDeleted,
   });
-  if (!isAdmin) return null;
-  const signer = approvalSigner(approval);
   return (
-    <>
-      <Button
-        icon
-        variant="dangerGhost"
-        className="text-neutral-500 hover:text-red-400"
-        aria-label={`Delete approval by ${signer}`}
-        title="Delete approval"
-        onClick={() => {
-          remove.reset();
-          setOpen(true);
-        }}
-      >
-        <Trash2 size={14} />
-      </Button>
-      {open && (
-        <ConfirmDialog
-          title="Delete this approval?"
-          confirmLabel="Delete approval"
-          busyLabel="Deleting…"
-          busy={remove.loading}
-          error={remove.error}
-          onConfirm={() => void remove.run()}
-          onCancel={() => setOpen(false)}
-        >
-          <p>{`You delete the approval of version ${approval.version_no} by ${signer}. This cannot be undone.`}</p>
-          <p>The reviewer can approve this version again.</p>
-        </ConfirmDialog>
-      )}
-    </>
-  );
-}
-
-/** The live version's approvals as rows with a delete control each. Renders nothing for a reader
- *  who is not a site admin. */
-export function AdminApprovals({
-  approvals,
-  onDeleted,
-}: {
-  approvals: Approval[];
-  onDeleted: () => void;
-}) {
-  const { isAdmin } = useAdmin();
-  if (!isAdmin || approvals.length === 0) return null;
-  return (
-    <div className="divide-y divide-neutral-800 border-t border-neutral-800">
-      {approvals.map((approval) => (
-        <ApprovalRow
-          key={approval.id}
-          approval={approval}
-          action={<DeleteApprovalAction approval={approval} onDeleted={onDeleted} />}
-        />
-      ))}
-    </div>
+    <ConfirmDialog
+      title="Delete this approval?"
+      confirmLabel="Delete approval"
+      busyLabel="Deleting…"
+      busy={remove.loading}
+      error={remove.error}
+      onConfirm={() => void remove.run()}
+      onCancel={onCancel}
+    >
+      <p>{`You delete the approval of version ${approval.version_no} by ${approvalSigner(approval)}. This cannot be undone.`}</p>
+      <p>The reviewer can approve this version again.</p>
+    </ConfirmDialog>
   );
 }
 
@@ -207,16 +114,19 @@ export function YourOutdatedApproval({
 }
 
 /** The stamp of an approval: the organization it speaks for, or the reviewer; null for an
- *  analyst's approval whose account was erased. */
+ *  analyst's approval whose account was erased. Its label, the link's name and tooltip, reads
+ *  *Bellingcat (maya) approved v2 on 15 Oct 2026*. */
 function approvalStamp(approval: Approval): AvatarStackItem | null {
+  const approved = `approved v${approval.version_no} on ${formatDate(approval.created_at)}`;
   if (approval.organization) {
     const org = organizationByline(approval.organization);
+    const member = approval.reviewer ? ` (${approval.reviewer.username})` : "";
     return {
       key: approval.id,
       name: org.username,
       avatarUrl: org.avatar_url,
       variant: "organization",
-      label: org.username,
+      label: `${org.username}${member} ${approved}`,
       href: org.href,
     };
   }
@@ -226,31 +136,69 @@ function approvalStamp(approval: Approval): AvatarStackItem | null {
     name: approval.reviewer.username,
     avatarUrl: approval.reviewer.avatar_url,
     variant: "analyst",
-    label: approval.reviewer.username,
+    label: `${approval.reviewer.username} ${approved}`,
     href: profileHref(approval.reviewer.username),
   };
 }
 
-/** The given approvals, oldest first, as stamps that link to each signer's page. Renders
- *  nothing for an empty list. */
+/** The given approvals, oldest first, as stamps that link to each signer's page, each with an
+ *  accent check badge. Every stamp shows: no count of approvals shows anywhere. With `onDeleted`,
+ *  a site admin gets a delete control on each stamp, which opens a confirmation. Renders nothing
+ *  for an empty list. */
 export function ApprovalStamps({
   approvals,
-  max,
-  onOverflow,
+  onDeleted,
 }: {
   approvals: Approval[];
-  max?: number;
-  onOverflow?: () => void;
+  /** Runs after a site admin deleted an approval. */
+  onDeleted?: () => void;
 }) {
+  const { isAdmin } = useAdmin();
+  const [deleting, setDeleting] = useState<Approval | null>(null);
+  const deletable = isAdmin && onDeleted !== undefined;
+  const items = approvals.flatMap((a) => {
+    const stamp = approvalStamp(a);
+    if (!stamp) return [];
+    if (!deletable) return [stamp];
+    return [
+      {
+        ...stamp,
+        remove: { label: `Delete approval by ${approvalSigner(a)}`, onClick: () => setDeleting(a) },
+      },
+    ];
+  });
   return (
-    <AvatarStack
-      items={approvals.flatMap((a) => approvalStamp(a) ?? [])}
-      label="Approved by"
-      max={max}
-      spacing="gap"
-      onOverflow={onOverflow}
-      overflowLabel={(hidden) => `Show ${hidden} more approvals`}
-    />
+    <>
+      <AvatarStack
+        items={items}
+        label="Approved by"
+        max={items.length}
+        spacing="gap"
+        checked
+      />
+      {deleting && onDeleted && (
+        <DeleteApprovalDialog
+          approval={deleting}
+          onCancel={() => setDeleting(null)}
+          onDeleted={() => {
+            setDeleting(null);
+            onDeleted();
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+/** The stamps with the `approval` help at the row's end. From `lg` up the row aligns
+ *  right, under the side column's right-aligned controls. Renders nothing for an empty list. */
+export function ApprovedBy(props: ComponentProps<typeof ApprovalStamps>) {
+  if (props.approvals.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+      <ApprovalStamps {...props} />
+      <FieldHelp concept="approval" />
+    </div>
   );
 }
 
@@ -349,36 +297,27 @@ export function ApproveButtons({
               ? `You approve version ${event.version_no} of this geolocation in the name of ${confirming.name}.`
               : `You approve version ${event.version_no} of this geolocation.`}
           </p>
-          <p>An approval is final: you cannot revoke it. A new version asks for a new approval.</p>
+          <p>An approval is final. A new version asks for a new approval.</p>
         </ConfirmDialog>
       )}
     </>
   );
 }
 
-/** The approvals a filed version (`/events/{id}/vN`) held, read-only. Absent when the version
- *  held none. */
+/** The approvals a filed version (`/events/{id}/vN`) held, as stamps under the version selector,
+ *  with a site admin's delete on each. Absent when the version held none. */
 export function VersionApprovals({ event, versionNo }: { event: EventDetail; versionNo: number }) {
   const approvals = useApiResource<ApprovalList>(approvalsPath(event.id, versionNo));
   const rows = approvals.data?.items ?? [];
   if (rows.length === 0 && !approvals.error) return null;
   return (
-    <Card as="section">
-      <SectionEyebrow title="Approvals" margin="none" />
-      <div className="divide-y divide-neutral-800">
-        {rows.map((approval) => (
-          <ApprovalRow
-            key={approval.id}
-            approval={approval}
-            action={<DeleteApprovalAction approval={approval} onDeleted={approvals.refetch} />}
-          />
-        ))}
-      </div>
+    <section aria-label="Approvals" className="space-y-2">
+      {rows.length > 0 && <ApprovedBy approvals={rows} onDeleted={approvals.refetch} />}
       {approvals.error && (
         <div className={FORM_ERROR_BANNER} role="alert">
           {approvals.error}
         </div>
       )}
-    </Card>
+    </section>
   );
 }
