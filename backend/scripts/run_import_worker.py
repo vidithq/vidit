@@ -6,8 +6,7 @@ second worker is safe), runs the backfill off the API process and emails the
 owner the outcome (``services/archive_jobs``). Each pass also drains
 ``bot_webhook_events`` through the shared mention pipeline (``services/bot``);
 the webhook endpoint only inserts. Each pass first sends the queued
-notification emails (``services/notification_delivery``), then one batch of
-product update emails (``services/product_updates``). An email queue that raises is captured
+notification emails (``services/notification_delivery``). An email queue that raises is captured
 and skipped for the pass, so it never holds back the jobs and mentions. Each pass opens a fresh
 session shared across its jobs (per-job isolation is the rollback inside ``process``), and a
 pass that dies outside job processing is captured and retried with a backoff. Before its
@@ -33,7 +32,6 @@ from app.schema_gate import wait_for_schema_head
 from app.services.archive_jobs import run_once
 from app.services.bot import drain_webhook_events
 from app.services.notification_delivery import drain as drain_notification_emails
-from app.services.product_updates import drain as drain_product_update_emails
 
 _IDLE_SLEEP_SECONDS = 5.0
 _ERROR_BACKOFF_SECONDS = 15.0
@@ -57,11 +55,7 @@ def _isolated(drain: Callable[[Session], int], db: Session) -> int:
 def _drain() -> int:
     db = SessionLocal()
     try:
-        return (
-            _isolated(drain_notification_emails, db)
-            + _isolated(drain_product_update_emails, db)
-            + asyncio.run(_drain_both(db))
-        )
+        return _isolated(drain_notification_emails, db) + asyncio.run(_drain_both(db))
     finally:
         db.close()
 
@@ -77,7 +71,7 @@ def main() -> None:
         handled = _drain()
         print(
             f"Import worker pass OK: {handled} job(s) / webhook mention(s) / "
-            "notification and product update email(s) handled."
+            "notification email(s) handled."
         )
         return
 

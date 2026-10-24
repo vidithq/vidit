@@ -26,7 +26,6 @@ from app.models.invite_code import InviteCode
 from app.models.pending_registration import PendingRegistration
 from app.models.user import User
 from app.schemas.admin import InviteCodeStatus
-from app.services import product_update_consent
 from app.services.auth import (
     consume_invite_code,
     hash_password,
@@ -150,7 +149,6 @@ def create_pending_registration(
     username: str,
     password: str,
     invite_code: str,
-    product_updates: bool = False,
 ) -> PendingMint:
     """Stage a registration. Returns the raw token to email.
 
@@ -205,7 +203,6 @@ def create_pending_registration(
         invite_code_id=invite.id,
         token_hash=hash_token(raw_token),
         expires_at=now + timedelta(minutes=CONFIRMATION_TOKEN_MINUTES),
-        product_updates_consented_at=now if product_updates else None,
     )
     db.add(row)
     try:
@@ -285,7 +282,6 @@ def confirm_pending_registration(db: Session, raw_token: str) -> User:
             PendingRegistration.username,
             PendingRegistration.password_hash,
             PendingRegistration.invite_code_id,
-            PendingRegistration.product_updates_consented_at,
         )
     )
     claimed = db.execute(stmt).first()
@@ -298,7 +294,6 @@ def confirm_pending_registration(db: Session, raw_token: str) -> User:
         claimed_username,
         claimed_password_hash,
         claimed_invite_id,
-        consented_at,
     ) = claimed
 
     # Another path may have created a colliding user since create-pending.
@@ -377,9 +372,6 @@ def confirm_pending_registration(db: Session, raw_token: str) -> User:
         # restored pending row hits the "exhausted" branch on the next click.
         db.rollback()
         raise InvalidInviteError("Invite code has already been used.")
-
-    if consented_at is not None:
-        product_update_consent.grant(db, user_id=user.id, source="sign_up", at=consented_at)
 
     maybe_promote_admin(user)
     db.flush()

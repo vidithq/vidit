@@ -70,15 +70,6 @@ BUILDERS: dict[str, Callable[[], email.Email]] = {
     "request_fulfilled": lambda: _notification_email("request_fulfilled"),
     "new_follower": lambda: _notification_email("new_follower"),
     "co_geolocator_invite": lambda: _notification_email("co_geolocator_invite"),
-    "product_update": lambda: email.product_update_email(
-        to="a@example.com",
-        label="1.0.0",
-        title="Collections",
-        blocks=["A release.", ("One", "Two")],
-        link_url=f"{BASE}/about",
-        unsubscribe_url=f"{BASE}/unsubscribe?token=tok",
-        one_click_url="https://api.example.com/api/v1/product-updates/unsubscribe?token=tok",
-    ),
 }
 
 
@@ -166,19 +157,6 @@ def test_a_url_in_user_text_is_never_a_link(message):
     assert f"{BASE}/events/e1" in _links(built.html).hrefs
 
 
-def test_product_update_blocks_link_the_admins_urls():
-    built = email.product_update_email(
-        to="a@example.com",
-        label="1.0.0",
-        title="Collections",
-        blocks=[f"Read the guide at {BASE}/guide."],
-        link_url=None,
-        unsubscribe_url=f"{BASE}/unsubscribe?token=tok",
-        one_click_url="https://api.example.com/api/v1/product-updates/unsubscribe?token=tok",
-    )
-    assert f"{BASE}/guide." in _links(built.html).hrefs
-
-
 def test_registration_confirmation_links_the_getting_started_page():
     message = BUILDERS["registration_confirmation"]()
     assert f"{BASE}/guide" in _links(message.html).hrefs
@@ -212,17 +190,6 @@ def test_notification_email_names_the_switch_and_takes_a_one_click_unsubscribe(n
     label = {"request_fulfilled": "Request fulfilled", "new_follower": "New follower"}[name]
     assert f"email is on for “{label}”" in message.text
     assert "bo" in message.subject
-
-
-def test_product_update_email_offers_a_visible_and_a_one_click_unsubscribe():
-    message = BUILDERS["product_update"]()
-    assert message.subject == "Vidit 1.0.0: Collections"
-    assert f"Unsubscribe: {BASE}/unsubscribe?token=tok" in message.text
-    assert f'href="{BASE}/unsubscribe?token=tok"' in message.html
-    assert message.headers == {
-        "List-Unsubscribe": "<https://api.example.com/api/v1/product-updates/unsubscribe?token=tok>",
-        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-    }
 
 
 def test_auth_email_carries_no_list_unsubscribe():

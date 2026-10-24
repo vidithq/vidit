@@ -9,7 +9,6 @@ since removed) reads as its default.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import ValidationError
@@ -27,7 +26,7 @@ from app.schemas.preferences import (
     UserPreferencesRead,
     UserPreferencesUpdate,
 )
-from app.services import product_update_consent, unsubscribe_tokens
+from app.services import unsubscribe_tokens
 from app.services.unsubscribe_tokens import InvalidUnsubscribeTokenError
 
 _EMAIL_UNSUBSCRIBE_PURPOSE = b"vidit:notification-email-unsubscribe:"
@@ -57,7 +56,7 @@ def email_enabled(db: Session, *, user_id: uuid.UUID, kind: NotificationKind) ->
     return _effective_email(db.get(UserPreferences, user_id), kind)
 
 
-def _build_read(row: UserPreferences | None, *, product_updates: bool) -> UserPreferencesRead:
+def _build_read(row: UserPreferences | None) -> UserPreferencesRead:
     notifications = [
         NotificationPreferenceRead(kind=kind, email=_effective_email(row, kind), default=default)
         for kind, default in NOTIFICATION_KINDS.items()
@@ -70,7 +69,6 @@ def _build_read(row: UserPreferences | None, *, product_updates: bool) -> UserPr
         display_defaults=DISPLAY_DEFAULTS,
         display_stored=DisplayPreferencesUpdate.model_validate(stored_display),
         notifications=notifications,
-        product_updates=product_updates,
         approval_request_audience=(
             row.approval_request_audience if row is not None else APPROVAL_REQUEST_AUDIENCE_DEFAULT
         ),
@@ -78,10 +76,7 @@ def _build_read(row: UserPreferences | None, *, product_updates: bool) -> UserPr
 
 
 def get_preferences(db: Session, *, user: User) -> UserPreferencesRead:
-    return _build_read(
-        db.get(UserPreferences, user.id),
-        product_updates=product_update_consent.has_consent(db, user.id),
-    )
+    return _build_read(db.get(UserPreferences, user.id))
 
 
 def _locked_row(db: Session, user: User) -> UserPreferences:
@@ -127,12 +122,7 @@ def update_preferences(
     if body.approval_request_audience is not None:
         row.approval_request_audience = body.approval_request_audience
 
-    if body.product_updates is True:
-        product_update_consent.grant(db, user_id=user.id, source="settings", at=datetime.now(UTC))
-    elif body.product_updates is False:
-        product_update_consent.withdraw(db, user_id=user.id)
-
-    return _build_read(row, product_updates=product_update_consent.has_consent(db, user.id))
+    return _build_read(row)
 
 
 def email_unsubscribe_token(user_id: uuid.UUID, kind: NotificationKind) -> str:

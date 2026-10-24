@@ -11,7 +11,7 @@ from app.config import settings
 from app.models.notification import NOTIFICATION_KINDS, Notification, NotificationDelivery
 from app.models.user import User
 from app.models.user_preferences import UserPreferences
-from app.services import email, notification_delivery, product_update_consent
+from app.services import email, notification_delivery, unsubscribe_tokens
 from app.services.preferences import email_unsubscribe_token
 from tests.conftest import login_as
 from tests.events._helpers import client
@@ -382,8 +382,8 @@ def test_the_one_click_unsubscribe_turns_off_that_kind_by_email_only(
         400,
         "invalid_unsubscribe_token",
     )
-    product_token = product_update_consent.unsubscribe_token(author.id)
-    assert client.post(path, params={"token": product_token}).status_code == 400
+    other_purpose = unsubscribe_tokens.sign(b"vidit:other:", author.id, "request_fulfilled")
+    assert client.post(path, params={"token": other_purpose}).status_code == 400
 
 
 def test_opening_the_unsubscribe_url_confirms_first_and_changes_nothing(db, author):

@@ -33,8 +33,6 @@ detected_at  # app/models/event.py, state-entry stamp
 geolocated_at  # app/models/event.py, state-entry stamp
 finished_at  # app/models/archive_import_job.py, stamped by services/archive_jobs
 added_at  # app/models/collection.py CollectionEvent, stamped when an event joins
-granted_at  # app/models/product_update.py ProductUpdateConsent, the consent record
-sent_by  # app/models/product_update.py ProductUpdate, who sent the announcement
 created_by_id  # app/models/organization.py, stamped by services/organizations.create_organization
 
 # ── ASGI middleware override ──────────────────────────────────────────────────
@@ -88,12 +86,6 @@ display_stored  # schemas/preferences.py UserPreferencesRead
 palette  # schemas/preferences.py, read through model_dump
 theme  # schemas/preferences.py, read through model_dump
 help_tooltips  # schemas/preferences.py, read through model_dump
-daily_cap  # schemas/product_update.py ProductUpdatePreview
-batch_size  # schemas/product_update.py ProductUpdatePreview
-days  # schemas/product_update.py ProductUpdatePreview
-queued  # schemas/product_update.py ProductUpdateProgress, filled by keyword
-sending  # schemas/product_update.py ProductUpdateProgress, filled by keyword
-sent  # schemas/product_update.py ProductUpdateProgress, filled by keyword
 minting_enabled  # schemas/invite_code.py SponsoredInviteCodeList, filled by keyword
 daily_limit  # schemas/invite_code.py SponsoredInviteCodeList, filled by keyword
 minted_today  # schemas/invite_code.py SponsoredInviteCodeList, filled by keyword

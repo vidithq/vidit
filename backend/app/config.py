@@ -1,7 +1,7 @@
-from typing import Annotated, Literal
+from typing import Literal
 from urllib.parse import urlparse
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 DEFAULT_JWT_SECRET = "changeme-in-production"
@@ -74,12 +74,8 @@ class Settings(BaseSettings):
     # Notification emails one actor's actions queue in any trailing 24 hours,
     # so one analyst cannot spend the total cap on everyone else's behalf.
     notification_email_daily_cap_per_actor: int = 10
-    # Product update emails sent in any trailing 24 hours, and the most one
-    # worker pass sends before it turns to its other queues. With the
-    # notification cap this must stay below ``email_provider_daily_quota``, so
+    # The provider's daily quota. The notification cap must stay below it, so
     # the remainder is left to the auth emails.
-    product_update_email_daily_cap: Annotated[int, Field(ge=1)] = 30
-    product_update_email_batch_size: Annotated[int, Field(ge=1)] = 10
     email_provider_daily_quota: int = 100
 
     # Recipient of the "new content report" notification. Unset sends nothing
@@ -90,8 +86,7 @@ class Settings(BaseSettings):
     # Public frontend origin for links in emails: absolute URL, no trailing slash.
     frontend_url: str = "http://localhost:3000"
     # Public API base, the value of the frontend's ``NEXT_PUBLIC_API_URL``: the
-    # one-click ``List-Unsubscribe`` URLs of notification and product update
-    # emails post to it.
+    # one-click ``List-Unsubscribe`` URL of a notification email posts to it.
     api_url: str = "http://localhost:8000/api/v1"
 
     # Reset token TTL (minutes). Short to bound the value of an intercepted
@@ -227,12 +222,12 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_email_caps(self) -> "Settings":
-        capped = self.notification_email_daily_cap + self.product_update_email_daily_cap
+        capped = self.notification_email_daily_cap
         if capped >= self.email_provider_daily_quota:
             raise ValueError(
-                "NOTIFICATION_EMAIL_DAILY_CAP plus PRODUCT_UPDATE_EMAIL_DAILY_CAP must stay "
-                f"below EMAIL_PROVIDER_DAILY_QUOTA ({capped} >= "
-                f"{self.email_provider_daily_quota}); the remainder carries the auth emails."
+                "NOTIFICATION_EMAIL_DAILY_CAP must stay below EMAIL_PROVIDER_DAILY_QUOTA "
+                f"({capped} >= {self.email_provider_daily_quota}); the remainder carries the "
+                "auth emails."
             )
         return self
 

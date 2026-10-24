@@ -24,19 +24,14 @@ def test_a_failing_notification_drain_leaves_the_rest_of_the_pass(monkeypatch):
     def broken(_db):
         raise RuntimeError("notification queue broke")
 
-    def product_updates(_db):
-        ran.append("product updates")
-        return 1
-
     async def jobs(_db):
         ran.append("jobs and mentions")
         return 2
 
     monkeypatch.setattr(worker, "drain_notification_emails", broken)
-    monkeypatch.setattr(worker, "drain_product_update_emails", product_updates)
     monkeypatch.setattr(worker, "_drain_both", jobs)
     monkeypatch.setattr(worker.sentry_sdk, "capture_exception", lambda: captured.append(None))
 
-    assert worker._drain() == 3
-    assert ran == ["product updates", "jobs and mentions"]
+    assert worker._drain() == 2
+    assert ran == ["jobs and mentions"]
     assert len(captured) == 1

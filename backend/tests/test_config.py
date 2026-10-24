@@ -111,16 +111,6 @@ def test_a_deployment_refuses_a_localhost_api_url(monkeypatch):
         Settings()
 
 
-@pytest.mark.parametrize(
-    "name", ["PRODUCT_UPDATE_EMAIL_DAILY_CAP", "PRODUCT_UPDATE_EMAIL_BATCH_SIZE"]
-)
-def test_product_update_pacing_refuses_zero(monkeypatch, name):
-    _clear_storage_env(monkeypatch)
-    monkeypatch.setenv(name, "0")
-    with pytest.raises(ValidationError):
-        Settings()
-
-
 def test_default_jwt_secret_with_ipv6_localhost_passes(monkeypatch):
     _clear_storage_env(monkeypatch)
     monkeypatch.delenv("JWT_SECRET", raising=False)
@@ -181,12 +171,11 @@ def test_cors_origin_regex_custom_localhost_substring_kept_on_remote_db(monkeypa
 
 def test_email_caps_must_leave_room_for_auth_email(monkeypatch):
     _clear_storage_env(monkeypatch)
-    monkeypatch.setenv("NOTIFICATION_EMAIL_DAILY_CAP", "50")
-    monkeypatch.setenv("PRODUCT_UPDATE_EMAIL_DAILY_CAP", "50")
+    monkeypatch.setenv("NOTIFICATION_EMAIL_DAILY_CAP", "100")
     with pytest.raises(ValidationError, match="EMAIL_PROVIDER_DAILY_QUOTA"):
         Settings()
     monkeypatch.setenv("EMAIL_PROVIDER_DAILY_QUOTA", "3000")
-    assert Settings().product_update_email_daily_cap == 50
+    assert Settings().notification_email_daily_cap == 100
 
 
 def _clear_storage_env(monkeypatch):

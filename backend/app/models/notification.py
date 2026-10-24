@@ -134,21 +134,27 @@ class Notification(Base):
 # under way or its outcome unknown; never retried, it turns ``failed`` once
 # stale. ``sent``: the provider accepted it. ``failed``: refused past the
 # attempt budget, or stale in ``sending``. ``skipped``: dropped unsent (the
-# switch or consent went off, the address went away, the item was hidden, or
-# it aged out in the queue).
+# switch went off, the address went away, the notification was hidden, or it
+# aged out in the queue).
 NotificationDeliveryStatus = Literal["queued", "sending", "sent", "failed", "skipped"]
 
 
-# What a channel sender reports for one row. ``sent``: the provider took it.
+# What the sender reports for one row. ``sent``: the provider took it.
 # ``skipped``: nothing to send it to. ``refused``: a definite refusal, retried.
 # ``unknown``: it may have gone out, so the row stays ``sending`` and is never
 # retried.
 DeliveryOutcome = Literal["sent", "skipped", "refused", "unknown"]
 
 
-class DeliveryState:
-    """The send state of one row of a queue the worker drains
-    (``services/notification_delivery.deliver``)."""
+class NotificationDelivery(Base):
+    """One notification to email, written beside the ``Notification`` row when
+    the recipient's email switch for that kind is on.
+
+    The worker drains the queue (``services/notification_delivery``), so a send
+    happens after the action commits and never inside it.
+    """
+
+    __tablename__ = "notification_deliveries"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     status: Mapped[NotificationDeliveryStatus] = mapped_column(
@@ -165,18 +171,6 @@ class DeliveryState:
     # a refusal puts the row back in ``queued``.
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-
-class NotificationDelivery(DeliveryState, Base):
-    """One notification to email, written beside the ``Notification`` row when
-    the recipient's email switch for that kind is on.
-
-    The worker drains the queue (``services/notification_delivery``), so a send
-    happens after the action commits and never inside it.
-    """
-
-    __tablename__ = "notification_deliveries"
-
     # SET NULL: a deleted notification leaves its sent rows behind for the daily
     # email cap (``services/notifications.delete`` removes the unsent ones).
     notification_id: Mapped[uuid.UUID | None] = mapped_column(

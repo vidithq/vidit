@@ -18,12 +18,11 @@ from datetime import UTC, datetime, timedelta
 from functools import partial
 
 from sqlalchemy import ColumnElement, and_, func, or_, select
-from sqlalchemy.orm import Query, Session
+from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.notification import (
     DeliveryOutcome,
-    DeliveryState,
     Notification,
     NotificationDelivery,
     NotificationKind,
@@ -43,16 +42,16 @@ STALE_SENDING_AFTER = timedelta(hours=1)
 QUEUED_EXPIRES_AFTER = timedelta(hours=48)
 
 
-def possibly_sent_since(model: type[DeliveryState], cutoff: datetime) -> ColumnElement[bool]:
-    """The rows of a queue that may have reached the provider since ``cutoff``: sent, or
-    claimed and left ``sending``, or failed stale out of ``sending``. A daily cap counts them
-    all, since the provider may have counted them too. A row failed by refusals never left."""
+def _possibly_sent_since(cutoff: datetime) -> ColumnElement[bool]:
+    """The rows that may have reached the provider since ``cutoff``: sent, or claimed and left
+    ``sending``, or failed stale out of ``sending``. A daily cap counts them all, since the
+    provider may have counted them too. A row failed by refusals never left."""
     return or_(
-        and_(model.status == "sent", model.sent_at >= cutoff),
+        and_(NotificationDelivery.status == "sent", NotificationDelivery.sent_at >= cutoff),
         and_(
-            model.status.in_(("sending", "failed")),
-            model.attempts < MAX_ATTEMPTS,
-            model.claimed_at >= cutoff,
+            NotificationDelivery.status.in_(("sending", "failed")),
+            NotificationDelivery.attempts < MAX_ATTEMPTS,
+            NotificationDelivery.claimed_at >= cutoff,
         ),
     )
 
@@ -60,45 +59,19 @@ def possibly_sent_since(model: type[DeliveryState], cutoff: datetime) -> ColumnE
 def _emails_sent_count(db: Session, *, now: datetime) -> int:
     return (
         db.query(func.count(NotificationDelivery.id))
-        .filter(possibly_sent_since(NotificationDelivery, now - CAP_WINDOW))
+        .filter(_possibly_sent_since(now - CAP_WINDOW))
         .scalar()
         or 0
     )
 
 
-def fail_stale_sending(db: Session, model: type[DeliveryState], *, now: datetime) -> None:
-    """Fail the rows of a queue left ``sending`` past ``STALE_SENDING_AFTER``. The provider may
-    have taken them, so they are never retried. Shared by every queue; the caller commits."""
-    db.query(model).filter(
-        model.status == "sending", model.claimed_at < now - STALE_SENDING_AFTER
-    ).update({"status": "failed"}, synchronize_session=False)
-
-
-def claim_first[Row: DeliveryState](
-    db: Session, query: Query[Row], model: type[Row], *, now: datetime
-) -> Row | None:
-    """Claim the oldest claimable row ``query`` holds: ``queued``, and never claimed or last
-    claimed past ``RETRY_AFTER``. Set ``sending`` and committed before the provider call. Shared
-    by every queue."""
-    row = (
-        query.filter(
-            model.status == "queued",
-            or_(model.claimed_at.is_(None), model.claimed_at < now - RETRY_AFTER),
-        )
-        .order_by(model.created_at, model.id)
-        .with_for_update(skip_locked=True, of=model)
-        .first()
-    )
-    if row is None:
-        return None
-    row.status = "sending"
-    row.claimed_at = now
-    db.commit()
-    return row
-
-
 def _expire(db: Session, *, now: datetime) -> None:
-    fail_stale_sending(db, NotificationDelivery, now=now)
+    """Fail the rows left ``sending`` past ``STALE_SENDING_AFTER``: the provider may have taken
+    them, so they are never retried. Skip the rows queued past ``QUEUED_EXPIRES_AFTER``."""
+    db.query(NotificationDelivery).filter(
+        NotificationDelivery.status == "sending",
+        NotificationDelivery.claimed_at < now - STALE_SENDING_AFTER,
+    ).update({"status": "failed"}, synchronize_session=False)
     db.query(NotificationDelivery).filter(
         NotificationDelivery.status == "queued",
         NotificationDelivery.created_at < now - QUEUED_EXPIRES_AFTER,
@@ -112,16 +85,32 @@ def _claim_next(db: Session, *, now: datetime) -> NotificationDelivery | None:
     capped_users = (
         select(Notification.user_id)
         .join(NotificationDelivery, NotificationDelivery.notification_id == Notification.id)
-        .where(possibly_sent_since(NotificationDelivery, now - CAP_WINDOW))
+        .where(_possibly_sent_since(now - CAP_WINDOW))
         .group_by(Notification.user_id)
         .having(func.count() >= settings.notification_email_daily_cap_per_user)
     )
-    query = (
+    row = (
         db.query(NotificationDelivery)
         .join(Notification, NotificationDelivery.notification_id == Notification.id)
-        .filter(Notification.user_id.not_in(capped_users))
+        .filter(
+            Notification.user_id.not_in(capped_users),
+            NotificationDelivery.status == "queued",
+            or_(
+                NotificationDelivery.claimed_at.is_(None),
+                NotificationDelivery.claimed_at < now - RETRY_AFTER,
+            ),
+        )
+        .order_by(NotificationDelivery.created_at, NotificationDelivery.id)
+        .with_for_update(skip_locked=True, of=NotificationDelivery)
+        .first()
     )
-    return claim_first(db, query, NotificationDelivery, now=now)
+    if row is None:
+        return None
+    # Committed before the provider call, so a crash mid-send never sends twice.
+    row.status = "sending"
+    row.claimed_at = now
+    db.commit()
+    return row
 
 
 @dataclass(frozen=True)
@@ -362,19 +351,13 @@ def _send_email(row: NotificationDelivery, recipient: User) -> DeliveryOutcome:
         _email_for(n, recipient.email),
         f"{settings.api_url.rstrip('/')}/notifications/unsubscribe?token={token}",
     )
-    return send_email(message, what=f"notification email {row.id}")
-
-
-def send_email(message: email.Email, *, what: str) -> DeliveryOutcome:
-    """Hand ``message`` to the provider and report the outcome. Shared by
-    every email queue."""
     try:
         email.send(message)
     except email.EmailRejectedError as exc:
-        logger.warning("%s refused: %s", what, exc)
+        logger.warning("notification email %s refused: %s", row.id, exc)
         return "refused"
     except email.EmailSendError as exc:
-        logger.warning("%s outcome unknown: %s", what, exc)
+        logger.warning("notification email %s outcome unknown: %s", row.id, exc)
         return "unknown"
     return "sent"
 
@@ -396,12 +379,12 @@ def _recipient(db: Session, row: NotificationDelivery) -> User | None:
     return recipient
 
 
-def _count_failure(row: DeliveryState) -> None:
+def _count_failure(row: NotificationDelivery) -> None:
     row.attempts += 1
     row.status = "failed" if row.attempts >= MAX_ATTEMPTS else "queued"
 
 
-def _land(row: DeliveryState, outcome: DeliveryOutcome) -> None:
+def _land(row: NotificationDelivery, outcome: DeliveryOutcome) -> None:
     if outcome == "sent":
         row.status = "sent"
         row.sent_at = datetime.now(UTC)
@@ -413,7 +396,7 @@ def _land(row: DeliveryState, outcome: DeliveryOutcome) -> None:
 
 def deliver(
     db: Session,
-    row: DeliveryState,
+    row: NotificationDelivery,
     attempt: Callable[[], DeliveryOutcome],
     *,
     what: str,
@@ -421,9 +404,8 @@ def deliver(
     """Run ``attempt`` for a row claimed ``sending`` and land its outcome. Any
     other error counts as a refusal, so one bad row never stops a drain, except
     after an outcome that may have reached the recipient: that row stays
-    ``sending`` and goes stale, so it is never sent twice. Shared by every
-    queue the worker drains."""
-    model, row_id = type(row), row.id
+    ``sending`` and goes stale, so it is never sent twice."""
+    row_id = row.id
     outcome: DeliveryOutcome | None = None
     try:
         outcome = attempt()
@@ -434,7 +416,7 @@ def deliver(
         db.rollback()
         if outcome in ("sent", "unknown"):
             return
-        fresh = db.get(model, row_id)
+        fresh = db.get(NotificationDelivery, row_id)
         if fresh is not None:
             _count_failure(fresh)
             db.commit()

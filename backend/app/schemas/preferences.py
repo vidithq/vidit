@@ -43,31 +43,26 @@ class NotificationPreferenceRead(BaseModel):
 
 class UserPreferencesRead(BaseModel):
     """Effective values, each beside the default it falls back to.
-    ``display_stored`` holds only the display values the account has saved
-    (``null`` where it has none), so a client can tell a saved value from a
-    default. ``notifications`` lists every registered kind in registry order.
-    ``product_updates`` is whether a consent to product update emails is
-    current; it has no default to fall back to, since consent is never
-    presumed. ``approval_request_audience`` is who may send you an approval
-    request."""
+        ``display_stored`` holds only the display values the account has saved
+        (``null`` where it has none), so a client can tell a saved value from a
+        default. ``notifications`` lists every registered kind in registry order.
+    ``approval_request_audience`` is who may send you an approval
+        request."""
 
     display: DisplayPreferences
     display_defaults: DisplayPreferences
     display_stored: DisplayPreferencesUpdate
     notifications: list[NotificationPreferenceRead]
-    product_updates: bool
     approval_request_audience: ApprovalRequestAudience
 
 
 class UserPreferencesUpdate(BaseModel):
     """Body for ``PATCH /users/me/preferences``. Each ``notifications`` entry
     turns the email of one kind on or off; a value equal to the default drops
-    the override. ``product_updates`` grants or withdraws the consent to product
-    update emails from Settings."""
+    the override."""
 
     model_config = ConfigDict(extra="forbid")
 
     display: DisplayPreferencesUpdate | None = None
     notifications: dict[NotificationKind, bool] | None = None
-    product_updates: bool | None = None
     approval_request_audience: ApprovalRequestAudience | None = None
