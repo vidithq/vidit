@@ -28,7 +28,6 @@ dependencies = [
     "pillow>=13.0.0",
     "beautifulsoup4>=4.15.0",
     "nh3>=0.3.7",
-    "pywebpush>=2.5.0",
 ]
 
 [project.optional-dependencies]

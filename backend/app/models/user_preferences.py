@@ -25,7 +25,7 @@ class UserPreferences(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
-    # ``{kind: {channel: bool}}``, overrides of ``NOTIFICATION_KINDS`` only.
+    # ``{kind: bool}``, email overrides of ``NOTIFICATION_KINDS`` only.
     notification_overrides: Mapped[dict[str, Any]] = mapped_column(
         JSONB, default=dict, nullable=False, server_default="{}"
     )

@@ -1,13 +1,12 @@
 """Stored notifications: emitting a row, the feed, and per-row read state.
 
 An emitter adds its row to the caller's session and never commits, so the row
-lands in the transaction of the action it reports. For each channel the
-recipient can receive on (a verified address for email, a registered device for
-push) whose switch for the kind is on, a ``notification_deliveries`` row joins
-it for the worker to send. An actor who queued
+lands in the transaction of the action it reports. When the recipient has a
+verified address and their email switch for the kind is on, a
+``notification_deliveries`` row joins it for the worker to send. An actor who queued
 ``settings.notification_email_daily_cap_per_actor`` emails of the kinds they send straight at
 someone (:data:`ACTOR_CAPPED_KINDS`) in the trailing day queues no more of them: the row still
-reaches the feed and push. Reads hide a
+reaches the feed. Reads hide a
 row whose event is soft-deleted or taken down, or whose actor is soft-deleted or
 deactivated, whenever that happened.
 """
@@ -29,7 +28,6 @@ from app.models.event import (
 )
 from app.models.notification import (
     Notification,
-    NotificationChannel,
     NotificationDelivery,
     NotificationKind,
 )
@@ -42,10 +40,9 @@ from app.schemas.notification import (
 )
 from app.schemas.organization import OrganizationRef
 from app.schemas.user import AuthorRef
-from app.services import push
 from app.services.event_filters import ever_credited_ids, visible_events
 from app.services.pagination import keyset_before
-from app.services.preferences import channel_enabled
+from app.services.preferences import email_enabled
 
 _Actor = aliased(User)
 _Approval = aliased(EventApproval)
@@ -71,7 +68,6 @@ def _actor_email_capped(db: Session, actor_id: uuid.UUID) -> bool:
         .filter(
             Notification.actor_id == actor_id,
             Notification.kind.in_(ACTOR_CAPPED_KINDS),
-            NotificationDelivery.channel == "email",
             NotificationDelivery.created_at >= datetime.now(UTC) - ACTOR_EMAIL_WINDOW,
         )
         .scalar()
@@ -105,18 +101,16 @@ def _emit(
     recipient = db.get(User, recipient_id)
     if recipient is None:
         return
-    reachable: dict[NotificationChannel, bool] = {
-        "email": has_verified_email(recipient)
+    if (
+        has_verified_email(recipient)
         and (
             actor_id is None
             or kind not in ACTOR_CAPPED_KINDS
             or not _actor_email_capped(db, actor_id)
-        ),
-        "push": push.has_device(db, user_id=recipient_id),
-    }
-    for channel, can_receive in reachable.items():
-        if can_receive and channel_enabled(db, user_id=recipient_id, kind=kind, channel=channel):
-            db.add(NotificationDelivery(notification=row, channel=channel))
+        )
+        and email_enabled(db, user_id=recipient_id, kind=kind)
+    ):
+        db.add(NotificationDelivery(notification=row))
 
 
 def has_verified_email(user: User) -> bool:

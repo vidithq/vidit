@@ -32,7 +32,7 @@ def _verify(db, *users: User) -> None:
 
 
 def _email_off(db, user: User, kind: str) -> None:
-    db.add(UserPreferences(user_id=user.id, notification_overrides={kind: {"email": False}}))
+    db.add(UserPreferences(user_id=user.id, notification_overrides={kind: False}))
     db.commit()
 
 
@@ -62,7 +62,7 @@ def test_fulfilment_queues_and_the_drain_sends_one_branded_email(
     # The action only queues: nothing is sent inside the request.
     assert outbox == []
     [row] = _deliveries(db, author)
-    assert (row.channel, row.status) == ("email", "queued")
+    assert row.status == "queued"
 
     assert notification_delivery.drain(db) >= 1
 
@@ -91,11 +91,7 @@ def test_default_off_kind_queues_only_for_an_analyst_who_turned_it_on(
     db, author, second_user, admin_user
 ):
     _verify(db, author, second_user)
-    db.add(
-        UserPreferences(
-            user_id=second_user.id, notification_overrides={"new_follower": {"email": True}}
-        )
-    )
+    db.add(UserPreferences(user_id=second_user.id, notification_overrides={"new_follower": True}))
     db.commit()
     headers = login_as(client, admin_user)
     for followed in (author, second_user):
@@ -293,19 +289,14 @@ def test_a_row_queued_too_long_is_skipped(
 
 def test_every_kind_that_can_email_has_copy():
     """A kind an analyst can switch on for email needs an email to send."""
-    emailable = {kind for kind, channels in NOTIFICATION_KINDS.items() if "email" in channels}
-    assert emailable - set(notification_delivery._COPY) == set()
+    assert set(NOTIFICATION_KINDS) - set(notification_delivery._COPY) == set()
 
 
 def _two_queued_rows(db, author, second_user, admin_user, conflict, tag) -> None:
     """A request_fulfilled row for ``author``, then a new_follower row for ``second_user``."""
     _verify(db, author, second_user)
     _fulfil(db, author, second_user, conflict, tag)
-    db.add(
-        UserPreferences(
-            user_id=second_user.id, notification_overrides={"new_follower": {"email": True}}
-        )
-    )
+    db.add(UserPreferences(user_id=second_user.id, notification_overrides={"new_follower": True}))
     db.commit()
     headers = login_as(client, admin_user)
     response = client.post(f"/api/v1/users/{second_user.username}/follow", headers=headers)
@@ -354,7 +345,7 @@ def test_a_failed_write_after_a_send_never_requeues_the_row(
 ):
     _verify(db, author)
     _fulfil(db, author, second_user, conflict, capture_source_tag)
-    row = notification_delivery._claim_next(db, now=datetime.now(UTC), channel="email")
+    row = notification_delivery._claim_next(db, now=datetime.now(UTC))
     assert row is not None
 
     def land_fails(_row, _outcome):
@@ -383,7 +374,7 @@ def test_the_one_click_unsubscribe_turns_off_that_kind_by_email_only(
 
     db.expire_all()
     prefs = db.get(UserPreferences, author.id)
-    assert prefs.notification_overrides == {"request_fulfilled": {"email": False}}
+    assert prefs.notification_overrides == {"request_fulfilled": False}
 
     forged = token.replace("request_fulfilled", "new_follower")
     refused = client.post(path, params={"token": forged})

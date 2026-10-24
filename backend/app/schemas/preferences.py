@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from app.models.notification import NotificationChannel, NotificationKind
+from app.models.notification import NotificationKind
 from app.models.user_preferences import ApprovalRequestAudience
 
 # The display allowlists. The frontend derives its palette and theme ids from
@@ -34,9 +34,11 @@ class DisplayPreferencesUpdate(BaseModel):
 
 
 class NotificationPreferenceRead(BaseModel):
+    """Whether ``kind`` is emailed, beside its default. The in-app feed shows every kind."""
+
     kind: NotificationKind
-    channels: dict[NotificationChannel, bool]
-    defaults: dict[NotificationChannel, bool]
+    email: bool
+    default: bool
 
 
 class UserPreferencesRead(BaseModel):
@@ -59,13 +61,13 @@ class UserPreferencesRead(BaseModel):
 
 class UserPreferencesUpdate(BaseModel):
     """Body for ``PATCH /users/me/preferences``. Each ``notifications`` entry
-    sets channels of one kind; a value equal to the default drops the
-    override. ``product_updates`` grants or withdraws the consent to product
+    turns the email of one kind on or off; a value equal to the default drops
+    the override. ``product_updates`` grants or withdraws the consent to product
     update emails from Settings."""
 
     model_config = ConfigDict(extra="forbid")
 
     display: DisplayPreferencesUpdate | None = None
-    notifications: dict[NotificationKind, dict[NotificationChannel, bool]] | None = None
+    notifications: dict[NotificationKind, bool] | None = None
     product_updates: bool | None = None
     approval_request_audience: ApprovalRequestAudience | None = None

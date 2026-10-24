@@ -356,8 +356,6 @@ def test_a_revoke_notifies_the_owner_and_hides_the_approval_notice(db, author, s
     [row] = db.query(Notification).filter_by(user_id=author.id, kind="approval_revoked").all()
     built = notification_delivery._email_for(row, "probe@example.com")
     assert second_user.username in built.subject
-    message = notification_delivery._push_for(row)
-    assert message.path == f"/events/{geo.id}"
 
 
 def test_a_revoke_hides_only_the_notice_of_the_revoked_approval(

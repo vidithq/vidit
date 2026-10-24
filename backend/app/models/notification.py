@@ -37,32 +37,27 @@ NotificationKind = Literal[
     "organization_approval_removed",
 ]
 
-# A delivery channel besides the in-app feed, which is always on.
-# ``ck_notification_deliveries_channel_valid`` pins it at the DB.
-# Mirrored by the frontend's lib/notifications NotificationChannel; change both.
-NotificationChannel = Literal["email", "push"]
-
-# The kind registry: every kind with its per-channel default. Analysts store
-# only overrides (``user_preferences.notification_overrides``), so changing a
-# default here moves everyone who never touched that switch. Push mirrors the
-# email default and reaches only an analyst with a registered device.
-NOTIFICATION_KINDS: dict[NotificationKind, dict[NotificationChannel, bool]] = {
-    "request_fulfilled": {"email": True, "push": True},
-    "new_follower": {"email": False, "push": False},
-    "x_handle_request_approved": {"email": True, "push": True},
-    "x_handle_request_declined": {"email": True, "push": True},
-    "co_geolocator_invite": {"email": True, "push": True},
-    "co_geolocator_removed": {"email": False, "push": False},
-    "ownership_transferred": {"email": True, "push": True},
-    "organization_invite": {"email": True, "push": True},
-    "organization_invite_accepted": {"email": False, "push": False},
-    "organization_manager_inherited": {"email": True, "push": True},
-    "re_approve_requested": {"email": False, "push": False},
-    "approval_received": {"email": False, "push": False},
-    "approval_revoked": {"email": False, "push": False},
-    "approval_request_received": {"email": True, "push": True},
-    "approval_request_declined": {"email": False, "push": False},
-    "organization_approval_removed": {"email": False, "push": False},
+# The kind registry: every kind with its email default. The in-app feed always
+# shows every kind. Analysts store only overrides
+# (``user_preferences.notification_overrides``), so changing a default here
+# moves everyone who never touched that switch.
+NOTIFICATION_KINDS: dict[NotificationKind, bool] = {
+    "request_fulfilled": True,
+    "new_follower": False,
+    "x_handle_request_approved": True,
+    "x_handle_request_declined": True,
+    "co_geolocator_invite": True,
+    "co_geolocator_removed": False,
+    "ownership_transferred": True,
+    "organization_invite": True,
+    "organization_invite_accepted": False,
+    "organization_manager_inherited": True,
+    "re_approve_requested": False,
+    "approval_received": False,
+    "approval_revoked": False,
+    "approval_request_received": True,
+    "approval_request_declined": False,
+    "organization_approval_removed": False,
 }
 assert set(NOTIFICATION_KINDS) == set(get_args(NotificationKind))
 
@@ -177,8 +172,8 @@ class DeliveryState:
 
 
 class NotificationDelivery(DeliveryState, Base):
-    """One notification to deliver on one channel, written beside the
-    ``Notification`` row when the recipient's switch for that kind is on.
+    """One notification to email, written beside the ``Notification`` row when
+    the recipient's email switch for that kind is on.
 
     The worker drains the queue (``services/notification_delivery``), so a send
     happens after the action commits and never inside it.
@@ -191,16 +186,14 @@ class NotificationDelivery(DeliveryState, Base):
     notification_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("notifications.id", ondelete="SET NULL"), nullable=True
     )
-    channel: Mapped[NotificationChannel] = mapped_column(String(20), nullable=False)
 
     notification = relationship("Notification")
 
     __table_args__ = (
-        literal_check("channel", NotificationChannel, "ck_notification_deliveries_channel_valid"),
         literal_check(
             "status", NotificationDeliveryStatus, "ck_notification_deliveries_status_valid"
         ),
-        UniqueConstraint("notification_id", "channel", name="uq_notification_deliveries_channel"),
+        UniqueConstraint("notification_id", name="uq_notification_deliveries_notification_id"),
         # The claim walk, oldest first.
         Index(
             "ix_notification_deliveries_queued",

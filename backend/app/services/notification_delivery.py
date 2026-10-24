@@ -1,13 +1,12 @@
 """The notification delivery queue: the worker's drain of ``notification_deliveries``.
 
-One drain serves every channel and hands each row to its channel's sender. A
-row is claimed with ``FOR UPDATE SKIP LOCKED``, set ``sending`` and committed
+A row is claimed with ``FOR UPDATE SKIP LOCKED``, set ``sending`` and committed
 before the provider call, so a crash mid-send leaves it ``sending`` and it is
 never sent twice. A provider refusal puts it back in ``queued`` for another
 try after ``RETRY_AFTER``, up to ``MAX_ATTEMPTS``. Each email claim first
 checks the daily caps, which count every row that may have gone out
 (:func:`possibly_sent_since`), so notification email never takes the share of the auth
-emails, which are sent inline and never wait here. Push has no cap.
+emails, which are sent inline and never wait here.
 """
 
 from __future__ import annotations
@@ -26,15 +25,14 @@ from app.models.notification import (
     DeliveryOutcome,
     DeliveryState,
     Notification,
-    NotificationChannel,
     NotificationDelivery,
     NotificationKind,
 )
 from app.models.user import User
-from app.services import email, push
+from app.services import email
 from app.services.email_layout import Action, app_url
 from app.services.notifications import has_verified_email, is_visible
-from app.services.preferences import channel_enabled, email_unsubscribe_token
+from app.services.preferences import email_enabled, email_unsubscribe_token
 
 logger = logging.getLogger(__name__)
 
@@ -59,17 +57,10 @@ def possibly_sent_since(model: type[DeliveryState], cutoff: datetime) -> ColumnE
     )
 
 
-def _emails_sent_since(cutoff: datetime) -> tuple[ColumnElement[bool], ...]:
-    return (
-        NotificationDelivery.channel == "email",
-        possibly_sent_since(NotificationDelivery, cutoff),
-    )
-
-
 def _emails_sent_count(db: Session, *, now: datetime) -> int:
     return (
         db.query(func.count(NotificationDelivery.id))
-        .filter(*_emails_sent_since(now - CAP_WINDOW))
+        .filter(possibly_sent_since(NotificationDelivery, now - CAP_WINDOW))
         .scalar()
         or 0
     )
@@ -115,40 +106,35 @@ def _expire(db: Session, *, now: datetime) -> None:
     db.commit()
 
 
-def _claim_next(
-    db: Session, *, now: datetime, channel: NotificationChannel
-) -> NotificationDelivery | None:
+def _claim_next(db: Session, *, now: datetime) -> NotificationDelivery | None:
+    if _emails_sent_count(db, now=now) >= settings.notification_email_daily_cap:
+        return None
+    capped_users = (
+        select(Notification.user_id)
+        .join(NotificationDelivery, NotificationDelivery.notification_id == Notification.id)
+        .where(possibly_sent_since(NotificationDelivery, now - CAP_WINDOW))
+        .group_by(Notification.user_id)
+        .having(func.count() >= settings.notification_email_daily_cap_per_user)
+    )
     query = (
         db.query(NotificationDelivery)
         .join(Notification, NotificationDelivery.notification_id == Notification.id)
-        .filter(NotificationDelivery.channel == channel)
+        .filter(Notification.user_id.not_in(capped_users))
     )
-    if channel == "email":
-        if _emails_sent_count(db, now=now) >= settings.notification_email_daily_cap:
-            return None
-        capped_users = (
-            select(Notification.user_id)
-            .join(NotificationDelivery, NotificationDelivery.notification_id == Notification.id)
-            .where(*_emails_sent_since(now - CAP_WINDOW))
-            .group_by(Notification.user_id)
-            .having(func.count() >= settings.notification_email_daily_cap_per_user)
-        )
-        query = query.filter(Notification.user_id.not_in(capped_users))
     return claim_first(db, query, NotificationDelivery, now=now)
 
 
 @dataclass(frozen=True)
 class _Copy:
-    """One notification in words. ``title`` is the email subject and the push title, ``text``
-    the email's sentence above its ``action`` button, ``path`` the app page both open,
-    ``setting`` the kind's label in Settings, and ``push_body`` the line under the push title."""
+    """One notification in words. ``title`` is the email subject, ``text`` the email's sentence
+    above its ``action`` button, ``path`` the app page the button opens, and ``setting`` the
+    kind's label in Settings."""
 
     title: str
     text: str
     action: str
     path: str
     setting: str
-    push_body: str
 
 
 def _event_path(n: Notification) -> str:
@@ -172,7 +158,6 @@ def _request_fulfilled(n: Notification) -> _Copy:
         action="View the geolocation",
         path=_event_path(n),
         setting="Request fulfilled",
-        push_body=title,
     )
 
 
@@ -184,7 +169,6 @@ def _new_follower(n: Notification) -> _Copy:
         action="View their profile",
         path=f"/profile/{actor}",
         setting="New follower",
-        push_body="Open their profile to see their work.",
     )
 
 
@@ -196,7 +180,6 @@ def _x_handle_request_approved(_n: Notification) -> _Copy:
         action="Open your settings",
         path="/settings",
         setting="X handle change approved",
-        push_body="Posts from the new handle now count as yours.",
     )
 
 
@@ -208,7 +191,6 @@ def _x_handle_request_declined(_n: Notification) -> _Copy:
         action="Open your settings",
         path="/settings",
         setting="X handle change declined",
-        push_body="Open Settings to read why.",
     )
 
 
@@ -221,7 +203,6 @@ def _co_geolocator_invite(n: Notification) -> _Copy:
         action="View the invitation",
         path=_event_path(n),
         setting="Geolocator invitation",
-        push_body=title,
     )
 
 
@@ -233,7 +214,6 @@ def _co_geolocator_removed(n: Notification) -> _Copy:
         action="View the geolocation",
         path=_event_path(n),
         setting="Credit removed",
-        push_body=title,
     )
 
 
@@ -246,7 +226,6 @@ def _ownership_transferred(n: Notification) -> _Copy:
         action="View the geolocation",
         path=_event_path(n),
         setting="Ownership transferred",
-        push_body=title,
     )
 
 
@@ -259,7 +238,6 @@ def _organization_invite(n: Notification) -> _Copy:
         action="View the invitation",
         path=_organization_path(n),
         setting="Organization invite",
-        push_body="Accept or decline on the organization's page.",
     )
 
 
@@ -271,7 +249,6 @@ def _organization_invite_accepted(n: Notification) -> _Copy:
         action="View the organization",
         path=_organization_path(n),
         setting="Invite accepted",
-        push_body="Your invitation was accepted.",
     )
 
 
@@ -285,7 +262,6 @@ def _organization_manager_inherited(n: Notification) -> _Copy:
         action="View the organization",
         path=_organization_path(n),
         setting="Now org manager",
-        push_body="The account of its last org manager was removed.",
     )
 
 
@@ -300,7 +276,6 @@ def _re_approve_requested(n: Notification) -> _Copy:
         action="Review the new version",
         path=_event_path(n),
         setting="New version to approve",
-        push_body=title,
     )
 
 
@@ -313,7 +288,6 @@ def _approval_received(n: Notification) -> _Copy:
         action="View the geolocation",
         path=_event_path(n),
         setting="Approval received",
-        push_body=title,
     )
 
 
@@ -326,7 +300,6 @@ def _approval_revoked(n: Notification) -> _Copy:
         action="View the geolocation",
         path=_event_path(n),
         setting="Approval revoked",
-        push_body=title,
     )
 
 
@@ -341,7 +314,6 @@ def _approval_request_received(n: Notification) -> _Copy:
         action="Review the geolocation",
         path=_event_path(n),
         setting="Approval request",
-        push_body=title,
     )
 
 
@@ -354,7 +326,6 @@ def _approval_request_declined(n: Notification) -> _Copy:
         action="View the geolocation",
         path=_event_path(n),
         setting="Approval request declined",
-        push_body=title,
     )
 
 
@@ -367,11 +338,10 @@ def _organization_approval_removed(n: Notification) -> _Copy:
         action="View the geolocation",
         path=_event_path(n),
         setting="Organization approval removed",
-        push_body=f"Its approval of {title} is gone.",
     )
 
 
-# One entry per kind renders both channels; a kind missing here is skipped on each.
+# One entry per kind; a kind missing here is skipped.
 _COPY: dict[NotificationKind, Callable[[Notification], _Copy]] = {
     "request_fulfilled": _request_fulfilled,
     "new_follower": _new_follower,
@@ -403,12 +373,7 @@ def _email_for(n: Notification, to: str) -> email.Email:
     )
 
 
-def _push_for(n: Notification) -> push.PushMessage:
-    copy = _COPY[n.kind](n)
-    return push.PushMessage(title=copy.title, body=copy.push_body, path=copy.path)
-
-
-def _send_email(db: Session, row: NotificationDelivery, recipient: User) -> DeliveryOutcome:
+def _send_email(row: NotificationDelivery, recipient: User) -> DeliveryOutcome:
     if not has_verified_email(recipient):
         return "skipped"
     assert recipient.email is not None
@@ -438,22 +403,6 @@ def send_email(message: email.Email, *, what: str) -> DeliveryOutcome:
     return "sent"
 
 
-def _send_push(db: Session, row: NotificationDelivery, recipient: User) -> DeliveryOutcome:
-    n = row.notification
-    if n.kind not in _COPY:
-        logger.warning("notification push %s skipped: no copy for kind %r", row.id, n.kind)
-        return "skipped"
-    return push.send(db, user_id=recipient.id, message=_push_for(n))
-
-
-_SENDERS: dict[
-    NotificationChannel, Callable[[Session, NotificationDelivery, User], DeliveryOutcome]
-] = {
-    "email": _send_email,
-    "push": _send_push,
-}
-
-
 def _recipient(db: Session, row: NotificationDelivery) -> User | None:
     """The live recipient, or None when the row must be skipped: the recipient
     is soft-deleted or deactivated, the switch is off, or the feed would hide
@@ -464,7 +413,7 @@ def _recipient(db: Session, row: NotificationDelivery) -> User | None:
         recipient is None
         or recipient.deleted_at is not None
         or not recipient.is_active
-        or not channel_enabled(db, user_id=recipient.id, kind=n.kind, channel=row.channel)
+        or not email_enabled(db, user_id=recipient.id, kind=n.kind)
         or not is_visible(db, notification_id=n.id, user=recipient)
     ):
         return None
@@ -517,15 +466,14 @@ def deliver(
 
 def _attempt(db: Session, row: NotificationDelivery) -> DeliveryOutcome:
     recipient = _recipient(db, row)
-    return _SENDERS[row.channel](db, row, recipient) if recipient is not None else "skipped"
+    return _send_email(row, recipient) if recipient is not None else "skipped"
 
 
 def drain(db: Session) -> int:
-    """Send every claimable row, channel by channel; return the rows handled."""
+    """Send every claimable row; return the rows handled."""
     _expire(db, now=datetime.now(UTC))
     handled = 0
-    for channel in _SENDERS:
-        while (row := _claim_next(db, now=datetime.now(UTC), channel=channel)) is not None:
-            deliver(db, row, partial(_attempt, db, row), what=f"notification {channel}")
-            handled += 1
+    while (row := _claim_next(db, now=datetime.now(UTC))) is not None:
+        deliver(db, row, partial(_attempt, db, row), what="notification email")
+        handled += 1
     return handled

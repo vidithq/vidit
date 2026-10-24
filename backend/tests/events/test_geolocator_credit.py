@@ -223,16 +223,14 @@ def test_one_actor_queues_a_capped_number_of_emails(db, author, make_user, monke
         assert _invite(geo, author, invitee.username).status_code == 201
 
     db.expire_all()
-    channels = [
-        [
-            d.channel
-            for d in db.query(NotificationDelivery)
-            .join(Notification)
-            .filter(Notification.user_id == invitee.id)
-        ]
+    queued = [
+        db.query(NotificationDelivery)
+        .join(Notification)
+        .filter(Notification.user_id == invitee.id)
+        .count()
         for invitee in invitees
     ]
-    assert channels == [["email"], ["email"], []]
+    assert queued == [1, 1, 0]
     assert all(_notifications(db, invitee) for invitee in invitees)
 
 
@@ -244,7 +242,7 @@ def test_the_per_actor_cap_spares_fan_out_and_is_not_spent_by_it(
     db.add(
         UserPreferences(
             user_id=second_user.id,
-            notification_overrides={"re_approve_requested": {"email": True}},
+            notification_overrides={"re_approve_requested": True},
         )
     )
     db.commit()
@@ -266,7 +264,7 @@ def test_the_per_actor_cap_spares_fan_out_and_is_not_spent_by_it(
         return (
             db.query(NotificationDelivery)
             .join(Notification)
-            .filter(Notification.user_id == user.id, NotificationDelivery.channel == "email")
+            .filter(Notification.user_id == user.id)
             .count()
         )
 

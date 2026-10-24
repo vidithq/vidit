@@ -343,7 +343,7 @@ def test_a_new_version_resets_and_asks_every_member(
     assert row["organization"]["slug"] == org.slug
 
 
-def test_a_reapproval_push_names_the_organization(
+def test_a_reapproval_email_names_the_organization(
     db, author, make_user, make_org, conflict, capture_source_tag
 ):
     manager, member = make_user(), make_user()
@@ -353,8 +353,8 @@ def test_a_reapproval_push_names_the_organization(
     saved = _save_version(geo.id, author, data=_form(conflict, capture_source_tag))
     assert saved.status_code == 200, saved.text
     [asked] = _rows(db, member, "re_approve_requested")
-    message = notification_delivery._push_for(asked)
-    assert message.title.endswith(f"a geolocation {org.name} approved")
+    built = notification_delivery._email_for(asked, "probe@example.com")
+    assert built.subject.endswith(f"a geolocation {org.name} approved")
 
 
 # ── Revocation ──────────────────────────────────────────────────────
@@ -593,7 +593,6 @@ def test_a_request_to_a_large_organization_stays_under_the_per_actor_email_cap(
         .filter(
             Notification.kind == "approval_request_received",
             Notification.user_id.in_([u.id for u in recipients]),
-            NotificationDelivery.channel == "email",
         )
         .count()
     )
@@ -631,7 +630,7 @@ def test_the_organization_page_lists_its_approvals_and_open_requests(
 # ── Delivery ────────────────────────────────────────────────────────
 
 
-def test_organization_rows_name_the_organization_in_email_and_push(
+def test_organization_rows_name_the_organization_in_email(
     db, author, make_user, make_org, monkeypatch
 ):
     sent: list[email.Email] = []
@@ -656,9 +655,6 @@ def test_organization_rows_name_the_organization_in_email_and_push(
         "approval_received",
     }
     for row in rows:
-        message = notification_delivery._push_for(row)
-        assert org.name in message.title
-        assert message.path == f"/events/{geo.id}"
         built = notification_delivery._email_for(row, "probe@example.com")
         assert org.name in built.subject
 

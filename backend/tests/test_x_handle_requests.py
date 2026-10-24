@@ -364,10 +364,10 @@ def test_a_decision_queues_an_email_to_a_verified_address(db, analyst, admin):
     client.post(f"{_QUEUE}/{request_id}/decline", json={"reason": "no"})
 
     db.expire_all()
-    channels = [
-        d.channel
-        for d in db.query(NotificationDelivery)
+    queued = (
+        db.query(NotificationDelivery)
         .join(Notification, NotificationDelivery.notification_id == Notification.id)
         .filter(Notification.user_id == analyst.id)
-    ]
-    assert channels == ["email"]
+        .count()
+    )
+    assert queued == 1

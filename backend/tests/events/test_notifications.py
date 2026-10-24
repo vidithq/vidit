@@ -201,17 +201,19 @@ def _delete(user: User, notification_id: uuid.UUID):
 
 
 def test_delete_drops_unsent_deliveries_and_keeps_sent_ones(db, author, second_user):
-    row = _notify(db, recipient=author, actor=second_user)
+    unsent = _notify(db, recipient=author, actor=second_user)
+    emailed = _notify(db, recipient=author, actor=second_user)
     kept = _notify(db, recipient=author, actor=second_user)
-    queued = NotificationDelivery(notification_id=row.id, channel="push")
+    queued = NotificationDelivery(notification_id=unsent.id)
     sent = NotificationDelivery(
-        notification_id=row.id, channel="email", status="sent", sent_at=datetime.now(UTC)
+        notification_id=emailed.id, status="sent", sent_at=datetime.now(UTC)
     )
     db.add_all([queued, sent])
     db.commit()
-    row_id, queued_id, sent_id = row.id, queued.id, sent.id
+    unsent_id, emailed_id, queued_id, sent_id = unsent.id, emailed.id, queued.id, sent.id
 
-    assert _delete(author, row_id).status_code == 204
+    assert _delete(author, unsent_id).status_code == 204
+    assert _delete(author, emailed_id).status_code == 204
     assert [r.id for r in _rows(db, author)] == [kept.id]
     assert db.get(NotificationDelivery, queued_id) is None
     assert db.get(NotificationDelivery, sent_id).notification_id is None

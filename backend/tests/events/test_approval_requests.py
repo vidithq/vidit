@@ -519,7 +519,7 @@ def test_a_request_emails_the_target_and_a_decline_emails_only_on_opt_in(
 
     db.add(
         UserPreferences(
-            user_id=author.id, notification_overrides={"approval_request_declined": {"email": True}}
+            user_id=author.id, notification_overrides={"approval_request_declined": True}
         )
     )
     db.commit()
@@ -530,17 +530,3 @@ def test_a_request_emails_the_target_and_a_decline_emails_only_on_opt_in(
     notification_delivery.drain(db)
     [declined] = [m for m in outbox if m.to == author.email]
     assert target.username in declined.subject
-
-
-def test_push_messages_name_the_actor_and_open_the_event(db, author, make_user):
-    geo = published_geo(db, author)
-    target = make_user(audience="everyone")
-    created = _request(geo, author, target).json()
-    assert _decline(geo, created["id"], target).status_code == 200
-    db.expire_all()
-    rows = db.query(Notification).filter(Notification.event_id == geo.id).all()
-    assert {r.kind for r in rows} == {"approval_request_received", "approval_request_declined"}
-    for row in rows:
-        message = notification_delivery._push_for(row)
-        assert row.actor.username in message.title
-        assert message.path == f"/events/{geo.id}"

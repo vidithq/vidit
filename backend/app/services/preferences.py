@@ -1,4 +1,4 @@
-"""Per-analyst preferences: notification channel overrides and the display
+"""Per-analyst preferences: notification email overrides and the display
 document, resolved against the defaults.
 
 A missing ``user_preferences`` row reads as the defaults. The row is created
@@ -16,7 +16,7 @@ from pydantic import ValidationError
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app.models.notification import NOTIFICATION_KINDS, NotificationChannel, NotificationKind
+from app.models.notification import NOTIFICATION_KINDS, NotificationKind
 from app.models.user import User
 from app.models.user_preferences import APPROVAL_REQUEST_AUDIENCE_DEFAULT, UserPreferences
 from app.schemas.preferences import (
@@ -47,29 +47,20 @@ def _valid_stored_display(stored: dict[str, Any]) -> dict[str, Any]:
     return valid
 
 
-def _effective_channels(
-    row: UserPreferences | None, kind: NotificationKind
-) -> dict[NotificationChannel, bool]:
-    stored = (row.notification_overrides if row is not None else {}).get(kind, {})
-    return {
-        channel: stored[channel] if isinstance(stored.get(channel), bool) else default
-        for channel, default in NOTIFICATION_KINDS[kind].items()
-    }
+def _effective_email(row: UserPreferences | None, kind: NotificationKind) -> bool:
+    stored = (row.notification_overrides if row is not None else {}).get(kind)
+    return stored if isinstance(stored, bool) else NOTIFICATION_KINDS[kind]
 
 
-def channel_enabled(
-    db: Session, *, user_id: uuid.UUID, kind: NotificationKind, channel: NotificationChannel
-) -> bool:
-    """Whether ``user_id`` gets ``kind`` on ``channel``: their override, else the default."""
-    return _effective_channels(db.get(UserPreferences, user_id), kind)[channel]
+def email_enabled(db: Session, *, user_id: uuid.UUID, kind: NotificationKind) -> bool:
+    """Whether ``user_id`` gets ``kind`` by email: their override, else the default."""
+    return _effective_email(db.get(UserPreferences, user_id), kind)
 
 
 def _build_read(row: UserPreferences | None, *, product_updates: bool) -> UserPreferencesRead:
     notifications = [
-        NotificationPreferenceRead(
-            kind=kind, channels=_effective_channels(row, kind), defaults=dict(defaults)
-        )
-        for kind, defaults in NOTIFICATION_KINDS.items()
+        NotificationPreferenceRead(kind=kind, email=_effective_email(row, kind), default=default)
+        for kind, default in NOTIFICATION_KINDS.items()
     ]
     stored_display = _valid_stored_display(row.display if row is not None else {})
     return UserPreferencesRead(
@@ -110,8 +101,8 @@ def update_preferences(
 ) -> UserPreferencesRead:
     """Apply a partial update. The caller commits.
 
-    A display field sent as ``null`` clears the stored value. A channel set to
-    its default drops the override, so only differences are stored.
+    A display field sent as ``null`` clears the stored value. An email switch
+    set to its default drops the override, so only differences are stored.
     """
     row = _locked_row(db, user)
 
@@ -125,18 +116,12 @@ def update_preferences(
         row.display = display
 
     if body.notifications is not None:
-        overrides = {kind: dict(channels) for kind, channels in row.notification_overrides.items()}
-        for kind, channels in body.notifications.items():
-            kind_overrides = overrides.get(kind, {})
-            for channel, value in channels.items():
-                if value == NOTIFICATION_KINDS[kind][channel]:
-                    kind_overrides.pop(channel, None)
-                else:
-                    kind_overrides[channel] = value
-            if kind_overrides:
-                overrides[kind] = kind_overrides
-            else:
+        overrides = dict(row.notification_overrides)
+        for kind, value in body.notifications.items():
+            if value == NOTIFICATION_KINDS[kind]:
                 overrides.pop(kind, None)
+            else:
+                overrides[kind] = value
         row.notification_overrides = overrides
 
     if body.approval_request_audience is not None:
@@ -168,5 +153,5 @@ def unsubscribe_email(db: Session, token: str) -> None:
     update_preferences(
         db,
         user=user,
-        body=UserPreferencesUpdate.model_validate({"notifications": {kind: {"email": False}}}),
+        body=UserPreferencesUpdate.model_validate({"notifications": {kind: False}}),
     )
