@@ -1,6 +1,6 @@
 # API reference
 
-Base URL: `/api/v1`. All responses are JSON. FastAPI also serves the generated schema at `/openapi.json`, which is what [`frontend/src/lib/api-types.ts`](../frontend/src/lib/api-types.ts) is generated from.
+Base URL: `/api/v1`. All responses are JSON. FastAPI also serves the generated schema at `/openapi.json`, which is what [`frontend/src/lib/api-types.ts`](../frontend/src/lib/api-types.ts) is generated from. Field names follow the [schema naming convention](engineering.md#schema-naming-convention).
 
 ```mermaid
 flowchart LR
@@ -202,7 +202,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/admin/reports/{id}/resolve` | 🛡️ | Close one report with a verdict, applying it to what the report names |
 | PATCH | `/admin/events/{id}/moderation` | 🛡️ | Set an event's graphic flag / takedown directly, no report behind it |
 | POST | `/admin/events/{id}/versions/{version_no}/redact` | 🛡️ | Blank one filed version, keeping its number |
-| POST | `/admin/maintenance/reap-*` | 🛡️ | Cron-style reapers (auth tokens, pending regs) |
+| POST | `/admin/maintenance/reap-*` | 🛡️ | Cron-style reapers (password reset tokens, pending registrations) |
 | POST | `/admin/maintenance/send-completion-digests` | 🛡️ | Email each analyst the count of detections awaiting completion |
 
 The admin console has no panel for the `/admin/maintenance/*` routes. Call them with an admin session cookie.
@@ -540,8 +540,8 @@ Columns: **create** [`POST /events`](#post-events), **requests** [`POST /events/
 | `detected_from_snapshot_url` | The archived copy of `detected_from_url` | no | no | no | no | opt |
 | `secondary_source_urls` | Repeated field, one per mirror, each at most 2000 characters. Normalized: stripped, blanks and duplicates dropped, an entry equal to `source_url` dropped, order kept. More than 10 after normalization is `too_many_source_links`. Replaces the stored list | opt | opt | opt | opt | opt |
 | `secondary_snapshot_urls` | Repeated field, the archived copy of each mirror, aligned with `secondary_source_urls` by position. Send an empty value for a mirror you did not archive | opt | opt | opt | opt | opt |
-| `event_date` | `YYYY-MM-DD`. Blank stores NULL | opt | opt | opt | opt | opt |
-| `event_time` | `HH:MM`, UTC. Blank stores NULL. Independent of `event_date` | opt | opt | opt | opt | opt |
+| `occurred_date` | `YYYY-MM-DD`. Blank stores NULL | opt | opt | opt | opt | opt |
+| `occurred_time` | `HH:MM`, UTC. Blank stores NULL. Independent of `occurred_date` | opt | opt | opt | opt | opt |
 | `source_posted_at` | `YYYY-MM-DDTHH:MM`, read as UTC: when the source posted the media | req | req | keep | req | keep |
 | `proof` | An HTML string, sanitized on the [rich text](#rich-text) rules. A `placeholder://<filename>` src resolves against `proof_files`; an already-uploaded URL passes through | opt | opt | opt | opt | opt |
 | `tag_ids` | JSON array of tag ids. Replaces the tag set | floor | opt | opt | floor | floor |
@@ -612,7 +612,7 @@ The error table every event form endpoint shares. Each endpoint section names wh
 | 409 | `source_media_conflict` | A concurrent write raced past the one-source-per-event index |
 | 413 | | The body exceeds the platform cap (`max_video_size + max_proof_images_per_event × max_image_size + 10 MB`). The middleware checks it before the body is read, and the 413 carries CORS headers |
 | 422 | `too_many_files` | Over the [proof-image ceiling](#proof-image-ceiling), or kept plus new source media over one |
-| 422 | | A missing required field, `title` over 255 characters, `source_url` or one `secondary_source_urls` item over 2000 characters, or a malformed `event_date`, `event_time` or `source_posted_at` |
+| 422 | | A missing required field, `title` over 255 characters, `source_url` or one `secondary_source_urls` item over 2000 characters, or a malformed `occurred_date`, `occurred_time` or `source_posted_at` |
 
 ### `GET /events`
 
@@ -627,13 +627,13 @@ List one lifecycle view, newest or oldest first, as `EventList` cards (no full p
 | `capture_source` | string (repeatable) | Filter by tag name of category `capture_source`. Same OR / AND semantics. |
 | `tag` | string (repeatable) | Filter by tag name, any category. Same OR / AND semantics. |
 | `bbox` | string | `south,west,north,east` (four comma-separated floats). 422 on malformed input; latitudes in [-90, 90], longitudes in [-180, 180], south ≤ north, west ≤ east. |
-| `event_date_from` / `event_date_to` | date (YYYY-MM-DD) | Inclusive event-date range. Malformed values return 422. |
+| `occurred_date_from` / `occurred_date_to` | date (YYYY-MM-DD) | Inclusive event-date range. Malformed values return 422. |
 | `submitted_from` / `submitted_to` | date (YYYY-MM-DD) | Inclusive submission-date range. Malformed values return 422. |
 | `author` | string | Exact, case-insensitive match on the username of any analyst the event credits: its owner or one of its [geolocators](#shared-credit) (pick real handles via [`GET /search/authors`](#get-searchauthors)). Restricted to `[A-Za-z0-9_-]{1,50}`; any other character returns 422. |
 | `approved` | bool | `true` keeps a `geolocated` event whose live version holds an approval, an analyst's or an organization's. An approval of an earlier version does not count. See [Approvals](#approvals). |
 | `approved_by` | string | Keeps a `geolocated` event that the analyst with this username (exact, case-insensitive) approved as themselves on its live version. An approval they placed for an organization does not count. Same `[A-Za-z0-9_-]{1,50}` rule as `author`. |
 | `approved_by_org` | string | Keeps a `geolocated` event that the organization with this slug approved on its live version. Same character rule. |
-| `has_coords` | bool | `true` keeps rows with an `event_coords` point (on the `requested` view, a request carrying a location guess); `false` keeps rows without one. Omit it for both. |
+| `has_coords` | bool | `true` keeps rows with a `coords` point (on the `requested` view, a request carrying a location guess); `false` keeps rows without one. Omit it for both. |
 | `sort` | string | `newest` (default) orders by `created_at DESC, id DESC`; `oldest` orders by `created_at ASC, id ASC`. Both orders are total, so a cursor walk serves every row once. Anything else → 422. |
 | `limit` | int | Rows per page. See [Pagination](#pagination). |
 | `cursor` | string | Opaque cursor from the previous page's `Link: rel="next"` header. See [Pagination](#pagination). |
@@ -644,8 +644,8 @@ List one lifecycle view, newest or oldest first, as `EventList` cards (no full p
   {
     "id": "uuid",
     "title": "Strike on depot, Donetsk",
-    "event_coords": { "lat": 48.123, "lng": 37.456 },
-    "event_date": "2026-03-15",
+    "coords": { "lat": 48.123, "lng": 37.456 },
+    "occurred_date": "2026-03-15",
     "is_graphic": false,
     "status": "geolocated",
     "before_closed_status": null,
@@ -656,14 +656,14 @@ List one lifecycle view, newest or oldest first, as `EventList` cards (no full p
       "id": "uuid",
       "role": "source",
       "storage_url": "https://…/uploads/.../photo.jpg",
-      "media_type": "image"
+      "kind": "image"
     },
     "tags": [
       { "id": "uuid", "name": "Drone", "category": "capture_source" },
       { "id": "uuid", "name": "airstrike", "category": "free" }
     ],
     "conflicts": [
-      { "id": "uuid", "name": "Russian invasion of Ukraine", "wikidata_id": "Q110999040", "start_year": 2022, "end_year": null, "ongoing": true, "tier": "major" }
+      { "id": "uuid", "name": "Russian invasion of Ukraine", "wikidata_id": "Q110999040", "start_year": 2022, "end_year": null, "is_ongoing": true, "tier": "major" }
     ]
   }
 ]
@@ -671,13 +671,13 @@ List one lifecycle view, newest or oldest first, as `EventList` cards (no full p
 
 **Response headers:** `Link: <…&cursor=…>; rel="next"` when a further page exists.
 
-`event_coords` is `null` on a coordinate-less `requested` row. `geolocators` is the event's credit line, as on [`GET /events/{id}`](#get-eventsid). `requested_at` is when the row entered `requested`, and `null` on a row that was never a request; the Requests board counts a request's age from it. `is_graphic` is `true` when the author, or an admin overriding the author, flagged the footage as showing death, injury or human remains. A withheld event (`hidden_at` set, see [`GET /events/{id}`](#get-eventsid)) never appears. `media` is the card thumbnail: the event's `source` attachment, else its first `proof` image, else `null`; a proof video is never picked. `backend/app/services/thumbnails.py` holds that rule for every card surface. `conflicts` uses the `ConflictRead` shape of [`GET /conflicts`](#get-conflicts).
+`coords` is `null` on a coordinate-less `requested` row. `geolocators` is the event's credit line, as on [`GET /events/{id}`](#get-eventsid). `requested_at` is when the row entered `requested`, and `null` on a row that was never a request; the Requests board counts a request's age from it. `is_graphic` is `true` when the author, or an admin overriding the author, flagged the footage as showing death, injury or human remains. A withheld event (`hidden_at` set, see [`GET /events/{id}`](#get-eventsid)) never appears. `media` is the card thumbnail: the event's `source` attachment, else its first `proof` image, else `null`; a proof video is never picked. `backend/app/services/thumbnails.py` holds that rule for every card surface. `conflicts` uses the `ConflictRead` shape of [`GET /conflicts`](#get-conflicts).
 
 ---
 
 ### `GET /events/points`
 
-Compact `[id, lat, lng, event_date, added_date, detected]` tuples for client-side clustering, with no joins and no pagination. `event_date` and `added_date` are ISO `YYYY-MM-DD` (`added_date` is the `created_at` calendar day); `event_date` is `null` when unknown. `detected` is `1` for a machine-detected row and `0` for a `geolocated` one. Located rows only, so `requested` events never appear.
+Compact `[id, lat, lng, occurred_date, added_date, detected]` tuples for client-side clustering, with no joins and no pagination. `occurred_date` and `added_date` are ISO `YYYY-MM-DD` (`added_date` is the `created_at` calendar day); `occurred_date` is `null` when unknown. `detected` is `1` for a machine-detected row and `0` for a `geolocated` one. Located rows only, so `requested` events never appear.
 
 `bbox` is **required**, and nothing caps its area. Unlike on `GET /events`, an empty `?bbox=` is a rejection here, not an omitted filter. The server snaps `bbox` outward onto a fixed 0.05° grid before keying and querying, so two viewports inside one cell share a cache entry and get the payload of the snapped box, which contains the box requested. Results are cached in memory for 60 s per snapped `bbox` and filter combination; the response carries `X-Cache: HIT|MISS` and `Cache-Control: public, max-age=30`.
 
@@ -687,7 +687,7 @@ Compact `[id, lat, lng, event_date, added_date, detected]` tuples for client-sid
 |-------|------|-------------|
 | `bbox` | string, **required** | Same shape and validation as on `GET /events`. Missing, empty, or malformed → 422. A box crossing the antimeridian is not modeled; widen it to the full longitude range. |
 | `media` | string (repeatable) | `?media=image&media=video` matches an event carrying any attachment of a listed type. Values outside `image` / `video` → 422. |
-| `conflict`, `capture_source`, `tag`, `event_date_from`, `event_date_to`, `submitted_from`, `submitted_to`, `author`, `approved`, `approved_by`, `approved_by_org` | | Same semantics as on [`GET /events`](#get-events). |
+| `conflict`, `capture_source`, `tag`, `occurred_date_from`, `occurred_date_to`, `submitted_from`, `submitted_to`, `author`, `approved`, `approved_by`, `approved_by_org` | | Same semantics as on [`GET /events`](#get-events). |
 
 | Status | Meaning |
 |--------|---------|
@@ -708,7 +708,7 @@ Compact `[id, lat, lng, event_date, added_date, detected]` tuples for client-sid
 
 Soft-warning probe for the submit form: geolocations that might describe the same event. Advisory only; it never blocks a submission.
 
-Match rule: within about 500 m geodesic of the proposed `(lat, lng)` **and** either the same source-URL host or the same `event_date`. The host leg also matches an existing event's secondary source links. A scheme-stripped URL (`t.me/channel/12345`) still yields a host. A malformed host or date disables that leg, and no usable leg returns `[]`.
+Match rule: within about 500 m geodesic of the proposed `(lat, lng)` **and** either the same source-URL host or the same `occurred_date`. The host leg also matches an existing event's secondary source links. A scheme-stripped URL (`t.me/channel/12345`) still yields a host. A malformed host or date disables that leg, and no usable leg returns `[]`.
 
 **Query params:**
 | Field | Type | Required | Description |
@@ -716,7 +716,7 @@ Match rule: within about 500 m geodesic of the proposed `(lat, lng)` **and** eit
 | `lat` | float | yes | Latitude (-90 to 90) of the prospective submission. |
 | `lng` | float | yes | Longitude (-180 to 180). |
 | `source_url` | string | no | Source URL for the host leg. |
-| `event_date` | string (YYYY-MM-DD) | no | Compared exactly for the date leg. |
+| `occurred_date` | string (YYYY-MM-DD) | no | Compared exactly for the date leg. |
 
 **Response 200:** up to 10 candidates, nearest first.
 ```json
@@ -724,8 +724,8 @@ Match rule: within about 500 m geodesic of the proposed `(lat, lng)` **and** eit
   {
     "id": "uuid",
     "title": "Strike on depot, Donetsk",
-    "event_coords": { "lat": 48.123, "lng": 37.456 },
-    "event_date": "2026-05-01",
+    "coords": { "lat": 48.123, "lng": 37.456 },
+    "occurred_date": "2026-05-01",
     "source_url": "https://t.me/somechannel/12345",
     "distance_m": 55.4,
     "owner": { "id": "uuid", "username": "kalush" }
@@ -805,9 +805,9 @@ Step two: enqueue the staged archive for the backfill worker. The upload **is th
 
 The backend reads only the tweets allowlist (`tweets.js`, `tweets_media/`) and never reads DMs, email, account data, or `deleted-*`. Re-uploading is idempotent ([re-import](ingestion.md#re-import)). A detection with no recoverable media lands media-incomplete.
 
-**Request:** JSON. `upload_key` comes from the presign. `post_estimate` (optional, ≥ 1) is a display hint for the queued job; the worker stamps the exact totals.
+**Request:** JSON. `upload_key` comes from the presign. `estimated_post_count` (optional, ≥ 1) is a display hint for the queued job; the worker stamps the exact totals.
 ```json
-{ "upload_key": "archive-imports/<user-id>/<uuid>.zip", "post_estimate": 1240 }
+{ "upload_key": "archive-imports/<user-id>/<uuid>.zip", "estimated_post_count": 1240 }
 ```
 
 **Response 202:** an `ArchiveImportJobRead`.
@@ -815,9 +815,9 @@ The backend reads only the tweets allowlist (`tweets.js`, `tweets_media/`) and n
 {
   "id": "uuid",
   "status": "queued",
-  "post_estimate": 1240,
-  "progress_done": 0,
-  "progress_total": null,
+  "estimated_post_count": 1240,
+  "processed_detection_count": 0,
+  "detection_count": null,
   "created": 0, "updated": 0, "skipped": 0, "failed": 0,
   "error": null,
   "created_at": "2026-07-17T12:00:00Z"
@@ -838,7 +838,7 @@ The backend reads only the tweets allowlist (`tweets.js`, `tweets_media/`) and n
 One archive-import job. Owner only: another user's job id reads as 404. Poll it until `status` is terminal.
 
 - `status` moves `queued` → `running` → `done` | `failed`.
-- `post_estimate` is the enqueue-time hint. Once the worker knows the exact detection count, it stamps `progress_total` and advances `progress_done` as rows land.
+- `estimated_post_count` is the enqueue-time hint. Once the worker knows the exact detection count, it stamps `detection_count` and advances `processed_detection_count` as rows land.
 - `created`, `updated`, `skipped` and `failed` are final once `done`, and every detection lands in exactly one. The [re-import rule](ingestion.md#re-import) states which.
 - A `failed` job keeps what landed before the failure; re-uploading skips it and continues. `error` is a terse operator-facing reason.
 
@@ -857,7 +857,7 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
 {
   "id": "uuid",
   "title": "Strike on depot, Donetsk",
-  "event_coords": { "lat": 48.123, "lng": 37.456 },
+  "coords": { "lat": 48.123, "lng": 37.456 },
   "capture_source_coords": null,
   "source_url": "https://t.me/channel/12345",
   "archived_source": {
@@ -869,8 +869,8 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
     { "url": "https://archive.ph/aBcDe", "provider": "archive_today" }
   ],
   "proof": "<p>Matched the ridgeline and the pylon.</p><img src=\"https://media.example/proof/…jpg\">",
-  "event_date": "2026-03-15",
-  "event_time": "14:30:00",
+  "occurred_date": "2026-03-15",
+  "occurred_time": "14:30:00",
   "source_posted_at": "2026-03-14T18:05:00Z",
   "created_at": "2026-03-16T09:42:00Z",
   "geolocated_at": "2026-03-16T09:42:00Z",
@@ -893,7 +893,7 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
       "id": "uuid",
       "role": "source",
       "storage_url": "https://<cloudfront-domain>/uploads/.../video.mp4",
-      "media_type": "video",
+      "kind": "video",
       "sha256": "f7c3bcd13f00e8a4b2d4e9b3f1a2c5d6e7f8901234567890abcdef1234567890",
       "original_filename": "IMG_2034.MOV"
     }
@@ -903,14 +903,14 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
     { "id": "uuid", "name": "Drone", "category": "capture_source" }
   ],
   "conflicts": [
-    { "id": "uuid", "name": "Russian invasion of Ukraine", "wikidata_id": "Q110999040", "start_year": 2022, "end_year": null, "ongoing": true, "tier": "major" }
+    { "id": "uuid", "name": "Russian invasion of Ukraine", "wikidata_id": "Q110999040", "start_year": 2022, "end_year": null, "is_ongoing": true, "tier": "major" }
   ]
 }
 ```
 
 | Field | Meaning |
 |---|---|
-| `event_coords` | The subject point. `null` on a coordinate-less `requested` event; every `geolocated` row carries it |
+| `coords` | The subject point. `null` on a coordinate-less `requested` event; every `geolocated` row carries it |
 | `capture_source_coords` | The optional camera position |
 | `source_url`, `source_posted_at` | `null` on a `detected` row with no declared source; a `requested` or `geolocated` row always carries a `source_url` |
 | `archived_source` | The archived copy of `source_url`: `url` is the snapshot, `provider` is `wayback` or `archive_today`. `null` until the owner records one (see [`archival.md`](archival.md)) |
@@ -937,7 +937,7 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
 
 ### `POST /events/{id}/report` 🌐
 
-Report an event for moderation. Anonymous allowed; a signed-in reporter is recorded as `reporter_user_id`.
+Report an event for moderation. Anonymous allowed; a signed-in reporter is recorded as `reporter_id`.
 
 **Request body:**
 ```json
@@ -957,7 +957,7 @@ Report an event for moderation. Anonymous allowed; a signed-in reporter is recor
   "collection": null,
   "reason": "graphic_not_flagged",
   "details": "Shows a body at 0:14, no graphic-content warning on the card.",
-  "reporter_user_id": null,
+  "reporter_id": null,
   "created_at": "2026-08-12T09:14:00Z",
   "resolved_at": null,
   "resolution": null
@@ -1024,7 +1024,7 @@ Open a request: create a `requested` event. One source file is required. Coordin
 
 **Request body (`multipart/form-data`):** the [event form](#event-form-fields), **requests** column.
 
-**Response 201:** an [`EventRead`](#get-eventsid), `"status": "requested"`, with `event_coords` and `capture_source_coords` `null` unless you sent a guess.
+**Response 201:** an [`EventRead`](#get-eventsid), `"status": "requested"`, with `coords` and `capture_source_coords` `null` unless you sent a guess.
 
 **Errors:** the [event write errors](#event-write-errors), except `proof_image_required`, `tag_requirements_not_met`, `source_url_required`, 403, 404, `invalid_state` and `source_media_conflict`.
 
@@ -1172,10 +1172,10 @@ The event's superseded versions, newest first. Public, like the event. The live 
         "title": "Strike on depot, Donetsk",
         "source_url": "https://t.me/channel/12345",
         "source_media": [ { "…": "MediaRead, as in media[] on GET /events/{id}" } ],
-        "event_coords": { "lat": 48.123, "lng": 37.456 },
+        "coords": { "lat": 48.123, "lng": 37.456 },
         "capture_source_coords": null,
-        "event_date": "2026-03-15",
-        "event_time": "14:30:00",
+        "occurred_date": "2026-03-15",
+        "occurred_time": "14:30:00",
         "source_posted_at": "2026-03-14T18:05:00+00:00",
         "is_graphic": false,
         "secondary_source_urls": [],
@@ -1713,7 +1713,7 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
 | `q` | string | Free-text query. |
 | `type` | enum | `all` (default), `event` (both event groups), `geolocation`, `request`, `collection`, `user`, or `organization`. Anything else → 422. |
 | `limit` | int | Per-group cap. 1 ≤ `limit` ≤ 50, default 20. |
-| *filter set* | | The event filters of [`GET /events`](#get-events): `status`, `conflict`, `capture_source`, `tag`, `media` (repeatable), `event_date_from` / `event_date_to`, `submitted_from` / `submitted_to`, `author`, `approved`, `approved_by`, `approved_by_org`. They scope the two event groups; a `status` value a group's view can't contain empties that group. |
+| *filter set* | | The event filters of [`GET /events`](#get-events): `status`, `conflict`, `capture_source`, `tag`, `media` (repeatable), `occurred_date_from` / `occurred_date_to`, `submitted_from` / `submitted_to`, `author`, `approved`, `approved_by`, `approved_by_org`. They scope the two event groups; a `status` value a group's view can't contain empties that group. |
 
 **Rules.**
 
@@ -1737,12 +1737,12 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
       "title": "Strike on warehouse complex, Donetsk Oblast",
       "title_highlight": "Strike on warehouse complex, Donetsk Oblast",
       "lat": 48.01, "lng": 37.80,
-      "event_date": "2026-04-15",
+      "occurred_date": "2026-04-15",
       "is_graphic": false,
       "status": "geolocated",
       "owner": { "id": "uuid", "username": "osint_analyst" },
       "geolocators": [{ "id": "uuid", "username": "osint_analyst" }],
-      "media": [{ "id": "uuid", "role": "source", "storage_url": "…", "media_type": "image" }],
+      "media": [{ "id": "uuid", "role": "source", "storage_url": "…", "kind": "image" }],
       "tags": [{ "id": "uuid", "name": "airstrike", "category": "free" }]
     }
   ],
@@ -1756,7 +1756,7 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
       "created_at": "2026-04-12T08:00:00Z",
       "is_graphic": false,
       "owner": { "id": "uuid", "username": "kharkiv_osint" },
-      "media": [{ "id": "uuid", "role": "source", "storage_url": "…", "media_type": "image" }],
+      "media": [{ "id": "uuid", "role": "source", "storage_url": "…", "kind": "image" }],
       "tags": []
     }
   ],
@@ -1867,7 +1867,7 @@ Create a tag. Only `free` tags are creatable; `capture_source` is server-managed
 
 ### `GET /conflicts`
 
-List the conflict referential, `ongoing` first, then by name. Server-managed (see [`conflicts.md`](conflicts.md)); there is no create endpoint. The default returns every row, ongoing and ended. Returned whole, not paged (see [Pagination](#pagination)).
+List the conflict referential, `is_ongoing` first, then by name. Server-managed (see [`conflicts.md`](conflicts.md)); there is no create endpoint. The default returns every row, ongoing and ended. Returned whole, not paged (see [Pagination](#pagination)).
 
 **Query params:**
 | Param | Type | Description |
@@ -1877,8 +1877,8 @@ List the conflict referential, `ongoing` first, then by name. Server-managed (se
 **Response 200:** an array of `ConflictRead`.
 ```json
 [
-  { "id": "uuid", "name": "Russian invasion of Ukraine", "wikidata_id": "Q110999040", "start_year": 2022, "end_year": null, "ongoing": true, "tier": "major" },
-  { "id": "uuid", "name": "Western Sahara conflict", "wikidata_id": "Q1152920", "start_year": 1970, "end_year": null, "ongoing": false, "tier": null }
+  { "id": "uuid", "name": "Russian invasion of Ukraine", "wikidata_id": "Q110999040", "start_year": 2022, "end_year": null, "is_ongoing": true, "tier": "major" },
+  { "id": "uuid", "name": "Western Sahara conflict", "wikidata_id": "Q1152920", "start_year": 1970, "end_year": null, "is_ongoing": false, "tier": null }
 ]
 ```
 
@@ -1964,8 +1964,8 @@ One collection's header: owner, title, description, tags, item count, and the da
   "description": "<p>Strikes and their aftermath at the plant, 2025 to 2026.</p>",
   "description_text": "Strikes and their aftermath at the plant, 2025 to 2026.",
   "cover": [
-    { "url": "https://…/uploads/geo/…jpg", "media_type": "image", "role": "source" },
-    { "url": "https://…/uploads/geo/…mp4", "media_type": "video", "role": "source" }
+    { "url": "https://…/uploads/geo/…jpg", "kind": "image", "role": "source" },
+    { "url": "https://…/uploads/geo/…mp4", "kind": "video", "role": "source" }
   ],
   "tags": [
     { "id": "uuid", "name": "satellite", "category": "capture_source" },
@@ -1984,8 +1984,8 @@ All computed fields are computed per read over the events the collection shows, 
 |---|---|
 | `description_text` | The description's plain-text projection |
 | `event_count` | How many events the collection shows |
-| `first_date`, `last_date` | The smallest and largest `event_date` among them; both `null` when none carries a date |
-| `cover` | Zero to four tiles, in item order, skipping graphic items, each the item's card media (an image preferred over a clip). `media_type` is `image` or `video`. `role` is `source` or `proof`; a `proof` `url` has no `_hero` / `_thumb` derivatives, so read it as is |
+| `first_date`, `last_date` | The smallest and largest `occurred_date` among them; both `null` when none carries a date |
+| `cover` | Zero to four tiles, in item order, skipping graphic items, each the item's card media (an image preferred over a clip). `kind` is `image` or `video`. `role` is `source` or `proof`; a `proof` `url` has no `_hero` / `_thumb` derivatives, so read it as is |
 | `tags` | The union of the items' tags (`TagRead`), ordered by `category` then `name`. A collection carries no tag of its own |
 
 A withheld collection (`hidden_at`, see [`PATCH /admin/collections/{id}/moderation`](#patch-admincollectionsidmoderation)) answers 404 for everyone but an admin, its owner included. So does a collection whose owner is soft-deleted.
@@ -2138,7 +2138,7 @@ Every field describes one population: the visible events (`deleted_at IS NULL`, 
 
 - `top_conflicts` and `capture_sources` hold at most 5 entries, ordered by count descending, then name.
 - `source_hosts` groups the set by the host of `source_url`, lowercased, with a leading `www.` removed. At most 5 entries, ordered by count descending, then host. `other_hosts_count` counts events on any further host. `no_source_count` counts events whose `source_url` is null or has no readable host. The five counts plus those two add up to `total_events`.
-- `activity` buckets `event_date` by calendar month, from the analyst's earliest dated event to the latest, oldest first, zero-filled. `period` is `YYYY-MM`. An event with no `event_date` takes no bucket. The span covers at most the 10 most recent calendar years and then starts at January of the oldest year shown; events outside it still count in every other aggregate.
+- `activity` buckets `occurred_date` by calendar month, from the analyst's earliest dated event to the latest, oldest first, zero-filled. `period` is `YYYY-MM`. An event with no `occurred_date` takes no bucket. The span covers at most the 10 most recent calendar years and then starts at January of the oldest year shown; events outside it still count in every other aggregate.
 
 [`design.md`](design.md#public-profile) describes how the profile renders these fields.
 
@@ -2343,13 +2343,13 @@ flowchart LR
   revoke["`**POST /admin/invite-codes/{id}/revoke**`"]:::shared
   selfrevoke["`**POST /users/me/invite-codes/{id}/revoke**
   your own active code`"]:::spec
-  flag[("`**users.invite_minting_enabled**`")]:::store
+  flag[("`**users.is_invite_minting_enabled**`")]:::store
   code[("`**invite_codes**
-  created_by is the sponsor`")]:::store
+  created_by_id is the sponsor`")]:::store
   audit[("`**admin_events**
   invite_sponsored, invite_revoked`")]:::store
   confirm["`**confirm_pending_registration**
-  copies x_handle, stamps used_by`"]:::core
+  copies x_handle, stamps used_by_id`"]:::core
   account[("`**users**
   x_handle, sponsor through the code`")]:::store
 
@@ -2366,7 +2366,7 @@ flowchart LR
 
 The code behaves like one an admin mints through [`POST /admin/invite-codes`](#post-admininvite-codes): single use, no expiry, and redemption copies the bound handle onto the new account's `users.x_handle`. If another account or an organization holds the handle by then, the account is created without the link. The mint does not check whether another account holds the handle, so the endpoint does not reveal which handle has an account.
 
-`invite_codes.created_by` records you as the sponsor. The account created from the code reads its sponsor through that row, and the admin console shows the sponsor per account and per code. You revoke an active code you minted through [`POST /users/me/invite-codes/{id}/revoke`](#post-usersmeinvite-codesidrevoke), and an admin revokes any code through [`POST /admin/invite-codes/{id}/revoke`](#post-admininvite-codesidrevoke).
+`invite_codes.created_by_id` records you as the sponsor. The account created from the code reads its sponsor through that row, and the admin console shows the sponsor per account and per code. You revoke an active code you minted through [`POST /users/me/invite-codes/{id}/revoke`](#post-usersmeinvite-codesidrevoke), and an admin revokes any code through [`POST /admin/invite-codes/{id}/revoke`](#post-admininvite-codesidrevoke).
 
 You mint at most 5 codes per UTC day. Every code minted since 00:00 UTC counts, revoked or used. Each mint writes an `admin_events` row with action `invite_sponsored`, `actor_id` set to you, and target `{"invite_code_id": …, "x_handle": …}`.
 
@@ -2610,7 +2610,7 @@ Mark the listed notifications read by setting their `read_at`. Only your own row
 
 ### `DELETE /notifications/{id}` 🔒
 
-Delete one of your notifications. Its `queued` and `skipped` delivery rows go with it, so a queued email for it is never sent. A delivery that may have reached the provider (`sending`, `sent` or `failed`) stays with a NULL `notification_id`, so the daily email cap keeps counting it. The row leaves the list and the unread count.
+Delete one of your notifications. Its `queued` and `skipped` delivery rows go with it, so a queued email for it is never sent. A delivery that may have reached the provider (`running`, `done` or `failed`) stays with a NULL `notification_id`, so the daily email cap keeps counting it. The row leaves the list and the unread count.
 
 **Response 204:** no body.
 
@@ -2889,8 +2889,8 @@ A detection, a retraction and a withdrawn request are in neither kind. A soft-de
   {
     "id": "uuid",
     "title": "Where is this bridge?",
-    "event_coords": null,
-    "event_date": "2026-03-15",
+    "coords": null,
+    "occurred_date": "2026-03-15",
     "is_graphic": false,
     "status": "requested",
     "before_closed_status": null,
@@ -2985,7 +2985,7 @@ List invite codes, newest first, including exhausted, revoked and expired ones. 
       "email": "hawk@example.com",
       "is_admin": false,
       "x_handle": "osint_hawk",
-      "invite_minting_enabled": true,
+      "is_invite_minting_enabled": true,
       "archives_imported": 1,
       "bot_detection_count": 3,
       "detected_count": 12,
@@ -2999,7 +2999,7 @@ List invite codes, newest first, including exhausted, revoked and expired ones. 
 - `status` is one of `active`, `exhausted`, `revoked`, `expired`, computed at read time. `redeemer` is `null` until the code is used.
 - `sponsor` is the analyst who minted the code from Settings through [`POST /users/me/invite-codes`](#post-usersmeinvite-codes). It is `null` for an admin-minted code, and once the sponsor's account is erased.
 - `archives_imported` counts `done` archive-import jobs.
-- `bot_detection_count` sums `bot_mentions.events_created` for the account's X handle (case-insensitive), a total that later deletes do not reduce.
+- `bot_detection_count` sums `bot_mentions.created_event_count` for the account's X handle (case-insensitive), a total that later deletes do not reduce.
 - `detected_count` and `geolocated_count` count the live events the account owns in that status.
 - `last_seen_at` is the account's most recent authenticated request, refreshed at most once per 15 minutes and stamped at sign-in. It falls back to the newest `login` auth event, and is `null` when neither exists.
 
@@ -3030,14 +3030,14 @@ Case-insensitive substring match on username or email. `%` and `_` match themsel
     "email": "tester2@example.com",
     "is_admin": false,
     "x_handle": "tester2",
-    "invite_minting_enabled": true,
+    "is_invite_minting_enabled": true,
     "sponsor": { "id": "…", "username": "geo_owl", "avatar_url": null },
     "created_at": "…"
   }
 ]
 ```
 
-`sponsor` is the analyst who minted the code the account was created from, read through that `invite_codes` row. It is `null` for an account created from an admin-minted code, and once the sponsor's account is erased. `invite_minting_enabled` is the switch [`PATCH /admin/users/{id}/invite-minting`](#patch-adminusersidinvite-minting) moves.
+`sponsor` is the analyst who minted the code the account was created from, read through that `invite_codes` row. It is `null` for an account created from an admin-minted code, and once the sponsor's account is erased. `is_invite_minting_enabled` is the switch [`PATCH /admin/users/{id}/invite-minting`](#patch-adminusersidinvite-minting) moves.
 
 ### `DELETE /admin/users/{id}` 🛡️
 
@@ -3305,9 +3305,9 @@ Idempotent: redacting an already-redacted version returns it unchanged and appen
 | 403 | Not an admin, the event's owner included |
 | 404 | `geolocation_not_found`: unknown or soft-deleted event. `version_not_found`: no version under that number |
 
-### `POST /admin/maintenance/reap-auth-tokens` 🛡️
+### `POST /admin/maintenance/reap-password-reset-tokens` 🛡️
 
-Drop expired and old consumed `auth_tokens` rows. Audited as `maintenance_reap_auth_tokens`.
+Drop expired and old consumed `password_reset_tokens` rows. Audited as `maintenance_reap_password_reset_tokens`.
 
 **Response 200:**
 ```json
@@ -3392,8 +3392,8 @@ One Account Activity delivery.
 | [`GET /notifications`](#get-notifications) | cursor | `created_at DESC, id DESC` | 100 | 100 |
 | [`GET /feed`](#get-feed) | cursor | `feed_at DESC, id DESC` | 10 | 100 |
 | [`GET /organizations/{slug}/approvals`](#get-organizationsslugapprovals) | cursor | `created_at DESC, id DESC` | 100 | 100 |
-| [`GET /collections/{id}/events`](#get-collectionsidevents) | cursor | `event_date, event_time, created_at, id` ascending; a missing date or time sorts last | 100 | 100 |
-| [`GET /users/{username}/events`](#get-usersusernameevents) | offset | `event_date DESC`, then `created_at DESC, id DESC` | 20 | 100 |
+| [`GET /collections/{id}/events`](#get-collectionsidevents) | cursor | `occurred_date, occurred_time, created_at, id` ascending; a missing date or time sorts last | 100 | 100 |
+| [`GET /users/{username}/events`](#get-usersusernameevents) | offset | `occurred_date DESC`, then `created_at DESC, id DESC` | 20 | 100 |
 | [`GET /users/{username}/collections`](#get-usersusernamecollections) | offset | newest first | 20 | 100 |
 | [`GET /events/detections`](#get-eventsdetections) | offset | `created_at DESC` | 20 | 100 |
 | `GET /admin/reports` | offset | open first, then newest | 20 | 100 |

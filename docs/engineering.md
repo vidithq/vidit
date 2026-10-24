@@ -274,7 +274,7 @@ flowchart LR
   emit["`**notifications._emit**
   writes the notification, and a delivery row when the email switch is on`"]:::spec
   queue[("`**notification_deliveries**
-  queued, sending, sent, failed, skipped`")]:::store
+  queued, running, done, failed, skipped`")]:::store
   drain["`**notification_delivery.drain**
   in the worker: caps, re-checks, claims oldest first`"]:::shared
   builders["`**email.py builders**
@@ -295,11 +295,11 @@ flowchart LR
 
 **The notification queue.** The transaction that writes a [notification](api.md#notifications) also writes one [`notification_deliveries`](data-model.md#notification_deliveries) row when the recipient's email switch for that kind is on. Email is the only delivery channel besides the in-app list, which shows every notification whatever the switch says. The worker's [`drain`](../backend/app/services/notification_delivery.py) runs at the start of each pass and sends each claimed row to the recipient's account address:
 
-1. It marks a row `failed` after an hour in `sending`, and `skipped` after 48 hours in `queued`, so a crash never sends one message twice and a backlog never sends old news.
-2. It stops when the notification emails that may have gone out in the trailing 24 hours reach `NOTIFICATION_EMAIL_DAILY_CAP` (default 50). Those are the rows sent, and the rows claimed in the window and left `sending` or failed stale out of it, since the provider may have counted them; a row failed by refusals does not count. It passes over a recipient who reached `NOTIFICATION_EMAIL_DAILY_CAP_PER_USER` (default 10). A row whose notification the recipient deleted keeps counting toward the total cap, with a NULL `notification_id`; the per-user and per-actor counts read through the notification and drop it. Rows over a cap stay queued. Before that, at queue time, the API writes no email row of a kind an analyst sends straight at someone (an invitation, an organization invite, an approval request) once that actor queued `NOTIFICATION_EMAIL_DAILY_CAP_PER_ACTOR` (default 10) such emails in the trailing 24 hours, so one analyst cannot spend the total cap. Fan-out, such as re-approval requests after a new version, is neither capped nor counted.
-3. It claims the oldest queued row with `FOR UPDATE SKIP LOCKED`, sets it `sending` and commits before the provider call.
+1. It marks a row `failed` after an hour in `running`, and `skipped` after 48 hours in `queued`, so a crash never sends one message twice and a backlog never sends old news.
+2. It stops when the notification emails that may have gone out in the trailing 24 hours reach `NOTIFICATION_EMAIL_DAILY_CAP` (default 50). Those are the `done` rows, and the rows claimed in the window and left `running` or failed stale out of it, since the provider may have counted them; a row failed by refusals does not count. It passes over a recipient who reached `NOTIFICATION_EMAIL_DAILY_CAP_PER_USER` (default 10). A row whose notification the recipient deleted keeps counting toward the total cap, with a NULL `notification_id`; the per-user and per-actor counts read through the notification and drop it. Rows over a cap stay queued. Before that, at queue time, the API writes no email row of a kind an analyst sends straight at someone (an invitation, an organization invite, an approval request) once that actor queued `NOTIFICATION_EMAIL_DAILY_CAP_PER_ACTOR` (default 10) such emails in the trailing 24 hours, so one analyst cannot spend the total cap. Fan-out, such as re-approval requests after a new version, is neither capped nor counted.
+3. It claims the oldest queued row with `FOR UPDATE SKIP LOCKED`, sets it `running` and commits before the provider call.
 4. It re-reads the recipient and skips the row when the switch is now off, the account is soft-deleted or inactive, or the filter would hide the notification.
-5. It sets the row `sent` on success. A refusal puts the row back in `queued` for another try after 5 minutes, and the third refusal sets it `failed`. An unknown outcome leaves it `sending` until it goes stale. When writing the outcome fails after a send or an unknown outcome, the row also stays `sending`, never `queued`, so the message is never sent twice.
+5. It sets the row `done` on success. A refusal puts the row back in `queued` for another try after 5 minutes, and the third refusal sets it `failed`. An unknown outcome leaves it `running` until it goes stale. When writing the outcome fails after a send or an unknown outcome, the row also stays `running`, never `queued`, so the message is never sent twice.
 
 The caps keep notification email inside the provider's daily quota. The boot check in [`config.py`](../backend/app/config.py) refuses a `NOTIFICATION_EMAIL_DAILY_CAP` at or above `EMAIL_PROVIDER_DAILY_QUOTA` (default 100, the Resend free tier), which leaves the remainder to the auth emails, which are sent inline and never counted. Each notification email links to the item, names the switch that sent it and links to Settings. Its `List-Unsubscribe` and `List-Unsubscribe-Post` headers carry a one-click URL on `API_URL` with a token signed for the recipient and the kind ([`services/unsubscribe_tokens.py`](../backend/app/services/unsubscribe_tokens.py)), which turns that kind off by email. The token carries no expiry, so the link in an old email keeps working, and rotating `JWT_SECRET` voids every link.
 
@@ -356,16 +356,37 @@ Every other frontend copy of a backend rule or of the issue tracker is hand-kept
 | `lib/snapshots.ts::SNAPSHOT_HOSTS` | keys of `source_archive.PROVIDER_HOSTS` | pre-submit check disagrees with the server, and a snapshot host asks before it opens |
 | `lib/snapshots.ts` hosts and capture-path patterns | `source_archive._WAYBACK_REPLAY_RE`, `_ARCHIVE_TODAY_CAPTURE_RE`, `PROVIDER_HOSTS` | mis-paste check silently matches nothing |
 | `lib/proof.tsx::TAG_CLASSES` (the read view's tag allowlist), `isSafeLinkHref`, `isSafeImageSrc` (`NEXT_PUBLIC_MEDIA_HOST`); `components/editor/ProofEditor.tsx` schema | `sanitize.py` nh3 tag and attribute allowlist, `safe_link_href`, `_safe_image_src` (CDN host pin) | a security fix lands on one side only |
-| `types/index.ts::MapPoint` 6-tuple | `routers/events/read.py::list_points` tuple order `[id, lat, lng, event_date, added_date, detected]` | every map point mis-decodes |
+| `types/index.ts::MapPoint` 6-tuple | `routers/events/read.py::list_points` tuple order `[id, lat, lng, occurred_date, added_date, detected]` | every map point mis-decodes |
 | expiry copy on `app/(auth)/forgot-password`, `registration-pending` and `resend-confirmation` (15 minutes, 24 hours) | `config.password_reset_token_minutes`, `registration.CONFIRMATION_TOKEN_MINUTES` | page states the wrong expiry |
 | `@viditbot` in `app/import/page.tsx` and `components/ui/MockPost.tsx` | `config.x_bot_handle` | guide names the wrong handle |
-| the retention periods on `app/privacy/page.tsx` (24 hours, 30 days) | `registration.CONFIRMATION_TOKEN_MINUTES`, `maintenance.AUTH_TOKEN_RETENTION_DAYS` | the privacy page states a period the server does not apply |
+| the retention periods on `app/privacy/page.tsx` (24 hours, 30 days) | `registration.CONFIRMATION_TOKEN_MINUTES`, `maintenance.PASSWORD_RESET_TOKEN_RETENTION_DAYS` | the privacy page states a period the server does not apply |
 | `lib/approvalRequests.ts::APPROVAL_REQUEST_AUDIENCE_DEFAULT` | `models/user_preferences.APPROVAL_REQUEST_AUDIENCE_DEFAULT` | Settings shows an audience the server does not apply while preferences load |
 | `lib/notifications.ts::NOTIFICATION_KIND_COPY` labels | the `setting` each notification builder passes in `services/email.py` | an email names a switch Settings does not show |
 | `lib/notifications.ts::MAX_READ_IDS` | `schemas/notification.NotificationReadUpdate.ids` (`MAX_PAGE_SIZE`) | marking a long list read is refused with 422 and its rows stay unread |
 | `lib/notifications.ts::unsubscribeTokenKind` (the `<user>.<kind>.<signature>` token shape) | `unsubscribe_tokens.sign`, `verify` | the unsubscribe page reads the wrong kind from a valid link, or rejects one the server signed |
 | the `code` each page branches on: `archive_*` in `components/geolocations/ImportArchivePanel.tsx`, `nothing_changed` in `components/geolocations/edit/EventEditForm.tsx`, `email_pending_confirmation` in `components/auth/RegisterForm.tsx`, `version_mismatch` in `components/event/Approvals.tsx` | the `code` of the matching error classes in `archive_jobs`, `tweet_ingest/archive_zip`, `events/errors`, `registration` and `approvals` | the page prints a generic error, or skips its recovery step, for a refusal it handles |
 | the last org manager rule in `components/organizations/OrganizationMembers.tsx` | `organizations._guard_last_manager` | the members list offers Leave or Make member that the server refuses, or hides one it accepts |
+
+### Schema naming convention
+
+Every table, column, constraint and API field follows these rules. The API field carries the database column's name, with no alias.
+
+| Rule | Form | Example |
+|---|---|---|
+| Foreign key | `<role>_id`, where the role says what the row is to this one | `owner_id`, `requested_by_id`, `used_by_id` |
+| Boolean | starts with `is_` or `has_` | `is_graphic`, `is_ongoing` |
+| Timestamp | ends with `_at`, stored as `TIMESTAMPTZ` | `created_at`, `hidden_at` |
+| Date, time of day | ends with `_date` or `_time` | `occurred_date`, `occurred_time` |
+| Counter | ends with `_count` | `attempt_count`, `detection_count` |
+| Enum | `VARCHAR` plus a CHECK named `ck_<table>_<column>_valid` | `ck_media_kind_valid` |
+| Repeated table name | A column does not repeat its table name | `media.kind`, not `media.media_type` |
+| Discriminator | Name it `kind`, never `type` | `media.kind`, `notifications.kind` |
+| Post | Write "post", never "tweet" | `detected_from_post_id` |
+| Event source | `source` is reserved for event sources | `source_url`, `event_source_links` |
+| X handle | `x_handle`, with a prefix when the table holds another handle | `users.x_handle`, `bot_mentions.author_x_handle` |
+| Leading underscore | A column or field name never starts with one | `token_hash` |
+| Creation stamp | Every entity table has `created_at`. A join table has none. | `tags.created_at`, `conflicts.created_at` |
+| Queue status | Background queues share `queued`, `running`, `done`, `failed`, `skipped`, and use the subset they need | `notification_deliveries.status` |
 
 ### Migration house style
 
