@@ -68,10 +68,6 @@ export const FIELD_HELP = {
     text: "The analyst who opened this as a request. The row stays after fulfilment, as the trace of where the event came from.",
     label: "Who requested this?",
   },
-  author: {
-    text: "The analysts credited with this entry on Vidit. The first owns it: the geolocation's submitter, or the analyst who opened it while it is a request. Any others are geolocators the owner invited, credited without edit rights. Not necessarily whoever filmed or posted the source.",
-    label: "Who is the author?",
-  },
   section_location: {
     text: "The footage being located, and the coordinates of the subject it shows. A request has just the footage; whoever picks it up adds the coordinates.",
     label: "What goes in Location?",

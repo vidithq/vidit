@@ -19,12 +19,15 @@ import { LEVEL_LABELS, SENSOR_LABELS, shownSensor, type Source } from "@/lib/sou
  * no value drops out, except the title, which reads *Untitled*.
  *
  * `compact` is the map panel's density: `thumbnail` media and bare rows in a `LIST_TILE`.
+ * `wide` is for a block that owns the whole sources area: the file grows and sits left of the
+ * rows once the card is wide enough.
  */
 export function SourceBlock({
   source,
   index,
   alt,
   compact = false,
+  wide = false,
 }: {
   source: Source;
   /** Position in the event's source order, for the names ("Source 2"). */
@@ -32,6 +35,7 @@ export function SourceBlock({
   /** Alt text for an image file (the event title). */
   alt: string;
   compact?: boolean;
+  wide?: boolean;
 }) {
   const name = `Source ${index + 1}`;
   const file = (
@@ -40,6 +44,7 @@ export function SourceBlock({
       alt={alt}
       variant={compact ? "panel" : "page"}
       isGraphic={source.is_graphic}
+      grow={wide}
       empty="No file"
     />
   );
@@ -53,7 +58,7 @@ export function SourceBlock({
     );
   }
   return (
-    <DetailCard label={name} lead={file}>
+    <DetailCard label={name} lead={file} leadBeside={wide}>
       {rows}
     </DetailCard>
   );
@@ -116,7 +121,7 @@ function SourceRows({
             {links.map((link, i) => (
               <li key={link.url}>
                 <div className="flex items-center justify-end">
-                  <SourceLabel url={link.url} variant="link" withPath className="text-sm" />
+                  <SourceLabel url={link.url} variant="link" className="text-sm" />
                   <ArchivedCopies
                     copy={link.archived}
                     describes={linkDescription(index, safeHostname(link.url), i, links.length)}
@@ -141,7 +146,8 @@ function SourceRows({
 
 /**
  * An event's sources under a **Sources** eyebrow, in the order the API serves them: a vertical
- * stack in the map panel, a `<HorizontalScroller>` row on the page.
+ * stack in the map panel, a `<HorizontalScroller>` row on the page. A lone source on the page
+ * takes the whole area as a `wide` block, with no scroller.
  */
 export function SourceBlocks({
   sources,
@@ -152,15 +158,23 @@ export function SourceBlocks({
   alt: string;
   compact?: boolean;
 }) {
+  const wide = !compact && sources.length === 1;
   const blocks = sources.map((source, index) => (
-    <SourceBlock key={source.id} source={source} index={index} alt={alt} compact={compact} />
+    <SourceBlock
+      key={source.id}
+      source={source}
+      index={index}
+      alt={alt}
+      compact={compact}
+      wide={wide}
+    />
   ));
-  if (!compact && sources.length > 0) {
+  const counted = !compact && sources.length > 0;
+  const title = counted ? `Sources (${sources.length})` : "Sources";
+  if (counted && !wide) {
     return (
       <HorizontalScroller
-        heading={
-          <SectionEyebrow margin="none" title={`Sources (${sources.length})`} concept="sources" />
-        }
+        heading={<SectionEyebrow margin="none" title={title} concept="sources" />}
         label="Sources"
         previousLabel="Previous source"
         nextLabel="Next source"
@@ -174,7 +188,7 @@ export function SourceBlocks({
       <SectionEyebrow
         as={compact ? "h3" : undefined}
         margin="none"
-        title="Sources"
+        title={title}
         concept="sources"
       />
       {sources.length === 0 ? (

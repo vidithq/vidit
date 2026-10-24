@@ -29,6 +29,9 @@ import { HOVER_REVEAL } from "@/components/ui/styles";
  * `MediaLightbox` at `hero` uncropped. Their download floats in the corner,
  * revealed on hover (`HOVER_REVEAL` keeps it visible on touch).
  *
+ * `grow` gives each `page` tile a 16:9 box at the full width instead of the
+ * fixed height, for a gallery that owns a wide slot.
+ *
  * No media renders one marked empty box, saying `empty`.
  *
  * `isGraphic` wraps the whole block in `GraphicContentGate`, so the reader
@@ -40,6 +43,7 @@ export function MediaGallery({
   alt,
   variant = "page",
   isGraphic = false,
+  grow = false,
   empty = "No media available",
 }: {
   media: Media[];
@@ -47,11 +51,12 @@ export function MediaGallery({
   alt: string;
   variant?: "page" | "panel";
   isGraphic?: boolean;
+  grow?: boolean;
   /** What the empty box says, such as *No file* on a source block. */
   empty?: string;
 }) {
   const compact = variant === "panel";
-  const itemHeight = compact ? "h-40" : "h-48";
+  const itemHeight = compact ? "h-40" : grow ? "aspect-video" : "h-48";
   const [viewing, setViewing] = useState<Media | null>(null);
 
   if (media.length === 0) {

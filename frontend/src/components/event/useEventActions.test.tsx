@@ -87,13 +87,14 @@ function Harness({
   beforeClosedStatus?: BeforeClosedStatus | null;
   versionNo?: number;
 }) {
-  const { panels, rail } = useEventActions({
+  const { panels, actions, approvals } = useEventActions({
     event: eventFixture(status, beforeClosedStatus, versionNo),
     surface,
   });
   return (
     <>
-      {rail}
+      {actions}
+      {approvals}
       {panels}
     </>
   );
@@ -116,7 +117,7 @@ const stamp = (id: string, username: string, over: Partial<Approval> = {}): Appr
   ...over,
 });
 
-/** The rail's row of controls, buttons and links, left to right, by accessible name. */
+/** The row of controls, buttons and links, left to right, by accessible name. */
 const rowControls = () =>
   [...row().querySelectorAll<HTMLElement>("button, a")].map(
     (el) => el.getAttribute("aria-label") ?? el.textContent,
@@ -195,27 +196,26 @@ describe("the owner's edit", () => {
     expect(within(row()).queryByRole("link", { name: "Edit" })).toBeNull();
   });
 
-  it("puts the asker's Edit and Geolocate in the request page's Actions card", () => {
+  it("puts the asker's Edit and Geolocate in the request page's actions, with no card around them", () => {
     renderAs(OWNER, { status: "requested", surface: "request" });
-    const card = screen.getByRole("heading", { name: "Actions" }).closest("section")!;
-    expect(card).toContainElement(row());
     expect(rowControls()).toEqual(["Edit", "Share"]);
-    expect(within(card).getByRole("link", { name: "Geolocate" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Geolocate" })).toHaveAttribute(
       "href",
       "/submit?request_id=e1",
     );
+    expect(screen.queryByRole("heading", { name: "Actions" })).toBeNull();
+    expect(row().closest("section")).toBeNull();
   });
 
-  it("shows a visitor Share and Report on the request page, Geolocate in the card", () => {
+  it("shows a visitor Share and Report on the request page, then Geolocate", () => {
     renderAs(ANALYST, { status: "requested", surface: "request" });
     expect(rowControls()).toEqual(["Share", "Report"]);
     expect(screen.getByRole("link", { name: "Geolocate" })).toBeInTheDocument();
   });
 
-  it("gives a closed request Share and Report in its Actions card, and no Geolocate", () => {
+  it("gives a closed request Share and Report, and no Geolocate", () => {
     renderAs(ANALYST, { status: "closed", surface: "request", beforeClosedStatus: "requested" });
     expect(screen.queryByRole("link", { name: "Geolocate" })).toBeNull();
-    expect(screen.getByRole("heading", { name: "Actions" })).toBeInTheDocument();
     expect(rowControls()).toEqual(["Share", "Report"]);
   });
 

@@ -122,7 +122,7 @@ describe("EventDetailBody", () => {
     expect(screen.getByText("Anchor points match the imagery.")).toBeInTheDocument();
   });
 
-  it("page variant: hero media, requested-by + author rows", () => {
+  it("page variant: hero media and the requested-by row, no author row", () => {
     render(<EventDetailBody geo={geoFixture()} variant="page" />);
     const img = screen.getByRole("img", { name: TITLE });
     expect(decodeURIComponent(img.getAttribute("src") ?? "")).toContain(
@@ -130,7 +130,8 @@ describe("EventDetailBody", () => {
     );
     expect(screen.getByText("Requested by")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "poster" })).toHaveAttribute("href", "/profile/poster");
-    expect(screen.getByRole("link", { name: "ana" })).toHaveAttribute("href", "/profile/ana");
+    // The page header carries the byline.
+    expect(screen.queryByText("Author")).not.toBeInTheDocument();
   });
 
   it("renders one block per source, in the order served", () => {
@@ -163,7 +164,7 @@ describe("EventDetailBody", () => {
   it("lists each link with its post date and its archived copy, named by source and link", () => {
     render(<EventDetailBody geo={geoFixture()} variant="page" />);
     const first = block(1);
-    expect(within(first).getByRole("link", { name: "t.me/channel/12345" })).toHaveAttribute(
+    expect(within(first).getByRole("link", { name: "t.me" })).toHaveAttribute(
       "href",
       "https://t.me/channel/12345"
     );
@@ -217,18 +218,23 @@ describe("EventDetailBody", () => {
     expect(container.querySelector("video[controls]")).toBeNull();
   });
 
-  it("renders children between the sources and the key-value rows", () => {
+  it("orders the page as sources, proof, then the side slot above the details", () => {
     render(
-      <EventDetailBody geo={geoFixture()} variant="page">
-        <div data-testid="location-map">map goes here</div>
-      </EventDetailBody>
+      <EventDetailBody
+        geo={geoFixture()}
+        variant="page"
+        side={<div data-testid="location-map">map goes here</div>}
+      />
     );
     const slot = screen.getByTestId("location-map");
     const media = screen.getByRole("img", { name: TITLE });
+    const proof = screen.getByText("Anchor points match the imagery.");
     const details = screen.getByText("Details");
-    // Position is the contract, not mere presence: sources, then the slot, then details.
-    expect(media.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(slot.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Position is the contract, not mere presence: it is also the stacking order on a narrow screen.
+    const follows = (a: Node, b: Node) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING;
+    expect(follows(media, proof)).toBeTruthy();
+    expect(follows(proof, slot)).toBeTruthy();
+    expect(follows(slot, details)).toBeTruthy();
   });
 
   it("lists the conflicts and the event's tags in their own rows", () => {
@@ -288,7 +294,6 @@ describe("EventDetailBody", () => {
       />
     );
     expect(screen.queryByText("Requested by")).not.toBeInTheDocument();
-    expect(screen.getByText("Author")).toBeInTheDocument();
   });
 
   it("shows the closer's reason on a closed row, beside the status badge", () => {

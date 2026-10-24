@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { SourceBlock } from "./SourceBlock";
+import { SourceBlock, SourceBlocks } from "./SourceBlock";
 import { source } from "@/test/eventDetail";
 import type { Source } from "@/lib/sources";
 
@@ -90,17 +90,16 @@ describe("SourceBlock", () => {
     expect(within(block).getByText("armor")).toBeInTheDocument();
   });
 
-  it("shows one link with its short form, archived copy and post date", () => {
+  it("shows one link by its host, with its archived copy and post date", () => {
     const block = renderBlock({
       links: [
         { url: "https://t.me/channel/12345", posted_at: "2026-06-01T10:05:00Z", archived: ARCHIVED },
       ],
     });
     expect(within(block).getByText("Links (1)")).toBeInTheDocument();
-    expect(within(block).getByRole("link", { name: "t.me/channel/12345" })).toHaveAttribute(
-      "href",
-      "https://t.me/channel/12345"
-    );
+    const link = within(block).getByRole("link", { name: "t.me" });
+    expect(link).toHaveAttribute("href", "https://t.me/channel/12345");
+    expect(link).toHaveAttribute("title", "https://t.me/channel/12345");
     expect(within(block).getByText("Posted 1 Jun 2026")).toBeInTheDocument();
     expect(
       within(block).getByRole("link", { name: "Wayback Machine copy of source 1, t.me" })
@@ -119,12 +118,35 @@ describe("SourceBlock", () => {
       "listitem"
     );
     expect(items).toHaveLength(2);
-    expect(within(items[1]).getByRole("link", { name: "youtube.com/watch?v=abc" })).toBeInTheDocument();
+    expect(within(items[1]).getByRole("link", { name: "www.youtube.com" })).toBeInTheDocument();
     expect(within(items[1]).getByText("Date unknown")).toBeInTheDocument();
     expect(
       within(items[1]).getByRole("button", {
         name: "No archived copy of source 1, link 2, www.youtube.com",
       })
     ).toBeDisabled();
+  });
+});
+
+describe("SourceBlocks", () => {
+  it("gives a lone source the whole area, file beside the rows, with no scroller", () => {
+    render(<SourceBlocks sources={[source({ media: IMAGE })]} alt={ALT} />);
+    expect(screen.getByText("Sources (1)")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Sources" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Next source" })).toBeNull();
+    const block = screen.getByRole("region", { name: "Source 1" });
+    expect(block).toHaveClass("@container");
+    expect(within(block).getByRole("img", { name: ALT })).toBeInTheDocument();
+  });
+
+  it("keeps two sources in the scrolling row", () => {
+    render(
+      <SourceBlocks sources={[source({ id: "s1" }), source({ id: "s2" })]} alt={ALT} />
+    );
+    expect(screen.getByText("Sources (2)")).toBeInTheDocument();
+    const row = screen.getByRole("region", { name: "Sources" });
+    expect(within(row).getAllByRole("region", { name: /^Source \d$/ })).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Next source" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Source 1" })).not.toHaveClass("@container");
   });
 });

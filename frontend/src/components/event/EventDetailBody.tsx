@@ -14,8 +14,8 @@ import { SourceBlocks } from "@/components/sources/SourceBlock";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { DetailCard, DetailPills, DetailRow } from "@/components/ui/DetailRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { PageColumns } from "@/components/ui/PageShell";
 import { ProofSection } from "@/components/ui/ProofSection";
-import { creditProps } from "@/lib/geolocatorCredit";
 
 /** The body's data shape: an `EventDetail` as-is. Every lifecycle state shares it: a coordless
  * `requested` row carries a null `coords`, and the missing detected-from and requested-by
@@ -25,27 +25,44 @@ export type EventDetailBodyData = EventDetail;
 interface EventDetailBodyProps {
   geo: EventDetailBodyData;
   /**
-   * `panel`: map's 380px overlay: stacked sources with `thumbnail` media, bare rows, no
-   * request-trace or author rows (the author is in the panel header). `page`: full detail page: a
-   * sideways row of sources with `hero` media, card-chrome rows plus request-trace and author rows,
-   * section headings.
+   * `panel`: map's 380px overlay, one column: stacked sources with `thumbnail` media, bare rows,
+   * the proof last, no request-trace row. `page`: full detail page, in two `PageColumns`: the
+   * sources as a sideways row with `hero` media, then the proof, in the main column; `side` and
+   * the Details card with the request-trace row in the side column.
    */
   variant: "panel" | "page";
-  /** Rendered between the sources and the key-value rows (the full page slots its Location map here). */
-  children?: ReactNode;
+  /** The page variant's side column above Details (the Location module, the Approvals card). */
+  side?: ReactNode;
 }
 
-/** Geolocation markup shared by the map's detail side-panel and `events/[id]`; `variant` owns the
- * density differences so the field set can't drift. */
-export function EventDetailBody({ geo, variant, children }: EventDetailBodyProps) {
-  const compact = variant === "panel";
+/** Geolocation markup shared by the map's detail side-panel and the detail pages; `variant` owns
+ * the density and layout differences so the field set can't drift. The author is in the header of
+ * every surface, so no row repeats it. */
+export function EventDetailBody({ geo, variant, side }: EventDetailBodyProps) {
+  if (variant === "panel") {
+    return (
+      <>
+        <SourceBlocks sources={geo.sources} alt={geo.title} compact />
+        <DetailRows geo={geo} compact />
+        <ProofBlock geo={geo} compact />
+      </>
+    );
+  }
   return (
-    <>
-      <SourceBlocks sources={geo.sources} alt={geo.title} compact={compact} />
-      {children}
-      <DetailRows geo={geo} compact={compact} />
-      <ProofBlock geo={geo} compact={compact} />
-    </>
+    <PageColumns
+      main={
+        <>
+          <SourceBlocks sources={geo.sources} alt={geo.title} />
+          <ProofBlock geo={geo} compact={false} />
+        </>
+      }
+      side={
+        <>
+          {side}
+          <DetailRows geo={geo} compact={false} />
+        </>
+      }
+    />
   );
 }
 
@@ -124,17 +141,11 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
           <DetailPills items={geo.tags} compact={compact} />
         </DetailRow>
       )}
-      {/* Compact panel omits requested-by and author rows: the author is in the panel header, the trace
-          belongs to the full page. Fulfilment is a lifecycle move on this row, so the trace is who
-          opened the request (`requested_by`). */}
+      {/* The trace belongs to the full page. Fulfilment is a lifecycle move on this row, so the
+          trace is who opened the request (`requested_by`). */}
       {!compact && geo.requested_by && (
         <DetailRow label="Requested by" concept="requested_by" compact={compact}>
           <AuthorByline author={geo.requested_by} prefix={false} className="text-sm" />
-        </DetailRow>
-      )}
-      {!compact && (
-        <DetailRow label="Author" concept="author" compact={compact}>
-          <AuthorByline {...creditProps(geo)} prefix={false} className="text-sm" />
         </DetailRow>
       )}
     </>

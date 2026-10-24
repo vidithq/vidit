@@ -11,26 +11,37 @@ import type { Concept } from "@/lib/fieldHelp";
 
 export function DetailCard({
   lead,
+  leadBeside = false,
   label,
   children,
   className = "",
 }: {
   /** A full-width slot above the rows, such as a source's file. */
   lead?: ReactNode;
+  /** Puts `lead` left of the rows (3:2) once the card is 42rem wide; narrower, it stays on top. */
+  leadBeside?: boolean;
   /** Makes the card a region with this accessible name. */
   label?: string;
   children: ReactNode;
   className?: string;
 }) {
   const Root = label ? "section" : "div";
+  const frame = "bg-neutral-900 rounded-lg border border-neutral-700";
+  if (lead && leadBeside) {
+    // The card is the container, so the split follows the column it sits in, not the viewport.
+    return (
+      <Root aria-label={label} className={cn(frame, "@container", className)}>
+        <div className="grid grid-cols-1 @2xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+          <div className="border-b border-neutral-800 px-4 py-3 @2xl:border-r @2xl:border-b-0">
+            {lead}
+          </div>
+          <div className="divide-y divide-neutral-800">{children}</div>
+        </div>
+      </Root>
+    );
+  }
   return (
-    <Root
-      aria-label={label}
-      className={cn(
-        "bg-neutral-900 rounded-lg border border-neutral-700 divide-y divide-neutral-800",
-        className,
-      )}
-    >
+    <Root aria-label={label} className={cn(frame, "divide-y divide-neutral-800", className)}>
       {lead && <div className="px-4 py-3">{lead}</div>}
       {children}
     </Root>

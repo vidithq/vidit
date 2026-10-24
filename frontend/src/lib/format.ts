@@ -76,18 +76,6 @@ export function safeHostname(url: string): string {
   }
 }
 
-/** A URL as a reader names it: host without a leading `www.`, then path and query, without a
- * trailing slash ("t.me/channel/12345"). The raw input when malformed. */
-export function shortUrl(url: string): string {
-  try {
-    const parsed = new URL(url);
-    const host = parsed.hostname.replace(/^www\./, "");
-    return `${host}${parsed.pathname}${parsed.search}`.replace(/\/+$/, "");
-  } catch {
-    return url;
-  }
-}
-
 export function parseHttp(href: string): URL | null {
   let parsed: URL;
   try {

@@ -95,7 +95,7 @@ test.describe("shared event link", () => {
     await expectNarrowViewportLayout(page, stamps.getByRole("link").last());
   });
 
-  test("puts the actions top right in the sticky rail, the title scrolling with the column", async ({
+  test("puts the actions top right of the side column, the location level with the sources", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1512, height: 900 });
@@ -103,23 +103,20 @@ test.describe("shared event link", () => {
     await page.goto(`/events/${EVENT_ID}`);
 
     const title = page.getByRole("heading", { level: 1 });
-    const rail = page.getByRole("complementary", { name: "Actions and approvals" });
-    const share = rail.getByRole("button", { name: "Share", exact: true });
-    await expect(share).toBeVisible();
-    await expect(rail).toHaveCSS("position", "sticky");
+    const row = page.getByRole("group", { name: "Event actions" });
+    await expect(row.getByRole("button", { name: "Share", exact: true })).toBeVisible();
 
     const titleBox = (await title.boundingBox())!;
-    const railBox = (await rail.boundingBox())!;
-    expect(railBox.x).toBeGreaterThan(titleBox.x);
-    expect(Math.abs(railBox.y - titleBox.y)).toBeLessThan(12);
-    const reportBox = (await rail.getByRole("button", { name: "Report" }).boundingBox())!;
-    expect(railBox.x + railBox.width - (reportBox.x + reportBox.width)).toBeLessThan(2);
+    const rowBox = (await row.boundingBox())!;
+    expect(rowBox.x).toBeGreaterThan(titleBox.x + titleBox.width / 2);
+    expect(Math.abs(rowBox.y - titleBox.y)).toBeLessThan(12);
+    const sources = (await page.getByRole("heading", { name: /^Sources/ }).boundingBox())!;
+    const location = (await page.getByRole("heading", { name: "Location" }).boundingBox())!;
+    expect(location.x).toBeGreaterThan(rowBox.x - 1);
+    expect(Math.abs(location.y - sources.y)).toBeLessThan(2);
+    const reportBox = (await row.getByRole("button", { name: "Report" }).boundingBox())!;
     expect(reportBox.y).toBeLessThan(
-      (await rail.getByRole("region", { name: "Approvals" }).boundingBox())!.y,
+      (await page.getByRole("region", { name: "Approvals" }).boundingBox())!.y,
     );
-
-    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-    await expect(title).not.toBeInViewport();
-    await expect(share).toBeInViewport();
   });
 });

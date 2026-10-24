@@ -26,23 +26,23 @@ import type { EventDetail } from "@/types";
 
 /**
  * The controls of one event, assembled once so no surface hand-assembles a row and controls can't
- * drift between them. They live in the page's right rail (`docs/design.md`, Event actions and
+ * drift between them. They head the page's side column (`docs/design.md`, Event actions and
  * Approvals card), as a row of icon controls, left to right:
  *
  * 1. **The version selector**, on the event page of a published row.
  * 2. **Edit**, an icon, for the owner. Closing and the geolocators live on the edit page.
  * 3. **Share**.
  * 4. **Add to collection** for the owner and every co-geolocator, and **Geolocators** for a
- *    co-geolocator (where they leave). Each opens a panel at the top of the main column.
+ *    co-geolocator (where they leave). Each opens a panel under the header.
  * 5. **Report** for every reader but the owner.
  *
- * On the event page the rail is that row, then a pending geolocator invitation, then the Approvals
- * card of a published row (status, approvals, Approve, approval requests). On the request page it
- * is the Actions card: the row, then **Geolocate** on an open request.
+ * The actions are that row, then a pending geolocator invitation on the event page, or
+ * **Geolocate** on an open request's page. The Approvals card of a published row (status,
+ * approvals, Approve, approval requests) comes apart, under the Location module.
  *
- * The hook returns nodes rather than rendering them because the rail and the panels land in
- * different slots. Called before a surface's early returns, with `event` null while the row
- * loads, so hook order is stable.
+ * The hook returns nodes rather than rendering them because the actions, the Approvals card and
+ * the panels land in different slots. Called before a surface's early returns, with `event` null
+ * while the row loads, so hook order is stable.
  */
 
 /** Which detail page is asking, which is what selects the controls. */
@@ -82,13 +82,15 @@ export interface EventActionsOptions {
 }
 
 export interface EventActions {
-  /** The panels the rail's toggles open, for the top of the main column. */
+  /** The panels the row's toggles open, for under the header. */
   panels: ReactNode;
-  /** The page's right rail. */
-  rail: ReactNode;
+  /** The block heading the page's side column. */
+  actions: ReactNode;
+  /** The event page's Approvals card, for the side column. */
+  approvals: ReactNode;
 }
 
-/** A panel a rail toggle opens. It mounts when opened and takes focus then, so a keyboard or
+/** A panel a row toggle opens. It mounts when opened and takes focus then, so a keyboard or
  *  screen reader user lands in it rather than back on the toggle. */
 function TogglePanel({ id, children }: { id: string; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -128,7 +130,7 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
   }, [event?.id]);
 
   if (!event || !tiers) {
-    return { panels: null, rail: null };
+    return { panels: null, actions: null, approvals: null };
   }
 
   const isOpenRequest = event.status === "requested";
@@ -213,22 +215,6 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
       </div>
     );
 
-  const eventRail = (
-    <div className="space-y-4">
-      {row("lg:justify-end")}
-      {invited && (
-        <GeolocatorInviteCard
-          event={event}
-          onAnswered={() => {
-            setAnsweredFor(event.id);
-            onChanged?.();
-          }}
-        />
-      )}
-      {showsApprovals && <ApprovalsCard event={event} approvals={approvals} />}
-    </div>
-  );
-
   const geolocate = tiers.flow && isOpenRequest && (
     <span className="inline-flex items-center gap-1.5">
       <Link href={`/submit?request_id=${event.id}`} className={buttonClasses("primary")}>
@@ -238,18 +224,10 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
       <FieldHelp concept="geolocate_request" />
     </span>
   );
-  const requestRail =
-    controls.length > 0 || geolocate ? (
-      <Card as="section">
-        <SectionEyebrow title="Actions" margin="none" />
-        {row()}
-        {geolocate}
-      </Card>
-    ) : null;
 
   return {
-    // The panels open at the top of the main column, beside the rail's row. They stack rather
-    // than replace each other: each is its own titled card.
+    // The panels open under the header, full width. They stack rather than replace each other:
+    // each is its own titled card.
     panels: (
       <>
         {canSeeCredit && crediting && (
@@ -271,6 +249,21 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
         {canReport && report.panel && <TogglePanel id={REPORT_PANEL_ID}>{report.panel}</TogglePanel>}
       </>
     ),
-    rail: surface === "event" ? eventRail : requestRail,
+    actions: (
+      <div className="space-y-4">
+        {row("lg:justify-end")}
+        {invited && (
+          <GeolocatorInviteCard
+            event={event}
+            onAnswered={() => {
+              setAnsweredFor(event.id);
+              onChanged?.();
+            }}
+          />
+        )}
+        {geolocate && <div className="flex lg:justify-end">{geolocate}</div>}
+      </div>
+    ),
+    approvals: showsApprovals && <ApprovalsCard event={event} approvals={approvals} />,
   };
 }

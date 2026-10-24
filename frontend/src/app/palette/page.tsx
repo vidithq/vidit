@@ -1025,9 +1025,9 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<SourceLabel>" usage="Source display: the stored URL shortened to its host, or with `withPath` to its host and path (a source block's links, where two can share a host), with italic fallbacks for a null URL (To confirm) and a value the parser gives no host for (no source)">
+          <Item name="<SourceLabel>" usage="Source display: the stored URL shortened to its host, the full URL in the link's title (the Detected from row, a source block's links), with italic fallbacks for a null URL (To confirm) and a value the parser gives no host for (no source)">
             <SourceLabel url="https://t.me/some_channel/4242" variant="inline" />
-            <SourceLabel url="https://www.t.me/some_channel/4242/" variant="link" withPath />
+            <SourceLabel url="https://www.t.me/some_channel/4242/" variant="link" />
             <SourceLabel url={null} variant="inline" />
           </Item>
 
@@ -1179,7 +1179,7 @@ export default function PalettePage() {
             </span>
           </Item>
 
-          <Item name="<MediaGallery>" usage="The detail-surface media block: geoloc detail + map panel + request detail. variant=page (hero tiles, a lone one at full width, 2-up from two) / panel (stacked thumbnails); one marked empty box, shown here through the shared TileNotice. A video tile is <VideoPlayer>, whose own bar already covers play, download and the expand control, so a clip carries no floating tile control at all. An image tile is cropped, so the tile itself opens <MediaLightbox> at hero resolution, and its download floats in the corner under HOVER_REVEAL. The card-sized media slot is private to <EntityCard> (its no-media box shows in the detection demo below).">
+          <Item name="<MediaGallery>" usage="The detail-surface media block: geoloc detail + map panel + request detail. variant=page (hero tiles, a lone one at full width, 2-up from two) / panel (stacked thumbnails); grow gives each page tile a 16:9 box at the full width instead of the fixed height (a lone source's file); one marked empty box, shown here through the shared TileNotice. A video tile is <VideoPlayer>, whose own bar already covers play, download and the expand control, so a clip carries no floating tile control at all. An image tile is cropped, so the tile itself opens <MediaLightbox> at hero resolution, and its download floats in the corner under HOVER_REVEAL. The card-sized media slot is private to <EntityCard> (its no-media box shows in the detection demo below).">
             <div className="w-full max-w-sm">
               <MediaGallery media={[]} alt="demo" />
             </div>
@@ -1502,7 +1502,7 @@ export default function PalettePage() {
             </Card>
           </Item>
 
-          <Item name="<DetailCard> + <DetailRow> + <DetailPills>" usage="Label / value rows on the event and request detail pages and on each source block. <DetailCard> takes an optional `lead` slot above the rows (a source's file) and a `label` that makes it a named region. <DetailRow> takes `empty`, shown muted for an empty value (Untitled), and `wrapLabel`, for a value that holds one line at its full width: the label wraps instead when the row runs short (a source's Sensor position). <DetailPills> is a row value made of pills (conflicts, tags), wrapping flush right.">
+          <Item name="<DetailCard> + <DetailRow> + <DetailPills>" usage="Label / value rows on the event and request detail pages and on each source block. <DetailCard> takes an optional `lead` slot above the rows (a source's file), `leadBeside` to put that slot left of the rows (3:2) once the card is 42rem wide, falling back to the slot on top when narrower, and a `label` that makes it a named region. <DetailRow> takes `empty`, shown muted for an empty value (Untitled), and `wrapLabel`, for a value that holds one line at its full width: the label wraps instead when the row runs short (a source's Sensor position). <DetailPills> is a row value made of pills (conflicts, tags), wrapping flush right.">
             <div className="w-full max-w-md space-y-4">
               <DetailCard>
                 <DetailRow label="Status" concept="status">
@@ -1520,6 +1520,20 @@ export default function PalettePage() {
                   <DetailPills items={[{ id: "t1", name: "armor" }, { id: "t2", name: "night" }]} />
                 </DetailRow>
               </DetailCard>
+            </div>
+            <div className="w-full max-w-3xl">
+              <Variant label="leadBeside">
+                <DetailCard
+                  leadBeside
+                  lead={<div className="aspect-video rounded-lg border border-neutral-700 bg-neutral-800" />}
+                >
+                  <DetailRow label="Title" value="Drone footage of the strike" />
+                  <DetailRow label="Captured" value="1 Jun 2026, 09:30 UTC" />
+                  <DetailRow label="Tags" align="start">
+                    <DetailPills items={[{ id: "t1", name: "armor" }]} />
+                  </DetailRow>
+                </DetailCard>
+              </Variant>
             </div>
           </Item>
 
@@ -1570,7 +1584,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<PageWithRail>" usage="A main column plus a sticky 17.5rem right rail from lg up. PageShell composes it from its rail prop and widens its column to max-w-6xl, so the main column keeps the 53rem reading width: the filter rail of the feed, the Requests board and search, the edit page's actions and geolocators. `header` heads the main column beside the rail rather than above both (PageShell's headerInColumn: the event, version, request and organization pages, whose rail opens top right with the page's actions), and comes first below lg, so a stacked rail lands under the title. The rail sticks at its resting top, so it never moves when the page scrolls, and scrolls on its own once taller than the viewport. Below lg it stacks above the column (narrow=&quot;stacked&quot;), below it (narrow=&quot;below&quot;, the edit page, so Save follows the fields) or leaves the page (narrow=&quot;hidden&quot;, where FilterBar's Filters (N) button opens the same panel full screen). No rail: one full-width column.">
+          <Item name="<PageWithRail>" usage="A main column plus a sticky 17.5rem right rail from lg up. PageShell composes it from its rail prop and widens its column to max-w-6xl, so the main column keeps the 53rem reading width: the filter rail of the feed, the Requests board and search, the edit page's actions and geolocators. `header` heads the main column beside the rail rather than above both (PageShell's headerInColumn: the organization page, whose rail opens top right with an invited viewer's answer), and comes first below lg, so a stacked rail lands under the title. The rail sticks at its resting top, so it never moves when the page scrolls, and scrolls on its own once taller than the viewport. Below lg it stacks above the column (narrow=&quot;stacked&quot;), below it (narrow=&quot;below&quot;, the edit page, so Save follows the fields) or leaves the page (narrow=&quot;hidden&quot;, where FilterBar's Filters (N) button opens the same panel full screen). No rail: one full-width column.">
             <div className="w-full space-y-4">
               <Variant label="rail beside the column">
                 <PageWithRail
@@ -1770,8 +1784,8 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<EventDetailBody>" usage="Geoloc detail page + map panel (page/panel variant): the source blocks, then the Details rows, then the proof.">
-            <div className="w-full max-w-2xl space-y-4">
+          <Item name="<EventDetailBody>" usage="Geoloc detail pages + map panel (page/panel variant). page: two PageColumns, the source blocks then the proof in the main column, the side slot (Location, Approvals) then the Details card in the side column. panel: one column, the source blocks, the Details rows, then the proof.">
+            <div className="w-full space-y-4">
               <Variant label="page">
                 <EventDetailBody geo={MOCK_DETAIL} variant="page" />
               </Variant>
@@ -1783,9 +1797,12 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SourceBlock> / <SourceBlocks>" usage="One source of an event on a reading surface (components/sources/SourceBlock.tsx), read like the event's Details card: a <DetailCard> region named Source N, its file in the lead slot through <MediaGallery> (behind its own <GraphicContentGate> when this source is flagged, a No file box without one), then <DetailRow>s for Title (Untitled when empty), Level as a <Pill>, Sensor (none without a file, and Unknown dropped), Sensor position (the compact <CoordinateValue>: 4 decimals and the small <CoordinateActions> on one line, under wrapLabel), Captured, Links (N) (right-aligned, each link through <SourceLabel withPath> followed by its <ArchivedCopies> mark, with Posted and its date or Date unknown under it) and Tags as <DetailPills>. A row with no value drops out, except Title. The map panel keeps a LIST_TILE with bare compact rows. <SourceBlocks> renders the event's blocks in API order: a <HorizontalScroller> row under a Sources (N) eyebrow in the page variant of <EventDetailBody>, a vertical stack under Sources in its panel variant.">
+          <Item name="<SourceBlock> / <SourceBlocks>" usage="One source of an event on a reading surface (components/sources/SourceBlock.tsx), read like the event's Details card: a <DetailCard> region named Source N, its file in the lead slot through <MediaGallery> (behind its own <GraphicContentGate> when this source is flagged, a No file box without one), then <DetailRow>s for Title (Untitled when empty), Level as a <Pill>, Sensor (none without a file, and Unknown dropped), Sensor position (the compact <CoordinateValue>: 4 decimals and the small <CoordinateActions> on one line, under wrapLabel), Captured, Links (N) (right-aligned, each link through <SourceLabel> (its host, the full URL in the title) followed by its <ArchivedCopies> mark, with Posted and its date or Date unknown under it) and Tags as <DetailPills>. A row with no value drops out, except Title. The map panel keeps a LIST_TILE with bare compact rows. `wide` grows the file and sets it beside the rows (<DetailCard leadBeside>). <SourceBlocks> renders the event's blocks in API order: a <HorizontalScroller> row under a Sources (N) eyebrow in the page variant of <EventDetailBody>, a vertical stack under Sources in its panel variant. A lone source in the page variant skips the scroller and renders as one wide block.">
             <div className="w-full max-w-2xl">
               <SourceBlocks sources={[MOCK_SOURCE, MOCK_CONTEXT_SOURCE]} alt="Strike on a depot" />
+            </div>
+            <div className="w-full max-w-4xl">
+              <SourceBlocks sources={[MOCK_SOURCE]} alt="Strike on a depot" />
             </div>
           </Item>
 
@@ -1853,7 +1870,7 @@ export default function PalettePage() {
               <li><span className="font-mono text-neutral-400">BetaBanner</span>: a {"<Pill tone=\"accent\">"} in a <code>position: fixed</code> wrapper, already visible bottom-right from <code>sm</code> up; below <code>sm</code> the same pill rides the nav drawer via {"<BetaBanner inline>"}</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span>: the primary nav, auth/route-driven, always on screen. Two shapes: a fixed rail on the left edge from <code>sm</code> up (glyphs, or glyphs plus labels once expanded), and below <code>sm</code> a floating chip in the top-left corner that opens the same rail as a drawer over the page</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span> chip and drawer: the rail&apos;s own phone shape, rendered by that component rather than a <code>components/ui/</code> primitive, so there is nothing here to reuse. The chip&apos;s open control is a deliberate one-off too: a 44px neutral thumb target, which {"<Button icon>"} does not offer (36px, accent or red)</li>
-              <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page: one container on every app page, its left edge at one x and a max-w-6xl column centred on the screen from lg up, 53rem reading width without a rail and max-w-6xl with one (PageShell&apos;s <code>rail</code>); PageShell&apos;s <code>controls</code> slot puts a view&apos;s segmented control under the title, left-aligned (the feed scope, the Requests sort, the submit mode); PageShell&apos;s <code>headerInColumn</code> puts the header (back, title, byline) at the top of the main column beside the rail, so the rail opens top right with the page&apos;s actions (the event, version, request and organization pages); PageShell&apos;s <code>back</code> arrow parks in the gutter left of the title from lg up and sticks there at the top of the viewport while the page scrolls, level with the rail; <span className="font-mono text-neutral-400">PageCenter</span> (from PageFrame) is the one centred full-screen block, on the same rail inset</li>
+              <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page: one container on every app page, its left edge at one x and a max-w-6xl column centred on the screen from lg up, 53rem reading width without a rail and max-w-6xl with one (PageShell&apos;s <code>rail</code>); PageShell&apos;s <code>controls</code> slot puts a view&apos;s segmented control under the title, left-aligned (the feed scope, the Requests sort, the submit mode); PageShell&apos;s <code>headerInColumn</code> puts the header (back, title, byline) at the top of the main column beside the rail, so the rail opens top right (the organization page); PageShell&apos;s <code>headerSide</code> lays the header out in <code>PageColumns</code>, a 65:35 main and side column from lg up, with the page&apos;s actions heading the side column, and the body continues in its own PageColumns on the same split (the event, version and request pages); PageShell&apos;s <code>back</code> arrow parks in the gutter left of the title from lg up and sticks there at the top of the viewport while the page scrolls, level with the rail; <span className="font-mono text-neutral-400">PageCenter</span> (from PageFrame) is the one centred full-screen block, on the same rail inset</li>
             </ul>
           </Item>
         </section>

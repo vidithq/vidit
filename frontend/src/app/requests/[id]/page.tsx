@@ -11,8 +11,9 @@ import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 /**
  * A request is a `requested` event (see `docs/data-model.md`, `events`) served by
  * `GET /events/{id}`; renders the shared `EventDetailBody` under the title, with
- * the Actions card (`useEventActions`: Edit, Share, Report, Geolocate) in the
- * rail, under the title on a phone. The owner closes it from the edit page.
+ * the actions (`useEventActions`: Edit, Share, Report, then Geolocate) heading
+ * the side column, under the title on a phone. The owner closes it from the
+ * edit page.
  */
 export default function RequestDetailPage() {
   const params = useParams();
@@ -25,7 +26,7 @@ export default function RequestDetailPage() {
     requestId ? `/events/${requestId}` : null
   );
   // Called before the early returns.
-  const { panels, rail } = useEventActions({
+  const { panels, actions } = useEventActions({
     event: request,
     surface: "request",
     onChanged: refetch,
@@ -45,13 +46,11 @@ export default function RequestDetailPage() {
       back
       title={request.title}
       subtitle={<AuthorByline author={request.owner} avatar />}
-      rail={rail}
-      railLabel="Actions"
-      headerInColumn
+      headerSide={actions}
     >
       {panels}
 
-      {/* No coordinates: the Location is empty and the missing rows drop out. */}
+      {/* No coordinates: no Location module, and the missing rows drop out. */}
       <EventDetailBody geo={request} variant="page" />
     </PageShell>
   );

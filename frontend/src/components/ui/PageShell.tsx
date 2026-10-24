@@ -31,6 +31,7 @@ export function PageShell({
   railLabel,
   narrowRail,
   headerInColumn = false,
+  headerSide,
   children,
 }: {
   title: ReactNode;
@@ -52,6 +53,9 @@ export function PageShell({
   /** Puts the header (and `controls`) at the top of the main column, beside the rail, so the rail's
    *  first block sits top right level with the title. Below `lg` the header comes before the rail. */
   headerInColumn?: boolean;
+  /** Heads the side column of a two-column page, beside the header (see `PageColumns`). The frame
+   *  is `wide`, and the children lay out their own `PageColumns` under the header. */
+  headerSide?: ReactNode;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -128,7 +132,10 @@ export function PageShell({
     // `max-sm:pt-16` (64px) clears the off-canvas rail's chip (about 55px). `pt-10` is also the
     // sticky `top` of the back arrow and of a rail beside the header (`PageWithRail`), so neither
     // moves when the page scrolls.
-    <PageFrame column={rail ? "wide" : "reading"} className="pt-10 max-sm:pt-16 pb-16">
+    <PageFrame
+      column={rail || headerSide !== undefined ? "wide" : "reading"}
+      className="pt-10 max-sm:pt-16 pb-16"
+    >
       <div className="relative space-y-6" style={railTop}>
         {back && (
           // From `lg` up the back arrow sits in the gutter left of the column (`right-full`), so
@@ -143,7 +150,11 @@ export function PageShell({
             </div>
           </div>
         )}
-        {!inColumn && header}
+        {headerSide !== undefined ? (
+          <PageColumns main={header} side={headerSide} />
+        ) : (
+          !inColumn && header
+        )}
         {rail === undefined ? (
           children
         ) : (
@@ -158,6 +169,19 @@ export function PageShell({
         )}
       </div>
     </PageFrame>
+  );
+}
+
+/**
+ * A main column and a side column, 65:35 from `lg` up. Below `lg` the side column follows the main
+ * one. Every `PageColumns` of a page shares the split, so its columns line up from one to the next.
+ */
+export function PageColumns({ main, side }: { main: ReactNode; side: ReactNode }) {
+  return (
+    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,65fr)_minmax(0,35fr)]">
+      <div className="min-w-0 space-y-6">{main}</div>
+      <div className="min-w-0 space-y-6">{side}</div>
+    </div>
   );
 }
 

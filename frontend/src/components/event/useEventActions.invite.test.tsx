@@ -19,19 +19,19 @@ vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: { id: "u2", username: "bo" } }),
 }));
 
-function Rail({ invited }: { invited: boolean }) {
+function Actions({ invited }: { invited: boolean }) {
   const event = {
     ...eventDetail("e1", "Bridge strike"),
     owner: { id: "u1", username: "ana" },
     viewer_invite_pending: invited,
   };
-  const { rail } = useEventActions({ event, surface: "event" });
-  return <>{rail}</>;
+  const { actions } = useEventActions({ event, surface: "event" });
+  return <>{actions}</>;
 }
 
 describe("useEventActions invitation", () => {
-  it("shows the invitation in the rail from the event read, without asking the invitation list", () => {
-    render(<Rail invited />);
+  it("shows the invitation in the actions from the event read, without asking the invitation list", () => {
+    render(<Actions invited />);
 
     expect(screen.getByText("Geolocator invitation")).toBeInTheDocument();
     expect(api.apiFetch).not.toHaveBeenCalledWith(
@@ -42,7 +42,7 @@ describe("useEventActions invitation", () => {
   });
 
   it("puts the invitation under the row of actions", () => {
-    render(<Rail invited />);
+    render(<Actions invited />);
 
     const row = screen.getByRole("group", { name: "Event actions" });
     const card = screen.getByText("Geolocator invitation");
@@ -50,7 +50,7 @@ describe("useEventActions invitation", () => {
   });
 
   it("shows nothing to a reader without an invitation", () => {
-    render(<Rail invited={false} />);
+    render(<Actions invited={false} />);
 
     expect(screen.queryByText("Geolocator invitation")).toBeNull();
   });

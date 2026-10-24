@@ -14,12 +14,13 @@ import { VersionSelector } from "@/components/event/VersionSelector";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
+import { creditProps } from "@/lib/geolocatorCredit";
 import { eventHref } from "@/lib/routes";
 
 /**
  * One filed version at `/events/{id}/vN`: the canonical body fed the version's
- * snapshot, read-only. The rail carries the version selector and no action
- * (those act on the record). Three
+ * snapshot, read-only. The side column opens with the version selector and no
+ * action (those act on the record). Three
  * reads: the event, the version, and the version below (it holds the edit's
  * byline and date).
  */
@@ -62,30 +63,31 @@ export default function EventVersionPage() {
   if (number > 1 && !producedBy && !producedByError) return <PageLoading />;
 
   const version = eventVersion(geo, number, { own: row, producedBy });
+  const approvals = <VersionApprovals event={geo} versionNo={number} />;
 
   return (
     <PageShell
       back
       title={version.view?.title ?? geo.title}
-      subtitle={<AuthorByline author={geo.owner} avatar />}
-      rail={
+      subtitle={<AuthorByline {...creditProps(geo)} coAuthorsAs="avatars" avatar />}
+      headerSide={
         <div className="flex lg:justify-end">
           <VersionSelector eventId={geo.id} liveVersion={geo.version_no} selected={number} />
         </div>
       }
-      railLabel="Versions"
-      headerInColumn
     >
       <EventVersionBanner eventId={geo.id} version={version} total={geo.version_no} />
       {version.view ? (
-        <EventPageBody geo={version.view} />
+        <EventPageBody geo={version.view} approvals={approvals} />
       ) : (
-        <EmptyState>
-          An administrator redacted this version, so its content is no longer
-          served. The version keeps its number and its place in the history.
-        </EmptyState>
+        <>
+          <EmptyState>
+            An administrator redacted this version, so its content is no longer
+            served. The version keeps its number and its place in the history.
+          </EmptyState>
+          {approvals}
+        </>
       )}
-      <VersionApprovals event={geo} versionNo={number} />
     </PageShell>
   );
 }
