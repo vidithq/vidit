@@ -1,7 +1,7 @@
 """The notification delivery queue: the worker's drain of ``notification_deliveries``.
 
-A row is claimed with ``FOR UPDATE SKIP LOCKED``, set ``sending`` and committed
-before the provider call, so a crash mid-send leaves it ``sending`` and it is
+A row is claimed with ``FOR UPDATE SKIP LOCKED``, set ``running`` and committed
+before the provider call, so a crash mid-send leaves it ``running`` and it is
 never sent twice. A provider refusal puts it back in ``queued`` for another
 try after ``RETRY_AFTER``, up to ``MAX_ATTEMPTS``. Each email claim first
 checks the daily caps, which count every row that may have gone out
@@ -38,19 +38,19 @@ logger = logging.getLogger(__name__)
 CAP_WINDOW = timedelta(hours=24)
 MAX_ATTEMPTS = 3
 RETRY_AFTER = timedelta(minutes=5)
-STALE_SENDING_AFTER = timedelta(hours=1)
+STALE_RUNNING_AFTER = timedelta(hours=1)
 QUEUED_EXPIRES_AFTER = timedelta(hours=48)
 
 
 def _possibly_sent_since(cutoff: datetime) -> ColumnElement[bool]:
     """The rows that may have reached the provider since ``cutoff``: sent, or claimed and left
-    ``sending``, or failed stale out of ``sending``. A daily cap counts them all, since the
+    ``running``, or failed stale out of ``running``. A daily cap counts them all, since the
     provider may have counted them too. A row failed by refusals never left."""
     return or_(
-        and_(NotificationDelivery.status == "sent", NotificationDelivery.sent_at >= cutoff),
+        and_(NotificationDelivery.status == "done", NotificationDelivery.sent_at >= cutoff),
         and_(
-            NotificationDelivery.status.in_(("sending", "failed")),
-            NotificationDelivery.attempts < MAX_ATTEMPTS,
+            NotificationDelivery.status.in_(("running", "failed")),
+            NotificationDelivery.attempt_count < MAX_ATTEMPTS,
             NotificationDelivery.claimed_at >= cutoff,
         ),
     )
@@ -66,11 +66,11 @@ def _emails_sent_count(db: Session, *, now: datetime) -> int:
 
 
 def _expire(db: Session, *, now: datetime) -> None:
-    """Fail the rows left ``sending`` past ``STALE_SENDING_AFTER``: the provider may have taken
+    """Fail the rows left ``running`` past ``STALE_RUNNING_AFTER``: the provider may have taken
     them, so they are never retried. Skip the rows queued past ``QUEUED_EXPIRES_AFTER``."""
     db.query(NotificationDelivery).filter(
-        NotificationDelivery.status == "sending",
-        NotificationDelivery.claimed_at < now - STALE_SENDING_AFTER,
+        NotificationDelivery.status == "running",
+        NotificationDelivery.claimed_at < now - STALE_RUNNING_AFTER,
     ).update({"status": "failed"}, synchronize_session=False)
     db.query(NotificationDelivery).filter(
         NotificationDelivery.status == "queued",
@@ -107,7 +107,7 @@ def _claim_next(db: Session, *, now: datetime) -> NotificationDelivery | None:
     if row is None:
         return None
     # Committed before the provider call, so a crash mid-send never sends twice.
-    row.status = "sending"
+    row.status = "running"
     row.claimed_at = now
     db.commit()
     return row
@@ -364,13 +364,13 @@ def _recipient(db: Session, row: NotificationDelivery) -> User | None:
 
 
 def _count_failure(row: NotificationDelivery) -> None:
-    row.attempts += 1
-    row.status = "failed" if row.attempts >= MAX_ATTEMPTS else "queued"
+    row.attempt_count += 1
+    row.status = "failed" if row.attempt_count >= MAX_ATTEMPTS else "queued"
 
 
 def _land(row: NotificationDelivery, outcome: DeliveryOutcome) -> None:
     if outcome == "sent":
-        row.status = "sent"
+        row.status = "done"
         row.sent_at = datetime.now(UTC)
     elif outcome == "skipped":
         row.status = "skipped"
@@ -385,10 +385,10 @@ def deliver(
     *,
     what: str,
 ) -> None:
-    """Run ``attempt`` for a row claimed ``sending`` and land its outcome. Any
+    """Run ``attempt`` for a row claimed ``running`` and land its outcome. Any
     other error counts as a refusal, so one bad row never stops a drain, except
     after an outcome that may have reached the recipient: that row stays
-    ``sending`` and goes stale, so it is never sent twice."""
+    ``running`` and goes stale, so it is never sent twice."""
     row_id = row.id
     outcome: DeliveryOutcome | None = None
     try:

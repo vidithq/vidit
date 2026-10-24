@@ -610,19 +610,19 @@ def redact_event_version(
 # ── Maintenance ──────────────────────────────────────────────────────────
 
 
-@router.post("/maintenance/reap-auth-tokens", response_model=AdminMaintenanceResponse)
+@router.post("/maintenance/reap-password-reset-tokens", response_model=AdminMaintenanceResponse)
 @limiter.limit("30/hour")
-def maintenance_reap_auth_tokens(
+def maintenance_reap_password_reset_tokens(
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminMaintenanceResponse:
-    """Drop expired and old-consumed auth_tokens rows."""
+    """Drop expired and old-consumed password_reset_tokens rows."""
     result = maintenance_service.run_logged(
         db,
         actor_id=current_user.id,
-        action="maintenance_reap_auth_tokens",
-        job=maintenance_service.reap_auth_tokens,
+        action="maintenance_reap_password_reset_tokens",
+        job=maintenance_service.reap_password_reset_tokens,
     )
     return AdminMaintenanceResponse(**result)
 

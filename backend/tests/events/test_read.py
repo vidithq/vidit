@@ -139,11 +139,13 @@ def test_points_rejects_author_with_like_meta(author):
 
 
 def test_list_filters_by_event_date_range(db, author):
-    early = _make_geo(db, author=author, event_date=date(2026, 1, 1))
-    mid = _make_geo(db, author=author, event_date=date(2026, 6, 1))
-    late = _make_geo(db, author=author, event_date=date(2026, 12, 1))
+    early = _make_geo(db, author=author, occurred_date=date(2026, 1, 1))
+    mid = _make_geo(db, author=author, occurred_date=date(2026, 6, 1))
+    late = _make_geo(db, author=author, occurred_date=date(2026, 12, 1))
 
-    response = client.get("/api/v1/events?event_date_from=2026-05-01&event_date_to=2026-09-01")
+    response = client.get(
+        "/api/v1/events?occurred_date_from=2026-05-01&occurred_date_to=2026-09-01"
+    )
     assert response.status_code == 200
     ids = {row["id"] for row in response.json()}
     assert str(mid.id) in ids
@@ -231,8 +233,8 @@ def test_detail_returns_full_shape(db, author, free_tag):
     body = response.json()
     assert body["id"] == str(geo.id)
     assert body["title"] == geo.title
-    assert body["event_coords"]["lat"] == pytest.approx(48.7)
-    assert body["event_coords"]["lng"] == pytest.approx(34.7)
+    assert body["coords"]["lat"] == pytest.approx(48.7)
+    assert body["coords"]["lng"] == pytest.approx(34.7)
     assert body["capture_source_coords"] is None
     assert body["owner"]["username"] == author.username
     # `AuthorRef` field-set guard: the byline renders these fields off this block.
@@ -341,8 +343,8 @@ def test_points_cache_key_covers_bbox():
             conflict=None,
             capture_source=None,
             tag=None,
-            event_date_from=None,
-            event_date_to=None,
+            occurred_date_from=None,
+            occurred_date_to=None,
             submitted_from=None,
             submitted_to=None,
             author=None,
@@ -359,10 +361,10 @@ def test_points_returns_compact_shape(db, author):
     matching = [row for row in body if row[0] == str(geo.id)]
     assert len(matching) == 1
     row = matching[0]
-    assert len(row) == 6  # [id, lat, lng, event_date, submitted_date, detected]
+    assert len(row) == 6  # [id, lat, lng, occurred_date, submitted_date, detected]
     assert row[1] == pytest.approx(48.5)
     assert row[2] == pytest.approx(34.5)
-    assert row[3] == geo.event_date.isoformat()  # ISO YYYY-MM-DD for the timeline
+    assert row[3] == geo.occurred_date.isoformat()  # ISO YYYY-MM-DD for the timeline
     assert row[4] == geo.created_at.date().isoformat()  # submitted (created_at) day
     assert row[5] == 0  # submitted row → not marked detected
 
@@ -372,10 +374,10 @@ def test_points_null_event_date_serialises_as_null(db, author):
     geo = Event(
         owner_id=author.id,
         title="Dateless geo",
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://x.com/a/status/2",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        event_date=None,
+        occurred_date=None,
         geolocated_at=datetime.now(UTC),
     )
     db.add(geo)
@@ -402,10 +404,10 @@ def test_detected_row_renders_marked_across_surfaces(db, author):
     geo = Event(
         owner_id=author.id,
         title="Detected geo",
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://x.com/a/status/1",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        event_date=date(2026, 5, 1),
+        occurred_date=date(2026, 5, 1),
         status=STATUS_DETECTED,
         detected_at=datetime.now(UTC),
         detected_from_url="https://x.com/a/status/1",
@@ -464,7 +466,7 @@ def test_points_filters_media(db, author):
             event_id=with_video.id,
             role="source",
             storage_url="s3://x/v.mp4",
-            media_type="video",
+            kind="video",
         )
     )
     db.commit()
@@ -494,8 +496,8 @@ def test_points_cache_key_builder_is_separator_safe():
         conflict=["a:b"],
         capture_source=None,
         tag=None,
-        event_date_from=None,
-        event_date_to=None,
+        occurred_date_from=None,
+        occurred_date_to=None,
         submitted_from=None,
         submitted_to=None,
         author=None,
@@ -505,8 +507,8 @@ def test_points_cache_key_builder_is_separator_safe():
         conflict=["a"],
         capture_source=None,
         tag=["b"],
-        event_date_from=None,
-        event_date_to=None,
+        occurred_date_from=None,
+        occurred_date_to=None,
         submitted_from=None,
         submitted_to=None,
         author=None,
@@ -519,8 +521,8 @@ def test_points_cache_key_builder_is_separator_safe():
         conflict=["ukraine"],
         capture_source=None,
         tag=None,
-        event_date_from="2024-01-01",
-        event_date_to=None,
+        occurred_date_from="2024-01-01",
+        occurred_date_to=None,
         submitted_from=None,
         submitted_to=None,
         author=None,
@@ -530,8 +532,8 @@ def test_points_cache_key_builder_is_separator_safe():
         conflict=["ukraine"],
         capture_source=None,
         tag=None,
-        event_date_from="2024-01-01",
-        event_date_to=None,
+        occurred_date_from="2024-01-01",
+        occurred_date_to=None,
         submitted_from=None,
         submitted_to=None,
         author=None,
@@ -544,8 +546,8 @@ def test_points_cache_key_builder_is_separator_safe():
         conflict=None,
         capture_source=["Satellite"],
         tag=None,
-        event_date_from=None,
-        event_date_to=None,
+        occurred_date_from=None,
+        occurred_date_to=None,
         submitted_from=None,
         submitted_to=None,
         author=None,
@@ -555,8 +557,8 @@ def test_points_cache_key_builder_is_separator_safe():
         conflict=None,
         capture_source=["Drone"],
         tag=None,
-        event_date_from=None,
-        event_date_to=None,
+        occurred_date_from=None,
+        occurred_date_to=None,
         submitted_from=None,
         submitted_to=None,
         author=None,
@@ -581,8 +583,8 @@ def test_points_cache_key_is_list_order_insensitive(bucket):
         bbox=WORLD_BOUNDS,
         **{bucket: ["alpha", "beta"]},
         **{other: None for other in buckets if other != bucket},
-        event_date_from=None,
-        event_date_to=None,
+        occurred_date_from=None,
+        occurred_date_to=None,
         submitted_from=None,
         submitted_to=None,
         author=None,
@@ -591,8 +593,8 @@ def test_points_cache_key_is_list_order_insensitive(bucket):
         bbox=WORLD_BOUNDS,
         **{bucket: ["beta", "alpha"]},
         **{other: None for other in buckets if other != bucket},
-        event_date_from=None,
-        event_date_to=None,
+        occurred_date_from=None,
+        occurred_date_to=None,
         submitted_from=None,
         submitted_to=None,
         author=None,
@@ -627,8 +629,8 @@ def test_points_or_within_free_tag_list(db, author):
 
 def test_points_or_within_conflict_list(db, author):
     """Multiple ``?conflict=`` values match geos in ANY listed conflict (OR within the list)."""
-    conflict_a = Conflict(name=f"ca-{uuid.uuid4().hex[:8]}", ongoing=True, source="manual")
-    conflict_b = Conflict(name=f"cb-{uuid.uuid4().hex[:8]}", ongoing=True, source="manual")
+    conflict_a = Conflict(name=f"ca-{uuid.uuid4().hex[:8]}", is_ongoing=True, origin="manual")
+    conflict_b = Conflict(name=f"cb-{uuid.uuid4().hex[:8]}", is_ongoing=True, origin="manual")
     free_same_name = Tag(name=conflict_a.name + "-free", category="free")
     db.add_all([conflict_a, conflict_b, free_same_name])
     db.commit()
@@ -656,7 +658,7 @@ def test_points_or_within_conflict_list(db, author):
 
 def test_points_and_across_conflict_and_tag(db, author):
     """``?conflict=X&tag=Y`` returns the intersection (AND across buckets, not a union)."""
-    conflict = Conflict(name=f"conf-{uuid.uuid4().hex[:8]}", ongoing=True, source="manual")
+    conflict = Conflict(name=f"conf-{uuid.uuid4().hex[:8]}", is_ongoing=True, origin="manual")
     free = Tag(name=f"free-{uuid.uuid4().hex[:8]}", category="free")
     db.add_all([conflict, free])
     db.commit()

@@ -147,8 +147,8 @@ def get_feed(
     query = (
         db.query(
             Event,
-            ST_Y(Event.event_coords).label("lat"),
-            ST_X(Event.event_coords).label("lng"),
+            ST_Y(Event.coords).label("lat"),
+            ST_X(Event.coords).label("lng"),
             key.label("feed_at"),
         )
         # Loader choice: see ``list_detections`` in ``routers/events/read.py``.
@@ -215,8 +215,8 @@ def list_published_geolocations(
     rows = (
         db.query(
             Event,
-            ST_Y(Event.event_coords).label("lat"),
-            ST_X(Event.event_coords).label("lng"),
+            ST_Y(Event.coords).label("lat"),
+            ST_X(Event.coords).label("lng"),
         )
         # Loader choice: see ``list_detections`` in ``routers/events/read.py``.
         .options(
@@ -227,9 +227,9 @@ def list_published_geolocations(
             CREDIT_LOAD,
         )
         .filter(*credited_and_published)
-        # ``event_date`` is neither unique nor non-null, so ties could repeat or
+        # ``occurred_date`` is neither unique nor non-null, so ties could repeat or
         # skip rows across OFFSET pages; ``created_at, id`` makes it total.
-        .order_by(Event.event_date.desc(), Event.created_at.desc(), Event.id.desc())
+        .order_by(Event.occurred_date.desc(), Event.created_at.desc(), Event.id.desc())
         .offset((page - 1) * per_page)
         .limit(per_page)
         .all()

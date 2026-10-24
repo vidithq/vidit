@@ -298,7 +298,7 @@ def get_user_geolocations(
     profile counts the same set. The wider live total is ``total_events`` on
     :func:`get_user_stats`.
 
-    Offset-paged: the profile orders by ``event_date``, which is nullable and
+    Offset-paged: the profile orders by ``occurred_date``, which is nullable and
     editable, so it cannot key a cursor.
     """
     user = _get_live_user_or_404(db, username)

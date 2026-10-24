@@ -64,10 +64,10 @@ HISTORY_PAGE_SIZE = 50
 COMPARED_FIELDS: tuple[str, ...] = (
     "title",
     "source_url",
-    "event_coords",
+    "coords",
     "capture_source_coords",
-    "event_date",
-    "event_time",
+    "occurred_date",
+    "occurred_time",
     "source_posted_at",
     "is_graphic",
     "secondary_source_urls",
@@ -141,10 +141,10 @@ def build_snapshot(geo: Event) -> dict[str, Any]:
         "title": geo.title,
         "source_url": geo.source_url,
         "source_media": [media_entry(m) for m in geo.media if m.role == "source"],
-        "event_coords": point_shape(geo.event_coords),
+        "coords": point_shape(geo.coords),
         "capture_source_coords": point_shape(geo.capture_source_coords),
-        "event_date": geo.event_date.isoformat() if geo.event_date is not None else None,
-        "event_time": geo.event_time.isoformat() if geo.event_time is not None else None,
+        "occurred_date": geo.occurred_date.isoformat() if geo.occurred_date is not None else None,
+        "occurred_time": geo.occurred_time.isoformat() if geo.occurred_time is not None else None,
         "source_posted_at": (
             geo.source_posted_at.isoformat() if geo.source_posted_at is not None else None
         ),

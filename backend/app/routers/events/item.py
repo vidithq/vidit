@@ -97,8 +97,8 @@ def _serialize_event(db: Session, geo: Event) -> EventRead:
     the way ``GET /{id}`` does so the shapes match."""
     lat, lng, capture_lat, capture_lng = (
         db.query(
-            ST_Y(Event.event_coords),
-            ST_X(Event.event_coords),
+            ST_Y(Event.coords),
+            ST_X(Event.coords),
             ST_Y(Event.capture_source_coords),
             ST_X(Event.capture_source_coords),
         )
@@ -128,7 +128,7 @@ def report_event(
 
     Open to anonymous viewers: the people footage harms rarely hold an account
     here. A signed-in reporter is recorded; an anonymous one leaves
-    ``reporter_user_id`` NULL. The per-IP limit is the abuse floor.
+    ``reporter_id`` NULL. The per-IP limit is the abuse floor.
 
     An unknown, soft-deleted or already-withheld event answers 404.
     """
@@ -138,7 +138,7 @@ def report_event(
             event_id=geolocation_id,
             reason=body.reason,
             details=body.details,
-            reporter_user_id=current_user.id if current_user is not None else None,
+            reporter_id=current_user.id if current_user is not None else None,
             reporter_username=current_user.username if current_user is not None else None,
             background_tasks=background_tasks,
         )
@@ -163,8 +163,8 @@ def get_event(
     query = (
         db.query(
             Event,
-            ST_Y(Event.event_coords).label("lat"),
-            ST_X(Event.event_coords).label("lng"),
+            ST_Y(Event.coords).label("lat"),
+            ST_X(Event.coords).label("lng"),
             ST_Y(Event.capture_source_coords).label("capture_lat"),
             ST_X(Event.capture_source_coords).label("capture_lng"),
         )
@@ -226,8 +226,8 @@ def geolocate_event(
     # ``pair_secondary_snapshots`` can key them before normalization drops rows.
     secondary_snapshot_urls: list[SecondarySourceUrl] = Form([]),
     # Optional like create; NULL reads as "Unknown".
-    event_date: str | None = Form(None),
-    event_time: str | None = Form(None),
+    occurred_date: str | None = Form(None),
+    occurred_time: str | None = Form(None),
     source_posted_at: str = Form(...),
     proof: str | None = Form(None),
     tag_ids: str | None = Form(None),
@@ -263,8 +263,8 @@ def geolocate_event(
     """
     files = files or []
     proof_files = proof_files or []
-    parsed_event_date = parse_optional_iso_date(event_date, field="event_date")
-    parsed_event_time = parse_optional_iso_time(event_time, field="event_time")
+    parsed_occurred_date = parse_optional_iso_date(occurred_date, field="occurred_date")
+    parsed_occurred_time = parse_optional_iso_time(occurred_time, field="occurred_time")
     parsed_source_posted_at = parse_iso_datetime(source_posted_at, field="source_posted_at")
     proof_data = proof or None
     parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids", as_uuid=True)
@@ -288,8 +288,8 @@ def geolocate_event(
                 source_snapshot_url=source_snapshot_url,
                 secondary_source_urls=secondary_source_urls,
                 secondary_snapshot_urls=secondary_snapshot_urls,
-                event_date=parsed_event_date,
-                event_time=parsed_event_time,
+                occurred_date=parsed_occurred_date,
+                occurred_time=parsed_occurred_time,
                 source_posted_at=parsed_source_posted_at,
                 proof_data=proof_data,
                 tag_ids=parsed_tag_ids,
@@ -326,8 +326,8 @@ def update_event_request(
     lng: float | None = Form(None),
     capture_source_lat: float | None = Form(None),
     capture_source_lng: float | None = Form(None),
-    event_date: str | None = Form(None),
-    event_time: str | None = Form(None),
+    occurred_date: str | None = Form(None),
+    occurred_time: str | None = Form(None),
     # Optional: the bot opens requests whose source date it could not read.
     # Empty or omitted keeps what the row holds (NULL included).
     source_posted_at: str | None = Form(None),
@@ -364,8 +364,8 @@ def update_event_request(
     parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids", as_uuid=True)
     parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids", as_uuid=True)
     parsed_remove_ids = parse_json_id_list(remove_media_ids, field="remove_media_ids")
-    parsed_event_date = parse_optional_iso_date(event_date, field="event_date")
-    parsed_event_time = parse_optional_iso_time(event_time, field="event_time")
+    parsed_occurred_date = parse_optional_iso_date(occurred_date, field="occurred_date")
+    parsed_occurred_time = parse_optional_iso_time(occurred_time, field="occurred_time")
     parsed_source_posted_at = parse_optional_iso_datetime(
         source_posted_at, field="source_posted_at"
     )
@@ -388,8 +388,8 @@ def update_event_request(
                 lng=lng,
                 capture_source_lat=capture_source_lat,
                 capture_source_lng=capture_source_lng,
-                event_date=parsed_event_date,
-                event_time=parsed_event_time,
+                occurred_date=parsed_occurred_date,
+                occurred_time=parsed_occurred_time,
                 source_posted_at=parsed_source_posted_at,
                 tag_ids=parsed_tag_ids,
                 conflict_ids=parsed_conflict_ids,
@@ -432,8 +432,8 @@ def save_event_version(
     # blank where none) so a copy never arrives without its link.
     secondary_source_urls: list[SecondarySourceUrl] = Form([]),
     secondary_snapshot_urls: list[SecondarySourceUrl] = Form([]),
-    event_date: str | None = Form(None),
-    event_time: str | None = Form(None),
+    occurred_date: str | None = Form(None),
+    occurred_time: str | None = Form(None),
     # Optional: a detection with an unresolved source post time publishes with
     # NULL, so an edit must be able to leave it NULL. Absent or empty keeps the
     # row's value; a value replaces it.
@@ -471,8 +471,8 @@ def save_event_version(
     change is a copy is accepted even at the version ceiling.
     """
     proof_files = proof_files or []
-    parsed_event_date = parse_optional_iso_date(event_date, field="event_date")
-    parsed_event_time = parse_optional_iso_time(event_time, field="event_time")
+    parsed_occurred_date = parse_optional_iso_date(occurred_date, field="occurred_date")
+    parsed_occurred_time = parse_optional_iso_time(occurred_time, field="occurred_time")
     parsed_source_posted_at = parse_optional_iso_datetime(
         source_posted_at, field="source_posted_at"
     )
@@ -499,8 +499,8 @@ def save_event_version(
                 detected_from_snapshot_url=detected_from_snapshot_url,
                 secondary_source_urls=secondary_source_urls,
                 secondary_snapshot_urls=secondary_snapshot_urls,
-                event_date=parsed_event_date,
-                event_time=parsed_event_time,
+                occurred_date=parsed_occurred_date,
+                occurred_time=parsed_occurred_time,
                 source_posted_at=parsed_source_posted_at,
                 proof_data=proof_data,
                 tag_ids=parsed_tag_ids,

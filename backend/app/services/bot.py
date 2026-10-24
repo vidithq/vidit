@@ -58,7 +58,7 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 import sentry_sdk
-from sqlalchemy import Numeric, cast, func
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -177,9 +177,9 @@ class GestureBudget:
         cutoff = datetime.now(UTC) - _GESTURE_WINDOW
         budget = cls()
         for handle, count in (
-            db.query(BotMention.author_handle, func.count())
-            .filter(BotMention.reply_tweet_id.isnot(None), BotMention.processed_at >= cutoff)
-            .group_by(BotMention.author_handle)
+            db.query(BotMention.author_x_handle, func.count())
+            .filter(BotMention.reply_post_id.isnot(None), BotMention.processed_at >= cutoff)
+            .group_by(BotMention.author_x_handle)
         ):
             budget.replies_posted += count
             budget._replies_by_author[handle] = count
@@ -203,8 +203,8 @@ class BotRunOutcome:
 
     mentions_seen: int = 0
     already_handled: int = 0
-    events_created: int = 0
-    # Mentions that opened a ``requested`` row (not counted in ``events_created``).
+    created_event_count: int = 0
+    # Mentions that opened a ``requested`` row (not counted in ``created_event_count``).
     requests_opened: int = 0
     # Mentions that only overwrote an open detection (none created, one or more updated).
     events_updated: int = 0
@@ -231,7 +231,7 @@ def acquire_tagged_thread(
     The handle is case-folded: it is the record's fallback screen name, feeds
     every provenance permalink and the own-status exclusion, so the payload's
     spelling must not leak through. Idempotency anchors on the post id
-    (``events.detected_from_tweet_id``).
+    (``events.detected_from_post_id``).
     """
     return acquire_thread(tweet_id, handle=author_handle.lower(), client=client)
 
@@ -367,17 +367,17 @@ def _record(
     mention: Mention,
     *,
     outcome: BotMentionOutcome,
-    events_created: int = 0,
-    reply_tweet_id: str | None = None,
+    created_event_count: int = 0,
+    reply_post_id: str | None = None,
 ) -> bool:
-    """Insert the ledger row; ``False`` when another worker won the ``mention_tweet_id`` race."""
+    """Insert the ledger row; ``False`` when another worker won the ``mention_post_id`` race."""
     db.add(
         BotMention(
-            mention_tweet_id=mention.tweet_id,
-            author_handle=mention.author_handle,
+            mention_post_id=int(mention.tweet_id),
+            author_x_handle=mention.author_handle,
             outcome=outcome,
-            events_created=events_created,
-            reply_tweet_id=reply_tweet_id,
+            created_event_count=created_event_count,
+            reply_post_id=int(reply_post_id) if reply_post_id is not None else None,
         )
     )
     try:
@@ -552,7 +552,9 @@ async def process_single_mention(
     the first to see a mention records it. A processing exception ledgers
     ``failed`` (captured to Sentry) so the caller's loop moves on.
     """
-    exists = db.query(BotMention.id).filter(BotMention.mention_tweet_id == mention.tweet_id).first()
+    exists = (
+        db.query(BotMention.id).filter(BotMention.mention_post_id == int(mention.tweet_id)).first()
+    )
     if exists is not None:
         outcome.already_handled += 1
         return "already_handled"
@@ -608,12 +610,12 @@ async def process_single_mention(
         db,
         mention,
         outcome=verdict,
-        events_created=created,
-        reply_tweet_id=reply_id,
+        created_event_count=created,
+        reply_post_id=reply_id,
     ):
         outcome.already_handled += 1
         return "already_handled"
-    outcome.events_created += created
+    outcome.created_event_count += created
     if reply_id is not None:
         budget.note_reply(mention.author_handle)
         outcome.replies_posted += 1
@@ -633,9 +635,8 @@ async def process_single_mention(
 
 
 def _since_id(db: Session) -> str | None:
-    # NUMERIC, not BIGINT, so the cursor survives ids outgrowing signed 64-bit.
     # The overlap re-reads the trailing interval (see _SINCE_ID_OVERLAP).
-    latest = db.query(func.max(cast(BotMention.mention_tweet_id, Numeric))).scalar()
+    latest = db.query(func.max(BotMention.mention_post_id)).scalar()
     return str(max(int(latest) - _SINCE_ID_OVERLAP, 1)) if latest is not None else None
 
 
@@ -691,7 +692,7 @@ def enqueue_webhook_mentions(db: Session, mentions: list[Mention]) -> int:
     a redelivery is absorbed by the drain's ledger check.
     """
     for mention in mentions:
-        db.add(BotWebhookEvent(mention=dataclasses.asdict(mention)))
+        db.add(BotWebhookEvent(payload=dataclasses.asdict(mention)))
     db.commit()
     return len(mentions)
 
@@ -700,9 +701,9 @@ def _claim_webhook_event(db: Session) -> BotWebhookEvent | None:
     """Claim the oldest queued webhook event, or ``None`` when drained.
 
     ``FOR UPDATE SKIP LOCKED`` like the archive jobs: the claim sets
-    ``processing``, bumps ``attempts`` and commits, so concurrent workers skip
+    ``running``, bumps ``attempt_count`` and commits, so concurrent workers skip
     it. The drain re-queues on exception; a hard-killed worker strands the row
-    in ``processing`` but the hourly poll re-delivers the mention. Rows past
+    in ``running`` but the hourly poll re-delivers the mention. Rows past
     the attempt budget land ``failed``.
     """
     while True:
@@ -715,12 +716,12 @@ def _claim_webhook_event(db: Session) -> BotWebhookEvent | None:
         )
         if event is None:
             return None
-        if event.attempts >= _WEBHOOK_MAX_ATTEMPTS:
+        if event.attempt_count >= _WEBHOOK_MAX_ATTEMPTS:
             event.status = "failed"
             db.commit()
             continue
-        event.status = "processing"
-        event.attempts += 1
+        event.status = "running"
+        event.attempt_count += 1
         db.commit()
         return event
 
@@ -765,9 +766,9 @@ async def drain_webhook_events(
     outcome = BotRunOutcome()
     budget = GestureBudget.from_ledger(db)
     while (event := _claim_webhook_event(db)) is not None:
-        mention = _mention_from_payload(event.mention)
+        mention = _mention_from_payload(event.payload)
         if mention is None:
-            logger.warning("Dropping malformed webhook event %s: %r", event.id, event.mention)
+            logger.warning("Dropping malformed webhook event %s: %r", event.id, event.payload)
             event.status = "failed"
             db.commit()
             continue

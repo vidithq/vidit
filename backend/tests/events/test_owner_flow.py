@@ -57,7 +57,7 @@ def _geolocate_form(**overrides):
         "lat": "50.0",
         "lng": "30.0",
         "source_url": "https://x.com/a/status/1",
-        "event_date": "2026-05-01",
+        "occurred_date": "2026-05-01",
         "source_posted_at": "2026-05-01T12:00",
     }
     form.update(overrides)
@@ -136,7 +136,7 @@ def test_geolocate_writes_fields_and_freezes(db, author, conflict, capture_sourc
             lng="30.5",
             capture_source_lat="50.3",
             capture_source_lng="30.6",
-            event_date="2026-07-01",
+            occurred_date="2026-07-01",
             source_posted_at="2026-06-30T07:45",
         ),
         files=_floor_files(),
@@ -145,9 +145,9 @@ def test_geolocate_writes_fields_and_freezes(db, author, conflict, capture_sourc
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["title"] == "Completed title"
-    assert body["event_coords"] == {"lat": 50.25, "lng": 30.5}
+    assert body["coords"] == {"lat": 50.25, "lng": 30.5}
     assert body["capture_source_coords"] == {"lat": 50.3, "lng": 30.6}
-    assert body["event_date"] == "2026-07-01"
+    assert body["occurred_date"] == "2026-07-01"
     assert body["source_posted_at"].startswith("2026-06-30T07:45")
     assert {t["id"] for t in body["tags"]} == {str(capture_source_tag.id)}
     assert {c["id"] for c in body["conflicts"]} == {str(conflict.id)}
@@ -163,11 +163,11 @@ def test_geolocate_writes_fields_and_freezes(db, author, conflict, capture_sourc
     assert refreshed.geolocated_at is not None
 
 
-def test_geolocate_accepts_missing_event_date(db, author, conflict, capture_source_tag):
+def test_geolocate_accepts_missing_occurred_date(db, author, conflict, capture_source_tag):
     """A null date reads as Unknown: footage does not always establish when it happened."""
     geo = _detected(db, author, with_media=True)
     form = _floor_form(conflict, capture_source_tag)
-    del form["event_date"]
+    del form["occurred_date"]
     response = client.post(
         f"/api/v1/events/{geo.id}/geolocate",
         data=form,
@@ -177,7 +177,7 @@ def test_geolocate_accepts_missing_event_date(db, author, conflict, capture_sour
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["status"] == "geolocated"
-    assert body["event_date"] is None
+    assert body["occurred_date"] is None
 
 
 def test_geolocate_applies_source_url_but_ignores_provenance_and_state(
@@ -356,7 +356,7 @@ def test_close_retracts_a_published_row(db, author):
     assert body["close_reason"] == "Wrong village, corrected elsewhere"
     assert body["closed_at"] is not None
     assert body["id"] == str(geo_id)
-    assert body["event_coords"] is not None
+    assert body["coords"] is not None
 
     detail = client.get(f"/api/v1/events/{geo_id}")
     assert detail.status_code == 200

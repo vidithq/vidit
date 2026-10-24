@@ -45,7 +45,7 @@ class SearchEventHit(BaseModel):
     lat: float
     lng: float
     # Nullable but always serialised (``services.search.search_geolocations``).
-    event_date: date | None
+    occurred_date: date | None
     # See ``EventRead.is_graphic``; travels with the hit to avoid a detail fetch.
     is_graphic: bool
     # ``detected`` rows surface marked, as everywhere else.

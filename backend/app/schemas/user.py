@@ -217,7 +217,7 @@ class UserStatsRead(BaseModel):
     and ``no_source_count`` the events with no readable host. The three sum to
     ``total_events``.
 
-    ``activity`` counts ``event_date`` per calendar month over the analyst's
+    ``activity`` counts ``occurred_date`` per calendar month over the analyst's
     span, earliest first, zero-filled, empty when no event carries a date.
     """
 

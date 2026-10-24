@@ -50,8 +50,8 @@ async def geolocate(
     capture_source_lng: float | None,
     source_url: str,
     secondary_source_urls: list[str],
-    event_date: date | None,
-    event_time: time | None,
+    occurred_date: date | None,
+    occurred_time: time | None,
     source_posted_at: datetime,
     proof_data: str | None,
     tag_ids: list,
@@ -146,12 +146,12 @@ async def geolocate(
     # The ``geo.tags`` assignment lazy-loads, which would flush a half-mutated row.
     with db.no_autoflush:
         geo.title = title
-        geo.event_coords = from_shape(Point(lng, lat), srid=4326)
+        geo.coords = from_shape(Point(lng, lat), srid=4326)
         geo.capture_source_coords = capture_point
         if not keep_requester_source_url:
             geo.source_url = source_url.strip()
-        geo.event_date = event_date
-        geo.event_time = event_time
+        geo.occurred_date = occurred_date
+        geo.occurred_time = occurred_time
         geo.source_posted_at = source_posted_at
         # Ratchet: the form raises the flag and never lowers it (see docstring).
         geo.is_graphic = geo.is_graphic or is_graphic

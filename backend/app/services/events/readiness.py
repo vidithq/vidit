@@ -31,7 +31,7 @@ def detection_ready_predicate() -> ColumnElement[bool]:
     Ready means everything the review form cannot supply is on the row:
 
     1. a non-blank ``source_url`` (non-NULL, has a non-space character);
-    2. ``event_coords`` present;
+    2. ``coords`` present;
     3. a ``source`` media row (``EXISTS``);
     4. a proof image (:data:`_PROOF_IMAGE_PATTERN`).
 
@@ -47,7 +47,7 @@ def detection_ready_predicate() -> ColumnElement[bool]:
         # ``[^[:space:]]`` mirrors Python's ``strip()`` and the frontend's ``trim()``.
         Event.source_url.isnot(None),
         Event.source_url.regexp_match("[^[:space:]]"),
-        Event.event_coords.isnot(None),
+        Event.coords.isnot(None),
         # ``.any()`` lowers to EXISTS, so several attachments do not multiply rows.
         Event.media.any(Media.role == "source"),
         Event.proof.regexp_match(_PROOF_IMAGE_PATTERN),

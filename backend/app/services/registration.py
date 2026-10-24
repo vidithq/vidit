@@ -255,7 +255,7 @@ def confirm_pending_registration(db: Session, raw_token: str) -> User:
     The pending row is claimed with ``DELETE ... RETURNING``: concurrent
     confirms can both pass a "row exists?" check under READ COMMITTED, so
     only the DELETE enforces single use (the loser sees zero rows). Mirrors
-    ``auth_tokens.consume``.
+    ``password_reset_tokens.consume``.
 
     User uniqueness is re-checked by SELECT (friendly error) with the UNIQUE
     constraint as backstop; the ``IntegrityError`` branch maps a collision to

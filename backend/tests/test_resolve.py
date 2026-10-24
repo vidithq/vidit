@@ -143,9 +143,9 @@ def test_a_single_coordinate_resolves_to_one_detection():
     detection = _detection([_rec(text="Strike at 48.012345, 37.802411 in Donetsk")])
     assert detection.coordinate.lat == pytest.approx(48.012345)
     assert detection.coordinate.lng == pytest.approx(37.802411)
-    assert detection.detected_from_tweet_id == 1
+    assert detection.detected_from_post_id == 1
     assert detection.detected_from_url == "https://x.com/analyst/status/1"
-    assert detection.event_date == date(2025, 11, 12)
+    assert detection.occurred_date == date(2025, 11, 12)
     # No source is deduced from the tweet's own URL or date.
     assert detection.source_url is None
     assert detection.source_posted_at is None
@@ -155,23 +155,23 @@ def test_the_provenance_url_is_built_from_the_id_whatever_case_the_handle_carrie
     # The id is the identity, so a handle spelled two ways cannot split one post.
     lower = _detection([_rec(text="48.012345, 37.802411", handle="analyst")])
     upper = _detection([_rec(text="48.012345, 37.802411", handle="Analyst")])
-    assert lower.detected_from_tweet_id == upper.detected_from_tweet_id == 1
+    assert lower.detected_from_post_id == upper.detected_from_post_id == 1
     assert upper.detected_from_url == "https://x.com/Analyst/status/1"
 
 
 def test_malformed_time_recovers_date_and_nulls_detected_post_at():
-    # event_date is recovered from the date prefix; detected_post_at is NULL, not a false 1970.
+    # occurred_date is recovered from the date prefix; detected_post_at is NULL, not a false 1970.
     detection = _detection(
         [_rec(text="Strike 48.012345, 37.802411", created_at="2025-11-12T99:99:99Z")]
     )
-    assert detection.event_date == date(2025, 11, 12)
+    assert detection.occurred_date == date(2025, 11, 12)
     assert detection.source_posted_at is None
     assert detection.detected_post_at is None
 
 
 def test_fully_unparseable_timestamp_yields_no_dates():
     detection = _detection([_rec(text="Strike 48.012345, 37.802411", created_at="not-a-timestamp")])
-    assert detection.event_date is None
+    assert detection.occurred_date is None
     assert detection.source_posted_at is None
     assert detection.detected_post_at is None
 
@@ -212,7 +212,7 @@ def test_several_threads_resolve_into_one_batch():
             [_rec(tweet_id="4", text="Also nothing")],
         ]
     )
-    assert [d.detected_from_tweet_id for d in resolution.detections] == [1]
+    assert [d.detected_from_post_id for d in resolution.detections] == [1]
     assert resolution.refusals == {COORDS_MISSING: 2, COORDS_INVALID: 1}
     # Several refusal reasons, so none is named.
     assert resolution.reason is None

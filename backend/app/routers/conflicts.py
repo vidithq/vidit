@@ -48,7 +48,9 @@ def list_conflicts(
             .filter(*visible_events())
             .distinct()
         )
-    rows = query.order_by(Conflict.ongoing.desc(), Conflict.name).limit(REFERENTIAL_MAX_ROWS).all()
+    rows = (
+        query.order_by(Conflict.is_ongoing.desc(), Conflict.name).limit(REFERENTIAL_MAX_ROWS).all()
+    )
     if len(rows) == REFERENTIAL_MAX_ROWS:
         logger.warning(
             "GET /conflicts hit the %d-row referential ceiling; "

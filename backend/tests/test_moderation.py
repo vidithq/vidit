@@ -93,7 +93,7 @@ def event(db, regular_user):
     row = Event(
         owner_id=regular_user.id,
         title=f"Moderated {uuid.uuid4().hex[:8]}",
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com/source",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         geolocated_at=datetime.now(UTC),
@@ -190,7 +190,7 @@ def test_resolve_marked_graphic_sets_the_flag_and_stamps_the_report(db, admin_us
     db.expire_all()
     assert db.query(Event).filter(Event.id == event.id).one().is_graphic is True
     stored = db.query(ContentReport).filter(ContentReport.id == report.id).one()
-    assert stored.resolved_by == admin_user.id
+    assert stored.resolved_by_id == admin_user.id
 
     assert _audit(db, admin_user, "report_resolved").target == {
         "report_id": str(report.id),

@@ -220,7 +220,7 @@ def _drop_unreferenced_proof_media(
         if m.role != "proof" or m.storage_url in kept_srcs:
             continue
         removed_keys += _object_keys(
-            m.storage_url, role=m.role, media_type=m.media_type, label=f"Media row {m.id}"
+            m.storage_url, role=m.role, media_type=m.kind, label=f"Media row {m.id}"
         )
         dropped += 1
         db.delete(m)
@@ -349,7 +349,7 @@ async def attach_evidence_and_commit(
                     event_id=event.id,
                     role="source",
                     storage_url=result.url,
-                    media_type=media_type,
+                    kind=media_type,
                     sha256=result.sha256,
                     original_filename=safe_original_filename(file.filename),
                 )
@@ -371,7 +371,7 @@ async def attach_evidence_and_commit(
                     event_id=event.id,
                     role="proof",
                     storage_url=result.url,
-                    media_type="image",
+                    kind="image",
                     sha256=result.sha256,
                     original_filename=safe_original_filename(file.filename),
                 )
@@ -429,7 +429,7 @@ def collect_media_keys(media_rows: list[Media]) -> list[str]:
         key
         for m in media_rows
         for key in _object_keys(
-            m.storage_url, role=m.role, media_type=m.media_type, label=f"Media row {m.id}"
+            m.storage_url, role=m.role, media_type=m.kind, label=f"Media row {m.id}"
         )
     ]
 
@@ -448,7 +448,7 @@ def collect_snapshot_media_keys(entries: Iterable[Mapping[str, Any]]) -> list[st
         for key in _object_keys(
             cast(str, entry["storage_url"]),
             role=str(entry.get("role", "source")),
-            media_type=str(entry.get("media_type", "")),
+            media_type=str(entry.get("kind", "")),
             label=f"Version media {entry.get('id')}",
         )
     ]

@@ -46,7 +46,7 @@ class ImportProvenance:
     url: str
     thread_tweet_ids: list[int]
     via: DetectedVia
-    # When the post the row was read from was posted; not ``event_date`` or
+    # When the post the row was read from was posted; not ``occurred_date`` or
     # ``source_posted_at``.
     post_at: datetime | None
 
@@ -57,9 +57,9 @@ def stamp_provenance(row: Event, provenance: ImportProvenance) -> None:
     Shared by ``detection._persist_one`` and :func:`create_request`. Written
     once at creation and never moved (``detection._apply_import_fields``).
     """
-    row.detected_from_tweet_id = provenance.tweet_id
+    row.detected_from_post_id = provenance.tweet_id
     row.detected_from_url = provenance.url
-    row.detected_thread_tweet_ids = provenance.thread_tweet_ids or None
+    row.detected_thread_post_ids = provenance.thread_tweet_ids or None
     row.detected_via = provenance.via
     row.detected_post_at = provenance.post_at
 
@@ -76,8 +76,8 @@ async def create_request(
     lng: float | None = None,
     capture_source_lat: float | None = None,
     capture_source_lng: float | None = None,
-    event_date: date | None = None,
-    event_time: time | None = None,
+    occurred_date: date | None = None,
+    occurred_time: time | None = None,
     source_posted_at: datetime | None,
     tag_ids: list,
     conflict_ids: list,
@@ -112,7 +112,7 @@ async def create_request(
     :class:`InvalidProofError`, :class:`TooManySourceLinksError`, or a shared
     file-validation error. Any failure rolls back and sweeps what landed.
     """
-    guess_point = _optional_point(lat, lng, field="event_coords")
+    guess_point = _optional_point(lat, lng, field="coords")
     capture_point = _optional_point(capture_source_lat, capture_source_lng, field="capture_source")
     mirror_snapshots = pair_secondary_snapshots(
         secondary_source_urls, secondary_snapshot_urls or []
@@ -128,12 +128,12 @@ async def create_request(
         # Survives fulfilment, when ``owner_id`` transfers to the fulfiller.
         requested_by_id=current_user.id,
         title=title,
-        event_coords=guess_point,
+        coords=guess_point,
         capture_source_coords=capture_point,
         source_url=source_url,
         # ``proof`` lands via the intake below; the model default covers a blank request.
-        event_date=event_date,
-        event_time=event_time,
+        occurred_date=occurred_date,
+        occurred_time=occurred_time,
         source_posted_at=source_posted_at,
         is_graphic=is_graphic,
         status=STATUS_REQUESTED,
@@ -179,8 +179,8 @@ async def update_request(
     lng: float | None = None,
     capture_source_lat: float | None = None,
     capture_source_lng: float | None = None,
-    event_date: date | None = None,
-    event_time: time | None = None,
+    occurred_date: date | None = None,
+    occurred_time: time | None = None,
     source_posted_at: datetime | None,
     tag_ids: list,
     conflict_ids: list,
@@ -225,7 +225,7 @@ async def update_request(
     if geo.status != STATUS_REQUESTED:
         raise EventStateError("Only an open request can be edited")
 
-    guess_point = _optional_point(lat, lng, field="event_coords")
+    guess_point = _optional_point(lat, lng, field="coords")
     capture_point = _optional_point(capture_source_lat, capture_source_lng, field="capture_source")
     mirror_snapshots = pair_secondary_snapshots(
         secondary_source_urls, secondary_snapshot_urls or []
@@ -245,10 +245,10 @@ async def update_request(
     with db.no_autoflush:
         geo.title = title
         geo.source_url = stored_source_url
-        geo.event_coords = guess_point
+        geo.coords = guess_point
         geo.capture_source_coords = capture_point
-        geo.event_date = event_date
-        geo.event_time = event_time
+        geo.occurred_date = occurred_date
+        geo.occurred_time = occurred_time
         # None means keep: an empty datetime input is indistinguishable from an
         # absent field, and assigning it would clear a stored instant.
         if source_posted_at is not None:

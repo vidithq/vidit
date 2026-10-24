@@ -59,7 +59,7 @@ def _make_geo(
     title: str | None = None,
     # ``None`` takes the model's empty-body default, which fails the proof-image floor.
     proof: str | None = None,
-    event_date: date | None = None,
+    occurred_date: date | None = None,
     source_posted_at: datetime | None = None,
     deleted: bool = False,
     tags: list[Tag] | None = None,
@@ -78,11 +78,11 @@ def _make_geo(
     geo = Event(
         owner_id=author.id,
         title=title or f"Geo {uuid.uuid4().hex[:8]}",
-        event_coords=(
+        coords=(
             from_shape(Point(lng, lat), srid=4326) if lat is not None and lng is not None else None
         ),
         source_url=source_url,
-        event_date=event_date or date(2026, 5, 1),
+        occurred_date=occurred_date or date(2026, 5, 1),
         source_posted_at=source_posted_at or datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         is_graphic=is_graphic,
     )
@@ -125,7 +125,7 @@ def _make_geo(
                 event_id=geo.id,
                 role="source",
                 storage_url="s3://x/m.jpg",
-                media_type="image",
+                kind="image",
             )
         )
     db.commit()

@@ -141,13 +141,13 @@ def _detection(
         proof_text=proof_text,
         source_url=source_url,
         # The engine keys on the post id, so it follows the URL.
-        detected_from_tweet_id=int(url.rsplit("/", 1)[-1]),
+        detected_from_post_id=int(url.rsplit("/", 1)[-1]),
         detected_from_url=url,
         # One-post thread by default; a stitched thread passes its ids.
         thread_tweet_ids=(
             thread_tweet_ids if thread_tweet_ids is not None else (int(url.rsplit("/", 1)[-1]),)
         ),
-        event_date=date(2025, 11, 12),
+        occurred_date=date(2025, 11, 12),
         source_posted_at=source_posted_at,
         detected_post_at=datetime(2025, 11, 12, 14, 33, tzinfo=UTC),
         secondary_source_urls=secondary_source_urls or [],
@@ -167,13 +167,13 @@ def _publish_the_default_pair(db, owner: User) -> None:
         Event(
             owner_id=owner.id,
             title="Human submit",
-            event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+            coords=from_shape(Point(34.5, 48.5), srid=4326),
             source_url="https://example.com/footage",
             source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-            event_date=date(2025, 11, 12),
+            occurred_date=date(2025, 11, 12),
             status=STATUS_GEOLOCATED,
             geolocated_at=datetime.now(UTC),
-            detected_from_tweet_id=1,
+            detected_from_post_id=1,
             detected_from_url="https://x.com/own/status/1",
         )
     )
@@ -215,7 +215,7 @@ async def test_proof_image_kept_when_mixed_with_video(db, owner):
     )
     geo = _row(db, outcome.created[0])
     proof_rows = db.query(Media).filter(Media.event_id == geo.id, Media.role == "proof").all()
-    assert len(proof_rows) == 1 and proof_rows[0].media_type == "image"
+    assert len(proof_rows) == 1 and proof_rows[0].kind == "image"
     assert len(extract_image_srcs(geo.proof)) == 1
 
 
@@ -234,13 +234,13 @@ async def test_assemble_persists_detected_row(db, owner):
     assert geo.detected_from_url == "https://x.com/own/status/1"
     assert geo.source_url == "https://x.com/src/status/9"
     assert geo.source_posted_at == datetime(2025, 11, 11, 9, 0, tzinfo=UTC)
-    assert geo.event_date == date(2025, 11, 12)
+    assert geo.occurred_date == date(2025, 11, 12)
     assert geo.proof.startswith("<p>")
 
     media = db.query(Media).filter(Media.event_id == geo.id).all()
     assert len(media) == 1
     assert media[0].role == "source"
-    assert media[0].media_type == "image"
+    assert media[0].kind == "image"
     assert media[0].sha256 and len(media[0].sha256) == 64
 
 
@@ -274,7 +274,7 @@ async def test_two_fetchable_source_media_caps_at_one_role_source_row(db, owner)
     geo = _row(db, outcome.created[0])
     source_rows = db.query(Media).filter(Media.event_id == geo.id, Media.role == "source").all()
     assert len(source_rows) == 1
-    assert source_rows[0].media_type == "image"  # the first entry (photo) wins
+    assert source_rows[0].kind == "image"  # the first entry (photo) wins
 
 
 async def test_media_less_detection_persists(db, owner):
@@ -413,10 +413,10 @@ async def test_a_corrected_source_url_still_matches_its_own_re_import(db, owner)
     geo = Event(
         owner_id=owner.id,
         title="Human submit",
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url=original,
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        event_date=date(2025, 11, 12),
+        occurred_date=date(2025, 11, 12),
         status=STATUS_GEOLOCATED,
         geolocated_at=datetime.now(UTC),
     )
@@ -517,7 +517,7 @@ async def test_an_archive_thread_then_a_bot_tag_on_its_tail_is_one_detection(db,
     assert row.title == "From the tag"
     # Provenance and entry stay those of the first read.
     assert row.detected_from_url == "https://x.com/own/status/101"
-    assert row.detected_thread_tweet_ids == [101, 102, 103]
+    assert row.detected_thread_post_ids == [101, 102, 103]
     assert row.detected_via == "archive"
 
 

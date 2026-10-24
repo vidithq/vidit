@@ -44,7 +44,7 @@ def main() -> None:
 
     print(
         f"Bot reconciliation pass OK: {result.mentions_seen} mentions seen, "
-        f"{result.events_created} events created, "
+        f"{result.created_event_count} events created, "
         f"{result.events_updated} mentions updating a detection, "
         f"{result.requests_opened} requests opened, "
         f"{result.replies_posted} replies posted, "

@@ -9,7 +9,7 @@ from app.database import Base, literal_check
 
 # Media kind domain. Value-domain source of truth for the column, the Read
 # schema, the tweet-import ``kind`` field and the generated frontend type.
-MediaType = Literal["image", "video"]
+MediaKind = Literal["image", "video"]
 
 # ``source`` is the footage (at most one per event, ``uq_media_source_per_event``);
 # ``proof`` is an inline image of the proof body. No Python default: every
@@ -33,7 +33,7 @@ class Media(Base):
     )
     role: Mapped[MediaRole] = mapped_column(String(10), nullable=False)
     storage_url: Mapped[str] = mapped_column(Text, nullable=False)
-    media_type: Mapped[MediaType] = mapped_column(String(10), nullable=False)
+    kind: Mapped[MediaKind] = mapped_column(String(10), nullable=False)
     # Hex SHA-256 of the uploaded bytes: a content fingerprint stable across
     # copies, unlike the S3 ETag.
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -49,6 +49,7 @@ class Media(Base):
 
     __table_args__ = (
         literal_check("role", MediaRole, "ck_media_role_valid"),
+        literal_check("kind", MediaKind, "ck_media_kind_valid"),
         # "Every row with this hash".
         Index("ix_media_sha256", "sha256"),
         # At most one source media per event.

@@ -42,7 +42,7 @@ def _create_form(**overrides):
         "lat": "0.0",
         "lng": "0.0",
         "source_url": _PRIMARY,
-        "event_date": "2026-05-01",
+        "occurred_date": "2026-05-01",
         "source_posted_at": "2026-05-01T12:00",
         "proof": proof_form_field(),
     }
@@ -198,7 +198,7 @@ def _geolocate_form(conflict, capture_source_tag, **overrides):
         "lat": "50.0",
         "lng": "30.0",
         "source_url": _PRIMARY,
-        "event_date": "2026-05-01",
+        "occurred_date": "2026-05-01",
         "source_posted_at": "2026-05-01T12:00",
         "tag_ids": json.dumps([str(capture_source_tag.id)]),
         "conflict_ids": json.dumps([str(conflict.id)]),
@@ -378,7 +378,7 @@ def test_possible_duplicates_matches_a_secondary_link_host(db, author):
     geo = Event(
         owner_id=author.id,
         title=f"Geo {uuid.uuid4().hex[:8]}",
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://x.com/a/status/1",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         geolocated_at=datetime.now(UTC),

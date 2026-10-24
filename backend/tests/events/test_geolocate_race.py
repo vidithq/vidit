@@ -96,7 +96,7 @@ def _make_requested_with_media(db, *, author):
             event_id=request.id,
             role="source",
             storage_url=f"http://localhost:8000/local-storage/request_uploads/{request.id}/x.jpg",
-            media_type="image",
+            kind="image",
         )
     )
     db.commit()
@@ -110,7 +110,7 @@ def _fulfilment_form(conflict, capture_source_tag, *, title: str) -> dict[str, s
         "lat": "48.5",
         "lng": "34.5",
         "source_url": "https://example.com/post",
-        "event_date": "2026-05-01",
+        "occurred_date": "2026-05-01",
         "source_posted_at": "2026-05-01T12:00",
         "tag_ids": json.dumps([str(capture_source_tag.id)]),
         "conflict_ids": json.dumps([str(conflict.id)]),

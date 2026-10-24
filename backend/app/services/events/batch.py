@@ -108,7 +108,7 @@ def _publish_detection(
     # The floor, cheapest read first; each message names what to fix.
     if geo.source_url is None or not geo.source_url.strip():
         raise SourceUrlRequiredError("A source URL is required to geolocate an event")
-    if geo.event_coords is None:
+    if geo.coords is None:
         raise CoordinatesRequiredError("This detection carries no coordinates")
     _require_submission_media(any(m.role == "source" for m in geo.media))
     _require_proof_image(geo.proof)

@@ -36,7 +36,7 @@ class ReportedCollection(BaseModel):
 class ContentReportRead(BaseModel):
     """One report as the admin queue reads it.
 
-    ``resolved_at`` / ``resolution`` / ``resolved_by`` are all NULL while open
+    ``resolved_at`` / ``resolution`` / ``resolved_by_id`` are all NULL while open
     and all set once resolved, so ``resolved_at is None`` is the open test.
 
     A row names one target: ``event_id`` or ``collection``. Both are NULL once
@@ -53,7 +53,7 @@ class ContentReportRead(BaseModel):
     reason: ContentReportReason
     details: str | None
     # NULL for an anonymous report and after the reporter's erasure.
-    reporter_user_id: uuid.UUID | None
+    reporter_id: uuid.UUID | None
     created_at: datetime
     resolved_at: datetime | None
     resolution: ContentReportResolution | None

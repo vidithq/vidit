@@ -16,10 +16,10 @@ from shapely.geometry import Point
 from app.database import SessionLocal
 from app.main import app
 from app.models.admin_event import AdminEvent
-from app.models.auth_token import (
-    AuthToken,
-)
 from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event
+from app.models.password_reset_token import (
+    PasswordResetToken,
+)
 from app.models.user import User
 from app.services import maintenance as maintenance_service
 from app.services.auth import hash_password
@@ -79,29 +79,29 @@ def regular_user(db):
     db.commit()
 
 
-# ── reap_auth_tokens ───────────────────────────────────────────────────
+# ── reap_password_reset_tokens ───────────────────────────────────────────────────
 
 
-def test_reap_auth_tokens_drops_expired_and_old_consumed(db, regular_user):
+def test_reap_password_reset_tokens_drops_expired_and_old_consumed(db, regular_user):
     now = datetime.now(UTC)
 
-    expired = AuthToken(
+    expired = PasswordResetToken(
         user_id=regular_user.id,
         token_hash=f"exp-{uuid.uuid4().hex}",
         expires_at=now - timedelta(hours=1),
     )
-    live = AuthToken(
+    live = PasswordResetToken(
         user_id=regular_user.id,
         token_hash=f"live-{uuid.uuid4().hex}",
         expires_at=now + timedelta(hours=1),
     )
-    old_consumed = AuthToken(
+    old_consumed = PasswordResetToken(
         user_id=regular_user.id,
         token_hash=f"old-{uuid.uuid4().hex}",
         expires_at=now - timedelta(days=60),
         consumed_at=now - timedelta(days=45),
     )
-    fresh_consumed = AuthToken(
+    fresh_consumed = PasswordResetToken(
         user_id=regular_user.id,
         token_hash=f"fresh-{uuid.uuid4().hex}",
         expires_at=now - timedelta(days=1),
@@ -117,20 +117,22 @@ def test_reap_auth_tokens_drops_expired_and_old_consumed(db, regular_user):
         fresh_consumed.id,
     )
 
-    result = maintenance_service.reap_auth_tokens(db)
+    result = maintenance_service.reap_password_reset_tokens(db)
     assert result["expired"] >= 1
     assert result["old_consumed"] >= 1
 
     db.expire_all()
-    assert db.query(AuthToken).filter(AuthToken.id == expired_id).first() is None
-    assert db.query(AuthToken).filter(AuthToken.id == old_id).first() is None
-    assert db.query(AuthToken).filter(AuthToken.id == live_id).first() is not None
-    assert db.query(AuthToken).filter(AuthToken.id == fresh_id).first() is not None
+    assert db.query(PasswordResetToken).filter(PasswordResetToken.id == expired_id).first() is None
+    assert db.query(PasswordResetToken).filter(PasswordResetToken.id == old_id).first() is None
+    assert db.query(PasswordResetToken).filter(PasswordResetToken.id == live_id).first() is not None
+    assert (
+        db.query(PasswordResetToken).filter(PasswordResetToken.id == fresh_id).first() is not None
+    )
 
 
-def test_reap_auth_tokens_endpoint_for_admin(admin_user, db):
+def test_reap_password_reset_tokens_endpoint_for_admin(admin_user, db):
     response = client.post(
-        "/api/v1/admin/maintenance/reap-auth-tokens",
+        "/api/v1/admin/maintenance/reap-password-reset-tokens",
         headers=login_as(client, admin_user),
     )
     assert response.status_code == 200
@@ -142,7 +144,7 @@ def test_reap_auth_tokens_endpoint_for_admin(admin_user, db):
         db.query(AdminEvent)
         .filter(
             AdminEvent.actor_id == admin_user.id,
-            AdminEvent.action == "maintenance_reap_auth_tokens",
+            AdminEvent.action == "maintenance_reap_password_reset_tokens",
         )
         .order_by(AdminEvent.created_at.desc())
         .first()
@@ -150,9 +152,9 @@ def test_reap_auth_tokens_endpoint_for_admin(admin_user, db):
     assert event is not None
 
 
-def test_reap_auth_tokens_endpoint_403_for_regular_user(regular_user):
+def test_reap_password_reset_tokens_endpoint_403_for_regular_user(regular_user):
     response = client.post(
-        "/api/v1/admin/maintenance/reap-auth-tokens",
+        "/api/v1/admin/maintenance/reap-password-reset-tokens",
         headers=login_as(client, regular_user),
     )
     assert response.status_code == 403
@@ -184,7 +186,7 @@ def _detection(db, owner, **kwargs) -> Event:
     row = Event(
         owner_id=owner.id,
         title=f"Detection {uuid.uuid4().hex[:8]}",
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://x.com/a/status/1",
         detected_from_url="https://x.com/a/status/1",
         status=STATUS_DETECTED,

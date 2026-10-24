@@ -61,11 +61,11 @@ def test_typology_resolves_to_expected(typology: str, tmp_path: Path) -> None:
         else:
             assert detection.source_posted_at == datetime.fromisoformat(expected_posted)
 
-        expected_date = expected["event_date"]
+        expected_date = expected["occurred_date"]
         if expected_date is None:
-            assert detection.event_date is None
+            assert detection.occurred_date is None
         else:
-            assert detection.event_date == date.fromisoformat(expected_date)
+            assert detection.occurred_date == date.fromisoformat(expected_date)
 
 
 def test_marker_lines_reach_the_proof_as_typed(tmp_path: Path) -> None:

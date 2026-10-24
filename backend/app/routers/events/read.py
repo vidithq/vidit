@@ -64,8 +64,8 @@ def _build_points_cache_key(
     conflict: list[str] | None,
     capture_source: list[str] | None,
     tag: list[str] | None,
-    event_date_from: str | None,
-    event_date_to: str | None,
+    occurred_date_from: str | None,
+    occurred_date_to: str | None,
     submitted_from: str | None,
     submitted_to: str | None,
     author: str | None,
@@ -92,8 +92,8 @@ def _build_points_cache_key(
             sorted(conflict) if conflict else None,
             sorted(capture_source) if capture_source else None,
             sorted(tag) if tag else None,
-            event_date_from,
-            event_date_to,
+            occurred_date_from,
+            occurred_date_to,
             submitted_from,
             submitted_to,
             author,
@@ -118,8 +118,8 @@ def list_points(
     conflict: list[str] | None = Query(None),
     capture_source: list[str] | None = Query(None),
     tag: list[str] | None = Query(None),
-    event_date_from: str | None = None,
-    event_date_to: str | None = None,
+    occurred_date_from: str | None = None,
+    occurred_date_to: str | None = None,
     submitted_from: str | None = None,
     submitted_to: str | None = None,
     author: str | None = Query(None, pattern=AUTHOR_FILTER_PATTERN),
@@ -131,14 +131,14 @@ def list_points(
     db: Session = Depends(get_db),
 ):
     """Return the map's events inside ``bbox`` as a compact array:
-    ``[[id, lat, lng, event_date, added_date, detected], ...]``.
+    ``[[id, lat, lng, occurred_date, added_date, detected], ...]``.
 
     No joins, built for client-side clustering. ``bbox``
     (``south,west,north,east``) is required and bounds the payload by area; a
     missing or malformed value is a 422 (:func:`parse_bbox`). Live
     ``geolocated`` / ``detected`` rows with a subject coordinate only. Dates
     are ISO ``YYYY-MM-DD`` (``added_date`` is the ``created_at`` day);
-    ``event_date`` is ``null`` when unknown. ``detected`` is a 1/0 flag, not a
+    ``occurred_date`` is ``null`` when unknown. ``detected`` is a 1/0 flag, not a
     status string, to keep the payload small. Cached in memory for 60s per
     snapped bbox + filter combination (:func:`snap_bbox`).
     """
@@ -151,8 +151,8 @@ def list_points(
         conflict=conflict,
         capture_source=capture_source,
         tag=tag,
-        event_date_from=event_date_from,
-        event_date_to=event_date_to,
+        occurred_date_from=occurred_date_from,
+        occurred_date_to=occurred_date_to,
         submitted_from=submitted_from,
         submitted_to=submitted_to,
         author=author,
@@ -172,9 +172,9 @@ def list_points(
 
     q = db.query(
         Event.id,
-        ST_Y(Event.event_coords).label("lat"),
-        ST_X(Event.event_coords).label("lng"),
-        Event.event_date,
+        ST_Y(Event.coords).label("lat"),
+        ST_X(Event.coords).label("lng"),
+        Event.occurred_date,
         Event.created_at,
         Event.status,
     )
@@ -183,8 +183,8 @@ def list_points(
         conflict=conflict,
         capture_source=capture_source,
         tag=tag,
-        event_date_from=event_date_from,
-        event_date_to=event_date_to,
+        occurred_date_from=occurred_date_from,
+        occurred_date_to=occurred_date_to,
         submitted_from=submitted_from,
         submitted_to=submitted_to,
         author=author,
@@ -197,7 +197,7 @@ def list_points(
     # map, and a pin needs a coordinate inside the viewport.
     q = q.filter(
         Event.status.in_((STATUS_GEOLOCATED, STATUS_DETECTED)),
-        Event.event_coords.isnot(None),
+        Event.coords.isnot(None),
         bbox_predicate(bounds),
     )
 
@@ -208,7 +208,7 @@ def list_points(
             str(r.id),
             float(r.lat),
             float(r.lng),
-            r.event_date.isoformat() if r.event_date else None,
+            r.occurred_date.isoformat() if r.occurred_date else None,
             r.created_at.date().isoformat(),
             1 if r.status == STATUS_DETECTED else 0,
         ]
@@ -238,8 +238,8 @@ def list_events(
     capture_source: list[str] | None = Query(None),
     tag: list[str] | None = Query(None),
     bbox: str | None = None,
-    event_date_from: str | None = None,
-    event_date_to: str | None = None,
+    occurred_date_from: str | None = None,
+    occurred_date_to: str | None = None,
     submitted_from: str | None = None,
     submitted_to: str | None = None,
     author: str | None = Query(None, pattern=AUTHOR_FILTER_PATTERN),
@@ -278,8 +278,8 @@ def list_events(
         conflict=conflict,
         capture_source=capture_source,
         tag=tag,
-        event_date_from=event_date_from,
-        event_date_to=event_date_to,
+        occurred_date_from=occurred_date_from,
+        occurred_date_to=occurred_date_to,
         submitted_from=submitted_from,
         submitted_to=submitted_to,
         author=author,
@@ -316,8 +316,8 @@ def list_events(
     rows = (
         db.query(
             Event,
-            ST_Y(Event.event_coords).label("lat"),
-            ST_X(Event.event_coords).label("lng"),
+            ST_Y(Event.coords).label("lat"),
+            ST_X(Event.coords).label("lng"),
         )
         .options(
             # ``selectinload``, never ``subqueryload``: with ``.and_()`` criteria
@@ -408,8 +408,8 @@ def list_detections(
     window = (
         db.query(
             Event,
-            ST_Y(Event.event_coords).label("lat"),
-            ST_X(Event.event_coords).label("lng"),
+            ST_Y(Event.coords).label("lat"),
+            ST_X(Event.coords).label("lng"),
             ST_Y(Event.capture_source_coords).label("capture_lat"),
             ST_X(Event.capture_source_coords).label("capture_lng"),
         )

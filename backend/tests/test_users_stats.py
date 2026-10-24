@@ -106,7 +106,7 @@ def soft_deleted_user(db):
 
 @pytest.fixture
 def conflict(db):
-    row = Conflict(name=f"conflict-{uuid.uuid4().hex[:8]}", ongoing=True, source="manual")
+    row = Conflict(name=f"conflict-{uuid.uuid4().hex[:8]}", is_ongoing=True, origin="manual")
     db.add(row)
     db.commit()
     conflict_id = row.id
@@ -143,7 +143,7 @@ def _make_geo(
     author: User,
     status: str = STATUS_GEOLOCATED,
     before_closed_status: str = STATUS_DETECTED,
-    event_date: date | None = None,
+    occurred_date: date | None = None,
     source_url: str | None = "https://example.com/source",
     deleted: bool = False,
     tags: list[Tag] | None = None,
@@ -160,9 +160,9 @@ def _make_geo(
     geo = Event(
         owner_id=author.id,
         title=f"Geo {uuid.uuid4().hex[:8]}",
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url=source_url,
-        event_date=event_date,
+        occurred_date=occurred_date,
         status=status,
     )
     if status == STATUS_GEOLOCATED:
@@ -187,7 +187,7 @@ def _make_geo(
                 event_id=geo.id,
                 role="source",
                 storage_url="s3://x/m.jpg",
-                media_type="image",
+                kind="image",
             )
         )
     db.commit()
@@ -223,10 +223,10 @@ def test_stats_mixed_profile(db, live_user, conflict, capture_source_tag, free_t
         conflicts=[conflict],
         tags=[capture_source_tag, free_tag],
         with_media=True,
-        event_date=today,
+        occurred_date=today,
     )
-    _make_geo(db, author=live_user, conflicts=[conflict], with_media=True, event_date=today)
-    _make_geo(db, author=live_user, status=STATUS_DETECTED, event_date=today)
+    _make_geo(db, author=live_user, conflicts=[conflict], with_media=True, occurred_date=today)
+    _make_geo(db, author=live_user, status=STATUS_DETECTED, occurred_date=today)
 
     response = client.get(f"/api/v1/users/{live_user.username}/stats")
     assert response.status_code == 200
@@ -243,9 +243,9 @@ def test_stats_mixed_profile(db, live_user, conflict, capture_source_tag, free_t
 
 def test_stats_activity_spans_the_analysts_own_dates(db, live_user):
     """The row runs earliest to latest event date, zero-filled between, with no bucket keyed off today."""
-    _make_geo(db, author=live_user, event_date=date(2025, 3, 9))
-    _make_geo(db, author=live_user, event_date=date(2025, 3, 22))
-    _make_geo(db, author=live_user, event_date=date(2025, 6, 1))
+    _make_geo(db, author=live_user, occurred_date=date(2025, 3, 9))
+    _make_geo(db, author=live_user, occurred_date=date(2025, 3, 22))
+    _make_geo(db, author=live_user, occurred_date=date(2025, 6, 1))
 
     body = client.get(f"/api/v1/users/{live_user.username}/stats").json()
     assert body["activity"] == [
@@ -258,8 +258,8 @@ def test_stats_activity_spans_the_analysts_own_dates(db, live_user):
 
 def test_stats_activity_undated_events_stay_out_of_the_row(db, live_user):
     """A dateless event lands in no bucket and does not stretch the span, but counts in the status split."""
-    _make_geo(db, author=live_user, event_date=None)
-    _make_geo(db, author=live_user, event_date=date(2025, 3, 9))
+    _make_geo(db, author=live_user, occurred_date=None)
+    _make_geo(db, author=live_user, occurred_date=date(2025, 3, 9))
 
     body = client.get(f"/api/v1/users/{live_user.username}/stats").json()
     assert body["total_events"] == 2
@@ -267,7 +267,7 @@ def test_stats_activity_undated_events_stay_out_of_the_row(db, live_user):
 
 
 def test_stats_activity_no_dated_events_at_all(db, live_user):
-    _make_geo(db, author=live_user, event_date=None)
+    _make_geo(db, author=live_user, occurred_date=None)
 
     body = client.get(f"/api/v1/users/{live_user.username}/stats").json()
     assert body["total_events"] == 1
@@ -276,8 +276,8 @@ def test_stats_activity_no_dated_events_at_all(db, live_user):
 
 def test_stats_activity_keeps_month_granularity_over_a_long_span(db, live_user):
     """A multi-year span stays month by month: more rows, never coarser cells."""
-    _make_geo(db, author=live_user, event_date=date(2022, 3, 1))
-    _make_geo(db, author=live_user, event_date=date(2026, 7, 4))
+    _make_geo(db, author=live_user, occurred_date=date(2022, 3, 1))
+    _make_geo(db, author=live_user, occurred_date=date(2026, 7, 4))
 
     row = client.get(f"/api/v1/users/{live_user.username}/stats").json()["activity"]
     assert row[0] == {"period": "2022-03", "count": 1}
@@ -289,8 +289,8 @@ def test_stats_activity_keeps_month_granularity_over_a_long_span(db, live_user):
 def test_stats_activity_caps_the_span_at_ten_calendar_years(db, live_user):
     """Past ten year rows the grid keeps its recent end, starting at January of the oldest
     year shown. Dropped events still count in the totals."""
-    _make_geo(db, author=live_user, event_date=date(1990, 5, 1))
-    _make_geo(db, author=live_user, event_date=date(2026, 3, 3))
+    _make_geo(db, author=live_user, occurred_date=date(1990, 5, 1))
+    _make_geo(db, author=live_user, occurred_date=date(2026, 3, 3))
 
     body = client.get(f"/api/v1/users/{live_user.username}/stats").json()
     row = body["activity"]
@@ -300,7 +300,7 @@ def test_stats_activity_caps_the_span_at_ten_calendar_years(db, live_user):
     assert body["total_events"] == 2
 
 
-def test_stats_activity_ignores_a_future_event_date(db, live_user):
+def test_stats_activity_ignores_a_future_occurred_date(db, live_user):
     """A future date takes no bucket and cannot drag the window.
 
     The ten year cap anchors on the late end, so an un-clamped typo (``2925`` for
@@ -309,8 +309,8 @@ def test_stats_activity_ignores_a_future_event_date(db, live_user):
     """
     today = date.today()
     real = date(today.year - 1, 3, 1)
-    _make_geo(db, author=live_user, event_date=real)
-    _make_geo(db, author=live_user, event_date=date(2925, 6, 1))
+    _make_geo(db, author=live_user, occurred_date=real)
+    _make_geo(db, author=live_user, occurred_date=date(2925, 6, 1))
 
     body = client.get(f"/api/v1/users/{live_user.username}/stats").json()
     assert body["total_events"] == 2
@@ -324,7 +324,7 @@ def test_stats_activity_ignores_a_future_event_date(db, live_user):
 
 def test_stats_activity_all_future_dates_draw_no_grid(db, live_user):
     """Only future dates leave no coverage to draw: the grid is empty."""
-    _make_geo(db, author=live_user, event_date=date(2925, 6, 1))
+    _make_geo(db, author=live_user, occurred_date=date(2925, 6, 1))
 
     body = client.get(f"/api/v1/users/{live_user.username}/stats").json()
     assert body["total_events"] == 1
@@ -332,7 +332,7 @@ def test_stats_activity_all_future_dates_draw_no_grid(db, live_user):
 
 
 def test_stats_excludes_soft_deleted_events(db, live_user, conflict, capture_source_tag):
-    _make_geo(db, author=live_user, event_date=date.today())
+    _make_geo(db, author=live_user, occurred_date=date.today())
     _make_geo(
         db,
         author=live_user,
@@ -340,7 +340,7 @@ def test_stats_excludes_soft_deleted_events(db, live_user, conflict, capture_sou
         tags=[capture_source_tag],
         with_media=True,
         deleted=True,
-        event_date=date.today(),
+        occurred_date=date.today(),
     )
 
     body = client.get(f"/api/v1/users/{live_user.username}/stats").json()
@@ -355,7 +355,7 @@ def test_stats_excludes_soft_deleted_events(db, live_user, conflict, capture_sou
 
 def test_stats_excludes_requested_calls_for_help(db, live_user, conflict, capture_source_tag):
     """A ``requested`` row is an open call, not documented work: no aggregate counts it."""
-    _make_geo(db, author=live_user, event_date=date(2025, 4, 2))
+    _make_geo(db, author=live_user, occurred_date=date(2025, 4, 2))
     _make_geo(
         db,
         author=live_user,
@@ -363,7 +363,7 @@ def test_stats_excludes_requested_calls_for_help(db, live_user, conflict, captur
         conflicts=[conflict],
         tags=[capture_source_tag],
         with_media=True,
-        event_date=date(2025, 9, 9),
+        occurred_date=date(2025, 9, 9),
         source_url="https://requested.example/post",
     )
 
@@ -389,7 +389,7 @@ def test_stats_excludes_closed_rows(
     db, live_user, conflict, capture_source_tag, before_closed_status, source_url
 ):
     """A ``closed`` row (duplicate, rejected detection, retraction, withdrawn ask) moves no figure."""
-    _make_geo(db, author=live_user, event_date=date(2025, 4, 2))
+    _make_geo(db, author=live_user, occurred_date=date(2025, 4, 2))
     _make_geo(
         db,
         author=live_user,
@@ -398,7 +398,7 @@ def test_stats_excludes_closed_rows(
         conflicts=[conflict],
         tags=[capture_source_tag],
         with_media=True,
-        event_date=date(2025, 9, 9),
+        occurred_date=date(2025, 9, 9),
         source_url=source_url,
     )
 
@@ -424,7 +424,7 @@ def test_stats_counts_an_open_detection(db, live_user, conflict, capture_source_
         conflicts=[conflict],
         tags=[capture_source_tag],
         with_media=True,
-        event_date=date(2025, 4, 2),
+        occurred_date=date(2025, 4, 2),
         source_url=None,
     )
 

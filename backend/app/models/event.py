@@ -36,7 +36,7 @@ from app.database import Base, literal_check
 #   ``closed``      withdrawn (requested), rejected (detected) or retracted
 #                   (geolocated, still publicly readable with its history);
 #                   ``before_closed_status`` records which.
-# ``event_coords`` is independent of ``status`` except that ``geolocated``
+# ``coords`` is independent of ``status`` except that ``geolocated``
 # requires it (``ck_events_coords_status``).
 EventStatus = Literal["requested", "detected", "geolocated", "closed"]
 STATUS_REQUESTED: EventStatus = "requested"
@@ -222,7 +222,7 @@ class EventSourceLink(Base):
 class Event(Base):
     """One event across the merged request + geolocation lifecycle.
 
-    ``status`` (``EventStatus``) is the lifecycle; ``event_coords`` is an
+    ``status`` (``EventStatus``) is the lifecycle; ``coords`` is an
     independent nullable axis required only at ``geolocated``
     (``ck_events_coords_status``). Fulfilling a request updates this row and
     inserts an ``event_geolocators`` row, with no copy.
@@ -243,7 +243,7 @@ class Event(Base):
     title: Mapped[str] = mapped_column(String(TITLE_MAX_LENGTH), nullable=False)
     # What the footage shows. Required at ``geolocated`` (``ck_events_coords_status``).
     # One point per event.
-    event_coords = mapped_column(Geometry("POINT", srid=4326), nullable=True, index=True)
+    coords = mapped_column(Geometry("POINT", srid=4326), nullable=True, index=True)
     # Where the footage was shot from. Unindexed: no spatial read uses it.
     capture_source_coords = mapped_column(
         Geometry("POINT", srid=4326, spatial_index=False), nullable=True
@@ -254,11 +254,11 @@ class Event(Base):
     # Sanitised HTML (``services/sanitize.sanitize_html``); ``""`` is an empty body.
     proof: Mapped[str] = mapped_column(Text, nullable=False, default="")
     # Often unknown for a ``requested`` event; required at ``geolocated``.
-    event_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    occurred_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     # UTC time of day. May stand alone: an hour can be known before the day.
-    event_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    occurred_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     # When the original source posted the media (UTC instant). Distinct from
-    # ``event_date`` and ``created_at``. NULL unless actually known.
+    # ``occurred_date`` and ``created_at``. NULL unless actually known.
     source_posted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -281,7 +281,7 @@ class Event(Base):
     # The post a machine detection was imported from (``source_url`` is the
     # footage origin). The id is the re-import match anchor; the URL is built
     # from it (``tweet_ingest.urls.canonical_tweet_url``). NULL for human submits.
-    detected_from_tweet_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    detected_from_post_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     detected_from_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Every post id of the thread the detection was read from, anchor included.
     # The re-import match reads it so the three entries land on one row: an
@@ -289,7 +289,7 @@ class Event(Base):
     # so matching the anchor alone would file one geolocation as two detections.
     # Written once at creation. NULL for human submits; older rows carry their
     # anchor id alone.
-    detected_thread_tweet_ids: Mapped[list[int] | None] = mapped_column(
+    detected_thread_post_ids: Mapped[list[int] | None] = mapped_column(
         ARRAY(BigInteger), nullable=True
     )
     # Which entry produced this detection (``DetectedVia``). Written once, never
@@ -385,7 +385,7 @@ class Event(Base):
     __table_args__ = (
         # Geolocated needs a subject coordinate.
         CheckConstraint(
-            "status <> 'geolocated' OR event_coords IS NOT NULL",
+            "status <> 'geolocated' OR coords IS NOT NULL",
             name="ck_events_coords_status",
         ),
         # Requested and geolocated rows need a source URL.
@@ -419,17 +419,17 @@ class Event(Base):
         # Backs the re-import match on an owner's rows by source post. Partial:
         # human rows are NULL.
         Index(
-            "ix_events_owner_detected_from_tweet_id",
+            "ix_events_owner_detected_from_post_id",
             "owner_id",
-            "detected_from_tweet_id",
-            postgresql_where=text("detected_from_tweet_id IS NOT NULL"),
+            "detected_from_post_id",
+            postgresql_where=text("detected_from_post_id IS NOT NULL"),
         ),
         # Backs the thread-overlap leg of the same match (GIN array overlap).
         Index(
-            "ix_events_detected_thread_tweet_ids",
-            "detected_thread_tweet_ids",
+            "ix_events_detected_thread_post_ids",
+            "detected_thread_post_ids",
             postgresql_using="gin",
-            postgresql_where=text("detected_thread_tweet_ids IS NOT NULL"),
+            postgresql_where=text("detected_thread_post_ids IS NOT NULL"),
         ),
         # Backs the admin machine-detection cohort scans.
         Index(

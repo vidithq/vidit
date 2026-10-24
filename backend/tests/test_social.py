@@ -65,10 +65,10 @@ def _make_geo(db, *, author: User, title: str = "Strike", event: date | None = N
     geo = Event(
         owner_id=author.id,
         title=title,
-        event_coords=from_shape(Point(37.802, 48.012), srid=4326),
+        coords=from_shape(Point(37.802, 48.012), srid=4326),
         source_url="https://example.com/proof",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        event_date=event or date.today(),
+        occurred_date=event or date.today(),
         geolocated_at=datetime.now(UTC),
     )
     db.add(geo)
@@ -278,7 +278,7 @@ def _fulfil(event: Event, *, by: User, at: datetime | None = None) -> None:
     # Read before the writes: refreshing an expired ``by`` autoflushes, and a half-written
     # row trips ``ck_events_coords_status``.
     owner_id = by.id
-    event.event_coords = from_shape(Point(37.8, 48.0), srid=4326)
+    event.coords = from_shape(Point(37.8, 48.0), srid=4326)
     event.geolocated_at = at or datetime.now(UTC)
     event.owner_id = owner_id
     event.status = STATUS_GEOLOCATED
@@ -340,7 +340,7 @@ def test_feed_following_carries_geolocations_and_requests_credited(db, cleanup):
             event_id=geo.id,
             role="source",
             storage_url=f"http://localhost:8000/local-storage/uploads/{geo.id}/thumb.jpg",
-            media_type="image",
+            kind="image",
         )
     )
     db.add(Follow(follower_id=viewer.id, followed_id=analyst.id))
@@ -357,12 +357,12 @@ def test_feed_following_carries_geolocations_and_requests_credited(db, cleanup):
     assert by_title["Ask"]["status"] == STATUS_REQUESTED
     assert by_title["Ask"]["owner"]["username"] == analyst.username
     assert by_title["Ask"]["feed_at"].startswith("2026-05-20T10:00:00")
-    assert by_title["Ask"]["event_coords"] is None
+    assert by_title["Ask"]["coords"] is None
 
     assert by_title["Geo"]["status"] == STATUS_GEOLOCATED
     assert by_title["Geo"]["owner"]["username"] == analyst.username
     assert by_title["Geo"]["feed_at"].startswith("2026-05-20T09:00:00")
-    assert isinstance(by_title["Geo"]["event_coords"]["lat"], (int, float))
+    assert isinstance(by_title["Geo"]["coords"]["lat"], (int, float))
     assert by_title["Geo"]["media"]["storage_url"].endswith("thumb.jpg")
 
     assert by_title["Answered by analyst"]["owner"]["username"] == analyst.username
@@ -549,7 +549,7 @@ def test_feed_caps_limit_and_rejects_garbage(db, cleanup):
 
 @pytest.fixture
 def conflict(db):
-    row = Conflict(name=f"conflict-{uuid.uuid4().hex[:8]}", ongoing=True, source="manual")
+    row = Conflict(name=f"conflict-{uuid.uuid4().hex[:8]}", is_ongoing=True, origin="manual")
     db.add(row)
     db.commit()
     yield row

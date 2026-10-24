@@ -172,9 +172,9 @@ def _match_legs(
     """
     legs: list[ColumnElement[bool]] = []
     if tweet_id is not None:
-        legs.append(Event.detected_from_tweet_id == tweet_id)
+        legs.append(Event.detected_from_post_id == tweet_id)
     if thread_tweet_ids:
-        legs.append(Event.detected_thread_tweet_ids.overlap(list(thread_tweet_ids)))
+        legs.append(Event.detected_thread_post_ids.overlap(list(thread_tweet_ids)))
     if source_url is not None:
         legs.append(Event.source_url == source_url)
         legs.append(
@@ -205,7 +205,7 @@ def _disposition(db: Session, owner: User, detection: Detection) -> tuple[Verdic
     carries the imported URL. A redacted snapshot is blank and matches nothing.
     """
     legs = _match_legs(
-        tweet_id=detection.detected_from_tweet_id,
+        tweet_id=detection.detected_from_post_id,
         thread_tweet_ids=detection.thread_tweet_ids,
         source_url=detection.source_url,
     )
@@ -226,7 +226,7 @@ def _disposition(db: Session, owner: User, detection: Detection) -> tuple[Verdic
     for row in rows:
         # A ``detected`` row may have no coordinate; skip it rather than let
         # ``to_shape(None)`` abort the whole re-import.
-        if row.event_coords is None:
+        if row.coords is None:
             continue
         if not _same_coordinate(row, detection):
             continue
@@ -350,7 +350,7 @@ async def _store_media(
                 event_id=geo.id,
                 role=item.role,
                 storage_url=result.url,
-                media_type=media_type,
+                kind=media_type,
                 sha256=result.sha256,
             )
         )
@@ -378,14 +378,12 @@ async def _persist_one(
         geo = Event(
             owner_id=owner.id,
             title=detection.title,
-            event_coords=from_shape(
-                Point(detection.coordinate.lng, detection.coordinate.lat), srid=4326
-            ),
+            coords=from_shape(Point(detection.coordinate.lng, detection.coordinate.lat), srid=4326),
             # The declared footage source, distinct from the ``detected_from_url`` provenance.
             # NULL when none declared: the geolocate promotion requires it.
             source_url=detection.source_url,
             proof=html_from_text(detection.proof_text),
-            event_date=detection.event_date,
+            occurred_date=detection.occurred_date,
             source_posted_at=detection.source_posted_at,
             status=STATUS_DETECTED,
             detected_at=datetime.now(UTC),
@@ -395,7 +393,7 @@ async def _persist_one(
         stamp_provenance(
             geo,
             ImportProvenance(
-                tweet_id=detection.detected_from_tweet_id,
+                tweet_id=detection.detected_from_post_id,
                 url=detection.detected_from_url,
                 thread_tweet_ids=list(detection.thread_tweet_ids),
                 via=via,
@@ -445,13 +443,13 @@ def _apply_import_fields(db: Session, row: Event, detection: Detection) -> tuple
     """
     changed = False
     if _projected(row) != (detection.coordinate.lat, detection.coordinate.lng):
-        row.event_coords = from_shape(
+        row.coords = from_shape(
             Point(detection.coordinate.lng, detection.coordinate.lat), srid=4326
         )
         changed = True
     for name, value in (
         ("title", detection.title),
-        ("event_date", detection.event_date),
+        ("occurred_date", detection.occurred_date),
         ("source_posted_at", detection.source_posted_at),
         ("detected_post_at", detection.detected_post_at),
     ):
@@ -470,7 +468,7 @@ def _apply_import_fields(db: Session, row: Event, detection: Detection) -> tuple
 
 def _projected(row: Event) -> tuple[float, float]:
     """``(lat, lng)`` for a stored point, the shape a detection carries."""
-    point = cast(Point, to_shape(row.event_coords))
+    point = cast(Point, to_shape(row.coords))
     return point.y, point.x
 
 
@@ -766,7 +764,7 @@ def _existing_row_for(db: Session, owner: User, draft: RequestDraft) -> Event | 
     must not also fence the owner off from mirroring that footage again.
     """
     legs = _match_legs(
-        tweet_id=draft.detected_from_tweet_id,
+        tweet_id=draft.detected_from_post_id,
         thread_tweet_ids=draft.thread_tweet_ids,
         source_url=draft.source_url,
     )
@@ -849,14 +847,14 @@ async def open_request(
             source_url=draft.source_url,
             secondary_source_urls=draft.secondary_source_urls,
             proof_data=html_from_text(draft.proof_text),
-            event_date=draft.event_date,
+            occurred_date=draft.occurred_date,
             source_posted_at=draft.source_posted_at,
             tag_ids=[],
             conflict_ids=[],
             file=upload,
             proof_files=[],
             provenance=ImportProvenance(
-                tweet_id=draft.detected_from_tweet_id,
+                tweet_id=draft.detected_from_post_id,
                 url=draft.detected_from_url,
                 thread_tweet_ids=list(draft.thread_tweet_ids),
                 via="bot",

@@ -15,13 +15,13 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
-from app.models.auth_token import (
-    AuthToken,
+from app.models.password_reset_token import (
+    PasswordResetToken,
 )
 from app.models.user import User
 from app.routers import auth as auth_router
 from app.services import auth as auth_service
-from app.services import auth_tokens, email
+from app.services import email, password_reset_tokens
 
 # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -75,7 +75,7 @@ def user_factory(db):
     yield _make
 
     for user in created:
-        # Cascade deletes auth_tokens via the FK; just nuke the user.
+        # Cascade deletes password_reset_tokens via the FK; just nuke the user.
         db.query(User).filter(User.id == user.id).delete()
     db.commit()
 
@@ -117,10 +117,10 @@ def test_forgot_password_known_email_mints_token_and_sends(
     assert "/reset-password?token=" in sent.text
 
     rows = (
-        db.query(AuthToken)
+        db.query(PasswordResetToken)
         .filter(
-            AuthToken.user_id == user.id,
-            AuthToken.consumed_at.is_(None),
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.consumed_at.is_(None),
         )
         .all()
     )
@@ -135,18 +135,18 @@ def test_forgot_password_revokes_previously_outstanding_tokens(
     client.post("/api/v1/auth/forgot-password", json={"email": user.email})
 
     live = (
-        db.query(AuthToken)
+        db.query(PasswordResetToken)
         .filter(
-            AuthToken.user_id == user.id,
-            AuthToken.consumed_at.is_(None),
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.consumed_at.is_(None),
         )
         .all()
     )
     consumed = (
-        db.query(AuthToken)
+        db.query(PasswordResetToken)
         .filter(
-            AuthToken.user_id == user.id,
-            AuthToken.consumed_at.isnot(None),
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.consumed_at.isnot(None),
         )
         .all()
     )
@@ -272,13 +272,13 @@ def test_reset_password_rejects_unknown_token(client):
 
 def test_reset_password_rejects_expired_token(client, user_factory, db):
     user, _ = user_factory()
-    raw = auth_tokens.mint(
+    raw = password_reset_tokens.mint(
         db,
         user_id=user.id,
         ttl_minutes=15,
     )
     db.commit()
-    db.query(AuthToken).filter(AuthToken.user_id == user.id).update(
+    db.query(PasswordResetToken).filter(PasswordResetToken.user_id == user.id).update(
         {"expires_at": datetime.now(UTC) - timedelta(minutes=1)}
     )
     db.commit()
@@ -306,7 +306,7 @@ def test_consume_atomic_under_parallel_use(user_factory):
     # Own session, so the fixture session holds no row lock.
     minting_session = SessionLocal()
     try:
-        raw = auth_tokens.mint(
+        raw = password_reset_tokens.mint(
             minting_session,
             user_id=user.id,
             ttl_minutes=15,
@@ -315,7 +315,7 @@ def test_consume_atomic_under_parallel_use(user_factory):
     finally:
         minting_session.close()
 
-    results: list[AuthToken | None] = []
+    results: list[PasswordResetToken | None] = []
     errors: list[BaseException] = []
     barrier = threading.Barrier(2)
 
@@ -323,7 +323,7 @@ def test_consume_atomic_under_parallel_use(user_factory):
         session = SessionLocal()
         try:
             barrier.wait(timeout=2)
-            row = auth_tokens.consume(session, raw)
+            row = password_reset_tokens.consume(session, raw)
             session.commit()
             results.append(row)
         except BaseException as exc:  # noqa: BLE001

@@ -383,7 +383,7 @@ class Detection:
     """One coordinate's worth of a thread: the fields a ``detected`` row needs.
 
     Plain data: ``services/detection.persist_detections`` owns persistence and
-    the ``(detected_from_tweet_id, coordinate)`` idempotency. Detections of one
+    the ``(detected_from_post_id, coordinate)`` idempotency. Detections of one
     thread share source, proof, dates and provenance.
     """
 
@@ -396,14 +396,14 @@ class Detection:
     source_url: str | None
     # The geoloc post: its id is the identity every surface keys on. The id is
     # ``None`` only for a non-numeric one, which no upstream writes.
-    detected_from_tweet_id: int | None
+    detected_from_post_id: int | None
     detected_from_url: str
     # Every post id of the thread, anchor included, in order. Entries anchor
     # differently on one self-thread, so this lets the write path recognise one
     # geolocation whichever entry read it. Non-numeric ids are dropped.
     thread_tweet_ids: tuple[int, ...]
     # Provisional: the geoloc tweet's post date; the owner corrects it at submit.
-    event_date: date | None
+    occurred_date: date | None
     # UTC, only when known (a dated quote or chased post); never the geoloc tweet's date.
     source_posted_at: datetime | None
     # When the analyst posted this geolocation (``detected_post_at``).
@@ -439,11 +439,11 @@ class RequestDraft:
     # UTC, only when the chase served one.
     source_posted_at: datetime | None
     # Provisional: the mirror post's date; corrected at fulfilment.
-    event_date: date | None
+    occurred_date: date | None
     detected_post_at: datetime | None
     # The provenance every entry keys a re-import on; required (a draft without
     # an id is refused), so the write path always has a match leg.
-    detected_from_tweet_id: int
+    detected_from_post_id: int
     detected_from_url: str
     thread_tweet_ids: tuple[int, ...]
     secondary_source_urls: list[str]
@@ -625,10 +625,10 @@ def _thread_detections(
                 title=title,
                 proof_text=proof_text,
                 source_url=source_url,
-                detected_from_tweet_id=_tweet_id(head.tweet_id),
+                detected_from_post_id=_tweet_id(head.tweet_id),
                 detected_from_url=canonical_tweet_url(head.tweet_id, head.handle),
                 thread_tweet_ids=thread_tweet_ids,
-                event_date=_event_date(head.created_at, detected_post_at),
+                occurred_date=_event_date(head.created_at, detected_post_at),
                 source_posted_at=_posted_at(source_iso) if source_iso else None,
                 detected_post_at=detected_post_at,
                 secondary_source_urls=secondary_source_urls,
@@ -706,9 +706,9 @@ def _request_draft(
         proof_text=clean_proof_text(own_text),
         source_url=source_url,
         source_posted_at=_posted_at(source_iso) if source_iso else None,
-        event_date=_event_date(head.created_at, detected_post_at),
+        occurred_date=_event_date(head.created_at, detected_post_at),
         detected_post_at=detected_post_at,
-        detected_from_tweet_id=tweet_id,
+        detected_from_post_id=tweet_id,
         detected_from_url=canonical_tweet_url(head.tweet_id, head.handle),
         thread_tweet_ids=tuple(
             post_id
@@ -751,7 +751,7 @@ def _posted_at(created_at: str) -> datetime | None:
 
 
 def _event_date(created_at: str, posted_at: datetime | None) -> date | None:
-    """The provisional ``event_date``: the geoloc tweet's post date.
+    """The provisional ``occurred_date``: the geoloc tweet's post date.
 
     Falls back to a valid ``YYYY-MM-DD`` prefix when the time is garbled. An
     unparseable value yields None, never a fabricated epoch.

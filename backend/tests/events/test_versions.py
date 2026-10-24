@@ -67,7 +67,7 @@ def _published(db, author, conflict, capture_source_tag, *, proof_url=STORED_PRO
             event_id=geo.id,
             role="proof",
             storage_url=proof_url,
-            media_type="image",
+            kind="image",
         )
     )
     db.commit()
@@ -81,7 +81,7 @@ def _form(conflict, capture_source_tag, **overrides):
         "title": "Corrected title",
         "lat": "50.0",
         "lng": "30.0",
-        "event_date": "2026-05-02",
+        "occurred_date": "2026-05-02",
         "source_posted_at": "2026-05-01T12:00",
         "proof": _proof_html(STORED_PROOF_URL),
         "tag_ids": json.dumps([str(capture_source_tag.id)]),
@@ -114,7 +114,7 @@ def test_save_version_snapshots_the_old_version_and_bumps_the_row(
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["title"] == "Corrected title"
-    assert body["event_coords"] == {"lat": 50.0, "lng": 30.0}
+    assert body["coords"] == {"lat": 50.0, "lng": 30.0}
     assert body["version_no"] == 2
     assert body["status"] == "geolocated"
 
@@ -127,7 +127,7 @@ def test_save_version_snapshots_the_old_version_and_bumps_the_row(
     assert snapshot_row.note == "Coordinates were off by a block."
     # The snapshot holds the state BEFORE the edit.
     assert snapshot_row.snapshot["title"] == "Original title"
-    assert snapshot_row.snapshot["event_coords"] == {"lat": 48.5, "lng": 34.5}
+    assert snapshot_row.snapshot["coords"] == {"lat": 48.5, "lng": 34.5}
     assert snapshot_row.snapshot["proof_media"][0]["storage_url"] == STORED_PROOF_URL
     assert [t["id"] for t in snapshot_row.snapshot["tags"]] == [str(capture_source_tag.id)]
 
@@ -440,7 +440,7 @@ def test_save_version_swaps_the_source_media_and_the_version_keeps_the_old_one(
     filed = db.query(EventVersion).filter(EventVersion.event_id == geo.id).one()
     assert [m["id"] for m in filed.snapshot["source_media"]] == [old_id]
     assert filed.snapshot["source_media"][0]["storage_url"] == old_url
-    assert filed.snapshot["source_media"][0]["media_type"] == "image"
+    assert filed.snapshot["source_media"][0]["kind"] == "image"
 
 
 def test_save_version_edits_the_source_url_and_files_the_old_one(

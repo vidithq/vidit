@@ -48,8 +48,8 @@ async def save_version(
     capture_source_lng: float | None,
     source_url: str | None = None,
     secondary_source_urls: list[str],
-    event_date: date | None,
-    event_time: time | None,
+    occurred_date: date | None,
+    occurred_time: time | None,
     source_posted_at: datetime | None,
     proof_data: str | None,
     tag_ids: list,
@@ -160,10 +160,10 @@ async def save_version(
     proposed = {
         "title": title,
         "source_url": effective_source_url,
-        "event_coords": {"lat": lat, "lng": lng},
+        "coords": {"lat": lat, "lng": lng},
         "capture_source_coords": versions.point_shape(capture_point),
-        "event_date": event_date.isoformat() if event_date is not None else None,
-        "event_time": event_time.isoformat() if event_time is not None else None,
+        "occurred_date": occurred_date.isoformat() if occurred_date is not None else None,
+        "occurred_time": occurred_time.isoformat() if occurred_time is not None else None,
         # ``None`` keeps the stored value.
         "source_posted_at": (
             source_posted_at.isoformat()
@@ -217,10 +217,10 @@ async def save_version(
         geo.title = title
         if source_url is not None:
             geo.source_url = effective_source_url
-        geo.event_coords = from_shape(Point(lng, lat), srid=4326)
+        geo.coords = from_shape(Point(lng, lat), srid=4326)
         geo.capture_source_coords = capture_point
-        geo.event_date = event_date
-        geo.event_time = event_time
+        geo.occurred_date = occurred_date
+        geo.occurred_time = occurred_time
         # None means keep: an empty datetime input is indistinguishable from an
         # absent field, and assigning it would clear a stored instant.
         if source_posted_at is not None:

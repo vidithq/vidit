@@ -92,7 +92,7 @@ def admin_user(db):
     # without FK violations.
     db.expire_all()
     db.query(AdminEvent).filter(AdminEvent.actor_id == user_id).delete()
-    db.query(InviteCode).filter(InviteCode.used_by == user_id).delete()
+    db.query(InviteCode).filter(InviteCode.used_by_id == user_id).delete()
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -369,7 +369,7 @@ def test_read_quota_key_rejects_a_forged_token(user):
 # * admin actions write `admin_events` rows, `POST /admin/invite-codes`
 #   mints 30 codes;
 # * `POST /collections` opens 30 collections (dropped by the owner cascade);
-# * the `reap-*` cases delete expired `auth_tokens` / `pending_registrations`.
+# * the `reap-*` cases delete expired `password_reset_tokens` / `pending_registrations`.
 
 _MISSING_ID = uuid.UUID(int=0)
 
@@ -385,7 +385,7 @@ _SUBMIT_FORM = {
     "lng": "0",
     "source_url": "https://example.com/post",
     "source_posted_at": "2026-01-01T00:00",
-    "event_date": "not-a-date",
+    "occurred_date": "not-a-date",
 }
 _SUBMIT_FILE = {"files": {"file": ("probe.txt", b"probe", "text/plain")}}
 _GEOLOCATE_FILE = {"files": {"files": ("probe.txt", b"probe", "text/plain")}}
@@ -673,7 +673,7 @@ _DOCUMENTED_LIMITS = [
         "admin",
         {"json": {"hidden": True}},
     ),
-    _Case("post", "/api/v1/admin/maintenance/reap-auth-tokens", 30, "admin"),
+    _Case("post", "/api/v1/admin/maintenance/reap-password-reset-tokens", 30, "admin"),
     _Case("post", "/api/v1/admin/maintenance/reap-pending-registrations", 30, "admin"),
     _Case("post", "/api/v1/notifications/unsubscribe?token=not-a-token", 30, "anon"),
     _Case("get", "/api/v1/notifications/unsubscribe?token=not-a-token", 30, "anon"),
@@ -688,7 +688,7 @@ _DOCUMENTED_LIMITS = [
 def test_documented_limit_blocks_at_n_plus_1(live_limiter, db, user, admin_user, index, case):
     ip = f"192.0.2.{index + 1}"
     if case.role == "user_minting_off":
-        user.invite_minting_enabled = False
+        user.is_invite_minting_enabled = False
         db.commit()
     if case.role == "anon":
         headers = {"X-Forwarded-For": ip}

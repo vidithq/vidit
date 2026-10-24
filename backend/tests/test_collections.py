@@ -133,8 +133,8 @@ def _make_event(
     *,
     owner: User,
     status: str = STATUS_GEOLOCATED,
-    event_date: date | None = None,
-    event_time: time | None = None,
+    occurred_date: date | None = None,
+    occurred_time: time | None = None,
     is_graphic: bool = False,
     hidden: bool = False,
     deleted: bool = False,
@@ -148,10 +148,10 @@ def _make_event(
     event = Event(
         owner_id=owner.id,
         title=f"Event {uuid.uuid4().hex[:8]}",
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com/source",
-        event_date=event_date,
-        event_time=event_time,
+        occurred_date=occurred_date,
+        occurred_time=occurred_time,
         status=status,
         is_graphic=is_graphic,
         geolocated_at=now if status == STATUS_GEOLOCATED else None,
@@ -354,9 +354,9 @@ def _collections_of(db, owner: User) -> int:
 def test_create_collection_opens_it_on_the_picked_events(db, cleanup, owner):
     """The create page's picker sends ids, and the collection opens holding them."""
     _, collection_ids, _ = cleanup
-    first = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
+    first = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 5, 1))
     second = _make_event(
-        db, cleanup, owner=owner, status=STATUS_DETECTED, event_date=date(2026, 5, 4)
+        db, cleanup, owner=owner, status=STATUS_DETECTED, occurred_date=date(2026, 5, 4)
     )
 
     response = client.post(
@@ -388,7 +388,7 @@ def test_create_collection_opens_it_on_the_picked_events(db, cleanup, owner):
 
 def test_create_collection_refuses_a_foreign_event_and_lands_nothing(db, cleanup, owner, stranger):
     """A foreign id is the membership route's 403, and it takes the create with it."""
-    theirs = _make_event(db, cleanup, owner=stranger, event_date=date(2026, 5, 1))
+    theirs = _make_event(db, cleanup, owner=stranger, occurred_date=date(2026, 5, 1))
 
     response = client.post(
         "/api/v1/collections",
@@ -406,7 +406,7 @@ def test_create_collection_refuses_a_foreign_event_and_lands_nothing(db, cleanup
 def test_create_collection_refuses_an_ineligible_event_and_lands_nothing(db, cleanup, owner):
     """A request is an ask rather than an answer: 409, and no half-filled shelf."""
     asked = _make_event(db, cleanup, owner=owner, status=STATUS_REQUESTED)
-    good = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
+    good = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 5, 1))
 
     response = client.post(
         "/api/v1/collections",
@@ -458,7 +458,7 @@ def test_create_collection_caps_the_event_ids(db, owner):
 def test_create_collection_collapses_duplicate_event_ids(db, cleanup, owner):
     """Ticking one row is one membership, however many times the id arrives."""
     _, collection_ids, _ = cleanup
-    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
+    event = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 5, 1))
 
     response = client.post(
         "/api/v1/collections",
@@ -547,7 +547,7 @@ def test_update_collection_rejects_a_blank_title(db, cleanup, owner):
 
 def test_delete_collection_leaves_its_events_alone(db, cleanup, owner):
     collection = _make_collection(db, cleanup, owner=owner)
-    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
+    event = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 5, 1))
     _add(db, collection, event)
     # Read the ids before the row goes (the session's copy of a deleted instance cannot answer).
     collection_id, event_id = collection.id, event.id
@@ -580,7 +580,7 @@ def test_delete_collection_is_owner_only(db, cleanup, owner, stranger):
 
 def test_add_event_is_idempotent(db, cleanup, owner):
     collection = _make_collection(db, cleanup, owner=owner)
-    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
+    event = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 5, 1))
     headers = login_as(client, owner)
     path = f"/api/v1/collections/{collection.id}/events/{event.id}"
 
@@ -604,7 +604,7 @@ def test_add_event_surfaces_a_violation_that_is_not_the_duplicate(db, cleanup, o
 
     The savepoint swallows SQLSTATE 23505 alone. With the collection deleted under the request the INSERT fails the FK (23503) and must surface."""
     collection = _make_collection(db, cleanup, owner=owner)
-    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
+    event = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 5, 1))
     # Load what the verb reads off the collection before the row goes, so the refusal comes from the INSERT.
     db.refresh(collection)
 
@@ -624,7 +624,7 @@ def test_add_event_surfaces_a_violation_that_is_not_the_duplicate(db, cleanup, o
 
 def test_remove_event_is_idempotent(db, cleanup, owner):
     collection = _make_collection(db, cleanup, owner=owner)
-    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
+    event = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 5, 1))
     _add(db, collection, event)
     headers = login_as(client, owner)
     path = f"/api/v1/collections/{collection.id}/events/{event.id}"
@@ -640,7 +640,7 @@ def test_remove_event_is_idempotent(db, cleanup, owner):
 def test_add_someone_elses_event_is_403(db, cleanup, owner, stranger):
     """The ownership invariant: a collection only ever holds its owner's work."""
     collection = _make_collection(db, cleanup, owner=owner)
-    theirs = _make_event(db, cleanup, owner=stranger, event_date=date(2026, 5, 1))
+    theirs = _make_event(db, cleanup, owner=stranger, occurred_date=date(2026, 5, 1))
 
     response = client.put(
         f"/api/v1/collections/{collection.id}/events/{theirs.id}",
@@ -654,7 +654,7 @@ def test_add_someone_elses_event_is_403(db, cleanup, owner, stranger):
 
 def test_add_to_someone_elses_collection_is_403(db, cleanup, owner, stranger):
     collection = _make_collection(db, cleanup, owner=owner)
-    mine = _make_event(db, cleanup, owner=stranger, event_date=date(2026, 5, 1))
+    mine = _make_event(db, cleanup, owner=stranger, occurred_date=date(2026, 5, 1))
 
     response = client.put(
         f"/api/v1/collections/{collection.id}/events/{mine.id}",
@@ -696,7 +696,7 @@ def test_add_ineligible_event_is_409(
         before_closed_status=before_closed_status,
         hidden=hidden,
         deleted=deleted,
-        event_date=date(2026, 5, 1),
+        occurred_date=date(2026, 5, 1),
     )
 
     response = client.put(
@@ -711,7 +711,7 @@ def test_detections_are_collectable(db, cleanup, owner):
     """``detected`` is in the set: a collection curates work in progress too."""
     collection = _make_collection(db, cleanup, owner=owner)
     detection = _make_event(
-        db, cleanup, owner=owner, status=STATUS_DETECTED, event_date=date(2026, 5, 1)
+        db, cleanup, owner=owner, status=STATUS_DETECTED, occurred_date=date(2026, 5, 1)
     )
 
     response = client.put(
@@ -724,7 +724,7 @@ def test_detections_are_collectable(db, cleanup, owner):
 def test_remove_works_on_an_event_that_became_ineligible(db, cleanup, owner):
     """An owner can always clear a membership, whatever the event did since."""
     collection = _make_collection(db, cleanup, owner=owner)
-    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
+    event = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 5, 1))
     _add(db, collection, event)
 
     event.status = STATUS_CLOSED
@@ -743,15 +743,15 @@ def test_remove_works_on_an_event_that_became_ineligible(db, cleanup, owner):
 
 def test_read_counts_and_date_range_only_showable_items(db, cleanup, owner):
     collection = _make_collection(db, cleanup, owner=owner)
-    _add(db, collection, _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1)))
-    _add(db, collection, _make_event(db, cleanup, owner=owner, event_date=date(2026, 7, 9)))
+    _add(db, collection, _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 3, 1)))
+    _add(db, collection, _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 7, 9)))
     # Undated: counted, but outside the range the dates describe.
     _add(db, collection, _make_event(db, cleanup, owner=owner))
     # Withheld after it was added: out of the count and range, with no write to the membership table.
     _add(
         db,
         collection,
-        _make_event(db, cleanup, owner=owner, event_date=date(2020, 1, 1), hidden=True),
+        _make_event(db, cleanup, owner=owner, occurred_date=date(2020, 1, 1), hidden=True),
     )
 
     body = client.get(f"/api/v1/collections/{collection.id}").json()
@@ -771,14 +771,14 @@ def test_read_unknown_collection_is_404():
 def test_items_read_in_chronological_order_with_undated_last(db, cleanup, owner):
     collection = _make_collection(db, cleanup, owner=owner)
     undated = _make_event(db, cleanup, owner=owner)
-    late = _make_event(db, cleanup, owner=owner, event_date=date(2026, 7, 9))
+    late = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 7, 9))
     early_evening = _make_event(
-        db, cleanup, owner=owner, event_date=date(2026, 3, 1), event_time=time(19, 30)
+        db, cleanup, owner=owner, occurred_date=date(2026, 3, 1), occurred_time=time(19, 30)
     )
     early_morning = _make_event(
-        db, cleanup, owner=owner, event_date=date(2026, 3, 1), event_time=time(6, 15)
+        db, cleanup, owner=owner, occurred_date=date(2026, 3, 1), occurred_time=time(6, 15)
     )
-    early_no_hour = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
+    early_no_hour = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 3, 1))
     for event in (undated, late, early_evening, early_morning, early_no_hour):
         _add(db, collection, event)
 
@@ -797,7 +797,8 @@ def test_items_read_in_chronological_order_with_undated_last(db, cleanup, owner)
 def test_items_page_through_the_link_header(db, cleanup, owner):
     collection = _make_collection(db, cleanup, owner=owner)
     events = [
-        _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, day)) for day in range(1, 6)
+        _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 3, day))
+        for day in range(1, 6)
     ]
     # One undated row, so the walk crosses the stand-in boundary too.
     events.append(_make_event(db, cleanup, owner=owner))
@@ -832,7 +833,7 @@ def test_admin_takedown_hides_a_collection_from_everyone_but_admins(
     db, cleanup, owner, stranger, admin
 ):
     collection = _make_collection(db, cleanup, owner=owner)
-    _add(db, collection, _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1)))
+    _add(db, collection, _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 5, 1)))
 
     takedown = client.delete(
         f"/api/v1/admin/collections/{collection.id}", headers=login_as(client, admin)
@@ -892,7 +893,7 @@ def _moderate(collection_id, *, hidden: bool, as_user):
 def test_admin_moderation_hides_then_restores_a_collection(db, cleanup, owner, admin):
     """The takedown is reversible: what the PATCH withholds, the PATCH puts back."""
     collection = _make_collection(db, cleanup, owner=owner)
-    _add(db, collection, _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1)))
+    _add(db, collection, _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 5, 1)))
 
     hidden = _moderate(collection.id, hidden=True, as_user=admin)
     assert hidden.status_code == 200
@@ -952,7 +953,7 @@ def test_admin_moderation_404s_on_an_unknown_collection(db, cleanup, admin):
 
 def test_withheld_collection_is_out_of_the_profile_list(db, cleanup, owner, admin):
     collection = _make_collection(db, cleanup, owner=owner)
-    _add(db, collection, _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1)))
+    _add(db, collection, _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 5, 1)))
     client.delete(f"/api/v1/admin/collections/{collection.id}", headers=login_as(client, admin))
     client.cookies.clear()
 
@@ -977,7 +978,7 @@ def test_anonymous_report_of_a_collection_is_accepted(db, cleanup, owner):
     assert body["collection"]["owner"]["username"] == owner.username
     # One target per row, and no verdict yet.
     assert body["event_id"] is None
-    assert body["reporter_user_id"] is None
+    assert body["reporter_id"] is None
     assert body["resolved_at"] is None
 
     db.expire_all()
@@ -995,7 +996,7 @@ def test_authenticated_report_of_a_collection_records_the_reporter(db, cleanup, 
         headers=login_as(client, stranger),
     )
     assert response.status_code == 201, response.text
-    assert response.json()["reporter_user_id"] == str(stranger.id)
+    assert response.json()["reporter_id"] == str(stranger.id)
     assert response.json()["details"] is None
 
 
@@ -1035,7 +1036,7 @@ def test_report_a_collection_rejects_over_long_details(db, cleanup, owner):
 
 def test_empty_collections_are_the_owners_view_only(db, cleanup, owner, stranger):
     filled = _make_collection(db, cleanup, owner=owner, title="Filled")
-    _add(db, filled, _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1)))
+    _add(db, filled, _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 5, 1)))
     _make_collection(db, cleanup, owner=owner, title="Empty")
 
     anonymous = client.get(f"/api/v1/users/{owner.username}/collections").json()
@@ -1058,7 +1059,7 @@ def test_empty_collections_are_the_owners_view_only(db, cleanup, owner, stranger
 def test_a_collection_whose_items_all_left_reads_as_empty(db, cleanup, owner):
     """The count is computed, so a row going away empties the shelf on its own."""
     collection = _make_collection(db, cleanup, owner=owner, title="Drained")
-    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
+    event = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 5, 1))
     _add(db, collection, event)
 
     event.deleted_at = datetime.now(UTC)
@@ -1077,7 +1078,7 @@ def test_profile_collections_404_on_unknown_user():
 def test_event_collections_report_membership_to_the_owner(db, cleanup, owner):
     holding = _make_collection(db, cleanup, owner=owner, title="Holding")
     _make_collection(db, cleanup, owner=owner, title="Other")
-    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
+    event = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 5, 1))
     _add(db, holding, event)
 
     body = client.get(
@@ -1091,13 +1092,13 @@ def test_event_collections_count_each_collection_on_the_showable_predicate(db, c
     """The count under a title is the one the collection's own page prints (same predicate)."""
     collection = _make_collection(db, cleanup, owner=owner, title="Holding")
     empty = _make_collection(db, cleanup, owner=owner, title="Other")
-    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
+    event = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 5, 1))
     _add(db, collection, event)
-    _add(db, collection, _make_event(db, cleanup, owner=owner, event_date=date(2026, 6, 1)))
+    _add(db, collection, _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 6, 1)))
     _add(
         db,
         collection,
-        _make_event(db, cleanup, owner=owner, event_date=date(2020, 1, 1), hidden=True),
+        _make_event(db, cleanup, owner=owner, occurred_date=date(2020, 1, 1), hidden=True),
     )
 
     body = client.get(
@@ -1112,7 +1113,7 @@ def test_event_collections_count_each_collection_on_the_showable_predicate(db, c
 
 
 def test_event_collections_are_owner_only(db, cleanup, owner, stranger):
-    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
+    event = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 5, 1))
     assert client.get(f"/api/v1/events/{event.id}/collections").status_code == 401
     assert (
         client.get(
@@ -1122,7 +1123,7 @@ def test_event_collections_are_owner_only(db, cleanup, owner, stranger):
     )
 
 
-def _add_media(db, event: Event, name: str, media_type: str = "image", role: str = "source"):
+def _add_media(db, event: Event, name: str, kind: str = "image", role: str = "source"):
     """Give one event a media row the card rule may pick."""
     db.add(
         Media(
@@ -1130,7 +1131,7 @@ def _add_media(db, event: Event, name: str, media_type: str = "image", role: str
             event_id=event.id,
             role=role,
             storage_url=f"https://media.example.com/{name}",
-            media_type=media_type,
+            kind=kind,
         )
     )
 
@@ -1143,19 +1144,19 @@ def _tile_urls(collection: Collection) -> list[str]:
 def test_mosaic_is_empty_without_media(db, cleanup, owner):
     """An item with nothing a card may show contributes no tile, so the collection wears the placeholder."""
     collection = _make_collection(db, cleanup, owner=owner)
-    _add(db, collection, _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1)))
+    _add(db, collection, _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 3, 1)))
     assert client.get(f"/api/v1/collections/{collection.id}").json()["cover"] == []
 
 
 def test_mosaic_of_one_item_is_one_tile(db, cleanup, owner):
     collection = _make_collection(db, cleanup, owner=owner)
-    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
+    event = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 3, 1))
     _add_media(db, event, "only.jpg")
     _add(db, collection, event)
     db.commit()
 
     assert client.get(f"/api/v1/collections/{collection.id}").json()["cover"] == [
-        {"url": "https://media.example.com/only.jpg", "media_type": "image", "role": "source"}
+        {"url": "https://media.example.com/only.jpg", "kind": "image", "role": "source"}
     ]
 
 
@@ -1163,7 +1164,7 @@ def test_mosaic_takes_the_first_four_items_in_chronological_order(db, cleanup, o
     """Six items, four tiles: the walk follows the collection page's order and stops at four."""
     collection = _make_collection(db, cleanup, owner=owner)
     for day in range(1, 7):
-        event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, day))
+        event = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 3, day))
         _add_media(db, event, f"day{day}.jpg")
         _add(db, collection, event)
     db.commit()
@@ -1176,11 +1177,11 @@ def test_mosaic_takes_the_first_four_items_in_chronological_order(db, cleanup, o
 def test_mosaic_skips_a_graphic_item_and_keeps_walking(db, cleanup, owner):
     """A flagged item is stepped over, so no reader meets death or injury on a card and the mosaic fills from later items."""
     collection = _make_collection(db, cleanup, owner=owner)
-    graphic = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1), is_graphic=True)
+    graphic = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 3, 1), is_graphic=True)
     _add_media(db, graphic, "graphic.jpg")
     _add(db, collection, graphic)
     for day in (2, 3):
-        event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, day))
+        event = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 3, day))
         _add_media(db, event, f"day{day}.jpg")
         _add(db, collection, event)
     db.commit()
@@ -1194,18 +1195,18 @@ def test_mosaic_skips_a_graphic_item_and_keeps_walking(db, cleanup, owner):
 def test_a_tile_prefers_an_image_over_a_clip_on_the_same_item(db, cleanup, owner):
     """A tile never plays: an item with a source clip and a proof image offers the picture; a clip-only item tiles as a clip."""
     collection = _make_collection(db, cleanup, owner=owner)
-    both = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
-    _add_media(db, both, "footage.mp4", media_type="video")
+    both = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 3, 1))
+    _add_media(db, both, "footage.mp4", kind="video")
     _add_media(db, both, "proof.jpg", role="proof")
-    clip_only = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 2))
-    _add_media(db, clip_only, "clip.mp4", media_type="video")
+    clip_only = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 3, 2))
+    _add_media(db, clip_only, "clip.mp4", kind="video")
     for event in (both, clip_only):
         _add(db, collection, event)
     db.commit()
 
     assert client.get(f"/api/v1/collections/{collection.id}").json()["cover"] == [
-        {"url": "https://media.example.com/proof.jpg", "media_type": "image", "role": "proof"},
-        {"url": "https://media.example.com/clip.mp4", "media_type": "video", "role": "source"},
+        {"url": "https://media.example.com/proof.jpg", "kind": "image", "role": "proof"},
+        {"url": "https://media.example.com/clip.mp4", "kind": "video", "role": "source"},
     ]
 
 
@@ -1214,8 +1215,8 @@ def test_a_tile_off_a_proof_image_says_so(db, cleanup, owner):
 
     Proof images have no display derivatives (``services/storage.upload_proof_image``), so the role tells a client to read the original, not a ``_thumb`` that was never written (403)."""
     collection = _make_collection(db, cleanup, owner=owner)
-    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
-    _add_media(db, event, "footage.mp4", media_type="video")
+    event = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 3, 1))
+    _add_media(db, event, "footage.mp4", kind="video")
     _add_media(db, event, "inline.jpg", role="proof")
     _add(db, collection, event)
     db.commit()
@@ -1228,7 +1229,7 @@ def test_a_tile_off_a_proof_image_says_so(db, cleanup, owner):
 def test_a_tile_off_source_footage_says_source(db, cleanup, owner):
     """An item tiling on its own picture carries ``source``, whose upload path writes the ``_hero`` / ``_thumb`` siblings."""
     collection = _make_collection(db, cleanup, owner=owner)
-    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
+    event = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 3, 1))
     _add_media(db, event, "shot.jpg")
     _add(db, collection, event)
     db.commit()
@@ -1240,18 +1241,18 @@ def test_a_tile_off_source_footage_says_source(db, cleanup, owner):
 def test_mosaic_drops_a_withheld_or_closed_item(db, cleanup, owner):
     """The tiles read the shared predicate, so a taken-down or closed row leaves the card with no membership write."""
     collection = _make_collection(db, cleanup, owner=owner)
-    hidden = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1), hidden=True)
+    hidden = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 3, 1), hidden=True)
     _add_media(db, hidden, "hidden.jpg")
     closed = _make_event(
         db,
         cleanup,
         owner=owner,
         status=STATUS_CLOSED,
-        event_date=date(2026, 3, 2),
+        occurred_date=date(2026, 3, 2),
         before_closed_status=STATUS_REQUESTED,
     )
     _add_media(db, closed, "closed.jpg")
-    shown = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 3))
+    shown = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 3, 3))
     _add_media(db, shown, "shown.jpg")
     for event in (hidden, closed, shown):
         _add(db, collection, event)
@@ -1295,8 +1296,8 @@ def test_tags_are_the_union_of_the_items_tags(db, cleanup, owner, make_tag):
     curated = make_tag("drone", category="capture_source")
 
     collection = _make_collection(db, cleanup, owner=owner)
-    first = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
-    second = _make_event(db, cleanup, owner=owner, event_date=date(2026, 4, 1))
+    first = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 3, 1))
+    second = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 4, 1))
     first.tags = [shared, only_first, curated]
     second.tags = [shared, only_second]
     _add(db, collection, first)
@@ -1323,9 +1324,9 @@ def test_an_item_leaving_the_collectable_set_takes_its_tags_with_it(db, cleanup,
     hidden_only = make_tag("hiddenonly")
 
     collection = _make_collection(db, cleanup, owner=owner)
-    standing = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
-    leaving = _make_event(db, cleanup, owner=owner, event_date=date(2026, 4, 1))
-    withheld = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
+    standing = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 3, 1))
+    leaving = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 4, 1))
+    withheld = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 5, 1))
     standing.tags = [kept]
     leaving.tags = [closed_only]
     withheld.tags = [hidden_only]
@@ -1355,7 +1356,7 @@ def test_a_collection_holding_nothing_tagged_has_no_tags(db, cleanup, owner):
     """An empty collection and one whose items carry no tag both read ``[]``."""
     empty = _make_collection(db, cleanup, owner=owner, title="Empty")
     untagged = _make_collection(db, cleanup, owner=owner, title="Untagged")
-    _add(db, untagged, _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1)))
+    _add(db, untagged, _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 3, 1)))
 
     assert client.get(f"/api/v1/collections/{empty.id}").json()["tags"] == []
     assert client.get(f"/api/v1/collections/{untagged.id}").json()["tags"] == []
@@ -1367,7 +1368,7 @@ def test_every_read_surface_carries_the_same_tags(db, cleanup, owner, make_tag):
     free = make_tag("corridor")
 
     collection = _make_collection(db, cleanup, owner=owner, title="Shelved")
-    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
+    event = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 3, 1))
     event.tags = [curated, free]
     _add(db, collection, event)
     db.commit()
@@ -1386,7 +1387,7 @@ def test_hard_deleting_the_owner_drops_the_collections_and_their_memberships(
     db, cleanup, owner, admin
 ):
     collection = _make_collection(db, cleanup, owner=owner)
-    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
+    event = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 5, 1))
     _add(db, collection, event)
     client.cookies.clear()
     # Read the ids before the erasure (the session's copies of deleted rows cannot answer).

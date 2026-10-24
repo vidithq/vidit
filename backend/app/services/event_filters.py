@@ -185,7 +185,7 @@ def parse_optional_iso_date(raw: str | None, *, field: str) -> date | None:
 # Hand-kept FE mirror: ``lib/search.ts::AUTHOR_FILTER_RE``.
 AUTHOR_FILTER_PATTERN = r"^[A-Za-z0-9_-]{1,50}$"
 
-# Accepted ``media`` filter values (the ``Media.media_type`` domain); a typo returns 422.
+# Accepted ``media`` filter values (the ``Media.kind`` domain); a typo returns 422.
 MEDIA_TYPES = frozenset({"image", "video"})
 
 # Accepted ``status`` filter values (the ``Event.status`` domain); a typo returns 422. The
@@ -245,7 +245,7 @@ def view_predicate(view: str):
 
 
 def validate_media_types(media: list[str] | None) -> None:
-    """422 on a ``media`` value outside the ``Media.media_type`` domain."""
+    """422 on a ``media`` value outside the ``Media.kind`` domain."""
     if media and not set(media) <= MEDIA_TYPES:
         raise HTTPException(
             status_code=422,
@@ -335,7 +335,7 @@ def bbox_predicate(bounds: tuple[float, float, float, float]):
     """
     south, west, north, east = bounds
     return ST_Within(
-        Event.event_coords,
+        Event.coords,
         ST_MakeEnvelope(west, south, east, north, 4326),
     )
 
@@ -429,8 +429,8 @@ def apply_filters(
     conflict: list[str] | None = None,
     capture_source: list[str] | None = None,
     tag: list[str] | None = None,
-    event_date_from: str | None = None,
-    event_date_to: str | None = None,
+    occurred_date_from: str | None = None,
+    occurred_date_to: str | None = None,
     submitted_from: str | None = None,
     submitted_to: str | None = None,
     author: str | None = None,
@@ -457,7 +457,7 @@ def apply_filters(
     ``approved``, ``approved_by`` and ``approved_by_org`` keep approved events (see
     :func:`approval_predicates`).
 
-    ``has_coords`` splits on ``event_coords``: ``True`` keeps rows with a point (a request's
+    ``has_coords`` splits on ``coords``: ``True`` keeps rows with a point (a request's
     location guess), ``False`` the blind ones, ``None`` both.
     """
     query = query.filter(*visible_events(), view_predicate(view))
@@ -470,15 +470,15 @@ def apply_filters(
     )
 
     # Parse dates up front so a typo is a 422, not a Postgres ``InvalidDatetimeFormat`` 500.
-    parsed_event_from = parse_optional_iso_date(event_date_from, field="event_date_from")
-    parsed_event_to = parse_optional_iso_date(event_date_to, field="event_date_to")
+    parsed_event_from = parse_optional_iso_date(occurred_date_from, field="occurred_date_from")
+    parsed_event_to = parse_optional_iso_date(occurred_date_to, field="occurred_date_to")
     parsed_submitted_from = parse_optional_iso_date(submitted_from, field="submitted_from")
     parsed_submitted_to = parse_optional_iso_date(submitted_to, field="submitted_to")
 
     if parsed_event_from:
-        query = query.filter(Event.event_date >= parsed_event_from)
+        query = query.filter(Event.occurred_date >= parsed_event_from)
     if parsed_event_to:
-        query = query.filter(Event.event_date <= parsed_event_to)
+        query = query.filter(Event.occurred_date <= parsed_event_to)
 
     if parsed_submitted_from:
         query = query.filter(Event.created_at >= parsed_submitted_from)
@@ -491,7 +491,7 @@ def apply_filters(
 
     if media:
         # EXISTS, so an event with several attachments isn't row-multiplied.
-        query = query.filter(Event.media.any(Media.media_type.in_(media)))
+        query = query.filter(Event.media.any(Media.kind.in_(media)))
 
     query = query.filter(
         *approval_predicates(
@@ -503,9 +503,7 @@ def apply_filters(
         query = query.filter(bbox_predicate(parse_bbox(bbox)))
 
     if has_coords is not None:
-        query = query.filter(
-            Event.event_coords.isnot(None) if has_coords else Event.event_coords.is_(None)
-        )
+        query = query.filter(Event.coords.isnot(None) if has_coords else Event.coords.is_(None))
 
     return query
 
@@ -521,8 +519,8 @@ class EventFilters:
     conflict: list[str] | None = None
     capture_source: list[str] | None = None
     tag: list[str] | None = None
-    event_date_from: str | None = None
-    event_date_to: str | None = None
+    occurred_date_from: str | None = None
+    occurred_date_to: str | None = None
     submitted_from: str | None = None
     submitted_to: str | None = None
     author: str | None = None

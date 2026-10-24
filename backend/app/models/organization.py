@@ -66,7 +66,7 @@ class Organization(Base):
         literal_check(
             "approval_request_audience",
             ApprovalRequestAudience,
-            "ck_organizations_approval_request_audience",
+            "ck_organizations_approval_request_audience_valid",
         ),
     )
 

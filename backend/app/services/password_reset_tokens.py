@@ -16,7 +16,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import CursorResult, update
 from sqlalchemy.orm import Session
 
-from app.models.auth_token import AuthToken
+from app.models.password_reset_token import PasswordResetToken
 from app.services.auth import hash_token
 
 # 32 bytes = 256 bits of entropy, well above the 128-bit guess-resistance floor.
@@ -34,7 +34,7 @@ def mint(
     (an email failure leaves no orphan token row). Caller commits.
     """
     raw = secrets.token_urlsafe(_TOKEN_BYTES)
-    row = AuthToken(
+    row = PasswordResetToken(
         user_id=user_id,
         token_hash=hash_token(raw),
         expires_at=datetime.now(UTC) + timedelta(minutes=ttl_minutes),
@@ -43,7 +43,7 @@ def mint(
     return raw
 
 
-def consume(db: Session, raw_token: str) -> AuthToken | None:
+def consume(db: Session, raw_token: str) -> PasswordResetToken | None:
     """Validate and single-use-consume the token. Returns the row, or None.
 
     One atomic UPDATE ... WHERE consumed_at IS NULL ... RETURNING. A SELECT-then-mutate would
@@ -56,14 +56,14 @@ def consume(db: Session, raw_token: str) -> AuthToken | None:
 
     now = datetime.now(UTC)
     stmt = (
-        update(AuthToken)
+        update(PasswordResetToken)
         .where(
-            AuthToken.token_hash == hash_token(raw_token),
-            AuthToken.consumed_at.is_(None),
-            AuthToken.expires_at >= now,
+            PasswordResetToken.token_hash == hash_token(raw_token),
+            PasswordResetToken.consumed_at.is_(None),
+            PasswordResetToken.expires_at >= now,
         )
         .values(consumed_at=now)
-        .returning(AuthToken)
+        .returning(PasswordResetToken)
     )
     row = db.execute(stmt).scalar_one_or_none()
     return row
@@ -78,11 +78,11 @@ def revoke_all_live_for_user(db: Session, user_id: uuid.UUID) -> int:
 
     now = datetime.now(UTC)
     stmt = (
-        update(AuthToken)
+        update(PasswordResetToken)
         .where(
-            AuthToken.user_id == user_id,
-            AuthToken.consumed_at.is_(None),
-            AuthToken.expires_at >= now,
+            PasswordResetToken.user_id == user_id,
+            PasswordResetToken.consumed_at.is_(None),
+            PasswordResetToken.expires_at >= now,
         )
         .values(consumed_at=now)
     )

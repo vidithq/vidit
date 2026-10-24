@@ -25,7 +25,7 @@ def thumbnail_media_criteria() -> ColumnElement[bool]:
     """
     return or_(
         Media.role == "source",
-        and_(Media.role == "proof", Media.media_type == "image"),
+        and_(Media.role == "proof", Media.kind == "image"),
     )
 
 
@@ -35,6 +35,6 @@ def pick_thumbnail(rows: Iterable[Media]) -> Media | None:
     for m in rows:
         if m.role == "source":
             return m
-        if proof_image is None and m.role == "proof" and m.media_type == "image":
+        if proof_image is None and m.role == "proof" and m.kind == "image":
             proof_image = m
     return proof_image

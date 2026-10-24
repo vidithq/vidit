@@ -165,7 +165,7 @@ def search_geolocations(
     ids, highlight_by_id, total = _search_events(
         db,
         Event.status.in_((STATUS_GEOLOCATED, STATUS_DETECTED)),
-        Event.event_coords.isnot(None),
+        Event.coords.isnot(None),
         query=query,
         limit=limit,
         view="located",
@@ -178,8 +178,8 @@ def search_geolocations(
     geos = (
         db.query(
             Event,
-            func.ST_Y(Event.event_coords).label("lat"),
-            func.ST_X(Event.event_coords).label("lng"),
+            func.ST_Y(Event.coords).label("lat"),
+            func.ST_X(Event.coords).label("lng"),
         )
         .options(
             joinedload(Event.owner),
@@ -206,7 +206,7 @@ def search_geolocations(
                 "title_highlight": highlight_by_id[hit_id],
                 "lat": row.lat,
                 "lng": row.lng,
-                "event_date": geo.event_date,
+                "occurred_date": geo.occurred_date,
                 "is_graphic": geo.is_graphic,
                 "status": geo.status,
                 "owner": geo.owner,

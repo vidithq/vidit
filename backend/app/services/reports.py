@@ -158,7 +158,7 @@ def _file_report(
     target: _ReportTarget,
     reason: ContentReportReason,
     details: str | None,
-    reporter_user_id: uuid.UUID | None,
+    reporter_id: uuid.UUID | None,
     reporter_username: str | None,
     background_tasks: BackgroundTasks,
 ) -> ContentReport:
@@ -174,7 +174,7 @@ def _file_report(
         collection_id=target.collection_id,
         reason=reason,
         details=details,
-        reporter_user_id=reporter_user_id,
+        reporter_id=reporter_id,
     )
     db.add(report)
     db.commit()
@@ -204,13 +204,13 @@ def create_event_report(
     event_id: uuid.UUID,
     reason: ContentReportReason,
     details: str | None,
-    reporter_user_id: uuid.UUID | None,
+    reporter_id: uuid.UUID | None,
     reporter_username: str | None,
     background_tasks: BackgroundTasks,
 ) -> ContentReport:
     """File one report against a live event.
 
-    ``reporter_user_id`` is ``None`` for anonymous viewers; reporting is open
+    ``reporter_id`` is ``None`` for anonymous viewers; reporting is open
     to them. A missing, soft-deleted, or withheld event raises
     :class:`EventNotFoundError` (404) alike.
     """
@@ -231,7 +231,7 @@ def create_event_report(
         ),
         reason=reason,
         details=details,
-        reporter_user_id=reporter_user_id,
+        reporter_id=reporter_id,
         reporter_username=reporter_username,
         background_tasks=background_tasks,
     )
@@ -243,7 +243,7 @@ def create_collection_report(
     collection_id: uuid.UUID,
     reason: ContentReportReason,
     details: str | None,
-    reporter_user_id: uuid.UUID | None,
+    reporter_id: uuid.UUID | None,
     reporter_username: str | None,
     background_tasks: BackgroundTasks,
 ) -> ContentReport:
@@ -274,7 +274,7 @@ def create_collection_report(
         ),
         reason=reason,
         details=details,
-        reporter_user_id=reporter_user_id,
+        reporter_id=reporter_id,
         reporter_username=reporter_username,
         background_tasks=background_tasks,
     )
@@ -423,7 +423,7 @@ def resolve_report(
 
     report.resolved_at = datetime.now(UTC)
     report.resolution = resolution
-    report.resolved_by = actor_id
+    report.resolved_by_id = actor_id
     log_admin_event(
         db,
         actor_id=actor_id,

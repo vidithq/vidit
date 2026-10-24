@@ -9,11 +9,11 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 
 # Lifecycle of one webhook-delivered mention. ``queued``: waiting for the
-# worker. ``processing``: claimed (an exception re-queues it; a worker crash
+# worker. ``running``: claimed (an exception re-queues it; a worker crash
 # strands it and the reconciliation poll re-delivers). ``done``: the pipeline
 # ran, whatever the ledger outcome (the ledger row is the retry path for a
 # ledgered ``failed``). ``failed``: attempt budget spent (poison-pill guard).
-BotWebhookEventStatus = Literal["queued", "processing", "done", "failed"]
+BotWebhookEventStatus = Literal["queued", "running", "done", "failed"]
 
 
 class BotWebhookEvent(Base):
@@ -32,11 +32,11 @@ class BotWebhookEvent(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     # The ``Mention`` dataclass as a dict, so a drain never re-reads (re-bills) the API.
-    mention: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
     status: Mapped[BotWebhookEventStatus] = mapped_column(
         String(10), nullable=False, default="queued"
     )
-    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),

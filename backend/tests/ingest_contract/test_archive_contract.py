@@ -126,10 +126,10 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
             assert row.source_url is None, typology
             assert row.source_posted_at is None, typology
 
-    # self_thread: provenance is the head permalink; event_date is the head's post date.
+    # self_thread: provenance is the head permalink; occurred_date is the head's post date.
     [thread_row] = _rows_for(db, owner, "self_thread")
     assert thread_row.detected_from_url == _head_url(owner, "self_thread")
-    assert thread_row.event_date == _fixture_event_date("self_thread")
+    assert thread_row.occurred_date == _fixture_occurred_date("self_thread")
 
     # mention_prefix: the title is the line as written, @mentions and coordinate included.
     [mention_row] = _rows_for(db, owner, "mention_prefix")
@@ -245,10 +245,10 @@ async def test_x_status_link_chase_persists_source_media(db, owner, tmp_path, mo
     assert row.source_url == expected["source_url"]
     source_media = db.query(Media).filter(Media.event_id == row.id, Media.role == "source").all()
     assert len(source_media) == 1
-    assert source_media[0].media_type == "video"
+    assert source_media[0].kind == "video"
     proof_media = db.query(Media).filter(Media.event_id == row.id, Media.role == "proof").all()
     assert len(proof_media) == 1
-    assert proof_media[0].media_type == "image"
+    assert proof_media[0].kind == "image"
 
 
 async def _run_telegram_chase(db, owner: User, tmp_path, monkeypatch, *, embed: Any) -> Event:
@@ -311,9 +311,9 @@ async def test_telegram_chase_fills_date_and_source_media(db, owner, tmp_path, m
     assert row.source_url == "https://t.me/somechannel/12345"
     assert row.source_posted_at == datetime.fromisoformat("2026-03-04T09:00:00+00:00")
     source = db.query(Media).filter(Media.event_id == row.id, Media.role == "source").all()
-    assert len(source) == 1 and source[0].media_type == "video"
+    assert len(source) == 1 and source[0].kind == "video"
     proof = db.query(Media).filter(Media.event_id == row.id, Media.role == "proof").all()
-    assert len(proof) == 2 and all(m.media_type == "image" for m in proof)
+    assert len(proof) == 2 and all(m.kind == "image" for m in proof)
 
 
 async def test_telegram_chase_sensitive_degrades_to_date_only(db, owner, tmp_path, monkeypatch):
@@ -328,7 +328,7 @@ async def test_telegram_chase_sensitive_degrades_to_date_only(db, owner, tmp_pat
     source = db.query(Media).filter(Media.event_id == row.id, Media.role == "source").all()
     assert len(source) == 0
     proof = db.query(Media).filter(Media.event_id == row.id, Media.role == "proof").all()
-    assert len(proof) == 2 and all(m.media_type == "image" for m in proof)
+    assert len(proof) == 2 and all(m.kind == "image" for m in proof)
 
 
 async def test_reimport_fills_a_detection_an_earlier_run_left_bare(
@@ -396,7 +396,7 @@ async def test_reimport_fills_a_detection_an_earlier_run_left_bare(
     assert row.source_posted_at == datetime.fromisoformat("2026-03-04T09:00:00+00:00")
     assert row.source_links == []
     source = db.query(Media).filter(Media.event_id == row.id, Media.role == "source").all()
-    assert len(source) == 1 and source[0].media_type == "video"
+    assert len(source) == 1 and source[0].kind == "video"
 
 
 def _bare_detection(tweet_id: str, permalink: str) -> Detection:
@@ -406,10 +406,10 @@ def _bare_detection(tweet_id: str, permalink: str) -> Detection:
         title="Geolocated airfield perimeter",
         proof_text="Geolocated airfield perimeter",
         source_url=None,
-        detected_from_tweet_id=int(tweet_id),
+        detected_from_post_id=int(tweet_id),
         detected_from_url=permalink,
         thread_tweet_ids=(int(tweet_id),),
-        event_date=date(2026, 3, 4),
+        occurred_date=date(2026, 3, 4),
         source_posted_at=None,
         detected_post_at=datetime.fromisoformat("2026-03-04T13:20:00+00:00"),
         secondary_source_urls=[],
@@ -459,8 +459,8 @@ def _media_roles(db, event: Event) -> dict[str, int]:
 
 
 def _media_types(db, event: Event) -> set[str]:
-    return {m.media_type for m in db.query(Media).filter(Media.event_id == event.id).all()}
+    return {m.kind for m in db.query(Media).filter(Media.event_id == event.id).all()}
 
 
-def _fixture_event_date(typology: str) -> date:
-    return date.fromisoformat(loader.load_expected(typology)["event_date"])
+def _fixture_occurred_date(typology: str) -> date:
+    return date.fromisoformat(loader.load_expected(typology)["occurred_date"])

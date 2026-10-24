@@ -87,7 +87,7 @@ def import_archive(
             db,
             owner=current_user,
             upload_key=body.upload_key,
-            post_estimate=body.post_estimate,
+            estimated_post_count=body.estimated_post_count,
         )
     except archive_jobs.StagedUploadError as exc:
         raise_typed_error(exc, _ARCHIVE_STATUS)

@@ -206,7 +206,7 @@ def test_delete_drops_unsent_deliveries_and_keeps_sent_ones(db, author, second_u
     kept = _notify(db, recipient=author, actor=second_user)
     queued = NotificationDelivery(notification_id=unsent.id)
     sent = NotificationDelivery(
-        notification_id=emailed.id, status="sent", sent_at=datetime.now(UTC)
+        notification_id=emailed.id, status="done", sent_at=datetime.now(UTC)
     )
     db.add_all([queued, sent])
     db.commit()

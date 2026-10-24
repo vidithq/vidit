@@ -95,7 +95,7 @@ def _make_request(
                 storage_url=(
                     f"http://localhost:8000/local-storage/request_uploads/{request.id}/x.jpg"
                 ),
-                media_type="image",
+                kind="image",
             )
         )
     db.commit()
@@ -203,7 +203,7 @@ def test_detail_returns_full_shape(db, author, free_tag):
     assert body["title"] == request.title
     assert body["source_url"] == request.source_url
     assert body["status"] == STATUS_REQUESTED
-    assert body["event_coords"] is None
+    assert body["coords"] is None
     assert body["owner"]["username"] == author.username
     assert any(tag["name"] == free_tag.name for tag in body["tags"])
     assert len(body["media"]) == 1
@@ -342,7 +342,7 @@ def test_create_happy_path(db, author, free_tag):
     assert response.status_code == 201, response.text
     body = response.json()
     assert body["status"] == STATUS_REQUESTED
-    assert body["event_coords"] is None
+    assert body["coords"] is None
     assert body["owner"]["username"] == author.username
     assert body["requested_by"]["username"] == author.username
     assert any(t["name"] == free_tag.name for t in body["tags"])
@@ -354,7 +354,7 @@ def test_create_happy_path(db, author, free_tag):
     # ``requested_by_id``, the invariant fulfilment relies on.
     row = db.query(Event).filter(Event.id == request_id).one()
     assert row.status == STATUS_REQUESTED
-    assert row.event_coords is None
+    assert row.coords is None
     assert row.requested_by_id == author.id
 
     db.query(Media).filter(Media.event_id == request_id).delete(synchronize_session=False)
@@ -379,7 +379,7 @@ def test_create_accepts_coordinate_guess(db, author):
     assert response.status_code == 201, response.text
     body = response.json()
     assert body["status"] == STATUS_REQUESTED
-    assert body["event_coords"] == {"lat": 48.5, "lng": 34.5}
+    assert body["coords"] == {"lat": 48.5, "lng": 34.5}
 
     request_id = uuid.UUID(body["id"])
     db.query(Media).filter(Media.event_id == request_id).delete(synchronize_session=False)
@@ -388,20 +388,20 @@ def test_create_accepts_coordinate_guess(db, author):
 
 
 def test_create_event_date_optional_source_required(db, author):
-    """``event_date`` is optional; ``source_posted_at`` is required."""
+    """``occurred_date`` is optional; ``source_posted_at`` is required."""
     with_dates = client.post(
         "/api/v1/events/requests",
         headers=login_as(client, author),
         data={
             "title": "Dated request",
             "source_url": "https://example.com/post/1",
-            "event_date": "2026-05-01",
+            "occurred_date": "2026-05-01",
             "source_posted_at": "2026-05-02T09:30",
         },
         files={"file": _tiny_jpeg()},
     )
     assert with_dates.status_code == 201, with_dates.text
-    assert with_dates.json()["event_date"] == "2026-05-01"
+    assert with_dates.json()["occurred_date"] == "2026-05-01"
     assert with_dates.json()["source_posted_at"].startswith("2026-05-02T09:30")
 
     without = client.post(
@@ -415,7 +415,7 @@ def test_create_event_date_optional_source_required(db, author):
         files={"file": _tiny_jpeg()},
     )
     assert without.status_code == 201, without.text
-    assert without.json()["event_date"] is None
+    assert without.json()["occurred_date"] is None
     assert without.json()["source_posted_at"].startswith("2026-05-02T09:30")
 
     for created in (with_dates.json(), without.json()):
@@ -460,7 +460,7 @@ def test_create_request_keeps_proof_image(db, author, tmp_path, monkeypatch):
     db.commit()
 
 
-def test_create_request_event_time_without_event_date(db, author):
+def test_create_request_event_time_without_occurred_date(db, author):
     """An hour-of-day is knowable before the day is."""
     response = client.post(
         "/api/v1/events/requests",
@@ -469,14 +469,14 @@ def test_create_request_event_time_without_event_date(db, author):
             "title": "Timed but undated",
             "source_url": "https://example.com/post/3",
             "source_posted_at": "2026-05-03T09:30",
-            "event_time": "14:30",
+            "occurred_time": "14:30",
         },
         files={"file": _tiny_jpeg()},
     )
     assert response.status_code == 201, response.text
     body = response.json()
-    assert body["event_date"] is None
-    assert body["event_time"].startswith("14:30")
+    assert body["occurred_date"] is None
+    assert body["occurred_time"].startswith("14:30")
 
     request_id = uuid.UUID(body["id"])
     db.query(Media).filter(Media.event_id == request_id).delete(synchronize_session=False)
@@ -534,20 +534,20 @@ def test_create_request_drops_unsafe_proof_image_src(db, author):
     db.commit()
 
 
-def test_create_rejects_invalid_event_date(author):
+def test_create_rejects_invalid_occurred_date(author):
     response = client.post(
         "/api/v1/events/requests",
         headers=login_as(client, author),
         data={
             "title": "x",
             "source_url": "https://example.com/post/1",
-            "event_date": "not-a-date",
+            "occurred_date": "not-a-date",
             "source_posted_at": "2026-05-01T12:00",
         },
         files={"file": _tiny_jpeg()},
     )
     assert response.status_code == 422
-    assert "event_date" in response.json()["detail"].lower()
+    assert "occurred_date" in response.json()["detail"].lower()
 
 
 def test_create_populates_sha256_on_media(db, author):
@@ -637,7 +637,7 @@ def _geolocate_fulfilment(client, request_id, fulfiller, conflict, *tags, **over
         "lat": "48.5",
         "lng": "34.5",
         "source_url": "https://example.com/post",
-        "event_date": "2026-05-01",
+        "occurred_date": "2026-05-01",
         "source_posted_at": "2026-05-01T12:00",
         "tag_ids": _required_tag_ids(*tags),
         "conflict_ids": json.dumps([str(conflict.id)]),
@@ -664,7 +664,7 @@ def test_geolocate_fulfils_requested_and_transfers_ownership(
     body = response.json()
     assert body["id"] == str(request_id)
     assert body["status"] == "geolocated"
-    assert body["event_coords"] == {"lat": 48.5, "lng": 34.5}
+    assert body["coords"] == {"lat": 48.5, "lng": 34.5}
     assert body["owner"]["username"] == second_user.username
     assert body["requested_by"]["username"] == author.username
     assert [g["username"] for g in body["geolocators"]] == [second_user.username]
@@ -674,7 +674,7 @@ def test_geolocate_fulfils_requested_and_transfers_ownership(
     assert row.status == STATUS_GEOLOCATED
     assert row.owner_id == second_user.id
     assert row.requested_by_id == author.id
-    assert row.event_coords is not None
+    assert row.coords is not None
     credit = db.query(EventGeolocator).filter(EventGeolocator.event_id == request_id).all()
     assert [c.user_id for c in credit] == [second_user.id]
 
@@ -751,7 +751,7 @@ def test_geolocate_rejects_second_source_on_top_of_kept_one(
             "lat": "48.5",
             "lng": "34.5",
             "source_url": "https://example.com/post",
-            "event_date": "2026-05-01",
+            "occurred_date": "2026-05-01",
             "source_posted_at": "2026-05-01T12:00",
             "tag_ids": _required_tag_ids(capture_source_tag),
             "conflict_ids": json.dumps([str(conflict.id)]),
@@ -799,7 +799,7 @@ def test_geolocate_fulfilment_blocked_without_required_tags(db, author, second_u
             "lat": "48.5",
             "lng": "34.5",
             "source_url": "https://example.com/post",
-            "event_date": "2026-05-01",
+            "occurred_date": "2026-05-01",
             "source_posted_at": "2026-05-01T12:00",
             "proof": proof_form_field(),
         },
@@ -830,7 +830,7 @@ def _edit_request(client, request_id, editor, **overrides):
         "title": "Edited title",
         "source_url": "https://example.com/post",
         "source_posted_at": "2026-05-02T09:30",
-        "event_date": "2026-05-02",
+        "occurred_date": "2026-05-02",
     }
     data.update(overrides)
     return client.post(
@@ -860,7 +860,7 @@ def test_edit_request_overwrites_in_place_without_a_version(db, author, free_tag
     assert body["status"] == STATUS_REQUESTED
     assert body["title"] == "Edited title"
     assert body["source_url"] == "https://example.com/second"
-    assert body["event_date"] == "2026-05-02"
+    assert body["occurred_date"] == "2026-05-02"
     assert body["secondary_source_urls"] == ["https://mirror.example/a"]
     assert [t["name"] for t in body["tags"]] == [free_tag.name]
     assert body["version_no"] == 1
@@ -884,14 +884,14 @@ def test_edit_request_moves_the_coordinate_guess(db, author):
 
     placed = _edit_request(client, request_id, author, lat="48.5", lng="34.5")
     assert placed.status_code == 200, placed.text
-    assert placed.json()["event_coords"] == {"lat": 48.5, "lng": 34.5}
+    assert placed.json()["coords"] == {"lat": 48.5, "lng": 34.5}
 
     cleared = _edit_request(client, request_id, author)
     assert cleared.status_code == 200, cleared.text
-    assert cleared.json()["event_coords"] is None
+    assert cleared.json()["coords"] is None
 
     db.expire_all()
-    assert db.query(Event).filter(Event.id == request_id).one().event_coords is None
+    assert db.query(Event).filter(Event.id == request_id).one().coords is None
 
 
 def test_edit_request_keeps_the_source_instant_the_bot_could_not_read(db, author):
@@ -984,20 +984,20 @@ def test_edit_request_keeps_a_stored_source_instant_the_form_omits(db, author):
     assert db.query(Event).filter(Event.id == request_id).one().source_posted_at == stored
 
 
-def test_edit_request_clears_the_event_date(db, author):
-    """``event_date`` is the one optional field an edit clears."""
+def test_edit_request_clears_the_occurred_date(db, author):
+    """``occurred_date`` is the one optional field an edit clears."""
     request = _make_request(db, author=author)
     request_id = request.id
-    dated = _edit_request(client, request_id, author, event_date="2026-05-02")
+    dated = _edit_request(client, request_id, author, occurred_date="2026-05-02")
     assert dated.status_code == 200, dated.text
-    assert dated.json()["event_date"] == "2026-05-02"
+    assert dated.json()["occurred_date"] == "2026-05-02"
 
-    cleared = _edit_request(client, request_id, author, event_date="")
+    cleared = _edit_request(client, request_id, author, occurred_date="")
     assert cleared.status_code == 200, cleared.text
-    assert cleared.json()["event_date"] is None
+    assert cleared.json()["occurred_date"] is None
 
     db.expire_all()
-    assert db.query(Event).filter(Event.id == request_id).one().event_date is None
+    assert db.query(Event).filter(Event.id == request_id).one().occurred_date is None
 
 
 def test_edit_request_cannot_unset_the_graphic_flag(db, author):
@@ -1046,7 +1046,7 @@ async def test_edit_request_loses_the_race_to_a_fulfilment(db, author):
     try:
         fulfilled = winner.query(Event).filter(Event.id == request_id).one()
         fulfilled.status = STATUS_GEOLOCATED
-        fulfilled.event_coords = from_shape(Point(37.8, 48.5), srid=4326)
+        fulfilled.coords = from_shape(Point(37.8, 48.5), srid=4326)
         fulfilled.geolocated_at = datetime.now(UTC)
         winner.commit()
     finally:
@@ -1174,8 +1174,8 @@ def test_edit_request_keeps_the_provenance_of_a_bot_opened_row(db, author):
     db.expire_all()
     edited = db.query(Event).filter(Event.id == request_id).one()
     assert edited.title == "Edited title"
-    assert edited.detected_from_tweet_id == provenance.tweet_id
+    assert edited.detected_from_post_id == provenance.tweet_id
     assert edited.detected_from_url == provenance.url
-    assert edited.detected_thread_tweet_ids == provenance.thread_tweet_ids
+    assert edited.detected_thread_post_ids == provenance.thread_tweet_ids
     assert edited.detected_via == "bot"
     assert edited.detected_post_at == provenance.post_at

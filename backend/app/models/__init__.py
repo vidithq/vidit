@@ -3,7 +3,6 @@ from app.models.approval import EventApproval
 from app.models.approval_request import ApprovalRequest
 from app.models.archive_import_job import ArchiveImportJob
 from app.models.auth_event import AuthEvent
-from app.models.auth_token import AuthToken
 from app.models.bot_mention import BotMention
 from app.models.bot_webhook_event import BotWebhookEvent
 from app.models.collection import Collection, CollectionEvent
@@ -21,6 +20,7 @@ from app.models.invite_code import InviteCode
 from app.models.media import Media
 from app.models.notification import Notification, NotificationDelivery
 from app.models.organization import Organization, OrganizationInvite, OrganizationMember
+from app.models.password_reset_token import PasswordResetToken
 from app.models.pending_registration import PendingRegistration
 from app.models.source_archive import SourceArchive
 from app.models.tag import Tag, event_tags
@@ -31,7 +31,7 @@ __all__ = [
     "AdminEvent",
     "ArchiveImportJob",
     "AuthEvent",
-    "AuthToken",
+    "PasswordResetToken",
     "BotMention",
     "BotWebhookEvent",
     "Collection",

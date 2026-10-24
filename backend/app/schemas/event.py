@@ -38,12 +38,12 @@ class ArchiveImportPresignRead(BaseModel):
 
 
 class ArchiveImportEnqueue(BaseModel):
-    """Body of the JSON enqueue. ``post_estimate`` is a cosmetic volume hint
-    (the worker stamps the exact ``progress_total``)."""
+    """Body of the JSON enqueue. ``estimated_post_count`` is a cosmetic volume hint
+    (the worker stamps the exact ``detection_count``)."""
 
     upload_key: str = Field(min_length=1, max_length=512)
     # Bounded so an oversized int is a 422, not a 500 at the Integer column.
-    post_estimate: int | None = Field(default=None, ge=1, le=10_000_000)
+    estimated_post_count: int | None = Field(default=None, ge=1, le=10_000_000)
 
 
 class ArchiveImportJobRead(BaseModel):
@@ -59,11 +59,11 @@ class ArchiveImportJobRead(BaseModel):
 
     id: uuid.UUID
     status: ArchiveImportJobStatus
-    # ``post_estimate`` is a display hint stamped at enqueue; ``progress_*`` is
+    # ``estimated_post_count`` is a display hint stamped at enqueue; ``progress_*`` is
     # the worker's live scan position once the detection count is exact.
-    post_estimate: int | None
-    progress_done: int
-    progress_total: int | None
+    estimated_post_count: int | None
+    processed_detection_count: int
+    detection_count: int | None
     created: int = Field(validation_alias="created_count")
     updated: int = Field(validation_alias="updated_count")
     skipped: int = Field(validation_alias="skipped_count")
@@ -217,7 +217,7 @@ class EventRead(BaseModel):
     # Nullable (a ``requested`` event may lack coordinates), present for every
     # ``geolocated`` row. Required-nullable: ``build_event_read`` always passes
     # it, so the key is always serialised.
-    event_coords: CoordsRead | None
+    coords: CoordsRead | None
     # Where the footage was shot from.
     capture_source_coords: CoordsRead | None
     # NULL only on a machine detection; ``requested`` / ``geolocated`` rows
@@ -235,11 +235,11 @@ class EventRead(BaseModel):
     archived_secondary_sources: list[ArchivedLinkRead | None]
     # Sanitised HTML (``services/sanitize.sanitize_html``).
     proof: str | None
-    event_date: date | None
+    occurred_date: date | None
     # UTC; NULL when the hour is unknown.
-    event_time: time | None
+    occurred_time: time | None
     # When the original source posted the media (UTC). NULL when unknown.
-    # Distinct from ``event_date`` and ``created_at``. Required-nullable.
+    # Distinct from ``occurred_date`` and ``created_at``. Required-nullable.
     source_posted_at: datetime | None
     created_at: datetime
     # When the row became ``geolocated``: the date credited to version 1 on the
@@ -289,9 +289,9 @@ class EventRead(BaseModel):
 class EventList(BaseModel):
     id: uuid.UUID
     title: str
-    # Required-nullable like ``EventRead.event_coords``.
-    event_coords: CoordsRead | None
-    event_date: date | None
+    # Required-nullable like ``EventRead.coords``.
+    coords: CoordsRead | None
+    occurred_date: date | None
     # See ``EventRead.is_graphic``.
     is_graphic: bool
     # See ``EventRead.status``.
@@ -373,9 +373,9 @@ class PossibleDuplicateRead(BaseModel):
     title: str
     # Always located: the query filters ``status IN (geolocated, detected)`` and
     # skips NULL-coordinate rows.
-    event_coords: CoordsRead
+    coords: CoordsRead
     # Nullable but always serialised (``duplicates.list_possible_duplicates``).
-    event_date: date | None
+    occurred_date: date | None
     # A ``detected`` candidate may carry no source. Required-nullable.
     source_url: str | None
     # Geodesic distance in metres from the caller-supplied (lat, lng); float so

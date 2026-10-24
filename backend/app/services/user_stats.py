@@ -37,7 +37,7 @@ def _month_keys(earliest: date, latest: date) -> list[str]:
     """Every ``YYYY-MM`` key from ``earliest`` to ``latest``, oldest first.
 
     Cut to the :data:`MAX_ACTIVITY_YEARS` most recent years. The late end is
-    clamped to today because the write path accepts any ISO ``event_date``: a
+    clamped to today because the write path accepts any ISO ``occurred_date``: a
     mistyped ``2925-06-01`` would otherwise push every real event out of the
     window. A span of only future dates returns an empty grid.
     """
@@ -117,9 +117,9 @@ def get_user_stats(db: Session, *, user_id: uuid.UUID) -> UserStatsRead:
     other_hosts_count = sum(count for _, count in ranked[TOP_N:])
 
     # The window is the analyst's own coverage, not a fixed recent window.
-    dated = (*live, Event.event_date.isnot(None))
+    dated = (*live, Event.occurred_date.isnot(None))
     earliest, latest = (
-        db.query(func.min(Event.event_date), func.max(Event.event_date)).filter(*dated).one()
+        db.query(func.min(Event.occurred_date), func.max(Event.occurred_date)).filter(*dated).one()
     )
 
     periods: list[str] = []
@@ -128,7 +128,7 @@ def get_user_stats(db: Session, *, user_id: uuid.UUID) -> UserStatsRead:
 
     by_period: dict[str, int] = {}
     if periods:
-        period_col = func.to_char(Event.event_date, "YYYY-MM")
+        period_col = func.to_char(Event.occurred_date, "YYYY-MM")
         by_period = dict(
             db.query(period_col, func.count(Event.id)).filter(*dated).group_by(period_col).all()
         )

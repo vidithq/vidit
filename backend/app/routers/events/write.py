@@ -80,9 +80,9 @@ def create_event(
     # Optional; NULL reads as "Unknown". No ``max_length``: ``date.fromisoformat``
     # is the source of truth (a cap of 10 would reject ``2026-05-01T00:00:00``
     # with a generic 422).
-    event_date: str | None = Form(None),
+    occurred_date: str | None = Form(None),
     # Optional hour of day (HH:MM, UTC).
-    event_time: str | None = Form(None),
+    occurred_time: str | None = Form(None),
     # Required: ``YYYY-MM-DDTHH:MM``, read as UTC.
     source_posted_at: str = Form(...),
     proof: str | None = Form(None),
@@ -112,9 +112,9 @@ def create_event(
 
     # Form(str) doesn't validate date shape; a raw value would 500 at flush
     # after the S3 round-trips. 422 matches ``parse_bbox``.
-    parsed_event_date = parse_optional_iso_date(event_date, field="event_date")
+    parsed_occurred_date = parse_optional_iso_date(occurred_date, field="occurred_date")
     # Optional hour; the source instant is required, read as UTC.
-    parsed_event_time = parse_optional_iso_time(event_time, field="event_time")
+    parsed_occurred_time = parse_optional_iso_time(occurred_time, field="occurred_time")
     parsed_source_posted_at = parse_iso_datetime(source_posted_at, field="source_posted_at")
 
     proof_data = proof or None
@@ -135,8 +135,8 @@ def create_event(
                 source_snapshot_url=source_snapshot_url,
                 secondary_source_urls=secondary_source_urls,
                 secondary_snapshot_urls=secondary_snapshot_urls,
-                event_date=parsed_event_date,
-                event_time=parsed_event_time,
+                occurred_date=parsed_occurred_date,
+                occurred_time=parsed_occurred_time,
                 source_posted_at=parsed_source_posted_at,
                 proof_data=proof_data,
                 tag_ids=parsed_tag_ids,
@@ -176,8 +176,8 @@ def create_event_request(
     capture_source_lat: float | None = Form(None),
     capture_source_lng: float | None = Form(None),
     # Event date is optional (often unknown); the source timestamp is required.
-    event_date: str | None = Form(None),
-    event_time: str | None = Form(None),
+    occurred_date: str | None = Form(None),
+    occurred_time: str | None = Form(None),
     source_posted_at: str = Form(...),
     tag_ids: str | None = Form(None),
     conflict_ids: str | None = Form(None),
@@ -205,9 +205,9 @@ def create_event_request(
     proof_data = proof or None
     parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids", as_uuid=True)
     parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids", as_uuid=True)
-    # ``event_time`` may stand alone: an approximate hour is knowable without a date.
-    parsed_event_date = parse_optional_iso_date(event_date, field="event_date")
-    parsed_event_time = parse_optional_iso_time(event_time, field="event_time")
+    # ``occurred_time`` may stand alone: an approximate hour is knowable without a date.
+    parsed_occurred_date = parse_optional_iso_date(occurred_date, field="occurred_date")
+    parsed_occurred_time = parse_optional_iso_time(occurred_time, field="occurred_time")
     parsed_source_posted_at = parse_iso_datetime(source_posted_at, field="source_posted_at")
 
     try:
@@ -223,8 +223,8 @@ def create_event_request(
                 lng=lng,
                 capture_source_lat=capture_source_lat,
                 capture_source_lng=capture_source_lng,
-                event_date=parsed_event_date,
-                event_time=parsed_event_time,
+                occurred_date=parsed_occurred_date,
+                occurred_time=parsed_occurred_time,
                 source_posted_at=parsed_source_posted_at,
                 tag_ids=parsed_tag_ids,
                 conflict_ids=parsed_conflict_ids,
@@ -243,8 +243,8 @@ def create_event_request(
     # Project the optional guess in Python rather than a second ST_X/ST_Y query.
     guess_lat: float | None = None
     guess_lng: float | None = None
-    if geo.event_coords is not None:
-        point = cast(Point, to_shape(geo.event_coords))
+    if geo.coords is not None:
+        point = cast(Point, to_shape(geo.coords))
         guess_lat, guess_lng = point.y, point.x
     capture_lat, capture_lng = _capture_coords(geo)
     return build_event_read(

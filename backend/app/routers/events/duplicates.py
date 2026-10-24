@@ -78,7 +78,7 @@ def list_possible_duplicates(
     lat: float = Query(..., ge=-90, le=90),
     lng: float = Query(..., ge=-180, le=180),
     source_url: str | None = Query(None, max_length=2048),
-    event_date: str | None = Query(None, max_length=32),
+    occurred_date: str | None = Query(None, max_length=32),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -88,7 +88,7 @@ def list_possible_duplicates(
     submitted; never blocks the submit.
 
     Match rule: within ~500m of (lat, lng) AND (same source host OR same
-    event_date). Coordinate-less rows never match. Authenticated-only so the
+    occurred_date). Coordinate-less rows never match. Authenticated-only so the
     proximity probe isn't exposed to anonymous scraping.
 
     A half-typed source URL disables the host leg and an unparseable date the
@@ -100,9 +100,9 @@ def list_possible_duplicates(
     host: str | None = _extract_host(source_url) if source_url else None
 
     parsed_date: date | None = None
-    if event_date:
+    if occurred_date:
         try:
-            parsed_date = date.fromisoformat(event_date)
+            parsed_date = date.fromisoformat(occurred_date)
         except ValueError:
             parsed_date = None
 
@@ -111,13 +111,13 @@ def list_possible_duplicates(
         return []
 
     # Geography cast so ST_DWithin measures metres, not degrees. It defeats the
-    # GIST index on `event_coords`, so this seqscans; add a functional index on
-    # `(event_coords::geography)` if it shows in slow-query logs.
+    # GIST index on `coords`, so this seqscans; add a functional index on
+    # `(coords::geography)` if it shows in slow-query logs.
     point_geog = cast(
         func.ST_SetSRID(func.ST_MakePoint(lng, lat), 4326),
         Geography,
     )
-    geo_geog = cast(Event.event_coords, Geography)
+    geo_geog = cast(Event.coords, Geography)
     distance_m = func.ST_Distance(geo_geog, point_geog).label("distance_m")
 
     # Annotated because mypy would infer the narrower type from the first append.
@@ -130,7 +130,7 @@ def list_possible_duplicates(
         # existing event recorded as secondary.
         match_clauses.append(Event.source_links.any(EventSourceLink.url.ilike(f"%{host}%")))
     if parsed_date is not None:
-        match_clauses.append(Event.event_date == parsed_date)
+        match_clauses.append(Event.occurred_date == parsed_date)
 
     # ``match_clauses`` is non-empty because of the early return above, which
     # keeps ``or_`` from collapsing to ``FALSE``; keep that guard.
@@ -138,8 +138,8 @@ def list_possible_duplicates(
     rows = (
         db.query(
             Event,
-            ST_Y(Event.event_coords).label("lat"),
-            ST_X(Event.event_coords).label("lng"),
+            ST_Y(Event.coords).label("lat"),
+            ST_X(Event.coords).label("lng"),
             distance_m,
         )
         .options(joinedload(Event.owner))
@@ -159,8 +159,8 @@ def list_possible_duplicates(
         PossibleDuplicateRead(
             id=geo.id,
             title=geo.title,
-            event_coords=CoordsRead(lat=row_lat, lng=row_lng),
-            event_date=geo.event_date,
+            coords=CoordsRead(lat=row_lat, lng=row_lng),
+            occurred_date=geo.occurred_date,
             source_url=geo.source_url,
             distance_m=float(dist),
             owner=geo.owner,

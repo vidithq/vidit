@@ -213,7 +213,7 @@ def test_batch_complete_reports_a_pointless_detection_as_coordinates_required(
 ):
     """An unplaced detection fails with the ``*_required`` code, not a malformed-input one."""
     pointless = _detection(db, author)
-    pointless.event_coords = None
+    pointless.coords = None
     db.commit()
 
     response = client.post(

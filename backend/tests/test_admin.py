@@ -64,7 +64,7 @@ def admin_user(db):
     # Reap this actor's admin events and redeemed invite codes so the row deletes without FK violations.
     db.expire_all()
     db.query(AdminEvent).filter(AdminEvent.actor_id == user_id).delete()
-    db.query(InviteCode).filter(InviteCode.used_by == user_id).delete()
+    db.query(InviteCode).filter(InviteCode.used_by_id == user_id).delete()
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -327,7 +327,7 @@ def test_delete_invite_code_revoked_but_unused_is_allowed(admin_user, db):
 def test_delete_invite_code_409_when_redeemed(admin_user, regular_user, db):
     invite = InviteCode(
         code=f"code{uuid.uuid4().hex[:12]}",
-        used_by=regular_user.id,
+        used_by_id=regular_user.id,
         used_at=datetime.now(UTC),
     )
     db.add(invite)
@@ -362,29 +362,29 @@ def test_list_invite_codes_carries_redeemer_onboarding_stats(admin_user, regular
     regular_user.x_handle = handle
     invite = InviteCode(
         code=f"code{uuid.uuid4().hex[:12]}",
-        used_by=regular_user.id,
+        used_by_id=regular_user.id,
         used_at=datetime.now(UTC),
     )
     job = ArchiveImportJob(
         owner_id=regular_user.id, zip_key=f"staging/{uuid.uuid4().hex}.zip", status="done"
     )
     mention = BotMention(
-        mention_tweet_id=uuid.uuid4().hex[:19],
-        author_handle=handle.upper(),
+        mention_post_id=uuid.uuid4().int >> 66,
+        author_x_handle=handle.upper(),
         outcome="created",
-        events_created=3,
+        created_event_count=3,
     )
     detected = Event(
         owner_id=regular_user.id,
         title=f"Detection {uuid.uuid4().hex[:8]}",
         status=STATUS_DETECTED,
         detected_at=datetime.now(UTC),
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
     )
     geolocated = Event(
         owner_id=regular_user.id,
         title=f"Located {uuid.uuid4().hex[:8]}",
-        event_coords=from_shape(Point(34.6, 48.6), srid=4326),
+        coords=from_shape(Point(34.6, 48.6), srid=4326),
         source_url="https://example.com/source",
         geolocated_at=datetime.now(UTC),
     )
@@ -419,7 +419,7 @@ def _redeem(db, user: User) -> InviteCode:
     """Bind a fresh invite code to ``user`` so the onboarding list carries them."""
     invite = InviteCode(
         code=f"code{uuid.uuid4().hex[:12]}",
-        used_by=user.id,
+        used_by_id=user.id,
         used_at=datetime.now(UTC),
     )
     db.add(invite)
@@ -509,7 +509,7 @@ def test_purge_detected_events_sweeps_detections_and_keeps_the_rest(admin_user, 
     geolocated = Event(
         owner_id=regular_user.id,
         title=f"Located {uuid.uuid4().hex[:8]}",
-        event_coords=from_shape(Point(34.6, 48.6), srid=4326),
+        coords=from_shape(Point(34.6, 48.6), srid=4326),
         source_url="https://example.com/source",
         geolocated_at=datetime.now(UTC),
     )
@@ -752,10 +752,10 @@ def geolocation(db, regular_user):
     geo = Event(
         owner_id=regular_user.id,
         title=f"Test geo {uuid.uuid4().hex[:8]}",
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com/source",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        event_date=date(2026, 5, 1),
+        occurred_date=date(2026, 5, 1),
         geolocated_at=datetime.now(UTC),
     )
     db.add(geo)
@@ -894,7 +894,7 @@ def test_hard_delete_sweeps_source_image_derivatives(admin_user, geolocation, db
             event_id=geo_id,
             role="source",
             storage_url=f"http://localhost:8000/local-storage/uploads/{geo_id}/photo.png",
-            media_type="image",
+            kind="image",
         )
     )
     db.commit()
@@ -1107,10 +1107,10 @@ def test_hard_delete_user_who_requested_a_fulfilled_event(admin_user, regular_us
         owner_id=fulfiller.id,  # ownership transferred to the fulfiller at geolocate
         requested_by_id=regular_user.id,  # the requester we will hard-delete
         title=f"Fulfilled {uuid.uuid4().hex[:8]}",
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com/source",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        event_date=date(2026, 5, 1),
+        occurred_date=date(2026, 5, 1),
         geolocated_at=datetime.now(UTC),
     )
     db.add(event)
@@ -1151,10 +1151,10 @@ def test_soft_delete_user_hides_requested_by_from_reads(admin_user, regular_user
         owner_id=fulfiller.id,
         requested_by_id=regular_user.id,
         title=f"Fulfilled {uuid.uuid4().hex[:8]}",
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com/source",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        event_date=date(2026, 5, 1),
+        occurred_date=date(2026, 5, 1),
         geolocated_at=datetime.now(UTC),
     )
     db.add(event)
@@ -1193,7 +1193,7 @@ def test_hard_delete_user_preserves_invite_codes(admin_user, db):
     db.commit()
     user_id = user.id
 
-    invite = InviteCode(code=f"audit-code-{uuid.uuid4().hex}", used_by=user_id)
+    invite = InviteCode(code=f"audit-code-{uuid.uuid4().hex}", used_by_id=user_id)
     db.add(invite)
     db.commit()
     invite_id = invite.id
@@ -1208,7 +1208,7 @@ def test_hard_delete_user_preserves_invite_codes(admin_user, db):
     assert db.query(User).filter(User.id == user_id).first() is None
     surviving = db.query(InviteCode).filter(InviteCode.id == invite_id).first()
     assert surviving is not None
-    assert surviving.used_by is None
+    assert surviving.used_by_id is None
 
     db.delete(surviving)
     db.commit()
@@ -1349,7 +1349,7 @@ def _seed_request(db, *, author_id: uuid.UUID) -> uuid.UUID:
             event_id=request.id,
             role="source",
             storage_url=(f"http://localhost:8000/local-storage/request_uploads/{request.id}/x.jpg"),
-            media_type="image",
+            kind="image",
         )
     )
     db.commit()
@@ -1497,7 +1497,7 @@ def test_reject_rate_counts_closed_detections_not_geolocated(
         title=f"Geolocated {uuid.uuid4().hex[:8]}",
         status=STATUS_GEOLOCATED,
         geolocated_at=now,
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com/source",
         detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
     )
@@ -1567,7 +1567,7 @@ def test_reject_rate_ignores_a_bot_opened_request(admin_user, regular_user, even
         status=STATUS_GEOLOCATED,
         geolocated_at=now,
         requested_at=now,
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://t.me/example_channel/352",
         detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
         detected_via="bot",
@@ -1610,14 +1610,14 @@ def test_pending_quality_counts_missing_pieces(admin_user, regular_user, events_
                 event_id=complete.id,
                 role="source",
                 storage_url=f"http://localhost:8000/local-storage/x/{complete.id}/s.jpg",
-                media_type="image",
+                kind="image",
             ),
             Media(
                 sha256=fake_sha256(),
                 event_id=complete.id,
                 role="proof",
                 storage_url=f"http://localhost:8000/local-storage/x/{complete.id}/p.jpg",
-                media_type="image",
+                kind="image",
             ),
         ]
     )
@@ -1686,7 +1686,7 @@ def test_reject_rate_ignores_soft_deleted_geolocated(admin_user, regular_user, e
         title=f"Soft-deleted geo {uuid.uuid4().hex[:8]}",
         status=STATUS_GEOLOCATED,
         geolocated_at=now,
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com/source",
         detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
         deleted_at=now,
@@ -1724,14 +1724,14 @@ def test_pending_proof_video_counts_as_missing_proof_image(
                 event_id=video_proof.id,
                 role="source",
                 storage_url=f"http://localhost:8000/local-storage/x/{video_proof.id}/s.jpg",
-                media_type="image",
+                kind="image",
             ),
             Media(
                 sha256=fake_sha256(),
                 event_id=video_proof.id,
                 role="proof",
                 storage_url=f"http://localhost:8000/local-storage/x/{video_proof.id}/p.mp4",
-                media_type="video",
+                kind="video",
             ),
         ]
     )

@@ -39,7 +39,7 @@ InviteCodeStatus = Literal["active", "exhausted", "revoked", "expired"]
 class AdminInviteCodeCreate(BaseModel):
     """Body for `POST /admin/invite-codes`.
 
-    Every code is single-use, so the audit trail (`used_by`, `used_at`) is
+    Every code is single-use, so the audit trail (`used_by_id`, `used_at`) is
     unambiguous. ``x_handle`` optionally binds the code to an X handle that
     redemption copies onto the new account (same normalization as
     `PATCH /admin/users/{id}/x-handle`).
@@ -66,10 +66,10 @@ class AdminInviteRedeemerRead(BaseModel):
     email: str | None
     is_admin: bool
     x_handle: str | None
-    invite_minting_enabled: bool
+    is_invite_minting_enabled: bool
     # ``done`` archive-import jobs only.
     archives_imported: int
-    # Sum of ``bot_mentions.events_created`` for the account's X handle.
+    # Sum of ``bot_mentions.created_event_count`` for the account's X handle.
     # Historical: a later-deleted detection still counted.
     bot_detection_count: int
     # Live detections they own. The purge endpoint also sweeps soft-deleted
@@ -128,7 +128,7 @@ class AdminUserRead(BaseModel):
     email: str | None
     is_admin: bool
     x_handle: str | None
-    invite_minting_enabled: bool
+    is_invite_minting_enabled: bool
     # Who minted the code the account was created from (``User.sponsor``).
     sponsor: AuthorRef | None
     created_at: datetime

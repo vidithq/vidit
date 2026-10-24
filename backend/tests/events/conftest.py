@@ -115,7 +115,7 @@ def free_tag(db):
 
 @pytest.fixture
 def conflict(db):
-    row = Conflict(name=f"conflict-{uuid.uuid4().hex[:8]}", ongoing=True, source="manual")
+    row = Conflict(name=f"conflict-{uuid.uuid4().hex[:8]}", is_ongoing=True, origin="manual")
     db.add(row)
     db.commit()
     conflict_id = row.id

@@ -128,18 +128,18 @@ class Notification(Base):
     )
 
 
-# ``queued``: waiting for the worker. ``sending``: claimed, the provider call
-# under way or its outcome unknown; never retried, it turns ``failed`` once
-# stale. ``sent``: the provider accepted it. ``failed``: refused past the
-# attempt budget, or stale in ``sending``. ``skipped``: dropped unsent (the
-# switch went off, the address went away, the notification was hidden, or it
-# aged out in the queue).
-NotificationDeliveryStatus = Literal["queued", "sending", "sent", "failed", "skipped"]
+# The background queue vocabulary. ``queued``: waiting for the worker.
+# ``running``: claimed, the provider call under way or its outcome unknown;
+# never retried, it turns ``failed`` once stale. ``done``: the provider accepted
+# it. ``failed``: refused past the attempt budget, or stale in ``running``.
+# ``skipped``: dropped unsent (the switch went off, the account went away, the
+# notification was hidden, or it aged out in the queue).
+NotificationDeliveryStatus = Literal["queued", "running", "done", "failed", "skipped"]
 
 
 # What the sender reports for one row. ``sent``: the provider took it.
 # ``skipped``: nothing to send it to. ``refused``: a definite refusal, retried.
-# ``unknown``: it may have gone out, so the row stays ``sending`` and is never
+# ``unknown``: it may have gone out, so the row stays ``running`` and is never
 # retried.
 DeliveryOutcome = Literal["sent", "skipped", "refused", "unknown"]
 
@@ -159,13 +159,13 @@ class NotificationDelivery(Base):
         String(10), nullable=False, default="queued"
     )
     # Provider refusals so far; the row fails at ``MAX_ATTEMPTS``.
-    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
         nullable=False,
     )
-    # The latest claim: the stale clock while ``sending``, the retry clock once
+    # The latest claim: the stale clock while ``running``, the retry clock once
     # a refusal puts the row back in ``queued``.
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -192,6 +192,6 @@ class NotificationDelivery(Base):
         Index(
             "ix_notification_deliveries_sent_at",
             "sent_at",
-            postgresql_where="status = 'sent'",
+            postgresql_where="status = 'done'",
         ),
     )

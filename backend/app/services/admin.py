@@ -104,11 +104,11 @@ def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInvi
     bot_by_handle: dict[str, int] = (
         dict(
             db.query(
-                func.lower(BotMention.author_handle),
-                func.coalesce(func.sum(BotMention.events_created), 0),
+                func.lower(BotMention.author_x_handle),
+                func.coalesce(func.sum(BotMention.created_event_count), 0),
             )
-            .filter(func.lower(BotMention.author_handle).in_(handles))
-            .group_by(func.lower(BotMention.author_handle))
+            .filter(func.lower(BotMention.author_x_handle).in_(handles))
+            .group_by(func.lower(BotMention.author_x_handle))
             .all()
         )
         if handles
@@ -142,7 +142,7 @@ def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInvi
             email=u.email,
             is_admin=u.is_admin,
             x_handle=u.x_handle,
-            invite_minting_enabled=u.invite_minting_enabled,
+            is_invite_minting_enabled=u.is_invite_minting_enabled,
             archives_imported=archives.get(u.id, 0),
             bot_detection_count=bot_by_handle.get(u.x_handle, 0) if u.x_handle else 0,
             detected_count=by_status.get((u.id, STATUS_DETECTED), 0),
@@ -162,7 +162,7 @@ def serialize_invite_codes(db: Session, invites: list[InviteCode]) -> list[Admin
             expires_at=invite.expires_at,
             created_at=invite.created_at,
             status=invite_code_status(invite),
-            redeemer=redeemers.get(invite.used_by) if invite.used_by else None,
+            redeemer=redeemers.get(invite.used_by_id) if invite.used_by_id else None,
             used_at=invite.used_at,
             x_handle=invite.x_handle,
             sponsor=(
@@ -303,7 +303,7 @@ def delete_invite_code(
     invite = db.query(InviteCode).filter(InviteCode.id == invite_id).first()
     if invite is None:
         return False
-    if invite.used_by is not None:
+    if invite.used_by_id is not None:
         raise InviteCodeUsedError("A redeemed invite code cannot be deleted")
     log_admin_event(
         db,
@@ -393,8 +393,8 @@ def set_invite_minting(
     user = db.query(User).filter(User.id == user_id).with_for_update().first()
     if user is None or user.deleted_at is not None:
         raise UserNotFoundError("User not found")
-    if user.invite_minting_enabled != enabled:
-        user.invite_minting_enabled = enabled
+    if user.is_invite_minting_enabled != enabled:
+        user.is_invite_minting_enabled = enabled
         log_admin_event(
             db,
             actor_id=actor_id,
@@ -722,10 +722,10 @@ def hard_delete_user(
        to its earliest-joined live member
        (:func:`services.organizations.hand_over_manager_roles`), in the same transaction as
        step 1. Delete the analyst's own approvals; those they placed for an organization stay
-       the organization's, with ``reviewer_id`` set to NULL. Delete the user. ``auth_tokens``, their collections (and memberships), their
+       the organization's, with ``reviewer_id`` set to NULL. Delete the user. ``password_reset_tokens``, their collections (and memberships), their
        invitations and their contributor rows on other people's events cascade-drop;
-       ``admin_events.actor_id`` and ``invite_codes.used_by`` flip to NULL (migration
-       f1a3b5c7d9e0), as does ``invite_codes.created_by``, so invite-code rows outlive the
+       ``admin_events.actor_id`` and ``invite_codes.used_by_id`` flip to NULL (migration
+       f1a3b5c7d9e0), as does ``invite_codes.created_by_id``, so invite-code rows outlive the
        user as audit trail.
     5. Commit, then sweep S3 (see :func:`services.storage.sweep_keys`).
     """
@@ -859,7 +859,7 @@ def detection_quality_stats(db: Session) -> AdminDetectionStatsRead:
 
     pending = and_(Event.status == STATUS_DETECTED, Event.deleted_at.is_(None), machine)
     has_source = Event.media.any(Media.role == "source")
-    has_proof = Event.media.any(and_(Media.role == "proof", Media.media_type == "image"))
+    has_proof = Event.media.any(and_(Media.role == "proof", Media.kind == "image"))
     (
         pending_total,
         missing_source_media,

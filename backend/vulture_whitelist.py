@@ -26,7 +26,7 @@ email_verified_at  # app/models/user.py, audit stamp written at registration onl
 # Stamped by app code and queried by an operator over SQL, with no wire field
 # or app read. The lifecycle stamps also tie `events.status` to its CHECK
 # constraints (docs/data-model.md).
-resolved_by  # app/models/content_report.py, stamped by services/reports.resolve_report
+resolved_by_id  # app/models/content_report.py, stamped by services/reports.resolve_report
 updated_at  # app/models/event.py, SQLAlchemy ``onupdate`` stamp
 requested_at  # app/models/event.py, state-entry stamp
 detected_at  # app/models/event.py, state-entry stamp
@@ -105,8 +105,8 @@ no_source_count  # schemas/user.py UserStatsRead
 # arguments for getattr / hasattr / %-format only. Every wire field above is
 # here for that reason.
 period  # schemas/user.py ActivityBucket (wire field)
-progress_done  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
-progress_total  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
+processed_detection_count  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
+detection_count  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
 redacted  # schemas/event.py EventVersionRead (wire field, built in routers/events/_common.py)
 # Written by ``services/versions.redact_version``, read by nothing in ``app/``;
 # the readable trail is the ``admin_events`` row the same write files.

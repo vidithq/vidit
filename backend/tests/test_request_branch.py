@@ -59,7 +59,7 @@ def test_a_mirror_post_with_a_telegram_link_and_a_video_drafts_a_request() -> No
     assert draft.source_url == "https://t.me/example_channel/351"
     assert draft.footage_candidates == [_VIDEO]
     assert draft.title.startswith("Trabajo de la unidad de drones")
-    assert draft.detected_from_tweet_id == 9200000000000000001
+    assert draft.detected_from_post_id == 9200000000000000001
     assert draft.detected_from_url == "https://x.com/analyst/status/9200000000000000001"
     # A pure thread fetches nothing, so the source's date is unknown.
     assert draft.source_posted_at is None

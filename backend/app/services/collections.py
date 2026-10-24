@@ -122,13 +122,13 @@ _UNIQUE_VIOLATION = "23505"
 def chronological_key() -> tuple[Any, ...]:
     """The sort key a collection's items read by, as SQL expressions.
 
-    ``event_date``, ``event_time`` (through their stand-ins), ``created_at``,
+    ``occurred_date``, ``occurred_time`` (through their stand-ins), ``created_at``,
     ``id``, ascending. The ``ORDER BY``, the keyset predicate
     (:func:`services.pagination.keyset_after`) and the cursor must agree on it.
     """
     return (
-        func.coalesce(Event.event_date, NO_DATE),
-        func.coalesce(Event.event_time, NO_TIME),
+        func.coalesce(Event.occurred_date, NO_DATE),
+        func.coalesce(Event.occurred_time, NO_TIME),
         Event.created_at,
         Event.id,
     )
@@ -137,8 +137,8 @@ def chronological_key() -> tuple[Any, ...]:
 def cursor_values(event: Event) -> tuple[date, time, datetime, uuid.UUID]:
     """The sort values of one item, for its cursor (Python side of :func:`chronological_key`)."""
     return (
-        event.event_date or NO_DATE,
-        event.event_time or NO_TIME,
+        event.occurred_date or NO_DATE,
+        event.occurred_time or NO_TIME,
         event.created_at,
         event.id,
     )
@@ -147,7 +147,7 @@ def cursor_values(event: Event) -> tuple[date, time, datetime, uuid.UUID]:
 class CollectionStats(NamedTuple):
     """What a collection's items add up to at read time.
 
-    ``first_date`` / ``last_date`` are the min and max ``event_date``, ``None``
+    ``first_date`` / ``last_date`` are the min and max ``occurred_date``, ``None``
     when no item has one.
     """
 
@@ -197,8 +197,8 @@ def stats_for(db: Session, collection_ids: Sequence[uuid.UUID]) -> dict[uuid.UUI
         db.query(
             CollectionEvent.collection_id,
             func.count(Event.id),
-            func.min(Event.event_date),
-            func.max(Event.event_date),
+            func.min(Event.occurred_date),
+            func.max(Event.occurred_date),
         )
         .select_from(CollectionEvent)
         .join(Event, Event.id == CollectionEvent.event_id)
@@ -242,9 +242,9 @@ def _tile_media(rows: Sequence[Media]) -> Media | None:
     surface must go on naming the item's own footage.
     """
     picked = pick_thumbnail(rows)
-    if picked is None or picked.media_type == "image":
+    if picked is None or picked.kind == "image":
         return picked
-    return next((row for row in rows if row.media_type == "image"), picked)
+    return next((row for row in rows if row.kind == "image"), picked)
 
 
 def cover_tiles_for(
@@ -304,7 +304,7 @@ def cover_tiles_for(
         tiles.setdefault(collection_id, []).append(
             CollectionCoverTile(
                 url=media.storage_url,
-                media_type=media.media_type,
+                kind=media.kind,
                 role=media.role,
             )
         )
@@ -610,8 +610,8 @@ def list_items(
     query = (
         db.query(
             Event,
-            ST_Y(Event.event_coords).label("lat"),
-            ST_X(Event.event_coords).label("lng"),
+            ST_Y(Event.coords).label("lat"),
+            ST_X(Event.coords).label("lng"),
         )
         .select_from(CollectionEvent)
         .join(Event, Event.id == CollectionEvent.event_id)

@@ -187,10 +187,10 @@ def test_list_tags_filters_orphans(authed_user, db):
     geo = Event(
         owner_id=user.id,
         title="t",
-        event_coords=from_shape(Point(0, 0), srid=4326),
+        coords=from_shape(Point(0, 0), srid=4326),
         source_url="https://example.com",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        event_date=date(2026, 1, 1),
+        occurred_date=date(2026, 1, 1),
         created_at=datetime.now(UTC),
         geolocated_at=datetime.now(UTC),
     )
@@ -248,10 +248,10 @@ def test_list_tags_drops_tag_when_only_geo_is_soft_deleted(authed_user, db):
     geo = Event(
         owner_id=user.id,
         title="t",
-        event_coords=from_shape(Point(0, 0), srid=4326),
+        coords=from_shape(Point(0, 0), srid=4326),
         source_url="https://example.com",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        event_date=date(2026, 1, 1),
+        occurred_date=date(2026, 1, 1),
         created_at=datetime.now(UTC),
         geolocated_at=datetime.now(UTC),
         deleted_at=datetime.now(UTC),  # soft-deleted upfront

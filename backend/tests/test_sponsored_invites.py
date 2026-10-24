@@ -50,11 +50,11 @@ def user_ids(db):
     yield ids
     db.expire_all()
     db.query(AdminEvent).filter(AdminEvent.actor_id.in_(ids)).delete(synchronize_session=False)
-    codes = db.query(InviteCode.id).filter(InviteCode.created_by.in_(ids))
+    codes = db.query(InviteCode.id).filter(InviteCode.created_by_id.in_(ids))
     db.query(PendingRegistration).filter(PendingRegistration.invite_code_id.in_(codes)).delete(
         synchronize_session=False
     )
-    db.query(InviteCode).filter(InviteCode.created_by.in_(ids)).delete(synchronize_session=False)
+    db.query(InviteCode).filter(InviteCode.created_by_id.in_(ids)).delete(synchronize_session=False)
     db.query(User).filter(User.id.in_(ids)).delete(synchronize_session=False)
     db.commit()
 
@@ -104,7 +104,7 @@ def _seed_codes(db, sponsor: User, count: int, created_at: datetime) -> None:
             InviteCode(
                 code=uuid.uuid4().hex,
                 x_handle=_handle(),
-                created_by=sponsor.id,
+                created_by_id=sponsor.id,
                 created_at=created_at,
             )
         )
@@ -122,7 +122,7 @@ def test_mint_binds_normalized_handle_records_sponsor_and_audits(sponsor, db):
     assert body["link"].endswith(f"/register?code={body['code']}")
 
     invite = db.query(InviteCode).filter(InviteCode.id == uuid.UUID(body["id"])).one()
-    assert invite.created_by == sponsor.id
+    assert invite.created_by_id == sponsor.id
     assert invite.x_handle == handle
     assert invite.expires_at is None
 
@@ -138,7 +138,7 @@ def test_mint_binds_normalized_handle_records_sponsor_and_audits(sponsor, db):
 def test_mint_rejects_a_handle_outside_the_alphabet(sponsor, db, bad):
     response = _mint(sponsor, bad)
     assert response.status_code == 422
-    assert db.query(InviteCode).filter(InviteCode.created_by == sponsor.id).count() == 0
+    assert db.query(InviteCode).filter(InviteCode.created_by_id == sponsor.id).count() == 0
 
 
 def test_mint_requires_a_signed_in_user():
@@ -156,7 +156,7 @@ def test_sixth_mint_in_a_utc_day_is_refused_with_the_reset_time(sponsor, db):
     assert detail["code"] == "invite_quota_exceeded"
     resets_at = _today_start() + timedelta(days=1)
     assert f"{resets_at:%Y-%m-%d %H:%M} UTC" in detail["message"]
-    assert db.query(InviteCode).filter(InviteCode.created_by == sponsor.id).count() == (
+    assert db.query(InviteCode).filter(InviteCode.created_by_id == sponsor.id).count() == (
         DAILY_MINT_LIMIT
     )
 
@@ -240,7 +240,7 @@ def test_sponsor_revoked_codes_still_count_against_their_day(sponsor, db):
 
 def test_sponsor_revokes_with_minting_turned_off(sponsor, db):
     minted = _mint(sponsor, _handle()).json()
-    sponsor.invite_minting_enabled = False
+    sponsor.is_invite_minting_enabled = False
     db.commit()
 
     assert _revoke(sponsor, minted["id"]).status_code == 200
@@ -276,7 +276,7 @@ def test_admin_switch_turns_minting_off_and_on(sponsor, admin, db):
     path = f"/api/v1/admin/users/{sponsor.id}/invite-minting"
     response = client.patch(path, json={"enabled": False}, headers=login_as(client, admin))
     assert response.status_code == 200
-    assert response.json()["invite_minting_enabled"] is False
+    assert response.json()["is_invite_minting_enabled"] is False
 
     refused = _mint(sponsor, _handle())
     assert refused.status_code == 403
@@ -285,7 +285,7 @@ def test_admin_switch_turns_minting_off_and_on(sponsor, admin, db):
     assert listing["minting_enabled"] is False
 
     response = client.patch(path, json={"enabled": True}, headers=login_as(client, admin))
-    assert response.json()["invite_minting_enabled"] is True
+    assert response.json()["is_invite_minting_enabled"] is True
     assert _mint(sponsor, _handle()).status_code == 201
 
     actions = [
@@ -344,7 +344,7 @@ def test_redemption_links_the_handle_and_the_sponsor(sponsor, admin, user_ids, d
     headers = login_as(client, admin)
     found = client.get(f"/api/v1/admin/users?q={invitee.username}", headers=headers).json()
     assert found[0]["sponsor"]["username"] == sponsor.username
-    assert found[0]["invite_minting_enabled"] is True
+    assert found[0]["is_invite_minting_enabled"] is True
 
     codes = client.get("/api/v1/admin/invite-codes", headers=headers).json()
     row = next(code for code in codes if code["id"] == minted["id"])

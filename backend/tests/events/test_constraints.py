@@ -56,7 +56,7 @@ def test_coords_status_check_rejects_geolocated_without_coords(db, author):
         author=author,
         status=STATUS_GEOLOCATED,
         geolocated_at=datetime.now(UTC),
-        event_coords=None,
+        coords=None,
     )
     db.add(bad)
     with pytest.raises(IntegrityError, match="ck_events_coords_status"):
@@ -71,7 +71,7 @@ def test_coords_status_check_allows_requested_without_coords(db, author):
         author=author,
         status=STATUS_REQUESTED,
         requested_at=datetime.now(UTC),
-        event_coords=None,
+        coords=None,
     )
     db.add(ok)
     db.commit()
@@ -87,7 +87,7 @@ def test_source_url_status_check_rejects_geolocated_without_source_url(db, autho
         author=author,
         status=STATUS_GEOLOCATED,
         geolocated_at=datetime.now(UTC),
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url=None,
     )
     db.add(bad)
@@ -136,7 +136,7 @@ def test_before_closed_status_check_rejects_value_outside_the_domain(db, author)
         status=STATUS_CLOSED,
         closed_at=datetime.now(UTC),
         before_closed_status="published",
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
     )
     db.add(bad)
     with pytest.raises(IntegrityError, match="ck_events_before_closed_status"):
@@ -154,7 +154,7 @@ def test_before_closed_status_check_admits_a_retraction(db, author):
         closed_at=datetime.now(UTC),
         before_closed_status="geolocated",
         geolocated_at=datetime.now(UTC),
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
     )
     db.add(ok)
     db.commit()
@@ -213,7 +213,7 @@ def test_geolocated_stamp_check_rejects_geolocated_without_geolocated_at(db, aut
         db,
         author=author,
         status=STATUS_GEOLOCATED,
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
         geolocated_at=None,
     )
     db.add(bad)
@@ -234,7 +234,7 @@ def test_geolocate_rejects_missing_coordinates_at_the_form_boundary(
         data={
             "title": "No coordinates supplied",
             "source_url": "https://example.com/post",
-            "event_date": "2026-05-01",
+            "occurred_date": "2026-05-01",
             "source_posted_at": "2026-05-01T12:00",
             "tag_ids": json.dumps([str(capture_source_tag.id)]),
             "conflict_ids": json.dumps([str(conflict.id)]),

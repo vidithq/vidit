@@ -43,7 +43,7 @@ def _form(conflict=None, capture_source_tag=None, **overrides):
         "lat": "50.0",
         "lng": "30.0",
         "source_url": "https://x.com/a/status/1",
-        "event_date": "2026-05-01",
+        "occurred_date": "2026-05-01",
         "source_posted_at": "2026-05-01T12:00",
         "proof": proof_form_field(),
     }
@@ -96,7 +96,7 @@ def test_geolocate_adds_source_media(db, author, conflict, capture_source_tag):
     assert response.status_code == 200, response.text
     body = response.json()
     assert len(body["media"]) == 1
-    assert body["media"][0]["media_type"] == "image"
+    assert body["media"][0]["kind"] == "image"
     assert body["media"][0]["role"] == "source"
     assert body["status"] == "geolocated"
     db.expire_all()
@@ -182,7 +182,7 @@ def test_geolocate_drops_stale_proof_media(db, author, conflict, capture_source_
         event_id=geo.id,
         role="proof",
         storage_url="http://localhost:8000/local-storage/proof/u/stale.jpg",
-        media_type="image",
+        kind="image",
     )
     db.add(stale)
     db.commit()
@@ -227,7 +227,7 @@ async def test_second_source_insert_races_to_409_not_500(db, author, tmp_path, m
             event_id=geo.id,
             role="source",
             storage_url=winner_url,
-            media_type="image",
+            kind="image",
         )
     )
     db.commit()

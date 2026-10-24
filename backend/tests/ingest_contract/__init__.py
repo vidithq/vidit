@@ -9,7 +9,7 @@ handles, text, ids, and ``pbs.twimg.com`` / ``video.twimg.com`` shaped media URL
     tweet entries, since a self-thread only exists in an archive).
 ``fixtures/<typology>/expected.json``
     The fields the engine must produce: rounded coordinates, ``source_url`` /
-    ``source_posted_at``, title, media roles by kind, ``event_date``.
+    ``source_posted_at``, title, media roles by kind, ``occurred_date``.
 ``fixtures/<typology>/chased_<id>.json``
     The syndication body of the source tweet chased via an X status link, when the
     typology has one.

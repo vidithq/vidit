@@ -113,7 +113,7 @@ def _make_geo(
     *,
     author: User,
     title: str | None = None,
-    event_date: date | None = None,
+    occurred_date: date | None = None,
     deleted: bool = False,
     status: str = STATUS_GEOLOCATED,
     before_closed_status: str | None = None,
@@ -128,10 +128,10 @@ def _make_geo(
     geo = Event(
         owner_id=author.id,
         title=title or f"Geo {uuid.uuid4().hex[:8]}",
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com/source",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        event_date=event_date or date(2026, 5, 1),
+        occurred_date=occurred_date or date(2026, 5, 1),
         status=status,
         geolocated_at=now if status == STATUS_GEOLOCATED else None,
         detected_at=now if status == STATUS_DETECTED else None,
@@ -309,13 +309,13 @@ def test_profile_count_and_stats_report_different_numbers(db, live_user):
 
 def test_feed_orders_published_rows_newest_event_date_first(db, live_user):
     """Order applies to the filtered set: a detection dated between two published rows takes no page slot."""
-    _make_geo(db, author=live_user, event_date=date(2025, 1, 1), title="old")
-    _make_geo(db, author=live_user, event_date=date(2026, 12, 1), title="new")
-    _make_geo(db, author=live_user, event_date=date(2026, 6, 1), title="mid")
+    _make_geo(db, author=live_user, occurred_date=date(2025, 1, 1), title="old")
+    _make_geo(db, author=live_user, occurred_date=date(2026, 12, 1), title="new")
+    _make_geo(db, author=live_user, occurred_date=date(2026, 6, 1), title="mid")
     _make_geo(
         db,
         author=live_user,
-        event_date=date(2026, 9, 1),
+        occurred_date=date(2026, 9, 1),
         title="detection",
         status=STATUS_DETECTED,
     )

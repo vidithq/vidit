@@ -41,7 +41,7 @@ from app.schemas.recovery import (
     ResetPasswordRequest,
 )
 from app.schemas.user import UserRead
-from app.services import audit, auth_tokens, email, registration
+from app.services import audit, email, password_reset_tokens, registration
 from app.services.audit import rate_limit_key
 from app.services.auth import (
     DUMMY_PASSWORD_HASH,
@@ -349,8 +349,8 @@ def _process_forgot_password(user_id, email_address: str) -> None:
         if user is None or user.deleted_at is not None:
             return
 
-        auth_tokens.revoke_all_live_for_user(db, user_id=user.id)
-        raw_token = auth_tokens.mint(
+        password_reset_tokens.revoke_all_live_for_user(db, user_id=user.id)
+        raw_token = password_reset_tokens.mint(
             db,
             user_id=user.id,
             ttl_minutes=settings.password_reset_token_minutes,
@@ -404,7 +404,7 @@ def reset_password(
     body: ResetPasswordRequest,
     db: Session = Depends(get_db),
 ) -> None:
-    row = auth_tokens.consume(db, body.token)
+    row = password_reset_tokens.consume(db, body.token)
     if row is None:
         # One opaque error for every failure mode, so a probe can't tell
         # whether a leaked token is still live.

@@ -55,7 +55,7 @@ class User(Base):
     )
 
     # Admin switch over minting invite codes from Settings.
-    invite_minting_enabled: Mapped[bool] = mapped_column(
+    is_invite_minting_enabled: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=text("true"), nullable=False
     )
 
@@ -65,8 +65,8 @@ class User(Base):
     sponsor = relationship(
         "User",
         secondary="invite_codes",
-        primaryjoin="User.id == InviteCode.used_by",
-        secondaryjoin="User.id == InviteCode.created_by",
+        primaryjoin="User.id == InviteCode.used_by_id",
+        secondaryjoin="User.id == InviteCode.created_by_id",
         viewonly=True,
         uselist=False,
     )

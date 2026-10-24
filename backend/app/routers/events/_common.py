@@ -144,8 +144,8 @@ def build_event_list(
     return EventList(
         id=geo.id,
         title=geo.title,
-        event_coords=coords_or_none(lat, lng),
-        event_date=geo.event_date,
+        coords=coords_or_none(lat, lng),
+        occurred_date=geo.occurred_date,
         is_graphic=geo.is_graphic,
         status=geo.status,
         before_closed_status=geo.before_closed_status,
@@ -208,7 +208,7 @@ def build_event_read(
     return EventRead(
         id=geo.id,
         title=geo.title,
-        event_coords=coords_or_none(lat, lng),
+        coords=coords_or_none(lat, lng),
         capture_source_coords=coords_or_none(capture_lat, capture_lng),
         source_url=geo.source_url,
         # Reads the eager-loaded ``archives`` (see ``_DETAIL_LOADS``).
@@ -218,8 +218,8 @@ def build_event_read(
         # Same walk, so the lists stay index-aligned; no extra query.
         archived_secondary_sources=[_archived_link(geo, link.url) for link in geo.source_links],
         proof=geo.proof,
-        event_date=geo.event_date,
-        event_time=geo.event_time,
+        occurred_date=geo.occurred_date,
+        occurred_time=geo.occurred_time,
         source_posted_at=geo.source_posted_at,
         created_at=geo.created_at,
         geolocated_at=geo.geolocated_at,

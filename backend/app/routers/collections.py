@@ -97,7 +97,7 @@ def report_collection(
     """Report a collection for moderation.
 
     Same gesture, body and per-IP limit as an event report: open to anonymous
-    viewers (``reporter_user_id`` NULL), a signed-in reporter is recorded. An
+    viewers (``reporter_id`` NULL), a signed-in reporter is recorded. An
     unknown, withheld or orphaned collection answers 404.
     """
     try:
@@ -106,7 +106,7 @@ def report_collection(
             collection_id=collection_id,
             reason=body.reason,
             details=body.details,
-            reporter_user_id=current_user.id if current_user is not None else None,
+            reporter_id=current_user.id if current_user is not None else None,
             reporter_username=current_user.username if current_user is not None else None,
             background_tasks=background_tasks,
         )
@@ -184,7 +184,7 @@ def list_collection_events(
 ):
     """The collection's items in the order the events happened.
 
-    Ordered ascending by ``event_date``, ``event_time``, ``created_at``, ``id``;
+    Ordered ascending by ``occurred_date``, ``occurred_time``, ``created_at``, ``id``;
     a missing date or hour sorts last. Capped at 100 rows; follow the
     ``Link: rel="next"`` cursor, sent exactly when the next page holds a row.
     """

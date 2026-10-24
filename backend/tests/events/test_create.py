@@ -31,7 +31,7 @@ def _form(**overrides):
         "lat": "0.0",
         "lng": "0.0",
         "source_url": "https://example.com",
-        "event_date": "2026-05-01",
+        "occurred_date": "2026-05-01",
         "source_posted_at": "2026-05-01T12:00",
         "proof": proof_form_field(),
     }
@@ -86,17 +86,17 @@ def test_create_rejects_half_typed_capture_coords(author):
     assert response.json()["detail"]["code"] == "invalid_coordinates"
 
 
-def test_create_rejects_invalid_event_date(author):
-    """A bad ``event_date`` is a 422 before any upload; unvalidated, it 500s at flush
+def test_create_rejects_invalid_occurred_date(author):
+    """A bad ``occurred_date`` is a 422 before any upload; unvalidated, it 500s at flush
     after the files are uploaded."""
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
-        data=_form(event_date="not-a-date"),
+        data=_form(occurred_date="not-a-date"),
         files=_files(),
     )
     assert response.status_code == 422
-    assert "event_date" in response.json()["detail"].lower()
+    assert "occurred_date" in response.json()["detail"].lower()
 
 
 def test_create_event_date_tolerates_only_a_separated_time_tail(
@@ -109,13 +109,13 @@ def test_create_event_date_tolerates_only_a_separated_time_tail(
     monkeypatch.setattr(storage_module.settings, "storage_backend", "local")
     monkeypatch.setattr(storage_module.settings, "local_storage_dir", str(tmp_path))
 
-    def _submit(event_date: str):
+    def _submit(occurred_date: str):
         return client.post(
             "/api/v1/events",
             headers=login_as(client, author),
             data=_form(
                 title="date tail",
-                event_date=event_date,
+                occurred_date=occurred_date,
                 tag_ids=json.dumps([str(capture_source_tag.id)]),
                 conflict_ids=json.dumps([str(conflict.id)]),
             ),
@@ -124,16 +124,16 @@ def test_create_event_date_tolerates_only_a_separated_time_tail(
 
     plain = _submit("2026-05-01")
     assert plain.status_code == 201, plain.text
-    assert plain.json()["event_date"] == "2026-05-01"
+    assert plain.json()["occurred_date"] == "2026-05-01"
 
     with_time = _submit("2026-05-01T12:00:00Z")
     assert with_time.status_code == 201, with_time.text
-    assert with_time.json()["event_date"] == "2026-05-01"
+    assert with_time.json()["occurred_date"] == "2026-05-01"
 
     for garbage in ("2026-05-01junk", "2026-05-0199"):
         response = _submit(garbage)
         assert response.status_code == 422, f"{garbage!r} → {response.status_code}"
-        assert "event_date" in response.json()["detail"].lower()
+        assert "occurred_date" in response.json()["detail"].lower()
 
 
 def test_list_rejects_malformed_date_filter(author):
@@ -146,7 +146,7 @@ def test_list_rejects_malformed_date_filter(author):
     # Junk after the date is rejected too: the datetime tolerance covers only a T or
     # space separated tail.
     glued = client.get(
-        f"/api/v1/events/points?bbox={WORLD_BBOX}&event_date_from=2026-05-0199",
+        f"/api/v1/events/points?bbox={WORLD_BBOX}&occurred_date_from=2026-05-0199",
         headers=login_as(client, author),
     )
     assert glued.status_code == 422
@@ -365,7 +365,7 @@ def test_create_succeeds_with_full_floor(
     assert {t["category"] for t in body["tags"]} == {"capture_source"}
     assert [c["name"] for c in body["conflicts"]] == [conflict.name]
     assert body["status"] == "geolocated"
-    assert body["event_coords"] == {"lat": 48.5, "lng": 34.5}
+    assert body["coords"] == {"lat": 48.5, "lng": 34.5}
     assert body["capture_source_coords"] == {"lat": 48.6, "lng": 34.6}
     # The creator is the owner AND the first geolocator (durable credit).
     assert body["owner"]["username"] == author.username
@@ -388,10 +388,10 @@ def test_create_succeeds_with_full_floor(
     assert proof_row.original_filename == "proof-1.jpg"
 
 
-def test_create_round_trips_source_posted_at_and_event_time(
+def test_create_round_trips_source_posted_at_and_occurred_time(
     db, author, conflict, capture_source_tag, tmp_path, monkeypatch
 ):
-    """``source_posted_at`` and ``event_time`` round-trip; an omitted ``event_time`` is
+    """``source_posted_at`` and ``occurred_time`` round-trip; an omitted ``occurred_time`` is
     null."""
     from app.services import storage as storage_module
 
@@ -411,12 +411,12 @@ def test_create_round_trips_source_posted_at_and_event_time(
     with_time = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
-        data={**base, "event_time": "14:30"},
+        data={**base, "occurred_time": "14:30"},
         files=_files(),
     )
     assert with_time.status_code == 201, with_time.text
     assert with_time.json()["source_posted_at"].startswith("2026-05-03T08:15")
-    assert with_time.json()["event_time"] == "14:30:00"
+    assert with_time.json()["occurred_time"] == "14:30:00"
 
     without = client.post(
         "/api/v1/events",
@@ -425,13 +425,13 @@ def test_create_round_trips_source_posted_at_and_event_time(
         files=_files(),
     )
     assert without.status_code == 201, without.text
-    assert without.json()["event_time"] is None
+    assert without.json()["occurred_time"] is None
 
 
-def test_create_accepts_missing_event_date(
+def test_create_accepts_missing_occurred_date(
     db, author, conflict, capture_source_tag, tmp_path, monkeypatch
 ):
-    """An omitted ``event_date`` reads as Unknown."""
+    """An omitted ``occurred_date`` reads as Unknown."""
     from app.services import storage as storage_module
 
     monkeypatch.setattr(storage_module.settings, "storage_backend", "local")
@@ -444,7 +444,7 @@ def test_create_accepts_missing_event_date(
         tag_ids=json.dumps([str(capture_source_tag.id)]),
         conflict_ids=json.dumps([str(conflict.id)]),
     )
-    del form["event_date"]
+    del form["occurred_date"]
 
     response = client.post(
         "/api/v1/events",
@@ -453,7 +453,7 @@ def test_create_accepts_missing_event_date(
         files=_files(),
     )
     assert response.status_code == 201, response.text
-    assert response.json()["event_date"] is None
+    assert response.json()["occurred_date"] is None
 
 
 def test_create_rejects_invalid_source_posted_at(author):

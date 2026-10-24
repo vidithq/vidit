@@ -147,7 +147,7 @@ def test_gold_path_register_import_geolocate_publish(
         accepted = client.post(
             "/api/v1/events/import-archive",
             headers=auth_headers,
-            json={"upload_key": presign["upload_key"], "post_estimate": 1},
+            json={"upload_key": presign["upload_key"], "estimated_post_count": 1},
         )
         assert accepted.status_code == 202, accepted.text
         assert accepted.json()["status"] == "queued"
@@ -178,7 +178,7 @@ def test_gold_path_register_import_geolocate_publish(
         assert row.source_url is None  # the tweet declared no source
         assert row.proof is not None  # the tweet text became the proof body
         media = db.query(Media).filter(Media.event_id == row.id).all()
-        assert [(m.role, m.media_type) for m in media] == [("proof", "image")]
+        assert [(m.role, m.kind) for m in media] == [("proof", "image")]
         assert media[0].sha256  # content-hashed at persist
         event_id = str(row.id)
 
@@ -205,7 +205,7 @@ def test_gold_path_register_import_geolocate_publish(
                 "lat": "48.213",
                 "lng": "37.512",
                 "source_url": f"https://x.com/{handle}/status/{_TWEET_ID}",
-                "event_date": "2025-11-12",
+                "occurred_date": "2025-11-12",
                 "source_posted_at": "2025-11-12T14:33",
                 "proof": proof_form_field(),
                 "tag_ids": json.dumps([str(capture_source_tag.id)]),
@@ -230,7 +230,7 @@ def test_gold_path_register_import_geolocate_publish(
                 "lat": "1",
                 "lng": "1",
                 "source_url": "https://example.com/s",
-                "event_date": "2025-11-12",
+                "occurred_date": "2025-11-12",
                 "source_posted_at": "2025-11-12T14:33",
             },
             headers=auth_headers,
@@ -247,11 +247,11 @@ def test_gold_path_register_import_geolocate_publish(
     finally:
         client.cookies.clear()
         if user_id is not None:
-            # The confirm stamped ``used_by``; detach it so the user row (and
+            # The confirm stamped ``used_by_id``; detach it so the user row (and
             # everything hanging off it) can go, then the fixture drops the
             # invite itself.
-            db.query(InviteCode).filter(InviteCode.used_by == user_id).update(
-                {InviteCode.used_by: None}, synchronize_session=False
+            db.query(InviteCode).filter(InviteCode.used_by_id == user_id).update(
+                {InviteCode.used_by_id: None}, synchronize_session=False
             )
             db.commit()
             _delete_user_and_events(db, user_id)

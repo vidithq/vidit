@@ -80,7 +80,7 @@ def test_detections_includes_media_and_tags(db, author, conflict, capture_source
     response = client.get(_URL, headers=login_as(client, author))
     item = response.json()["items"][0]
     assert len(item["media"]) == 1
-    assert item["media"][0]["media_type"] == "image"
+    assert item["media"][0]["kind"] == "image"
     assert {t["category"] for t in item["tags"]} == {"capture_source"}
     assert [c["name"] for c in item["conflicts"]] == [conflict.name]
     assert item["detected_from_url"] == "https://x.com/a/status/1"

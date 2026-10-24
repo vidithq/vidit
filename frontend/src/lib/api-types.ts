@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/api/v1/admin/approvals/{approval_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Approval
+         * @description Delete one approval, as themselves or for an organization, and write it to the admin log.
+         */
+        delete: operations["delete_approval_api_v1_admin_approvals__approval_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/collections/{collection_id}": {
         parameters: {
             query?: never;
@@ -214,7 +234,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/maintenance/reap-auth-tokens": {
+    "/api/v1/admin/maintenance/reap-password-reset-tokens": {
         parameters: {
             query?: never;
             header?: never;
@@ -224,10 +244,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Maintenance Reap Auth Tokens
-         * @description Drop expired and old-consumed auth_tokens rows.
+         * Maintenance Reap Password Reset Tokens
+         * @description Drop expired and old-consumed password_reset_tokens rows.
          */
-        post: operations["maintenance_reap_auth_tokens_api_v1_admin_maintenance_reap_auth_tokens_post"];
+        post: operations["maintenance_reap_password_reset_tokens_api_v1_admin_maintenance_reap_password_reset_tokens_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -358,73 +378,6 @@ export interface paths {
          * @description Make a live analyst an org manager of the organization, joining it if needed, with audit.
          */
         post: operations["appoint_organization_manager_api_v1_admin_organizations__slug__managers_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/product-updates": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Product Updates
-         * @description Every announcement sent, newest first, with its delivery progress.
-         */
-        get: operations["list_product_updates_api_v1_admin_product_updates_get"];
-        put?: never;
-        /**
-         * Send Product Update
-         * @description Send the announcement: queue one email per consenting verified analyst.
-         *
-         *     The worker sends them under the product update daily cap. 409 when the
-         *     release label was already announced.
-         */
-        post: operations["send_product_update_api_v1_admin_product_updates_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/product-updates/preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Preview Product Update
-         * @description Render the announcement as you would receive it and count its audience.
-         */
-        post: operations["preview_product_update_api_v1_admin_product_updates_preview_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/product-updates/test": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Send Test Product Update
-         * @description Email the announcement to your own verified address only.
-         */
-        post: operations["send_test_product_update_api_v1_admin_product_updates_test_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -586,67 +539,6 @@ export interface paths {
          *     write path for ``users.x_handle``.
          */
         patch: operations["set_user_x_handle_api_v1_admin_users__user_id__x_handle_patch"];
-        trace?: never;
-    };
-    "/api/v1/admin/x-handle-requests": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List X Handle Requests
-         * @description Pending X handle change requests on live accounts, oldest first.
-         */
-        get: operations["list_x_handle_requests_api_v1_admin_x_handle_requests_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/x-handle-requests/{request_id}/approve": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Approve X Handle Request
-         * @description Bind the requested handle through the X handle write path and notify
-         *     the analyst. 409 when another account holds the handle.
-         */
-        post: operations["approve_x_handle_request_api_v1_admin_x_handle_requests__request_id__approve_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/x-handle-requests/{request_id}/decline": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Decline X Handle Request
-         * @description Decline a request with a reason the analyst reads in Settings.
-         */
-        post: operations["decline_x_handle_request_api_v1_admin_x_handle_requests__request_id__decline_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/api/v1/auth/change-password": {
@@ -902,7 +794,7 @@ export interface paths {
          * List Collection Events
          * @description The collection's items in the order the events happened.
          *
-         *     Ordered ascending by ``event_date``, ``event_time``, ``created_at``, ``id``;
+         *     Ordered ascending by ``occurred_date``, ``occurred_time``, ``created_at``, ``id``;
          *     a missing date or hour sorts last. Capped at 100 rows; follow the
          *     ``Link: rel="next"`` cursor, sent exactly when the next page holds a row.
          */
@@ -958,7 +850,7 @@ export interface paths {
          * @description Report a collection for moderation.
          *
          *     Same gesture, body and per-IP limit as an event report: open to anonymous
-         *     viewers (``reporter_user_id`` NULL), a signed-in reporter is recorded. An
+         *     viewers (``reporter_id`` NULL), a signed-in reporter is recorded. An
          *     unknown, withheld or orphaned collection answers 404.
          */
         post: operations["report_collection_api_v1_collections__collection_id__report_post"];
@@ -1220,14 +1112,14 @@ export interface paths {
         /**
          * List Points
          * @description Return the map's events inside ``bbox`` as a compact array:
-         *     ``[[id, lat, lng, event_date, added_date, detected], ...]``.
+         *     ``[[id, lat, lng, occurred_date, added_date, detected], ...]``.
          *
          *     No joins, built for client-side clustering. ``bbox``
          *     (``south,west,north,east``) is required and bounds the payload by area; a
          *     missing or malformed value is a 422 (:func:`parse_bbox`). Live
          *     ``geolocated`` / ``detected`` rows with a subject coordinate only. Dates
          *     are ISO ``YYYY-MM-DD`` (``added_date`` is the ``created_at`` day);
-         *     ``event_date`` is ``null`` when unknown. ``detected`` is a 1/0 flag, not a
+         *     ``occurred_date`` is ``null`` when unknown. ``detected`` is a 1/0 flag, not a
          *     status string, to keep the payload small. Cached in memory for 60s per
          *     snapped bbox + filter combination (:func:`snap_bbox`).
          */
@@ -1255,7 +1147,7 @@ export interface paths {
          *     submitted; never blocks the submit.
          *
          *     Match rule: within ~500m of (lat, lng) AND (same source host OR same
-         *     event_date). Coordinate-less rows never match. Authenticated-only so the
+         *     occurred_date). Coordinate-less rows never match. Authenticated-only so the
          *     proximity probe isn't exposed to anonymous scraping.
          *
          *     A half-typed source URL disables the host leg and an unparseable date the
@@ -1406,27 +1298,6 @@ export interface paths {
          *     yourself or, as one of its members, for an organization.
          */
         post: operations["approve_event_api_v1_events__geolocation_id__approvals_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/events/{geolocation_id}/approvals/{approval_id}/revoke": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Revoke Approval
-         * @description Revoke an approval: your own, your organization's as one of its members, or any as a site
-         *     admin.
-         */
-        post: operations["revoke_approval_api_v1_events__geolocation_id__approvals__approval_id__revoke_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1641,7 +1512,7 @@ export interface paths {
          *
          *     Open to anonymous viewers: the people footage harms rarely hold an account
          *     here. A signed-in reporter is recorded; an anonymous one leaves
-         *     ``reporter_user_id`` NULL. The per-IP limit is the abuse floor.
+         *     ``reporter_id`` NULL. The per-IP limit is the abuse floor.
          *
          *     An unknown, soft-deleted or already-withheld event answers 404.
          */
@@ -1948,8 +1819,7 @@ export interface paths {
         };
         /**
          * List Organization Approvals
-         * @description The approvals placed in the organization's name, newest first, revoked ones included,
-         *     capped at 100 per page (``Link: rel="next"`` cursor).
+         * @description The approvals placed in the organization's name, newest first, capped at 100 per page (``Link: rel="next"`` cursor).
          */
         get: operations["list_organization_approvals_api_v1_organizations__slug__approvals_get"];
         put?: never;
@@ -2130,30 +2000,6 @@ export interface paths {
          * @description Change a member's role. Org managers and site admins only; the last org manager keeps the role.
          */
         patch: operations["update_organization_member_api_v1_organizations__slug__members__username__patch"];
-        trace?: never;
-    };
-    "/api/v1/product-updates/unsubscribe": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Unsubscribe
-         * @description Withdraw the consent to product update emails named by a signed token.
-         *
-         *     Needs no session, so it answers the unsubscribe page and the one-click
-         *     ``List-Unsubscribe-Post`` of a mail client alike. Idempotent; 400 on a
-         *     token that does not verify.
-         */
-        post: operations["unsubscribe_api_v1_product_updates_unsubscribe_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/api/v1/search": {
@@ -2359,70 +2205,6 @@ export interface paths {
         patch: operations["update_my_preferences_api_v1_users_me_preferences_patch"];
         trace?: never;
     };
-    "/api/v1/users/me/push-config": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Push Config
-         * @description The key a browser subscribes to push with; null on a development server without VAPID keys.
-         */
-        get: operations["get_push_config_api_v1_users_me_push_config_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/users/me/push-subscriptions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Push Subscriptions
-         * @description The devices registered for your push notifications, newest first.
-         */
-        get: operations["list_push_subscriptions_api_v1_users_me_push_subscriptions_get"];
-        put?: never;
-        /**
-         * Register Push Subscription
-         * @description Register this browser for push notifications; registering again refreshes it.
-         */
-        post: operations["register_push_subscription_api_v1_users_me_push_subscriptions_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/users/me/push-subscriptions/{subscription_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Delete Push Subscription
-         * @description Stop push notifications to one of your devices.
-         */
-        delete: operations["delete_push_subscription_api_v1_users_me_push_subscriptions__subscription_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/users/me/x-handle": {
         parameters: {
             query?: never;
@@ -2432,30 +2214,10 @@ export interface paths {
         };
         /**
          * Get My X Handle
-         * @description The X handle bound to your account, and your change request if any.
+         * @description The X handle bound to your account. Only an admin links or changes it.
          */
         get: operations["get_my_x_handle_api_v1_users_me_x_handle_get"];
         put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/users/me/x-handle-request": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Put My X Handle Request
-         * @description Ask an admin to bind a new X handle; replaces your earlier request.
-         */
-        put: operations["put_my_x_handle_request_api_v1_users_me_x_handle_request_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2522,7 +2284,7 @@ export interface paths {
          *     profile counts the same set. The wider live total is ``total_events`` on
          *     :func:`get_user_stats`.
          *
-         *     Offset-paged: the profile orders by ``event_date``, which is nullable and
+         *     Offset-paged: the profile orders by ``occurred_date``, which is nullable and
          *     editable, so it cannot key a cursor.
          */
         get: operations["get_user_geolocations_api_v1_users__username__events_get"];
@@ -2793,7 +2555,7 @@ export interface components {
          * AdminInviteCodeCreate
          * @description Body for `POST /admin/invite-codes`.
          *
-         *     Every code is single-use, so the audit trail (`used_by`, `used_at`) is
+         *     Every code is single-use, so the audit trail (`used_by_id`, `used_at`) is
          *     unambiguous. ``x_handle`` optionally binds the code to an X handle that
          *     redemption copies onto the new account (same normalization as
          *     `PATCH /admin/users/{id}/x-handle`).
@@ -2856,10 +2618,10 @@ export interface components {
             email: string | null;
             /** Geolocated Count */
             geolocated_count: number;
-            /** Invite Minting Enabled */
-            invite_minting_enabled: boolean;
             /** Is Admin */
             is_admin: boolean;
+            /** Is Invite Minting Enabled */
+            is_invite_minting_enabled: boolean;
             /** Last Seen At */
             last_seen_at: string | null;
             /**
@@ -3001,10 +2763,10 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Invite Minting Enabled */
-            invite_minting_enabled: boolean;
             /** Is Admin */
             is_admin: boolean;
+            /** Is Invite Minting Enabled */
+            is_invite_minting_enabled: boolean;
             sponsor: components["schemas"]["AuthorRef"] | null;
             /** Username */
             username: string;
@@ -3012,36 +2774,11 @@ export interface components {
             x_handle: string | null;
         };
         /**
-         * AdminXHandleRequestRead
-         * @description One pending request as the admin queue lists it, beside the account
-         *     whose bound handle it would replace.
-         */
-        AdminXHandleRequestRead: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Reason */
-            reason: string | null;
-            user: components["schemas"]["AdminUserRead"];
-            /** X Handle */
-            x_handle: string;
-        };
-        /**
          * ApprovalCreate
-         * @description Body of ``POST /events/{id}/approvals``: the version you read, an optional note, and the
-         *     slug of the organization you approve for as one of its members (your own approval without
-         *     it).
+         * @description Body of ``POST /events/{id}/approvals``: the version you read, and the slug of the
+         *     organization you approve for as one of its members (your own approval without it).
          */
         ApprovalCreate: {
-            /** Note */
-            note?: string | null;
             /** Organization */
             organization?: string | null;
             /** Version No */
@@ -3068,9 +2805,8 @@ export interface components {
          *     ``reviewer`` the member who placed it; null for an analyst's own review.
          *     ``reviewer`` is null on an organization's review once the account of the
          *     member who placed it is erased: the review stays the organization's.
-         *     ``current`` is true while the review covers the live version and is not
-         *     revoked. ``revoked_as`` says who revoked it: the reviewer, another member of
-         *     the organization, or a site admin.
+         *     ``current`` is true while the review covers the live version of a published
+         *     event.
          */
         ApprovalRead: {
             /**
@@ -3085,21 +2821,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Note */
-            note: string | null;
             organization: components["schemas"]["OrganizationRef"] | null;
             reviewer: components["schemas"]["AuthorRef"] | null;
-            /** Revoke Reason */
-            revoke_reason: string | null;
-            /** Revoked As */
-            revoked_as: ("reviewer" | "organization_member" | "site_admin") | null;
-            /** Revoked At */
-            revoked_at: string | null;
-            /**
-             * Verdict
-             * @constant
-             */
-            verdict: "approve";
             /** Version No */
             version_no: number;
         };
@@ -3164,22 +2887,13 @@ export interface components {
             refusal: string | null;
         };
         /**
-         * ApprovalRevoke
-         * @description Optional body of ``POST /events/{id}/approvals/{approval_id}/revoke``: a public reason,
-         *     stored as null when blank.
-         */
-        ApprovalRevoke: {
-            /** Reason */
-            reason?: string | null;
-        };
-        /**
          * ArchiveImportEnqueue
-         * @description Body of the JSON enqueue. ``post_estimate`` is a cosmetic volume hint
-         *     (the worker stamps the exact ``progress_total``).
+         * @description Body of the JSON enqueue. ``estimated_post_count`` is a cosmetic volume hint
+         *     (the worker stamps the exact ``detection_count``).
          */
         ArchiveImportEnqueue: {
-            /** Post Estimate */
-            post_estimate?: number | null;
+            /** Estimated Post Count */
+            estimated_post_count?: number | null;
             /** Upload Key */
             upload_key: string;
         };
@@ -3202,8 +2916,12 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Detection Count */
+            detection_count: number | null;
             /** Error */
             error: string | null;
+            /** Estimated Post Count */
+            estimated_post_count: number | null;
             /** Failed */
             failed: number;
             /**
@@ -3211,12 +2929,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Post Estimate */
-            post_estimate: number | null;
-            /** Progress Done */
-            progress_done: number;
-            /** Progress Total */
-            progress_total: number | null;
+            /** Processed Detection Count */
+            processed_detection_count: number;
             /** Skipped */
             skipped: number;
             /**
@@ -3345,10 +3059,6 @@ export interface components {
             capture_source_lng?: number | null;
             /** Conflict Ids */
             conflict_ids?: string | null;
-            /** Event Date */
-            event_date?: string | null;
-            /** Event Time */
-            event_time?: string | null;
             /** File */
             file: string;
             /**
@@ -3360,6 +3070,10 @@ export interface components {
             lat: number;
             /** Lng */
             lng: number;
+            /** Occurred Date */
+            occurred_date?: string | null;
+            /** Occurred Time */
+            occurred_time?: string | null;
             /** Proof */
             proof?: string | null;
             /** Proof Files */
@@ -3393,10 +3107,6 @@ export interface components {
             capture_source_lng?: number | null;
             /** Conflict Ids */
             conflict_ids?: string | null;
-            /** Event Date */
-            event_date?: string | null;
-            /** Event Time */
-            event_time?: string | null;
             /** File */
             file: string;
             /**
@@ -3408,6 +3118,10 @@ export interface components {
             lat?: number | null;
             /** Lng */
             lng?: number | null;
+            /** Occurred Date */
+            occurred_date?: string | null;
+            /** Occurred Time */
+            occurred_time?: string | null;
             /** Proof */
             proof?: string | null;
             /** Proof Files */
@@ -3441,10 +3155,6 @@ export interface components {
             capture_source_lng?: number | null;
             /** Conflict Ids */
             conflict_ids?: string | null;
-            /** Event Date */
-            event_date?: string | null;
-            /** Event Time */
-            event_time?: string | null;
             /** Files */
             files?: string[] | null;
             /**
@@ -3456,6 +3166,10 @@ export interface components {
             lat: number;
             /** Lng */
             lng: number;
+            /** Occurred Date */
+            occurred_date?: string | null;
+            /** Occurred Time */
+            occurred_time?: string | null;
             /** Proof */
             proof?: string | null;
             /** Proof Files */
@@ -3493,10 +3207,6 @@ export interface components {
             conflict_ids?: string | null;
             /** Detected From Snapshot Url */
             detected_from_snapshot_url?: string | null;
-            /** Event Date */
-            event_date?: string | null;
-            /** Event Time */
-            event_time?: string | null;
             /** Files */
             files?: string[] | null;
             /**
@@ -3510,6 +3220,10 @@ export interface components {
             lng: number;
             /** Note */
             note?: string | null;
+            /** Occurred Date */
+            occurred_date?: string | null;
+            /** Occurred Time */
+            occurred_time?: string | null;
             /** Proof */
             proof?: string | null;
             /** Proof Files */
@@ -3555,10 +3269,6 @@ export interface components {
             capture_source_lng?: number | null;
             /** Conflict Ids */
             conflict_ids?: string | null;
-            /** Event Date */
-            event_date?: string | null;
-            /** Event Time */
-            event_time?: string | null;
             /** Files */
             files?: string[] | null;
             /**
@@ -3570,6 +3280,10 @@ export interface components {
             lat?: number | null;
             /** Lng */
             lng?: number | null;
+            /** Occurred Date */
+            occurred_date?: string | null;
+            /** Occurred Time */
+            occurred_time?: string | null;
             /** Proof */
             proof?: string | null;
             /** Proof Files */
@@ -3612,8 +3326,8 @@ export interface components {
          * CollectionCoverTile
          * @description One tile of a collection's mosaic and what kind of file it is.
          *
-         *     ``url`` is the media of one held item. ``media_type``
-         *     (``models/media.MediaType``) lets a client pick the element that renders
+         *     ``url`` is the media of one held item. ``kind``
+         *     (``models/media.MediaKind``) lets a client pick the element that renders
          *     it (most source media are clips, and an ``<img>`` on one paints an empty
          *     band). ``role`` (``models/media.MediaRole``) says whether the picture has
          *     display derivatives: only a ``source`` image does
@@ -3622,10 +3336,10 @@ export interface components {
          */
         CollectionCoverTile: {
             /**
-             * Media Type
+             * Kind
              * @enum {string}
              */
-            media_type: "image" | "video";
+            kind: "image" | "video";
             /**
              * Role
              * @enum {string}
@@ -3712,7 +3426,7 @@ export interface components {
          *     over the events the collection may show
          *     (``services/event_filters.collectable_events``), so a closed, taken-down or
          *     soft-deleted row leaves them without a write. The dates are the min and max
-         *     ``event_date`` and are null for an empty or undated collection.
+         *     ``occurred_date`` and are null for an empty or undated collection.
          *
          *     ``cover`` is the card's mosaic: zero to four tiles, computed at read time
          *     (``services/collections.cover_tiles_for``), empty when no item has showable
@@ -3777,7 +3491,7 @@ export interface components {
          * @description One row of the conflicts referential on the wire.
          *
          *     ``last_seen_at`` and ``source`` are sync internals and stay off it.
-         *     ``ongoing`` drives the picker default; ``start_year`` / ``end_year``
+         *     ``is_ongoing`` drives the picker default; ``start_year`` / ``end_year``
          *     disambiguate same-named entries; ``tier`` (NULL when unknown) ranks ongoing
          *     conflicts.
          */
@@ -3789,10 +3503,10 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Is Ongoing */
+            is_ongoing: boolean;
             /** Name */
             name: string;
-            /** Ongoing */
-            ongoing: boolean;
             /** Start Year */
             start_year: number | null;
             /** Tier */
@@ -3837,7 +3551,7 @@ export interface components {
          * ContentReportRead
          * @description One report as the admin queue reads it.
          *
-         *     ``resolved_at`` / ``resolution`` / ``resolved_by`` are all NULL while open
+         *     ``resolved_at`` / ``resolution`` / ``resolved_by_id`` are all NULL while open
          *     and all set once resolved, so ``resolved_at is None`` is the open test.
          *
          *     A row names one target: ``event_id`` or ``collection``. Both are NULL once
@@ -3864,8 +3578,8 @@ export interface components {
              * @enum {string}
              */
             reason: "illegal_content" | "graphic_not_flagged" | "copyright" | "privacy" | "other";
-            /** Reporter User Id */
-            reporter_user_id: string | null;
+            /** Reporter Id */
+            reporter_id: string | null;
             /** Resolution */
             resolution: ("marked_graphic" | "hidden" | "dismissed") | null;
             /** Resolved At */
@@ -3935,9 +3649,7 @@ export interface components {
             before_closed_status: ("requested" | "detected" | "geolocated") | null;
             /** Conflicts */
             conflicts: components["schemas"]["ConflictRead"][];
-            event_coords: components["schemas"]["CoordsRead"] | null;
-            /** Event Date */
-            event_date: string | null;
+            coords: components["schemas"]["CoordsRead"] | null;
             /** Geolocators */
             geolocators: components["schemas"]["AuthorRef"][];
             /**
@@ -3948,6 +3660,8 @@ export interface components {
             /** Is Graphic */
             is_graphic: boolean;
             media: components["schemas"]["MediaRead"] | null;
+            /** Occurred Date */
+            occurred_date: string | null;
             owner: components["schemas"]["AuthorRef"];
             /** Requested At */
             requested_at: string | null;
@@ -3976,6 +3690,7 @@ export interface components {
             closed_at: string | null;
             /** Conflicts */
             conflicts: components["schemas"]["ConflictRead"][];
+            coords: components["schemas"]["CoordsRead"] | null;
             /**
              * Created At
              * Format: date-time
@@ -3985,11 +3700,6 @@ export interface components {
             detected_from_url: string | null;
             /** Detected Via */
             detected_via: ("bot" | "paste" | "archive") | null;
-            event_coords: components["schemas"]["CoordsRead"] | null;
-            /** Event Date */
-            event_date: string | null;
-            /** Event Time */
-            event_time: string | null;
             /** Geolocated At */
             geolocated_at: string | null;
             /** Geolocators */
@@ -4003,6 +3713,10 @@ export interface components {
             is_graphic: boolean;
             /** Media */
             media: components["schemas"]["MediaRead"][];
+            /** Occurred Date */
+            occurred_date: string | null;
+            /** Occurred Time */
+            occurred_time: string | null;
             owner: components["schemas"]["AuthorRef"];
             /** Proof */
             proof: string | null;
@@ -4108,9 +3822,7 @@ export interface components {
             before_closed_status: ("requested" | "detected" | "geolocated") | null;
             /** Conflicts */
             conflicts: components["schemas"]["ConflictRead"][];
-            event_coords: components["schemas"]["CoordsRead"] | null;
-            /** Event Date */
-            event_date: string | null;
+            coords: components["schemas"]["CoordsRead"] | null;
             /**
              * Feed At
              * Format: date-time
@@ -4126,6 +3838,8 @@ export interface components {
             /** Is Graphic */
             is_graphic: boolean;
             media: components["schemas"]["MediaRead"] | null;
+            /** Occurred Date */
+            occurred_date: string | null;
             owner: components["schemas"]["AuthorRef"];
             /** Requested At */
             requested_at: string | null;
@@ -4205,10 +3919,10 @@ export interface components {
              */
             id: string;
             /**
-             * Media Type
+             * Kind
              * @enum {string}
              */
-            media_type: "image" | "video";
+            kind: "image" | "video";
             /** Original Filename */
             original_filename?: string | null;
             /**
@@ -4231,21 +3945,20 @@ export interface components {
             /** Title */
             title: string;
         };
-        /** NotificationPreferenceRead */
+        /**
+         * NotificationPreferenceRead
+         * @description Whether ``kind`` is emailed, beside its default. The in-app feed shows every kind.
+         */
         NotificationPreferenceRead: {
-            /** Channels */
-            channels: {
-                [key: string]: boolean;
-            };
-            /** Defaults */
-            defaults: {
-                [key: string]: boolean;
-            };
+            /** Default */
+            default: boolean;
+            /** Email */
+            email: boolean;
             /**
              * Kind
              * @enum {string}
              */
-            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_manager_inherited" | "re_approve_requested" | "approval_received" | "approval_revoked" | "approval_request_received" | "approval_request_declined" | "organization_approval_removed";
+            kind: "request_fulfilled" | "new_follower" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_manager_inherited" | "re_approve_requested" | "approval_received" | "approval_request_received" | "approval_request_declined" | "organization_approval_removed";
         };
         /**
          * NotificationRead
@@ -4275,7 +3988,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_manager_inherited" | "re_approve_requested" | "approval_received" | "approval_revoked" | "approval_request_received" | "approval_request_declined" | "organization_approval_removed";
+            kind: "request_fulfilled" | "new_follower" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_manager_inherited" | "re_approve_requested" | "approval_received" | "approval_request_received" | "approval_request_declined" | "organization_approval_removed";
             organization: components["schemas"]["OrganizationRef"] | null;
             /** Organization Name */
             organization_name?: string | null;
@@ -4536,16 +4249,16 @@ export interface components {
          * @description Soft-warning hit on the submit form's possible-duplicate probe.
          */
         PossibleDuplicateRead: {
+            coords: components["schemas"]["CoordsRead"];
             /** Distance M */
             distance_m: number;
-            event_coords: components["schemas"]["CoordsRead"];
-            /** Event Date */
-            event_date: string | null;
             /**
              * Id
              * Format: uuid
              */
             id: string;
+            /** Occurred Date */
+            occurred_date: string | null;
             owner: components["schemas"]["AuthorRef"];
             /** Source Url */
             source_url: string | null;
@@ -4566,155 +4279,6 @@ export interface components {
             /** Url */
             url: string;
         };
-        /**
-         * ProductUpdateCreate
-         * @description An announcement as the admin composes it. ``body`` is plain text: a blank
-         *     line starts a paragraph, and a paragraph whose lines all start with ``- ``
-         *     is a list.
-         */
-        ProductUpdateCreate: {
-            /** Body */
-            body: string;
-            /** Label */
-            label: string;
-            /** Link Url */
-            link_url?: string | null;
-            /** Title */
-            title: string;
-        };
-        /**
-         * ProductUpdateList
-         * @description Every announcement sent, newest first.
-         */
-        ProductUpdateList: {
-            /** Items */
-            items: components["schemas"]["ProductUpdateRead"][];
-        };
-        /**
-         * ProductUpdatePreview
-         * @description The email as a recipient gets it, and the audience it would go to now.
-         *     ``days`` is how many trailing-24-hour windows the daily cap needs.
-         */
-        ProductUpdatePreview: {
-            /** Batch Size */
-            batch_size: number;
-            /** Daily Cap */
-            daily_cap: number;
-            /** Days */
-            days: number;
-            /** Html */
-            html: string;
-            /** Recipients */
-            recipients: number;
-            /** Subject */
-            subject: string;
-            /** Text */
-            text: string;
-        };
-        /** ProductUpdateProgress */
-        ProductUpdateProgress: {
-            /**
-             * Failed
-             * @default 0
-             */
-            failed: number;
-            /**
-             * Queued
-             * @default 0
-             */
-            queued: number;
-            /**
-             * Sending
-             * @default 0
-             */
-            sending: number;
-            /**
-             * Sent
-             * @default 0
-             */
-            sent: number;
-            /**
-             * Skipped
-             * @default 0
-             */
-            skipped: number;
-        };
-        /** ProductUpdateRead */
-        ProductUpdateRead: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Label */
-            label: string;
-            /** Link Url */
-            link_url: string | null;
-            progress: components["schemas"]["ProductUpdateProgress"];
-            /** Recipient Count */
-            recipient_count: number;
-            /** Title */
-            title: string;
-        };
-        /**
-         * PushConfigRead
-         * @description ``public_key`` is the VAPID application server key, null when this
-         *     deployment does not send push.
-         */
-        PushConfigRead: {
-            /** Public Key */
-            public_key: string | null;
-        };
-        /**
-         * PushSubscriptionCreate
-         * @description Body for ``POST /users/me/push-subscriptions``: the browser's
-         *     ``PushSubscription.toJSON()``. Its ``expirationTime`` is ignored. ``resync``
-         *     marks a registration the page makes by itself, which a revoked device
-         *     cannot pass; enabling push leaves it false.
-         */
-        PushSubscriptionCreate: {
-            /** Endpoint */
-            endpoint: string;
-            keys: components["schemas"]["PushSubscriptionKeys"];
-            /**
-             * Resync
-             * @default false
-             */
-            resync: boolean;
-        };
-        /** PushSubscriptionKeys */
-        PushSubscriptionKeys: {
-            /** Auth */
-            auth: string;
-            /** P256Dh */
-            p256dh: string;
-        };
-        /**
-         * PushSubscriptionRead
-         * @description One registered device. The endpoint is a bearer secret and is never
-         *     returned.
-         */
-        PushSubscriptionRead: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Last Success At */
-            last_success_at: string | null;
-            /** User Agent */
-            user_agent: string | null;
-        };
         /** RegisterRequest */
         RegisterRequest: {
             /**
@@ -4726,11 +4290,6 @@ export interface components {
             invite_code: string;
             /** Password */
             password: string;
-            /**
-             * Product Updates
-             * @default false
-             */
-            product_updates: boolean;
             /** Username */
             username: string;
         };
@@ -4788,8 +4347,6 @@ export interface components {
         };
         /** SearchEventHit */
         SearchEventHit: {
-            /** Event Date */
-            event_date: string | null;
             /** Geolocators */
             geolocators: components["schemas"]["AuthorRef"][];
             /**
@@ -4805,6 +4362,8 @@ export interface components {
             lng: number;
             /** Media */
             media: components["schemas"]["MediaRead"][];
+            /** Occurred Date */
+            occurred_date: string | null;
             owner: components["schemas"]["AuthorRef"];
             /**
              * Status
@@ -5075,13 +4634,11 @@ export interface components {
         /**
          * UserPreferencesRead
          * @description Effective values, each beside the default it falls back to.
-         *     ``display_stored`` holds only the display values the account has saved
-         *     (``null`` where it has none), so a client can tell a saved value from a
-         *     default. ``notifications`` lists every registered kind in registry order.
-         *     ``product_updates`` is whether a consent to product update emails is
-         *     current; it has no default to fall back to, since consent is never
-         *     presumed. ``approval_request_audience`` is who may send you an approval
-         *     request.
+         *         ``display_stored`` holds only the display values the account has saved
+         *         (``null`` where it has none), so a client can tell a saved value from a
+         *         default. ``notifications`` lists every registered kind in registry order.
+         *     ``approval_request_audience`` is who may send you an approval
+         *         request.
          */
         UserPreferencesRead: {
             /**
@@ -5094,15 +4651,12 @@ export interface components {
             display_stored: components["schemas"]["DisplayPreferencesUpdate"];
             /** Notifications */
             notifications: components["schemas"]["NotificationPreferenceRead"][];
-            /** Product Updates */
-            product_updates: boolean;
         };
         /**
          * UserPreferencesUpdate
          * @description Body for ``PATCH /users/me/preferences``. Each ``notifications`` entry
-         *     sets channels of one kind; a value equal to the default drops the
-         *     override. ``product_updates`` grants or withdraws the consent to product
-         *     update emails from Settings.
+         *     turns the email of one kind on or off; a value equal to the default drops
+         *     the override.
          */
         UserPreferencesUpdate: {
             /** Approval Request Audience */
@@ -5110,12 +4664,8 @@ export interface components {
             display?: components["schemas"]["DisplayPreferencesUpdate"] | null;
             /** Notifications */
             notifications?: {
-                [key: string]: {
-                    [key: string]: boolean;
-                };
+                [key: string]: boolean;
             } | null;
-            /** Product Updates */
-            product_updates?: boolean | null;
         };
         /**
          * UserProfile
@@ -5203,7 +4753,7 @@ export interface components {
          *     and ``no_source_count`` the events with no readable host. The three sum to
          *     ``total_events``.
          *
-         *     ``activity`` counts ``event_date`` per calendar month over the analyst's
+         *     ``activity`` counts ``occurred_date`` per calendar month over the analyst's
          *     span, earliest first, zero-filled, empty when no event carries a date.
          */
         UserStatsRead: {
@@ -5269,62 +4819,11 @@ export interface components {
         };
         /**
          * XHandleRead
-         * @description Body of ``GET /users/me/x-handle``: the bound handle and the request
-         *     waiting on it, if any.
+         * @description Body of ``GET /users/me/x-handle``.
          */
         XHandleRead: {
-            request: components["schemas"]["XHandleRequestRead"] | null;
             /** X Handle */
             x_handle: string | null;
-        };
-        /**
-         * XHandleRequestCreate
-         * @description Body for ``PUT /users/me/x-handle-request``.
-         */
-        XHandleRequestCreate: {
-            /** Reason */
-            reason?: string | null;
-            /** X Handle */
-            x_handle: string;
-        };
-        /**
-         * XHandleRequestDecline
-         * @description Body for ``POST /admin/x-handle-requests/{id}/decline``. The reason
-         *     reaches the requester in Settings.
-         */
-        XHandleRequestDecline: {
-            /** Reason */
-            reason: string;
-        };
-        /**
-         * XHandleRequestRead
-         * @description The requester's view of their request. ``decline_reason`` and
-         *     ``decided_at`` are set exactly when ``status`` is ``declined``.
-         */
-        XHandleRequestRead: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Decided At */
-            decided_at: string | null;
-            /** Decline Reason */
-            decline_reason: string | null;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Reason */
-            reason: string | null;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "pending" | "declined";
-            /** X Handle */
-            x_handle: string;
         };
     };
     responses: never;
@@ -5335,6 +4834,37 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    delete_approval_api_v1_admin_approvals__approval_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approval_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     hide_collection_admin_api_v1_admin_collections__collection_id__delete: {
         parameters: {
             query?: never;
@@ -5676,7 +5206,7 @@ export interface operations {
             };
         };
     };
-    maintenance_reap_auth_tokens_api_v1_admin_maintenance_reap_auth_tokens_post: {
+    maintenance_reap_password_reset_tokens_api_v1_admin_maintenance_reap_password_reset_tokens_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -5934,140 +5464,6 @@ export interface operations {
             };
         };
     };
-    list_product_updates_api_v1_admin_product_updates_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProductUpdateList"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    send_product_update_api_v1_admin_product_updates_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProductUpdateCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProductUpdateRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    preview_product_update_api_v1_admin_product_updates_preview_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProductUpdateCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProductUpdatePreview"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    send_test_product_update_api_v1_admin_product_updates_test_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProductUpdateCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_reports_api_v1_admin_reports_get: {
         parameters: {
             query?: {
@@ -6302,105 +5698,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AdminUserRead"];
                 };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_x_handle_requests_api_v1_admin_x_handle_requests_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminXHandleRequestRead"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    approve_x_handle_request_api_v1_admin_x_handle_requests__request_id__approve_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                request_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminUserRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    decline_x_handle_request_api_v1_admin_x_handle_requests__request_id__decline_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                request_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["XHandleRequestDecline"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -7001,8 +6298,8 @@ export interface operations {
                 capture_source?: string[] | null;
                 tag?: string[] | null;
                 bbox?: string | null;
-                event_date_from?: string | null;
-                event_date_to?: string | null;
+                occurred_date_from?: string | null;
+                occurred_date_to?: string | null;
                 submitted_from?: string | null;
                 submitted_to?: string | null;
                 author?: string | null;
@@ -7290,8 +6587,8 @@ export interface operations {
                 conflict?: string[] | null;
                 capture_source?: string[] | null;
                 tag?: string[] | null;
-                event_date_from?: string | null;
-                event_date_to?: string | null;
+                occurred_date_from?: string | null;
+                occurred_date_to?: string | null;
                 submitted_from?: string | null;
                 submitted_to?: string | null;
                 author?: string | null;
@@ -7332,7 +6629,7 @@ export interface operations {
                 lat: number;
                 lng: number;
                 source_url?: string | null;
-                event_date?: string | null;
+                occurred_date?: string | null;
             };
             header?: never;
             path?: never;
@@ -7628,44 +6925,6 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApprovalRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    revoke_approval_api_v1_events__geolocation_id__approvals__approval_id__revoke_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                geolocation_id: string;
-                approval_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["ApprovalRevoke"] | null;
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8908,35 +8167,6 @@ export interface operations {
             };
         };
     };
-    unsubscribe_api_v1_product_updates_unsubscribe_post: {
-        parameters: {
-            query: {
-                token: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     search_api_v1_search_get: {
         parameters: {
             query?: {
@@ -8950,8 +8180,8 @@ export interface operations {
                 conflict?: string[] | null;
                 capture_source?: string[] | null;
                 tag?: string[] | null;
-                event_date_from?: string | null;
-                event_date_to?: string | null;
+                occurred_date_from?: string | null;
+                occurred_date_to?: string | null;
                 submitted_from?: string | null;
                 submitted_to?: string | null;
                 /** @description Scope the event groups to this owner username (exact, case-insensitive) */
@@ -9355,134 +8585,6 @@ export interface operations {
             };
         };
     };
-    get_push_config_api_v1_users_me_push_config_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PushConfigRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_push_subscriptions_api_v1_users_me_push_subscriptions_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PushSubscriptionRead"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    register_push_subscription_api_v1_users_me_push_subscriptions_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PushSubscriptionCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PushSubscriptionRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_push_subscription_api_v1_users_me_push_subscriptions__subscription_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                subscription_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     get_my_x_handle_api_v1_users_me_x_handle_get: {
         parameters: {
             query?: never;
@@ -9493,41 +8595,6 @@ export interface operations {
             };
         };
         requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["XHandleRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    put_my_x_handle_request_api_v1_users_me_x_handle_request_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["XHandleRequestCreate"];
-            };
-        };
         responses: {
             /** @description Successful Response */
             200: {
