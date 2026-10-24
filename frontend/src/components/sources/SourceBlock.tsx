@@ -16,7 +16,8 @@ import { LEVEL_LABELS, sourceKindLabel, type Source } from "@/lib/sources";
  * One source of an event on a reading surface, read like the event's Details card: its file
  * (behind its own graphic gate when this source is flagged) or a *No file* box, then one row
  * each for the title, level, kind (with the file's kind), capture position, capture time, links
- * and tags. A row with no value drops out, except the title, which reads *Untitled*.
+ * and tags. A row with no value drops out, except the title, which reads *Untitled*. A context
+ * source without a file has no file area at all: a URL alone (an article, a statement) is no gap.
  *
  * `compact` is the map panel's density: `thumbnail` media and bare rows in a `LIST_TILE`.
  * `wide` is for a block that owns the whole sources area: the file grows and sits left of the
@@ -38,7 +39,7 @@ export function SourceBlock({
   wide?: boolean;
 }) {
   const name = `Source ${index + 1}`;
-  const file = (
+  const file = source.media === null && source.level === "context" ? null : (
     <MediaGallery
       media={source.media ? [source.media] : []}
       alt={alt}

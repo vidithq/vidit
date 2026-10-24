@@ -325,7 +325,7 @@ An event's evidence is its list of [sources](data-model.md#sources), up to 10, n
 
 **On a reading surface**, the blocks follow the order the API serves (`direct`, then `indirect`, then `context`, then by capture time). Each block reads like the event's **Details** card: a [`<DetailCard>`](../frontend/src/components/ui/DetailRow.tsx) region named *Source N*, with the file in its lead slot and one `<DetailRow>` per field under it. It shows, in this order:
 
-- The file in [`<MediaGallery>`](../frontend/src/components/ui/MediaGallery.tsx), behind its own [`<GraphicContentGate>`](../frontend/src/components/ui/GraphicContentGate.tsx) when that source is flagged. A source without a file shows the gallery's empty box, reading *No file*.
+- The file in [`<MediaGallery>`](../frontend/src/components/ui/MediaGallery.tsx), behind its own [`<GraphicContentGate>`](../frontend/src/components/ui/GraphicContentGate.tsx) when that source is flagged. A direct or indirect source without a file shows the gallery's empty box, reading *No file*. A context source without a file shows no file area: the card starts with its rows.
 - **Title**: the source's title, or a muted *Untitled* when it has none.
 - **Level**: a `<Pill>`, with the label the frontend owns for `direct`, `indirect` and `context`.
 - **Kind**: the kind's label, followed by the file's kind after a middle dot when the source has a file (`sourceKindLabel`): *Drone · video*, *Smartphone · photo*, *Article*. A kind of `unknown` is dropped, since it tells the reader nothing: the row shows the file's kind alone, or drops out without a file.

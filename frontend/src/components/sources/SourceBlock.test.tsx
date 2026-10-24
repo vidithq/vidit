@@ -49,6 +49,19 @@ describe("SourceBlock", () => {
     expect(within(block).getByText("Article")).toBeInTheDocument();
   });
 
+  it("shows no file area on a context source without a file", () => {
+    const block = renderBlock({ level: "context", kind: "article" });
+    expect(within(block).queryByText("No file")).toBeNull();
+    // The card starts with its rows.
+    expect(rowLabels(block)[0]).toBe("Title");
+    expect(block.firstElementChild?.textContent).toContain("Title");
+  });
+
+  it("keeps the file area of a context source that has a file", () => {
+    const block = renderBlock({ level: "context", media: IMAGE });
+    expect(within(block).getByRole("img", { name: ALT })).toBeInTheDocument();
+  });
+
   it("drops an unknown kind, leaving the file's kind alone", () => {
     expect(within(renderBlock({ media: IMAGE })).getByText("Photo")).toBeInTheDocument();
   });
