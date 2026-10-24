@@ -19,7 +19,7 @@ from typing import Any
 import pytest
 
 from app.database import SessionLocal
-from app.models.event import STATUS_DETECTED, Event
+from app.models.event import STATUS_DETECTED, Event, EventDetection
 from app.models.media import Media
 from app.models.user import User
 from app.services.auth import hash_password
@@ -82,7 +82,11 @@ def _head_url(owner: User, typology: str) -> str:
 
 def _rows_for(db, owner: User, typology: str) -> list[Event]:
     url = _head_url(owner, typology)
-    return db.query(Event).filter(Event.owner_id == owner.id, Event.detected_from_url == url).all()
+    return (
+        db.query(Event)
+        .filter(Event.owner_id == owner.id, Event.detection.has(EventDetection.from_url == url))
+        .all()
+    )
 
 
 def _proof_image_count(event: Event) -> int:
@@ -128,7 +132,7 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
 
     # self_thread: provenance is the head permalink; occurred_date is the head's post date.
     [thread_row] = _rows_for(db, owner, "self_thread")
-    assert thread_row.detected_from_url == _head_url(owner, "self_thread")
+    assert thread_row.detection.from_url == _head_url(owner, "self_thread")
     assert thread_row.occurred_date == _fixture_occurred_date("self_thread")
 
     # mention_prefix: the title is the line as written, @mentions and coordinate included.
@@ -391,7 +395,7 @@ async def test_reimport_fills_a_detection_an_earlier_run_left_bare(
     assert row.id == stale_id  # the same row, not a second one beside it
     assert row.created_at == stale_created_at
     assert row.status == STATUS_DETECTED
-    assert row.detected_from_url == permalink
+    assert row.detection.from_url == permalink
     assert row.source_url == "https://t.me/somechannel/12345"
     assert row.source_posted_at == datetime.fromisoformat("2026-03-04T09:00:00+00:00")
     assert row.source_links == []

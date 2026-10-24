@@ -19,6 +19,7 @@ from app.models.event import (
     STATUS_GEOLOCATED,
     STATUS_REQUESTED,
     Event,
+    EventDetection,
 )
 from app.models.invite_code import InviteCode
 from app.models.media import Media
@@ -1489,7 +1490,7 @@ def test_reject_rate_counts_closed_detections_not_geolocated(
         before_closed_status=STATUS_DETECTED,
         closed_at=now,
         detected_at=now,
-        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+        detection=EventDetection(from_url=f"https://x.com/a/{uuid.uuid4().hex}"),
     )
     geolocated = Event(
         owner_id=regular_user.id,
@@ -1498,14 +1499,14 @@ def test_reject_rate_counts_closed_detections_not_geolocated(
         geolocated_at=now,
         coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com/source",
-        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+        detection=EventDetection(from_url=f"https://x.com/a/{uuid.uuid4().hex}"),
     )
     pending = Event(
         owner_id=regular_user.id,
         title=f"Pending {uuid.uuid4().hex[:8]}",
         status=STATUS_DETECTED,
         detected_at=now,
-        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+        detection=EventDetection(from_url=f"https://x.com/a/{uuid.uuid4().hex}"),
     )
     db.add_all([rejected, geolocated, pending])
     db.commit()
@@ -1556,8 +1557,7 @@ def test_reject_rate_ignores_a_bot_opened_request(admin_user, regular_user, even
         closed_at=now,
         requested_at=now,
         source_url="https://t.me/example_channel/351",
-        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
-        detected_via="bot",
+        detection=EventDetection(from_url=f"https://x.com/a/{uuid.uuid4().hex}", via="bot"),
     )
     fulfilled_request = Event(
         owner_id=regular_user.id,
@@ -1568,8 +1568,7 @@ def test_reject_rate_ignores_a_bot_opened_request(admin_user, regular_user, even
         requested_at=now,
         coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://t.me/example_channel/352",
-        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
-        detected_via="bot",
+        detection=EventDetection(from_url=f"https://x.com/a/{uuid.uuid4().hex}", via="bot"),
     )
     db.add_all([closed_request, fulfilled_request])
     db.commit()
@@ -1590,7 +1589,7 @@ def test_pending_quality_counts_missing_pieces(admin_user, regular_user, events_
         title=f"Bare {uuid.uuid4().hex[:8]}",
         status=STATUS_DETECTED,
         detected_at=now,
-        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+        detection=EventDetection(from_url=f"https://x.com/a/{uuid.uuid4().hex}"),
     )
     complete = Event(
         owner_id=regular_user.id,
@@ -1598,7 +1597,7 @@ def test_pending_quality_counts_missing_pieces(admin_user, regular_user, events_
         status=STATUS_DETECTED,
         detected_at=now,
         source_url="https://example.com/source",
-        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+        detection=EventDetection(from_url=f"https://x.com/a/{uuid.uuid4().hex}"),
     )
     db.add_all([bare, complete])
     db.flush()
@@ -1641,7 +1640,7 @@ def test_pending_counts_exclude_soft_deleted(admin_user, regular_user, events_cl
         title=f"Soft-deleted {uuid.uuid4().hex[:8]}",
         status=STATUS_DETECTED,
         detected_at=now,
-        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+        detection=EventDetection(from_url=f"https://x.com/a/{uuid.uuid4().hex}"),
         deleted_at=now,
     )
     db.add(soft_deleted)
@@ -1663,7 +1662,7 @@ def test_reject_rate_counts_soft_deleted_detection(admin_user, regular_user, eve
         title=f"Soft-deleted detection {uuid.uuid4().hex[:8]}",
         status=STATUS_DETECTED,
         detected_at=now,
-        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+        detection=EventDetection(from_url=f"https://x.com/a/{uuid.uuid4().hex}"),
         deleted_at=now,
     )
     db.add(soft_deleted_detection)
@@ -1687,7 +1686,7 @@ def test_reject_rate_ignores_soft_deleted_geolocated(admin_user, regular_user, e
         geolocated_at=now,
         coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://example.com/source",
-        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+        detection=EventDetection(from_url=f"https://x.com/a/{uuid.uuid4().hex}"),
         deleted_at=now,
     )
     db.add(soft_deleted_geo)
@@ -1712,7 +1711,7 @@ def test_pending_proof_video_counts_as_missing_proof_image(
         status=STATUS_DETECTED,
         detected_at=now,
         source_url="https://example.com/source",
-        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+        detection=EventDetection(from_url=f"https://x.com/a/{uuid.uuid4().hex}"),
     )
     db.add(video_proof)
     db.flush()

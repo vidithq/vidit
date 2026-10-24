@@ -89,6 +89,7 @@ _DETAIL_LOADS = (
     # ``build_event_read`` reads this set; without it, a lazy query per event.
     selectinload(Event.archives),
     selectinload(Event.source_links),
+    selectinload(Event.detection),
 )
 
 

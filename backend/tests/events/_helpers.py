@@ -19,6 +19,7 @@ from app.models.event import (
     STATUS_GEOLOCATED,
     STATUS_REQUESTED,
     Event,
+    EventDetection,
     EventGeolocator,
 )
 from app.models.notification import NotificationDelivery
@@ -103,7 +104,7 @@ def _make_geo(
         # Bare literal: the column is typed ``BeforeClosedStatus``, the constant ``EventStatus``.
         geo.before_closed_status = "requested"
     if detected_from_url is not None:
-        geo.detected_from_url = detected_from_url
+        geo.detection = EventDetection(from_url=detected_from_url)
     if deleted:
         geo.deleted_at = datetime.now(UTC)
     if hidden:

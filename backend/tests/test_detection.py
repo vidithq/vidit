@@ -20,6 +20,7 @@ from app.models.event import (
     STATUS_GEOLOCATED,
     DetectedVia,
     Event,
+    EventDetection,
     EventVersion,
 )
 from app.models.media import Media
@@ -173,8 +174,7 @@ def _publish_the_default_pair(db, owner: User) -> None:
             occurred_date=date(2025, 11, 12),
             status=STATUS_GEOLOCATED,
             geolocated_at=datetime.now(UTC),
-            detected_from_post_id=1,
-            detected_from_url="https://x.com/own/status/1",
+            detection=EventDetection(from_url="https://x.com/own/status/1", from_post_id=1),
         )
     )
     db.commit()
@@ -231,7 +231,7 @@ async def test_assemble_persists_detected_row(db, owner):
 
     geo = db.query(Event).filter(Event.owner_id == owner.id).one()
     assert geo.status == STATUS_DETECTED
-    assert geo.detected_from_url == "https://x.com/own/status/1"
+    assert geo.detection.from_url == "https://x.com/own/status/1"
     assert geo.source_url == "https://x.com/src/status/9"
     assert geo.source_posted_at == datetime(2025, 11, 11, 9, 0, tzinfo=UTC)
     assert geo.occurred_date == date(2025, 11, 12)
@@ -486,7 +486,7 @@ async def test_two_spellings_of_one_post_land_on_one_detection(db, owner):
     row = db.query(Event).filter(Event.owner_id == owner.id).one()
     assert row.title == "Second read"
     # Provenance is not the import's to move.
-    assert row.detected_from_url == "https://x.com/own/status/7"
+    assert row.detection.from_url == "https://x.com/own/status/7"
 
 
 async def test_an_archive_thread_then_a_bot_tag_on_its_tail_is_one_detection(db, owner):
@@ -516,9 +516,9 @@ async def test_an_archive_thread_then_a_bot_tag_on_its_tail_is_one_detection(db,
     row = db.query(Event).filter(Event.owner_id == owner.id).one()
     assert row.title == "From the tag"
     # Provenance and entry stay those of the first read.
-    assert row.detected_from_url == "https://x.com/own/status/101"
-    assert row.detected_thread_post_ids == [101, 102, 103]
-    assert row.detected_via == "archive"
+    assert row.detection.from_url == "https://x.com/own/status/101"
+    assert row.detection.thread_post_ids == [101, 102, 103]
+    assert row.detection.via == "archive"
 
 
 async def test_a_bot_tag_then_the_archive_of_the_same_thread_is_one_detection(db, owner):
@@ -542,8 +542,8 @@ async def test_a_bot_tag_then_the_archive_of_the_same_thread_is_one_detection(db
     assert len(outcome.updated) == 1 and outcome.created == []
     row = db.query(Event).filter(Event.owner_id == owner.id).one()
     assert row.title == "From the export"
-    assert row.detected_from_url == "https://x.com/own/status/102"
-    assert row.detected_via == "bot"
+    assert row.detection.from_url == "https://x.com/own/status/102"
+    assert row.detection.via == "bot"
 
 
 async def test_two_threads_sharing_no_post_are_two_detections(db, owner):
@@ -567,7 +567,7 @@ async def test_the_entry_that_produced_a_detection_is_stamped_on_the_row(db, own
         via=via,
     )
     [row_id] = outcome.created
-    assert _row(db, row_id).detected_via == via
+    assert _row(db, row_id).detection.via == via
 
 
 async def test_geolocated_pair_is_skipped(db, owner):
@@ -588,8 +588,8 @@ async def test_detected_detection_is_upserted_in_place(db, owner):
         "owner_id": stored.owner_id,
         "created_at": stored.created_at,
         "detected_at": stored.detected_at,
-        "detected_from_url": stored.detected_from_url,
     }
+    provenance = stored.detection.from_url
     assert stored.source_url is None and stored.source_links == []
 
     richer = _detection(
@@ -606,6 +606,7 @@ async def test_detected_detection_is_upserted_in_place(db, owner):
     db.expire_all()
     row = db.query(Event).filter(Event.owner_id == owner.id).one()
     assert {k: getattr(row, k) for k in before} == before
+    assert row.detection.from_url == provenance
     assert row.status == STATUS_DETECTED
     # Import-owned fields are overwritten.
     assert row.title == "Depot hit, Shebekino"
@@ -764,7 +765,7 @@ async def test_upsert_matched_through_the_source_url_leg(db, owner):
     row = db.query(Event).filter(Event.owner_id == owner.id).one()
     assert row.id == stored_id
     assert row.title == "Corrected wording"
-    assert row.detected_from_url == "https://x.com/own/status/1"
+    assert row.detection.from_url == "https://x.com/own/status/1"
 
 
 async def test_upsert_drops_a_snapshot_of_a_source_url_the_row_no_longer_declares(db, owner):

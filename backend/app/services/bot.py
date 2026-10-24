@@ -231,7 +231,7 @@ def acquire_tagged_thread(
     The handle is case-folded: it is the record's fallback screen name, feeds
     every provenance permalink and the own-status exclusion, so the payload's
     spelling must not leak through. Idempotency anchors on the post id
-    (``events.detected_from_post_id``).
+    (``event_detections.from_post_id``).
     """
     return acquire_thread(tweet_id, handle=author_handle.lower(), client=client)
 

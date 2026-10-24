@@ -1174,8 +1174,8 @@ def test_edit_request_keeps_the_provenance_of_a_bot_opened_row(db, author):
     db.expire_all()
     edited = db.query(Event).filter(Event.id == request_id).one()
     assert edited.title == "Edited title"
-    assert edited.detected_from_post_id == provenance.tweet_id
-    assert edited.detected_from_url == provenance.url
-    assert edited.detected_thread_post_ids == provenance.thread_tweet_ids
-    assert edited.detected_via == "bot"
-    assert edited.detected_post_at == provenance.post_at
+    assert edited.detection.from_post_id == provenance.tweet_id
+    assert edited.detection.from_url == provenance.url
+    assert edited.detection.thread_post_ids == provenance.thread_tweet_ids
+    assert edited.detection.via == "bot"
+    assert edited.detection.post_at == provenance.post_at

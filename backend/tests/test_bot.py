@@ -503,7 +503,7 @@ async def test_a_tagged_post_creates_a_detection(db, linked_owner):
 
     event = db.query(Event).filter(Event.owner_id == linked_owner.id).one()
     assert event.status == STATUS_DETECTED
-    assert event.detected_from_url == f"https://x.com/{HANDLE}/status/{TAGGED_ID}"
+    assert event.detection.from_url == f"https://x.com/{HANDLE}/status/{TAGGED_ID}"
     # The title is the first line with text beyond coordinates and links.
     assert event.title == "Strike on the vehicle depot"
     point = to_shape(event.coords)
@@ -547,7 +547,7 @@ async def test_the_two_post_field_format_lands_one_detection(db, linked_owner):
     assert outcome.created_event_count == 1
     event = db.query(Event).filter(Event.owner_id == linked_owner.id).one()
     assert event.status == STATUS_DETECTED
-    assert event.detected_from_url == f"https://x.com/{HANDLE}/status/{TWO_POST_PARENT_ID}"
+    assert event.detection.from_url == f"https://x.com/{HANDLE}/status/{TWO_POST_PARENT_ID}"
     assert event.title == "Depot strike geolocated"
     assert event.source_url == "https://www.tiktok.com/@war/video/7"
     assert event.source_posted_at is None
@@ -845,7 +845,7 @@ async def test_a_tag_typed_under_someone_elses_post_is_processed(db, linked_owne
     assert outcome.created_event_count == 1
     assert outcome.replies_posted == 1
     event = db.query(Event).filter(Event.owner_id == linked_owner.id).one()
-    assert event.detected_from_url == f"https://x.com/{HANDLE}/status/{TYPED_UNDER_FOREIGN_ID}"
+    assert event.detection.from_url == f"https://x.com/{HANDLE}/status/{TYPED_UNDER_FOREIGN_ID}"
     point = to_shape(event.coords)
     assert point.y == pytest.approx(48.123456)
     ledger = db.query(BotMention).filter(BotMention.mention_post_id == TYPED_UNDER_FOREIGN_ID).one()
@@ -863,7 +863,7 @@ async def test_a_bare_tag_under_an_untagged_parent_still_climbs(db, linked_owner
     assert outcome.inherited == 0
     assert outcome.created_event_count == 1
     event = db.query(Event).filter(Event.owner_id == linked_owner.id).one()
-    assert event.detected_from_url == f"https://x.com/{HANDLE}/status/{TWO_POST_PARENT_ID}"
+    assert event.detection.from_url == f"https://x.com/{HANDLE}/status/{TWO_POST_PARENT_ID}"
     ledger = db.query(BotMention).filter(BotMention.mention_post_id == BARE_TAG_ID).one()
     assert ledger.outcome == "created"
     assert posted
@@ -976,13 +976,13 @@ async def test_a_coordinate_less_mirror_post_opens_a_request(
     assert row.owner_id == linked_owner.id == row.requested_by_id
     # The chased original, not the mirroring post.
     assert row.source_url == source_url
-    assert row.detected_from_url == f"https://x.com/{HANDLE}/status/{mention_id}"
-    assert row.detected_via == "bot"
-    assert row.detected_from_post_id == int(mention_id)
-    assert row.detected_thread_post_ids == [int(mention_id)]
+    assert row.detection.from_url == f"https://x.com/{HANDLE}/status/{mention_id}"
+    assert row.detection.via == "bot"
+    assert row.detection.from_post_id == int(mention_id)
+    assert row.detection.thread_post_ids == [int(mention_id)]
     # Fifth provenance column (``events.stamp_provenance``): when the analyst posted the mirror.
-    assert row.detected_post_at is not None
-    assert row.detected_post_at != row.source_posted_at
+    assert row.detection.post_at is not None
+    assert row.detection.post_at != row.source_posted_at
     # The chase served a date: no date warning.
     assert row.source_posted_at is not None
 

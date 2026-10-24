@@ -13,7 +13,7 @@ from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
 from app.models.conflict import Conflict
-from app.models.event import STATUS_DETECTED, STATUS_REQUESTED, Event
+from app.models.event import STATUS_DETECTED, STATUS_REQUESTED, Event, EventDetection
 from app.models.tag import Tag
 from app.services.event_filters import parse_bbox
 from tests._fixtures import fake_sha256
@@ -410,7 +410,7 @@ def test_detected_row_renders_marked_across_surfaces(db, author):
         occurred_date=date(2026, 5, 1),
         status=STATUS_DETECTED,
         detected_at=datetime.now(UTC),
-        detected_from_url="https://x.com/a/status/1",
+        detection=EventDetection(from_url="https://x.com/a/status/1"),
     )
     db.add(geo)
     db.commit()

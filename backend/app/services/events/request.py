@@ -8,7 +8,7 @@ from datetime import UTC, date, datetime, time
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
-from app.models.event import STATUS_REQUESTED, DetectedVia, Event
+from app.models.event import STATUS_REQUESTED, DetectedVia, Event, EventDetection
 from app.models.user import User
 from app.services import source_archive
 from app.services.event_filters import lock_event
@@ -52,16 +52,18 @@ class ImportProvenance:
 
 
 def stamp_provenance(row: Event, provenance: ImportProvenance) -> None:
-    """Write the five import columns onto a machine-written ``row``.
+    """Attach the ``event_detections`` row to a machine-written ``row``.
 
     Shared by ``detection._persist_one`` and :func:`create_request`. Written
     once at creation and never moved (``detection._apply_import_fields``).
     """
-    row.detected_from_post_id = provenance.tweet_id
-    row.detected_from_url = provenance.url
-    row.detected_thread_post_ids = provenance.thread_tweet_ids or None
-    row.detected_via = provenance.via
-    row.detected_post_at = provenance.post_at
+    row.detection = EventDetection(
+        via=provenance.via,
+        from_url=provenance.url,
+        from_post_id=provenance.tweet_id,
+        thread_post_ids=provenance.thread_tweet_ids or None,
+        post_at=provenance.post_at,
+    )
 
 
 async def create_request(
@@ -103,7 +105,7 @@ async def create_request(
     on the same terms as :func:`create_with_evidence`.
 
     ``provenance`` is set only by a machine writer (``detection.open_request``)
-    and stamps the import columns via :func:`stamp_provenance`, so a re-import
+    and attaches the ``event_detections`` row via :func:`stamp_provenance`, so a re-import
     recognises the row. ``source_posted_at`` is optional here (a chase may
     serve no date); the form keeps it required for people
     (``routers/events/write``).

@@ -37,6 +37,7 @@ from app.models.event import (
     STATUS_GEOLOCATED,
     DetectedVia,
     Event,
+    EventDetection,
     EventVersion,
 )
 from app.models.media import Media, MediaRole
@@ -172,9 +173,19 @@ def _match_legs(
     """
     legs: list[ColumnElement[bool]] = []
     if tweet_id is not None:
-        legs.append(Event.detected_from_post_id == tweet_id)
+        legs.append(
+            Event.id.in_(
+                select(EventDetection.event_id).where(EventDetection.from_post_id == tweet_id)
+            )
+        )
     if thread_tweet_ids:
-        legs.append(Event.detected_thread_post_ids.overlap(list(thread_tweet_ids)))
+        legs.append(
+            Event.id.in_(
+                select(EventDetection.event_id).where(
+                    EventDetection.thread_post_ids.overlap(list(thread_tweet_ids))
+                )
+            )
+        )
     if source_url is not None:
         legs.append(Event.source_url == source_url)
         legs.append(
@@ -438,8 +449,8 @@ def _apply_import_fields(db: Session, row: Event, detection: Detection) -> tuple
 
     Each field is compared before assignment, so an unchanged re-import emits no UPDATE and
     ``updated_at`` stays still. ``id``, ``owner_id``, ``created_at``, ``detected_at``,
-    ``status`` and the four provenance columns are not the import's to move (a bot tag over an
-    archive detection still reads ``archive``).
+    ``status`` and the ``event_detections`` row are not the import's to move (a bot tag over an
+    archive detection still reads ``archive``), except its ``post_at``.
     """
     changed = False
     if _projected(row) != (detection.coordinate.lat, detection.coordinate.lng):
@@ -451,11 +462,13 @@ def _apply_import_fields(db: Session, row: Event, detection: Detection) -> tuple
         ("title", detection.title),
         ("occurred_date", detection.occurred_date),
         ("source_posted_at", detection.source_posted_at),
-        ("detected_post_at", detection.detected_post_at),
     ):
         if getattr(row, name) != value:
             setattr(row, name, value)
             changed = True
+    if row.detection is not None and row.detection.post_at != detection.detected_post_at:
+        row.detection.post_at = detection.detected_post_at
+        changed = True
     source_url_changed = row.source_url != detection.source_url
     if source_url_changed:
         row.source_url = detection.source_url
@@ -677,7 +690,7 @@ async def persist_detections(
 
     The one write path for every entry (bot, paste, archive). ``owner`` is the importer, the
     account whose verified handle the posts belong to. ``via`` stamps every created row
-    (``events.detected_via``); an upsert leaves it alone.
+    (``event_detections.via``); an upsert leaves it alone.
 
     A detection is matched on its provenance (the thread's post ids) or its ``source_url``,
     plus the coordinate, across states, then dispatched by :func:`_row_disposition`. A second
@@ -800,7 +813,7 @@ async def open_request(
     """Write one :class:`RequestDraft` as a ``requested`` row owned by ``owner``.
 
     The bot's request branch is the one caller. The row is born through
-    ``events.create_request`` like a person's request, plus provenance (``detected_via='bot'``)
+    ``events.create_request`` like a person's request, plus provenance (``event_detections.via='bot'``)
     so a second mention recognises it. The footage is the draft's ordered candidates; the first
     that fetches fills the source slot, passed as an ``UploadFile`` so the evidence intake
     validates it like an upload.

@@ -142,7 +142,7 @@ def test_your_own_post_creates_a_detection(db, linked_author):
     [detection] = _detections(db, linked_author)
     assert str(detection.id) == body["created"][0]
     assert detection.status == STATUS_DETECTED
-    assert detection.detected_from_url == _url(COORD_ID)
+    assert detection.detection.from_url == _url(COORD_ID)
     assert detection.title == "Strike on the depot"
 
 

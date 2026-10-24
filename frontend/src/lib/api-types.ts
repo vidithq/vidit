@@ -1938,7 +1938,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/organizations/{slug}/invites/{invite_id}": {
+    "/api/v1/organizations/{slug}/invites/{username}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1952,7 +1952,7 @@ export interface paths {
          * Cancel Organization Invite
          * @description Withdraw a pending invite. Org managers and site admins only.
          */
-        delete: operations["cancel_organization_invite_api_v1_organizations__slug__invites__invite_id__delete"];
+        delete: operations["cancel_organization_invite_api_v1_organizations__slug__invites__username__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2456,7 +2456,7 @@ export interface components {
          * @description Quality signal on the machine-extraction pipeline (admin-only).
          *
          *     A machine detection is a row imported from X and never a request:
-         *     ``detected_from_url`` set and ``requested_at`` NULL. The second column
+         *     an ``event_detections`` row and ``requested_at`` NULL. The second column
          *     keeps a bot-opened request out of the cohort for life, since the stamp is
          *     never cleared, even after a fulfiller geolocates it.
          *
@@ -3875,10 +3875,10 @@ export interface components {
          */
         GeolocatorInviteRead: {
             /**
-             * Created At
+             * Invited At
              * Format: date-time
              */
-            created_at: string;
+            invited_at: string;
             user: components["schemas"]["AuthorRef"];
         };
         /** HTTPValidationError */
@@ -4063,15 +4063,10 @@ export interface components {
          */
         OrganizationInviteRead: {
             /**
-             * Created At
+             * Invited At
              * Format: date-time
              */
-            created_at: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
+            invited_at: string;
             invited_by: components["schemas"]["AuthorRef"] | null;
             user: components["schemas"]["AuthorRef"];
         };
@@ -8034,13 +8029,13 @@ export interface operations {
             };
         };
     };
-    cancel_organization_invite_api_v1_organizations__slug__invites__invite_id__delete: {
+    cancel_organization_invite_api_v1_organizations__slug__invites__username__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 slug: string;
-                invite_id: string;
+                username: string;
             };
             cookie?: {
                 vidit_session?: string | null;

@@ -19,6 +19,7 @@ from sqlalchemy import (
     UniqueConstraint,
     and_,
     case,
+    exists,
     func,
     text,
 )
@@ -50,8 +51,8 @@ STATUS_CLOSED: EventStatus = "closed"
 BeforeClosedStatus = Literal["requested", "detected", "geolocated"]
 
 # Which ingest entry produced a machine detection. Stamped once by
-# ``detection.persist_detections``; NULL on human submits and older rows. Pinned
-# by ``ck_events_detected_via_valid``; keep the two in step.
+# ``detection.persist_detections``; NULL on older rows. Pinned by
+# ``ck_event_detections_via_valid``.
 DetectedVia = Literal["bot", "paste", "archive"]
 
 # Field-length ceilings for the create / edit forms. ``SOURCE_URL`` is an input
@@ -201,6 +202,52 @@ class EventSourceLink(Base):
     event = relationship("Event", back_populates="source_links")
 
 
+class EventDetection(Base):
+    """Where a machine-written event came from: the post it was imported from, its thread and
+    the entry that read it. One row per imported event, written once at creation
+    (``services/events/request.stamp_provenance``); only ``post_at`` follows a re-import.
+    """
+
+    __tablename__ = "event_detections"
+
+    event_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
+    )
+    via: Mapped[DetectedVia | None] = mapped_column(String(20), nullable=True)
+    # The post's URL, built from its id (``tweet_ingest.urls.canonical_tweet_url``).
+    # ``events.source_url`` is the footage origin.
+    from_url: Mapped[str] = mapped_column(Text, nullable=False)
+    # The re-import match anchor.
+    from_post_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Every post id of the thread the detection was read from, anchor included.
+    # The re-import match reads it so the three entries land on one row: an
+    # archive anchors on the thread head, a bot tag or paste on a later post,
+    # so matching the anchor alone would file one geolocation as two detections.
+    # Older rows carry their anchor id alone.
+    thread_post_ids: Mapped[list[int] | None] = mapped_column(ARRAY(BigInteger), nullable=True)
+    # When the analyst published this geolocation on X: the precedence signal for the
+    # claim/dispute pipeline.
+    post_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    event = relationship("Event", back_populates="detection")
+
+    __table_args__ = (
+        literal_check("via", DetectedVia, "ck_event_detections_via_valid", nullable=True),
+        # Back the re-import match by anchor post and by thread overlap.
+        Index(
+            "ix_event_detections_from_post_id",
+            "from_post_id",
+            postgresql_where=text("from_post_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_event_detections_thread_post_ids",
+            "thread_post_ids",
+            postgresql_using="gin",
+            postgresql_where=text("thread_post_ids IS NOT NULL"),
+        ),
+    )
+
+
 class Event(Base):
     """One event across the merged request + geolocation lifecycle.
 
@@ -244,12 +291,6 @@ class Event(Base):
     source_posted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    # When the analyst published THIS geolocation on X (post time of
-    # ``detected_from_url``): the precedence signal for the claim/dispute
-    # pipeline. NULL for human submits.
-    detected_post_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
     # Per-state entry stamps, set on entry and never cleared; the
     # ``geolocated`` / ``closed`` ones are tied to ``status`` by CHECKs.
     requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -260,40 +301,22 @@ class Event(Base):
     status: Mapped[EventStatus] = mapped_column(
         String(20), nullable=False, default=STATUS_GEOLOCATED, server_default=text("'geolocated'")
     )
-    # The post a machine detection was imported from (``source_url`` is the
-    # footage origin). The id is the re-import match anchor; the URL is built
-    # from it (``tweet_ingest.urls.canonical_tweet_url``). NULL for human submits.
-    detected_from_post_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    detected_from_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Every post id of the thread the detection was read from, anchor included.
-    # The re-import match reads it so the three entries land on one row: an
-    # archive anchors on the thread head, a bot tag or paste on a later post,
-    # so matching the anchor alone would file one geolocation as two detections.
-    # Written once at creation. NULL for human submits; older rows carry their
-    # anchor id alone.
-    detected_thread_post_ids: Mapped[list[int] | None] = mapped_column(
-        ARRAY(BigInteger), nullable=True
-    )
-    # Which entry produced this detection (``DetectedVia``). Written once, never
-    # moved by a re-import. NULL for human submits and older rows.
-    detected_via: Mapped[DetectedVia | None] = mapped_column(String(20), nullable=True)
 
     @hybrid_property
     def is_machine_detection(self) -> bool:
         """Whether this row is a machine extraction the pipeline is judged on.
 
-        An imported row carries ``detected_from_url`` and a request carries
+        An imported row carries an ``event_detections`` row and a request carries
         ``requested_at`` for life, so the pair separates a detection from a
         request the bot opened (which carries both). Read by
-        ``services/admin.detection_quality_stats``. The
-        ``ix_events_detected_from_url`` index backs the first leg alone.
+        ``services/admin.detection_quality_stats``.
         """
-        return self.detected_from_url is not None and self.requested_at is None
+        return self.detection is not None and self.requested_at is None
 
     @is_machine_detection.inplace.expression
     @classmethod
     def _is_machine_detection_expression(cls) -> ColumnElement[bool]:
-        return and_(cls.detected_from_url.isnot(None), cls.requested_at.is_(None))
+        return and_(exists().where(EventDetection.event_id == cls.id), cls.requested_at.is_(None))
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -357,6 +380,10 @@ class Event(Base):
         cascade="all, delete-orphan",
         order_by="EventSourceLink.position",
     )
+    # Where a machine-written row came from; None for a human submit.
+    detection = relationship(
+        "EventDetection", uselist=False, back_populates="event", cascade="all, delete-orphan"
+    )
     # Superseded versions, oldest first (``EventVersion``).
     versions = relationship(
         "EventVersion",
@@ -396,30 +423,8 @@ class Event(Base):
             name="ck_events_before_closed_status",
         ),
         literal_check("status", EventStatus, "ck_events_status_valid"),
-        literal_check("detected_via", DetectedVia, "ck_events_detected_via_valid", nullable=True),
         # Open requests / detections / geolocations, newest first.
         Index("ix_events_status_created_at", "status", "created_at"),
-        # Backs the re-import match on an owner's rows by source post. Partial:
-        # human rows are NULL.
-        Index(
-            "ix_events_owner_detected_from_post_id",
-            "owner_id",
-            "detected_from_post_id",
-            postgresql_where=text("detected_from_post_id IS NOT NULL"),
-        ),
-        # Backs the thread-overlap leg of the same match (GIN array overlap).
-        Index(
-            "ix_events_detected_thread_post_ids",
-            "detected_thread_post_ids",
-            postgresql_using="gin",
-            postgresql_where=text("detected_thread_post_ids IS NOT NULL"),
-        ),
-        # Backs the admin machine-detection cohort scans.
-        Index(
-            "ix_events_detected_from_url",
-            "detected_from_url",
-            postgresql_where=text("detected_from_url IS NOT NULL"),
-        ),
         # Serves the profile read and the admin GDPR delete's owned-event
         # enumeration. ``ix_events_owner_id`` is redundant with the composite
         # (cleanup tracked in issue #476).

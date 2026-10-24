@@ -19,6 +19,7 @@ from app.models.event import (
     SOURCE_URL_MAX_LENGTH,
     STATUS_DETECTED,
     Event,
+    EventDetection,
     EventSourceLink,
 )
 from app.models.source_archive import SourceArchive
@@ -169,7 +170,7 @@ def test_collect_links_includes_the_secondary_source_links(db, event):
 
 def test_collect_links_includes_the_provenance_link(db, event):
     """The analyst's own post carries the geolocation claim and rots like the footage source."""
-    event.detected_from_url = DETECTED_FROM
+    event.detection = EventDetection(from_url=DETECTED_FROM)
     db.commit()
     db.refresh(event)
 
@@ -358,7 +359,7 @@ def test_a_link_the_event_does_not_carry_has_no_origin(db, event):
 
 def test_every_kind_of_link_the_event_carries_has_its_own_origin(db, event):
     """The source, a mirror, the provenance link and a proof citation are archivable, each under its own origin."""
-    event.detected_from_url = DETECTED_FROM
+    event.detection = EventDetection(from_url=DETECTED_FROM)
     _with_mirrors(db, event, MIRROR)
 
     for url in (SOURCE, MIRROR, DETECTED_FROM, PROOF_LINK):

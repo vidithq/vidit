@@ -235,7 +235,7 @@ def test_import_creates_detected_rows_owned_by_caller(db, author, sent_emails):
     rows = db.query(Event).filter(Event.owner_id == author.id).all()
     assert len(rows) == 1
     assert rows[0].status == "detected"
-    assert rows[0].detected_from_url  # provenance link set
+    assert rows[0].detection.from_url  # provenance link set
 
     assert [e.subject for e in sent_emails] == ["Your X archive import is done"]
     assert author.email == sent_emails[0].to

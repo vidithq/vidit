@@ -840,8 +840,8 @@ def detection_quality_stats(db: Session) -> AdminDetectionStatsRead:
        detections missing a source media, a proof image or a source URL, which the geolocate
        floor demands.
     """
-    # A bot-opened request carries ``detected_from_url`` too, so the cohort is the model's own
-    # predicate rather than a second spelling of it.
+    # A bot-opened request carries an ``event_detections`` row too, so the cohort is the
+    # model's own predicate rather than a second spelling of it.
     machine = Event.is_machine_detection
     rejected = or_(
         and_(Event.status == STATUS_CLOSED, Event.before_closed_status == STATUS_DETECTED),

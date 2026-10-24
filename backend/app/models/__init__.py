@@ -9,6 +9,7 @@ from app.models.conflict import Conflict, event_conflicts
 from app.models.content_report import ContentReport
 from app.models.event import (
     Event,
+    EventDetection,
     EventGeolocator,
     EventVersion,
 )
@@ -37,6 +38,7 @@ __all__ = [
     "Follow",
     "Event",
     "EventApproval",
+    "EventDetection",
     "EventGeolocator",
     "EventVersion",
     "InviteCode",

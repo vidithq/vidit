@@ -53,6 +53,7 @@ in_collection  # schemas/collection.py CollectionMembershipRead
 cover  # schemas/collection.py CollectionRead, the card's mosaic
 archives_imported  # schemas/admin.py AdminInviteRedeemerRead
 bot_detection_count  # schemas/admin.py AdminInviteRedeemerRead
+detected_via  # schemas/event.py EventRead, read from event_detections
 last_seen_at  # schemas/admin.py AdminInviteRedeemerRead
 deleted_events  # schemas/admin.py AdminPurgeDetectedResponse
 media_count  # schemas/admin.py

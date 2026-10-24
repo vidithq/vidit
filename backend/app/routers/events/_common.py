@@ -205,6 +205,7 @@ def build_event_read(
     image on a source-less event; callers wanting it non-null there must
     eager-load media with ``thumbnail_media_criteria``.
     """
+    detected_from_url = geo.detection.from_url if geo.detection is not None else None
     return EventRead(
         id=geo.id,
         title=geo.title,
@@ -229,10 +230,10 @@ def build_event_read(
         version_no=geo.version_no,
         close_reason=geo.close_reason,
         before_closed_status=geo.before_closed_status,
-        detected_from_url=geo.detected_from_url,
-        detected_via=geo.detected_via,
+        detected_from_url=detected_from_url,
+        detected_via=geo.detection.via if geo.detection is not None else None,
         # Same eager-loaded collection, no extra query.
-        archived_detected_from=_archived_link(geo, geo.detected_from_url),
+        archived_detected_from=_archived_link(geo, detected_from_url),
         owner=geo.owner,
         # Null a soft-deleted requester: a banned account must not surface on a
         # live event owned by someone else (the owner's soft-delete hides their

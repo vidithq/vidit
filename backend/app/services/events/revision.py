@@ -186,8 +186,8 @@ async def save_version(
     }
     if source_snapshot_url and effective_source_url is not None:
         pasted_copies[effective_source_url] = source_snapshot_url
-    if detected_from_snapshot_url and geo.detected_from_url is not None:
-        pasted_copies[geo.detected_from_url] = detected_from_snapshot_url
+    if detected_from_snapshot_url and geo.detection is not None:
+        pasted_copies[geo.detection.from_url] = detected_from_snapshot_url
     copies_move = any(
         not source_archive.same_snapshot(stored_copies.get(link), snapshot)
         for link, snapshot in pasted_copies.items()

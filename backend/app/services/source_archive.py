@@ -127,8 +127,8 @@ def collect_links(event: Event) -> list[tuple[str, SourceArchiveOrigin]]:
         add(event.source_url, "source_url")
     for link in event.source_links:
         add(link.url, "secondary_source")
-    if event.detected_from_url:
-        add(event.detected_from_url, "detected_from")
+    if event.detection is not None:
+        add(event.detection.from_url, "detected_from")
     for href in extract_link_hrefs(event.proof):
         add(href, "proof_link")
     return links
@@ -295,19 +295,20 @@ def stage_source_snapshot(db: Session, *, event: Event, snapshot_url: str) -> No
 
 
 def stage_detected_from_snapshot(db: Session, *, event: Event, snapshot_url: str) -> None:
-    """Stage the copy of ``event.detected_from_url`` posted as ``detected_from_snapshot_url``.
+    """Stage the copy of the event's ``detection.from_url`` posted as
+    ``detected_from_snapshot_url``.
 
     Provenance twin of :func:`stage_source_snapshot`, filed under origin
     ``detected_from``. The link is immutable, so nothing reconciles.
     """
-    if event.detected_from_url is None:
+    if event.detection is None:
         raise SnapshotRejected(
             "original_url_not_on_event", "That link is not one of this event's sources."
         )
     stage_snapshot(
         db,
         event=event,
-        original_url=event.detected_from_url,
+        original_url=event.detection.from_url,
         origin="detected_from",
         snapshot_url=snapshot_url,
     )

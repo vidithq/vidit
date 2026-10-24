@@ -16,7 +16,7 @@ from shapely.geometry import Point
 from app.database import SessionLocal
 from app.main import app
 from app.models.audit_log import AuditLog
-from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event
+from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event, EventDetection
 from app.models.password_reset_token import (
     PasswordResetToken,
 )
@@ -188,7 +188,7 @@ def _detection(db, owner, **kwargs) -> Event:
         title=f"Detection {uuid.uuid4().hex[:8]}",
         coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://x.com/a/status/1",
-        detected_from_url="https://x.com/a/status/1",
+        detection=EventDetection(from_url="https://x.com/a/status/1"),
         status=STATUS_DETECTED,
         detected_at=datetime.now(UTC),
         **kwargs,

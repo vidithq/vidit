@@ -173,8 +173,8 @@ def test_gold_path_register_import_geolocate_publish(
         assert row.status == STATUS_DETECTED
         # Provenance names the X account the invite linked, not the Vidit
         # username: the permalink has to open the analyst's actual post.
-        assert row.detected_from_url == f"https://x.com/{invite_code.x_handle}/status/{_TWEET_ID}"
-        assert row.detected_via == "archive"
+        assert row.detection.from_url == f"https://x.com/{invite_code.x_handle}/status/{_TWEET_ID}"
+        assert row.detection.via == "archive"
         assert row.source_url is None  # the tweet declared no source
         assert row.proof is not None  # the tweet text became the proof body
         media = db.query(Media).filter(Media.event_id == row.id).all()
@@ -189,7 +189,7 @@ def test_gold_path_register_import_geolocate_publish(
         detail = client.get(f"/api/v1/events/{event_id}")
         assert detail.status_code == 200
         assert detail.json()["status"] == STATUS_DETECTED
-        assert detail.json()["detected_from_url"] == row.detected_from_url
+        assert detail.json()["detected_from_url"] == row.detection.from_url
 
         points = {p[0]: p for p in client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").json()}
         assert points[event_id][5] == 1  # the ``detected`` marker flag

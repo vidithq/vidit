@@ -265,7 +265,7 @@ class AdminDetectionStatsRead(BaseModel):
     """Quality signal on the machine-extraction pipeline (admin-only).
 
     A machine detection is a row imported from X and never a request:
-    ``detected_from_url`` set and ``requested_at`` NULL. The second column
+    an ``event_detections`` row and ``requested_at`` NULL. The second column
     keeps a bot-opened request out of the cohort for life, since the stamp is
     never cleared, even after a fulfiller geolocates it.
 
