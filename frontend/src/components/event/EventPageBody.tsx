@@ -7,6 +7,7 @@ import { CoordinateValue } from "@/components/event/CoordinateActions";
 import { EventDetailBody } from "@/components/event/EventDetailBody";
 import { DetailRow } from "@/components/ui/DetailRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { sourcesScroll } from "@/components/sources/SourceBlock";
 
 const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
 
@@ -17,24 +18,26 @@ const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
  * above carries every control that acts on the record, and the approvals.
  */
 export function EventPageBody({ geo }: { geo: EventDetail }) {
-  return <EventDetailBody geo={geo} variant="page" side={<EventLocation geo={geo} />} />;
+  // A coordless event (a `requested` row served by id) has no point, so no Location module.
+  const side = geo.coords ? <EventLocation geo={geo} coords={geo.coords} /> : null;
+  return <EventDetailBody geo={geo} variant="page" side={side} />;
 }
 
-/** The Location module: the map with its coordinates row fused to its foot. A coordless event (a
- *  `requested` row served by id) has no point, so it renders nothing. */
-function EventLocation({ geo }: { geo: EventDetail }) {
-  if (!geo.coords) return null;
+/** The Location module: the map with its coordinates row fused to its foot. */
+function EventLocation({
+  geo,
+  coords,
+}: {
+  geo: EventDetail;
+  coords: NonNullable<EventDetail["coords"]>;
+}) {
   return (
     <div>
-      {/* Beside the sources scroller, whose header row is as tall as its 32px buttons, the heading
-          takes a row of that height, so the map's top is level with the source blocks. */}
-      {geo.sources.length > 1 ? (
-        <div className="mb-3 flex h-8 items-center">
-          <SectionEyebrow title="Location" concept="section_location" margin="none" />
-        </div>
-      ) : (
-        <SectionEyebrow title="Location" concept="section_location" />
-      )}
+      <SectionEyebrow
+        title="Location"
+        concept="section_location"
+        besideScroller={sourcesScroll(geo.sources.length)}
+      />
       {/* Map and coordinates are one module: the coords read as a Details-style row fused to the map's
           bottom (mirrors the submit form's Location section). `overflow-hidden` sits on the map alone,
           to clip its rounded corners, since the whole module would clip the coordinate row's `?` tooltip. */}
@@ -46,14 +49,14 @@ function EventLocation({ geo }: { geo: EventDetail }) {
             points={[
               [
                 geo.id,
-                geo.coords.lat,
-                geo.coords.lng,
+                coords.lat,
+                coords.lng,
                 "",
                 "",
                 geo.status === "detected" ? 1 : 0,
               ],
             ]}
-            center={{ lat: geo.coords.lat, lng: geo.coords.lng }}
+            center={{ lat: coords.lat, lng: coords.lng }}
             zoom={12}
             embedded
           />
@@ -64,7 +67,7 @@ function EventLocation({ geo }: { geo: EventDetail }) {
           align="center"
           className="border-t border-neutral-800 bg-neutral-900 rounded-b-lg"
         >
-          <CoordinateValue lat={geo.coords.lat} lng={geo.coords.lng} />
+          <CoordinateValue lat={coords.lat} lng={coords.lng} />
         </DetailRow>
       </div>
     </div>

@@ -170,13 +170,13 @@ describe("EventDetailBody", () => {
       "href",
       "https://t.me/channel/12345"
     );
-    expect(within(first).getByText("Posted 1 Jun 2026")).toBeInTheDocument();
+    expect(within(first).getByText("Posted 1 Jun 2026, 10:05 UTC")).toBeInTheDocument();
     expect(
       within(first).getByRole("link", { name: "Wayback Machine copy of source 1, link 1, t.me" })
     ).toHaveAttribute("href", "https://web.archive.org/web/2026/https://t.me/channel/12345");
     // A link with no copy states it, inert, for every reader.
     expect(
-      within(first).getByRole("button", { name: "No archived copy of source 1, link 2, www.youtube.com" })
+      within(first).getByRole("button", { name: "No archived copy of source 1, link 2, youtube.com" })
     ).toBeDisabled();
     expect(
       within(block(2)).getByRole("button", { name: "No archived copy of source 2, news.example" })

@@ -10,7 +10,7 @@ import { provenanceLabel } from "@/lib/events";
 import { renderProof } from "@/lib/proof";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { StatusBadge } from "@/components/event/StatusBadge";
-import { SourceBlocks } from "@/components/sources/SourceBlock";
+import { SourceBlocks, sourcesScroll } from "@/components/sources/SourceBlock";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { DetailCard, DetailPills, DetailRow } from "@/components/ui/DetailRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -31,7 +31,8 @@ interface EventDetailBodyProps {
    * the Details card with the request-trace row in the side column.
    */
   variant: "panel" | "page";
-  /** The page variant's side column above Details (the Location module, the approval requests). */
+  /** The page variant's side column above Details (the Location module); falsy when it has none,
+   *  so Details heads the column. */
   side?: ReactNode;
 }
 
@@ -59,14 +60,26 @@ export function EventDetailBody({ geo, variant, side }: EventDetailBodyProps) {
       side={
         <>
           {side}
-          <DetailRows geo={geo} compact={false} />
+          <DetailRows
+            geo={geo}
+            compact={false}
+            besideScroller={!side && sourcesScroll(geo.sources.length)}
+          />
         </>
       }
     />
   );
 }
 
-function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boolean }) {
+function DetailRows({
+  geo,
+  compact,
+  besideScroller = false,
+}: {
+  geo: EventDetailBodyData;
+  compact: boolean;
+  besideScroller?: boolean;
+}) {
   const sourceClass = compact ? "" : "text-sm";
 
   const rows = (
@@ -190,7 +203,11 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
   }
   return (
     <div>
-      <SectionEyebrow title="Details" concept="section_details" />
+      <SectionEyebrow
+        title="Details"
+        concept="section_details"
+        besideScroller={besideScroller}
+      />
       <DetailCard>{rows}</DetailCard>
     </div>
   );

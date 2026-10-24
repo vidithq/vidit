@@ -1037,7 +1037,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<SourceLabel>" usage="Source display: the stored URL shortened to its host, the full URL in the link's title (the Detected from row, a source block's links), with italic fallbacks for a null URL (To confirm) and a value the parser gives no host for (no source)">
+          <Item name="<SourceLabel>" usage="Source display: the stored URL shortened to its host without a leading www., the full URL in the link's title (the Detected from row, a source block's links), with italic fallbacks for a null URL (To confirm) and a value the parser gives no host for (no source)">
             <SourceLabel url="https://t.me/some_channel/4242" variant="inline" />
             <SourceLabel url="https://www.t.me/some_channel/4242/" variant="link" />
             <SourceLabel url={null} variant="inline" />
@@ -1191,7 +1191,7 @@ export default function PalettePage() {
             </span>
           </Item>
 
-          <Item name="<MediaGallery>" usage="The detail-surface media block: geoloc detail + map panel + request detail. variant=page (hero tiles, a lone one at full width, 2-up from two) / panel (stacked thumbnails); grow gives each page tile a 16:9 box at the full width instead of the fixed height (a lone source's file); one marked empty box, shown here through the shared TileNotice. A video tile is <VideoPlayer>, whose own bar already covers play, download and the expand control, so a clip carries no floating tile control at all. An image tile is cropped, so the tile itself opens <MediaLightbox> at hero resolution, and its download floats in the corner under HOVER_REVEAL. The card-sized media slot is private to <EntityCard> (its no-media box shows in the detection demo below).">
+          <Item name="<MediaGallery>" usage="The detail-surface media block: geoloc detail + map panel + request detail. variant=page (hero tiles, a lone one at full width, 2-up from two) / panel (stacked thumbnails); grow gives each page tile a 16:9 box at the full width instead of the fixed height (a lone source's file), and a video tile then takes the clip's own aspect ratio, centered, at most 28rem tall and at least 20rem wide; one marked empty box, shown here through the shared TileNotice. A video tile is <VideoPlayer>, whose own bar already covers play, download and the expand control, so a clip carries no floating tile control at all. An image tile is cropped, so the tile itself opens <MediaLightbox> at hero resolution, and its download floats in the corner under HOVER_REVEAL. The card-sized media slot is private to <EntityCard> (its no-media box shows in the detection demo below).">
             <div className="w-full max-w-sm">
               <MediaGallery media={[]} alt="demo" />
             </div>
@@ -1499,6 +1499,9 @@ export default function PalettePage() {
             </Variant>
             <Variant label="no concept">
               <SectionEyebrow title="Geolocators" />
+            </Variant>
+            <Variant label="besideScroller (a row as tall as a HorizontalScroller header)">
+              <SectionEyebrow title="Location" concept="section_location" besideScroller />
             </Variant>
           </Item>
         </section>
@@ -1809,7 +1812,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SourceBlock> / <SourceBlocks>" usage="One source of an event on a reading surface (components/sources/SourceBlock.tsx), read like the event's Details card: a <DetailCard> region named Source N, its file in the lead slot through <MediaGallery> (behind its own <GraphicContentGate> when this source is flagged, a No file box without one, and no file area at all on a context source without one), then <DetailRow>s for Title (Untitled when empty), Level as a <Pill>, Kind (the kind label, then the file's kind after a middle dot when there is a file: Drone · video, Article; an Unknown kind shows the file's kind alone, or no row without a file), Capture position (the compact <CoordinateValue>: 4 decimals and the small <CoordinateActions> on one line, under wrapLabel), Captured, Links (N) (right-aligned, each link through <SourceLabel> (its host, the full URL in the title) followed by its <ArchivedCopies> mark, with Posted and its date or Date unknown under it) and Tags as <DetailPills>. A row with no value drops out, except Title. The map panel keeps a LIST_TILE with bare compact rows. `wide` grows the file and sets it beside the rows (<DetailCard leadBeside>). <SourceBlocks> renders the event's blocks in API order: a <HorizontalScroller> row under a Sources (N) eyebrow in the page variant of <EventDetailBody>, a vertical stack under Sources in its panel variant. A lone source in the page variant skips the scroller and renders as one wide block.">
+          <Item name="<SourceBlock> / <SourceBlocks>" usage="One source of an event on a reading surface (components/sources/SourceBlock.tsx), read like the event's Details card: a <DetailCard> region named Source N, its file in the lead slot through <MediaGallery> (behind its own <GraphicContentGate> when this source is flagged, a No file box without one, and no file area at all on a context source without one), then <DetailRow>s for Title (Untitled when empty), Level as a <Pill>, Kind (the kind label, then the file's kind after a middle dot when there is a file: Drone · video, Article; an Unknown kind shows the file's kind alone, or no row without a file), Capture position (the compact <CoordinateValue>: 4 decimals and the small <CoordinateActions> on one line, under wrapLabel), Captured, Links (N) (right-aligned, each link through <SourceLabel> (its host, the full URL in the title) followed by its <ArchivedCopies> mark, with Posted and its UTC date and time (the date alone at exactly midnight UTC) or Date unknown under it) and Tags as <DetailPills>. A row with no value drops out, except Title. The map panel keeps a LIST_TILE with bare compact rows. `wide` grows the file and sets it beside the rows (<DetailCard leadBeside>). <SourceBlocks> renders the event's blocks in API order: a <HorizontalScroller> row under a Sources (N) eyebrow in the page variant of <EventDetailBody>, a vertical stack under Sources in its panel variant. A lone source in the page variant skips the scroller and renders as one wide block.">
             <div className="w-full max-w-2xl">
               <SourceBlocks sources={[MOCK_SOURCE, MOCK_CONTEXT_SOURCE]} alt="Strike on a depot" />
             </div>

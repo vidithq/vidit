@@ -58,6 +58,15 @@ export function formatInstant(iso: string | null): string {
   return `${date}, ${time} UTC`;
 }
 
+/** A UTC instant as `formatInstant` does, or as its day alone when it falls exactly on 00:00:00
+ * UTC: the API takes a date-only value and stores it at midnight, and nothing records whether a
+ * time was given, so midnight reads as "time unknown". */
+export function formatInstantOrDate(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.getTime() % DAY_MS === 0 ? formatInstantDate(iso) : formatInstant(iso);
+}
+
 /** An ISO instant as the UTC value an `<input type="datetime-local">` expects
  * ("YYYY-MM-DDTHH:MM"); empty on null or unparseable input. */
 export function toDatetimeLocalUTC(iso: string | null): string {
@@ -67,10 +76,11 @@ export function toDatetimeLocalUTC(iso: string | null): string {
   return d.toISOString().slice(0, 16);
 }
 
-/** Hostname of a URL, or the raw input when malformed (never throws in render). */
+/** Hostname of a URL for display, without a leading `www.`; the raw input when malformed (never
+ * throws in render). */
 export function safeHostname(url: string): string {
   try {
-    return new URL(url).hostname;
+    return new URL(url).hostname.replace(/^www\./, "");
   } catch {
     return url;
   }

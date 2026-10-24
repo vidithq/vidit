@@ -14,8 +14,9 @@ type SourceLabelProps = {
 };
 
 /**
- * Source-URL display that reduces a stored URL to its host, the full URL in the link's `title`, with italic
- * fallbacks: "To confirm" for a null `url`, "no source" for a value with no host.
+ * Source-URL display that reduces a stored URL to its host (no leading `www.`), the full URL in
+ * the link's `title`, with italic fallbacks: "To confirm" for a null `url`, "no source" for a
+ * value with no host.
  */
 export function SourceLabel(props: SourceLabelProps) {
   const { url, className } = props;

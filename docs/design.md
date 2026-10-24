@@ -331,7 +331,7 @@ An event's evidence is its list of [sources](data-model.md#sources), up to 10, n
 - **Kind**: the kind's label, followed by the file's kind after a middle dot when the source has a file (`sourceKindLabel`): *Drone · video*, *Smartphone · photo*, *Article*. A kind of `unknown` is dropped, since it tells the reader nothing: the row shows the file's kind alone, or drops out without a file.
 - **Capture position**: the pair on one line through the `compact` `CoordinateValue`, the variant of the event's **Coordinates** row. The pair reads at 4 decimals in small monospace text, followed by the `small` [`<CoordinateActions>`](../frontend/src/components/event/CoordinateActions.tsx). The line never wraps: the row sets `wrapLabel`, so in a narrow card the label wraps instead. The copy still carries 6 decimals.
 - **Captured**: the capture date and time, in UTC.
-- **Links (N)**, where N counts the links: the value is right-aligned like every other row, one item per link. Each item holds the link through [`<SourceLabel>`](../frontend/src/components/ui/SourceLabel.tsx), named by its host like the **Detected from** row, with the full URL in the `href` and the `title`, followed by its archived-copy mark on the same line, then *Posted* and the post date in UTC in muted small text under it, or *Date unknown*.
+- **Links (N)**, where N counts the links: the value is right-aligned like every other row, one item per link. Each item holds the link through [`<SourceLabel>`](../frontend/src/components/ui/SourceLabel.tsx), named by its host without a leading `www.` like the **Detected from** row (`safeHostname` in [`lib/format.ts`](../frontend/src/lib/format.ts)), with the full URL in the `href` and the `title`, followed by its archived-copy mark on the same line, then *Posted* and the post date and time in UTC in muted small text under it, or *Date unknown*. A post time of exactly 00:00:00 UTC shows the date alone (`formatInstantOrDate`): the API stores a date-only `posted_at` at midnight and records no separate "time known" flag, so midnight reads as an unknown time.
 - **Tags**: the source's tags as `<DetailPills>`.
 
 A row with no value drops out, except **Title**. The map panel keeps its density: the same file and rows, bare (`compact`), in a `LIST_TILE`.
@@ -343,7 +343,7 @@ The page variant of `<EventDetailBody>` (the event page, a version page, a reque
 With one source, the page variant renders no scroller: the block takes the full width of the sources area.
 
 - Its `<DetailCard>` sets `leadBeside`. Once the card is 42rem wide, the file sits on the left and the rows on the right, in a 3:2 split. In a narrower column the file stays on top of the rows.
-- The file's `<MediaGallery>` sets `grow`, so the tile takes a 16:9 box at the full width of its slot instead of the fixed height. The graphic gate and the player controls stay as they are.
+- The file's `<MediaGallery>` sets `grow`, so the tile takes a 16:9 box at the full width of its slot instead of the fixed height. A video tile then takes the clip's own aspect ratio once `<VideoPlayer>` reads its metadata (`onAspectRatio`): the frame is centered, at most 28rem tall and at least 20rem wide, so a portrait clip plays in a portrait frame and the player bar keeps its controls at full size. The graphic gate and the player controls stay as they are.
 
 With two or more sources, the page variant lays the blocks out as one row in [`<HorizontalScroller>`](../frontend/src/components/ui/HorizontalScroller.tsx). The scroller works as follows:
 
@@ -723,7 +723,7 @@ The event page, a version page and the request page share one layout: [`<PageShe
 - **Main column.** The sources, then the proof. One source takes the whole sources area (see [Source blocks](#source-blocks)).
 - **Side column.** The Location module (the map, `h-56`, with its **Coordinates** row), then the **Details** card. The request page has no Location module.
 - **Details.** The card carries no Author row: the byline in the header credits the author and every geolocator.
-- **Level tops.** The Sources and Location modules start at one height. With two or more sources, the sources header row is as tall as the scroller's 32px buttons, so the Location heading takes a row of the same height.
+- **Level tops.** The sources and the side column's first block start at one height. With two or more sources, the sources header row is as tall as the scroller's 32px buttons, so the side column's first heading (**Location**, or **Details** on a request page and any event without coordinates) sets `<SectionEyebrow besideScroller>` and takes a row of the same height.
 - **Below `lg`.** The columns stack in reading order: the header, the actions and the approvals, the sources, the proof, the Location module and the **Details** card.
 
 #### Event actions and approvals

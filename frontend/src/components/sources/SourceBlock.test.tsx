@@ -111,7 +111,7 @@ describe("SourceBlock", () => {
     expect(within(block).getByText("armor")).toBeInTheDocument();
   });
 
-  it("shows one link by its host, with its archived copy and post date", () => {
+  it("shows one link by its host, with its archived copy and post time", () => {
     const block = renderBlock({
       links: [
         { url: "https://t.me/channel/12345", posted_at: "2026-06-01T10:05:00Z", archived: ARCHIVED },
@@ -121,10 +121,17 @@ describe("SourceBlock", () => {
     const link = within(block).getByRole("link", { name: "t.me" });
     expect(link).toHaveAttribute("href", "https://t.me/channel/12345");
     expect(link).toHaveAttribute("title", "https://t.me/channel/12345");
-    expect(within(block).getByText("Posted 1 Jun 2026")).toBeInTheDocument();
+    expect(within(block).getByText("Posted 1 Jun 2026, 10:05 UTC")).toBeInTheDocument();
     expect(
       within(block).getByRole("link", { name: "Wayback Machine copy of source 1, t.me" })
     ).toHaveAttribute("href", ARCHIVED.url);
+  });
+
+  it("shows the post date alone for a value at midnight UTC, the API's date-only form", () => {
+    const block = renderBlock({
+      links: [{ url: "https://t.me/channel/12345", posted_at: "2026-01-13T00:00:00Z", archived: null }],
+    });
+    expect(within(block).getByText("Posted 13 Jan 2026")).toBeInTheDocument();
   });
 
   it("counts several links, one item each", () => {
@@ -139,11 +146,11 @@ describe("SourceBlock", () => {
       "listitem"
     );
     expect(items).toHaveLength(2);
-    expect(within(items[1]).getByRole("link", { name: "www.youtube.com" })).toBeInTheDocument();
+    expect(within(items[1]).getByRole("link", { name: "youtube.com" })).toBeInTheDocument();
     expect(within(items[1]).getByText("Date unknown")).toBeInTheDocument();
     expect(
       within(items[1]).getByRole("button", {
-        name: "No archived copy of source 1, link 2, www.youtube.com",
+        name: "No archived copy of source 1, link 2, youtube.com",
       })
     ).toBeDisabled();
   });

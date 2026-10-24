@@ -14,11 +14,15 @@ export function SectionEyebrow({
   concept,
   as: Tag = "h2",
   margin = "md",
+  besideScroller = false,
 }: {
   title: string;
   concept?: Concept;
   as?: ElementType;
   margin?: keyof typeof MARGIN;
+  /** Heads a column beside a `<HorizontalScroller>`: the heading takes a row as tall as the
+   *  scroller's header (its 32 px buttons), so both columns' first blocks start level. */
+  besideScroller?: boolean;
 }) {
   return (
     <Tag
@@ -26,6 +30,7 @@ export function SectionEyebrow({
         "text-xs text-neutral-500 uppercase tracking-wider",
         MARGIN[margin],
         concept && "inline-flex items-center gap-1.5",
+        besideScroller && "flex h-8 items-center",
       )}
     >
       {title}

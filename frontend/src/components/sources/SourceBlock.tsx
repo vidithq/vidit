@@ -9,7 +9,7 @@ import { SourceLabel } from "@/components/ui/SourceLabel";
 import { LIST_TILE } from "@/components/ui/form-styles";
 import { META_LINE } from "@/components/ui/styles";
 import { cn } from "@/lib/cn";
-import { formatInstant, formatInstantDate, safeHostname } from "@/lib/format";
+import { formatInstant, formatInstantOrDate, safeHostname } from "@/lib/format";
 import { LEVEL_LABELS, sourceKindLabel, type Source } from "@/lib/sources";
 
 /**
@@ -121,7 +121,7 @@ function SourceRows({
                   />
                 </div>
                 <p className={META_LINE}>
-                  {link.posted_at ? `Posted ${formatInstantDate(link.posted_at)}` : "Date unknown"}
+                  {link.posted_at ? `Posted ${formatInstantOrDate(link.posted_at)}` : "Date unknown"}
                 </p>
               </li>
             ))}
@@ -135,6 +135,11 @@ function SourceRows({
       )}
     </>
   );
+}
+
+/** Whether `<SourceBlocks>` on the page lays this many sources out in a `<HorizontalScroller>`. */
+export function sourcesScroll(count: number): boolean {
+  return count > 1;
 }
 
 /**
@@ -152,6 +157,7 @@ export function SourceBlocks({
   compact?: boolean;
 }) {
   const wide = !compact && sources.length === 1;
+  const scrolls = !compact && sourcesScroll(sources.length);
   const blocks = sources.map((source, index) => (
     <SourceBlock
       key={source.id}
@@ -164,7 +170,7 @@ export function SourceBlocks({
   ));
   const counted = !compact && sources.length > 0;
   const title = counted ? `Sources (${sources.length})` : "Sources";
-  if (counted && !wide) {
+  if (scrolls) {
     return (
       <HorizontalScroller
         heading={<SectionEyebrow margin="none" title={title} concept="sources" />}
