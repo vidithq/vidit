@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import {
+  AdminApprovals,
   ApprovalStamps,
   ApproveButtons,
   YourOutdatedApproval,
@@ -69,6 +70,7 @@ export function ApprovalsCard({
               }
               onOverflow={() => setShowAll(true)}
             />
+            <AdminApprovals approvals={standing} onDeleted={approvals.refetch} />
             {outdatedOwn !== null && (
               <YourOutdatedApproval event={event} approvedVersion={outdatedOwn} />
             )}

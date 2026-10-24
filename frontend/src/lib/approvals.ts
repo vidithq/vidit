@@ -54,6 +54,12 @@ export function approveEvent(
   });
 }
 
+/** Delete one approval as a site admin (`DELETE /admin/approvals/{id}`); its reviewer or
+ *  organization can approve that version again. */
+export function deleteApproval(approvalId: string): Promise<void> {
+  return apiFetch<void>(`/admin/approvals/${approvalId}`, { method: "DELETE" });
+}
+
 /** Whether `userId` may approve the live version of `event`, given its approvals: as themselves,
  *  or, with `organization` (a slug of an organization they are a member of), in its name.
  *  Mirrors backend services/approvals.approve (published only, never a geolocator, one approval

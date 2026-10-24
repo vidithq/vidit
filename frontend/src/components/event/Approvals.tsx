@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Stamp } from "lucide-react";
+import { Stamp, Trash2 } from "lucide-react";
 
+import { useAdmin } from "@/contexts/AdminContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useMutation } from "@/hooks/useMutation";
@@ -13,6 +14,7 @@ import {
   approveEvent,
   approveOptions,
   changesSince,
+  deleteApproval,
   type Approval,
   type ApprovalList,
 } from "@/lib/approvals";
@@ -38,7 +40,14 @@ export function ApprovalState({ approval }: { approval: Approval }) {
 
 /** One approval: who placed it (an organization signs with its name, its acting member
  *  beside it, or "on behalf of" it once that account is erased) and when. */
-export function ApprovalRow({ approval }: { approval: Approval }) {
+export function ApprovalRow({
+  approval,
+  action,
+}: {
+  approval: Approval;
+  /** A control at the row's end, such as a site admin's delete. */
+  action?: ReactNode;
+}) {
   return (
     <div className="space-y-1 py-2">
       <span className="flex min-w-0 flex-wrap items-center gap-2">
@@ -65,7 +74,103 @@ export function ApprovalRow({ approval }: { approval: Approval }) {
         )}
         <ApprovalState approval={approval} />
         <span className="text-[11px] text-neutral-500">{formatDate(approval.created_at)}</span>
+        {action && <span className="ml-auto">{action}</span>}
       </span>
+    </div>
+  );
+}
+
+/** Who an approval speaks for, for the deletion dialog. */
+function approvalSigner(approval: Approval): string {
+  return approval.organization?.name ?? approval.reviewer?.username ?? "a deleted account";
+}
+
+function deleteErrorMessage(err: unknown): string | undefined {
+  if (!(err instanceof ApiError)) return undefined;
+  if (err.code === "approval_not_found") {
+    return "This approval no longer exists. Reload the page to see the current list.";
+  }
+  if (err.status === 403) return "Only a site admin can delete an approval.";
+  return undefined;
+}
+
+/**
+ * A site admin's delete control for one approval: a muted trash button that opens a
+ * [`ConfirmDialog`] saying the deletion cannot be undone and that the reviewer can approve again.
+ * Renders nothing for anyone else.
+ */
+export function DeleteApprovalAction({
+  approval,
+  onDeleted,
+}: {
+  approval: Approval;
+  onDeleted: () => void;
+}) {
+  const { isAdmin } = useAdmin();
+  const [open, setOpen] = useState(false);
+  const remove = useMutation(() => deleteApproval(approval.id), {
+    fallback: "Failed to delete the approval",
+    onError: deleteErrorMessage,
+    onSuccess: () => {
+      setOpen(false);
+      onDeleted();
+    },
+  });
+  if (!isAdmin) return null;
+  const signer = approvalSigner(approval);
+  return (
+    <>
+      <Button
+        icon
+        variant="dangerGhost"
+        className="text-neutral-500 hover:text-red-400"
+        aria-label={`Delete approval by ${signer}`}
+        title="Delete approval"
+        onClick={() => {
+          remove.reset();
+          setOpen(true);
+        }}
+      >
+        <Trash2 size={14} />
+      </Button>
+      {open && (
+        <ConfirmDialog
+          title="Delete this approval?"
+          confirmLabel="Delete approval"
+          busyLabel="Deleting…"
+          busy={remove.loading}
+          error={remove.error}
+          onConfirm={() => void remove.run()}
+          onCancel={() => setOpen(false)}
+        >
+          <p>{`You delete the approval of version ${approval.version_no} by ${signer}. This cannot be undone.`}</p>
+          <p>The reviewer can approve this version again.</p>
+        </ConfirmDialog>
+      )}
+    </>
+  );
+}
+
+/** The live version's approvals as rows with a delete control each. Renders nothing for a reader
+ *  who is not a site admin. */
+export function AdminApprovals({
+  approvals,
+  onDeleted,
+}: {
+  approvals: Approval[];
+  onDeleted: () => void;
+}) {
+  const { isAdmin } = useAdmin();
+  if (!isAdmin || approvals.length === 0) return null;
+  return (
+    <div className="divide-y divide-neutral-800 border-t border-neutral-800">
+      {approvals.map((approval) => (
+        <ApprovalRow
+          key={approval.id}
+          approval={approval}
+          action={<DeleteApprovalAction approval={approval} onDeleted={onDeleted} />}
+        />
+      ))}
     </div>
   );
 }
@@ -262,7 +367,11 @@ export function VersionApprovals({ event, versionNo }: { event: EventDetail; ver
       <SectionEyebrow title="Approvals" margin="none" />
       <div className="divide-y divide-neutral-800">
         {rows.map((approval) => (
-          <ApprovalRow key={approval.id} approval={approval} />
+          <ApprovalRow
+            key={approval.id}
+            approval={approval}
+            action={<DeleteApprovalAction approval={approval} onDeleted={approvals.refetch} />}
+          />
         ))}
       </div>
       {approvals.error && (
