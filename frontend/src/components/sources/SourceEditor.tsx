@@ -18,11 +18,14 @@ import { LinkListInput } from "@/components/ui/LinkListInput";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Switch } from "@/components/ui/Switch";
 import { TagChips } from "@/components/ui/TagPicker";
+import { WARNING_CALLOUT } from "@/components/ui/styles";
 import { cn } from "@/lib/cn";
 import { MAX_LINKS_PER_SOURCE } from "@/lib/events";
 import { safeHostname } from "@/lib/format";
 import {
+  draftUrls,
   hasCapturePosition,
+  INCOMPLETE_SOURCE_NOTE,
   LEVEL_LABELS,
   SOURCE_KIND_LABELS,
   SOURCE_KINDS,
@@ -206,6 +209,11 @@ export function SourceEditor({
         <span className={cn(FORM_LABEL, invalid.link && FORM_INVALID_LABEL)}>
           Links <FieldHelp concept="source_links" />
         </span>
+        {hasFile && draftUrls(draft).length === 0 && (
+          <p className={cn("rounded-md px-3 py-2 text-xs", WARNING_CALLOUT)}>
+            {INCOMPLETE_SOURCE_NOTE}
+          </p>
+        )}
         <div className={invalid.link && draft.links.length === 0 ? FORM_INVALID_FIELD : undefined}>
           <LinkListInput<LinkDraft>
             rows={draft.links}

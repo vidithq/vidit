@@ -42,6 +42,18 @@ describe("SourceBlock", () => {
     expect(within(block).getByText("Drone · photo")).toBeInTheDocument();
   });
 
+  it("marks a source with a file and no link as incomplete", () => {
+    const block = renderBlock({ media: IMAGE, links: [] });
+    expect(
+      within(block).getByText("Incomplete: add a link before publishing")
+    ).toBeInTheDocument();
+  });
+
+  it("does not mark a linked source", () => {
+    const linked = renderBlock({ media: IMAGE });
+    expect(within(linked).queryByText(/^Incomplete/)).toBeNull();
+  });
+
   it("shows a No file box and the kind alone without a file", () => {
     const block = renderBlock({ kind: "article" });
     expect(within(block).getByText("No file")).toBeInTheDocument();
