@@ -92,7 +92,9 @@ export function SourceEditor({
     linkDescription(index, safeHostname(url.trim()), i, draft.links.length);
 
   return (
-    <section aria-label={name} className={cn(LIST_TILE, "space-y-4")}>
+    // The tile sits inside the Sources card's padding: on a phone its own side padding narrows,
+    // so a filled capture time still clears its calendar mark at 320px.
+    <section aria-label={name} className={cn(LIST_TILE, "space-y-4 max-sm:px-2")}>
       <header className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-medium text-neutral-200">{name}</h3>
         <div className="flex flex-wrap items-center gap-1">{actions}</div>

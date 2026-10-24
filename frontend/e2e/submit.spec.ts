@@ -62,7 +62,7 @@ test.describe("submit", () => {
   });
 
   // A source's capture time is the longest value a form here asks for, and it
-  // wears a mark. At 320px the field is about 220px wide inside its editor, so
+  // wears a mark. At 320px the field is about 228px wide inside its editor, so
   // the room the mark leaves is what decides whether the reader can see the
   // instant they just typed or only the front half of it.
   test("a filled instant field clears its own mark", async ({ page }) => {
