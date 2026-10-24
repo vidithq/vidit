@@ -83,6 +83,11 @@ test.describe("submit", () => {
       expect(box.x + box.width).toBeLessThanOrEqual(tile.x + tile.width + 0.5);
     }
     await expect(first.getByLabel("Source to keep when merging Source 1")).toBeVisible();
+    // The URL field takes the tile's whole width, its remove control under it.
+    const url = (await first.getByLabel("Source 1 link 1", { exact: true }).boundingBox())!;
+    const removeLink = (await first.getByRole("button", { name: "Remove source 1 link 1" }).boundingBox())!;
+    expect(url.width).toBeGreaterThan(tile.width * 0.85);
+    expect(removeLink.y).toBeGreaterThanOrEqual(url.y + url.height);
     await expect(first.getByLabel("Latitude", { exact: true })).toBeVisible();
 
     // The level options keep their whole labels and the phone tap height.

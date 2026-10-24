@@ -768,7 +768,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<LinkListInput>" usage="An ordered list of URL fields with a remove per row and one add button: each source editor's Links. A row is the caller's own value, read and written through `urlOf` / `withUrl`, so what else it carries (a post time, an archived copy) moves with it through adds and removals. `max` mirrors the server cap and disables add at the ceiling. Blank rows are the caller's to drop at assembly. `trailing` puts a mark inside the row's URL field, `detail` a line always under it, and `expansion` a line under it while the row is toggled open: on a source editor that is the <ArchiveAdornment> mark, the post time, and the <ArchiveSnapshotField> paste line. Every row starts closed.">
+          <Item name="<LinkListInput>" usage="An ordered list of URL fields with a remove per row and one add button: each source editor's Links. A row is the caller's own value, read and written through `urlOf` / `withUrl`, so what else it carries (a post time, an archived copy) moves with it through adds and removals. `max` mirrors the server cap and disables add at the ceiling. Blank rows are the caller's to drop at assembly. `trailing` puts a mark inside the row's URL field, `detail` a line always under it, and `expansion` a line under it while the row is toggled open: on a source editor that is the <ArchiveAdornment> mark, the post time, and the <ArchiveSnapshotField> paste line. Every row starts closed. Below `sm` the URL field takes the whole row and the remove control drops under its right end.">
             <div className="w-full max-w-sm space-y-4">
               <Variant label="editable (max 3 here)">
                 <LinkListInput<string>

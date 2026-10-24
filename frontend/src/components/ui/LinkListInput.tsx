@@ -79,9 +79,11 @@ export function LinkListInput<R>({
         // Index key: rows have no identity (a URL is edited per character and may
         // repeat while typing), and every field is controlled.
         <div key={i} className="space-y-1.5">
-          <div className="flex items-center gap-2">
+          {/* Below `sm` the URL takes the whole row and the remove control drops under its
+              right end: beside it, a 320px field kept about 9 characters of the URL in view. */}
+          <div className="flex max-sm:flex-col max-sm:items-end items-center gap-2">
             {/* `flex-1` sizes this wrapper: an adorned `<Input>` has its own wrapper. */}
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 max-sm:self-stretch">
               <Input
                 type="url"
                 value={urlOf(row)}
