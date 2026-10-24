@@ -13,8 +13,6 @@ import {
   approveEvent,
   approveOptions,
   changesSince,
-  revokeApproval,
-  revokedByLabel,
   type Approval,
   type ApprovalList,
 } from "@/lib/approvals";
@@ -28,20 +26,18 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { Tooltip } from "@/components/ui/Tooltip";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { profileHref } from "@/lib/routes";
 
 export function ApprovalState({ approval }: { approval: Approval }) {
-  if (approval.revoked_at) return <Pill tone="danger">Revoked</Pill>;
   if (approval.current) return <Pill tone="accent">Current</Pill>;
   return <Pill tone="neutral">Outdated</Pill>;
 }
 
-/** One review: who placed it (an organization signs with its name, its acting member
- *  beside it, or "on behalf of" it once that account is erased) and when, and, once revoked,
- *  when and by which role, with the public reason when one was given. */
+/** One approval: who placed it (an organization signs with its name, its acting member
+ *  beside it, or "on behalf of" it once that account is erased) and when. */
 export function ApprovalRow({ approval }: { approval: Approval }) {
   return (
     <div className="space-y-1 py-2">
@@ -70,12 +66,6 @@ export function ApprovalRow({ approval }: { approval: Approval }) {
         <ApprovalState approval={approval} />
         <span className="text-[11px] text-neutral-500">{formatDate(approval.created_at)}</span>
       </span>
-      {approval.revoked_at && (
-        <p className="text-xs text-neutral-400 [overflow-wrap:anywhere]">
-          {revokedByLabel(approval)} on {formatDate(approval.revoked_at)}
-          {approval.revoke_reason ? `: ${approval.revoke_reason}` : "."}
-        </p>
-      )}
     </div>
   );
 }
@@ -160,10 +150,11 @@ export function ApprovalStamps({
 }
 
 /**
- * The approve controls of the live version, each approving in one click: **Approve** for an
- * analyst outside the event's geolocators who has not reviewed it, and one **Approve as
- * <organization>** per organization the reader is a member of whose approval of it does not stand
- * (and no site admin revoked). A stale version offers **Reload**.
+ * The approve controls of the live version: **Approve** for an analyst outside the event's
+ * geolocators who has not approved it, and one **Approve as <organization>** per organization the
+ * reader is a member of that has not approved it. An approval is final, so a click opens a
+ * confirmation step naming the version (and the organization) before anything is sent. A stale
+ * version offers **Reload**.
  */
 export function ApproveButtons({
   event,
@@ -178,6 +169,8 @@ export function ApproveButtons({
 }) {
   const { user } = useAuth();
   const [stale, setStale] = useState(false);
+  // `undefined` while closed; `null` confirms the reader's own approval, a ref an organization's.
+  const [confirming, setConfirming] = useState<OrganizationRef | null | undefined>(undefined);
   // The list an approval landed on: the buttons hold until the refetch replaces it, or a quick
   // second click would answer 409.
   const [approvedOn, setApprovedOn] = useState<ApprovalList | null>(null);
@@ -189,10 +182,12 @@ export function ApproveButtons({
       fallback: "Failed to approve",
       onError: (err) => {
         setStale(err instanceof ApiError && err.code === "version_mismatch");
+        setConfirming(undefined);
         return undefined;
       },
       onSuccess: () => {
         setApprovedOn(approvals);
+        setConfirming(undefined);
         onApproved();
       },
     },
@@ -201,14 +196,15 @@ export function ApproveButtons({
   const { eligible, organizations } = approveOptions(event, approvals, memberOf, user?.id);
   if (!eligible && organizations.length === 0 && !approve.error) return null;
 
+  const open = (organization: OrganizationRef | null) => {
+    approve.reset();
+    setConfirming(organization);
+  };
+
   return (
     <>
       {eligible && (
-        <Button
-          variant="secondary"
-          onClick={() => void approve.run(null)}
-          disabled={approve.loading || busy}
-        >
+        <Button variant="secondary" onClick={() => open(null)} disabled={approve.loading || busy}>
           <Stamp size={14} />
           Approve
         </Button>
@@ -217,7 +213,7 @@ export function ApproveButtons({
         <Button
           key={organization.slug}
           variant="secondary"
-          onClick={() => void approve.run(organization.slug)}
+          onClick={() => open(organization)}
           disabled={approve.loading || busy}
         >
           <Stamp size={14} />
@@ -234,51 +230,29 @@ export function ApproveButtons({
           Reload
         </Button>
       )}
-    </>
-  );
-}
-
-/** One-click revoke, with no reason, of a standing approval of the live version: **Revoke** for
- *  the reader's own, **Revoke as <organization>** for one an organization the reader belongs to
- *  gave. The reader, or the organization, may approve the version again afterwards. */
-export function RevokeApproval({
-  eventId,
-  approval,
-  onRevoked,
-}: {
-  eventId: string;
-  approval: Approval;
-  onRevoked: () => void;
-}) {
-  const revoke = useMutation(() => revokeApproval(eventId, approval.id), {
-    fallback: "Failed to revoke the approval",
-    onSuccess: onRevoked,
-  });
-  const organization = approval.organization;
-  return (
-    <>
-      <Tooltip
-        label={
-          organization
-            ? `Withdraw ${organization.name}'s approval of this version`
-            : "Withdraw your approval of this version"
-        }
-      >
-        <Button variant="secondary" onClick={() => void revoke.run()} disabled={revoke.loading}>
-          {organization ? `Revoke as ${organization.name}` : "Revoke"}
-        </Button>
-      </Tooltip>
-      {revoke.error && (
-        <div className={`${FORM_ERROR_BANNER} w-full`} role="alert">
-          {revoke.error}
-        </div>
+      {confirming !== undefined && (
+        <ConfirmDialog
+          title={confirming ? `Approve as ${confirming.name}?` : "Approve this version?"}
+          confirmLabel="Approve"
+          busyLabel="Approving…"
+          busy={approve.loading}
+          onConfirm={() => void approve.run(confirming?.slug ?? null)}
+          onCancel={() => setConfirming(undefined)}
+        >
+          <p>
+            {confirming
+              ? `You approve version ${event.version_no} of this geolocation in the name of ${confirming.name}.`
+              : `You approve version ${event.version_no} of this geolocation.`}
+          </p>
+          <p>An approval is final: you cannot revoke it. A new version asks for a new approval.</p>
+        </ConfirmDialog>
       )}
     </>
   );
 }
 
-/** The reviews a filed version (`/events/{id}/vN`) held, outdated and revoked alike, each revoked
- *  one with its public reason when one was given, read-only. Absent when the version held none. */
+/** The approvals a filed version (`/events/{id}/vN`) held, read-only. Absent when the version
+ *  held none. */
 export function VersionApprovals({ event, versionNo }: { event: EventDetail; versionNo: number }) {
   const approvals = useApiResource<ApprovalList>(approvalsPath(event.id, versionNo));
   const rows = approvals.data?.items ?? [];

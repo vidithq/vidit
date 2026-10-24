@@ -10,8 +10,6 @@ import { ReportsPanel } from "@/components/admin/ReportsPanel";
 import { EventActionsPanel } from "@/components/admin/EventActionsPanel";
 import { OnboardingPanel } from "@/components/admin/OnboardingPanel";
 import { ManageAnalystsPanel } from "@/components/admin/ManageAnalystsPanel";
-import { ProductUpdatesPanel } from "@/components/admin/ProductUpdatesPanel";
-import { XHandleRequestsPanel } from "@/components/admin/XHandleRequestsPanel";
 import { OrganizationsPanel } from "@/components/admin/OrganizationsPanel";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 
@@ -42,11 +40,9 @@ export default function AdminPage() {
       <OnboardingPanel />
       <DetectionStatsPanel />
       <ManageAnalystsPanel />
-      <XHandleRequestsPanel />
       <OrganizationsPanel />
       <ReportsPanel />
       <EventActionsPanel />
-      <ProductUpdatesPanel />
     </PageShell>
   );
 }

@@ -3,9 +3,7 @@
 import { useEffect, useRef } from "react";
 import {
   ArrowRightLeft,
-  AtSign,
   BadgeCheck,
-  BadgeX,
   Building2,
   CircleCheck,
   ClipboardCheck,
@@ -46,8 +44,6 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 const KIND_ICON: Record<NotificationKind, LucideIcon> = {
   request_fulfilled: CircleCheck,
   new_follower: UserPlus,
-  x_handle_request_approved: AtSign,
-  x_handle_request_declined: AtSign,
   co_geolocator_invite: Users,
   co_geolocator_removed: UserMinus,
   ownership_transferred: ArrowRightLeft,
@@ -56,7 +52,6 @@ const KIND_ICON: Record<NotificationKind, LucideIcon> = {
   organization_manager_inherited: ShieldCheck,
   re_approve_requested: RefreshCw,
   approval_received: BadgeCheck,
-  approval_revoked: BadgeX,
   approval_request_received: ClipboardCheck,
   approval_request_declined: ClipboardX,
   organization_approval_removed: Building2,

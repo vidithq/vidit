@@ -5,14 +5,7 @@ import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMemberOrganizations } from "@/hooks/useMemberOrganizations";
 import type { ApiResource } from "@/hooks/useApiResource";
-import {
-  blockingRevocation,
-  cannotApproveAgainLine,
-  organizationApprovalOnLive,
-  ownApprovalOnLive,
-  standingApprovalBefore,
-  type ApprovalList,
-} from "@/lib/approvals";
+import { approvalBefore, type ApprovalList } from "@/lib/approvals";
 import type { EventDetail } from "@/types";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -20,7 +13,6 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import {
   ApprovalStamps,
   ApproveButtons,
-  RevokeApproval,
   YourOutdatedApproval,
 } from "@/components/event/Approvals";
 import {
@@ -34,14 +26,11 @@ import {
 const STAMP_SLOTS = 14;
 
 /**
- * The published event's Approvals card, about the live version only: its standing approvals as
- * stamps that link to each signer's page, or *No approvals yet*; the reader's own outdated
- * approval with what changed since; **Approve** (and **Approve as <organization>**) for a reader
- * who may approve, with who asked the reader for approval and **Decline** beside it; **Revoke** in
- * its place once the reader's own approval of the live version stands, and **Revoke as
- * <organization>** once one of the reader's organizations' approval stands, or why the reader cannot
- * approve this version again once a site admin revoked it; and a geolocator's approval requests. Outdated and revoked approvals are read on each
- * version's page.
+ * The published event's Approvals card, about the live version only: its approvals as stamps that
+ * link to each signer's page, or *No approvals yet*; the reader's own outdated approval with what
+ * changed since; **Approve** (and **Approve as <organization>**) for a reader who may approve, with
+ * who asked the reader for approval and **Decline** beside it; and a geolocator's approval
+ * requests. Outdated approvals are read on each version's page.
  */
 export function ApprovalsCard({
   event,
@@ -57,17 +46,11 @@ export function ApprovalsCard({
   const [approvedCount, setApprovedCount] = useState(0);
   const incoming = useApprovalRequests(event, memberOf, approvedCount);
   const rows = approvals.data?.items ?? [];
-  // The live version's standing approvals: current, or, on a closed event, those that stood when
-  // it closed.
-  const standing = rows.filter((a) => a.version_no === event.version_no && !a.revoked_at);
-  const outdatedOwn = standingApprovalBefore(
+  // The live version's approvals: current, or, on a closed event, those it held when it closed.
+  const standing = rows.filter((a) => a.version_no === event.version_no);
+  const outdatedOwn = approvalBefore(
     rows.filter((a) => !a.organization && a.reviewer?.id === user?.id),
     event.version_no,
-  );
-  const own = ownApprovalOnLive(rows, event.version_no, user?.id);
-  const blocked = own ? null : blockingRevocation(rows, event.version_no, user?.id);
-  const organizationApprovals = memberOf.flatMap(
-    (o) => organizationApprovalOnLive(rows, event.version_no, o.slug) ?? [],
   );
 
   return (
@@ -90,18 +73,7 @@ export function ApprovalsCard({
               <YourOutdatedApproval event={event} approvedVersion={outdatedOwn} />
             )}
             {incoming.mine.length > 0 && <IncomingRequests requests={incoming.mine} />}
-            {blocked && approvals.data.viewer_can_approve && (
-              <p className="text-xs text-neutral-500">{cannotApproveAgainLine(blocked)}</p>
-            )}
             <div className="flex flex-wrap items-center gap-2 empty:hidden">
-              {[...(own ? [own] : []), ...organizationApprovals].map((approval) => (
-                <RevokeApproval
-                  key={approval.id}
-                  eventId={event.id}
-                  approval={approval}
-                  onRevoked={approvals.refetch}
-                />
-              ))}
               <ApproveButtons
                 event={event}
                 approvals={approvals.data}

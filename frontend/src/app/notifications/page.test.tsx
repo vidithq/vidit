@@ -249,29 +249,6 @@ describe("NotificationsPage", () => {
     expect(screen.queryByRole("button", { name: "Decline" })).toBeNull();
   });
 
-  it("tells the owner an approval was revoked, naming the organization when it is one", async () => {
-    const revoked: Notification = {
-      ...follower,
-      id: "n11",
-      kind: "approval_revoked",
-      event: { id: "e8", title: "Bridge strike" },
-    };
-    const organization = { slug: "osw", name: "Open Source Watch", avatar_url: null };
-    serve([revoked, { ...revoked, id: "n12", actor: null, organization }]);
-    render(<NotificationsPage />);
-
-    expect(
-      await screen.findByRole("link", {
-        name: /The approval by cy of your geolocation was revoked: Bridge strike/,
-      }),
-    ).toHaveAttribute("href", "/events/e8");
-    expect(
-      screen.getByRole("link", {
-        name: /The approval by Open Source Watch of your geolocation was revoked: Bridge strike/,
-      }),
-    ).toBeInTheDocument();
-  });
-
   it("leads each row with who is behind it: a picture, a logo, or the kind's icon", async () => {
     const approved: Notification = {
       ...fulfilled,
@@ -283,9 +260,10 @@ describe("NotificationsPage", () => {
     const system: Notification = {
       ...fulfilled,
       id: "n22",
-      kind: "x_handle_request_approved",
+      kind: "organization_approval_removed",
       actor: null,
-      event: null,
+      organization: null,
+      organization_name: "Sahel Desk",
     };
     serve([
       { ...follower, actor: { id: "u3", username: "cy", avatar_url: "https://cdn.test/cy.png" } },
@@ -302,9 +280,9 @@ describe("NotificationsPage", () => {
     expect(organization.querySelector("img")).toHaveAttribute("src", "https://cdn.test/osw.png");
     expect(organization.querySelector("img")!.parentElement).toHaveClass("rounded-md");
 
-    const fallback = screen.getByRole("link", { name: /linked the X handle/ });
+    const fallback = screen.getByRole("link", { name: /Sahel Desk was removed from Vidit/ });
     expect(fallback.querySelector("img")).toBeNull();
-    expect(fallback.querySelector("svg.lucide-at-sign")).not.toBeNull();
+    expect(fallback.querySelector("svg.lucide-building-2")).not.toBeNull();
   });
 
   it("explains the empty feed", async () => {

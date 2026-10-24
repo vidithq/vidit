@@ -17,28 +17,15 @@ describe("RegisterForm", () => {
     register.mockReset().mockResolvedValue({ status: "pending_confirmation", email: "ana@example.test" });
   });
 
-  it("leaves the major release email switch off by default", async () => {
+  it("registers with the four fields the form asks for", async () => {
     render(<RegisterForm onSuccess={vi.fn()} initialInviteCode="code" />);
-    const releases = screen.getByRole("switch", { name: "Email me about major releases" });
-    expect(releases).toHaveAttribute("aria-checked", "false");
+    expect(screen.queryByRole("switch")).toBeNull();
 
     fill();
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
 
     await waitFor(() =>
-      expect(register).toHaveBeenCalledWith("ana", "ana@example.test", "validpass123", "code", false),
-    );
-  });
-
-  it("sends the consent when the analyst turns the switch on", async () => {
-    render(<RegisterForm onSuccess={vi.fn()} initialInviteCode="code" />);
-    fireEvent.click(screen.getByRole("switch", { name: "Email me about major releases" }));
-
-    fill();
-    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-
-    await waitFor(() =>
-      expect(register).toHaveBeenCalledWith("ana", "ana@example.test", "validpass123", "code", true),
+      expect(register).toHaveBeenCalledWith("ana", "ana@example.test", "validpass123", "code"),
     );
   });
 });

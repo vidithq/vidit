@@ -15,7 +15,6 @@ import { ApiError, apiFetch } from "@/lib/api";
 import { hasSessionCookie } from "@/lib/auth";
 import { hardNavigate } from "@/lib/navigation";
 import { clearDisplay } from "@/lib/preferences";
-import { forgetThisPushDevice } from "@/lib/push";
 
 type RegisterResponse = components["schemas"]["RegisterResponse"];
 
@@ -29,8 +28,7 @@ interface AuthContextType {
     username: string,
     email: string,
     password: string,
-    invite_code: string,
-    product_updates: boolean
+    invite_code: string
   ) => Promise<RegisterResponse>;
   logout: () => Promise<void>;
   /** Re-pull the user from /auth/me (used by /confirm-registration after the session cookie is set). */
@@ -103,17 +101,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     username: string,
     email: string,
     password: string,
-    invite_code: string,
-    product_updates: boolean
+    invite_code: string
   ) => {
     return apiFetch<RegisterResponse>("/auth/register", {
       method: "POST",
-      body: JSON.stringify({ username, email, password, invite_code, product_updates }),
+      body: JSON.stringify({ username, email, password, invite_code }),
     });
   };
 
   const logout = async () => {
-    await forgetThisPushDevice();
     try {
       await apiFetch("/auth/logout", { method: "POST" });
     } catch {

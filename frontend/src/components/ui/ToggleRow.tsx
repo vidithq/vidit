@@ -4,9 +4,8 @@ import { cn } from "@/lib/cn";
 import { TAP_STEP } from "./Button";
 import { Switch } from "./Switch";
 
-/** A settings preference's text: the label at reading size over a line saying what it does.
- *  Shared by the described `<ToggleRow>` and each `<ToggleMatrix>` row. */
-export function PreferenceText({
+/** A settings preference's text: the label at reading size over a line saying what it does. */
+function PreferenceText({
   label,
   labelId,
   description,
@@ -41,7 +40,7 @@ export function PreferenceText({
  *  tap target.
  *
  *  The accessible name is the label alone (`aria-labelledby`); the description
- *  reads after it as the row's own text. */
+ *  is its accessible description. */
 export function ToggleRow({
   label,
   description,
@@ -58,6 +57,7 @@ export function ToggleRow({
   className?: string;
 }) {
   const labelId = useId();
+  const descriptionId = useId();
   const described = description !== undefined;
   return (
     <button
@@ -65,6 +65,7 @@ export function ToggleRow({
       role="switch"
       aria-checked={on}
       aria-labelledby={labelId}
+      aria-describedby={described ? descriptionId : undefined}
       onClick={onToggle}
       className={cn(
         "w-full flex items-center justify-between gap-4 text-left group",
@@ -74,7 +75,12 @@ export function ToggleRow({
       )}
     >
       {described ? (
-        <PreferenceText label={label} labelId={labelId} description={description} />
+        <PreferenceText
+          label={label}
+          labelId={labelId}
+          description={description}
+          descriptionId={descriptionId}
+        />
       ) : (
         <span
           id={labelId}

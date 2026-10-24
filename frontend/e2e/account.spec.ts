@@ -41,21 +41,19 @@ test.describe("settings", () => {
     const updatePassword = page.getByRole("button", { name: "Update password" });
     await expectNarrowViewportLayout(page, updatePassword);
   });
-  test("keeps each notification row's switches on the row", async ({ context, page }) => {
+  test("gives each notification kind one email switch within the row", async ({ context, page }) => {
     await grantSession(context);
     await mockApi(page);
     await page.goto("/settings");
 
-    const switches = page.getByRole("switch", { name: /, (Email|Push)$/ });
-    await expect(switches.first()).toBeVisible();
-    await expect(page.getByRole("switch", { name: /, Push$/ })).toHaveCount(
-      await page.getByRole("switch", { name: /, Email$/ }).count(),
-    );
+    const kinds = page.getByRole("switch", { name: "Request fulfilled" });
+    await expect(kinds).toHaveCount(1);
+    await expect(kinds).toHaveAttribute("aria-checked", "true");
     const viewportWidth = page.viewportSize()!.width;
-    for (const cell of await switches.all()) {
-      await cell.scrollIntoViewIfNeeded();
-      const box = (await cell.boundingBox())!;
-      expect(box.width).toBeGreaterThanOrEqual(36);
+    for (const name of ["Request fulfilled", "New follower", "Organization invite"]) {
+      const row = page.getByRole("switch", { name });
+      await row.scrollIntoViewIfNeeded();
+      const box = (await row.boundingBox())!;
       expect(box.height).toBeGreaterThanOrEqual(36);
       expect(box.x + box.width).toBeLessThanOrEqual(viewportWidth);
     }
