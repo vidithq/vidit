@@ -879,7 +879,7 @@ flowchart TB
   toggle["`**SegmentedControl**
   scope: Following (default) or All`"]:::page
   filters["`**filter rail**
-  Kind, Conflict, Sensor, Level, Tags`"]:::shared
+  Kind and Show detections, Conflict, Sensor, Level, Tags`"]:::shared
   walk["`**useCursorList**
   one walk per scope and filter set; a change starts a new walk`"]:::shared
   api["`**GET /feed**
@@ -911,17 +911,24 @@ flowchart TB
 
 **A [`<SegmentedControl>`](../frontend/src/components/ui/SegmentedControl.tsx) under the title picks the scope**, **Following** (default) or **All**. Picking an option starts a new walk with `scope`, so the list and its empty state describe the scope on screen.
 
-**The [filter rail](#right-rail) narrows the walk.** The panel offers **Kind** (**Geolocations**, **Requests**), Conflict, Sensor, Level, Tags and Approvals, the filters `GET /feed` serves. A change starts a new walk with `kind`, `conflict`, `sensor`, `level`, `tag` and the approval keys. The filters live in page state and reset on reload. A filtered view that matches nothing reads *Nothing in the feed matches the filters.* in the `boxed` empty state, instead of the follow prompts below.
+**The [filter rail](#right-rail) narrows the walk.** The panel offers **Kind**, Conflict, Sensor, Level, Tags and Approvals, the filters `GET /feed` serves. A change starts a new walk with `kind`, `conflict`, `sensor`, `level`, `tag` and the approval keys.
+
+**Kind** holds two controls:
+
+- The **Geolocations** and **Requests** chips narrow the rows an analyst posts. With neither selected, both kinds show.
+- The **Show detections** [`<ToggleRow>`](../frontend/src/components/ui/ToggleRow.tsx) is on by default, so the feed lists detections beside the chosen kinds. Turned off, it hides them and adds a *Detections hidden* pill, which turns it back on when removed.
+
+The page sends no `kind` while both chips are clear and the switch is on, and otherwise names every kind it keeps. The filters live in page state and reset on reload. A filtered view that matches nothing reads *Nothing in the feed matches the filters.* in the `boxed` empty state, instead of the follow prompts below.
 
 **A card names its kind.** Each row is the `feed` [`<EntityCard>`](../frontend/src/components/ui/EntityCard.tsx), which only the feed renders. Read top to bottom, it holds:
 
-1. The title, with the [`<StatusBadge>`](../frontend/src/components/event/StatusBadge.tsx) beside it, so *Geolocated* or *Requested* says what the row is.
-2. The byline, which credits the row's owner as a picture and a name, then each co-geolocator as a picture. An open request's owner is its requester.
-3. The dates, each named: *Event 25 Aug 2009* when the event date is known, then *Published 3 Oct 2026* on a geolocation or *Requested 3 Oct 2026* on a request (`feed_at`). The coordinates follow when the row has them.
+1. The title, with the [`<StatusBadge>`](../frontend/src/components/event/StatusBadge.tsx) beside it, so *Geolocated*, *Requested* or *Detected* says what the row is.
+2. The byline, which credits the row's owner as a picture and a name, then each co-geolocator as a picture. An open request's owner is its requester, and a detection's owner is the analyst whose post was imported.
+3. The dates, each named: *Event 25 Aug 2009* when the event date is known, then *Published 3 Oct 2026* on a geolocation, *Requested 3 Oct 2026* on a request or *Detected 3 Oct 2026* on a detection (`feed_at`). The coordinates follow when the row has them.
 4. The media.
 5. The tag row from [`cardTags`](../frontend/src/lib/cardTags.ts). A conflict is a key/value [`<Pill>`](../frontend/src/components/ui/Pill.tsx) (`label`), for example *Conflict: Russo-Ukrainian war*. Free tags follow as plain pills. A card carries no source, so it names no sensor: the sensor reads on the event page's [source blocks](#source-blocks).
 
-A geolocation opens `/events/{id}` and a request opens `/requests/{id}`.
+A geolocation or a detection opens `/events/{id}` and a request opens `/requests/{id}`.
 
 **An empty first page names its cause.** An unfiltered empty **Following** view reads the viewer's `following_count` from [`GET /users/{username}`](api.md#get-usersusername) to tell two cases apart:
 

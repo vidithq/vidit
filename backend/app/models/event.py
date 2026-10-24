@@ -393,16 +393,20 @@ class Event(Base):
 
 
 def feed_at() -> ColumnElement[datetime]:
-    """When an event entered the feed: ``requested_at`` for an open request, else
-    ``geolocated_at``.
+    """When an event entered the feed: ``requested_at`` for an open request, ``detected_at`` for
+    a detection, else ``geolocated_at``.
 
-    Both stamps are set on entry and never cleared, so the key is immutable while a row is in
+    Each stamp is set on entry and never cleared, so the key is immutable while a row is in
     the feed. ``created_at`` stands in for a missing stamp because a keyset row comparison
     against NULL is unknown. ``ix_events_timeline_at_id`` indexes this exact expression, and
     the planner matches it structurally, so changing it needs a migration.
     """
     return func.coalesce(
-        case((Event.status == STATUS_REQUESTED, Event.requested_at), else_=Event.geolocated_at),
+        case(
+            (Event.status == STATUS_REQUESTED, Event.requested_at),
+            (Event.status == STATUS_DETECTED, Event.detected_at),
+            else_=Event.geolocated_at,
+        ),
         Event.created_at,
     )
 
@@ -417,6 +421,6 @@ Index(
     postgresql_where=and_(
         Event.deleted_at.is_(None),
         Event.hidden_at.is_(None),
-        Event.status.in_((STATUS_GEOLOCATED, STATUS_REQUESTED)),
+        Event.status.in_((STATUS_GEOLOCATED, STATUS_REQUESTED, STATUS_DETECTED)),
     ),
 )

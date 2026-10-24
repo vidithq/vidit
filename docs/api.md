@@ -178,7 +178,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | PATCH | `/organizations/{slug}/members/{username}` | 🔒 | Change a member's role (managers) |
 | DELETE | `/organizations/{slug}/members/{username}` | 🔒 | Remove a member, or leave |
 | **Feed** | | | |
-| GET | `/feed` | 🔒 | Published geolocations and open requests, from followed analysts or everyone |
+| GET | `/feed` | 🔒 | Published geolocations, open requests and machine detections, from followed analysts or everyone |
 | **Webhooks** | | | |
 | GET | `/webhooks/x` | 🌐 | X webhook CRC challenge (HMAC answer, no DB) |
 | POST | `/webhooks/x` | 🌐 | Receive an X Account Activity delivery (signature-verified) and queue bot mentions |
@@ -2995,22 +2995,23 @@ Remove a member, or leave when `username` is your own. Removing someone else tak
 
 ### `GET /feed` 🔒
 
-Two kinds of row, newest first: a geolocation an analyst published and a request an analyst has open. Cursor-paged (see [Pagination](#pagination)).
+Three kinds of row, newest first: a geolocation an analyst published, a request an analyst has open, and a machine detection. Cursor-paged (see [Pagination](#pagination)).
 
 | Kind | Rows | Feed timestamp |
 |---|---|---|
 | Geolocation | `status = geolocated`, the set [`GET /users/{username}/events`](#get-usersusernameevents) serves | `geolocated_at` |
 | Request | `status = requested` | `requested_at` |
+| Detection | `status = detected` | `detected_at` |
 
-A geolocation credits every geolocator: `owner` and `geolocators`. A request credits `owner`, its requester, since ownership moves only when a request is geolocated.
+A geolocation credits every geolocator: `owner` and `geolocators`. A request credits `owner`, its requester, since ownership moves only when a request is geolocated. A detection credits `owner`, the analyst whose post was imported.
 
-A detection, a retraction and a withdrawn request are in neither kind. A soft-deleted or withheld event never appears, and neither does the work of a soft-deleted account. A fulfilled request leaves the request kind and enters the geolocation kind, credited to the analyst who geolocated it.
+A retraction, a withdrawn request and a rejected detection are in no kind. A soft-deleted or withheld event never appears, and neither does the work of a soft-deleted account. A fulfilled request leaves the request kind and a submitted detection leaves the detection kind; each enters the geolocation kind, credited to the analyst who geolocated it.
 
 **Query params:**
 | Param | Type | Description |
 |-------|------|-------------|
-| `scope` | string | `following` (default) keeps the geolocations crediting an analyst you follow and the requests one of them opened, and is empty when you follow nobody. `all` keeps every row. Anything else returns 422. |
-| `kind` | string (repeatable) | `geolocation` or `request` keeps that kind of row. Both, or none, keep both. Anything else returns 422. |
+| `scope` | string | `following` (default) keeps the geolocations crediting an analyst you follow and the requests and detections one of them owns, and is empty when you follow nobody. `all` keeps every row. Anything else returns 422. |
+| `kind` | string (repeatable) | `geolocation`, `request` or `detected` keeps that kind of row. Omitted, it keeps all three. Anything else returns 422. |
 | `conflict`, `sensor`, `level`, `tag` | string (repeatable) | Same semantics as on [`GET /events`](#get-events). |
 | `approved`, `approved_by`, `approved_by_org` | | Same semantics as on [`GET /events`](#get-events). |
 | `limit` | int | Rows per page, default 10. See [Pagination](#pagination). |
@@ -3040,7 +3041,7 @@ A detection, a retraction and a withdrawn request are in neither kind. A soft-de
 
 **Response headers:** `Link: <…&cursor=…>; rel="next"` when a further page exists.
 
-`status` tells the two kinds apart. `feed_at` is the row's feed timestamp. Rows are ordered by `feed_at DESC, id DESC`, one total order across both kinds, so a walk never repeats or skips a row.
+`status` tells the three kinds apart. `feed_at` is the row's feed timestamp, `created_at` when that stamp is missing. Rows are ordered by `feed_at DESC, id DESC`, one total order across the three kinds, so a walk never repeats or skips a row.
 
 ---
 

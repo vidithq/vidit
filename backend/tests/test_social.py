@@ -1,8 +1,8 @@
 """End-to-end tests for the social-graph endpoints.
 
 Covers follow and unfollow (idempotent, 404 on an unknown or soft-deleted
-target, auth required), ``GET /feed`` (published geolocations and open
-requests, scope, filters, credit, exclusions, cursor walk), the profile follow counters
+target, auth required), ``GET /feed`` (published geolocations, open
+requests and detections, scope, filters, credit, exclusions, cursor walk), the profile follow counters
 and ``is_following``, and the DB-level ``ck_follows_no_self_follow``.
 """
 
@@ -285,6 +285,22 @@ def _make_request(db, *, requester: User, title: str = "Help", at: datetime | No
     return request
 
 
+def _make_detection(
+    db, *, owner: User, title: str = "Detection", at: datetime | None = None
+) -> Event:
+    detection = Event(
+        owner_id=owner.id,
+        title=title,
+        coords=from_shape(Point(37.81, 48.02), srid=4326),
+        status=STATUS_DETECTED,
+        detected_at=at or datetime.now(UTC),
+    )
+    db.add(detection)
+    db.commit()
+    db.refresh(detection)
+    return detection
+
+
 def _fulfil(event: Event, *, by: User, at: datetime | None = None) -> None:
     # Read before the writes: refreshing an expired ``by`` autoflushes, and a half-written
     # row trips ``ck_events_coords_status``.
@@ -405,8 +421,8 @@ def test_feed_all_scope_carries_rows_of_analysts_not_followed(db, cleanup):
 
 
 def test_feed_excludes_unpublished_closed_deleted_and_hidden_rows(db, cleanup):
-    """Each kind keeps its own predicate: a detection is unvouched, a retraction and a
-    withdrawn request are closed, and a soft-deleted or withheld row is out of every read."""
+    """Each kind keeps its own predicate: a retraction, a withdrawn request and a rejected
+    detection are closed, and a soft-deleted or withheld row is out of every read."""
     record_user, record_geo = cleanup
     viewer = _make_user(db, suffix="viewer")
     author = _make_user(db, suffix="author")
@@ -415,8 +431,16 @@ def test_feed_excludes_unpublished_closed_deleted_and_hidden_rows(db, cleanup):
 
     published = _make_geo(db, author=author, title="Published")
     ask = _make_request(db, requester=author, title="Open ask")
-    detection = _make_geo(db, author=author, title="Detection")
-    detection.status = STATUS_DETECTED
+    detection = _make_detection(db, owner=author, title="Detection")
+    rejected = _make_detection(db, owner=author, title="Rejected detection")
+    rejected.status = STATUS_CLOSED
+    rejected.before_closed_status = STATUS_DETECTED
+    rejected.closed_at = datetime.now(UTC)
+    rejected.close_reason = "Not the place."
+    deleted_detection = _make_detection(db, owner=author, title="Deleted detection")
+    deleted_detection.deleted_at = datetime.now(UTC)
+    hidden_detection = _make_detection(db, owner=author, title="Hidden detection")
+    hidden_detection.hidden_at = datetime.now(UTC)
     retracted = _make_geo(db, author=author, title="Retracted")
     retracted.status = STATUS_CLOSED
     retracted.before_closed_status = STATUS_GEOLOCATED
@@ -439,6 +463,9 @@ def test_feed_excludes_unpublished_closed_deleted_and_hidden_rows(db, cleanup):
         published,
         ask,
         detection,
+        rejected,
+        deleted_detection,
+        hidden_detection,
         retracted,
         withdrawn,
         deleted_geo,
@@ -454,25 +481,27 @@ def test_feed_excludes_unpublished_closed_deleted_and_hidden_rows(db, cleanup):
             row.geolocated_at = stamp
         if row.requested_at is not None:
             row.requested_at = stamp
+        if row.detected_at is not None:
+            row.detected_at = stamp
         record_geo(row)
     db.add(Follow(follower_id=viewer.id, followed_id=author.id))
     db.commit()
 
     headers = login_as(client, viewer)
     following = client.get("/api/v1/feed", headers=headers).json()
-    assert {item["title"] for item in following} == {"Published", "Open ask"}
+    assert {item["title"] for item in following} == {"Published", "Open ask", "Detection"}
 
     above_band = encode_cursor(datetime(2998, 1, 1, 0, 1, tzinfo=UTC), uuid.UUID(int=2**128 - 1))
     page = client.get(
         f"/api/v1/feed?scope=all&limit={len(rows)}&cursor={above_band}", headers=headers
     ).json()
     band = {item["title"] for item in page if item["feed_at"].startswith("2998-")}
-    assert band == {"Published", "Open ask"}
+    assert band == {"Published", "Open ask", "Detection"}
 
 
 def test_feed_cursor_walks_mixed_kinds_without_gaps_or_repeats(db, cleanup):
-    """Geolocations and requests interleave on one key, ties broken by id, so a walk
-    two rows at a time serves every row once, in order."""
+    """Geolocations, requests and detections interleave on one key, ties broken by id, so a
+    walk two rows at a time serves every row once, in order."""
     record_user, record_geo = cleanup
     viewer = _make_user(db, suffix="viewer")
     author = _make_user(db, suffix="author")
@@ -486,11 +515,14 @@ def test_feed_cursor_walks_mixed_kinds_without_gaps_or_repeats(db, cleanup):
         rows.append(geo)
         at = datetime(2026, 5, 20, 10 + i, 30, tzinfo=UTC)
         rows.append(_make_request(db, requester=author, title=f"R{i}", at=at))
+        at = datetime(2026, 5, 20, 10 + i, 15, tzinfo=UTC)
+        rows.append(_make_detection(db, owner=author, title=f"D{i}", at=at))
     tie = datetime(2026, 5, 20, 12, 0, tzinfo=UTC)
     tied_geo = _make_geo(db, author=author, title="Tied geo")
     tied_geo.geolocated_at = tie
     rows.append(tied_geo)
     rows.append(_make_request(db, requester=author, title="Tied ask", at=tie))
+    rows.append(_make_detection(db, owner=author, title="Tied detection", at=tie))
     db.add(Follow(follower_id=viewer.id, followed_id=author.id))
     db.commit()
     for row in rows:
@@ -502,7 +534,54 @@ def test_feed_cursor_walks_mixed_kinds_without_gaps_or_repeats(db, cleanup):
     assert set(ids) == {str(row.id) for row in rows}
     keys = [(item["feed_at"], item["id"]) for item in walked]
     assert keys == sorted(keys, reverse=True)
-    assert {item["status"] for item in walked} == {STATUS_GEOLOCATED, STATUS_REQUESTED}
+    assert {item["status"] for item in walked} == {
+        STATUS_GEOLOCATED,
+        STATUS_REQUESTED,
+        STATUS_DETECTED,
+    }
+
+
+def test_feed_carries_detections_by_default_and_kind_narrows_them(db, cleanup):
+    """A detection is in the feed unless ``kind`` leaves it out. ``following`` keeps the
+    detections a followed analyst owns, ``all`` every live one, each keyed on ``detected_at``."""
+    record_user, record_geo = cleanup
+    viewer = _make_user(db, suffix="viewer")
+    analyst = _make_user(db, suffix="analyst")
+    stranger = _make_user(db, suffix="stranger")
+    for user in (viewer, analyst, stranger):
+        record_user(user)
+
+    geo = _make_geo(db, author=analyst, title="Geo")
+    ask = _make_request(db, requester=analyst, title="Ask")
+    detected_at = datetime(2997, 1, 1, 0, 0, 1, tzinfo=UTC)
+    detection = _make_detection(db, owner=analyst, title="Detection", at=detected_at)
+    stranger_detection = _make_detection(
+        db, owner=stranger, title="Stranger detection", at=datetime(2997, 1, 1, 0, 0, 2, tzinfo=UTC)
+    )
+    db.add(Follow(follower_id=viewer.id, followed_id=analyst.id))
+    db.commit()
+    for row in (geo, ask, detection, stranger_detection):
+        record_geo(row)
+    headers = login_as(client, viewer)
+
+    def titles(query: str) -> set[str]:
+        return {item["title"] for item in _walk(headers, f"/api/v1/feed?limit=2&{query}")}
+
+    assert titles("") == {"Geo", "Ask", "Detection"}
+    assert titles("kind=detected") == {"Detection"}
+    assert titles("kind=geolocation&kind=request") == {"Geo", "Ask"}
+    assert titles("kind=request&kind=detected") == {"Ask", "Detection"}
+
+    first = client.get("/api/v1/feed?kind=detected", headers=headers).json()
+    assert first[0]["status"] == STATUS_DETECTED
+    assert first[0]["owner"]["username"] == analyst.username
+    assert first[0]["feed_at"].startswith("2997-01-01T00:00:01")
+
+    above_band = encode_cursor(datetime(2997, 1, 1, 0, 1, tzinfo=UTC), uuid.UUID(int=2**128 - 1))
+    page = client.get(
+        f"/api/v1/feed?scope=all&kind=detected&limit=2&cursor={above_band}", headers=headers
+    ).json()
+    assert [item["title"] for item in page] == ["Stranger detection", "Detection"]
 
 
 @pytest.mark.parametrize("scope", ["following", "all"])

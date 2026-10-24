@@ -142,6 +142,16 @@ def open_requests() -> ColumnElement[bool]:
     return Event.status == STATUS_REQUESTED
 
 
+def live_detections() -> ColumnElement[bool]:
+    """The predicate for a machine detection awaiting its owner: ``detected``.
+
+    The detection twin of :func:`open_requests`, read by the feed
+    (:func:`services.social.get_feed`). A submitted detection moves to :func:`published_events`
+    and a rejected one (``closed`` off ``detected``) drops out.
+    """
+    return Event.status == STATUS_DETECTED
+
+
 def collectable_events() -> ColumnElement[bool]:
     """The predicate for an event a collection may hold: visible, and worked.
 

@@ -39,11 +39,12 @@ def get_feed(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[FeedItemRead]:
-    """Published geolocations and open requests, newest first.
+    """Published geolocations, open requests and machine detections, newest first.
 
     ``scope=following`` (default) keeps the geolocations credited to analysts
-    the current user follows and the requests they own, and is empty when they
-    follow nobody; ``scope=all`` keeps every row. ``kind``, ``conflict``,
+    the current user follows and the requests and detections they own, and is
+    empty when they follow nobody; ``scope=all`` keeps every row. ``kind``
+    (``geolocation``, ``request``, ``detected``; all three when omitted), ``conflict``,
     ``sensor``, ``level``, ``tag``, ``approved``, ``approved_by`` and
     ``approved_by_org`` narrow the rows as on ``GET /events``. Cursor-paged, capped at 100 rows; the
     ``Link: rel="next"`` cursor is present exactly when a next page holds a row.

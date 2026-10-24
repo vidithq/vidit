@@ -10,6 +10,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - `POST /uploads` stages one source file before the event write that uses it; a staged file nobody uses is deleted after 24 hours.
 - `GET /sources` finds an existing source by URL or title, and an event form copies it onto another event without storing its file twice.
 - Search matches source titles and source URLs, and the map, list, search and feed filters take `sensor` and `level`.
+- The feed shows machine detections from the analysts you follow, or from everyone on All, and a **Show detections** switch in its Kind filter hides them; `GET /feed` takes `kind=detected`.
 
 ### Changed
 

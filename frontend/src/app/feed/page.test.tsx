@@ -282,6 +282,44 @@ describe("FeedPage", () => {
     expect(within(card).getByText("airstrike")).toBeInTheDocument();
   });
 
+  it("cards a detection with its badge and date, linked to its event page", () => {
+    walk.items = [
+      item({ id: "d1", title: "Imported strike", status: "detected", feed_at: "2026-10-05T09:00:00Z" }),
+    ];
+    render(<FeedPage />);
+
+    expect(screen.getByRole("link", { name: "Imported strike" })).toHaveAttribute(
+      "href",
+      "/events/d1",
+    );
+    expect(screen.getByText("Detected")).toBeInTheDocument();
+    expect(screen.getByText("Detected 5 Oct 2026")).toBeInTheDocument();
+  });
+
+  it("shows detections by default and hides them from the Kind switch", () => {
+    walk.items = [item({})];
+    render(<FeedPage />);
+    expect(lastPath()).toBe("/feed?scope=following");
+    const rail = screen.getByRole("complementary", { name: "Filters" });
+    fireEvent.click(within(rail).getByRole("button", { name: "Toggle Kind" }));
+    const toggle = within(rail).getByRole("switch", { name: "Show detections" });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(toggle);
+    expect(lastPath()).toBe("/feed?scope=following&kind=geolocation&kind=request");
+    expect(within(rail).getByRole("switch", { name: "Show detections" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    expect(screen.getByRole("button", { name: "Filters (1)" })).toBeInTheDocument();
+
+    fireEvent.click(within(rail).getByRole("button", { name: "Requests" }));
+    expect(lastPath()).toBe("/feed?scope=following&kind=request");
+
+    fireEvent.click(screen.getByTitle("Remove filter: Detections hidden"));
+    expect(lastPath()).toBe("/feed?scope=following&kind=request&kind=detected");
+  });
+
   it("narrows the walk from the rail: kind, conflict and tag", () => {
     walk.items = [item({})];
     render(<FeedPage />);
@@ -289,14 +327,14 @@ describe("FeedPage", () => {
 
     fireEvent.click(within(rail).getByRole("button", { name: "Toggle Kind" }));
     fireEvent.click(within(rail).getByRole("button", { name: "Requests" }));
-    expect(lastPath()).toBe("/feed?scope=following&kind=request");
+    expect(lastPath()).toBe("/feed?scope=following&kind=request&kind=detected");
 
     fireEvent.click(within(rail).getByRole("button", { name: "Toggle Conflict" }));
     fireEvent.click(within(rail).getByRole("button", { name: "Russo-Ukrainian war" }));
     fireEvent.click(within(rail).getByRole("button", { name: "Toggle Tags" }));
     fireEvent.click(within(rail).getByRole("button", { name: "airstrike" }));
     expect(lastPath()).toBe(
-      "/feed?scope=following&kind=request&conflict=Russo-Ukrainian+war&tag=airstrike",
+      "/feed?scope=following&kind=request&kind=detected&conflict=Russo-Ukrainian+war&tag=airstrike",
     );
     expect(screen.getByRole("button", { name: "Filters (3)" })).toBeInTheDocument();
 
@@ -318,7 +356,7 @@ describe("FeedPage", () => {
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Apply" }));
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(lastPath()).toBe("/feed?scope=following&kind=geolocation");
+    expect(lastPath()).toBe("/feed?scope=following&kind=geolocation&kind=detected");
 
     fireEvent.click(screen.getByRole("button", { name: "Filters (1)" }));
     const reopened = screen.getByRole("dialog", { name: "Filters" });
