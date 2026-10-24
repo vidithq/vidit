@@ -13,25 +13,47 @@ Data mapping:
 
 * An event with a ``source_url`` or a source file gets one ``direct`` source: its kind is the
   event's capture-source tag (else ``unknown``), its file the source media row, its capture
-  position ``capture_source_coords``, its graphic flag the event's, and its one link
-  ``source_url`` with ``source_posted_at`` and that URL's archived copy.
+  position ``capture_source_coords``, and its one link ``source_url`` with
+  ``source_posted_at`` and that URL's archived copy.
 * Each ``event_source_links`` row becomes its own ``direct`` source, kind ``unknown``, no
   file, one link with its archived copy.
+* An event holds 10 sources at most. An event with a ``source_url`` and 10 secondary links
+  keeps its first 9 links by position; each dropped link is logged with its event id.
+* Every source of a graphic event is graphic.
+* A link to an X status with no post time is dated off its status id (:func:`_x_posted_at`,
+  a frozen copy of ``tweet_ingest.urls.x_status_posted_at``). A stored post time is kept.
 * Archived copies of the detection post and of proof links are dropped.
-* Version snapshots are rewritten to the ``sources`` shape with the same content.
+* Version snapshots are rewritten to the ``sources`` shape with the same content, under the
+  same cap and graphic rule.
 * The ``capture_source`` tags go (their names became kinds), then ``tags.category``.
 
 The downgrade maps each event back onto one source: the first source with a file (else the
 first source) gives ``source_url``, its first link's post time, its capture position, its
 capture-source tag and its file; every other link becomes a secondary link (ten at most), and
 the other sources' files are deleted. A kind with no capture-source tag (``camera``,
-``article``, ``official_statement``, ``other``) comes back as ``Unknown``. It restores what
-the upgrade wrote, except that an event that carried no capture-source tag comes back with
-``Unknown``.
+``article``, ``official_statement``, ``other``) comes back as ``Unknown``.
+
+The downgrade is lossy, so it is an emergency path only; the rollback path is a restore of the
+backup taken before the upgrade. It loses:
+
+* which link was the source: an event that had only secondary links (an ambiguous detection)
+  comes back with its first link promoted to ``source_url``;
+* the capture-source tags' ids: the 7 tags are recreated with new ids, and an event that
+  carried no capture-source tag comes back with ``Unknown``, so version snapshots differ in
+  tag ids and order;
+* everything the new model holds and the old one cannot: levels, kinds outside the old tag
+  list, titles, capture times, the post time of every link but the first, the files of every
+  source but the kept one (their media rows are deleted, the stored objects stay), the
+  graphic flag of a single source (the event is graphic when any source is), staged
+  ``uploads``, and the post times the upgrade read off X status ids.
 """
 
 import json
+import logging
+import re
+from datetime import UTC, datetime
 from typing import Any, Sequence, Union
+from urllib.parse import urlparse
 
 import sqlalchemy as sa
 from alembic import op
@@ -71,6 +93,18 @@ SOURCE_KINDS = (
     "unknown",
 )
 MAX_SECONDARY_LINKS = 10
+# ``models/source.MAX_SOURCES_PER_EVENT``, frozen.
+MAX_SOURCES_PER_EVENT = 10
+
+# Frozen copy of ``tweet_ingest.urls.x_status_posted_at`` and the host gate it reads.
+_X_HOST_RE = re.compile(r"^(?:www\.)?(?:x|twitter)\.com$", re.IGNORECASE)
+_X_STATUS_URL_RE = re.compile(
+    r"(?:x|twitter)\.com/(?:\w+/status|i/web/status)/(\d+)", re.IGNORECASE
+)
+_X_SNOWFLAKE_EPOCH_MS = 1288834974657
+_MIN_SNOWFLAKE_OFFSET_MS = 86_400_000
+
+logger = logging.getLogger("alembic.runtime.migration")
 
 _KIND_CASE = "CASE t.name " + " ".join(
     f"WHEN '{name}' THEN '{kind}'" for name, kind in KIND_OF_TAG.items()
@@ -81,6 +115,24 @@ _PROVIDER_CASE = (
     "WHEN {col} LIKE 'https://ghostarchive.org/%' THEN 'ghostarchive' "
     "ELSE 'archive_today' END"
 )
+
+
+def _x_posted_at(url: str, now: datetime) -> datetime | None:
+    """When the X status ``url`` names was posted, read off its id, cut to the second."""
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except ValueError:
+        return None
+    if _X_HOST_RE.match(host) is None:
+        return None
+    match = _X_STATUS_URL_RE.search(url)
+    if match is None:
+        return None
+    offset_ms = int(match.group(1)) >> 22
+    if offset_ms < _MIN_SNOWFLAKE_OFFSET_MS:
+        return None
+    posted_at = datetime.fromtimestamp((_X_SNOWFLAKE_EPOCH_MS + offset_ms) // 1000, UTC)
+    return None if posted_at > now else posted_at
 
 
 def _provider(snapshot_url: str) -> str:
@@ -220,19 +272,43 @@ def upgrade() -> None:
         WHERE m.event_id = ms.event_id AND m.role = 'source'
         """
     )
-    # Each secondary link becomes its own source, after the main one and in link order.
+    # Each secondary link becomes its own source, after the main one and in link order, up to
+    # the cap the main source shares.
+    op.execute(
+        f"""
+        CREATE TEMPORARY TABLE ranked_secondary ON COMMIT DROP AS
+        SELECT l.event_id, l.position, l.url,
+               row_number() OVER (PARTITION BY l.event_id ORDER BY l.position)
+                   + (EXISTS (SELECT 1 FROM main_sources ms WHERE ms.event_id = l.event_id))::int
+                   > {MAX_SOURCES_PER_EVENT} AS over_cap
+        FROM event_source_links l
+        """
+    )
+    bind = op.get_bind()
+    for event_id, url in bind.execute(
+        sa.text(
+            "SELECT event_id, url FROM ranked_secondary WHERE over_cap ORDER BY event_id, position"
+        )
+    ).all():
+        logger.warning(
+            "Event %s holds more than %s sources: dropped its secondary link %s",
+            event_id,
+            MAX_SOURCES_PER_EVENT,
+            url,
+        )
     op.execute(
         """
         CREATE TEMPORARY TABLE link_sources ON COMMIT DROP AS
-        SELECT l.event_id, l.position, l.url, gen_random_uuid() AS source_id
-        FROM event_source_links l
+        SELECT event_id, position, url, gen_random_uuid() AS source_id
+        FROM ranked_secondary
+        WHERE NOT over_cap
         """
     )
     op.execute(
         """
         INSERT INTO sources (id, event_id, title, level, kind, is_graphic, created_at,
                              updated_at)
-        SELECT ls.source_id, e.id, '', 'direct', 'unknown', false,
+        SELECT ls.source_id, e.id, '', 'direct', 'unknown', e.is_graphic,
                e.created_at + (ls.position + 1) * interval '1 microsecond', e.updated_at
         FROM link_sources ls JOIN events e ON e.id = ls.event_id
         """
@@ -248,8 +324,20 @@ def upgrade() -> None:
         LEFT JOIN source_archives a ON a.event_id = ls.event_id AND a.original_url = ls.url
         """
     )
+    now = datetime.now(UTC)
+    for link_id, url in bind.execute(
+        sa.text(
+            "SELECT id, url FROM source_links "
+            "WHERE posted_at IS NULL AND url ~* '(x|twitter)\\.com/'"
+        )
+    ).all():
+        posted_at = _x_posted_at(url, now)
+        if posted_at is not None:
+            bind.execute(
+                sa.text("UPDATE source_links SET posted_at = :posted_at WHERE id = :id"),
+                {"posted_at": posted_at, "id": link_id},
+            )
 
-    bind = op.get_bind()
     for version_id, snapshot in bind.execute(
         sa.text("SELECT id, snapshot FROM event_versions WHERE snapshot <> '{}'::jsonb")
     ).all():
@@ -317,7 +405,7 @@ def _sources_snapshot(old: dict[str, Any]) -> dict[str, Any]:
                 "media": source_media[0] if source_media else None,
             }
         )
-    for url in old.get("secondary_source_urls") or []:
+    for url in (old.get("secondary_source_urls") or [])[: MAX_SOURCES_PER_EVENT - len(sources)]:
         sources.append(
             {
                 "title": "",
@@ -325,7 +413,7 @@ def _sources_snapshot(old: dict[str, Any]) -> dict[str, Any]:
                 "kind": "unknown",
                 "captured_at": None,
                 "capture_position": None,
-                "is_graphic": False,
+                "is_graphic": bool(old.get("is_graphic", False)),
                 "links": [link(url, None)],
                 "tags": [],
                 "media": None,

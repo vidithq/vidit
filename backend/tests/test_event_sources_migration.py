@@ -1,19 +1,35 @@
 """The event sources migration, ``fb4098ed6742``: an event's source URL and file become one
-``direct`` source, each secondary link a source of its own, archives move onto the links,
-snapshots are rewritten, and the graphic flag and kind are carried; the downgrade maps back."""
+``direct`` source, each secondary link a source of its own up to the cap, archives move onto the
+links, X links are dated off their ids, snapshots are rewritten, and the graphic flag and kind
+are carried; the downgrade maps back."""
 
+import importlib.util
 import json
 import uuid
+from datetime import UTC, datetime
+from pathlib import Path
 
 import psycopg2
 import pytest
 
+from app.services.tweet_ingest.urls import x_status_posted_at
 from tests.test_revoke_reason_migration import _alembic, throwaway_db
+
+_spec = importlib.util.spec_from_file_location(
+    "event_sources_migration",
+    Path(__file__).parents[1] / "alembic" / "versions" / "fb4098ed6742_event_sources.py",
+)
+assert _spec is not None and _spec.loader is not None
+migration = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(migration)
 
 _BASE = "4c85d28351c8"
 _HEAD = "fb4098ed6742"
 WAYBACK = "https://web.archive.org/web/20260501/https://x.com/a/status/1"
 ARCHIVE_PH = "https://archive.ph/AbCd1"
+# A real-shaped X status: its id encodes 2024-05-13T12:43:51Z.
+X_MIRROR = "https://twitter.com/front_owl/status/1790000000000000002?s=20"
+X_MIRROR_AT = datetime(2024, 5, 13, 12, 43, 51, tzinfo=UTC)
 
 
 def _uid() -> str:
@@ -96,6 +112,19 @@ def _seed(cur) -> dict[str, str]:
             "INSERT INTO event_source_links (event_id, position, url) VALUES (%s, %s, %s)",
             (full, position, url),
         )
+    # A main source and 10 secondary links: one over the cap.
+    crowded = ids["crowded"] = _event(cur, owner, "geolocated", "https://t.me/main/1")
+    # Only secondary links, an X one with a real id and one pre-snowflake id.
+    ids["mirrors"] = _event(cur, owner, "detected", None)
+    for event, urls in (
+        (crowded, [f"https://t.me/mirror/{n}" for n in range(10)]),
+        (ids["mirrors"], [X_MIRROR, "https://x.com/jack/status/20"]),
+    ):
+        for position, url in enumerate(urls):
+            cur.execute(
+                "INSERT INTO event_source_links (event_id, position, url) VALUES (%s, %s, %s)",
+                (event, position, url),
+            )
     for url, origin, snapshot, provider in (
         ("https://x.com/a/status/1", "source_url", WAYBACK, "wayback"),
         ("https://t.me/m/1", "secondary_source", ARCHIVE_PH, "archive_today"),
@@ -174,6 +203,23 @@ def test_the_migration_maps_sources_and_round_trips(base_db):
         assert _one(cur, "SELECT count(*) FROM sources WHERE event_id = %s", ids["full"]) == (3,)
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        X_MIRROR,
+        "https://x.com/i/web/status/1790000000000000002",
+        "https://x.com/jack/status/20",
+        "https://x.com/a/status/9000000000000000001",
+        "https://web.archive.org/web/2024/https://x.com/a/status/1790000000000000002",
+        "https://t.me/front_owl/1790000000000000002",
+    ],
+)
+def test_the_migration_dates_x_links_as_the_import_does(url):
+    """The migration's frozen copy answers what ``urls.x_status_posted_at`` answers."""
+    now = datetime.now(UTC)
+    assert migration._x_posted_at(url, now) == x_status_posted_at(url, now=now)
+
+
 def _sources(cur, event: str) -> list:
     return _all(
         cur,
@@ -205,12 +251,37 @@ def _assert_head(cur, ids: dict[str, str]) -> None:
         (first_mirror, "https://t.me/m/0", None),
         (second_mirror, "https://t.me/m/1", ARCHIVE_PH),
     ):
-        assert mirror[1:4] == ("direct", "unknown", False)
+        # Every source of a graphic event is graphic.
+        assert mirror[1:4] == ("direct", "unknown", True)
         assert _links(cur, mirror[0]) == [(url, False, snapshot, snapshot is not None)]
         assert _one(cur, "SELECT count(*) FROM media WHERE source_id = %s", mirror[0]) == (0,)
     assert _one(cur, "SELECT storage_url FROM media WHERE event_id = %s", ids["full"]) == (
         "s3://x/proof.jpg",
     )
+
+    # The cap: the main source and the first 9 links by position; the 10th is dropped.
+    crowded = _sources(cur, ids["crowded"])
+    assert len(crowded) == 10
+    assert [_links(cur, source[0])[0][0] for source in crowded] == [
+        "https://t.me/main/1",
+        *(f"https://t.me/mirror/{n}" for n in range(9)),
+    ]
+
+    # An X link is dated off its id; a stored post time and a pre-snowflake id are kept as they are.
+    assert sorted(
+        _all(
+            cur,
+            "SELECT l.url, l.posted_at FROM source_links l JOIN sources s ON s.id = l.source_id "
+            "WHERE s.event_id = %s",
+            ids["mirrors"],
+        )
+    ) == [(X_MIRROR, X_MIRROR_AT), ("https://x.com/jack/status/20", None)]
+    assert _one(
+        cur,
+        "SELECT l.posted_at FROM source_links l JOIN sources s ON s.id = l.source_id "
+        "WHERE s.event_id = %s",
+        ids["full"],
+    ) == (datetime(2026, 5, 1, 12, 0, tzinfo=UTC),)
 
     [request] = _sources(cur, ids["request"])
     assert request[1:3] == ("direct", "unknown")
@@ -244,6 +315,7 @@ def _assert_head(cur, ids: dict[str, str]) -> None:
         }
     ]
     assert mirror_entry["kind"] == "unknown" and mirror_entry["media"] is None
+    assert mirror_entry["is_graphic"] is True
     assert [link["url"] for link in mirror_entry["links"]] == ["https://t.me/m/0"]
 
 
