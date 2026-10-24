@@ -4543,7 +4543,7 @@ export interface components {
         };
         /**
          * TagCount
-         * @description One (name, count) entry for a conflict, capture-source or source-host tally.
+         * @description One (name, count) entry for a conflict, source-kind or source-host tally.
          */
         TagCount: {
             /** Count */
