@@ -78,12 +78,16 @@ const EMPTY_FEED_FILTERS: FeedFilters = {
   values: EMPTY_EVENT_FILTERS,
 };
 
-/** The `kind` values to send: none while every kind shows, since `GET /feed` then serves all. */
+/** The `kind` values to send. A chosen chip shows only its kinds, never detections. With no chip
+ *  chosen, the switch decides: none sent while detections show, since `GET /feed` then serves all. */
 function kindParams({ kinds, detections }: FeedFilters): FeedKind[] {
-  if (detections && kinds.length === 0) return [];
-  const posted = kinds.length > 0 ? kinds : KIND_OPTIONS.map((o) => o.name);
-  return detections ? [...posted, "detected"] : posted;
+  if (kinds.length > 0) return kinds;
+  return detections ? [] : KIND_OPTIONS.map((o) => o.name);
 }
+
+/** The switch only applies while no chip is chosen; this is whether it hides detections now. */
+const detectionsHidden = ({ kinds, detections }: FeedFilters) =>
+  kinds.length === 0 && !detections;
 
 const ENTERED_LABEL: Partial<Record<FeedItem["status"], string>> = {
   requested: "Requested",
@@ -128,7 +132,7 @@ export default function FeedPage() {
 
   const activeCount =
     filters.kinds.length +
-    (filters.detections ? 0 : 1) +
+    (detectionsHidden(filters) ? 1 : 0) +
     countActiveFilters(filters.values, EMPTY_DATE_WINDOWS);
   const pills = [
     ...filters.kinds.map((k) => ({
@@ -137,7 +141,7 @@ export default function FeedPage() {
       onRemove: () =>
         setFilters((f) => ({ ...f, kinds: f.kinds.filter((x) => x !== k) })),
     })),
-    ...(filters.detections
+    ...(!detectionsHidden(filters)
       ? []
       : [
           {
@@ -167,9 +171,9 @@ export default function FeedPage() {
           title: "Kind",
           summary: chipSummary([
             ...panel.kinds.map(kindLabel),
-            ...(panel.detections ? [] : [DETECTIONS_HIDDEN]),
+            ...(detectionsHidden(panel) ? [DETECTIONS_HIDDEN] : []),
           ]),
-          active: panel.kinds.length > 0 || !panel.detections,
+          active: panel.kinds.length > 0 || detectionsHidden(panel),
           children: (
             <div className="space-y-2">
               <ChipBucket
@@ -187,6 +191,8 @@ export default function FeedPage() {
               />
               <ToggleRow
                 label="Show detections"
+                description="Applies while neither Geolocations nor Requests is selected."
+                disabled={panel.kinds.length > 0}
                 on={panel.detections}
                 onToggle={() => setPanel({ ...panel, detections: !panel.detections })}
               />

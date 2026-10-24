@@ -313,11 +313,46 @@ describe("FeedPage", () => {
     );
     expect(screen.getByRole("button", { name: "Filters (1)" })).toBeInTheDocument();
 
+    fireEvent.click(screen.getByTitle("Remove filter: Detections hidden"));
+    expect(lastPath()).toBe("/feed?scope=following");
+  });
+
+  it("sends only the chosen kinds and disables the detections switch while a chip is selected", () => {
+    walk.items = [item({})];
+    render(<FeedPage />);
+    const rail = screen.getByRole("complementary", { name: "Filters" });
+    fireEvent.click(within(rail).getByRole("button", { name: "Toggle Kind" }));
+    const toggle = () => within(rail).getByRole("switch", { name: "Show detections" });
+
     fireEvent.click(within(rail).getByRole("button", { name: "Requests" }));
     expect(lastPath()).toBe("/feed?scope=following&kind=request");
+    expect(toggle()).toBeDisabled();
 
-    fireEvent.click(screen.getByTitle("Remove filter: Detections hidden"));
-    expect(lastPath()).toBe("/feed?scope=following&kind=request&kind=detected");
+    fireEvent.click(within(rail).getByRole("button", { name: "Geolocations" }));
+    expect(lastPath()).toBe("/feed?scope=following&kind=request&kind=geolocation");
+
+    fireEvent.click(within(rail).getByRole("button", { name: "Requests" }));
+    fireEvent.click(within(rail).getByRole("button", { name: "Geolocations" }));
+    expect(lastPath()).toBe("/feed?scope=following");
+    expect(toggle()).toBeEnabled();
+  });
+
+  it("keeps the switch off across a chip choice, and shows its pill only while it applies", () => {
+    walk.items = [item({})];
+    render(<FeedPage />);
+    const rail = screen.getByRole("complementary", { name: "Filters" });
+    fireEvent.click(within(rail).getByRole("button", { name: "Toggle Kind" }));
+    fireEvent.click(within(rail).getByRole("switch", { name: "Show detections" }));
+    expect(screen.getByTitle("Remove filter: Detections hidden")).toBeInTheDocument();
+
+    fireEvent.click(within(rail).getByRole("button", { name: "Requests" }));
+    expect(lastPath()).toBe("/feed?scope=following&kind=request");
+    expect(screen.queryByTitle("Remove filter: Detections hidden")).toBeNull();
+    expect(screen.getByRole("button", { name: "Filters (1)" })).toBeInTheDocument();
+
+    fireEvent.click(within(rail).getByRole("button", { name: "Requests" }));
+    expect(lastPath()).toBe("/feed?scope=following&kind=geolocation&kind=request");
+    expect(screen.getByTitle("Remove filter: Detections hidden")).toBeInTheDocument();
   });
 
   it("narrows the walk from the rail: kind, conflict and tag", () => {
@@ -327,14 +362,14 @@ describe("FeedPage", () => {
 
     fireEvent.click(within(rail).getByRole("button", { name: "Toggle Kind" }));
     fireEvent.click(within(rail).getByRole("button", { name: "Requests" }));
-    expect(lastPath()).toBe("/feed?scope=following&kind=request&kind=detected");
+    expect(lastPath()).toBe("/feed?scope=following&kind=request");
 
     fireEvent.click(within(rail).getByRole("button", { name: "Toggle Conflict" }));
     fireEvent.click(within(rail).getByRole("button", { name: "Russo-Ukrainian war" }));
     fireEvent.click(within(rail).getByRole("button", { name: "Toggle Tags" }));
     fireEvent.click(within(rail).getByRole("button", { name: "airstrike" }));
     expect(lastPath()).toBe(
-      "/feed?scope=following&kind=request&kind=detected&conflict=Russo-Ukrainian+war&tag=airstrike",
+      "/feed?scope=following&kind=request&conflict=Russo-Ukrainian+war&tag=airstrike",
     );
     expect(screen.getByRole("button", { name: "Filters (3)" })).toBeInTheDocument();
 
@@ -356,7 +391,7 @@ describe("FeedPage", () => {
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Apply" }));
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(lastPath()).toBe("/feed?scope=following&kind=geolocation&kind=detected");
+    expect(lastPath()).toBe("/feed?scope=following&kind=geolocation");
 
     fireEvent.click(screen.getByRole("button", { name: "Filters (1)" }));
     const reopened = screen.getByRole("dialog", { name: "Filters" });

@@ -46,6 +46,7 @@ export function ToggleRow({
   description,
   on,
   onToggle,
+  disabled = false,
   className = "",
 }: {
   label: string;
@@ -53,6 +54,8 @@ export function ToggleRow({
   description?: ReactNode;
   on: boolean;
   onToggle: () => void;
+  /** Reads its state but refuses the toggle, dimmed. Pair it with a `description` saying why. */
+  disabled?: boolean;
   /** The caller's own divider and spacing. */
   className?: string;
 }) {
@@ -67,8 +70,9 @@ export function ToggleRow({
       aria-labelledby={labelId}
       aria-describedby={described ? descriptionId : undefined}
       onClick={onToggle}
+      disabled={disabled}
       className={cn(
-        "w-full flex items-center justify-between gap-4 text-left group",
+        "w-full flex items-center justify-between gap-4 text-left group disabled:opacity-50 disabled:cursor-not-allowed",
         TAP_STEP,
         !described && "py-2.5 border-b border-neutral-800 last:border-b-0",
         className,
