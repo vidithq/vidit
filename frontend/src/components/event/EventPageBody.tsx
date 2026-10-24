@@ -3,8 +3,7 @@
 import dynamic from "next/dynamic";
 
 import type { EventDetail } from "@/types";
-import { formatCoordinates } from "@/lib/coordinates";
-import { CoordinateActions } from "@/components/event/CoordinateActions";
+import { CoordinateValue } from "@/components/event/CoordinateActions";
 import { EventDetailBody } from "@/components/event/EventDetailBody";
 import { DetailRow } from "@/components/ui/DetailRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -54,19 +53,7 @@ export function EventPageBody({ geo }: { geo: EventDetail }) {
               align="center"
               className="border-t border-neutral-800 bg-neutral-900 rounded-b-lg"
             >
-              {/* The pair plus its two icon buttons is wider than a narrow phone row, so the group wraps with
-                  actions on a second line instead of pushing the page sideways. `min-w-0` lets this flex item
-                  shrink so the wrap happens; `justify-end` keeps the wrapped line flush right like the tag rows
-                  above. */}
-              <span className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1 min-w-0">
-                <span className="text-sm text-neutral-200 font-mono">
-                  {formatCoordinates(geo.coords.lat, geo.coords.lng)}
-                </span>
-                <CoordinateActions
-                  lat={geo.coords.lat}
-                  lng={geo.coords.lng}
-                />
-              </span>
+              <CoordinateValue lat={geo.coords.lat} lng={geo.coords.lng} />
             </DetailRow>
           </div>
         </div>

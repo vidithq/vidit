@@ -29,7 +29,7 @@ import { HOVER_REVEAL } from "@/components/ui/styles";
  * `MediaLightbox` at `hero` uncropped. Their download floats in the corner,
  * revealed on hover (`HOVER_REVEAL` keeps it visible on touch).
  *
- * No media renders one marked empty box.
+ * No media renders one marked empty box, saying `empty`.
  *
  * `isGraphic` wraps the whole block in `GraphicContentGate`, so the reader
  * answers once per gallery. The lightbox stays outside it: a gated tile takes no
@@ -40,12 +40,15 @@ export function MediaGallery({
   alt,
   variant = "page",
   isGraphic = false,
+  empty = "No media available",
 }: {
   media: Media[];
   /** Alt text for image media (the entity title). */
   alt: string;
   variant?: "page" | "panel";
   isGraphic?: boolean;
+  /** What the empty box says, such as *No file* on a source block. */
+  empty?: string;
 }) {
   const compact = variant === "panel";
   const itemHeight = compact ? "h-40" : "h-48";
@@ -56,7 +59,7 @@ export function MediaGallery({
       <div
         className={`rounded-lg border border-neutral-700 bg-neutral-800 ${itemHeight}`}
       >
-        <TileNotice compact={compact}>No media available</TileNotice>
+        <TileNotice compact={compact}>{empty}</TileNotice>
       </div>
     );
   }

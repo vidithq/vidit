@@ -30,18 +30,25 @@ export function formatMonth(period: string): string {
   });
 }
 
+/** The UTC day of an instant, as "28 Mar 2026"; an unparsable value renders as-is. */
+export function formatInstantDate(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 /** A UTC instant as "28 Mar 2026, 14:30 UTC"; the placeholder dash for null. `new Date(null)`
  * is the 1970 epoch, not invalid, so null needs its own check. */
 export function formatInstant(iso: string | null): string {
   if (iso === null) return "—";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
-  const date = d.toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  });
+  const date = formatInstantDate(iso);
   const time = d.toLocaleTimeString("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
@@ -64,6 +71,18 @@ export function toDatetimeLocalUTC(iso: string | null): string {
 export function safeHostname(url: string): string {
   try {
     return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
+
+/** A URL as a reader names it: host without a leading `www.`, then path and query, without a
+ * trailing slash ("t.me/channel/12345"). The raw input when malformed. */
+export function shortUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, "");
+    return `${host}${parsed.pathname}${parsed.search}`.replace(/\/+$/, "");
   } catch {
     return url;
   }

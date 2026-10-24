@@ -12,10 +12,9 @@ import { SourceLabel } from "@/components/ui/SourceLabel";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { SourceBlocks } from "@/components/sources/SourceBlock";
 import { AuthorByline } from "@/components/ui/AuthorByline";
-import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
+import { DetailCard, DetailPills, DetailRow } from "@/components/ui/DetailRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { ProofSection } from "@/components/ui/ProofSection";
-import { Pill } from "@/components/ui/Pill";
 import { creditProps } from "@/lib/geolocatorCredit";
 
 /** The body's data shape: an `EventDetail` as-is. Every lifecycle state shares it: a coordless
@@ -114,24 +113,15 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
       )}
       {geo.conflicts.length > 0 && (
         <DetailRow label="Conflict" concept="conflict" compact={compact} align="start">
-          <div className={`flex flex-wrap ${compact ? "gap-1" : "gap-1.5"} justify-end`}>
-            {geo.conflicts.map((c) => (
-              <Pill key={c.id} tone="neutral">
-                {conflictLabel(c)}
-              </Pill>
-            ))}
-          </div>
+          <DetailPills
+            items={geo.conflicts.map((c) => ({ id: c.id, name: conflictLabel(c) }))}
+            compact={compact}
+          />
         </DetailRow>
       )}
       {geo.tags.length > 0 && (
         <DetailRow label="Tags" compact={compact} align="start">
-          <div className={`flex flex-wrap ${compact ? "gap-1" : "gap-1.5"} justify-end`}>
-            {geo.tags.map((tag) => (
-              <Pill key={tag.id} tone="neutral">
-                {tag.name}
-              </Pill>
-            ))}
-          </div>
+          <DetailPills items={geo.tags} compact={compact} />
         </DetailRow>
       )}
       {/* Compact panel omits requested-by and author rows: the author is in the panel header, the trace

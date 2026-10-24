@@ -142,12 +142,12 @@ describe("EventDetailBody", () => {
     expect(within(first).getByText("1 Jun 2026, 09:30 UTC")).toBeInTheDocument();
     expect(within(first).getByText("48.020000, 37.790000")).toBeInTheDocument();
     expect(within(first).getByText("armor")).toBeInTheDocument();
-    // An untitled source is named by its position, and a source without a file shows no media slot.
+    // An untitled source reads Untitled, and a source without a file says so in place of the file.
     const second = block(2);
-    expect(within(second).getByRole("heading", { name: "Source 2" })).toBeInTheDocument();
+    expect(within(second).getByText("Untitled")).toBeInTheDocument();
     expect(within(second).getByText("Context")).toBeInTheDocument();
     expect(within(second).queryByRole("img")).toBeNull();
-    expect(screen.queryByText("No media available")).not.toBeInTheDocument();
+    expect(within(second).getByText("No file")).toBeInTheDocument();
   });
 
   it("names no sensor without a file, nor an unknown one", () => {
@@ -157,17 +157,17 @@ describe("EventDetailBody", () => {
         variant="page"
       />
     );
-    expect(screen.queryByText("Sensor:")).toBeNull();
+    expect(screen.queryByText("Sensor")).toBeNull();
   });
 
-  it("lists each link with its post time and its archived copy, named by source and link", () => {
+  it("lists each link with its post date and its archived copy, named by source and link", () => {
     render(<EventDetailBody geo={geoFixture()} variant="page" />);
     const first = block(1);
-    expect(within(first).getByRole("link", { name: "t.me" })).toHaveAttribute(
+    expect(within(first).getByRole("link", { name: "t.me/channel/12345" })).toHaveAttribute(
       "href",
       "https://t.me/channel/12345"
     );
-    expect(within(first).getByText("Posted 1 Jun 2026, 10:05 UTC")).toBeInTheDocument();
+    expect(within(first).getByText("1 Jun 2026")).toBeInTheDocument();
     expect(
       within(first).getByRole("link", { name: "Wayback Machine copy of source 1, link 1, t.me" })
     ).toHaveAttribute("href", "https://web.archive.org/web/2026/https://t.me/channel/12345");
@@ -233,7 +233,11 @@ describe("EventDetailBody", () => {
 
   it("lists the conflicts and the event's tags in their own rows", () => {
     render(
-      <EventDetailBody geo={geoFixture({ tags: [{ id: "t3", name: "night" }] })} variant="page" />
+      // The footage source carries a Tags row of its own; the article source does not.
+      <EventDetailBody
+        geo={geoFixture({ tags: [{ id: "t3", name: "night" }], sources: [ARTICLE] })}
+        variant="page"
+      />
     );
     expect(screen.getByText("Conflict")).toBeInTheDocument();
     expect(screen.getByText("Tags")).toBeInTheDocument();
@@ -351,7 +355,7 @@ describe("EventDetailBody", () => {
   it("puts the event time on its own row, date-only in Event date", () => {
     render(
       <EventDetailBody
-        geo={geoFixture({ occurred_date: "2026-06-01", occurred_time: "14:30:00" })}
+        geo={geoFixture({ occurred_date: "2026-06-01", occurred_time: "14:30:00", sources: [ARTICLE] })}
         variant="page"
       />
     );

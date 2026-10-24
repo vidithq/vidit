@@ -323,14 +323,18 @@ flowchart LR
 
 An event's evidence is its list of [sources](data-model.md#sources), up to 10, none of them the main one. A reading surface renders one block per source and a form renders one editor per source. The block, the editor, the section that lists the editors and the picker live in [`components/sources/`](../frontend/src/components/sources), each with a `/palette` entry: [`<SourceBlock>`](../frontend/src/components/sources/SourceBlock.tsx), [`<SourceEditor>`](../frontend/src/components/sources/SourceEditor.tsx), [`<SourcesField>`](../frontend/src/components/sources/SourcesField.tsx) and [`<SourcePicker>`](../frontend/src/components/sources/SourcePicker.tsx). [`<EventDetailBody>`](../frontend/src/components/event/EventDetailBody.tsx) renders the blocks, so the full page, the map side panel and a version page render a source the same way. The source state, its payload and its floor have one home, [`lib/sources.ts`](../frontend/src/lib/sources.ts).
 
-**On a reading surface**, the blocks follow the order the API serves (`direct`, then `indirect`, then `context`, then by capture time). Each block is a `LIST_TILE` region named *Source N*. It shows:
+**On a reading surface**, the blocks follow the order the API serves (`direct`, then `indirect`, then `context`, then by capture time). Each block reads like the event's **Details** card: a [`<DetailCard>`](../frontend/src/components/ui/DetailRow.tsx) region named *Source N*, with the file in its lead slot and one `<DetailRow>` per field under it. It shows, in this order:
 
-- The source's title, or *Source N* when it has none, and its level as a `<Pill>`, with the label the frontend owns for `direct`, `indirect` and `context`.
-- Its sensor as a key/value `<Pill>`, for example *Sensor: Drone*. A source without a file names no sensor, and a sensor of `unknown` is dropped, since it tells the reader nothing.
-- The capture date and the camera position when known, the position through [`<CoordinateActions>`](../frontend/src/components/event/CoordinateActions.tsx) as on the subject point.
-- The file in [`<MediaGallery>`](../frontend/src/components/ui/MediaGallery.tsx), behind its own [`<GraphicContentGate>`](../frontend/src/components/ui/GraphicContentGate.tsx) when that source is flagged. A source without a file shows no media slot, not the "no media" placeholder.
-- Each link as its host through [`<SourceLabel>`](../frontend/src/components/ui/SourceLabel.tsx), its post time when known, and the archived-copy mark beside it.
-- The source's tags as plain pills.
+- The file in [`<MediaGallery>`](../frontend/src/components/ui/MediaGallery.tsx), behind its own [`<GraphicContentGate>`](../frontend/src/components/ui/GraphicContentGate.tsx) when that source is flagged. A source without a file shows the gallery's empty box, reading *No file*.
+- **Title**: the source's title, or a muted *Untitled* when it has none.
+- **Level**: a `<Pill>`, with the label the frontend owns for `direct`, `indirect` and `context`.
+- **Sensor**: the sensor's label. A source without a file names no sensor, and a sensor of `unknown` is dropped, since it tells the reader nothing.
+- **Captured**: the capture date and time, in UTC.
+- **Camera position**: the pair with [`<CoordinateActions>`](../frontend/src/components/event/CoordinateActions.tsx), through the same `CoordinateValue` as the event's **Coordinates** row.
+- **Published**, or **Published in N places** for two or more links: a stacked row with one line per link. Each line holds the link through [`<SourceLabel withPath>`](../frontend/src/components/ui/SourceLabel.tsx) (host without `www.`, then path and query), its post date in UTC or *date unknown*, and the archived-copy mark.
+- **Tags**: the source's tags as `<DetailPills>`.
+
+A row with no value drops out, except **Title**. The map panel keeps its density: the same file and rows, bare (`compact`), in a `LIST_TILE`.
 
 An event with no source yet reads *No source yet* under the eyebrow.
 
@@ -590,7 +594,7 @@ The nav chrome takes three shapes, and the page offset follows it:
 
 **A pill never outgrows the box it sits in.** `<Pill>` holds its width against its neighbours (`shrink-0`), which is what keeps a badge from being squeezed on a crowded row, so a pill carrying one long word would hold its full width and run past its container. `max-w-full` bounds the box and `wrap-anywhere` breaks the word inside it, so a long tag name on the request card's content column takes a second line rather than scrolling the page sideways. Use `wrap-anywhere` (`overflow-wrap: anywhere`) and not `break-words`: a pill is an `inline-flex` box, sized by its content's min-content width, and a `break-word` opportunity is excluded from that measurement, so the box would stay as wide as the unbroken word. The same token breaks the account email on the settings page and the page subtitle in `<PageShell>`.
 
-**A detail row gives way rather than squeezing** ([`DetailRow.tsx`](../frontend/src/components/ui/DetailRow.tsx)). Label and value share one line at every width, and `*:min-w-0` lifts the automatic flex floor off both halves, so a value carrying `truncate` cuts itself to the room the row leaves and a value that wraps on its own (a close reason, a tag list) takes the lines it needs beside the label. The label never shrinks, so it stays on one line at every width. The row does not wrap: wrapping drops a truncating value onto a line of its own before `truncate` engages, which is a different row from the one the desktop map panel is laid out as. `gap-x-4` is the only gutter between the two halves, so a value adds no margin of its own. [`<SourceLabel>`](../frontend/src/components/ui/SourceLabel.tsx) truncates against that rule rather than against a width ceiling of its own, which is why it takes no width prop.
+**A detail row gives way rather than squeezing** ([`DetailRow.tsx`](../frontend/src/components/ui/DetailRow.tsx)). Label and value share one line at every width, and `*:min-w-0` lifts the automatic flex floor off both halves, so a value carrying `truncate` cuts itself to the room the row leaves and a value that wraps on its own (a close reason, a tag list) takes the lines it needs beside the label. The label never shrinks, so it stays on one line at every width. The row does not wrap: wrapping drops a truncating value onto a line of its own before `truncate` engages, which is a different row from the one the desktop map panel is laid out as. `gap-x-4` is the only gutter between the two halves, so a value adds no margin of its own. [`<SourceLabel>`](../frontend/src/components/ui/SourceLabel.tsx) truncates against that rule rather than against a width ceiling of its own, which is why it takes no width prop. A `stacked` row is the one exception to the shared line: its label sits on a line of its own and the value takes the full width under it, for a value that is a list (a source's links).
 
 #### One event, four surfaces, two writes
 

@@ -58,6 +58,21 @@ export function CoordinateActions({
   );
 }
 
+/**
+ * A detail row's coordinate value: the pair, then its two actions. The group is wider than a
+ * narrow phone row, so it wraps the actions onto a second line instead of pushing the page
+ * sideways; `min-w-0` lets it shrink so the wrap happens, and `justify-end` keeps the wrapped
+ * line flush right.
+ */
+export function CoordinateValue({ lat, lng }: { lat: number; lng: number }) {
+  return (
+    <span className="flex min-w-0 flex-wrap items-center justify-end gap-x-2 gap-y-1">
+      <span className="font-mono text-sm text-neutral-200">{formatCoordinates(lat, lng)}</span>
+      <CoordinateActions lat={lat} lng={lng} />
+    </span>
+  );
+}
+
 /** The pair on the clipboard, confirmed by `CopyButton`, the app's one copy confirmation. */
 function CopyCoordinates({ point }: { point: { lat: number; lng: number } | null }) {
   const { copied, copy } = useCopyToClipboard();

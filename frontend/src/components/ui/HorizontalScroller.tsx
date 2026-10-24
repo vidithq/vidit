@@ -129,7 +129,9 @@ export function HorizontalScroller({
           </div>
         )}
       </div>
-      {/* Focusable so the arrow keys scroll it; `relative` makes each item's offsetLeft a scroll position. */}
+      {/* Focusable so the arrow keys scroll it; `relative` makes each item's offsetLeft a scroll position.
+          `grid-cols-1` is `minmax(0, 1fr)`: an item's unbreakable content (a long link) truncates
+          instead of widening the item past its basis. */}
       <div
         ref={strip}
         role="region"
@@ -140,7 +142,7 @@ export function HorizontalScroller({
         {items.map((item, i) => (
           <div
             key={isValidElement(item) && item.key !== null ? item.key : i}
-            className="grid shrink-0 basis-[85%] snap-start @lg:basis-[calc(50%-0.375rem)]"
+            className="grid shrink-0 grid-cols-1 basis-[85%] snap-start @lg:basis-[calc(50%-0.375rem)]"
           >
             {item}
           </div>

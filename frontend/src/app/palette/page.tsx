@@ -52,7 +52,7 @@ import { DetectionQueueRow } from "@/components/detections/DetectionQueueRow";
 import { EventDetailBody } from "@/components/event/EventDetailBody";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { SectionHeading } from "@/components/ui/SectionHeading";
-import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
+import { DetailCard, DetailPills, DetailRow } from "@/components/ui/DetailRow";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { OutboundLink } from "@/components/ui/OutboundLink";
 import { StatTile, StatGrid } from "@/components/ui/StatTile";
@@ -1025,8 +1025,9 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<SourceLabel>" usage="Source display: the stored URL shortened to its host, with italic fallbacks for a null URL (To confirm) and a value the parser gives no host for (no source)">
+          <Item name="<SourceLabel>" usage="Source display: the stored URL shortened to its host, or with `withPath` to its host and path (a source block's links, where two can share a host), with italic fallbacks for a null URL (To confirm) and a value the parser gives no host for (no source)">
             <SourceLabel url="https://t.me/some_channel/4242" variant="inline" />
+            <SourceLabel url="https://www.t.me/some_channel/4242/" variant="link" withPath />
             <SourceLabel url={null} variant="inline" />
           </Item>
 
@@ -1501,14 +1502,23 @@ export default function PalettePage() {
             </Card>
           </Item>
 
-          <Item name="<DetailCard> + <DetailRow>" usage="Geoloc & request detail pages (label / value)">
-            <div className="w-full max-w-md">
+          <Item name="<DetailCard> + <DetailRow> + <DetailPills>" usage="Label / value rows on the event and request detail pages and on each source block. <DetailCard> takes an optional `lead` slot above the rows (a source's file) and a `label` that makes it a named region. <DetailRow> takes `empty`, shown muted for an empty value (Untitled), and `stacked`, which puts the label on its own line over a full-width value (a source's list of links). <DetailPills> is a row value made of pills (conflicts, tags), wrapping flush right.">
+            <div className="w-full max-w-md space-y-4">
               <DetailCard>
                 <DetailRow label="Status" concept="status">
                   <StatusBadge status="geolocated" />
                 </DetailRow>
                 <DetailRow label="Event date" concept="occurred_date" value="9 May 2026" />
                 <DetailRow label="Coordinates" concept="coordinates" value="48.0159, 37.8024" />
+              </DetailCard>
+              <DetailCard lead={<p className="text-sm text-neutral-500">Lead slot</p>}>
+                <DetailRow label="Title" value="" empty="Untitled" />
+                <DetailRow label="Published in 2 places" stacked>
+                  <p className="text-sm text-neutral-200">One value per line, full width</p>
+                </DetailRow>
+                <DetailRow label="Tags" align="start">
+                  <DetailPills items={[{ id: "t1", name: "armor" }, { id: "t2", name: "night" }]} />
+                </DetailRow>
               </DetailCard>
             </div>
           </Item>
@@ -1773,7 +1783,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SourceBlock> / <SourceBlocks>" usage="One source of an event on a reading surface (components/sources/SourceBlock.tsx), in a LIST_TILE: its title (or Source N) and level as a <Pill>, its sensor as a key/value pill (none without a file, and Unknown dropped), its file in <MediaGallery> behind its own <GraphicContentGate> when this source is flagged, the capture time and the camera position with <CoordinateActions>, each link through <SourceLabel> with its <ArchivedCopies> mark and post time, and its tags. <SourceBlocks> renders the event's blocks in API order: a <HorizontalScroller> row under a Sources (N) eyebrow in the page variant of <EventDetailBody>, a vertical stack under Sources in its panel variant.">
+          <Item name="<SourceBlock> / <SourceBlocks>" usage="One source of an event on a reading surface (components/sources/SourceBlock.tsx), read like the event's Details card: a <DetailCard> region named Source N, its file in the lead slot through <MediaGallery> (behind its own <GraphicContentGate> when this source is flagged, a No file box without one), then <DetailRow>s for Title (Untitled when empty), Level as a <Pill>, Sensor (none without a file, and Unknown dropped), Captured, Camera position with <CoordinateActions>, Published (Published in N places for two or more links; each link through <SourceLabel withPath> with its post date or date unknown and its <ArchivedCopies> mark) and Tags as <DetailPills>. A row with no value drops out, except Title. The map panel keeps a LIST_TILE with bare compact rows. <SourceBlocks> renders the event's blocks in API order: a <HorizontalScroller> row under a Sources (N) eyebrow in the page variant of <EventDetailBody>, a vertical stack under Sources in its panel variant.">
             <div className="w-full max-w-2xl">
               <SourceBlocks sources={[MOCK_SOURCE, MOCK_CONTEXT_SOURCE]} alt="Strike on a depot" />
             </div>

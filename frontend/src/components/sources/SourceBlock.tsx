@@ -1,22 +1,24 @@
-import { CoordinateActions } from "@/components/event/CoordinateActions";
+import { CoordinateValue } from "@/components/event/CoordinateActions";
 import { ArchivedCopies, linkDescription } from "@/components/ui/ArchivedCopies";
+import { DetailCard, DetailPills, DetailRow } from "@/components/ui/DetailRow";
 import { HorizontalScroller } from "@/components/ui/HorizontalScroller";
 import { MediaGallery } from "@/components/ui/MediaGallery";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { LIST_TILE } from "@/components/ui/form-styles";
+import { META_LINE } from "@/components/ui/styles";
 import { cn } from "@/lib/cn";
-import { formatCoordinates } from "@/lib/coordinates";
-import { formatInstant, safeHostname } from "@/lib/format";
+import { formatInstant, formatInstantDate, safeHostname } from "@/lib/format";
 import { LEVEL_LABELS, SENSOR_LABELS, shownSensor, type Source } from "@/lib/sources";
 
 /**
- * One source of an event on a reading surface: its title and level, its sensor, the capture
- * time and camera position when known, its file (behind its own graphic gate when this source
- * is flagged), each link with its post time and archived copy, and its tags.
+ * One source of an event on a reading surface, read like the event's Details card: its file
+ * (behind its own graphic gate when this source is flagged) or a *No file* box, then one row
+ * each for the title, level, sensor, capture time, camera position, links and tags. A row with
+ * no value drops out, except the title, which reads *Untitled*.
  *
- * `compact` is the map panel's density: stacked `thumbnail` media and smaller text.
+ * `compact` is the map panel's density: `thumbnail` media and bare rows in a `LIST_TILE`.
  */
 export function SourceBlock({
   source,
@@ -31,84 +33,101 @@ export function SourceBlock({
   alt: string;
   compact?: boolean;
 }) {
-  const sensor = shownSensor(source.sensor);
-  const text = compact ? "text-xs" : "text-sm";
-  const camera = source.camera_position;
+  const name = `Source ${index + 1}`;
+  const file = (
+    <MediaGallery
+      media={source.media ? [source.media] : []}
+      alt={alt}
+      variant={compact ? "panel" : "page"}
+      isGraphic={source.is_graphic}
+      empty="No file"
+    />
+  );
+  const rows = <SourceRows source={source} index={index} compact={compact} />;
+  if (compact) {
+    return (
+      <section aria-label={name} className={cn(LIST_TILE, "space-y-2 text-sm")}>
+        {file}
+        {rows}
+      </section>
+    );
+  }
   return (
-    <section aria-label={`Source ${index + 1}`} className={cn(LIST_TILE, "space-y-3")}>
-      <header className="flex flex-wrap items-center gap-1.5">
-        <h3 className={cn(text, "font-medium text-neutral-200 [overflow-wrap:anywhere]")}>
-          {source.title || `Source ${index + 1}`}
-        </h3>
-        <Pill tone="neutral">{LEVEL_LABELS[source.level]}</Pill>
-        {/* A source without a file names no sensor. */}
-        {source.media && sensor && (
-          <Pill tone="neutral" label="Sensor">
-            {SENSOR_LABELS[sensor]}
-          </Pill>
-        )}
-      </header>
+    <DetailCard label={name} lead={file}>
+      {rows}
+    </DetailCard>
+  );
+}
 
-      {source.media && (
-        <MediaGallery
-          media={[source.media]}
-          alt={alt}
-          variant={compact ? "panel" : "page"}
-          isGraphic={source.is_graphic}
+function SourceRows({
+  source,
+  index,
+  compact,
+}: {
+  source: Source;
+  index: number;
+  compact: boolean;
+}) {
+  // A source without a file names no sensor.
+  const sensor = source.media ? shownSensor(source.sensor) : null;
+  const camera = source.camera_position;
+  const links = source.links;
+  return (
+    <>
+      <DetailRow label="Title" value={source.title} empty="Untitled" compact={compact} />
+      <DetailRow label="Level" concept="source_level" compact={compact} align="center">
+        <Pill tone="neutral">{LEVEL_LABELS[source.level]}</Pill>
+      </DetailRow>
+      {sensor && (
+        <DetailRow
+          label="Sensor"
+          concept="sensor"
+          compact={compact}
+          value={SENSOR_LABELS[sensor]}
         />
       )}
-
-      {(source.captured_at || camera) && (
-        <dl className={cn(text, "space-y-1")}>
-          {source.captured_at && (
-            <div className="flex justify-between gap-x-4">
-              <dt className="text-neutral-500">Captured</dt>
-              <dd className="text-neutral-200">{formatInstant(source.captured_at)}</dd>
-            </div>
-          )}
-          {camera && (
-            <div className="flex items-center justify-between gap-x-4">
-              <dt className="text-neutral-500">Camera position</dt>
-              <dd className="flex min-w-0 items-center gap-1 text-neutral-200">
-                <span className="font-mono text-xs">{formatCoordinates(camera.lat, camera.lng)}</span>
-                <CoordinateActions lat={camera.lat} lng={camera.lng} />
-              </dd>
-            </div>
-          )}
-        </dl>
+      {source.captured_at && (
+        <DetailRow
+          label="Captured"
+          concept="captured_at"
+          compact={compact}
+          value={formatInstant(source.captured_at)}
+        />
       )}
-
-      {source.links.length > 0 && (
-        <ul className={cn(text, "space-y-1")} aria-label={`Links of source ${index + 1}`}>
-          {source.links.map((link, i) => (
-            <li key={link.url} className="flex min-w-0 items-baseline justify-between gap-x-4">
-              <span className="flex min-w-0 items-baseline">
-                <SourceLabel url={link.url} variant="link" />
+      {camera && (
+        <DetailRow label="Camera position" concept="camera_position" compact={compact} align="center">
+          <CoordinateValue lat={camera.lat} lng={camera.lng} />
+        </DetailRow>
+      )}
+      {links.length > 0 && (
+        <DetailRow
+          label={links.length > 1 ? `Published in ${links.length} places` : "Published"}
+          concept="source_links"
+          compact={compact}
+          stacked
+        >
+          <ul className="space-y-1" aria-label={`Links of source ${index + 1}`}>
+            {links.map((link, i) => (
+              <li key={link.url} className="flex items-baseline gap-x-2">
+                <SourceLabel url={link.url} variant="link" withPath className="mr-auto text-sm" />
+                <span className={cn(META_LINE, "shrink-0")}>
+                  {link.posted_at ? formatInstantDate(link.posted_at) : "date unknown"}
+                </span>
                 <ArchivedCopies
                   copy={link.archived}
-                  describes={linkDescription(index, safeHostname(link.url), i, source.links.length)}
+                  describes={linkDescription(index, safeHostname(link.url), i, links.length)}
                 />
-              </span>
-              {link.posted_at && (
-                <span className="shrink-0 text-[11px] text-neutral-500">
-                  Posted {formatInstant(link.posted_at)}
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
+              </li>
+            ))}
+          </ul>
+        </DetailRow>
       )}
-
       {source.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {source.tags.map((tag) => (
-            <Pill key={tag.id} tone="neutral">
-              {tag.name}
-            </Pill>
-          ))}
-        </div>
+        <DetailRow label="Tags" compact={compact} align="start">
+          <DetailPills items={source.tags} compact={compact} />
+        </DetailRow>
       )}
-    </section>
+    </>
   );
 }
 
