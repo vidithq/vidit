@@ -6,7 +6,8 @@ second worker is safe), runs the backfill off the API process and emails the
 owner the outcome (``services/archive_jobs``). Each pass also drains the
 ``queued`` ``bot_mentions`` rows through the shared mention pipeline
 (``services/bot``), and at start and every ``bot.CATCH_UP_INTERVAL`` pulls the
-bot's mentions timeline to queue what the webhook missed. Each pass first sends
+bot's mentions timeline to queue what the webhook missed, and deletes the staged
+uploads past their expiry (``services/uploads``). Each pass first sends
 the queued notification emails (``services/notification_delivery``). A queue
 that raises is captured and skipped for the pass, so it never holds back the
 others. Each pass opens a fresh session shared across its jobs (per-job
@@ -35,6 +36,7 @@ from app.schema_gate import wait_for_schema_head
 from app.services import bot
 from app.services.archive_jobs import run_once
 from app.services.notification_delivery import drain as drain_notification_emails
+from app.services.uploads import reap_expired_uploads
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +92,9 @@ def _catch_up(db: Session) -> int:
 def _drain(*, catch_up: bool) -> int:
     db = SessionLocal()
     try:
+        if catch_up:
+            # On the catch-up cadence: a staged upload lives a day, so an hour late is nothing.
+            _isolated(reap_expired_uploads, db)
         queued = _isolated(_catch_up, db) if catch_up else 0
         return queued + _isolated(drain_notification_emails, db) + asyncio.run(_drain_both(db))
     finally:

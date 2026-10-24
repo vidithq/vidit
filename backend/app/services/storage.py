@@ -557,10 +557,13 @@ async def _upload_with_optional_strip(
     return await get_storage().upload(file, key)
 
 
-async def upload_file(file: UploadFile, geolocation_id: UUID) -> UploadResult:
+async def upload_source_file(file: UploadFile) -> UploadResult:
+    """A source file staged ahead of the event write (``services/uploads.stage_upload``).
+
+    The key names no event: one stored object may serve several sources (a copy).
+    """
     ext = safe_storage_extension(file.content_type)
-    key = f"uploads/{geolocation_id}/{uuid4()}{ext}"
-    return await _upload_with_optional_strip(file, key)
+    return await _upload_with_optional_strip(file, f"uploads/{uuid4()}{ext}")
 
 
 def detected_media_key(geolocation_id: UUID, content_type: str) -> str:
