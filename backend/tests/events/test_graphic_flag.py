@@ -127,7 +127,7 @@ def test_the_ratchet_holds_per_source(db, author, conflict):
     geo = _graphic_detection(db, author)
     sources = sources_field(
         _kept(geo.sources[0]),
-        source_spec("https://ctx.example/report", level="context", sensor=None),
+        source_spec("https://ctx.example/report", level="context", kind="article"),
     )
     response = _geolocate(geo, author, conflict, sources)
     assert response.status_code == 200, response.text

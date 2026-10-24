@@ -47,9 +47,8 @@ async def create_with_evidence(
     The creator is stamped ``geolocated_at`` and credited in ``event_geolocators``.
 
     The full floor applies: subject coordinates, a ``direct`` or ``indirect`` source with its
-    file and every file's sensor (``sources.check_publish_floor``), a proof image (a
-    ``placeholder://`` src resolved from ``proof_files``, see ``evidence_intake``), and a
-    conflict.
+    file (``sources.check_publish_floor``), a proof image (a ``placeholder://`` src resolved
+    from ``proof_files``, see ``evidence_intake``), and a conflict.
 
     Raises :class:`EvidenceIntakeError` subclasses: bad coordinates, an unmet floor, invalid or
     image-less proof, a source list past its caps or naming an unknown upload or file, or a

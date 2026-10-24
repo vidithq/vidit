@@ -4,28 +4,30 @@ Revision ID: fb4098ed6742
 Revises: 4c85d28351c8
 Create Date: 2026-10-24 18:00:00.000000
 
-An event's evidence moves to ``sources``: each source holds its level, sensor, capture time,
-sensor position, graphic flag, file (``media.source_id``), URLs (``source_links``, with the
+An event's evidence moves to ``sources``: each source holds its level, kind, capture time,
+capture position, graphic flag, file (``media.source_id``), URLs (``source_links``, with the
 archived copy of each) and tags (``source_tags``). ``uploads`` stages a source file before the
 event write that references it.
 
 Data mapping:
 
-* An event with a ``source_url`` or a source file gets one ``direct`` source: its sensor is the
-  event's capture-source tag (else ``unknown``), its file the source media row, its sensor
+* An event with a ``source_url`` or a source file gets one ``direct`` source: its kind is the
+  event's capture-source tag (else ``unknown``), its file the source media row, its capture
   position ``capture_source_coords``, its graphic flag the event's, and its one link
   ``source_url`` with ``source_posted_at`` and that URL's archived copy.
-* Each ``event_source_links`` row becomes its own ``direct`` source, sensor ``unknown``, no
+* Each ``event_source_links`` row becomes its own ``direct`` source, kind ``unknown``, no
   file, one link with its archived copy.
 * Archived copies of the detection post and of proof links are dropped.
 * Version snapshots are rewritten to the ``sources`` shape with the same content.
-* The ``capture_source`` tags go (their names became sensors), then ``tags.category``.
+* The ``capture_source`` tags go (their names became kinds), then ``tags.category``.
 
 The downgrade maps each event back onto one source: the first source with a file (else the
-first source) gives ``source_url``, its first link's post time, its sensor position, its sensor
-tag and its file; every other link becomes a secondary link (ten at most), and the other
-sources' files are deleted. It restores what the upgrade wrote, except that an event that
-carried no capture-source tag comes back with ``Unknown``.
+first source) gives ``source_url``, its first link's post time, its capture position, its
+capture-source tag and its file; every other link becomes a secondary link (ten at most), and
+the other sources' files are deleted. A kind with no capture-source tag (``camera``,
+``article``, ``official_statement``, ``other``) comes back as ``Unknown``. It restores what
+the upgrade wrote, except that an event that carried no capture-source tag comes back with
+``Unknown``.
 """
 
 import json
@@ -42,9 +44,9 @@ down_revision: Union[str, None] = "4c85d28351c8"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-# Capture-source tag names and the sensor each became. Frozen here so a later change to the
-# model cannot alter this migration.
-SENSOR_OF_TAG = {
+# Capture-source tag names and the source kind each became. Frozen here so a later change to
+# the model cannot alter this migration.
+KIND_OF_TAG = {
     "Smartphone": "smartphone",
     "Satellite": "satellite",
     "Drone": "drone",
@@ -53,11 +55,25 @@ SENSOR_OF_TAG = {
     "Body / helmet cam": "body_cam",
     "Unknown": "unknown",
 }
-TAG_OF_SENSOR = {sensor: name for name, sensor in SENSOR_OF_TAG.items()}
+TAG_OF_KIND = {kind: name for name, kind in KIND_OF_TAG.items()}
+# Every source kind, in ``models/source.SourceKind`` order.
+SOURCE_KINDS = (
+    "smartphone",
+    "camera",
+    "static_camera",
+    "drone",
+    "satellite",
+    "dashcam",
+    "body_cam",
+    "article",
+    "official_statement",
+    "other",
+    "unknown",
+)
 MAX_SECONDARY_LINKS = 10
 
-_SENSOR_CASE = "CASE t.name " + " ".join(
-    f"WHEN '{name}' THEN '{sensor}'" for name, sensor in SENSOR_OF_TAG.items()
+_KIND_CASE = "CASE t.name " + " ".join(
+    f"WHEN '{name}' THEN '{kind}'" for name, kind in KIND_OF_TAG.items()
 ) + " ELSE 'unknown' END"
 
 _PROVIDER_CASE = (
@@ -82,10 +98,10 @@ def upgrade() -> None:
         sa.Column("event_id", sa.Uuid(), nullable=False),
         sa.Column("title", sa.String(length=255), server_default=sa.text("''"), nullable=False),
         sa.Column("level", sa.String(length=10), nullable=False),
-        sa.Column("sensor", sa.String(length=20), nullable=True),
+        sa.Column("kind", sa.String(length=20), nullable=False),
         sa.Column("captured_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
-            "sensor_position",
+            "capture_position",
             Geometry(geometry_type="POINT", srid=4326, spatial_index=False),
             nullable=True,
         ),
@@ -96,10 +112,8 @@ def upgrade() -> None:
             "level IN ('direct', 'indirect', 'context')", name="ck_sources_level_valid"
         ),
         sa.CheckConstraint(
-            "sensor IS NULL OR sensor IN ("
-            + ", ".join(f"'{s}'" for s in SENSOR_OF_TAG.values())
-            + ")",
-            name="ck_sources_sensor_valid",
+            "kind IN (" + ", ".join(f"'{kind}'" for kind in SOURCE_KINDS) + ")",
+            name="ck_sources_kind_valid",
         ),
         sa.ForeignKeyConstraint(["event_id"], ["events.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -173,11 +187,11 @@ def upgrade() -> None:
     )
     op.execute(
         f"""
-        INSERT INTO sources (id, event_id, title, level, sensor, captured_at, sensor_position,
+        INSERT INTO sources (id, event_id, title, level, kind, captured_at, capture_position,
                              is_graphic, created_at, updated_at)
         SELECT ms.source_id, e.id, '', 'direct',
                COALESCE((
-                   SELECT {_SENSOR_CASE}
+                   SELECT {_KIND_CASE}
                    FROM event_tags et JOIN tags t ON t.id = et.tag_id
                    WHERE et.event_id = e.id AND t.category = 'capture_source'
                    ORDER BY t.name = 'Unknown', t.name
@@ -216,7 +230,7 @@ def upgrade() -> None:
     )
     op.execute(
         """
-        INSERT INTO sources (id, event_id, title, level, sensor, is_graphic, created_at,
+        INSERT INTO sources (id, event_id, title, level, kind, is_graphic, created_at,
                              updated_at)
         SELECT ls.source_id, e.id, '', 'direct', 'unknown', false,
                e.created_at + (ls.position + 1) * interval '1 microsecond', e.updated_at
@@ -294,9 +308,9 @@ def _sources_snapshot(old: dict[str, Any]) -> dict[str, Any]:
             {
                 "title": "",
                 "level": "direct",
-                "sensor": SENSOR_OF_TAG.get(capture[0], "unknown") if capture else "unknown",
+                "kind": KIND_OF_TAG.get(capture[0], "unknown") if capture else "unknown",
                 "captured_at": None,
-                "sensor_position": old.get("capture_source_coords"),
+                "capture_position": old.get("capture_source_coords"),
                 "is_graphic": bool(old.get("is_graphic", False)),
                 "links": [link(source_url, old.get("source_posted_at"))] if source_url else [],
                 "tags": [],
@@ -308,9 +322,9 @@ def _sources_snapshot(old: dict[str, Any]) -> dict[str, Any]:
             {
                 "title": "",
                 "level": "direct",
-                "sensor": "unknown",
+                "kind": "unknown",
                 "captured_at": None,
-                "sensor_position": None,
+                "capture_position": None,
                 "is_graphic": False,
                 "links": [link(url, None)],
                 "tags": [],
@@ -362,14 +376,14 @@ def _legacy_snapshot(new: dict[str, Any], tag_ids: dict[str, str]) -> dict[str, 
     old["source_url"] = source_url
     media = primary.get("media") if primary else None
     old["source_media"] = [media] if media else []
-    old["capture_source_coords"] = primary.get("sensor_position") if primary else None
+    old["capture_source_coords"] = primary.get("capture_position") if primary else None
     old["source_posted_at"] = source_link.get("posted_at") if source_link else None
     old["is_graphic"] = any(bool(s.get("is_graphic")) for s in sources)
     old["secondary_source_urls"] = secondary
     tags = [{**t, "category": "free"} for t in new.get("tags") or [] if isinstance(t, dict)]
-    sensor = primary.get("sensor") if primary else None
-    if sensor:
-        name = TAG_OF_SENSOR[sensor]
+    kind = primary.get("kind") if primary else None
+    if kind:
+        name = TAG_OF_KIND.get(kind, "Unknown")
         tags.append({"id": tag_ids[name], "name": name, "category": "capture_source"})
     old["tags"] = tags
     if "proof_media" in new:
@@ -484,7 +498,7 @@ def downgrade() -> None:
     )
     op.execute(
         """
-        UPDATE events e SET capture_source_coords = s.sensor_position
+        UPDATE events e SET capture_source_coords = s.capture_position
         FROM ranked_sources rs JOIN sources s ON s.id = rs.source_id
         WHERE rs.event_id = e.id AND rs.primary_rank = 1
         """
@@ -537,7 +551,7 @@ def downgrade() -> None:
     op.add_column("tags", sa.Column("category", sa.String(length=20), nullable=True))
     op.execute("UPDATE tags SET category = 'free'")
     bind = op.get_bind()
-    for name in SENSOR_OF_TAG:
+    for name in KIND_OF_TAG:
         bind.execute(
             sa.text(
                 "INSERT INTO tags (id, name, category, created_at) "
@@ -550,9 +564,9 @@ def downgrade() -> None:
     op.create_check_constraint(
         "ck_tags_category_valid", "tags", "category IN ('capture_source', 'free')"
     )
-    tag_case = "CASE s.sensor " + " ".join(
-        f"WHEN '{sensor}' THEN '{name}'" for sensor, name in TAG_OF_SENSOR.items()
-    ) + " END"
+    tag_case = "CASE s.kind " + " ".join(
+        f"WHEN '{kind}' THEN '{name}'" for kind, name in TAG_OF_KIND.items()
+    ) + " ELSE 'Unknown' END"
     op.execute(
         f"""
         INSERT INTO event_tags (event_id, tag_id)
@@ -560,7 +574,7 @@ def downgrade() -> None:
         FROM ranked_sources rs
         JOIN sources s ON s.id = rs.source_id
         JOIN tags t ON t.name = {tag_case}
-        WHERE rs.primary_rank = 1 AND s.sensor IS NOT NULL
+        WHERE rs.primary_rank = 1
         ON CONFLICT DO NOTHING
         """
     )

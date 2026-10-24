@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.cache import points_cache
 from app.models.conflict import Conflict
 from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event
-from app.models.source import Sensor
+from app.models.source import SourceKind
 from app.models.user import User
 from app.services.event_filters import visible_events
 from app.services.evidence_intake import EvidenceIntakeError
@@ -67,13 +67,14 @@ def _publish_detection(
     *,
     event_id: uuid.UUID,
     current_user: User,
-    sensor: Sensor,
+    kind: SourceKind,
     conflicts: list[Conflict],
 ) -> None:
-    """Promote one detection to ``geolocated`` with the conflicts and sensor the batch supplies.
+    """Promote one detection to ``geolocated`` with the conflicts and source kind the batch
+    supplies.
 
     No other field edits, uploads or proof rewrite: the import already put the rest on the
-    row. ``sensor`` goes onto every source that carries a file. The floor is the one
+    row. ``kind`` goes onto every source that carries a file. The floor is the one
     :func:`geolocate` runs, so a batch is no looser a door to ``geolocated``.
 
     Locked like :func:`geolocate`, so a race with a hand-submit serializes.
@@ -105,16 +106,13 @@ def _publish_detection(
     _require_proof_image(geo.proof)
     if any(not source.links for source in geo.sources):
         raise SourceLinkRequiredError("Every source needs a URL")
-    check_publish_floor(
-        (level, has_file, sensor if has_file else stored)
-        for level, has_file, stored in stored_floor(geo.sources)
-    )
+    check_publish_floor(stored_floor(geo.sources))
 
     # As in ``geolocate``: lazy-loading the collections would flush a half-stamped row.
     with db.no_autoflush:
         for source in geo.sources:
             if source.media is not None:
-                source.sensor = sensor
+                source.kind = kind
         geo.conflicts = conflicts
         geo.status = STATUS_GEOLOCATED
         geo.geolocated_at = datetime.now(UTC)
@@ -128,12 +126,12 @@ def complete_detections(
     *,
     current_user: User,
     conflict_ids: list[uuid.UUID],
-    rows: list[tuple[uuid.UUID, Sensor]],
+    rows: list[tuple[uuid.UUID, SourceKind]],
 ) -> list[DetectionCompletion]:
     """Publish a selection of detections, one transaction per row.
 
     ``conflict_ids`` applies to the whole selection; ``rows`` are ordered
-    ``(event_id, sensor)`` pairs. A row that fails the floor
+    ``(event_id, kind)`` pairs. A row that fails the floor
     rolls back alone and stays a detection. Results mirror ``rows`` order.
 
     Two conditions fail the whole call before anything commits: an empty or
@@ -148,13 +146,13 @@ def complete_detections(
 
     outcomes: list[DetectionCompletion] = []
     published = 0
-    for event_id, sensor in rows:
+    for event_id, kind in rows:
         try:
             _publish_detection(
                 db,
                 event_id=event_id,
                 current_user=current_user,
-                sensor=sensor,
+                kind=kind,
                 conflicts=conflicts,
             )
         # The shared base, not ``EventError``: the upload errors are siblings of it.

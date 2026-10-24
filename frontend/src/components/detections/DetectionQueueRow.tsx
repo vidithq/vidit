@@ -36,7 +36,7 @@ const ENTRY_LABELS: Record<DetectedVia, string> = {
  *
  * The badge describes the *evidence*, not completeness: **Ready to review** means the machine
  * found everything it could and the detection awaits the judgment a review supplies (conflict,
- * sensor), never that it is finished. It takes the softer outline tone so it can't read as
+ * source kind), never that it is finished. It takes the softer outline tone so it can't read as
  * a published state. The queue filter's `?` explains the two states.
  */
 export function DetectionQueueRow({ detection }: { detection: EventDetail }) {

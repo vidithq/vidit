@@ -20,9 +20,9 @@ export const FIELD_HELP = {
     text: "Direct: the act while it happens. Indirect: its direct consequences, after the fact (smoke, damage, wreckage). Context: anything else, such as an image from before, a portrait that identifies a victim, or an article or statement without media.",
     label: "What is the evidence level?",
   },
-  sensor: {
-    text: "What captured the file: smartphone, satellite, drone, static camera, dashcam, or body / helmet cam. Pick Unknown when the footage does not say. Required on every source with a file to publish.",
-    label: "What is the sensor?",
+  source_kind: {
+    text: "Where the source comes from: what captured it (smartphone, camera, static camera such as CCTV or a webcam, drone, satellite, dashcam, or body / helmet cam), or an article, an official statement or something else. Whether the file is a photo or a video comes from the file itself. Pick Unknown when the source does not say. Required on every source.",
+    label: "What is the source kind?",
   },
   source_file: {
     text: "The footage or picture being located, uploaded as soon as you pick it. Not a map screenshot or an annotated export.",
@@ -32,16 +32,16 @@ export const FIELD_HELP = {
     text: "Optional. When the file was captured (UTC), if known. Not when it was posted, nor when the event was added here.",
     label: "What is the capture time?",
   },
-  sensor_position: {
-    text: "Optional. Where the sensor was, in decimal degrees (latitude then longitude), when that's a different spot from the subject: e.g. a drone or a rooftop looking down at the strike. Leave blank when the sensor was at the subject, or the vantage point is unknown.",
-    label: "What is the sensor position?",
+  capture_position: {
+    text: "Optional. Where the capture was made from, in decimal degrees (latitude then longitude), when that's a different spot from the subject: e.g. a drone or a rooftop looking down at the strike. Leave blank when the capture was made at the subject, or the vantage point is unknown. An article, an official statement or another document has none.",
+    label: "What is the capture position?",
   },
   source_links: {
     text: "Where the file was posted: the original post or channel first, then each mirror of the same file. Not your own geolocation post. Each link takes its post time (UTC) when known. The archive mark beside a link is its archived copy, so the evidence survives the post being deleted: orange opens the stored copy, grey means there is none yet. The form's mark offers the Wayback Machine with the link filled in and accepts a snapshot from the Wayback Machine, archive.today (or any of its mirrors) or Ghostarchive.",
     label: "What are the source links?",
   },
   coordinates: {
-    text: "Decimal degrees, latitude then longitude (e.g. 48.0159, 37.8024). The subject: the ground location the footage shows, not where the sensor was or where it was posted.",
+    text: "Decimal degrees, latitude then longitude (e.g. 48.0159, 37.8024). The subject: the ground location the footage shows, not where the capture was made from or where it was posted.",
     label: "What are the coordinates?",
   },
   occurred_date: {
@@ -89,7 +89,7 @@ export const FIELD_HELP = {
     label: "What goes in Proof?",
   },
   detection_queue_filter: {
-    text: "Ready: the import left the detection with every piece of evidence a publish needs, so a review adds the conflict and the sensor, then publishes it. Incomplete: the import left a required piece missing (a source URL, the coordinates, a source file, or a proof image), so it needs a manual pass on the form before it can be published.",
+    text: "Ready: the import left the detection with every piece of evidence a publish needs, so a review adds the conflict and the source kind, then publishes it. Incomplete: the import left a required piece missing (a source URL, the coordinates, a source file, or a proof image), so it needs a manual pass on the form before it can be published.",
     label: "What does this filter select?",
   },
   version_note: {

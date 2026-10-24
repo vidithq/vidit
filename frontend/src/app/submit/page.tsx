@@ -57,12 +57,12 @@ const REQUEST_REQS: Req[] = [
   { label: FIELD_LABELS.title, keys: ["title"] },
   { label: FIELD_LABELS.source_file, keys: ["source_file"] },
   { label: FIELD_LABELS.source_link, keys: ["source_link"] },
+  { label: FIELD_LABELS.source_kind, keys: ["source_kind"] },
 ];
 
 // What a full geolocation adds on top of the request floor.
 const GEO_EXTRA_REQS: Req[] = [
   { label: FIELD_LABELS.coordinates, keys: ["coordinates"] },
-  { label: FIELD_LABELS.sensor, keys: ["sensor"] },
   { label: FIELD_LABELS.proof_image, keys: ["proof", "proof_image"] },
   { label: FIELD_LABELS.conflict_tag, keys: ["conflict_tag"] },
 ];

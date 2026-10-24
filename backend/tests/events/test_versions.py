@@ -187,7 +187,7 @@ def test_save_version_snapshots_the_old_version_and_bumps_the_row(db, author, co
 SOURCE_CHANGES = {
     "title": ({"title": "Second angle"}, lambda s: s["title"]),
     "level": ({"level": "indirect"}, lambda s: s["level"]),
-    "sensor": ({"sensor": "drone"}, lambda s: s["sensor"]),
+    "kind": ({"kind": "drone"}, lambda s: s["kind"]),
     "links": ({"url": "https://t.me/c/9"}, lambda s: [link["url"] for link in s["links"]]),
     "file": ({"upload": True}, lambda s: s["media"]["id"]),
 }
@@ -240,7 +240,7 @@ def test_a_version_cannot_leave_the_record_without_footage(db, author, conflict)
     [source] = geo.sources
 
     without_file = source_spec(id=str(source.id))
-    context_only = source_spec("https://news.example/report", level="context", sensor=None)
+    context_only = source_spec("https://news.example/report", level="context", kind="article")
     for spec, code in ((without_file, "source_file_required"), (context_only, "source_required")):
         response = _save_version(geo.id, author, data=_form(conflict, sources_field(spec)))
         assert response.status_code == 400, response.text

@@ -40,7 +40,7 @@ test.describe("submit", () => {
     });
     await expect(first.getByText(/^Uploading/)).toHaveCount(0);
     await expect(first.getByRole("button", { name: "View image" })).toBeVisible();
-    await expect(first.getByLabel("Sensor", { exact: true })).toBeEnabled();
+    await expect(first.getByLabel("Kind", { exact: true })).toBeEnabled();
 
     await first.getByLabel("Source 1 link 1", { exact: true }).fill("https://t.me/channel/12345");
     await second.getByLabel("Source 2 link 1", { exact: true }).fill("https://x.com/user/status/1");

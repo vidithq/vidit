@@ -42,7 +42,6 @@ export function SourcesField({
   tags,
   setTags,
   invalidKeys,
-  sensorRequired = false,
 }: {
   sources: SourceDraft[];
   setSources: Dispatch<SetStateAction<SourceDraft[]>>;
@@ -50,8 +49,6 @@ export function SourcesField({
   setTags: Dispatch<SetStateAction<Tag[]>>;
   /** The keys a publish attempt flagged (`useIncompleteForm`). */
   invalidKeys: ReadonlySet<MissingFieldKey>;
-  /** The form publishes: a source with a file needs a sensor. */
-  sensorRequired?: boolean;
 }) {
   const [picking, setPicking] = useState(false);
   const [mergeNotice, setMergeNotice] = useState<string | null>(null);
@@ -118,14 +115,9 @@ export function SourcesField({
           onPickFile={(file) => void pickFile(draft.key)(file)}
           tags={tags}
           setTags={setTags}
-          sensorRequired={sensorRequired}
           invalid={{
             link: invalidKeys.has("source_link") && draftUrls(draft).length === 0,
-            sensor:
-              invalidKeys.has("sensor") &&
-              draft.sensor === "" &&
-              draft.file !== null &&
-              draft.file.state !== "failed",
+            kind: invalidKeys.has("source_kind") && draft.kind === "",
           }}
           actions={
             sources.length > 1 && (

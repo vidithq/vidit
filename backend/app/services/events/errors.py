@@ -62,12 +62,6 @@ class SourceLinkRequiredError(EventError):
     code = "source_link_required"
 
 
-class SensorRequiredError(EventError):
-    """A source with a file names no sensor at publication. Maps to 400."""
-
-    code = "sensor_required"
-
-
 class InvalidSourceUrlError(EventError):
     """A source URL is not an ``http(s)`` link with a host. Maps to 400."""
 

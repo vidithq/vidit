@@ -945,8 +945,8 @@ export interface paths {
          * @description Publish the selected detections: ``detected`` → ``geolocated``.
          *
          *     JSON, not multipart: nothing uploads. The detections keep their imported
-         *     evidence; the call supplies the conflict set and one sensor per row, which
-         *     goes onto every source that carries a file.
+         *     evidence; the call supplies the conflict set and one source kind per row,
+         *     which goes onto every source that carries a file.
          *
          *     Each row commits on its own: one that fails the floor (no proof image,
          *     coordinates, direct or indirect source file, or a source without a URL)
@@ -1372,7 +1372,7 @@ export interface paths {
          *     owner-only (403 otherwise); a ``requested`` event is answerable by anyone and the
          *     fulfiller becomes its owner (``requested_by`` keeps the poster) and may correct its
          *     sources. Blocked (400) until the floor is met (a direct or indirect source with its file,
-         *     a sensor on every file, a proof image, a conflict). Other statuses 409; soft-deleted 404.
+         *     a proof image, a conflict). Other statuses 409; soft-deleted 404.
          */
         post: operations["geolocate_event_api_v1_events__geolocation_id__geolocate_post"];
         delete?: never;
@@ -1623,7 +1623,7 @@ export interface paths {
          *     the current user follows and the requests and detections they own, and is
          *     empty when they follow nobody; ``scope=all`` keeps every row. ``kind``
          *     (``geolocation``, ``request``, ``detected``; all three when omitted), ``conflict``,
-         *     ``sensor``, ``level``, ``tag``, ``approved``, ``approved_by`` and
+         *     ``source_kind``, ``level``, ``tag``, ``approved``, ``approved_by`` and
          *     ``approved_by_org`` narrow the rows as on ``GET /events``. Cursor-paged, capped at 100 rows; the
          *     ``Link: rel="next"`` cursor is present exactly when a next page holds a row.
          */
@@ -3034,7 +3034,7 @@ export interface components {
          * BatchCompletionCreate
          * @description Body of ``POST /events/batch-complete``.
          *
-         *     One conflict set for the whole selection; the sensor varies per row.
+         *     One conflict set for the whole selection; the source kind varies per row.
          */
         BatchCompletionCreate: {
             /** Conflict Ids */
@@ -3056,7 +3056,7 @@ export interface components {
         };
         /**
          * BatchCompletionRowCreate
-         * @description One detection in a batch completion and the sensor of its sources' files.
+         * @description One detection in a batch completion and the kind of its sources that carry a file.
          */
         BatchCompletionRowCreate: {
             /**
@@ -3065,10 +3065,10 @@ export interface components {
              */
             event_id: string;
             /**
-             * Sensor
+             * Kind
              * @enum {string}
              */
-            sensor: "smartphone" | "satellite" | "drone" | "static_camera" | "dashcam" | "body_cam" | "unknown";
+            kind: "smartphone" | "camera" | "static_camera" | "drone" | "satellite" | "dashcam" | "body_cam" | "article" | "official_statement" | "other" | "unknown";
         };
         /**
          * BatchCompletionRowRead
@@ -4414,6 +4414,7 @@ export interface components {
          * @description A source the picker found (``GET /sources``), with the event that holds it.
          */
         SourcePickRead: {
+            capture_position: components["schemas"]["CoordsRead"] | null;
             /** Captured At */
             captured_at: string | null;
             /**
@@ -4431,6 +4432,11 @@ export interface components {
             /** Is Graphic */
             is_graphic: boolean;
             /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "smartphone" | "camera" | "static_camera" | "drone" | "satellite" | "dashcam" | "body_cam" | "article" | "official_statement" | "other" | "unknown";
+            /**
              * Level
              * @enum {string}
              */
@@ -4438,9 +4444,6 @@ export interface components {
             /** Links */
             links: components["schemas"]["SourceLinkRead"][];
             media: components["schemas"]["MediaRead"] | null;
-            /** Sensor */
-            sensor: ("smartphone" | "satellite" | "drone" | "static_camera" | "dashcam" | "body_cam" | "unknown") | null;
-            sensor_position: components["schemas"]["CoordsRead"] | null;
             /** Tags */
             tags: components["schemas"]["TagRead"][];
             /** Title */
@@ -4451,6 +4454,7 @@ export interface components {
          * @description One source of an event, in the event's derived source order.
          */
         SourceRead: {
+            capture_position: components["schemas"]["CoordsRead"] | null;
             /** Captured At */
             captured_at: string | null;
             /**
@@ -4461,6 +4465,11 @@ export interface components {
             /** Is Graphic */
             is_graphic: boolean;
             /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "smartphone" | "camera" | "static_camera" | "drone" | "satellite" | "dashcam" | "body_cam" | "article" | "official_statement" | "other" | "unknown";
+            /**
              * Level
              * @enum {string}
              */
@@ -4468,9 +4477,6 @@ export interface components {
             /** Links */
             links: components["schemas"]["SourceLinkRead"][];
             media: components["schemas"]["MediaRead"] | null;
-            /** Sensor */
-            sensor: ("smartphone" | "satellite" | "drone" | "static_camera" | "dashcam" | "body_cam" | "unknown") | null;
-            sensor_position: components["schemas"]["CoordsRead"] | null;
             /** Tags */
             tags: components["schemas"]["TagRead"][];
             /** Title */
@@ -4751,8 +4757,8 @@ export interface components {
          *     ``total_events``; every other field describes it. ``requested`` and
          *     ``closed`` rows take part in no aggregate.
          *
-         *     ``sensors`` counts the events per sensor their sources name (an event with
-         *     two sensors counts under both).
+         *     ``source_kinds`` counts the events per kind their sources name, ``unknown`` left out (an
+         *     event with sources of two kinds counts under both).
          *
          *     ``source_hosts`` breaks the set down by the host of each event's first
          *     source URL (lowercased, leading ``www.`` removed): top hosts, with
@@ -4775,10 +4781,10 @@ export interface components {
             no_source_count: number;
             /** Other Hosts Count */
             other_hosts_count: number;
-            /** Sensors */
-            sensors: components["schemas"]["TagCount"][];
             /** Source Hosts */
             source_hosts: components["schemas"]["TagCount"][];
+            /** Source Kinds */
+            source_kinds: components["schemas"]["TagCount"][];
             /** Top Conflicts */
             top_conflicts: components["schemas"]["TagCount"][];
             /** Total Events */
@@ -6301,7 +6307,7 @@ export interface operations {
                 view?: string;
                 status?: string[] | null;
                 conflict?: string[] | null;
-                sensor?: string[] | null;
+                source_kind?: string[] | null;
                 level?: string[] | null;
                 tag?: string[] | null;
                 bbox?: string | null;
@@ -6592,7 +6598,7 @@ export interface operations {
                 /** @description south,west,north,east, four floats */
                 bbox: string;
                 conflict?: string[] | null;
-                sensor?: string[] | null;
+                source_kind?: string[] | null;
                 level?: string[] | null;
                 tag?: string[] | null;
                 occurred_date_from?: string | null;
@@ -7445,7 +7451,7 @@ export interface operations {
                 cursor?: string | null;
                 kind?: ("geolocation" | "request" | "detected")[] | null;
                 conflict?: string[] | null;
-                sensor?: string[] | null;
+                source_kind?: string[] | null;
                 level?: string[] | null;
                 tag?: string[] | null;
                 approved?: boolean;
@@ -8187,7 +8193,7 @@ export interface operations {
                 limit?: number;
                 status?: string[] | null;
                 conflict?: string[] | null;
-                sensor?: string[] | null;
+                source_kind?: string[] | null;
                 level?: string[] | null;
                 tag?: string[] | null;
                 occurred_date_from?: string | null;

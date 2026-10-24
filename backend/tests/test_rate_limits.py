@@ -496,7 +496,7 @@ _DOCUMENTED_LIMITS = [
                 "rows": [
                     {
                         "event_id": str(_MISSING_ID),
-                        "sensor": "smartphone",
+                        "kind": "smartphone",
                     }
                 ],
             }

@@ -9,7 +9,7 @@ import {
   type EventFieldsState,
 } from "./events";
 
-const FULL_FLOOR = { hasEvidenceFile: true, missingLink: false, missingSensor: false };
+const FULL_FLOOR = { hasEvidenceFile: true, missingLink: false, missingKind: false };
 
 // A fully-complete detection; each test knocks one field out. The proof carries an image node
 // (`proofHasImage`).
@@ -36,7 +36,7 @@ describe("missingEventFields", () => {
         lat: "",
         lng: "",
         proof: null,
-        sources: { hasEvidenceFile: false, missingLink: true, missingSensor: true },
+        sources: { hasEvidenceFile: false, missingLink: true, missingKind: true },
         hasConflict: false,
       })
     ).toEqual([
@@ -44,7 +44,7 @@ describe("missingEventFields", () => {
       "Coordinates",
       "Source file",
       "Source URL",
-      "Sensor",
+      "Source kind",
       "Proof",
       "Conflict",
     ]);
@@ -86,7 +86,7 @@ describe("batchCompletionBlockers", () => {
     storage_url: "https://cdn/x.jpg",
   };
   const LINK = { url: "https://x.com/a/status/1", posted_at: null, archived: null };
-  // A detection as the import leaves it, missing only the sensor and conflict the batch supplies.
+  // A detection as the import leaves it, missing only the source kind and conflict the batch supplies.
   const importedDetection = {
     coords: { lat: 48.5, lng: 37.8 },
     proof: '<img src="https://x/y.jpg">',
@@ -171,13 +171,13 @@ describe("missingEventRequestFields", () => {
     expect(requestLabels({ title: "Unplaced footage", sources: FULL_FLOOR })).toEqual([]);
   });
 
-  it("lists the request floor (no coords, sensor, proof or conflict) at once", () => {
+  it("lists the request floor (no coords, proof or conflict) at once", () => {
     expect(
       requestLabels({
         title: "",
-        sources: { hasEvidenceFile: false, missingLink: true, missingSensor: true },
+        sources: { hasEvidenceFile: false, missingLink: true, missingKind: true },
       })
-    ).toEqual(["Title", "Source file", "Source URL"]);
+    ).toEqual(["Title", "Source file", "Source URL", "Source kind"]);
   });
 
   it("treats a blank-string title as missing", () => {

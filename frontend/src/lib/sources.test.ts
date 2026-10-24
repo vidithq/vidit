@@ -26,9 +26,9 @@ const FILE = {
 
 const STORED = source({
   id: "s1",
-  sensor: "drone",
+  kind: "drone",
   captured_at: "2026-05-09T15:40:27Z",
-  sensor_position: { lat: 48.1, lng: 37.9 },
+  capture_position: { lat: 48.1, lng: 37.9 },
   links: [
     {
       url: "https://t.me/c/1",
@@ -56,10 +56,10 @@ describe("sourceCreatePayload", () => {
       id: "s1",
       title: "",
       level: "direct",
-      sensor: "drone",
+      kind: "drone",
       // An untouched instant keeps its seconds.
       captured_at: "2026-05-09T15:40:27Z",
-      sensor_position: { lat: 48.1, lng: 37.9 },
+      capture_position: { lat: 48.1, lng: 37.9 },
       is_graphic: false,
       links: [
         {
@@ -78,15 +78,15 @@ describe("sourceCreatePayload", () => {
     expect(sourceCreatePayload(draft).captured_at).toBe("2026-05-09T16:00");
   });
 
-  it("drops blank and repeated URLs, and a half-typed sensor pair", () => {
-    const draft = linked("https://t.me/c/1", { sensorLat: "48.1", sensorLng: "" });
+  it("drops blank and repeated URLs, and a half-typed capture pair", () => {
+    const draft = linked("https://t.me/c/1", { captureLat: "48.1", captureLng: "" });
     draft.links.push(
       { url: "  ", postedAt: "", snapshotUrl: "", stored: null },
       { url: " https://t.me/c/1 ", postedAt: "", snapshotUrl: "", stored: null }
     );
     const posted = sourceCreatePayload(draft);
     expect(posted.links.map((l) => l.url)).toEqual(["https://t.me/c/1"]);
-    expect(posted.sensor_position).toBeNull();
+    expect(posted.capture_position).toBeNull();
   });
 
   it("names a staged file by its upload and none while the upload runs", () => {
@@ -96,14 +96,19 @@ describe("sourceCreatePayload", () => {
     ).toMatchObject({ upload_id: "u1" });
     const running = sourceCreatePayload(
       linked("https://t.me/c/1", {
-        sensor: "drone",
+        kind: "drone",
         file: { state: "uploading", file: new File(["x"], "x.png"), token: 1 },
       })
     );
     expect(running.upload_id).toBeUndefined();
     expect(running.media_id).toBeUndefined();
-    // A sensor describes a file: a source without one names none.
-    expect(running.sensor).toBeNull();
+    // The kind describes the source, file or not.
+    expect(running.kind).toBe("drone");
+  });
+
+  it("posts no capture position for a document kind", () => {
+    const draft = { ...sourceDraftFrom(STORED), kind: "article" as const };
+    expect(sourceCreatePayload(draft).capture_position).toBeNull();
   });
 });
 
@@ -158,11 +163,11 @@ describe("sourceFloor", () => {
     expect(sourceFloor([{ ...withFile, level: "context" }]).hasEvidenceFile).toBe(false);
   });
 
-  it("flags a source without a URL and a file without a sensor", () => {
+  it("flags a source without a URL and a source without a kind", () => {
     const floor = sourceFloor([
       { ...newSourceDraft(), links: [], file: { state: "stored", media: FILE } },
     ]);
-    expect(floor).toEqual({ hasEvidenceFile: true, missingLink: true, missingSensor: true });
+    expect(floor).toEqual({ hasEvidenceFile: true, missingLink: true, missingKind: true });
   });
 });
 
@@ -173,7 +178,7 @@ describe("sourcesChanged", () => {
 
   it("reads a moved field, a new copy, a new source or a removed one as a change", () => {
     const draft = sourceDraftFrom(STORED);
-    expect(sourcesChanged([STORED], [{ ...draft, sensor: "satellite" }])).toBe(true);
+    expect(sourcesChanged([STORED], [{ ...draft, kind: "satellite" }])).toBe(true);
     expect(
       sourcesChanged(
         [STORED],

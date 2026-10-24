@@ -48,7 +48,7 @@ function baseEvent(versionNo: number): EventDetail {
     owner: OWNER,
     tags: [],
     conflicts: [],
-    sources: [{ id: "s1", title: "", level: "direct", sensor: null, captured_at: null, sensor_position: null, is_graphic: false, links: [{ url: "https://t.me/channel/12345", posted_at: null, archived: null }], tags: [], media: null }],
+    sources: [{ id: "s1", title: "", level: "direct", kind: "unknown", captured_at: null, capture_position: null, is_graphic: false, links: [{ url: "https://t.me/channel/12345", posted_at: null, archived: null }], tags: [], media: null }],
     proof: "",
     created_at: "2026-06-01T10:00:00Z",
     geolocated_at: "2026-06-01T10:00:00Z",
@@ -79,7 +79,7 @@ function version(
 const snapshot = (title: string): Record<string, unknown> => ({
   title,
   // Every filed version names the evidence anchor; omitting it would read as a swap and print a phantom changed field.
-  sources: [{ id: "s1", title: "", level: "direct", sensor: null, captured_at: null, sensor_position: null, is_graphic: false, links: [{ url: "https://t.me/channel/12345", posted_at: null, archived: null }], tags: [], media: null }],
+  sources: [{ id: "s1", title: "", level: "direct", kind: "unknown", captured_at: null, capture_position: null, is_graphic: false, links: [{ url: "https://t.me/channel/12345", posted_at: null, archived: null }], tags: [], media: null }],
   source_media: [],
   coords: { lat: 48.01, lng: 37.8 },
   occurred_date: "2026-06-01",

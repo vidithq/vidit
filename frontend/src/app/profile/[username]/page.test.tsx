@@ -77,7 +77,7 @@ const STATS: UserStats = {
   detected_count: 1,
   media_count: 5,
   top_conflicts: [{ name: "Sahel", count: 3 }],
-  sensors: [{ name: "drone", count: 2 }],
+  source_kinds: [{ name: "drone", count: 2 }],
   source_hosts: [{ name: "t.me", count: 3 }],
   other_hosts_count: 0,
   no_source_count: 0,

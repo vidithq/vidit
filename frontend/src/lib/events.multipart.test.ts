@@ -34,9 +34,9 @@ const pngB = new File(["b"], "b.png", { type: "image/png" });
 const SOURCE: SourceCreate = {
   title: "",
   level: "direct",
-  sensor: "drone",
+  kind: "drone",
   captured_at: null,
-  sensor_position: { lat: 50.1, lng: 30.2 },
+  capture_position: { lat: 50.1, lng: 30.2 },
   is_graphic: false,
   links: [{ url: "https://t.me/c/1", posted_at: "2026-01-02T10:00", snapshot_url: null }],
   tag_ids: [],

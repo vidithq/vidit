@@ -117,9 +117,9 @@ def source_entry(source: Source) -> dict[str, Any]:
     return {
         "title": source.title,
         "level": source.level,
-        "sensor": source.sensor,
+        "kind": source.kind,
         "captured_at": source.captured_at.isoformat() if source.captured_at else None,
-        "sensor_position": point_shape(source.sensor_position),
+        "capture_position": point_shape(source.capture_position),
         "is_graphic": source.is_graphic,
         "links": [
             {

@@ -67,7 +67,7 @@ def _make_request(
     with_media: bool = True,
 ) -> Event:
     """Mirrors the create path, stamps included (the CHECKs demand them). The one direct
-    source names no sensor, which a request may leave out."""
+    source is of kind ``unknown``."""
     now = datetime.now(UTC)
     request = Event(
         owner_id=author.id,
@@ -82,6 +82,7 @@ def _make_request(
     request.sources = [
         Source(
             level="direct",
+            kind="unknown",
             links=[SourceLink(url=source_url, posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC))],
             media=(
                 Media(
@@ -106,7 +107,7 @@ def _make_request(
     return request
 
 
-def _kept(event: Event, *, sensor: str | None = "smartphone", **kw) -> str:
+def _kept(event: Event, *, kind: str | None = "smartphone", **kw) -> str:
     """The ``sources`` field re-posting every stored source of ``event`` by ``id`` with its
     own file."""
     return sources_field(
@@ -115,7 +116,7 @@ def _kept(event: Event, *, sensor: str | None = "smartphone", **kw) -> str:
                 source.links[0].url,
                 id=str(source.id),
                 media_id=str(source.media.id) if source.media is not None else None,
-                sensor=sensor,
+                kind=kind,
                 **kw,
             )
             for source in event.sources
@@ -127,7 +128,7 @@ def _create_request(user: User, *, files=None, **data):
     """``POST /events/requests`` as ``user``, with one filed direct source unless ``sources``
     is given."""
     if "sources" not in data:
-        data["sources"] = filed_source(user, url="https://example.com/post/1", sensor=None)
+        data["sources"] = filed_source(user, url="https://example.com/post/1", kind="unknown")
     return client.post(
         "/api/v1/events/requests", headers=login_as(client, user), data=data, files=files
     )
@@ -328,7 +329,7 @@ def test_create_accepts_coordinate_guess(author):
 
 def test_create_occurred_date_is_optional(author):
     """``occurred_date`` is optional; the link keeps its own post time either way."""
-    sources = filed_source(author, sensor=None, posted_at="2026-05-02T09:30")
+    sources = filed_source(author, kind="unknown", posted_at="2026-05-02T09:30")
     with_dates = _create_request(
         author, title="Dated request", occurred_date="2026-05-01", sources=sources
     )
@@ -549,12 +550,14 @@ def test_geolocate_fulfilment_reuses_existing_media(db, author, second_user, con
     assert db.query(Media).filter(Media.event_id == request_id).count() == 1
 
 
-def test_fulfilment_needs_the_sensor_the_request_could_omit(db, author, second_user, conflict):
-    """A request's file may name no sensor; its publication may not."""
+def test_fulfilment_publishes_a_source_of_unknown_kind(db, author, second_user, conflict):
+    """``unknown`` is a kind like any other: the publication takes it."""
     request = _make_request(db, author=author)
-    response = _geolocate_fulfilment(request.id, second_user, conflict, _kept(request, sensor=None))
-    assert response.status_code == 400
-    assert response.json()["detail"]["code"] == "sensor_required"
+    response = _geolocate_fulfilment(
+        request.id, second_user, conflict, _kept(request, kind="unknown")
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["sources"][0]["kind"] == "unknown"
 
 
 def test_geolocate_fulfilment_honors_analyst_title_and_tags(
@@ -607,7 +610,7 @@ def _edit_request(request: Event, editor: User, **overrides):
     data = {
         "title": "Edited title",
         "occurred_date": "2026-05-02",
-        "sources": _kept(request, sensor=None),
+        "sources": _kept(request, kind="unknown"),
     }
     data.update(overrides)
     return client.post(
@@ -691,7 +694,7 @@ def test_edit_request_accepts_the_stored_instant_verbatim(db, author):
             _POST_URL,
             id=str(stored.id),
             media_id=str(stored.media.id),
-            sensor=None,
+            kind="unknown",
             posted_at="2026-05-01T12:00:27Z",
         )
     )
@@ -723,7 +726,9 @@ def test_edit_request_cannot_unset_the_graphic_flag(db, author):
     request.sources[0].is_graphic = True
     db.commit()
 
-    response = _edit_request(request, author, sources=_kept(request, sensor=None, is_graphic=False))
+    response = _edit_request(
+        request, author, sources=_kept(request, kind="unknown", is_graphic=False)
+    )
     assert response.status_code == 200, response.text
     assert response.json()["is_graphic"] is True
     assert response.json()["sources"][0]["is_graphic"] is True
@@ -778,7 +783,9 @@ async def test_edit_request_loses_the_race_to_a_fulfilment(db, author):
             tag_ids=[],
             conflict_ids=[],
             sources=[
-                SourceCreate.model_validate(source_spec("https://example.com/raced", sensor=None))
+                SourceCreate.model_validate(
+                    source_spec("https://example.com/raced", kind="unknown")
+                )
             ],
             proof_files=[],
         )
@@ -797,7 +804,7 @@ def test_edit_request_refuses_to_leave_the_row_without_footage(db, author):
     [stored] = request.sources
 
     response = _edit_request(
-        request, author, sources=sources_field(source_spec(id=str(stored.id), sensor=None))
+        request, author, sources=sources_field(source_spec(id=str(stored.id), kind="unknown"))
     )
     assert response.status_code == 400
     assert response.json()["detail"]["code"] == "source_file_required"
@@ -817,7 +824,7 @@ def test_edit_request_requires_authentication(db, author):
     request = _make_request(db, author=author)
     response = client.post(
         f"/api/v1/events/{request.id}/request",
-        data={"title": "Edited title", "sources": _kept(request, sensor=None)},
+        data={"title": "Edited title", "sources": _kept(request, kind="unknown")},
     )
     assert response.status_code == 401
 

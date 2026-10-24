@@ -39,7 +39,7 @@ describe("<EventFilterSections>", () => {
     for (const name of [
       "Status",
       "Conflict",
-      "Sensor",
+      "Source kind",
       "Level",
       "Media",
       "Author",
@@ -51,9 +51,9 @@ describe("<EventFilterSections>", () => {
   });
 
   it("starts a section expanded when it holds an active value", () => {
-    renderPanel({ ...EMPTY_EVENT_FILTERS, sensors: ["drone"] });
+    renderPanel({ ...EMPTY_EVENT_FILTERS, sourceKinds: ["drone"] });
 
-    expect(header("Sensor")).toHaveAttribute("aria-expanded", "true");
+    expect(header("Source kind")).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("button", { name: "Drone" })).toBeInTheDocument();
     expect(header("Conflict")).toHaveAttribute("aria-expanded", "false");
   });
@@ -77,10 +77,10 @@ describe("<EventFilterSections>", () => {
   });
 
   it("toggles an active section closed and a collapsed one open", () => {
-    renderPanel({ ...EMPTY_EVENT_FILTERS, sensors: ["drone"] });
+    renderPanel({ ...EMPTY_EVENT_FILTERS, sourceKinds: ["drone"] });
 
-    fireEvent.click(header("Sensor"));
-    expect(header("Sensor")).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(header("Source kind"));
+    expect(header("Source kind")).toHaveAttribute("aria-expanded", "false");
 
     fireEvent.click(header("Conflict"));
     expect(header("Conflict")).toHaveAttribute("aria-expanded", "true");

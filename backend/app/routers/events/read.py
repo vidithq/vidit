@@ -63,7 +63,7 @@ def _build_points_cache_key(
     *,
     bbox: tuple[float, float, float, float],
     conflict: list[str] | None,
-    sensor: list[str] | None,
+    source_kind: list[str] | None,
     level: list[str] | None,
     tag: list[str] | None,
     occurred_date_from: str | None,
@@ -92,7 +92,7 @@ def _build_points_cache_key(
         [
             list(bbox),
             sorted(conflict) if conflict else None,
-            sorted(sensor) if sensor else None,
+            sorted(source_kind) if source_kind else None,
             sorted(level) if level else None,
             sorted(tag) if tag else None,
             occurred_date_from,
@@ -119,7 +119,7 @@ def list_points(
     bbox: str = Query(..., description="south,west,north,east, four floats"),
     # Multi-value (``?tag=a&tag=b``); a single value parses to a one-item list.
     conflict: list[str] | None = Query(None),
-    sensor: list[str] | None = Query(None),
+    source_kind: list[str] | None = Query(None),
     level: list[str] | None = Query(None),
     tag: list[str] | None = Query(None),
     occurred_date_from: str | None = None,
@@ -147,14 +147,14 @@ def list_points(
     snapped bbox + filter combination (:func:`snap_bbox`).
     """
     validate_media_types(media)
-    validate_source_filters(sensor, level)
+    validate_source_filters(source_kind, level)
     # Parse before any cache work so a malformed box 422s instead of being
     # cached. The snapped box feeds both the key and the predicate.
     bounds = snap_bbox(parse_bbox(bbox))
     cache_key = _build_points_cache_key(
         bbox=bounds,
         conflict=conflict,
-        sensor=sensor,
+        source_kind=source_kind,
         level=level,
         tag=tag,
         occurred_date_from=occurred_date_from,
@@ -187,7 +187,7 @@ def list_points(
     q = apply_filters(
         q,
         conflict=conflict,
-        sensor=sensor,
+        source_kind=source_kind,
         level=level,
         tag=tag,
         occurred_date_from=occurred_date_from,
@@ -242,7 +242,7 @@ def list_events(
     # Multi-value, any-match; a single value parses to a one-item list.
     status: list[str] | None = Query(None),
     conflict: list[str] | None = Query(None),
-    sensor: list[str] | None = Query(None),
+    source_kind: list[str] | None = Query(None),
     level: list[str] | None = Query(None),
     tag: list[str] | None = Query(None),
     bbox: str | None = None,
@@ -276,7 +276,7 @@ def list_events(
             status_code=422, detail=f"view must be one of: {', '.join(sorted(VIEWS))}"
         )
     validate_status_filter(status)
-    validate_source_filters(sensor, level)
+    validate_source_filters(source_kind, level)
     size = page_size(limit)
 
     # Step 1: ids with the limit (no row-inflating joins)
@@ -285,7 +285,7 @@ def list_events(
         view=view,
         status=status,
         conflict=conflict,
-        sensor=sensor,
+        source_kind=source_kind,
         level=level,
         tag=tag,
         occurred_date_from=occurred_date_from,

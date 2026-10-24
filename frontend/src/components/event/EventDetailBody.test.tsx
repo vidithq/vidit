@@ -28,9 +28,9 @@ const IMAGE = {
 const FOOTAGE: Source = source({
   id: "s1",
   title: "Drone footage of the strike",
-  sensor: "drone",
+  kind: "drone",
   captured_at: "2026-06-01T09:30:00Z",
-  sensor_position: { lat: 48.02, lng: 37.79 },
+  capture_position: { lat: 48.02, lng: 37.79 },
   links: [
     {
       url: "https://t.me/channel/12345",
@@ -51,6 +51,7 @@ const FOOTAGE: Source = source({
 const ARTICLE: Source = source({
   id: "s2",
   level: "context",
+  kind: "article",
   links: [{ url: "https://news.example/a", posted_at: null, archived: null }],
 });
 
@@ -139,7 +140,7 @@ describe("EventDetailBody", () => {
     const first = block(1);
     expect(within(first).getByText("Drone footage of the strike")).toBeInTheDocument();
     expect(within(first).getByText("Direct")).toBeInTheDocument();
-    expect(within(first).getByText("Drone")).toBeInTheDocument();
+    expect(within(first).getByText("Drone · photo")).toBeInTheDocument();
     expect(within(first).getByText("1 Jun 2026, 09:30 UTC")).toBeInTheDocument();
     expect(within(first).getByText("48.0200, 37.7900")).toBeInTheDocument();
     expect(within(first).getByText("armor")).toBeInTheDocument();
@@ -151,14 +152,15 @@ describe("EventDetailBody", () => {
     expect(within(second).getByText("No file")).toBeInTheDocument();
   });
 
-  it("names no sensor without a file, nor an unknown one", () => {
+  it("reads each source's kind, with its file's kind when it has one", () => {
     render(
       <EventDetailBody
-        geo={geoFixture({ sources: [{ ...FOOTAGE, sensor: "unknown" }, { ...ARTICLE, sensor: "drone" }] })}
+        geo={geoFixture({ sources: [{ ...FOOTAGE, kind: "unknown" }, ARTICLE] })}
         variant="page"
       />
     );
-    expect(screen.queryByText("Sensor")).toBeNull();
+    expect(within(block(1)).getByText("Photo")).toBeInTheDocument();
+    expect(within(block(2)).getByText("Article")).toBeInTheDocument();
   });
 
   it("lists each link with its post date and its archived copy, named by source and link", () => {

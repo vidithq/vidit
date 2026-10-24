@@ -57,7 +57,7 @@ export default function HomePage() {
     params.set("bbox", bbox);
     appendEventFilterParams(params, {
       conflicts: filters.conflicts,
-      sensors: filters.sensors,
+      sourceKinds: filters.sourceKinds,
       levels: filters.levels,
       tags: filters.tags,
       mediaTypes: filters.mediaTypes,
@@ -83,7 +83,7 @@ export default function HomePage() {
   }, [
     bbox,
     filters.conflicts,
-    filters.sensors,
+    filters.sourceKinds,
     filters.levels,
     filters.tags,
     filters.mediaTypes,

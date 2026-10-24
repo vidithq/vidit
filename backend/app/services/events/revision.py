@@ -68,8 +68,7 @@ async def save_version(
     goes with the event's deletion or the redaction of the last version naming it.
 
     The floor is re-checked against the post-edit state: a ``direct`` or ``indirect`` source
-    with its file and every file's sensor, a proof image in the final proof body, and a
-    conflict. An image the new body drops is deleted only if no readable version displays it
+    with its file, a proof image in the final proof body, and a conflict. An image the new body drops is deleted only if no readable version displays it
     (``services/versions.referenced_media_urls``).
 
     **A version has to change something.** Incoming state is compared with the live row on

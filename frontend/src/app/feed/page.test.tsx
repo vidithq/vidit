@@ -277,8 +277,8 @@ describe("FeedPage", () => {
     expect(within(card).getByText("Conflict:").parentElement).toHaveTextContent(
       "Conflict:Russo-Ukrainian war",
     );
-    // A card carries no source, so it names no sensor.
-    expect(within(card).queryByText("Sensor:")).toBeNull();
+    // A card carries no source, so it names no source kind.
+    expect(within(card).queryByText("Kind:")).toBeNull();
     expect(within(card).getByText("airstrike")).toBeInTheDocument();
   });
 

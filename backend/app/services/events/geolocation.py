@@ -67,9 +67,9 @@ async def geolocate(
       ``current_user`` and ``requested_by_id`` keeps the original poster.
 
     The floor of a direct create is enforced here before any upload: a ``direct`` or
-    ``indirect`` source with its file and every file's sensor, a proof image in the final
-    proof body, and a conflict. Field updates, sources, proof images, the owner transfer and
-    the state flip commit in one transaction; a file the edit dropped is swept after it.
+    ``indirect`` source with its file, a proof image in the final proof body, and a conflict.
+    Field updates, sources, proof images, the owner transfer and the state flip commit in one
+    transaction; a file the edit dropped is swept after it.
 
     Raises :class:`EventStateError` (409) off ``requested`` / ``detected``, and the errors of
     ``create_with_evidence``.

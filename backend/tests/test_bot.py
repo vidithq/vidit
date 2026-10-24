@@ -525,9 +525,9 @@ async def test_a_tagged_post_creates_a_detection(db, linked_owner):
     point = to_shape(event.coords)
     assert point.y == pytest.approx(48.123456)
     assert point.x == pytest.approx(37.654321)
-    # The declared source: one direct source with no sensor, its URL and post time, no file.
+    # The declared source: one direct source of kind unknown, its URL and post time, no file.
     (source,) = event.sources
-    assert (source.level, source.sensor, source.media) == ("direct", None, None)
+    assert (source.level, source.kind, source.media) == ("direct", "unknown", None)
     (link,) = source.links
     assert link.url == _SOURCE_URL
     assert link.posted_at is not None
@@ -988,7 +988,7 @@ async def test_a_coordinate_less_mirror_post_opens_a_request(
 
     The row is owned by the analyst, stamped ``requested_at``, and carries one
     direct source with the original's URL and the footage as its file (staged as
-    an upload and taken by the write), with no coordinate and no sensor.
+    an upload and taken by the write), with no coordinate and kind ``unknown``.
     Provenance lets a second tag recognise it.
     """
     outcome, _, posted, liked = await _run(db, [mention_id])
@@ -1004,7 +1004,7 @@ async def test_a_coordinate_less_mirror_post_opens_a_request(
     assert row.requested_at is not None
     assert row.owner_id == linked_owner.id == row.requested_by_id
     (source,) = row.sources
-    assert (source.level, source.sensor) == ("direct", None)
+    assert (source.level, source.kind) == ("direct", "unknown")
     (link,) = source.links
     # The chased original, not the mirroring post.
     assert link.url == source_url

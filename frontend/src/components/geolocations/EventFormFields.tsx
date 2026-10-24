@@ -142,8 +142,6 @@ interface EventFormFieldsProps {
   /** The stored row behind the form (edited event, corrected or fulfilled request). `null` on a
    *  fresh submit. */
   row?: EventDetail | null;
-  /** The form publishes a geolocation: a source with a file needs a sensor. */
-  publishes?: boolean;
   /** Show `row`'s provenance link, read-only. */
   showProvenance?: boolean;
 }
@@ -159,7 +157,6 @@ interface EventFormFieldsProps {
 export function EventFormFields({
   form,
   row = null,
-  publishes = true,
   showProvenance = false,
 }: EventFormFieldsProps) {
   const { invalidKeys } = form;
@@ -178,7 +175,6 @@ export function EventFormFields({
         tags={form.taxonomy.tags}
         setTags={form.taxonomy.setTags}
         invalidKeys={invalidKeys}
-        sensorRequired={publishes}
       />
 
       <LocationPicker

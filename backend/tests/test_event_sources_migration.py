@@ -1,6 +1,6 @@
 """The event sources migration, ``fb4098ed6742``: an event's source URL and file become one
 ``direct`` source, each secondary link a source of its own, archives move onto the links,
-snapshots are rewritten, and the graphic flag and sensor are carried; the downgrade maps back."""
+snapshots are rewritten, and the graphic flag and kind are carried; the downgrade maps back."""
 
 import json
 import uuid
@@ -44,7 +44,7 @@ def _event(cur, owner: str, status: str, source_url: str | None, **cols) -> str:
             status,
             source_url,
             cols.get("posted_at"),
-            cols.get("sensor_position"),
+            cols.get("capture_position"),
             cols.get("graphic", False),
         ),
     )
@@ -65,7 +65,7 @@ def _seed(cur) -> dict[str, str]:
         "geolocated",
         "https://x.com/a/status/1",
         posted_at="2026-05-01T12:00:00+00:00",
-        sensor_position="SRID=4326;POINT(34.4 48.4)",
+        capture_position="SRID=4326;POINT(34.4 48.4)",
         graphic=True,
     )
     ids["request"] = _event(cur, owner, "requested", "https://t.me/c/9")
@@ -161,6 +161,8 @@ def test_the_migration_maps_sources_and_round_trips(base_db):
     _alembic(base_db, "upgrade", _HEAD)
     with psycopg2.connect(base_db) as conn, conn.cursor() as cur:
         _assert_head(cur, ids)
+        # A kind with no capture-source tag goes back as ``Unknown``.
+        cur.execute("UPDATE sources SET kind = 'article' WHERE event_id = %s", (ids["request"],))
 
     _alembic(base_db, "downgrade", _BASE)
     with psycopg2.connect(base_db) as conn, conn.cursor() as cur:
@@ -175,8 +177,8 @@ def test_the_migration_maps_sources_and_round_trips(base_db):
 def _sources(cur, event: str) -> list:
     return _all(
         cur,
-        "SELECT s.id, s.level, s.sensor, s.is_graphic, s.title, "
-        "ST_Y(s.sensor_position), ST_X(s.sensor_position) FROM sources s "
+        "SELECT s.id, s.level, s.kind, s.is_graphic, s.title, "
+        "ST_Y(s.capture_position), ST_X(s.capture_position) FROM sources s "
         "WHERE s.event_id = %s ORDER BY s.created_at",
         event,
     )
@@ -230,8 +232,8 @@ def _assert_head(cur, ids: dict[str, str]) -> None:
     assert snapshot["tags"] == [{"id": ids["night"], "name": "night"}]
     assert snapshot["proof_media"] == [{"id": "p", "role": "proof", "storage_url": "s3://x/p.jpg"}]
     main_entry, mirror_entry = snapshot["sources"]
-    assert main_entry["sensor"] == "drone" and main_entry["is_graphic"] is True
-    assert main_entry["sensor_position"] == {"lat": 48.4, "lng": 34.4}
+    assert main_entry["kind"] == "drone" and main_entry["is_graphic"] is True
+    assert main_entry["capture_position"] == {"lat": 48.4, "lng": 34.4}
     assert main_entry["media"] == {"id": "m", "role": "source", "storage_url": "s3://x/v1.jpg"}
     assert main_entry["links"] == [
         {
@@ -241,7 +243,7 @@ def _assert_head(cur, ids: dict[str, str]) -> None:
             "archived_at": "2026-05-02T00:00:00+00:00",
         }
     ]
-    assert mirror_entry["sensor"] == "unknown" and mirror_entry["media"] is None
+    assert mirror_entry["kind"] == "unknown" and mirror_entry["media"] is None
     assert [link["url"] for link in mirror_entry["links"]] == ["https://t.me/m/0"]
 
 
@@ -282,6 +284,12 @@ def _assert_base(cur, ids: dict[str, str]) -> None:
     assert _one(cur, "SELECT source_url FROM events WHERE id = %s", ids["request"]) == (
         "https://t.me/c/9",
     )
+    assert _all(
+        cur,
+        "SELECT t.name, t.category FROM event_tags et JOIN tags t ON t.id = et.tag_id "
+        "WHERE et.event_id = %s",
+        ids["request"],
+    ) == [("Unknown", "capture_source")]
     assert _one(cur, "SELECT source_url FROM events WHERE id = %s", ids["file_only"]) == (None,)
     assert _one(
         cur, "SELECT count(*) FROM media WHERE event_id = %s AND role = 'source'", ids["file_only"]

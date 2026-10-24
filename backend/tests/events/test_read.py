@@ -84,16 +84,16 @@ def test_list_conflict_filter_does_not_match_free_tag_of_same_name(db, author):
         db.commit()
 
 
-def test_sensor_filter_matches_any_source_and_ors_within_the_list(db, author):
-    """``?sensor=`` keeps an event when any of its sources has a listed sensor."""
+def test_source_kind_filter_matches_any_source_and_ors_within_the_list(db, author):
+    """``?source_kind=`` keeps an event when any of its sources has a listed kind."""
     mixed = _make_geo(
-        db, author=author, sensor="smartphone", secondary_source_urls=["https://t.me/c/2"]
+        db, author=author, kind="smartphone", secondary_source_urls=["https://t.me/c/2"]
     )
-    drone = _make_geo(db, author=author, sensor="drone")
-    satellite = _make_geo(db, author=author, sensor="satellite")
+    drone = _make_geo(db, author=author, kind="drone")
+    satellite = _make_geo(db, author=author, kind="satellite")
 
     response = client.get(
-        "/api/v1/events", params={"sensor": ["unknown", "drone"], "author": author.username}
+        "/api/v1/events", params={"source_kind": ["unknown", "drone"], "author": author.username}
     )
     assert response.status_code == 200
     ids = {row["id"] for row in response.json()}
@@ -259,7 +259,7 @@ def test_detail_returns_full_shape(db, author, free_tag):
     assert body["coords"]["lat"] == pytest.approx(48.7)
     assert body["coords"]["lng"] == pytest.approx(34.7)
     [source] = body["sources"]
-    assert (source["level"], source["sensor"]) == ("direct", "smartphone")
+    assert (source["level"], source["kind"]) == ("direct", "smartphone")
     assert [link["url"] for link in source["links"]] == ["https://example.com/source"]
     assert body["owner"]["username"] == author.username
     # `AuthorRef` field-set guard: the byline renders these fields off this block.
@@ -366,7 +366,7 @@ def test_points_cache_key_covers_bbox():
         return _build_points_cache_key(
             bbox=bbox,
             conflict=None,
-            sensor=None,
+            source_kind=None,
             level=None,
             tag=None,
             occurred_date_from=None,
@@ -516,7 +516,7 @@ def test_points_cache_key_builder_is_separator_safe():
     colliding_a = _build_points_cache_key(
         bbox=WORLD_BOUNDS,
         conflict=["a:b"],
-        sensor=None,
+        source_kind=None,
         level=None,
         tag=None,
         occurred_date_from=None,
@@ -528,7 +528,7 @@ def test_points_cache_key_builder_is_separator_safe():
     colliding_b = _build_points_cache_key(
         bbox=WORLD_BOUNDS,
         conflict=["a"],
-        sensor=None,
+        source_kind=None,
         level=None,
         tag=["b"],
         occurred_date_from=None,
@@ -543,7 +543,7 @@ def test_points_cache_key_builder_is_separator_safe():
     same_a = _build_points_cache_key(
         bbox=WORLD_BOUNDS,
         conflict=["ukraine"],
-        sensor=None,
+        source_kind=None,
         level=None,
         tag=None,
         occurred_date_from="2024-01-01",
@@ -555,7 +555,7 @@ def test_points_cache_key_builder_is_separator_safe():
     same_b = _build_points_cache_key(
         bbox=WORLD_BOUNDS,
         conflict=["ukraine"],
-        sensor=None,
+        source_kind=None,
         level=None,
         tag=None,
         occurred_date_from="2024-01-01",
@@ -566,11 +566,11 @@ def test_points_cache_key_builder_is_separator_safe():
     )
     assert same_a == same_b, "identical filter tuples must produce the same key"
 
-    # sensor and level participate in the key (guards against a bucket being dropped).
+    # source_kind and level participate in the key (guards against a bucket being dropped).
     cs_a = _build_points_cache_key(
         bbox=WORLD_BOUNDS,
         conflict=None,
-        sensor=["satellite"],
+        source_kind=["satellite"],
         level=None,
         tag=None,
         occurred_date_from=None,
@@ -582,7 +582,7 @@ def test_points_cache_key_builder_is_separator_safe():
     cs_b = _build_points_cache_key(
         bbox=WORLD_BOUNDS,
         conflict=None,
-        sensor=["drone"],
+        source_kind=["drone"],
         level=None,
         tag=None,
         occurred_date_from=None,
@@ -591,11 +591,11 @@ def test_points_cache_key_builder_is_separator_safe():
         submitted_to=None,
         author=None,
     )
-    assert cs_a != cs_b, "sensor must participate in the cache key"
+    assert cs_a != cs_b, "source_kind must participate in the cache key"
     level_key = _build_points_cache_key(
         bbox=WORLD_BOUNDS,
         conflict=None,
-        sensor=["satellite"],
+        source_kind=["satellite"],
         level=["indirect"],
         tag=None,
         occurred_date_from=None,
@@ -609,8 +609,8 @@ def test_points_cache_key_builder_is_separator_safe():
 
 @pytest.mark.parametrize(
     "bucket",
-    ["conflict", "sensor", "level", "tag"],
-    ids=["conflict-list", "sensor-list", "level-list", "tag-list"],
+    ["conflict", "source_kind", "level", "tag"],
+    ids=["conflict-list", "source-kind-list", "level-list", "tag-list"],
 )
 def test_points_cache_key_is_list_order_insensitive(bucket):
     """``?bucket=a&bucket=b`` and ``?bucket=b&bucket=a`` hit the same cache entry.
@@ -619,7 +619,7 @@ def test_points_cache_key_is_list_order_insensitive(bucket):
     """
     from app.routers.events.read import _build_points_cache_key
 
-    buckets = ("conflict", "sensor", "level", "tag")
+    buckets = ("conflict", "source_kind", "level", "tag")
     forward = _build_points_cache_key(
         bbox=WORLD_BOUNDS,
         **{bucket: ["alpha", "beta"]},

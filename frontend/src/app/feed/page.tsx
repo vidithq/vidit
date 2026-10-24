@@ -60,7 +60,7 @@ const DETECTIONS_HIDDEN = "Detections hidden";
 // The predicates `GET /feed` serves besides `kind`.
 const FEED_SECTIONS: ReadonlyArray<EventFilterSectionName> = [
   "conflict",
-  "sensor",
+  "source_kind",
   "level",
   "tags",
   "approval",

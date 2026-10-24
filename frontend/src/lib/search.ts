@@ -31,7 +31,7 @@ export interface ApprovalFilters {
 export interface EventFilterParams extends Partial<ApprovalFilters> {
   statuses?: string[];
   conflicts?: string[];
-  sensors?: string[];
+  sourceKinds?: string[];
   levels?: string[];
   tags?: string[];
   mediaTypes?: string[];
@@ -48,7 +48,7 @@ export interface EventFilterParams extends Partial<ApprovalFilters> {
 export function appendEventFilterParams(params: URLSearchParams, f: EventFilterParams): void {
   f.statuses?.forEach((v) => params.append("status", v));
   f.conflicts?.forEach((v) => params.append("conflict", v));
-  f.sensors?.forEach((v) => params.append("sensor", v));
+  f.sourceKinds?.forEach((v) => params.append("source_kind", v));
   f.levels?.forEach((v) => params.append("level", v));
   f.tags?.forEach((v) => params.append("tag", v));
   f.mediaTypes?.forEach((v) => params.append("media", v));
@@ -80,7 +80,7 @@ export function readEventFilterParams(params: {
   return {
     statuses: params.getAll("status"),
     conflicts: params.getAll("conflict"),
-    sensors: params.getAll("sensor"),
+    sourceKinds: params.getAll("source_kind"),
     levels: params.getAll("level"),
     tags: params.getAll("tag"),
     mediaTypes: params.getAll("media"),

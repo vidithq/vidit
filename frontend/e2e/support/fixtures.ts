@@ -112,9 +112,9 @@ export const EVENT: EventDetail = {
       id: "55555555-5555-4555-8555-555555555561",
       title: "Street footage from a passing car",
       level: "direct",
-      sensor: "dashcam",
+      kind: "dashcam",
       captured_at: "2025-01-03T14:20:00Z",
-      sensor_position: null,
+      capture_position: null,
       is_graphic: false,
       links: [
         {
@@ -444,7 +444,7 @@ export const ANALYST_STATS: UserStats = {
   detected_count: 0,
   media_count: 20,
   top_conflicts: [{ name: "Russia-Ukraine", count: 12 }],
-  sensors: [{ name: "drone", count: 8 }],
+  source_kinds: [{ name: "drone", count: 8 }],
   source_hosts: [{ name: "t.me", count: 12 }],
   other_hosts_count: 0,
   no_source_count: 0,

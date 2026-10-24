@@ -120,12 +120,12 @@ def _row(db, event_id) -> Event:
     return db.query(Event).filter(Event.id == event_id).one()
 
 
-def _sources(row: Event) -> list[tuple[str, str | None, list[tuple[str, datetime | None]], bool]]:
-    """Each source as ``(level, sensor, [(url, posted_at)], has_file)``, in the derived order."""
+def _sources(row: Event) -> list[tuple[str, str, list[tuple[str, datetime | None]], bool]]:
+    """Each source as ``(level, kind, [(url, posted_at)], has_file)``, in the derived order."""
     return [
         (
             source.level,
-            source.sensor,
+            source.kind,
             [(link.url, link.posted_at) for link in source.links],
             source.media is not None,
         )
@@ -201,7 +201,7 @@ def _publish_the_default_pair(db, owner: User) -> None:
             sources=[
                 Source(
                     level="direct",
-                    sensor="smartphone",
+                    kind="smartphone",
                     links=[
                         SourceLink(
                             url="https://example.com/footage",
@@ -272,11 +272,11 @@ async def test_assemble_persists_detected_row(db, owner):
     assert geo.occurred_date == date(2025, 11, 12)
     assert geo.proof.startswith("<p>")
     # One direct source: the declared URL with its post time, and the footage. The review
-    # supplies the sensor.
+    # names the kind.
     assert _sources(geo) == [
         (
             "direct",
-            None,
+            "unknown",
             [("https://x.com/src/status/9", datetime(2025, 11, 11, 9, 0, tzinfo=UTC))],
             True,
         )
@@ -290,7 +290,7 @@ async def test_assemble_persists_detected_row(db, owner):
 
 
 async def test_each_mirror_lands_as_its_own_direct_source_after_the_declared_one(db, owner):
-    """A mirror carries its URL only: no file, no post time, no sensor."""
+    """A mirror carries its URL only: no file, no post time, kind ``unknown``."""
     sourced = _detection(
         source_url="https://x.com/src/status/9",
         secondary_source_urls=["https://t.me/channel/11", "https://www.youtube.com/watch?v=M1"],
@@ -298,9 +298,9 @@ async def test_each_mirror_lands_as_its_own_direct_source_after_the_declared_one
     outcome = await _persist(db, owner=owner, detections=[sourced], fetch_media=_image_fetcher)
     geo = _row(db, outcome.created[0])
     assert _sources(geo) == [
-        ("direct", None, [("https://x.com/src/status/9", None)], False),
-        ("direct", None, [("https://t.me/channel/11", None)], False),
-        ("direct", None, [("https://www.youtube.com/watch?v=M1", None)], False),
+        ("direct", "unknown", [("https://x.com/src/status/9", None)], False),
+        ("direct", "unknown", [("https://t.me/channel/11", None)], False),
+        ("direct", "unknown", [("https://www.youtube.com/watch?v=M1", None)], False),
     ]
 
 
@@ -463,7 +463,7 @@ async def test_a_corrected_source_url_still_matches_its_own_re_import(db, owner)
         sources=[
             Source(
                 level="direct",
-                sensor="smartphone",
+                kind="smartphone",
                 links=[SourceLink(url="https://t.me/chan/corrected")],
             )
         ],
@@ -482,7 +482,7 @@ async def test_a_corrected_source_url_still_matches_its_own_re_import(db, owner)
                 "sources": [
                     {
                         "level": "direct",
-                        "sensor": "smartphone",
+                        "kind": "smartphone",
                         "links": [
                             {
                                 "url": original,
@@ -679,11 +679,11 @@ async def test_detected_detection_is_upserted_in_place(db, owner):
     assert _sources(row) == [
         (
             "direct",
-            None,
+            "unknown",
             [("https://t.me/channel/42", datetime(2025, 11, 11, 9, 0, tzinfo=UTC))],
             True,
         ),
-        ("direct", None, [("https://www.youtube.com/watch?v=M1", None)], False),
+        ("direct", "unknown", [("https://www.youtube.com/watch?v=M1", None)], False),
     ]
     assert html_text(row.proof).split("\n")[0] == "Depot hit, Shebekino"
     assert db.query(Media).filter(Media.event_id == row.id).count() == 0
@@ -856,7 +856,7 @@ async def test_upsert_drops_a_snapshot_of_a_source_url_the_row_no_longer_declare
 
     db.expire_all()
     fresh = db.query(Event).filter(Event.owner_id == owner.id).one()
-    assert _sources(fresh) == [("direct", None, [("https://t.me/chan/2", None)], False)]
+    assert _sources(fresh) == [("direct", "unknown", [("https://t.me/chan/2", None)], False)]
     assert fresh.sources[0].links[0].snapshot_url is None
     assert db.query(SourceLink).filter(SourceLink.url == "https://t.me/chan/1").count() == 0
 
@@ -885,8 +885,8 @@ async def test_upsert_whose_source_links_moved_keeps_the_unchanged_file(db, owne
     db.expire_all()
     row = db.query(Event).filter(Event.owner_id == owner.id).one()
     assert _sources(row) == [
-        ("direct", None, [("https://t.me/chan/2", None)], True),
-        ("direct", None, [("https://www.youtube.com/watch?v=M1", None)], False),
+        ("direct", "unknown", [("https://t.me/chan/2", None)], True),
+        ("direct", "unknown", [("https://www.youtube.com/watch?v=M1", None)], False),
     ]
     assert [(m.storage_url, m.sha256) for m in _source_media(db, row.id)] == [(old_url, old_sha)]
     assert _stored_objects(row.id) == before_objects
@@ -987,7 +987,7 @@ async def test_over_cap_media_is_skipped_and_detection_still_persists(db, owner,
     assert _sources(row) == [
         (
             "direct",
-            None,
+            "unknown",
             [("https://t.me/chan/42", datetime(2025, 11, 11, 8, 0, tzinfo=UTC))],
             False,
         )

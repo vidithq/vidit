@@ -106,7 +106,7 @@ def get_feed(
     cursor: tuple[datetime, uuid.UUID] | None = None,
     kind: list[FeedKind] | None = None,
     conflict: list[str] | None = None,
-    sensor: list[str] | None = None,
+    source_kind: list[str] | None = None,
     level: list[str] | None = None,
     tag: list[str] | None = None,
     approved: bool = False,
@@ -124,8 +124,8 @@ def get_feed(
     ``user_id`` follows (owner or co-geolocator) and the requests and detections such an analyst
     owns; ``"all"`` keeps every row.
 
-    ``kind`` keeps the named kinds (all three when empty). ``conflict``, ``sensor``, ``level`` and ``tag``
-    narrow through :func:`services.event_filters.taxonomy_predicates`, and ``approved``,
+    ``kind`` keeps the named kinds (all three when empty). ``conflict``, ``source_kind``,
+    ``level`` and ``tag`` narrow through :func:`services.event_filters.taxonomy_predicates`, and ``approved``,
     ``approved_by`` and ``approved_by_org`` through
     :func:`services.event_filters.approval_predicates`, as on ``GET /events``.
 
@@ -170,7 +170,7 @@ def get_feed(
         .filter(
             *visible_events(),
             or_(*legs),
-            *taxonomy_predicates(conflict=conflict, sensor=sensor, level=level, tag=tag),
+            *taxonomy_predicates(conflict=conflict, source_kind=source_kind, level=level, tag=tag),
             *approval_predicates(
                 approved=approved, approved_by=approved_by, approved_by_org=approved_by_org
             ),

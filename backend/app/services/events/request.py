@@ -75,10 +75,10 @@ async def create_request(
     keeps edit rights until a fulfiller takes over and stays credited as
     requester.
 
-    Coordinates (a guess) are optional, both-or-neither. Tags, conflicts and sensors are
-    optional (:func:`geolocate` enforces the publication floor), but the footage must be on
-    the row from the start: a ``direct`` or ``indirect`` source with its file. The proof body
-    may carry images (``proof_files`` resolve ``placeholder://`` srcs) but has no image floor.
+    Coordinates (a guess) are optional, both-or-neither. Tags and conflicts are optional
+    (:func:`geolocate` enforces the publication floor), but the footage must be on the row
+    from the start: a ``direct`` or ``indirect`` source with its file. The proof body may
+    carry images (``proof_files`` resolve ``placeholder://`` srcs) but has no image floor.
 
     ``provenance`` is set only by a machine writer (``detection.open_request``)
     and attaches the ``event_detections`` row via :func:`stamp_provenance`, so a re-import
@@ -91,7 +91,7 @@ async def create_request(
     guess_point = _optional_point(lat, lng, field="coords")
     proof_data = _sanitize_proof(proof_data)
     planned = plan_sources(db, geo=None, specs=sources, uploader=current_user)
-    check_publish_floor(planned_floor(planned), require_sensor=False)
+    check_publish_floor(planned_floor(planned))
 
     geo = Event(
         owner_id=current_user.id,
@@ -168,7 +168,7 @@ async def update_request(
     guess_point = _optional_point(lat, lng, field="coords")
     proof_data = _sanitize_proof(proof_data)
     planned = plan_sources(db, geo=geo, specs=sources, uploader=current_user)
-    check_publish_floor(planned_floor(planned), require_sensor=False)
+    check_publish_floor(planned_floor(planned))
 
     # The collection assignments lazy-load, which would flush a half-edited row.
     with db.no_autoflush:

@@ -29,7 +29,7 @@ COUNTED_STATUSES = (STATUS_GEOLOCATED, STATUS_DETECTED)
 # per cell). Older years drop out of the grid but still count elsewhere.
 MAX_ACTIVITY_YEARS = 10
 
-# One ceiling for the conflicts, sensors, and source hosts lists.
+# One ceiling for the conflicts, source kinds, and source hosts lists.
 TOP_N = 5
 
 
@@ -86,13 +86,13 @@ def get_user_stats(db: Session, *, user_id: uuid.UUID) -> UserStatsRead:
         .all()
     )
 
-    # An event counts once per sensor its sources name.
-    sensor_rows = (
-        db.query(Source.sensor, func.count(func.distinct(Event.id)).label("cnt"))
+    # An event counts once per kind its sources name; ``unknown`` tells the reader nothing.
+    kind_rows = (
+        db.query(Source.kind, func.count(func.distinct(Event.id)).label("cnt"))
         .join(Event, Event.id == Source.event_id)
-        .filter(*live, Source.sensor.isnot(None))
-        .group_by(Source.sensor)
-        .order_by(func.count(func.distinct(Event.id)).desc(), Source.sensor)
+        .filter(*live, Source.kind != "unknown")
+        .group_by(Source.kind)
+        .order_by(func.count(func.distinct(Event.id)).desc(), Source.kind)
         .limit(TOP_N)
         .all()
     )
@@ -157,7 +157,7 @@ def get_user_stats(db: Session, *, user_id: uuid.UUID) -> UserStatsRead:
         total_events=geolocated + detected,
         media_count=media_count,
         top_conflicts=[TagCount(name=name, count=count) for name, count in conflict_rows],
-        sensors=[TagCount(name=sensor, count=count) for sensor, count in sensor_rows],
+        source_kinds=[TagCount(name=kind, count=count) for kind, count in kind_rows],
         source_hosts=[TagCount(name=host, count=count) for host, count in source_hosts],
         other_hosts_count=other_hosts_count,
         no_source_count=no_source_count,

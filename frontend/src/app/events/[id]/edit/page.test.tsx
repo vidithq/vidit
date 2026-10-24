@@ -94,9 +94,9 @@ const source = (over: Partial<Source> = {}): Source => ({
   id: "s1",
   title: "",
   level: "direct",
-  sensor: "drone",
+  kind: "drone",
   captured_at: null,
-  sensor_position: null,
+  capture_position: null,
   is_graphic: false,
   links: [{ url: "https://t.me/channel/12345", posted_at: "2026-05-30T14:32:27Z", archived: null }],
   tags: [],
@@ -127,7 +127,7 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     owner: { id: "u1", username: "ana" },
     tags: [],
     conflicts: [],
-    sources: [source({ sensor: null })],
+    sources: [source({ kind: "unknown" })],
     proof: '<img src="https://cdn.test/p.jpg">',
     created_at: "2026-06-02T10:00:00Z",
     geolocated_at: null,
@@ -181,12 +181,12 @@ function resource(path: string) {
   return null;
 }
 
-/** Make the two picks the publish floor asks of a review: the conflict and the sensor. */
+/** Make the two picks a review makes: the conflict, and the kind the import left unknown. */
 function fillTheFloor() {
   fireEvent.click(
     screen.getByRole("button", { name: /Russian invasion of Ukraine/ })
   );
-  fireEvent.change(screen.getByRole("combobox", { name: /Sensor/ }), {
+  fireEvent.change(screen.getByRole("combobox", { name: /Kind/ }), {
     target: { value: "drone" },
   });
 }
@@ -556,7 +556,7 @@ describe("editing a published geolocation", () => {
     expect(input.note).toBe("Coordinates were off by a block.");
     // An untouched source goes back with its id and its file, so it is kept, not re-filed.
     expect(input.sources).toEqual([
-      expect.objectContaining({ id: "s1", media_id: "m1", sensor: "drone" }),
+      expect.objectContaining({ id: "s1", media_id: "m1", kind: "drone" }),
     ]);
   });
 
@@ -672,13 +672,13 @@ describe("editing an open request", () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith("/requests/d1"));
   });
 
-  it("saves a request whose source names no sensor", async () => {
-    // The request floor asks for a file, not a sensor.
+  it("saves a request whose source is of unknown kind", async () => {
+    // Unknown is a kind like any other: the request saves with it.
     render(<EditEventPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Save request" }));
     await waitFor(() => expect(updateRequestMock).toHaveBeenCalledTimes(1));
-    expect(updateRequestMock.mock.calls[0][1].sources[0].sensor).toBeNull();
+    expect(updateRequestMock.mock.calls[0][1].sources[0].kind).toBe("unknown");
   });
 
   it("labels the post the bot opened the request from Requested from", () => {
@@ -691,7 +691,7 @@ describe("editing an open request", () => {
 
   it("covers the footage of a flagged source behind the age gate", () => {
     // The owner can meet footage here they have never seen: a flagged source's file is covered as on other pages.
-    row = requestFixture({ sources: [source({ sensor: null, is_graphic: true })] });
+    row = requestFixture({ sources: [source({ kind: "unknown", is_graphic: true })] });
     render(<EditEventPage />);
 
     expect(

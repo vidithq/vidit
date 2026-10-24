@@ -30,7 +30,7 @@ def get_feed(
     cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
     kind: list[FeedKind] | None = Query(None),
     conflict: list[str] | None = Query(None),
-    sensor: list[str] | None = Query(None),
+    source_kind: list[str] | None = Query(None),
     level: list[str] | None = Query(None),
     tag: list[str] | None = Query(None),
     approved: bool = Query(False),
@@ -45,11 +45,11 @@ def get_feed(
     the current user follows and the requests and detections they own, and is
     empty when they follow nobody; ``scope=all`` keeps every row. ``kind``
     (``geolocation``, ``request``, ``detected``; all three when omitted), ``conflict``,
-    ``sensor``, ``level``, ``tag``, ``approved``, ``approved_by`` and
+    ``source_kind``, ``level``, ``tag``, ``approved``, ``approved_by`` and
     ``approved_by_org`` narrow the rows as on ``GET /events``. Cursor-paged, capped at 100 rows; the
     ``Link: rel="next"`` cursor is present exactly when a next page holds a row.
     """
-    validate_source_filters(sensor, level)
+    validate_source_filters(source_kind, level)
     size = page_size(limit)
     window = social.get_feed(
         db,
@@ -59,7 +59,7 @@ def get_feed(
         cursor=decode_cursor(cursor) if cursor is not None else None,
         kind=kind,
         conflict=conflict,
-        sensor=sensor,
+        source_kind=source_kind,
         level=level,
         tag=tag,
         approved=approved,

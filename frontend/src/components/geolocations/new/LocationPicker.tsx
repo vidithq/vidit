@@ -15,7 +15,7 @@ interface LocationPickerProps {
 }
 
 /** The "Location" section: the subject coordinates, shared by every event form. Each source
- *  carries its own sensor position. */
+ *  carries its own capture position. */
 export function LocationPicker({ lat, setLat, lng, setLng, invalid = false }: LocationPickerProps) {
   return (
     <Card as="section">

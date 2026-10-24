@@ -10,7 +10,7 @@ from app.models.event import (
     DetectedVia,
     EventStatus,
 )
-from app.models.source import Sensor
+from app.models.source import SourceKind
 from app.schemas import UsernameRef
 from app.schemas.conflict import ConflictRead
 from app.schemas.media import MediaRead
@@ -138,16 +138,16 @@ MAX_COMPLETION_CONFLICTS = 10
 
 
 class BatchCompletionRowCreate(BaseModel):
-    """One detection in a batch completion and the sensor of its sources' files."""
+    """One detection in a batch completion and the kind of its sources that carry a file."""
 
     event_id: uuid.UUID
-    sensor: Sensor
+    kind: SourceKind
 
 
 class BatchCompletionCreate(BaseModel):
     """Body of ``POST /events/batch-complete``.
 
-    One conflict set for the whole selection; the sensor varies per row.
+    One conflict set for the whole selection; the source kind varies per row.
     """
 
     conflict_ids: list[uuid.UUID] = Field(min_length=1, max_length=MAX_COMPLETION_CONFLICTS)

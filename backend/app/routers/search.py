@@ -47,7 +47,7 @@ def search(
     # event groups. List params take multiple values (?tag=a&tag=b).
     status: list[str] | None = Query(None),
     conflict: list[str] | None = Query(None),
-    sensor: list[str] | None = Query(None),
+    source_kind: list[str] | None = Query(None),
     level: list[str] | None = Query(None),
     tag: list[str] | None = Query(None),
     occurred_date_from: str | None = None,
@@ -93,13 +93,13 @@ def search(
         )
     validate_media_types(media)
     validate_status_filter(status)
-    validate_source_filters(sensor, level)
+    validate_source_filters(source_kind, level)
 
     types = search_service.types_from_param(type)
     filters = EventFilters(
         status=status,
         conflict=conflict,
-        sensor=sensor,
+        source_kind=source_kind,
         level=level,
         tag=tag,
         occurred_date_from=occurred_date_from,

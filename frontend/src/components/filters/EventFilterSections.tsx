@@ -24,17 +24,17 @@ import { Pill } from "@/components/ui/Pill";
 import type { Concept } from "@/lib/fieldHelp";
 import {
   LEVEL_LABELS,
-  SENSOR_LABELS,
-  SENSORS,
+  SOURCE_KIND_LABELS,
+  SOURCE_KINDS,
   SOURCE_LEVELS,
-  type Sensor,
+  type SourceKind,
   type SourceLevel,
 } from "@/lib/sources";
 
 /**
  * The event filter panel, shared by the map overlay, the search page, the Requests board and the
- * feed: one component owns the section list (the surface's lead sections, Status, Conflict, Sensor,
- * Level, Media, Location guess, the surface's date sections, Tags, Author, Approvals), so a vocabulary
+ * feed: one component owns the section list (the surface's lead sections, Status, Conflict, Source
+ * kind, Level, Media, Location guess, the surface's date sections, Tags, Author, Approvals), so a vocabulary
  * change lands on all four. Surfaces differ in their injected sections (`leadSections`,
  * `dateSections`) and in `sections`, the subset they offer (the search page's Collections group is
  * narrowed by `author` alone, and only the board offers Location guess).
@@ -48,7 +48,7 @@ import {
 export interface EventFilterValues extends ApprovalFilters {
   statuses: string[];
   conflicts: string[];
-  sensors: string[];
+  sourceKinds: string[];
   levels: string[];
   tags: string[];
   mediaTypes: string[];
@@ -60,7 +60,7 @@ export interface EventFilterValues extends ApprovalFilters {
 export const EMPTY_EVENT_FILTERS: EventFilterValues = {
   statuses: [],
   conflicts: [],
-  sensors: [],
+  sourceKinds: [],
   levels: [],
   tags: [],
   mediaTypes: [],
@@ -76,7 +76,7 @@ export type EventFilterPatch = (patch: Partial<EventFilterValues>) => void;
 export type EventFilterSectionName =
   | "status"
   | "conflict"
-  | "sensor"
+  | "source_kind"
   | "level"
   | "media"
   | "location_guess"
@@ -88,7 +88,7 @@ export type EventFilterSectionName =
 export const ALL_FILTER_SECTIONS: ReadonlyArray<EventFilterSectionName> = [
   "status",
   "conflict",
-  "sensor",
+  "source_kind",
   "level",
   "media",
   "tags",
@@ -142,10 +142,14 @@ export function hasCoordsFilter(locationGuess: string[]): boolean | undefined {
   return locationGuess[0] === "guessed";
 }
 
-// The sensor and level chips, in the generated vocabulary's order.
-const SENSOR_OPTIONS = SENSORS.map((value) => ({ id: value, name: value, label: SENSOR_LABELS[value] }));
+// The source kind and level chips, in the generated vocabulary's order.
+const SOURCE_KIND_OPTIONS = SOURCE_KINDS.map((value) => ({
+  id: value,
+  name: value,
+  label: SOURCE_KIND_LABELS[value],
+}));
 const LEVEL_OPTIONS = SOURCE_LEVELS.map((value) => ({ id: value, name: value, label: LEVEL_LABELS[value] }));
-const sensorLabel = (value: string) => SENSOR_LABELS[value as Sensor] ?? value;
+const sourceKindLabel = (value: string) => SOURCE_KIND_LABELS[value as SourceKind] ?? value;
 const levelLabel = (value: string) => LEVEL_LABELS[value as SourceLevel] ?? value;
 
 // Fixed media-presence options (Media.kind values).
@@ -193,10 +197,10 @@ export function buildActiveFilterPills(
       label: n,
       onRemove: () => drop("conflicts", n),
     })),
-    ...values.sensors.map((n) => ({
-      key: `sensor:${n}`,
-      label: sensorLabel(n),
-      onRemove: () => drop("sensors", n),
+    ...values.sourceKinds.map((n) => ({
+      key: `source_kind:${n}`,
+      label: sourceKindLabel(n),
+      onRemove: () => drop("sourceKinds", n),
     })),
     ...values.levels.map((n) => ({
       key: `level:${n}`,
@@ -271,7 +275,7 @@ export function countActiveFilters(
   return (
     values.statuses.length +
     values.conflicts.length +
-    values.sensors.length +
+    values.sourceKinds.length +
     values.levels.length +
     values.tags.length +
     values.mediaTypes.length +
@@ -324,7 +328,7 @@ export function EventFilterSections({
   const isActive: Record<string, boolean> = {
     Status: values.statuses.length > 0,
     Conflict: values.conflicts.length > 0,
-    Sensor: values.sensors.length > 0,
+    "Source kind": values.sourceKinds.length > 0,
     Level: values.levels.length > 0,
     Media: values.mediaTypes.length > 0,
     "Location guess": values.locationGuess.length > 0,
@@ -412,19 +416,19 @@ export function EventFilterSections({
         </FilterSection>
       )}
 
-      {offers("sensor") && (
+      {offers("source_kind") && (
         <FilterSection
-          title="Sensor"
-          concept="sensor"
-          summary={chipSummary(values.sensors.map(sensorLabel))}
-          active={isActive.Sensor}
-          open={!!openSections["Sensor"]}
-          onToggle={() => toggleSection("Sensor")}
+          title="Source kind"
+          concept="source_kind"
+          summary={chipSummary(values.sourceKinds.map(sourceKindLabel))}
+          active={isActive["Source kind"]}
+          open={!!openSections["Source kind"]}
+          onToggle={() => toggleSection("Source kind")}
         >
           <ChipBucket
-            options={SENSOR_OPTIONS}
-            selected={values.sensors}
-            onToggle={(n) => toggleIn("sensors", n)}
+            options={SOURCE_KIND_OPTIONS}
+            selected={values.sourceKinds}
+            onToggle={(n) => toggleIn("sourceKinds", n)}
           />
         </FilterSection>
       )}

@@ -379,7 +379,7 @@ async def _store_media(
 
 
 def _import_sources(detection: Detection, source_media: Media | None) -> list[Source]:
-    """The sources a detection declares, all ``direct`` with no sensor (the review supplies it).
+    """The sources a detection declares, all ``direct`` and ``unknown`` (a review names the kind).
 
     The declared source (its URL and post time, and the footage) when there is one, then one
     source per mirror. Spaced a microsecond apart so the declared one sorts first.
@@ -390,6 +390,7 @@ def _import_sources(detection: Detection, source_media: Media | None) -> list[So
         sources.append(
             Source(
                 level="direct",
+                kind="unknown",
                 created_at=now,
                 links=(
                     [SourceLink(url=detection.source_url, posted_at=detection.source_posted_at)]
@@ -403,6 +404,7 @@ def _import_sources(detection: Detection, source_media: Media | None) -> list[So
         sources.append(
             Source(
                 level="direct",
+                kind="unknown",
                 created_at=now + timedelta(microseconds=offset),
                 links=[SourceLink(url=url)],
             )
@@ -925,13 +927,14 @@ async def open_request(
             sources=[
                 SourceCreate(
                     level="direct",
+                    kind="unknown",
                     links=[
                         SourceLinkCreate(url=draft.source_url, posted_at=draft.source_posted_at)
                     ],
                     upload_id=staged.id,
                 ),
                 *(
-                    SourceCreate(level="direct", links=[SourceLinkCreate(url=url)])
+                    SourceCreate(level="direct", kind="unknown", links=[SourceLinkCreate(url=url)])
                     for url in draft.secondary_source_urls
                 ),
             ],

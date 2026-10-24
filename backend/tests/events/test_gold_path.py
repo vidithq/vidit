@@ -229,7 +229,7 @@ def test_gold_path_register_import_geolocate_publish(db, email_recorder, invite_
         assert body["status"] == STATUS_GEOLOCATED
         assert [g["username"] for g in body["geolocators"]] == [handle]
         [source] = body["sources"]
-        assert source["sensor"] == "smartphone" and source["media"]["kind"] == "image"
+        assert source["kind"] == "smartphone" and source["media"]["kind"] == "image"
 
         # Frozen: a second geolocate 409s.
         frozen = client.post(

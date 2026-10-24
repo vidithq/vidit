@@ -7,7 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 # One catalogue of free tags, shared by events and their sources (``models/source.source_tags``).
-# Conflicts are not tags (``models/conflict.py``); what captured a source is its ``sensor``.
+# Conflicts are not tags (``models/conflict.py``); where a source comes from is its ``kind``.
 event_tags = Table(
     "event_tags",
     Base.metadata,

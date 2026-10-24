@@ -29,13 +29,25 @@ SourceLevel = Literal["direct", "indirect", "context"]
 # The levels that support a publication (``services/events/sources.check_publish_floor``).
 EVIDENCE_LEVELS: tuple[SourceLevel, ...] = ("direct", "indirect")
 
-# What captured a source's media. Closed list; value-domain source of truth for the column,
-# the schemas, the ``sensor`` filter and the generated frontend type. ``unknown`` keeps the
-# choice satisfiable for media of uncertain provenance.
-Sensor = Literal[
-    "smartphone", "satellite", "drone", "static_camera", "dashcam", "body_cam", "unknown"
+# Where a source comes from: what captured it (``camera`` is a handheld or press camera,
+# ``static_camera`` a CCTV or webcam) or the kind of document it is. Whether its file is a photo
+# or a video is the file's own ``media.kind``. Closed list; value-domain source of truth for the
+# column, the schemas, the ``source_kind`` filter and the generated frontend type. ``unknown``
+# keeps the choice satisfiable for a source of uncertain provenance.
+SourceKind = Literal[
+    "smartphone",
+    "camera",
+    "static_camera",
+    "drone",
+    "satellite",
+    "dashcam",
+    "body_cam",
+    "article",
+    "official_statement",
+    "other",
+    "unknown",
 ]
-SENSORS: tuple[Sensor, ...] = get_args(Sensor)
+SOURCE_KINDS: tuple[SourceKind, ...] = get_args(SourceKind)
 
 # Which service holds a link's archived copy, derived from the snapshot URL's host
 # (``services/source_archive.PROVIDER_HOSTS``); never stored.
@@ -78,13 +90,13 @@ class Source(Base):
         String(SOURCE_TITLE_MAX_LENGTH), nullable=False, default="", server_default=text("''")
     )
     level: Mapped[SourceLevel] = mapped_column(String(10), nullable=False)
-    # NULL until known; a machine source carries none until the review supplies it.
-    sensor: Mapped[Sensor | None] = mapped_column(String(20), nullable=True)
+    # A machine source is ``unknown`` until a review names it.
+    kind: Mapped[SourceKind] = mapped_column(String(20), nullable=False)
     # When the media was captured (UTC). Distinct from the event's ``occurred_date`` and a
     # link's ``posted_at``.
     captured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # Where the media was shot from. Unindexed: no spatial read uses it.
-    sensor_position = mapped_column(
+    # Where a capture was shot from. Unindexed: no spatial read uses it.
+    capture_position = mapped_column(
         Geometry("POINT", srid=4326, spatial_index=False), nullable=True
     )
     # TRUE when the media shows death, injury or human remains. Read surfaces cover it until
@@ -121,7 +133,7 @@ class Source(Base):
 
     __table_args__ = (
         literal_check("level", SourceLevel, "ck_sources_level_valid"),
-        literal_check("sensor", Sensor, "ck_sources_sensor_valid", nullable=True),
+        literal_check("kind", SourceKind, "ck_sources_kind_valid"),
     )
 
 

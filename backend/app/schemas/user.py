@@ -212,8 +212,8 @@ class UserStatsRead(BaseModel):
     ``total_events``; every other field describes it. ``requested`` and
     ``closed`` rows take part in no aggregate.
 
-    ``sensors`` counts the events per sensor their sources name (an event with
-    two sensors counts under both).
+    ``source_kinds`` counts the events per kind their sources name, ``unknown`` left out (an
+    event with sources of two kinds counts under both).
 
     ``source_hosts`` breaks the set down by the host of each event's first
     source URL (lowercased, leading ``www.`` removed): top hosts, with
@@ -229,7 +229,7 @@ class UserStatsRead(BaseModel):
     total_events: int
     media_count: int
     top_conflicts: list[TagCount]
-    sensors: list[TagCount]
+    source_kinds: list[TagCount]
     source_hosts: list[TagCount]
     other_hosts_count: int
     no_source_count: int

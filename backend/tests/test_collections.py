@@ -153,6 +153,7 @@ def _make_event(
         sources=[
             Source(
                 level="direct",
+                kind="unknown",
                 is_graphic=is_graphic,
                 links=[SourceLink(url="https://example.com/source")],
             )
@@ -1147,6 +1148,7 @@ def _add_media(
     event.sources.append(
         Source(
             level=level,
+            kind="unknown",
             is_graphic=is_graphic,
             links=[SourceLink(url=f"https://example.com/{name}")],
             media=media,

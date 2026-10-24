@@ -96,6 +96,7 @@ def _make_requested_with_media(db, *, author):
     request.sources = [
         Source(
             level="direct",
+            kind="unknown",
             links=[SourceLink(url=_POST_URL, posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC))],
             media=Media(
                 sha256=fake_sha256(),

@@ -43,9 +43,9 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
         id: "s1",
         title: "",
         level: "direct",
-        sensor: null,
+        kind: "unknown",
         captured_at: null,
-        sensor_position: null,
+        capture_position: null,
         is_graphic: false,
         links: [{ url: "https://t.me/channel/12345", posted_at: null, archived: null }],
         tags: [],
@@ -93,7 +93,7 @@ describe("DetectionsPage queue filter", () => {
     });
     fireEvent.focus(help);
     const tooltip = screen.getByRole("tooltip");
-    expect(tooltip).toHaveTextContent("conflict and the sensor");
+    expect(tooltip).toHaveTextContent("conflict and the source kind");
     expect(tooltip).toHaveTextContent("a manual pass on the form");
     // The options themselves carry no native hover text: Vidit never uses it.
     for (const label of ["All", "Ready", "Incomplete"]) {

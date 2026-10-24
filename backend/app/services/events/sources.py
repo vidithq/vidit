@@ -27,7 +27,6 @@ from app.models.source import (
     EVIDENCE_LEVELS,
     MAX_LINKS_PER_SOURCE,
     MAX_SOURCES_PER_EVENT,
-    Sensor,
     Source,
     SourceLevel,
     SourceLink,
@@ -45,7 +44,6 @@ from app.services.source_archive import _normalised_target, same_snapshot, valid
 from .coordinates import _optional_point
 from .errors import (
     InvalidSourceUrlError,
-    SensorRequiredError,
     SourceFileRequiredError,
     SourceLinkRequiredError,
     SourceMediaNotFoundError,
@@ -64,7 +62,7 @@ class PlannedSource:
     # Blanks and repeats dropped, snapshots checked.
     links: list[SourceLinkCreate]
     tags: list[Tag]
-    sensor_position: WKBElement | None
+    capture_position: WKBElement | None
     # The stored source this one updates, or None to create one.
     stored: Source | None
     # Where the file comes from: kept in place, a staged upload, or a copy of a stored file.
@@ -156,16 +154,16 @@ def plan_sources(
             media = files[spec.media_id]
             keeps_media = stored is not None and media.source_id == stored.id
             copy_of = None if keeps_media else media
-        position = spec.sensor_position
+        position = spec.capture_position
         planned.append(
             PlannedSource(
                 spec=spec,
                 links=_clean_links(spec),
                 tags=[tags_by_id[t] for t in dict.fromkeys(spec.tag_ids) if t in tags_by_id],
-                sensor_position=_optional_point(
+                capture_position=_optional_point(
                     position.lat if position else None,
                     position.lng if position else None,
-                    field="sensor_position",
+                    field="capture_position",
                 ),
                 stored=stored,
                 keeps_media=keeps_media,
@@ -205,31 +203,26 @@ def _readable_files(
     return found
 
 
-def check_publish_floor(
-    sources: Iterable[tuple[SourceLevel, bool, Sensor | None]], *, require_sensor: bool = True
-) -> None:
+def check_publish_floor(sources: Iterable[tuple[SourceLevel, bool]]) -> None:
     """Hold an event to its evidence: a ``direct`` or ``indirect`` source with a file.
 
-    Each item is ``(level, has_file, sensor)``. With ``require_sensor`` (a publication), every
-    source with a file names its sensor too. Raises :class:`SourceRequiredError`,
-    :class:`SourceFileRequiredError` or :class:`SensorRequiredError`.
+    Each item is ``(level, has_file)``. Every source names its kind by construction (the
+    column is required, ``unknown`` included), so the floor has no kind leg. Raises
+    :class:`SourceRequiredError` or :class:`SourceFileRequiredError`.
     """
-    items = list(sources)
-    evidence = [has_file for level, has_file, _ in items if level in EVIDENCE_LEVELS]
+    evidence = [has_file for level, has_file in sources if level in EVIDENCE_LEVELS]
     if not evidence:
         raise SourceRequiredError("A direct or indirect source is required")
     if not any(evidence):
         raise SourceFileRequiredError("A direct or indirect source needs its file")
-    if require_sensor and any(has_file and sensor is None for _, has_file, sensor in items):
-        raise SensorRequiredError("Every source with a file needs its sensor")
 
 
-def planned_floor(planned: list[PlannedSource]) -> list[tuple[SourceLevel, bool, Sensor | None]]:
-    return [(p.spec.level, p.has_file, p.spec.sensor) for p in planned]
+def planned_floor(planned: list[PlannedSource]) -> list[tuple[SourceLevel, bool]]:
+    return [(p.spec.level, p.has_file) for p in planned]
 
 
-def stored_floor(sources: Iterable[Source]) -> list[tuple[SourceLevel, bool, Sensor | None]]:
-    return [(s.level, s.media is not None, s.sensor) for s in sources]
+def stored_floor(sources: Iterable[Source]) -> list[tuple[SourceLevel, bool]]:
+    return [(s.level, s.media is not None) for s in sources]
 
 
 def _link_rows(source: Source, links: list[SourceLinkCreate]) -> list[SourceLink]:
@@ -297,9 +290,9 @@ def apply_sources(db: Session, geo: Event, planned: list[PlannedSource]) -> list
                 links_by_source[index] = _link_rows(source, p.links)
             source.title = p.spec.title
             source.level = p.spec.level
-            source.sensor = p.spec.sensor
+            source.kind = p.spec.kind
             source.captured_at = p.spec.captured_at
-            source.sensor_position = p.sensor_position
+            source.capture_position = p.capture_position
             source.is_graphic = p.is_graphic
             source.links = links_by_source[index]
             source.tags = p.tags
@@ -355,13 +348,13 @@ def comparable(sources: Iterable[Source] | Iterable[PlannedSource], *, archives:
                 file = f"upload:{item.upload.id}"
             else:
                 file = None
-            position = spec.sensor_position
+            position = spec.capture_position
             value = {
                 "title": spec.title,
                 "level": spec.level,
-                "sensor": spec.sensor,
+                "kind": spec.kind,
                 "captured_at": _instant(spec.captured_at),
-                "sensor_position": [position.lat, position.lng] if position else None,
+                "capture_position": [position.lat, position.lng] if position else None,
                 "is_graphic": item.is_graphic,
                 "links": sorted(
                     _comparable_link(link.url, link.posted_at, link.snapshot_url, archives=archives)
@@ -371,13 +364,13 @@ def comparable(sources: Iterable[Source] | Iterable[PlannedSource], *, archives:
                 "file": file,
             }
         else:
-            point = versions.point_shape(item.sensor_position)
+            point = versions.point_shape(item.capture_position)
             value = {
                 "title": item.title,
                 "level": item.level,
-                "sensor": item.sensor,
+                "kind": item.kind,
                 "captured_at": _instant(item.captured_at),
-                "sensor_position": [point["lat"], point["lng"]] if point else None,
+                "capture_position": [point["lat"], point["lng"]] if point else None,
                 "is_graphic": item.is_graphic,
                 "links": sorted(
                     _comparable_link(link.url, link.posted_at, link.snapshot_url, archives=archives)

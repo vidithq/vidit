@@ -20,7 +20,7 @@ const ARCHIVE_TODAY = "https://archive.ph/two";
 
 const FOOTAGE: Source = source({
   id: "s1",
-  sensor: "drone",
+  kind: "drone",
   captured_at: "2026-05-09T15:40:00Z",
   links: [
     {
@@ -208,7 +208,7 @@ describe("snapshotToEventView", () => {
     ]);
     // The preview is the first source file, as the server picks it.
     expect(older.thumbnail?.storage_url).toBe("https://m/old.mp4");
-    expect(older.sources[0].sensor).toBe("drone");
+    expect(older.sources[0].kind).toBe("drone");
   });
 
   it("previews the first proof image when no source has a file", () => {
@@ -272,10 +272,10 @@ describe("changedFields", () => {
 
   it("names a changed source, whatever moved in it", () => {
     for (const patch of [
-      { sensor: "satellite" },
+      { kind: "satellite" },
       { level: "indirect" },
       { title: "Drone footage" },
-      { sensor_position: { lat: 1, lng: 2 } },
+      { capture_position: { lat: 1, lng: 2 } },
       { media: { id: "m0", kind: "image", sha256: "0", storage_url: "https://m/old.jpg" } },
     ]) {
       const before = snapshotToEventView(

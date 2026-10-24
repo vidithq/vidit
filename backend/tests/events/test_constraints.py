@@ -184,13 +184,15 @@ def test_geolocated_stamp_check_rejects_geolocated_without_geolocated_at(db, aut
     ("field", "value", "constraint"),
     [
         ("level", "primary", "ck_sources_level_valid"),
-        ("sensor", "periscope", "ck_sources_sensor_valid"),
+        ("kind", "periscope", "ck_sources_kind_valid"),
     ],
 )
 def test_source_checks_reject_values_outside_the_domain(db, author, field, value, constraint):
-    """``level`` and ``sensor`` are closed lists in Postgres, not only in the Literals."""
+    """``level`` and ``kind`` are closed lists in Postgres, not only in the Literals."""
     geo = _make_geo(db, author=author)
-    source = Source(event_id=geo.id, level="direct", links=[SourceLink(url="https://e.com/x")])
+    source = Source(
+        event_id=geo.id, level="direct", kind="unknown", links=[SourceLink(url="https://e.com/x")]
+    )
     setattr(source, field, value)
     db.add(source)
     with pytest.raises(IntegrityError, match=constraint):

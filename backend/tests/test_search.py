@@ -65,10 +65,13 @@ def caller(db):
     db.commit()
 
 
-def _source(url: str, *, title: str = "", is_graphic: bool = False, **kw) -> Source:
+def _source(
+    url: str, *, title: str = "", is_graphic: bool = False, kind: str = "unknown", **kw
+) -> Source:
     """One direct source with ``url`` as its only link."""
     return Source(
         level="direct",
+        kind=kind,
         title=title,
         is_graphic=is_graphic,
         links=[SourceLink(url=url, posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC))],
@@ -250,6 +253,7 @@ def test_search_matches_a_request_by_source_title_and_url(db, caller):
             _source(f"https://t.me/{token}/1", title=f"Night {token} footage"),
             Source(
                 level="context",
+                kind="unknown",
                 links=[
                     SourceLink(url="https://example.com/context-a"),
                     SourceLink(url="https://example.com/context-b"),
@@ -280,7 +284,7 @@ def test_search_matches_a_request_by_source_title_and_url(db, caller):
 
 def test_a_source_match_still_obeys_the_filters(db, caller, other_author):
     """A hit on a source title or URL is narrowed by the filters like a title hit: the author,
-    the tag on a source, and the sensor."""
+    the tag on a source, and the source kind."""
     token = _unique_token()
     tag = Tag(name=f"tag-{token}")
     db.add(tag)
@@ -289,7 +293,7 @@ def test_a_source_match_still_obeys_the_filters(db, caller, other_author):
         title="Mine",
         coords=from_shape(Point(34.5, 48.5), srid=4326),
         sources=[
-            _source(f"https://t.me/{token}/1", title=f"Thermal {token}", sensor="drone", tags=[tag])
+            _source(f"https://t.me/{token}/1", title=f"Thermal {token}", kind="drone", tags=[tag])
         ],
         occurred_date=date(2026, 5, 1),
         geolocated_at=datetime.now(UTC),
@@ -298,7 +302,7 @@ def test_a_source_match_still_obeys_the_filters(db, caller, other_author):
         owner_id=other_author.id,
         title="Theirs",
         coords=from_shape(Point(34.5, 48.5), srid=4326),
-        sources=[_source(f"https://t.me/{token}/2", title=f"Thermal {token}", sensor="smartphone")],
+        sources=[_source(f"https://t.me/{token}/2", title=f"Thermal {token}", kind="smartphone")],
         occurred_date=date(2026, 5, 1),
         geolocated_at=datetime.now(UTC),
     )
@@ -316,7 +320,7 @@ def test_a_source_match_still_obeys_the_filters(db, caller, other_author):
         for q in (f"thermal {token}", f"t.me/{token}"):
             assert hits(q=q, author=caller.username) == [str(ids[0])], q
             assert hits(q=q, tag=tag.name) == [str(ids[0])], q
-            assert hits(q=q, sensor="smartphone") == [str(ids[1])], q
+            assert hits(q=q, source_kind="smartphone") == [str(ids[1])], q
     finally:
         db.query(Event).filter(Event.id.in_(ids)).delete(synchronize_session=False)
         db.execute(Tag.__table__.delete().where(Tag.id == tag.id))

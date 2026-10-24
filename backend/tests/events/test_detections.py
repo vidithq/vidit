@@ -76,13 +76,13 @@ def test_detections_returns_only_callers_live_detected(db, author, second_user):
 def test_detections_includes_sources_tags_and_conflicts(db, author, conflict, free_tag):
     """The queue needs the sources and their files (to judge), the tags and conflicts
     inline, plus the provenance link the card points back to."""
-    _detected(db, author, tags=[free_tag], conflicts=[conflict], with_media=True, sensor=None)
+    _detected(db, author, tags=[free_tag], conflicts=[conflict], with_media=True, kind="unknown")
 
     response = client.get(_URL, headers=login_as(client, author))
     item = response.json()["items"][0]
     [source] = item["sources"]
     assert source["media"]["kind"] == "image"
-    assert source["sensor"] is None
+    assert source["kind"] == "unknown"
     assert [t["name"] for t in item["tags"]] == [free_tag.name]
     assert [c["name"] for c in item["conflicts"]] == [conflict.name]
     assert item["detected_from_url"] == "https://x.com/a/status/1"

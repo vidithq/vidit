@@ -96,8 +96,14 @@ def event(db, regular_user):
         title=f"Moderated {uuid.uuid4().hex[:8]}",
         coords=from_shape(Point(34.5, 48.5), srid=4326),
         sources=[
-            Source(level="direct", links=[SourceLink(url="https://example.com/source")]),
-            Source(level="context", links=[SourceLink(url="https://example.com/context")]),
+            Source(
+                level="direct", kind="unknown", links=[SourceLink(url="https://example.com/source")]
+            ),
+            Source(
+                level="context",
+                kind="unknown",
+                links=[SourceLink(url="https://example.com/context")],
+            ),
         ],
         geolocated_at=datetime.now(UTC),
     )

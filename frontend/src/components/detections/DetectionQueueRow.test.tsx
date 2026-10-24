@@ -48,7 +48,7 @@ describe("DetectionQueueRow", () => {
   it("badges a detection carrying the whole evidence floor as ready to review", () => {
     render(<DetectionQueueRow detection={detectionFixture()} />);
     // "Ready to review", never a bare "Ready": the detection still needs the conflict and the
-    // sensor. The queue filter's `?` explains the state, so the row has nothing to hover or press.
+    // source kind. The queue filter's `?` explains the state, so the row has nothing to hover or press.
     expect(screen.getByText("Ready to review")).toBeInTheDocument();
     expect(screen.queryByText("Ready")).not.toBeInTheDocument();
     expect(screen.queryByRole("button")).toBeNull();

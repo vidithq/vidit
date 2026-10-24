@@ -89,8 +89,8 @@ INCOMPLETE_CASE_NAMES = frozenset(READINESS_CASES) - READY_CASE_NAMES
 
 
 def make_detection(db, author, overrides: dict[str, Any]) -> Event:
-    """A machine detection as the import leaves it: no sensor, no conflict."""
-    kwargs = {"source_url": DETECTED_FROM_URL, "sensor": None, **overrides}
+    """A machine detection as the import leaves it: kind ``unknown``, no conflict."""
+    kwargs = {"source_url": DETECTED_FROM_URL, "kind": "unknown", **overrides}
     level = kwargs.pop("level", None)
     geo = _make_geo(
         db, author=author, status=STATUS_DETECTED, detected_from_url=DETECTED_FROM_URL, **kwargs

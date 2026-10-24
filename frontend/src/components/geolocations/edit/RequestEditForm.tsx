@@ -115,7 +115,7 @@ export function RequestEditForm({
     >
       {/* `noValidate`: IncompleteFormNotice owns required-field feedback. */}
       <form id={REQUEST_FORM_ID} onSubmit={attemptSave} className="space-y-6" noValidate>
-        <EventFormFields form={form} row={geo} showProvenance publishes={false} />
+        <EventFormFields form={form} row={geo} showProvenance />
       </form>
     </PageShell>
   );

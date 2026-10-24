@@ -34,7 +34,7 @@ import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
 // "done" on a work queue. `GET /events` takes no `media` filter, so Media stays off too.
 const BOARD_SECTIONS: ReadonlyArray<EventFilterSectionName> = [
   "conflict",
-  "sensor",
+  "source_kind",
   "level",
   "location_guess",
   "tags",

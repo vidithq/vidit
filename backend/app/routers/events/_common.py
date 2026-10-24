@@ -67,7 +67,6 @@ _EVENT_ERROR_STATUS: dict[str, int] = {
     "source_file_required": 400,
     "source_link_required": 400,
     "invalid_source_url": 400,
-    "sensor_required": 400,
     "too_many_sources": 400,
     "too_many_source_links": 400,
     "source_not_found": 400,
@@ -219,7 +218,7 @@ def build_version_read(row: EventVersion) -> EventVersionRead:
 
 def build_source_read(source: Source) -> SourceRead:
     """One source's wire shape; the caller loads its links, tags and media (``SOURCE_LOAD``)."""
-    point = point_shape(source.sensor_position)
+    point = point_shape(source.capture_position)
     links: list[SourceLinkRead] = []
     for link in source.links:
         provider = provider_of(link.snapshot_url) if link.snapshot_url else None
@@ -233,9 +232,9 @@ def build_source_read(source: Source) -> SourceRead:
         id=source.id,
         title=source.title,
         level=source.level,
-        sensor=source.sensor,
+        kind=source.kind,
         captured_at=source.captured_at,
-        sensor_position=CoordsRead(**point) if point is not None else None,
+        capture_position=CoordsRead(**point) if point is not None else None,
         is_graphic=source.is_graphic,
         links=links,
         tags=source.tags,

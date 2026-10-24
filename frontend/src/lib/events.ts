@@ -23,7 +23,7 @@ export type MissingFieldKey =
   | "coordinates"
   | "source_file"
   | "source_link"
-  | "sensor"
+  | "source_kind"
   | "proof"
   | "proof_image"
   | "conflict_tag";
@@ -39,7 +39,7 @@ export const FIELD_LABELS: Record<MissingFieldKey, string> = {
   coordinates: "Coordinates",
   source_file: "Source file",
   source_link: "Source URL",
-  sensor: "Sensor",
+  source_kind: "Source kind",
   proof: "Proof",
   proof_image: "Proof image",
   conflict_tag: "Conflict",
@@ -290,9 +290,9 @@ function snapshotSource(
     id: `v${versionNo}-${index}`,
     title: asString(entry.title, ""),
     level: level === "indirect" || level === "context" ? level : "direct",
-    sensor: (asNullableString(entry.sensor) as Source["sensor"]) ?? null,
+    kind: (asNullableString(entry.kind) as Source["kind"] | null) ?? "unknown",
     captured_at: asNullableString(entry.captured_at),
-    sensor_position: asCoords(entry.sensor_position),
+    capture_position: asCoords(entry.capture_position),
     is_graphic:
       entry.is_graphic === true || (media !== null && liveGraphicFiles.has(media.storage_url)),
     links: asList<Record<string, unknown>>(entry.links).map((link) => {
@@ -396,9 +396,9 @@ const sourceKeys = (view: EventDetail): string[] =>
     JSON.stringify([
       s.title,
       s.level,
-      s.sensor,
+      s.kind,
       instantKey(s.captured_at),
-      s.sensor_position ? [s.sensor_position.lat, s.sensor_position.lng] : null,
+      s.capture_position ? [s.capture_position.lat, s.capture_position.lng] : null,
       s.is_graphic,
       s.links.map((l) => `${l.url} ${instantKey(l.posted_at)}`).sort(),
       s.tags.map((t) => t.id).sort(),
@@ -745,7 +745,7 @@ export async function awaitImportJob(
 }
 
 /** Human labels of what stops a detection from publishing; empty means "ready" (only the
- *  conflict and sensor choices remain).
+ *  conflict and source kind choices remain).
  *  Mirrors the server floor in `services/events/batch._publish_detection`, and only that:
  *  form-level requirements (title) are excluded. The server stays the authority.
  *  `services/events.detection_ready_predicate` is the SQL behind the queue's `readiness`
@@ -822,8 +822,8 @@ export interface SourceFloorState {
   hasEvidenceFile: boolean;
   /** Some source has no URL. */
   missingLink: boolean;
-  /** Some source with a file names no sensor. */
-  missingSensor: boolean;
+  /** Some source names no kind. */
+  missingKind: boolean;
 }
 
 /** Raw input values a geolocation form validates before submit. */
@@ -852,7 +852,7 @@ export function missingEventFields(s: EventFieldsState): MissingField[] {
   if (!coordsValid) add("coordinates");
   if (!s.sources.hasEvidenceFile) add("source_file");
   if (s.sources.missingLink) add("source_link");
-  if (s.sources.missingSensor) add("sensor");
+  if (s.sources.missingKind) add("source_kind");
   // "Proof" (none) and "Proof image" (text-only) are distinct misses.
   if (!s.proof) add("proof");
   else if (!proofHasImage(s.proof)) add("proof_image");
@@ -861,7 +861,7 @@ export function missingEventFields(s: EventFieldsState): MissingField[] {
 }
 
 /** Every unmet required field for a request: a title, and a direct or indirect source with a
- *  file, every source with a URL. Mirrors `POST /events/requests`. */
+ *  file, every source with a URL and a kind. Mirrors `POST /events/requests`. */
 export function missingEventRequestFields(s: {
   title: string;
   sources: SourceFloorState;
@@ -871,5 +871,6 @@ export function missingEventRequestFields(s: {
   if (!s.title.trim()) add("title");
   if (!s.sources.hasEvidenceFile) add("source_file");
   if (s.sources.missingLink) add("source_link");
+  if (s.sources.missingKind) add("source_kind");
   return missing;
 }

@@ -56,16 +56,26 @@ describe("SourceEditor", () => {
     expect(screen.getByRole("region", { name: "Source 1" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Direct" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByLabelText("Source 1 link 1")).toHaveValue("");
-    // A sensor describes a file: none to describe yet.
-    expect(screen.getByRole("combobox")).toBeDisabled();
+    // Every source names its kind, with or without a file: none is picked yet.
+    expect(screen.getByRole("combobox")).toHaveValue("");
+    expect(screen.getByRole("combobox")).toBeEnabled();
   });
 
-  it("names a sensor once the source holds a file", () => {
-    render(<Host initial={{ ...newSourceDraft(), file: { state: "stored", media: FILE } }} />);
-    const sensor = screen.getByRole("combobox");
-    expect(sensor).toBeEnabled();
-    fireEvent.change(sensor, { target: { value: "drone" } });
-    expect(draftNow().sensor).toBe("drone");
+  it("names the kind of a source without a file", () => {
+    render(<Host initial={newSourceDraft()} />);
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "article" } });
+    expect(draftNow().kind).toBe("article");
+  });
+
+  it("hides the capture position of a document kind", () => {
+    render(<Host initial={newSourceDraft()} />);
+    expect(screen.getByText("Capture position")).toBeInTheDocument();
+    for (const kind of ["article", "official_statement", "other"]) {
+      fireEvent.change(screen.getByRole("combobox"), { target: { value: kind } });
+      expect(screen.queryByText("Capture position")).toBeNull();
+    }
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "drone" } });
+    expect(screen.getByText("Capture position")).toBeInTheDocument();
   });
 
   it("hands a picked file to the list, which uploads it", () => {
@@ -93,15 +103,15 @@ describe("SourceEditor", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("clip.mp4: Too large.");
   });
 
-  it("removes the file and the sensor that described it together", () => {
+  it("keeps the kind when the file is removed", () => {
     render(
       <Host
-        initial={{ ...newSourceDraft(), sensor: "drone", file: { state: "stored", media: FILE } }}
+        initial={{ ...newSourceDraft(), kind: "drone", file: { state: "stored", media: FILE } }}
       />
     );
     fireEvent.click(screen.getByRole("button", { name: "Remove media" }));
     expect(draftNow().file).toBeNull();
-    expect(draftNow().sensor).toBe("");
+    expect(draftNow().kind).toBe("drone");
   });
 
   it("archives a link from a mark in its field, with the post time under it", () => {
@@ -156,11 +166,11 @@ describe("SourceEditor", () => {
     expect(screen.getByRole("button", { name: "Archive source 1, link 2, this link" })).toBeInTheDocument();
   });
 
-  it("flags a source with no URL and a file with no sensor", () => {
+  it("flags a source with no URL and no kind", () => {
     render(
       <Host
         initial={{ ...newSourceDraft(), file: { state: "stored", media: FILE } }}
-        invalid={{ link: true, sensor: true }}
+        invalid={{ link: true, kind: true }}
       />
     );
     expect(screen.getByText("Links").className).toContain("text-red-400");

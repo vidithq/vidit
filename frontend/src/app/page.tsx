@@ -60,12 +60,12 @@ const FEATURE_GROUPS: {
       {
         icon: Globe,
         title: "One interactive map",
-        body: "Every geolocation the community submits, on one map you can filter by conflict, sensor, date, or analyst.",
+        body: "Every geolocation the community submits, on one map you can filter by conflict, source kind, date, or analyst.",
       },
       {
         icon: Crosshair,
         title: "Proof, not just a pin",
-        body: "Each geolocation carries its argument: the footage of each source next to the satellite view, annotated anchors, coordinates, event date, and sensor.",
+        body: "Each geolocation carries its argument: the footage of each source next to the satellite view, annotated anchors, coordinates, event date, and source kind.",
       },
       {
         icon: Code,

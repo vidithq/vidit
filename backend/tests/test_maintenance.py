@@ -188,7 +188,11 @@ def _detection(db, owner, **kwargs) -> Event:
         owner_id=owner.id,
         title=f"Detection {uuid.uuid4().hex[:8]}",
         coords=from_shape(Point(34.5, 48.5), srid=4326),
-        sources=[Source(level="direct", links=[SourceLink(url="https://x.com/a/status/1")])],
+        sources=[
+            Source(
+                level="direct", kind="unknown", links=[SourceLink(url="https://x.com/a/status/1")]
+            )
+        ],
         detection=EventDetection(from_url="https://x.com/a/status/1"),
         status=STATUS_DETECTED,
         detected_at=datetime.now(UTC),

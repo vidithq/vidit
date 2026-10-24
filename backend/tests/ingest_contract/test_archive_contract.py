@@ -153,7 +153,7 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
     for typology, url in link_expected.items():
         [row] = _rows_for(db, owner, typology)
         assert _source_links(row) == [[(url, None)]], typology
-        assert [(s.level, s.sensor) for s in row.sources] == [("direct", None)], typology
+        assert [(s.level, s.kind) for s in row.sources] == [("direct", "unknown")], typology
         assert _source_files(db, row) == [], typology
 
     # Media roles + proof-image injection, per typology.
@@ -391,7 +391,7 @@ async def test_reimport_fills_a_detection_an_earlier_run_left_bare(
     assert row.status == STATUS_DETECTED
     assert row.detection.from_url == permalink
     assert _source_links(row) == [[(_TG_URL, _TG_POSTED_AT)]]
-    assert [(s.level, s.sensor) for s in row.sources] == [("direct", None)]
+    assert [(s.level, s.kind) for s in row.sources] == [("direct", "unknown")]
     source = _source_files(db, row)
     assert len(source) == 1 and source[0].kind == "video"
 

@@ -218,7 +218,7 @@ def geolocate_event(
     owner-only (403 otherwise); a ``requested`` event is answerable by anyone and the
     fulfiller becomes its owner (``requested_by`` keeps the poster) and may correct its
     sources. Blocked (400) until the floor is met (a direct or indirect source with its file,
-    a sensor on every file, a proof image, a conflict). Other statuses 409; soft-deleted 404.
+    a proof image, a conflict). Other statuses 409; soft-deleted 404.
     """
     parsed_sources = parse_sources(sources)
     proof_files = proof_files or []

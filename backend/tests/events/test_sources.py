@@ -1,4 +1,4 @@
-"""Event sources: several per event with levels and sensors, the publish floor, the caps,
+"""Event sources: several per event with levels and kinds, the publish floor, the caps,
 the two-layer upload, reuse by copy with its reference-counted storage, archived links, the
 derived graphic flag, the source filters, search and the picker."""
 
@@ -64,7 +64,7 @@ def test_an_event_holds_several_sources_in_level_then_capture_order(author, conf
     earlier = stage_file(author)
     indirect = stage_file(author)
     sources = sources_field(
-        source_spec("https://ctx.example/article", level="context", sensor=None),
+        source_spec("https://ctx.example/article", level="context", kind="article"),
         source_spec(
             "https://x.com/a/status/2",
             upload_id=later,
@@ -72,14 +72,14 @@ def test_an_event_holds_several_sources_in_level_then_capture_order(author, conf
             title="Second angle",
         ),
         source_spec(
-            "https://sat.example/after", level="indirect", sensor="satellite", upload_id=indirect
+            "https://sat.example/after", level="indirect", kind="satellite", upload_id=indirect
         ),
         source_spec(
             "https://t.me/c/1",
             upload_id=earlier,
-            sensor="drone",
+            kind="drone",
             captured_at="2026-05-01T09:00",
-            sensor_position={"lat": 48.4, "lng": 34.4},
+            capture_position={"lat": 48.4, "lng": 34.4},
         ),
     )
     response = _create(author, conflict, sources)
@@ -91,10 +91,10 @@ def test_an_event_holds_several_sources_in_level_then_capture_order(author, conf
         ("indirect", "https://sat.example/after"),
         ("context", "https://ctx.example/article"),
     ]
-    assert read[0]["sensor"] == "drone"
-    assert read[0]["sensor_position"] == {"lat": 48.4, "lng": 34.4}
+    assert read[0]["kind"] == "drone"
+    assert read[0]["capture_position"] == {"lat": 48.4, "lng": 34.4}
     assert read[1]["title"] == "Second angle"
-    assert read[3]["media"] is None and read[3]["sensor"] is None
+    assert read[3]["media"] is None and read[3]["kind"] == "article"
     assert all(s["media"] is not None for s in read[:3])
     # The first source's file is the card thumbnail.
     assert response.json()["thumbnail"]["id"] == read[0]["media"]["id"]
@@ -124,7 +124,7 @@ def test_one_url_list_holds_the_same_media_posted_in_several_places(author, conf
 
 
 def test_context_sources_alone_do_not_publish(author, conflict):
-    sources = sources_field(source_spec("https://ctx.example", level="context", sensor=None))
+    sources = sources_field(source_spec("https://ctx.example", level="context", kind="article"))
     response = _create(author, conflict, sources)
     assert response.status_code == 400
     assert response.json()["detail"]["code"] == "source_required"
@@ -139,33 +139,40 @@ def test_a_direct_source_without_its_file_does_not_publish(author, conflict):
 def test_a_context_source_may_be_a_url_only(author, conflict):
     sources = sources_field(
         source_spec(upload_id=stage_file(author)),
-        source_spec("https://news.example/report", level="context", sensor=None),
+        source_spec("https://news.example/report", level="context", kind="article"),
     )
     assert _create(author, conflict, sources).status_code == 201
 
 
-def test_a_file_needs_its_sensor_to_publish(author, conflict):
-    response = _create(author, conflict, filed_source(author, sensor=None))
-    assert response.status_code == 400
-    assert response.json()["detail"]["code"] == "sensor_required"
+def test_every_source_names_its_kind(author, conflict):
+    """The kind is required on every source, with or without a file; ``unknown`` counts."""
+    for spec in (
+        source_spec(upload_id=stage_file(author), kind=None),
+        source_spec("https://news.example/report", level="context", kind=None),
+    ):
+        sources = sources_field(source_spec(upload_id=stage_file(author)), spec)
+        assert _create(author, conflict, sources).status_code == 422
+    response = _create(author, conflict, filed_source(author, kind="unknown"))
+    assert response.status_code == 201, response.text
+    assert response.json()["sources"][0]["kind"] == "unknown"
 
 
-def test_a_request_needs_its_footage_but_not_a_sensor(author):
+def test_a_request_needs_its_footage(author):
     headers = login_as(client, author)
     without_file = client.post(
         "/api/v1/events/requests",
         headers=headers,
-        data={"title": "Where?", "sources": sources_field(source_spec(sensor=None))},
+        data={"title": "Where?", "sources": sources_field(source_spec(kind="unknown"))},
     )
     assert without_file.status_code == 400
     assert without_file.json()["detail"]["code"] == "source_file_required"
     with_file = client.post(
         "/api/v1/events/requests",
         headers=login_as(client, author),
-        data={"title": "Where?", "sources": filed_source(author, sensor=None)},
+        data={"title": "Where?", "sources": filed_source(author, kind="unknown")},
     )
     assert with_file.status_code == 201, with_file.text
-    assert with_file.json()["sources"][0]["sensor"] is None
+    assert with_file.json()["sources"][0]["kind"] == "unknown"
 
 
 def test_a_source_needs_a_url(author, conflict):
@@ -178,8 +185,8 @@ def test_a_source_needs_a_url(author, conflict):
 
 def test_a_machine_detection_is_exempt_until_published(db, author):
     """A detection may hold a file-less source (or none); its sources are ``direct``."""
-    row = _make_geo(db, author=author, status="detected", sensor=None)
-    assert [(s.level, s.sensor, s.media) for s in row.sources] == [("direct", None, None)]
+    row = _make_geo(db, author=author, status="detected", kind="unknown")
+    assert [(s.level, s.kind, s.media) for s in row.sources] == [("direct", "unknown", None)]
     bare = _make_geo(db, author=author, status="detected", source_url=None)
     assert bare.sources == []
 
@@ -475,17 +482,19 @@ def test_an_event_is_graphic_when_one_source_is(db, author, conflict):
 # ── Filters, search, picker ──────────────────────────────────────────────────
 
 
-def test_the_sensor_and_level_filters_narrow_the_lists_and_the_map(db, author):
-    drone = _make_geo(db, author=author, sensor="drone")
-    phone = _make_geo(db, author=author, sensor="smartphone")
+def test_the_source_kind_and_level_filters_narrow_the_lists_and_the_map(db, author):
+    drone = _make_geo(db, author=author, kind="drone")
+    phone = _make_geo(db, author=author, kind="smartphone")
     for path, extra in (("/api/v1/events", {}), ("/api/v1/events/points", {"bbox": WORLD_BBOX})):
-        by_sensor = client.get(path, params={"sensor": "drone", "author": author.username, **extra})
-        assert by_sensor.status_code == 200, by_sensor.text
-        ids = {row["id"] if isinstance(row, dict) else row[0] for row in by_sensor.json()}
+        by_kind = client.get(
+            path, params={"source_kind": "drone", "author": author.username, **extra}
+        )
+        assert by_kind.status_code == 200, by_kind.text
+        ids = {row["id"] if isinstance(row, dict) else row[0] for row in by_kind.json()}
         assert str(drone.id) in ids and str(phone.id) not in ids
     by_level = client.get("/api/v1/events", params={"level": "indirect", "author": author.username})
     assert by_level.json() == []
-    assert client.get("/api/v1/events", params={"sensor": "periscope"}).status_code == 422
+    assert client.get("/api/v1/events", params={"source_kind": "periscope"}).status_code == 422
     assert client.get("/api/v1/events", params={"level": "primary"}).status_code == 422
 
 

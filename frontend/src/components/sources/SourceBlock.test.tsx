@@ -34,19 +34,27 @@ const rowLabels = (block: HTMLElement) =>
 
 describe("SourceBlock", () => {
   it("shows the file above the rows", () => {
-    const block = renderBlock({ media: IMAGE, sensor: "drone" });
+    const block = renderBlock({ media: IMAGE, kind: "drone" });
     const img = within(block).getByRole("img", { name: ALT });
     const title = within(block).getByText("Title");
     expect(img.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(block).queryByText("No file")).toBeNull();
-    expect(within(block).getByText("Drone")).toBeInTheDocument();
+    expect(within(block).getByText("Drone · photo")).toBeInTheDocument();
   });
 
-  it("shows a No file box and names no sensor without a file", () => {
-    const block = renderBlock({ sensor: "drone" });
+  it("shows a No file box and the kind alone without a file", () => {
+    const block = renderBlock({ kind: "article" });
     expect(within(block).getByText("No file")).toBeInTheDocument();
     expect(within(block).queryByRole("img")).toBeNull();
-    expect(within(block).queryByText("Sensor")).toBeNull();
+    expect(within(block).getByText("Article")).toBeInTheDocument();
+  });
+
+  it("drops an unknown kind, leaving the file's kind alone", () => {
+    expect(within(renderBlock({ media: IMAGE })).getByText("Photo")).toBeInTheDocument();
+  });
+
+  it("shows no Kind row for an unknown source without a file", () => {
+    expect(within(renderBlock()).queryByText("Kind")).toBeNull();
   });
 
   it("reads Untitled for an empty title", () => {
@@ -70,16 +78,16 @@ describe("SourceBlock", () => {
     const block = renderBlock({
       title: "Footage",
       media: IMAGE,
-      sensor: "drone",
+      kind: "drone",
       captured_at: "2026-06-01T09:30:00Z",
-      sensor_position: { lat: 48.02, lng: 37.79 },
+      capture_position: { lat: 48.02, lng: 37.79 },
       tags: [{ id: "t1", name: "armor" }],
     });
     expect(rowLabels(block)).toEqual([
       "Title",
       "Level",
-      "Sensor",
-      "Sensor position",
+      "Kind",
+      "Capture position",
       "Captured",
       "Links (1)",
       "Tags",

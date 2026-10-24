@@ -4,7 +4,7 @@ The profile insights aggregation:
 
 * An empty profile returns zeros and an empty activity row.
 * A mixed profile splits by status, counts media (sources' files and proof
-  images), and tallies conflicts and sensors (once per event and sensor).
+  images), and tallies conflicts and source kinds (once per event and kind).
 * The source-host breakdown reads each event's first source's first link, folds
   ``www.``, keeps the top ``TOP_N`` hosts, tips the rest into
   ``other_hosts_count``, counts source-less events in ``no_source_count``, and
@@ -140,7 +140,7 @@ def _make_geo(
     before_closed_status: str = STATUS_DETECTED,
     occurred_date: date | None = None,
     source_url: str | None = "https://example.com/source",
-    sensor: str | None = None,
+    kind: str = "unknown",
     deleted: bool = False,
     tags: list[Tag] | None = None,
     conflicts: list[Conflict] | None = None,
@@ -168,7 +168,7 @@ def _make_geo(
         geo.sources = [
             Source(
                 level="direct",
-                sensor=sensor,
+                kind=kind,
                 links=[SourceLink(url=source_url)] if source_url is not None else [],
                 media=_media() if with_media else None,
             )
@@ -205,7 +205,7 @@ def test_stats_empty_profile_all_zeros(live_user):
     assert body["total_events"] == 0
     assert body["media_count"] == 0
     assert body["top_conflicts"] == []
-    assert body["sensors"] == []
+    assert body["source_kinds"] == []
     assert body["source_hosts"] == []
     assert body["other_hosts_count"] == 0
     assert body["no_source_count"] == 0
@@ -221,7 +221,7 @@ def test_stats_mixed_profile(db, live_user, conflict, free_tag):
         conflicts=[conflict],
         tags=[free_tag],
         with_media=True,
-        sensor="drone",
+        kind="drone",
         occurred_date=today,
     )
     _make_geo(db, author=live_user, conflicts=[conflict], with_media=True, occurred_date=today)
@@ -235,7 +235,7 @@ def test_stats_mixed_profile(db, live_user, conflict, free_tag):
     assert body["total_events"] == 3
     assert body["media_count"] == 2
     assert body["top_conflicts"] == [{"name": conflict.name, "count": 2}]
-    assert body["sensors"] == [{"name": "drone", "count": 1}]
+    assert body["source_kinds"] == [{"name": "drone", "count": 1}]
     assert body["source_hosts"] == [{"name": "example.com", "count": 3}]
     assert body["activity"] == [{"period": _month_str(today), "count": 3}]
 
@@ -336,7 +336,7 @@ def test_stats_excludes_soft_deleted_events(db, live_user, conflict):
         db,
         author=live_user,
         conflicts=[conflict],
-        sensor="drone",
+        kind="drone",
         with_media=True,
         deleted=True,
         occurred_date=date.today(),
@@ -347,7 +347,7 @@ def test_stats_excludes_soft_deleted_events(db, live_user, conflict):
     assert body["total_events"] == 1
     assert body["media_count"] == 0
     assert body["top_conflicts"] == []
-    assert body["sensors"] == []
+    assert body["source_kinds"] == []
     assert body["source_hosts"] == [{"name": "example.com", "count": 1}]
     assert body["activity"] == [{"period": _month_str(date.today()), "count": 1}]
 
@@ -360,7 +360,7 @@ def test_stats_excludes_requested_calls_for_help(db, live_user, conflict):
         author=live_user,
         status=STATUS_REQUESTED,
         conflicts=[conflict],
-        sensor="drone",
+        kind="drone",
         with_media=True,
         occurred_date=date(2025, 9, 9),
         source_url="https://requested.example/post",
@@ -370,7 +370,7 @@ def test_stats_excludes_requested_calls_for_help(db, live_user, conflict):
     assert body["total_events"] == 1
     assert body["media_count"] == 0
     assert body["top_conflicts"] == []
-    assert body["sensors"] == []
+    assert body["source_kinds"] == []
     assert body["source_hosts"] == [{"name": "example.com", "count": 1}]
     assert body["activity"] == [{"period": "2025-04", "count": 1}]
 
@@ -393,7 +393,7 @@ def test_stats_excludes_closed_rows(db, live_user, conflict, before_closed_statu
         status=STATUS_CLOSED,
         before_closed_status=before_closed_status,
         conflicts=[conflict],
-        sensor="drone",
+        kind="drone",
         with_media=True,
         occurred_date=date(2025, 9, 9),
         source_url=source_url,
@@ -405,7 +405,7 @@ def test_stats_excludes_closed_rows(db, live_user, conflict, before_closed_statu
     assert body["total_events"] == 1
     assert body["media_count"] == 0
     assert body["top_conflicts"] == []
-    assert body["sensors"] == []
+    assert body["source_kinds"] == []
     assert body["source_hosts"] == [{"name": "example.com", "count": 1}]
     assert body["other_hosts_count"] == 0
     assert body["no_source_count"] == 0
@@ -419,7 +419,7 @@ def test_stats_counts_an_open_detection(db, live_user, conflict):
         author=live_user,
         status=STATUS_DETECTED,
         conflicts=[conflict],
-        sensor="drone",
+        kind="drone",
         with_media=True,
         occurred_date=date(2025, 4, 2),
         source_url=None,
@@ -430,7 +430,7 @@ def test_stats_counts_an_open_detection(db, live_user, conflict):
     assert body["total_events"] == 1
     assert body["media_count"] == 1
     assert body["top_conflicts"] == [{"name": conflict.name, "count": 1}]
-    assert body["sensors"] == [{"name": "drone", "count": 1}]
+    assert body["source_kinds"] == [{"name": "drone", "count": 1}]
     assert body["no_source_count"] == 1
     assert body["activity"] == [{"period": "2025-04", "count": 1}]
 
@@ -506,14 +506,18 @@ def test_stats_source_hosts_read_the_first_sources_first_link(db, live_user):
         db,
         author=live_user,
         sources=[
-            Source(level="context", links=[SourceLink(url="https://context.example/1")]),
+            Source(
+                level="context", kind="unknown", links=[SourceLink(url="https://context.example/1")]
+            ),
             Source(
                 level="direct",
+                kind="unknown",
                 captured_at=early + timedelta(hours=1),
                 links=[SourceLink(url="https://later-capture.example/1")],
             ),
             Source(
                 level="direct",
+                kind="unknown",
                 captured_at=early,
                 links=[
                     SourceLink(url="https://repost.example/1", posted_at=early + timedelta(days=1)),
@@ -537,31 +541,31 @@ def test_stats_media_count_adds_source_files_and_proof_images(db, live_user):
     assert body["media_count"] == 3
 
 
-def test_stats_sensors_count_each_event_once_per_sensor(db, live_user):
-    """Two sources of one event with the same sensor count once; a source without a sensor
-    counts nowhere."""
+def test_stats_source_kinds_count_each_event_once_per_kind(db, live_user):
+    """Two sources of one event with the same kind count once; an ``unknown`` source counts
+    nowhere."""
     _make_geo(
         db,
         author=live_user,
         sources=[
-            Source(level="direct", sensor="drone", links=[SourceLink(url="https://a.example/1")]),
-            Source(level="direct", sensor="drone", links=[SourceLink(url="https://a.example/2")]),
-            Source(level="context", links=[SourceLink(url="https://a.example/3")]),
+            Source(level="direct", kind="drone", links=[SourceLink(url="https://a.example/1")]),
+            Source(level="direct", kind="drone", links=[SourceLink(url="https://a.example/2")]),
+            Source(level="context", kind="unknown", links=[SourceLink(url="https://a.example/3")]),
         ],
     )
     _make_geo(
         db,
         author=live_user,
         sources=[
-            Source(level="direct", sensor="drone", links=[SourceLink(url="https://b.example/1")]),
+            Source(level="direct", kind="drone", links=[SourceLink(url="https://b.example/1")]),
             Source(
-                level="indirect", sensor="satellite", links=[SourceLink(url="https://b.example/2")]
+                level="indirect", kind="satellite", links=[SourceLink(url="https://b.example/2")]
             ),
         ],
     )
 
     body = client.get(f"/api/v1/users/{live_user.username}/stats").json()
-    assert body["sensors"] == [
+    assert body["source_kinds"] == [
         {"name": "drone", "count": 2},
         {"name": "satellite", "count": 1},
     ]

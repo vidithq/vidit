@@ -13,7 +13,7 @@ export type SourcePick = components["schemas"]["SourcePickRead"];
 /** A staged source file (`POST /uploads`), referenced by a source's `upload_id`. */
 export type Upload = components["schemas"]["UploadRead"];
 export type SourceLevel = Source["level"];
-export type Sensor = NonNullable<Source["sensor"]>;
+export type SourceKind = Source["kind"];
 
 /** Keyed by the generated union, so a level the backend adds fails the type-check. */
 export const LEVEL_LABELS: Record<SourceLevel, string> = {
@@ -25,27 +25,48 @@ export const LEVEL_LABELS: Record<SourceLevel, string> = {
 /** In the order the API serves sources. */
 export const SOURCE_LEVELS = Object.keys(LEVEL_LABELS) as SourceLevel[];
 
-/** Keyed by the generated union, so a sensor the backend adds fails the type-check. */
-export const SENSOR_LABELS: Record<Sensor, string> = {
+/** Keyed by the generated union, so a kind the backend adds fails the type-check. */
+export const SOURCE_KIND_LABELS: Record<SourceKind, string> = {
   smartphone: "Smartphone",
-  satellite: "Satellite",
-  drone: "Drone",
+  camera: "Camera",
   static_camera: "Static camera",
+  drone: "Drone",
+  satellite: "Satellite",
   dashcam: "Dashcam",
   body_cam: "Body / helmet cam",
+  article: "Article",
+  official_statement: "Official statement",
+  other: "Other",
   unknown: "Unknown",
 };
 
-export const SENSORS = Object.keys(SENSOR_LABELS) as Sensor[];
+export const SOURCE_KINDS = Object.keys(SOURCE_KIND_LABELS) as SourceKind[];
+
+/** The kinds that are documents, not captures: they carry no capture position. */
+const DOCUMENT_KINDS: ReadonlySet<SourceKind | ""> = new Set<SourceKind>([
+  "article",
+  "official_statement",
+  "other",
+]);
+
+/** Whether a source of this kind can carry a capture position. */
+export const hasCapturePosition = (kind: SourceKind | ""): boolean => !DOCUMENT_KINDS.has(kind);
 
 /** The first URL of an event's sources, for the one-host labels of a row or card. */
 export function firstSourceUrl(event: { sources: Pick<Source, "links">[] }): string | null {
   return event.sources.flatMap((s) => s.links)[0]?.url ?? null;
 }
 
-/** The sensor a reading surface names: none for `unknown`, which tells the reader nothing. */
-export function shownSensor(sensor: Source["sensor"]): Sensor | null {
-  return sensor && sensor !== "unknown" ? sensor : null;
+const FILE_KIND_LABELS: Record<Media["kind"], string> = { image: "photo", video: "video" };
+
+/** A source's kind as a reading surface prints it, with its file's kind when it has a file:
+ *  `Drone · video`, `Article`. `unknown` tells the reader nothing, so it is dropped: the file's
+ *  kind alone, or null without a file. */
+export function sourceKindLabel(source: Pick<Source, "kind" | "media">): string | null {
+  const file = source.media ? FILE_KIND_LABELS[source.media.kind] : null;
+  if (source.kind === "unknown") return file ? file[0].toUpperCase() + file.slice(1) : null;
+  const kind = SOURCE_KIND_LABELS[source.kind];
+  return file ? `${kind} · ${file}` : kind;
 }
 
 /** One entry of an event write's `sources` JSON field. Mirrors `schemas/source.SourceCreate`;
@@ -54,9 +75,9 @@ export interface SourceCreate {
   id?: string;
   title: string;
   level: SourceLevel;
-  sensor: Sensor | null;
+  kind: SourceKind;
   captured_at: string | null;
-  sensor_position: { lat: number; lng: number } | null;
+  capture_position: { lat: number; lng: number } | null;
   is_graphic: boolean;
   links: { url: string; posted_at: string | null; snapshot_url: string | null }[];
   tag_ids: string[];
@@ -92,14 +113,14 @@ export interface SourceDraft {
   id: string | null;
   title: string;
   level: SourceLevel;
-  /** `""` names no sensor. */
-  sensor: Sensor | "";
+  /** `""` until the analyst picks one: the write needs a kind. */
+  kind: SourceKind | "";
   /** `datetime-local` value, UTC. */
   capturedAt: string;
   /** The stored instant, posted back when the input still holds its seed. */
   storedCapturedAt: string | null;
-  sensorLat: string;
-  sensorLng: string;
+  captureLat: string;
+  captureLng: string;
   isGraphic: boolean;
   /** The stored source is flagged: only an admin clears it. */
   graphicLocked: boolean;
@@ -120,11 +141,11 @@ export function newSourceDraft(): SourceDraft {
     id: null,
     title: "",
     level: "direct",
-    sensor: "",
+    kind: "",
     capturedAt: "",
     storedCapturedAt: null,
-    sensorLat: "",
-    sensorLng: "",
+    captureLat: "",
+    captureLng: "",
     isGraphic: false,
     graphicLocked: false,
     links: [blankLink()],
@@ -146,11 +167,11 @@ function draftFields(source: Source) {
   return {
     title: source.title,
     level: source.level,
-    sensor: source.sensor ?? ("" as const),
+    kind: source.kind,
     capturedAt: toDatetimeLocalUTC(source.captured_at),
     storedCapturedAt: source.captured_at,
-    sensorLat: source.sensor_position ? String(source.sensor_position.lat) : "",
-    sensorLng: source.sensor_position ? String(source.sensor_position.lng) : "",
+    captureLat: source.capture_position ? String(source.capture_position.lat) : "",
+    captureLng: source.capture_position ? String(source.capture_position.lng) : "",
     tagIds: source.tags.map((t) => t.id),
   };
 }
@@ -231,7 +252,7 @@ export function sourceFloor(drafts: SourceDraft[]): SourceFloorState {
   return {
     hasEvidenceFile: drafts.some((d) => d.level !== "context" && holdsFile(d)),
     missingLink: drafts.some((d) => draftUrls(d).length === 0),
-    missingSensor: drafts.some((d) => holdsFile(d) && d.sensor === ""),
+    missingKind: drafts.some((d) => d.kind === ""),
   };
 }
 
@@ -254,11 +275,13 @@ export function draftUrls(draft: SourceDraft): string[] {
   return [...new Set(draft.links.map((l) => l.url.trim()).filter(Boolean))];
 }
 
-/** One editor as the write posts it. */
+/** One editor as the write posts it. A draft with no kind yet posts `unknown`; the form's
+ *  floor check holds the write until one is picked. */
 export function sourceCreatePayload(draft: SourceDraft): SourceCreate {
   const file = fileReference(draft.file);
-  const lat = cleanNumber(draft.sensorLat);
-  const lng = cleanNumber(draft.sensorLng);
+  const kind = draft.kind || "unknown";
+  const lat = hasCapturePosition(kind) ? cleanNumber(draft.captureLat) : null;
+  const lng = hasCapturePosition(kind) ? cleanNumber(draft.captureLng) : null;
   const seen = new Set<string>();
   const links: SourceCreate["links"] = [];
   for (const link of draft.links) {
@@ -276,11 +299,11 @@ export function sourceCreatePayload(draft: SourceDraft): SourceCreate {
     ...(draft.id ? { id: draft.id } : {}),
     title: draft.title.trim(),
     level: draft.level,
-    // A sensor describes a file: a source without one names none.
-    sensor: file.upload_id || file.media_id ? draft.sensor || null : null,
+    kind,
     captured_at: instant(draft.capturedAt, draft.storedCapturedAt),
-    // Both halves or neither: a half-typed pair is dropped rather than refused.
-    sensor_position: lat !== null && lng !== null ? { lat, lng } : null,
+    // Both halves or neither: a half-typed pair is dropped rather than refused. A document
+    // kind posts none.
+    capture_position: lat !== null && lng !== null ? { lat, lng } : null,
     is_graphic: draft.isGraphic,
     links,
     tag_ids: draft.tagIds,
@@ -300,11 +323,12 @@ export function sourcesChanged(stored: Source[], drafts: SourceDraft[]): boolean
     const posted = sourceCreatePayload(draft);
     if (posted.media_id !== source.media?.id || posted.upload_id) return true;
     if (draft.file?.state === "uploading" || draft.file?.state === "failed") return true;
-    const position = source.sensor_position;
+    const position = source.capture_position;
     const samePosition =
       position === null
-        ? posted.sensor_position === null
-        : posted.sensor_position?.lat === position.lat && posted.sensor_position?.lng === position.lng;
+        ? posted.capture_position === null
+        : posted.capture_position?.lat === position.lat &&
+          posted.capture_position?.lng === position.lng;
     const storedLinks = source.links.map((l) => `${l.url} ${l.posted_at} ${l.archived?.url ?? ""}`);
     const postedLinks = posted.links.map(
       (l) => `${l.url} ${l.posted_at} ${l.snapshot_url ?? ""}`,
@@ -312,7 +336,7 @@ export function sourcesChanged(stored: Source[], drafts: SourceDraft[]): boolean
     return (
       posted.title !== source.title ||
       posted.level !== source.level ||
-      posted.sensor !== source.sensor ||
+      posted.kind !== source.kind ||
       posted.captured_at !== source.captured_at ||
       !samePosition ||
       // The flag only rises on a stored source.
@@ -343,7 +367,6 @@ export function searchSources(q: string): Promise<SourcePick[]> {
 const SOURCE_ERROR_MESSAGES: Record<string, string> = {
   source_required: "Add a direct or indirect source.",
   source_file_required: "Add a file to a direct or indirect source.",
-  sensor_required: "Pick the sensor of every source that has a file.",
   source_link_required: "Every source needs at least one URL.",
   invalid_source_url: "A source URL is not a valid http or https link.",
   too_many_sources: "An event holds at most 10 sources.",

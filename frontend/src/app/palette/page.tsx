@@ -176,9 +176,9 @@ const MOCK_SOURCE: Source = {
   id: "s1",
   title: "Drone footage of the strike",
   level: "direct",
-  sensor: "drone",
+  kind: "drone",
   captured_at: "2026-05-09T15:40:00Z",
-  sensor_position: { lat: 48.0201, lng: 37.7951 },
+  capture_position: { lat: 48.0201, lng: 37.7951 },
   is_graphic: false,
   links: [
     {
@@ -203,15 +203,15 @@ const MOCK_SOURCE: Source = {
   },
 };
 
-// A context source: a URL only, no file, so no sensor.
+// A context source: an article, a URL only and no file.
 const MOCK_CONTEXT_SOURCE: Source = {
   ...MOCK_SOURCE,
   id: "s2",
   title: "",
   level: "context",
-  sensor: null,
+  kind: "article",
   captured_at: null,
-  sensor_position: null,
+  capture_position: null,
   links: [{ url: "https://news.example/article", posted_at: null, archived: null }],
   tags: [],
   media: null,
@@ -267,7 +267,7 @@ const MOCK_DETECTION_READY: EventDetail = {
   id: "detection-ready",
   status: "detected",
   proof: '<img src="/local-storage/demo.jpg">',
-  sources: [{ ...MOCK_SOURCE, sensor: null }],
+  sources: [{ ...MOCK_SOURCE, kind: "unknown" }],
 };
 
 const MOCK_DETECTION_ONE_MISSING: EventDetail = {
@@ -585,7 +585,7 @@ export default function PalettePage() {
             <PaletteFilterSection />
           </Item>
 
-          <Item name="<ChipBucket>" usage="A multi-select chip bucket for one filter family (conflicts, sensors, levels, tags, media types): every option a <Pill>, selected ones filled accent, click toggles membership. Any-match within the bucket; combining buckets is AND on the server.">
+          <Item name="<ChipBucket>" usage="A multi-select chip bucket for one filter family (conflicts, source kinds, levels, tags, media types): every option a <Pill>, selected ones filled accent, click toggles membership. Any-match within the bucket; combining buckets is AND on the server.">
             <PaletteChipBucket />
           </Item>
 
@@ -593,7 +593,7 @@ export default function PalettePage() {
             <PaletteToggleRow />
           </Item>
 
-          <Item name="<Pill>" usage="One pill for the whole family (status, tag, filter, badge) at one size. `tone` = accent | secondary | neutral | danger, mirroring the <Button> tones (secondary is the accent outline, no fill). A static <span> by default; pass `onClick` and it becomes an interactive chip (a <button> that brightens on hover), the caller driving the tone off its active state. `label` makes a key/value pill, the key muted before the value (`Conflict: Russo-Ukrainian war`), for a field whose name the value alone does not carry; lib/cardTags.ts keys a card's conflicts; a source block keys its sensor and drops an Unknown value. className merges via cn (caller wins on a conflicting utility); keep it to orthogonal extras, the size stays one.">
+          <Item name="<Pill>" usage="One pill for the whole family (status, tag, filter, badge) at one size. `tone` = accent | secondary | neutral | danger, mirroring the <Button> tones (secondary is the accent outline, no fill). A static <span> by default; pass `onClick` and it becomes an interactive chip (a <button> that brightens on hover), the caller driving the tone off its active state. `label` makes a key/value pill, the key muted before the value (`Conflict: Russo-Ukrainian war`), for a field whose name the value alone does not carry; lib/cardTags.ts keys a card's conflicts; a source block keys its kind and drops an Unknown value. className merges via cn (caller wins on a conflicting utility); keep it to orthogonal extras, the size stays one.">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] text-neutral-600 self-center w-12">static</span>
@@ -607,7 +607,7 @@ export default function PalettePage() {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] text-neutral-600 self-center w-12">keyed</span>
                 <Pill label="Conflict">Russo-Ukrainian war</Pill>
-                <Pill label="Sensor">Smartphone</Pill>
+                <Pill label="Kind">Smartphone</Pill>
                 <Pill>airstrike</Pill>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -740,7 +740,7 @@ export default function PalettePage() {
               </Variant>
               <Variant label="invalid">
                 <Select invalid defaultValue="">
-                  <option value="">Pick a sensor</option>
+                  <option value="">Pick a kind</option>
                   <option value="drone">Drone</option>
                 </Select>
               </Variant>
@@ -1253,7 +1253,7 @@ export default function PalettePage() {
                 <StatTile icon={MapPin} label="Geolocated" value={42} href="/search?type=event&status=geolocated" />
                 <StatTile icon={Bot} label="Detected" value={128} href="/search?type=event&status=detected" />
                 <StatTile icon={Swords} label="Top conflict" small value="Russo-Ukrainian War" href="/search?type=event&conflict=Russo-Ukrainian+War" />
-                <StatTile icon={Camera} label="Top sensor" small value="None" />
+                <StatTile icon={Camera} label="Top source kind" small value="None" />
               </StatGrid>
             </div>
           </Item>
@@ -1514,7 +1514,7 @@ export default function PalettePage() {
             </Card>
           </Item>
 
-          <Item name="<DetailCard> + <DetailRow> + <DetailPills>" usage="Label / value rows on the event and request detail pages and on each source block. <DetailCard> takes an optional `lead` slot above the rows (a source's file), `leadBeside` to put that slot left of the rows (3:2) once the card is 42rem wide, falling back to the slot on top when narrower, and a `label` that makes it a named region. <DetailRow> takes `empty`, shown muted for an empty value (Untitled), and `wrapLabel`, for a value that holds one line at its full width: the label wraps instead when the row runs short (a source's Sensor position). <DetailPills> is a row value made of pills (conflicts, tags), wrapping flush right.">
+          <Item name="<DetailCard> + <DetailRow> + <DetailPills>" usage="Label / value rows on the event and request detail pages and on each source block. <DetailCard> takes an optional `lead` slot above the rows (a source's file), `leadBeside` to put that slot left of the rows (3:2) once the card is 42rem wide, falling back to the slot on top when narrower, and a `label` that makes it a named region. <DetailRow> takes `empty`, shown muted for an empty value (Untitled), and `wrapLabel`, for a value that holds one line at its full width: the label wraps instead when the row runs short (a source's Capture position). <DetailPills> is a row value made of pills (conflicts, tags), wrapping flush right.">
             <div className="w-full max-w-md space-y-4">
               <DetailCard>
                 <DetailRow label="Status" concept="status">
@@ -1525,7 +1525,7 @@ export default function PalettePage() {
               </DetailCard>
               <DetailCard lead={<p className="text-sm text-neutral-500">Lead slot</p>}>
                 <DetailRow label="Title" value="" empty="Untitled" />
-                <DetailRow label="Sensor position" align="center" wrapLabel>
+                <DetailRow label="Capture position" align="center" wrapLabel>
                   <CoordinateValue lat={48.0201} lng={37.7951} compact />
                 </DetailRow>
                 <DetailRow label="Tags" align="start">
@@ -1809,7 +1809,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SourceBlock> / <SourceBlocks>" usage="One source of an event on a reading surface (components/sources/SourceBlock.tsx), read like the event's Details card: a <DetailCard> region named Source N, its file in the lead slot through <MediaGallery> (behind its own <GraphicContentGate> when this source is flagged, a No file box without one), then <DetailRow>s for Title (Untitled when empty), Level as a <Pill>, Sensor (none without a file, and Unknown dropped), Sensor position (the compact <CoordinateValue>: 4 decimals and the small <CoordinateActions> on one line, under wrapLabel), Captured, Links (N) (right-aligned, each link through <SourceLabel> (its host, the full URL in the title) followed by its <ArchivedCopies> mark, with Posted and its date or Date unknown under it) and Tags as <DetailPills>. A row with no value drops out, except Title. The map panel keeps a LIST_TILE with bare compact rows. `wide` grows the file and sets it beside the rows (<DetailCard leadBeside>). <SourceBlocks> renders the event's blocks in API order: a <HorizontalScroller> row under a Sources (N) eyebrow in the page variant of <EventDetailBody>, a vertical stack under Sources in its panel variant. A lone source in the page variant skips the scroller and renders as one wide block.">
+          <Item name="<SourceBlock> / <SourceBlocks>" usage="One source of an event on a reading surface (components/sources/SourceBlock.tsx), read like the event's Details card: a <DetailCard> region named Source N, its file in the lead slot through <MediaGallery> (behind its own <GraphicContentGate> when this source is flagged, a No file box without one), then <DetailRow>s for Title (Untitled when empty), Level as a <Pill>, Kind (the kind label, then the file's kind after a middle dot when there is a file: Drone · video, Article; an Unknown kind shows the file's kind alone, or no row without a file), Capture position (the compact <CoordinateValue>: 4 decimals and the small <CoordinateActions> on one line, under wrapLabel), Captured, Links (N) (right-aligned, each link through <SourceLabel> (its host, the full URL in the title) followed by its <ArchivedCopies> mark, with Posted and its date or Date unknown under it) and Tags as <DetailPills>. A row with no value drops out, except Title. The map panel keeps a LIST_TILE with bare compact rows. `wide` grows the file and sets it beside the rows (<DetailCard leadBeside>). <SourceBlocks> renders the event's blocks in API order: a <HorizontalScroller> row under a Sources (N) eyebrow in the page variant of <EventDetailBody>, a vertical stack under Sources in its panel variant. A lone source in the page variant skips the scroller and renders as one wide block.">
             <div className="w-full max-w-2xl">
               <SourceBlocks sources={[MOCK_SOURCE, MOCK_CONTEXT_SOURCE]} alt="Strike on a depot" />
             </div>
@@ -1833,7 +1833,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SourcesField> / <SourceEditor>" usage="The Sources section of every event form (components/sources/): one <SourceEditor> per source in a LIST_TILE, holding the file slot (MediaManager on <FileManager>; a pick uploads at once through POST /uploads), the level (<SegmentedControl>), the sensor (<Select>, off without a file), the capture time (<DateTimeInput>), the sensor position (CoordinateInputs), the links (<LinkListInput> with the archive pair and each link's post time), the tags (<TagChips>) and the graphic flag (<Switch>, locked on a flagged stored source). The section adds Add a source (capped at 10), Copy an existing source (<SourcePicker>), and per editor <MergeAction> and Remove.">
+          <Item name="<SourcesField> / <SourceEditor>" usage="The Sources section of every event form (components/sources/): one <SourceEditor> per source in a LIST_TILE, holding the file slot (MediaManager on <FileManager>; a pick uploads at once through POST /uploads), the level (<SegmentedControl>), the kind (<Select>, required on every source), the capture time (<DateTimeInput>), the capture position (CoordinateInputs, hidden for an article, an official statement or another document), the links (<LinkListInput> with the archive pair and each link's post time), the tags (<TagChips>) and the graphic flag (<Switch>, locked on a flagged stored source). The section adds Add a source (capped at 10), Copy an existing source (<SourcePicker>), and per editor <MergeAction> and Remove.">
             <div className="w-full max-w-2xl">
               <SourcesField
                 sources={paletteSources}
@@ -2039,7 +2039,7 @@ function PaletteFilterSection() {
   return (
     <div className="w-72 bg-neutral-900 rounded-lg border border-neutral-700 px-3">
       <FilterSection
-        title="Sensor"
+        title="Source kind"
         summary={chipSummary(selected)}
         active={selected.length > 0}
         open={open}

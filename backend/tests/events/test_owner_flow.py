@@ -138,11 +138,11 @@ def test_geolocate_rejects_geolocated_row(db, author):
 
 def test_geolocate_writes_fields_and_freezes(db, author, conflict):
     """The whole form lands, the source's capture details included; no tag is required."""
-    geo = _detected(db, author, with_media=True, sensor=None)
+    geo = _detected(db, author, with_media=True, kind="unknown")
     sources = _kept(
         geo,
-        sensor="drone",
-        sensor_position={"lat": 50.3, "lng": 30.6},
+        kind="drone",
+        capture_position={"lat": 50.3, "lng": 30.6},
         posted_at="2026-06-30T07:45",
     )
     response = client.post(
@@ -165,8 +165,8 @@ def test_geolocate_writes_fields_and_freezes(db, author, conflict):
     assert body["coords"] == {"lat": 50.25, "lng": 30.5}
     assert body["occurred_date"] == "2026-07-01"
     [source] = body["sources"]
-    assert source["sensor"] == "drone"
-    assert source["sensor_position"] == {"lat": 50.3, "lng": 30.6}
+    assert source["kind"] == "drone"
+    assert source["capture_position"] == {"lat": 50.3, "lng": 30.6}
     assert source["links"][0]["posted_at"].startswith("2026-06-30T07:45")
     assert body["tags"] == []
     assert {c["id"] for c in body["conflicts"]} == {str(conflict.id)}

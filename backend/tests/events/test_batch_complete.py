@@ -1,7 +1,7 @@
 """Batch completion ``POST /events/batch-complete``.
 
-Same evidence floor as the single-row geolocate, with the conflicts and each row's sensor
-supplied by the call. One transaction per row: a mixed selection publishes what clears it
+Same evidence floor as the single-row geolocate, with the conflicts and each row's source
+kind supplied by the call. One transaction per row: a mixed selection publishes what clears it
 and leaves the rest untouched, each with a reason.
 """
 
@@ -21,7 +21,7 @@ _URL = "/api/v1/events/batch-complete"
 
 
 def _detection(db, author, *, proof: str | None = None, **kwargs) -> Event:
-    """A machine detection as the import leaves it: no sensor, no conflict."""
+    """A machine detection as the import leaves it: kind ``unknown``, no conflict."""
     geo = _make_geo(
         db,
         author=author,
@@ -29,7 +29,7 @@ def _detection(db, author, *, proof: str | None = None, **kwargs) -> Event:
         detected_from_url="https://x.com/a/status/1",
         source_url=kwargs.pop("source_url", "https://x.com/a/status/1"),
         with_media=kwargs.pop("with_media", True),
-        sensor=kwargs.pop("sensor", None),
+        kind=kwargs.pop("kind", "unknown"),
         **kwargs,
     )
     geo.proof = PROOF_WITH_IMAGE if proof is None else proof
@@ -41,7 +41,7 @@ def _detection(db, author, *, proof: str | None = None, **kwargs) -> Event:
 def _body(conflict, rows: list[tuple[Event, str]]) -> dict:
     return {
         "conflict_ids": [str(conflict.id)],
-        "rows": [{"event_id": str(geo.id), "sensor": sensor} for geo, sensor in rows],
+        "rows": [{"event_id": str(geo.id), "kind": kind} for geo, kind in rows],
     }
 
 
@@ -56,7 +56,7 @@ def test_batch_complete_requires_authentication(db, author, conflict):
 
 
 def test_batch_complete_publishes_a_ready_detection(db, author, conflict, free_tag):
-    """The whole promotion: state, stamp, conflict, sensor, geolocator credit; tags stay."""
+    """The whole promotion: state, stamp, conflict, kind, geolocator credit; tags stay."""
     detection = _detection(db, author, tags=[free_tag])
 
     response = client.post(
@@ -78,7 +78,7 @@ def test_batch_complete_publishes_a_ready_detection(db, author, conflict, free_t
     assert row.geolocated_at is not None
     assert [c.id for c in row.conflicts] == [conflict.id]
     assert {t.id for t in row.tags} == {free_tag.id}
-    assert [s.sensor for s in row.sources] == ["drone"]
+    assert [s.kind for s in row.sources] == ["drone"]
     credit = (
         db.query(EventGeolocator)
         .filter(EventGeolocator.event_id == detection.id, EventGeolocator.user_id == author.id)
@@ -87,15 +87,15 @@ def test_batch_complete_publishes_a_ready_detection(db, author, conflict, free_t
     assert credit is not None
 
 
-def test_batch_complete_sets_the_sensor_of_every_source_with_a_file(db, author, conflict):
-    """The row's sensor replaces whatever the import guessed on each filed source; a
+def test_batch_complete_sets_the_kind_of_every_source_with_a_file(db, author, conflict):
+    """The row's kind replaces whatever the import guessed on each filed source; a
     source without a file keeps its own."""
     detection = _detection(
-        db, author, sensor="smartphone", secondary_source_urls=["https://t.me/c/2"]
+        db, author, kind="smartphone", secondary_source_urls=["https://t.me/c/2"]
     )
     second = Source(
         level="indirect",
-        sensor="unknown",
+        kind="unknown",
         links=[SourceLink(url="https://sat.example/after")],
         media=Media(sha256=fake_sha256(), storage_url="s3://x/n.jpg", kind="image"),
     )
@@ -110,8 +110,8 @@ def test_batch_complete_sets_the_sensor_of_every_source_with_a_file(db, author, 
 
     db.expire_all()
     row = db.query(Event).filter(Event.id == detection.id).one()
-    sensors = {(s.level, s.media is not None): s.sensor for s in row.sources}
-    assert sensors == {
+    kinds = {(s.level, s.media is not None): s.kind for s in row.sources}
+    assert kinds == {
         ("direct", True): "satellite",
         ("direct", False): "unknown",
         ("indirect", True): "satellite",
@@ -152,11 +152,11 @@ def test_batch_complete_publishes_what_clears_the_floor(db, author, conflict):
     }
     assert statuses[str(ready_one.id)] == STATUS_GEOLOCATED
     assert statuses[str(ready_two.id)] == STATUS_GEOLOCATED
-    # The failed row is untouched: still a detection, no conflict, no sensor.
+    # The failed row is untouched: still a detection, no conflict, its kind unchanged.
     assert statuses[str(imageless.id)] == STATUS_DETECTED
     untouched = db.query(Event).filter(Event.id == imageless.id).one()
     assert untouched.conflicts == []
-    assert [s.sensor for s in untouched.sources] == [None]
+    assert [s.kind for s in untouched.sources] == ["unknown"]
 
 
 def test_batch_complete_reports_each_floor_miss_against_its_row(db, author, conflict):
@@ -177,7 +177,7 @@ def test_batch_complete_reports_each_floor_miss_against_its_row(db, author, conf
         json={
             "conflict_ids": [str(conflict.id)],
             "rows": [
-                {"event_id": str(event_id), "sensor": "drone"}
+                {"event_id": str(event_id), "kind": "drone"}
                 for event_id in (
                     no_file.id,
                     no_source.id,
@@ -236,12 +236,12 @@ def test_batch_complete_rejects_a_detection_listed_twice(db, author, conflict):
     assert db.query(Event).filter(Event.id == detection.id).one().status == STATUS_DETECTED
 
 
-def test_batch_complete_rejects_a_row_without_a_known_sensor(db, author, conflict):
-    """The sensor is a closed list, so an unknown or missing one fails the shape."""
+def test_batch_complete_rejects_a_row_without_a_known_kind(db, author, conflict):
+    """The kind is a closed list, so an unlisted or missing one fails the shape."""
     detection = _detection(db, author)
     headers = login_as(client, author)
     for row in (
-        {"event_id": str(detection.id), "sensor": "periscope"},
+        {"event_id": str(detection.id), "kind": "periscope"},
         {"event_id": str(detection.id)},
     ):
         response = client.post(
@@ -258,7 +258,7 @@ def test_batch_complete_rejects_a_selection_without_a_conflict(db, author):
     whole rather than reporting the same miss N times."""
     detection = _detection(db, author)
     headers = login_as(client, author)
-    rows = [{"event_id": str(detection.id), "sensor": "drone"}]
+    rows = [{"event_id": str(detection.id), "kind": "drone"}]
 
     empty = client.post(_URL, headers=headers, json={"conflict_ids": [], "rows": rows})
     assert empty.status_code == 422

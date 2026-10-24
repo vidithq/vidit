@@ -759,6 +759,7 @@ def _source(url: str | None = None, *, level: str = "direct", media: Media | Non
     """One source with ``url`` as its only link (none when ``None``) and ``media`` as its file."""
     return Source(
         level=level,
+        kind="unknown",
         links=[SourceLink(url=url)] if url is not None else [],
         media=media,
     )

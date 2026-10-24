@@ -215,7 +215,12 @@ def test_list_tags_includes_a_tag_only_on_a_source(authed_user, db):
         geolocated_at=datetime.now(UTC),
     )
     geo.sources = [
-        Source(level="direct", links=[SourceLink(url="https://example.com")], tags=[tag])
+        Source(
+            level="direct",
+            kind="unknown",
+            links=[SourceLink(url="https://example.com")],
+            tags=[tag],
+        )
     ]
     db.add(geo)
     db.commit()
@@ -248,7 +253,12 @@ def test_list_tags_drops_a_source_tag_when_its_event_is_soft_deleted(authed_user
         deleted_at=datetime.now(UTC),
     )
     geo.sources = [
-        Source(level="direct", links=[SourceLink(url="https://example.com")], tags=[tag])
+        Source(
+            level="direct",
+            kind="unknown",
+            links=[SourceLink(url="https://example.com")],
+            tags=[tag],
+        )
     ]
     db.add(geo)
     db.commit()

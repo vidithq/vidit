@@ -6,9 +6,9 @@ export const source = (overrides: Partial<Source> = {}): Source => ({
   id: "s1",
   title: "",
   level: "direct",
-  sensor: null,
+  kind: "unknown",
   captured_at: null,
-  sensor_position: null,
+  capture_position: null,
   is_graphic: false,
   links: [{ url: "https://t.me/channel/12345", posted_at: null, archived: null }],
   tags: [],
@@ -48,9 +48,9 @@ export const eventDetail = (id: string, title: string): EventDetail => ({
 export const snapshotSource = (s: Source): Record<string, unknown> => ({
   title: s.title,
   level: s.level,
-  sensor: s.sensor,
+  kind: s.kind,
   captured_at: s.captured_at,
-  sensor_position: s.sensor_position,
+  capture_position: s.capture_position,
   is_graphic: s.is_graphic,
   links: s.links.map((l) => ({
     url: l.url,

@@ -79,7 +79,7 @@ def _make_geo(
     with_media: bool = False,
     is_graphic: bool = False,
     hidden: bool = False,
-    sensor: str | None = "smartphone",
+    kind: str = "smartphone",
 ) -> Event:
     now = datetime.now(UTC)
     geo = Event(
@@ -95,7 +95,7 @@ def _make_geo(
         sources.append(
             Source(
                 level="direct",
-                sensor=sensor,
+                kind=kind,
                 is_graphic=is_graphic,
                 created_at=now,
                 links=(
@@ -119,7 +119,7 @@ def _make_geo(
         sources.append(
             Source(
                 level="direct",
-                sensor="unknown",
+                kind="unknown",
                 created_at=now + timedelta(microseconds=offset),
                 links=[SourceLink(url=url)],
             )
@@ -189,7 +189,7 @@ def source_spec(
     url: str | None = "https://example.com/source",
     *,
     level: str = "direct",
-    sensor: str | None = "smartphone",
+    kind: str | None = "smartphone",
     upload_id: str | None = None,
     media_id: str | None = None,
     posted_at: str | None = "2026-05-01T12:00",
@@ -197,10 +197,11 @@ def source_spec(
     links: list[dict[str, Any]] | None = None,
     **extra: Any,
 ) -> dict[str, Any]:
-    """One ``SourceCreate`` as a form posts it; ``links`` replaces the one built from ``url``."""
+    """One ``SourceCreate`` as a form posts it; ``links`` replaces the one built from ``url``.
+    ``kind=None`` leaves the kind out."""
     spec: dict[str, Any] = {
         "level": level,
-        "sensor": sensor,
+        **({"kind": kind} if kind is not None else {}),
         "links": (
             links
             if links is not None

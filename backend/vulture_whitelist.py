@@ -96,7 +96,7 @@ geolocated_count  # schemas/user.py UserStatsRead (wire field)
 detected_count  # schemas/user.py UserStatsRead
 total_events  # schemas/user.py UserStatsRead
 top_conflicts  # schemas/user.py UserStatsRead
-sensors  # schemas/user.py UserStatsRead
+source_kinds  # schemas/user.py UserStatsRead
 activity  # schemas/user.py UserStatsRead
 source_hosts  # schemas/user.py UserStatsRead
 other_hosts_count  # schemas/user.py UserStatsRead

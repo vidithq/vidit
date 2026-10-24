@@ -22,13 +22,14 @@ import { cn } from "@/lib/cn";
 import { MAX_LINKS_PER_SOURCE } from "@/lib/events";
 import { safeHostname } from "@/lib/format";
 import {
+  hasCapturePosition,
   LEVEL_LABELS,
-  SENSOR_LABELS,
-  SENSORS,
+  SOURCE_KIND_LABELS,
+  SOURCE_KINDS,
   SOURCE_LEVELS,
   type LinkDraft,
-  type Sensor,
   type SourceDraft,
+  type SourceKind,
   type SourceLevel,
 } from "@/lib/sources";
 import type { Media, Tag } from "@/types";
@@ -38,13 +39,13 @@ const LEVEL_OPTIONS = SOURCE_LEVELS.map((value) => ({ value, label: LEVEL_LABELS
 /** Which of the editor's fields a publish attempt flagged. */
 export interface SourceEditorInvalid {
   link?: boolean;
-  sensor?: boolean;
+  kind?: boolean;
 }
 
 /**
  * One source block of an event form: the file (uploaded on its own request as soon as it is
- * picked), the level, the sensor, the capture time, the sensor position, the links with their
- * post time and archived copy, the tags and the graphic flag.
+ * picked), the level, the kind, the capture time, the capture position (none on a document
+ * kind), the links with their post time and archived copy, the tags and the graphic flag.
  *
  * The editor holds no state of its own: `update` patches the draft in the form's list, and
  * `onPickFile` hands a picked file to the list, which uploads it. `actions` is the header's
@@ -57,7 +58,6 @@ export function SourceEditor({
   onPickFile,
   tags,
   setTags,
-  sensorRequired = false,
   invalid = {},
   actions,
 }: {
@@ -69,8 +69,6 @@ export function SourceEditor({
   /** The tag catalogue the event's Classification also reads. */
   tags: Tag[];
   setTags: Dispatch<SetStateAction<Tag[]>>;
-  /** The form publishes: a source with a file needs a sensor. */
-  sensorRequired?: boolean;
   invalid?: SourceEditorInvalid;
   actions?: ReactNode;
 }) {
@@ -119,10 +117,9 @@ export function SourceEditor({
         </span>
         <MediaManager
           existing={shown ? [shown] : []}
-          // A sensor only describes a file: removing the file clears it.
-          onRemoveExisting={() => update({ file: null, sensor: "" })}
+          onRemoveExisting={() => update({ file: null })}
           staged={pendingFiles}
-          onRemoveStaged={() => update({ file: null, sensor: "" })}
+          onRemoveStaged={() => update({ file: null })}
           onAddFiles={hasFile ? undefined : (files) => files[0] && onPickFile(files[0])}
           isGraphic={draft.graphicLocked}
         />
@@ -153,23 +150,22 @@ export function SourceEditor({
         </div>
         <div className="space-y-1.5">
           <label
-            htmlFor={id("sensor")}
-            className={cn(FORM_LABEL, invalid.sensor && FORM_INVALID_LABEL)}
+            htmlFor={id("kind")}
+            className={cn(FORM_LABEL, invalid.kind && FORM_INVALID_LABEL)}
           >
-            Sensor <FieldHelp concept="sensor" />
+            Kind <FieldHelp concept="source_kind" />
           </label>
           <Select
-            id={id("sensor")}
-            value={draft.sensor}
-            disabled={!hasFile}
-            required={sensorRequired && hasFile}
-            invalid={invalid.sensor}
-            onChange={(e) => update({ sensor: e.target.value as Sensor | "" })}
+            id={id("kind")}
+            value={draft.kind}
+            required
+            invalid={invalid.kind}
+            onChange={(e) => update({ kind: e.target.value as SourceKind | "" })}
           >
-            <option value="">{hasFile ? "Pick a sensor" : "No file, no sensor"}</option>
-            {SENSORS.map((sensor) => (
-              <option key={sensor} value={sensor}>
-                {SENSOR_LABELS[sensor]}
+            <option value="">Pick a kind</option>
+            {SOURCE_KINDS.map((kind) => (
+              <option key={kind} value={kind}>
+                {SOURCE_KIND_LABELS[kind]}
               </option>
             ))}
           </Select>
@@ -188,19 +184,21 @@ export function SourceEditor({
         />
       </div>
 
-      <div className="space-y-1.5">
-        <span className={FORM_LABEL}>
-          Sensor position <FieldHelp concept="sensor_position" />
-        </span>
-        <CoordinateInputs
-          idPrefix={id("sensor_")}
-          required={false}
-          lat={draft.sensorLat}
-          setLat={(sensorLat) => update({ sensorLat })}
-          lng={draft.sensorLng}
-          setLng={(sensorLng) => update({ sensorLng })}
-        />
-      </div>
+      {hasCapturePosition(draft.kind) && (
+        <div className="space-y-1.5">
+          <span className={FORM_LABEL}>
+            Capture position <FieldHelp concept="capture_position" />
+          </span>
+          <CoordinateInputs
+            idPrefix={id("capture_")}
+            required={false}
+            lat={draft.captureLat}
+            setLat={(captureLat) => update({ captureLat })}
+            lng={draft.captureLng}
+            setLng={(captureLng) => update({ captureLng })}
+          />
+        </div>
+      )}
 
       <div className="space-y-1.5">
         <span className={cn(FORM_LABEL, invalid.link && FORM_INVALID_LABEL)}>

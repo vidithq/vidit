@@ -1,6 +1,6 @@
 "use client";
 
-import { SENSOR_LABELS, type Sensor } from "@/lib/sources";
+import { SOURCE_KIND_LABELS, type SourceKind } from "@/lib/sources";
 import { useEffect, useState, type ReactNode } from "react";
 import { Bot, Camera, MapPin, Swords } from "lucide-react";
 
@@ -66,7 +66,7 @@ export function ProfileInsights({ username }: { username: string }) {
 
   // The head of each ranked list (ordered count desc then name server-side), all the card prints.
   const topConflict = stats.top_conflicts[0];
-  const topSensor = stats.sensors[0];
+  const topKind = stats.source_kinds[0];
 
   return (
     <Card as="section">
@@ -110,15 +110,15 @@ export function ProfileInsights({ username }: { username: string }) {
         />
         <StatTile
           icon={Camera}
-          label="Top sensor"
+          label="Top source kind"
           small
-          value={topSensor ? (SENSOR_LABELS[topSensor.name as Sensor] ?? topSensor.name) : "None"}
-          href={topSensor ? profileSearchHref(username, { sensor: topSensor.name }) : undefined}
+          value={topKind ? (SOURCE_KIND_LABELS[topKind.name as SourceKind] ?? topKind.name) : "None"}
+          href={topKind ? profileSearchHref(username, { source_kind: topKind.name }) : undefined}
         />
       </StatGrid>
 
       {/* Where the footage came from: the beat an analyst works reads off the hosts. The `?` is the
-          source links definition, not to be confused with the sensor above. */}
+          source links definition, not to be confused with the source kind above. */}
       <div>
         <SectionEyebrow title="Source origin" concept="source_links" as="h3" margin="none" />
         <ChartNote>

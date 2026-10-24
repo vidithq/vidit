@@ -53,7 +53,7 @@ describe("the event filter keys", () => {
     appendEventFilterParams(params, {
       statuses: ["geolocated"],
       conflicts: ["Ukraine"],
-      sensors: ["drone"], levels: ["direct"],
+      sourceKinds: ["drone"], levels: ["direct"],
       tags: ["drone", "night"],
       mediaTypes: ["video"],
       author: " ana ",
@@ -65,13 +65,13 @@ describe("the event filter keys", () => {
       addedTo: "2026-02-01",
     });
     expect(params.toString()).toBe(
-      "status=geolocated&conflict=Ukraine&sensor=drone&level=direct&tag=drone&tag=night&media=video" +
+      "status=geolocated&conflict=Ukraine&source_kind=drone&level=direct&tag=drone&tag=night&media=video" +
         "&author=ana&approved=true&approved_by=bo&occurred_date_from=2026-01-01&submitted_to=2026-02-01",
     );
     expect(readEventFilterParams(params)).toEqual({
       statuses: ["geolocated"],
       conflicts: ["Ukraine"],
-      sensors: ["drone"], levels: ["direct"],
+      sourceKinds: ["drone"], levels: ["direct"],
       tags: ["drone", "night"],
       mediaTypes: ["video"],
       author: "ana",

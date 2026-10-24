@@ -70,7 +70,7 @@ def _make_geo(db, *, author: User, title: str = "Strike", event: date | None = N
         sources=[
             Source(
                 level="direct",
-                sensor="smartphone",
+                kind="smartphone",
                 links=[
                     SourceLink(
                         url="https://example.com/proof",
@@ -275,7 +275,11 @@ def _make_request(db, *, requester: User, title: str = "Help", at: datetime | No
         owner_id=requester.id,
         requested_by_id=requester.id,
         title=title,
-        sources=[Source(level="direct", links=[SourceLink(url="https://example.com/ask")])],
+        sources=[
+            Source(
+                level="direct", kind="unknown", links=[SourceLink(url="https://example.com/ask")]
+            )
+        ],
         status=STATUS_REQUESTED,
         requested_at=at or datetime.now(UTC),
     )
@@ -660,7 +664,7 @@ def tags(db):
     db.commit()
 
 
-def test_feed_filters_by_kind_conflict_sensor_level_and_tag(db, conflict, tags, cleanup):
+def test_feed_filters_by_kind_conflict_source_kind_level_and_tag(db, conflict, tags, cleanup):
     """``kind`` keeps one kind of row; the taxonomy filters match as on ``GET /events``, in both
     scopes, and the next-page link carries them. ``tag`` matches a tag on a source too."""
     record_user, record_geo = cleanup
@@ -673,7 +677,7 @@ def test_feed_filters_by_kind_conflict_sensor_level_and_tag(db, conflict, tags, 
     tagged_geo = _make_geo(db, author=analyst, title="Tagged geo")
     tagged_geo.conflicts = [conflict]
     tagged_geo.tags = [free]
-    tagged_geo.sources[0].sensor = "drone"
+    tagged_geo.sources[0].kind = "drone"
     tagged_geo.sources[0].tags = [source_tag]
     plain_geo = _make_geo(db, author=analyst, title="Plain geo")
     tagged_ask = _make_request(db, requester=analyst, title="Tagged ask")
@@ -699,8 +703,8 @@ def test_feed_filters_by_kind_conflict_sensor_level_and_tag(db, conflict, tags, 
         "Plain ask",
     }
     assert titles(f"conflict={conflict.name}") == {"Tagged geo", "Tagged ask"}
-    assert titles("sensor=drone") == {"Tagged geo"}
-    assert titles("sensor=drone&sensor=smartphone") == {"Tagged geo", "Plain geo"}
+    assert titles("source_kind=drone") == {"Tagged geo"}
+    assert titles("source_kind=drone&source_kind=smartphone") == {"Tagged geo", "Plain geo"}
     assert titles("level=indirect") == {"Tagged ask"}
     assert titles(f"tag={source_tag.name}") == {"Tagged geo"}
     assert titles(f"tag={free.name}&kind=request") == {"Tagged ask"}
@@ -712,7 +716,7 @@ def test_feed_filters_by_kind_conflict_sensor_level_and_tag(db, conflict, tags, 
     assert [item["title"] for item in all_scope.json()] == ["Tagged ask"]
 
     assert client.get("/api/v1/feed?kind=detection", headers=headers).status_code == 422
-    assert client.get("/api/v1/feed?sensor=tripod", headers=headers).status_code == 422
+    assert client.get("/api/v1/feed?source_kind=tripod", headers=headers).status_code == 422
     assert client.get("/api/v1/feed?level=primary", headers=headers).status_code == 422
 
 

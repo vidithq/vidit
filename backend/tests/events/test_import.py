@@ -156,7 +156,7 @@ def test_your_own_post_creates_a_detection(db, linked_author):
     assert detection.title == "Strike on the depot"
 
 
-def test_the_declared_source_lands_as_one_direct_source_with_no_sensor(db, linked_author):
+def test_the_declared_source_lands_as_one_direct_source_of_unknown_kind(db, linked_author):
     response = _post(linked_author, SOURCED_ID)
 
     assert response.status_code == 200, response.text
@@ -165,7 +165,7 @@ def test_the_declared_source_lands_as_one_direct_source_with_no_sensor(db, linke
     assert read.status_code == 200, read.text
     [source] = read.json()["sources"]
     assert source["level"] == "direct"
-    assert source["sensor"] is None
+    assert source["kind"] == "unknown"
     assert source["media"] is None
     assert [(link["url"], link["posted_at"]) for link in source["links"]] == [(_TIKTOK, None)]
 

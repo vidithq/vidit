@@ -1,8 +1,8 @@
 """Batch completion: publish a selection of detections in one call.
 
 A detection arrives with title, coordinates, sources and usually proof images;
-what the machine can't supply is the conflict and the sensor. This endpoint
-takes those (conflicts once for the selection, sensor per row) and runs each
+what the machine can't supply is the conflict and the source kind. This endpoint
+takes those (conflicts once for the selection, source kind per row) and runs each
 detection through the same floor as ``POST /events/{id}/geolocate``. Transactions and verdicts are per row.
 """
 
@@ -35,8 +35,8 @@ def batch_complete_events(
     """Publish the selected detections: ``detected`` → ``geolocated``.
 
     JSON, not multipart: nothing uploads. The detections keep their imported
-    evidence; the call supplies the conflict set and one sensor per row, which
-    goes onto every source that carries a file.
+    evidence; the call supplies the conflict set and one source kind per row,
+    which goes onto every source that carries a file.
 
     Each row commits on its own: one that fails the floor (no proof image,
     coordinates, direct or indirect source file, or a source without a URL)
@@ -53,7 +53,7 @@ def batch_complete_events(
             db,
             current_user=current_user,
             conflict_ids=body.conflict_ids,
-            rows=[(row.event_id, row.sensor) for row in body.rows],
+            rows=[(row.event_id, row.kind) for row in body.rows],
         )
     except EvidenceIntakeError as exc:
         _raise_event_error(exc)

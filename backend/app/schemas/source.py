@@ -16,7 +16,7 @@ from app.models.source import (
     SOURCE_TITLE_MAX_LENGTH,
     SOURCE_URL_MAX_LENGTH,
     ArchiveProvider,
-    Sensor,
+    SourceKind,
     SourceLevel,
 )
 from app.schemas.media import MediaRead
@@ -85,9 +85,9 @@ class SourceCreate(BaseModel):
         str, StringConstraints(strip_whitespace=True, max_length=SOURCE_TITLE_MAX_LENGTH)
     ] = ""
     level: SourceLevel
-    sensor: Sensor | None = None
+    kind: SourceKind
     captured_at: UtcDatetime | None = None
-    sensor_position: CoordsCreate | None = None
+    capture_position: CoordsCreate | None = None
     # Ratchets on a stored source: a posted false keeps a flagged source flagged.
     is_graphic: bool = False
     links: list[SourceLinkCreate] = Field(default_factory=list, max_length=_LIST_PARSE_CEILING)
@@ -124,9 +124,9 @@ class SourceRead(BaseModel):
     id: uuid.UUID
     title: str
     level: SourceLevel
-    sensor: Sensor | None
+    kind: SourceKind
     captured_at: datetime | None
-    sensor_position: CoordsRead | None
+    capture_position: CoordsRead | None
     is_graphic: bool
     # Ordered by ``posted_at``.
     links: list[SourceLinkRead]

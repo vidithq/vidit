@@ -11,7 +11,7 @@ export interface CardTag {
 }
 
 /** An event's taxonomy as card pills: its conflicts, keyed by their field name, then its tags,
- *  plain. A card carries no source, so it names no sensor. */
+ *  plain. A card carries no source, so it names no source kind. */
 export function cardTags(event: { tags: TagRead[]; conflicts: ConflictRead[] }): CardTag[] {
   return [
     ...event.conflicts.map((c) => ({ id: c.id, name: c.name, label: "Conflict" })),

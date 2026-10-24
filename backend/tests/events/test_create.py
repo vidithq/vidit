@@ -83,8 +83,8 @@ def test_create_rejects_invalid_latitude(author):
     assert "Latitude" in detail["message"]
 
 
-def test_create_rejects_a_sensor_position_off_the_globe(author, conflict):
-    sources = filed_source(author, sensor_position={"lat": 10.0, "lng": 190.0})
+def test_create_rejects_a_capture_position_off_the_globe(author, conflict):
+    sources = filed_source(author, capture_position={"lat": 10.0, "lng": 190.0})
     response = _post(author, _form(author, conflict, sources=sources))
     assert response.status_code == 400
     assert response.json()["detail"]["code"] == "invalid_coordinates"
@@ -229,7 +229,7 @@ def test_create_succeeds_with_full_floor(db, author, conflict, free_tag, tmp_pat
     """The placeholder src is rewritten to a real URL and a proof media row lands beside
     the source's file."""
     _use_local_storage(monkeypatch, tmp_path)
-    sources = filed_source(author, sensor_position={"lat": 48.6, "lng": 34.6})
+    sources = filed_source(author, capture_position={"lat": 48.6, "lng": 34.6})
 
     response = _post(
         author,
@@ -250,7 +250,7 @@ def test_create_succeeds_with_full_floor(db, author, conflict, free_tag, tmp_pat
     assert body["status"] == "geolocated"
     assert body["coords"] == {"lat": 48.5, "lng": 34.5}
     [source] = body["sources"]
-    assert source["sensor_position"] == {"lat": 48.6, "lng": 34.6}
+    assert source["capture_position"] == {"lat": 48.6, "lng": 34.6}
     # The creator is the owner AND the first geolocator (durable credit).
     assert body["owner"]["username"] == author.username
     assert [g["username"] for g in body["geolocators"]] == [author.username]

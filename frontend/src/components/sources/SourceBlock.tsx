@@ -10,13 +10,13 @@ import { LIST_TILE } from "@/components/ui/form-styles";
 import { META_LINE } from "@/components/ui/styles";
 import { cn } from "@/lib/cn";
 import { formatInstant, formatInstantDate, safeHostname } from "@/lib/format";
-import { LEVEL_LABELS, SENSOR_LABELS, shownSensor, type Source } from "@/lib/sources";
+import { LEVEL_LABELS, sourceKindLabel, type Source } from "@/lib/sources";
 
 /**
  * One source of an event on a reading surface, read like the event's Details card: its file
  * (behind its own graphic gate when this source is flagged) or a *No file* box, then one row
- * each for the title, level, sensor, sensor position, capture time, links and tags. A row with
- * no value drops out, except the title, which reads *Untitled*.
+ * each for the title, level, kind (with the file's kind), capture position, capture time, links
+ * and tags. A row with no value drops out, except the title, which reads *Untitled*.
  *
  * `compact` is the map panel's density: `thumbnail` media and bare rows in a `LIST_TILE`.
  * `wide` is for a block that owns the whole sources area: the file grows and sits left of the
@@ -73,9 +73,8 @@ function SourceRows({
   index: number;
   compact: boolean;
 }) {
-  // A source without a file names no sensor.
-  const sensor = source.media ? shownSensor(source.sensor) : null;
-  const position = source.sensor_position;
+  const kind = sourceKindLabel(source);
+  const position = source.capture_position;
   const links = source.links;
   return (
     <>
@@ -83,18 +82,11 @@ function SourceRows({
       <DetailRow label="Level" concept="source_level" compact={compact} align="center">
         <Pill tone="neutral">{LEVEL_LABELS[source.level]}</Pill>
       </DetailRow>
-      {sensor && (
-        <DetailRow
-          label="Sensor"
-          concept="sensor"
-          compact={compact}
-          value={SENSOR_LABELS[sensor]}
-        />
-      )}
+      {kind && <DetailRow label="Kind" concept="source_kind" compact={compact} value={kind} />}
       {position && (
         <DetailRow
-          label="Sensor position"
-          concept="sensor_position"
+          label="Capture position"
+          concept="capture_position"
           compact={compact}
           align="center"
           wrapLabel
