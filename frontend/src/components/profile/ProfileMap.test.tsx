@@ -21,7 +21,7 @@ import type { MapPoint } from "@/types";
 
 import { ProfileMap } from "./ProfileMap";
 
-// [id, lat, lng, event_date, added_date, detected]
+// [id, lat, lng, occurred_date, added_date, detected]
 const point = (id: string, detected: 0 | 1): MapPoint => [
   id,
   48.1,

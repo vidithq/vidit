@@ -1,16 +1,29 @@
+import type { Source } from "@/lib/sources";
 import type { EventDetail, EventVersion } from "@/types";
 
-/** A geolocated event with every optional field empty, for detail-panel tests. */
+/** A direct source with one link and no file, changed by `overrides`. */
+export const source = (overrides: Partial<Source> = {}): Source => ({
+  id: "s1",
+  title: "",
+  level: "direct",
+  sensor: null,
+  captured_at: null,
+  camera_position: null,
+  is_graphic: false,
+  links: [{ url: "https://t.me/channel/12345", posted_at: null, archived: null }],
+  tags: [],
+  media: null,
+  ...overrides,
+});
+
+/** A geolocated event with every optional field empty and one URL-only source, for detail-panel
+ *  tests. */
 export const eventDetail = (id: string, title: string): EventDetail => ({
   id,
   title,
-  event_coords: { lat: 49.71, lng: 37.616 },
-  capture_source_coords: null,
-  archived_source: null,
-  archived_detected_from: null,
-  event_date: "2026-03-14",
-  event_time: null,
-  source_posted_at: null,
+  coords: { lat: 49.71, lng: 37.616 },
+  occurred_date: "2026-03-14",
+  occurred_time: null,
   status: "geolocated",
   version_no: 1,
   is_graphic: false,
@@ -21,17 +34,32 @@ export const eventDetail = (id: string, title: string): EventDetail => ({
   owner: { id: "u1", username: "ana" },
   tags: [],
   conflicts: [],
-  source_url: "https://t.me/channel/12345",
-  secondary_source_urls: [],
-  archived_secondary_sources: [],
+  sources: [source()],
   proof: null,
   created_at: "2026-03-15T10:00:00Z",
   geolocated_at: "2026-03-15T10:00:00Z",
   closed_at: null,
-  media: [],
   thumbnail: null,
   requested_by: null,
   geolocators: [],
+});
+
+/** One source as `services/versions.source_entry` files it in a snapshot. */
+export const snapshotSource = (s: Source): Record<string, unknown> => ({
+  title: s.title,
+  level: s.level,
+  sensor: s.sensor,
+  captured_at: s.captured_at,
+  camera_position: s.camera_position,
+  is_graphic: s.is_graphic,
+  links: s.links.map((l) => ({
+    url: l.url,
+    posted_at: l.posted_at,
+    snapshot_url: l.archived?.url ?? null,
+    archived_at: l.archived?.archived_at ?? null,
+  })),
+  tags: s.tags,
+  media: s.media,
 });
 
 /** A filed version of `event` whose snapshot holds the event's own fields, changed by
@@ -49,19 +77,14 @@ export const filedVersion = (
   redacted: false,
   snapshot: {
     title: event.title,
-    source_url: event.source_url,
-    source_media: event.media,
-    event_coords: event.event_coords,
-    capture_source_coords: event.capture_source_coords,
-    event_date: event.event_date,
-    event_time: event.event_time,
-    source_posted_at: event.source_posted_at,
-    is_graphic: event.is_graphic,
-    secondary_source_urls: event.secondary_source_urls,
+    coords: event.coords,
+    occurred_date: event.occurred_date,
+    occurred_time: event.occurred_time,
+    sources: event.sources.map(snapshotSource),
     tags: event.tags,
     conflicts: event.conflicts,
     proof: event.proof,
-    archives: [],
+    proof_media: [],
     ...overrides,
   },
 });

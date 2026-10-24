@@ -29,8 +29,8 @@ const REQUEST: EventListItem = {
   status: "requested",
   before_closed_status: null,
   requested_at: "2026-10-11T09:00:00Z",
-  event_coords: null,
-  event_date: null,
+  coords: null,
+  occurred_date: null,
   is_graphic: false,
   media: null,
   owner: { id: "u1", username: "ana", avatar_url: null },
@@ -39,7 +39,7 @@ const REQUEST: EventListItem = {
   conflicts: [],
 };
 
-const TAGS: Tag[] = [{ id: "t1", name: "Drone", category: "capture_source" }];
+const TAGS: Tag[] = [{ id: "t1", name: "Drone" }];
 const CONFLICTS: Conflict[] = [
   {
     id: "c1",
@@ -47,7 +47,7 @@ const CONFLICTS: Conflict[] = [
     wikidata_id: null,
     start_year: 2022,
     end_year: null,
-    ongoing: true,
+    is_ongoing: true,
     tier: "major",
   },
 ];
@@ -75,13 +75,14 @@ describe("RequestsPage", () => {
     expect(await screen.findByText(REQUEST.title)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Status" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Conflict" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Capture source" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sensor" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Level" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Location guess" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Capture source" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sensor" }));
     fireEvent.click(screen.getByRole("button", { name: "Drone" }));
 
-    await waitFor(() => expect(lastQuery().getAll("capture_source")).toEqual(["Drone"]));
+    await waitFor(() => expect(lastQuery().getAll("sensor")).toEqual(["drone"]));
     expect(lastQuery().get("view")).toBe("requested");
     expect(lastQuery().getAll("status")).toEqual(["requested"]);
   });

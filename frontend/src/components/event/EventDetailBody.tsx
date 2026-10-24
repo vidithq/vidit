@@ -1,34 +1,25 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import type { ReactNode } from "react";
 
-import type { ArchivedLink, EventDetail } from "@/types";
-import { formatDate, formatInstant, pluralNoun, safeHostname } from "@/lib/format";
+import type { EventDetail } from "@/types";
+import { formatDate } from "@/lib/format";
 import { formatCoordinates } from "@/lib/coordinates";
 import { conflictLabel } from "@/lib/conflicts";
 import { provenanceLabel } from "@/lib/events";
 import { renderProof } from "@/lib/proof";
 import { SourceLabel } from "@/components/ui/SourceLabel";
-import {
-  ArchivedCopies,
-  DETECTED_FROM_DESCRIPTION,
-  PRIMARY_SOURCE_DESCRIPTION,
-  mirrorDescription,
-} from "@/components/ui/ArchivedCopies";
 import { StatusBadge } from "@/components/event/StatusBadge";
+import { SourceBlocks } from "@/components/sources/SourceBlock";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
-import { MediaGallery } from "@/components/ui/MediaGallery";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { ProofSection } from "@/components/ui/ProofSection";
 import { Pill } from "@/components/ui/Pill";
-import { TEXT_LINK } from "@/components/ui/styles";
-import type { Concept } from "@/lib/fieldHelp";
 import { creditProps } from "@/lib/geolocatorCredit";
 
 /** The body's data shape: an `EventDetail` as-is. Every lifecycle state shares it: a coordless
- * `requested` row carries a null `event_coords`, and the missing detected-from and requested-by
+ * `requested` row carries a null `coords`, and the missing detected-from and requested-by
  * spots drop out. */
 export type EventDetailBodyData = EventDetail;
 
@@ -40,7 +31,7 @@ interface EventDetailBodyProps {
    * card-chrome rows plus request-trace and author rows, section headings.
    */
   variant: "panel" | "page";
-  /** Rendered between the media block and the key-value rows (the full page slots its Location map here). */
+  /** Rendered between the sources and the key-value rows (the full page slots its Location map here). */
   children?: ReactNode;
 }
 
@@ -50,7 +41,7 @@ export function EventDetailBody({ geo, variant, children }: EventDetailBodyProps
   const compact = variant === "panel";
   return (
     <>
-      <MediaBlock geo={geo} compact={compact} />
+      <SourceBlocks sources={geo.sources} alt={geo.title} compact={compact} />
       {children}
       <DetailRows geo={geo} compact={compact} />
       <ProofBlock geo={geo} compact={compact} />
@@ -58,50 +49,8 @@ export function EventDetailBody({ geo, variant, children }: EventDetailBodyProps
   );
 }
 
-function MediaBlock({ geo, compact }: { geo: EventDetailBodyData; compact: boolean }) {
-  if (compact) {
-    return (
-      <div className="space-y-2">
-        <SectionEyebrow
-          as="h3"
-          margin="none"
-          title="Source media"
-          concept="source_media"
-        />
-        <MediaGallery
-          media={geo.media}
-          alt={geo.title}
-          variant="panel"
-          isGraphic={geo.is_graphic}
-        />
-      </div>
-    );
-  }
-  return (
-    <div>
-      <SectionEyebrow title="Source media" concept="source_media" />
-      <MediaGallery media={geo.media} alt={geo.title} isGraphic={geo.is_graphic} />
-    </div>
-  );
-}
-
 function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boolean }) {
-  // Conflicts and curated capture-source tags get labelled rows so they read as structured facts, not free-form chips.
-  const captureTags = geo.tags.filter((t) => t.category === "capture_source");
-  const freeTags = geo.tags.filter((t) => t.category === "free");
   const sourceClass = compact ? "" : "text-sm";
-  const tagRow = (name: string, tags: EventDetailBodyData["tags"], concept?: Concept) =>
-    tags.length > 0 ? (
-      <DetailRow label={name} concept={concept} compact={compact} align="start">
-        <div className={`flex flex-wrap ${compact ? "gap-1" : "gap-1.5"} justify-end`}>
-          {tags.map((tag) => (
-            <Pill key={tag.id} tone="neutral">
-              {tag.name}
-            </Pill>
-          ))}
-        </div>
-      </DetailRow>
-    ) : null;
 
   const rows = (
     <>
@@ -125,58 +74,28 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
       )}
       <DetailRow
         label="Event date"
-        concept="event_date"
+        concept="occurred_date"
         compact={compact}
-        value={geo.event_date ? formatDate(geo.event_date) : "Unknown"}
+        value={geo.occurred_date ? formatDate(geo.occurred_date) : "Unknown"}
       />
       {/* Time-of-day gets its own row: it can be known without the day (an hour from sun position or
           shadows), so it must show even when the date is "Unknown". Only when set. */}
-      {geo.event_time && (
+      {geo.occurred_time && (
         <DetailRow
           label="Event time"
-          concept="event_time"
+          concept="occurred_time"
           compact={compact}
-          value={`${geo.event_time.slice(0, 5)} UTC`}
+          value={`${geo.occurred_time.slice(0, 5)} UTC`}
         />
       )}
-      <DetailRow
-        label="Source posted"
-        concept="source_posted_at"
-        compact={compact}
-        value={formatInstant(geo.source_posted_at)}
-      />
-      {/* The three dates read as one block: event → source → submitted. */}
+      {/* The two dates read as one block: event, then submitted. */}
       <DetailRow
         label="Added"
         concept="added"
         compact={compact}
         value={formatDate(geo.created_at)}
       />
-      <DetailRow label="Source" concept="source_url" compact={compact}>
-        <span className="flex min-w-0 items-baseline justify-end">
-          <SourceLabel
-            url={geo.source_url}
-            variant="link"
-            className={sourceClass}
-          />
-          {geo.source_url && (
-            <ArchivedCopies
-              copy={geo.archived_source}
-              describes={PRIMARY_SOURCE_DESCRIPTION}
-            />
-          )}
-        </span>
-      </DetailRow>
-      {/* Mirrors of the same media, under the primary. Collapsed: corroboration, not the evidence
-          anchor, so they don't push the Details block down. */}
-      {geo.secondary_source_urls.length > 0 && (
-        <SecondarySourcesRow
-          urls={geo.secondary_source_urls}
-          archived={geo.archived_secondary_sources}
-          compact={compact}
-        />
-      )}
-      {/* The post a machine import read this row from, distinct from Source (the footage origin). */}
+      {/* The post a machine import read this row from, distinct from the sources (where the footage was posted). */}
       {geo.detected_from_url && (
         <DetailRow
           label={provenanceLabel(!!geo.requested_by)}
@@ -184,17 +103,10 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
           compact={compact}
         >
           <span className="flex min-w-0 items-baseline justify-end">
-            {/* Same display as Source: SourceLabel reduces the URL to its host, so the two provenance rows
-                read alike. */}
             <SourceLabel
               url={geo.detected_from_url}
               variant="link"
               className={sourceClass}
-            />
-            {/* Archived like the source: the analyst's post is the claim's provenance and rots the same way. */}
-            <ArchivedCopies
-              copy={geo.archived_detected_from}
-              describes={DETECTED_FROM_DESCRIPTION}
             />
           </span>
         </DetailRow>
@@ -210,8 +122,17 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
           </div>
         </DetailRow>
       )}
-      {tagRow("Capture source", captureTags, "capture_source")}
-      {tagRow("Tags", freeTags)}
+      {geo.tags.length > 0 && (
+        <DetailRow label="Tags" compact={compact} align="start">
+          <div className={`flex flex-wrap ${compact ? "gap-1" : "gap-1.5"} justify-end`}>
+            {geo.tags.map((tag) => (
+              <Pill key={tag.id} tone="neutral">
+                {tag.name}
+              </Pill>
+            ))}
+          </div>
+        </DetailRow>
+      )}
       {/* Compact panel omits requested-by and author rows: the author is in the panel header, the trace
           belongs to the full page. Fulfilment is a lifecycle move on this row, so the trace is who
           opened the request (`requested_by`). */}
@@ -247,8 +168,8 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
             className="text-sm"
           >
             <span className="text-neutral-200 font-mono text-xs">
-              {geo.event_coords
-                ? formatCoordinates(geo.event_coords.lat, geo.event_coords.lng)
+              {geo.coords
+                ? formatCoordinates(geo.coords.lat, geo.coords.lng)
                 : "—"}
             </span>
           </DetailRow>
@@ -270,72 +191,6 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
       <SectionEyebrow title="Details" concept="section_details" />
       <DetailCard>{rows}</DetailCard>
     </div>
-  );
-}
-
-/**
- * The Secondary sources row: a count that expands into the list. Rendered only for a non-empty
- * list (the caller guards). Each link is a `SourceLabel` with its `ArchivedCopies` mark, like the
- * Source row; the row's `?` explains the mark once. `archived` is index-aligned with `urls` (the
- * payload's contract).
- */
-function SecondarySourcesRow({
-  urls,
-  archived,
-  compact,
-}: {
-  urls: string[];
-  archived: (ArchivedLink | null)[];
-  compact: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const textSize = compact ? "" : "text-sm";
-  return (
-    <DetailRow
-      label="Secondary sources"
-      concept="secondary_source_urls"
-      compact={compact}
-      align="start"
-    >
-      <div className="flex flex-col items-end gap-1">
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          className={`inline-flex items-center gap-1 ${textSize} ${TEXT_LINK}`}
-        >
-          {open ? (
-            <>
-              Hide
-              <ChevronUp size={12} />
-            </>
-          ) : (
-            <>
-              {urls.length} more {pluralNoun(urls.length, "source")}
-              <ChevronDown size={12} />
-            </>
-          )}
-        </button>
-        {open &&
-          urls.map((url, index) => (
-            // Index key: two mirrors may repeat a URL, and archival records pair by position.
-            <span key={index} className="flex min-w-0 items-baseline justify-end">
-              <SourceLabel
-                url={url}
-                variant="link"
-                className={textSize}
-              />
-              {/* Named per mirror, not "the source": several archived copies can share a page, each needing its
-                  own target announced. `mirrorDescription` owns the name, including the cases a bare host can't
-                  carry (shared host, no host). */}
-              <ArchivedCopies
-                copy={archived[index] ?? null}
-                describes={mirrorDescription(safeHostname(url), index, urls.length)}
-              />
-            </span>
-          ))}
-      </div>
-    </DetailRow>
   );
 }
 

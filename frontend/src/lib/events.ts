@@ -3,16 +3,15 @@ import type { components, operations } from "@/lib/api-types";
 import { archiveTooLarge } from "./archive";
 import { appendEventFilterParams, type EventFilterParams } from "./search";
 import { cleanNumber, inBounds } from "./coordinates";
-import { toDatetimeLocalUTC } from "./format";
 import { proofHasImage } from "./proof";
+import { snapshotProvider } from "./snapshots";
+import type { Source, SourceCreate } from "./sources";
 import type {
   ArchiveImportJob,
   ArchiveImportPresign,
-  ArchivedLink,
   EventDetail,
   EventVersion,
   Media,
-  TagCategory,
   TweetImportOutcome,
 } from "@/types";
 import { withCursor } from "./pagination";
@@ -22,13 +21,12 @@ import { eventHref } from "./routes";
 export type MissingFieldKey =
   | "title"
   | "coordinates"
-  | "source_url"
-  | "source_posted_at"
+  | "source_file"
+  | "source_link"
+  | "sensor"
   | "proof"
   | "proof_image"
-  | "source_media"
-  | "conflict_tag"
-  | "capture_source_tag";
+  | "conflict_tag";
 
 export interface MissingField {
   key: MissingFieldKey;
@@ -39,17 +37,19 @@ export interface MissingField {
 export const FIELD_LABELS: Record<MissingFieldKey, string> = {
   title: "Title",
   coordinates: "Coordinates",
-  source_url: "Source URL",
-  source_posted_at: "Source post time",
+  source_file: "Source file",
+  source_link: "Source URL",
+  sensor: "Sensor",
   proof: "Proof",
   proof_image: "Proof image",
-  source_media: "Source media",
   conflict_tag: "Conflict",
-  capture_source_tag: "Capture source tag",
 };
 
-/** Mirrors `models/event.MAX_SECONDARY_SOURCE_LINKS`; change both. */
-export const MAX_SECONDARY_SOURCE_LINKS = 10;
+/** Mirrors `models/source.MAX_SOURCES_PER_EVENT`; change both. */
+export const MAX_SOURCES_PER_EVENT = 10;
+
+/** Mirrors `models/source.MAX_LINKS_PER_SOURCE`; change both. */
+export const MAX_LINKS_PER_SOURCE = 10;
 
 /** Below the backend default (`per_page=20`, max 100) so row previews load faster. */
 const DETECTIONS_PER_PAGE = 10;
@@ -120,19 +120,8 @@ export function eventListPath(params: EventListParams = {}): string {
   return `/events${qs ? `?${qs}` : ""}`;
 }
 
-/** Camera-position pair to spread into the input. Both-or-neither: a lone half is
- *  dropped, a non-numeric pair clears it. */
-export function parseCaptureCoords(
-  latStr: string,
-  lngStr: string
-): { capture_source_lat: number; capture_source_lng: number } | Record<string, never> {
-  const lat = cleanNumber(latStr);
-  const lng = cleanNumber(lngStr);
-  if (lat === null || lng === null) return {};
-  return { capture_source_lat: lat, capture_source_lng: lng };
-}
-
-/** Optional subject-coordinate guess; same rules as `parseCaptureCoords`. */
+/** Optional subject-coordinate guess. Both-or-neither: a lone half is dropped, a non-numeric
+ *  pair clears it. */
 export function parseGuessCoords(
   latStr: string,
   lngStr: string
@@ -147,178 +136,72 @@ export function getEvent(id: string): Promise<EventDetail> {
   return apiFetch<EventDetail>(`/events/${id}`);
 }
 
-/** Form state for geolocate and create. New media ride in `files`; existing media drop
- *  via `remove_media_ids`. */
-export interface EventEditInput {
+/** The fields every event write posts: the whole row state, its sources included. */
+export interface EventWriteInput {
   title: string;
-  lat: number;
-  lng: number;
-  /** Camera position; both halves or neither (a lone half is a 400). */
-  capture_source_lat?: number;
-  capture_source_lng?: number;
-  source_url: string;
-  /** Archived copy of `source_url`; one that isn't a snapshot of it fails the submit. */
-  source_snapshot_url?: string;
-  /** Mirrors of the same media, in order; blanks are dropped. */
-  secondary_source_urls?: string[];
-  /** Archived copy per mirror, index-aligned; a non-matching one fails the submit. */
-  secondary_snapshot_urls?: string[];
+  /** The subject point; both halves or neither. Required on a geolocation write. */
+  lat?: number;
+  lng?: number;
+  /** The whole source list, which replaces the stored one. */
+  sources: SourceCreate[];
   /** ISO `YYYY-MM-DD`; omitted when unknown. */
-  event_date?: string;
-  /** Optional ISO `HH:MM`; empty / omitted clears it. */
-  event_time?: string;
-  /** ISO UTC `YYYY-MM-DDTHH:MM`. Required on publish; omitted on `saveVersion` when
-   *  empty so the row keeps its instant. */
-  source_posted_at: string;
+  occurred_date?: string;
+  /** Optional ISO `HH:MM`, UTC; omitted clears it. */
+  occurred_time?: string;
   proof?: string | null;
   /** Replaces the tag set wholesale. */
   tag_ids: string[];
   /** Replaces the conflict set wholesale. */
   conflict_ids: string[];
-  /** Footage shows death, injury or human remains; blurs media behind an age confirmation. */
-  is_graphic?: boolean;
-  remove_media_ids: string[];
-  files: File[];
-  /** Inline proof images, uploaded at publish; matched to `placeholder://<filename>` srcs,
+  /** Inline proof images, uploaded with the write; matched to `placeholder://<filename>` srcs,
    *  which the server rewrites. */
   proof_files: File[];
 }
 
-/** Multipart fields shared by every write path (metadata, camera point, tags). */
-function appendSharedEventFields(
-  fd: FormData,
-  input: {
-    title: string;
-    /** Optional on the version path alone (omitted keeps the stored source). */
-    source_url?: string;
-    source_snapshot_url?: string;
-    secondary_source_urls?: string[];
-    secondary_snapshot_urls?: string[];
-    source_posted_at: string;
-    proof?: string | null;
-    capture_source_lat?: number;
-    capture_source_lng?: number;
-    event_time?: string;
-    tag_ids?: string[];
-    conflict_ids?: string[];
-    is_graphic?: boolean;
-  }
-): void {
+/** The multipart body every event write posts. Source files never travel here: each one
+ *  uploads first (`POST /uploads`) and the source names it. */
+function eventFormData(input: EventWriteInput): FormData {
+  const fd = new FormData();
   fd.append("title", input.title);
-  // Always sent: geolocate posts the whole state, so omission would clear the flag.
-  fd.append("is_graphic", String(input.is_graphic ?? false));
-  if (input.source_url !== undefined) fd.append("source_url", input.source_url);
-  if (input.source_snapshot_url?.trim()) {
-    fd.append("source_snapshot_url", input.source_snapshot_url.trim());
+  // Both-or-neither, matching the backend.
+  if (input.lat !== undefined && input.lng !== undefined) {
+    fd.append("lat", String(input.lat));
+    fd.append("lng", String(input.lng));
   }
-  // Repeated form fields paired by position. Blank mirrors are dropped with their snapshot;
-  // the snapshot is posted even when empty so position i names mirror i.
-  const mirrors = input.secondary_source_urls ?? [];
-  const mirrorCopies = input.secondary_snapshot_urls ?? [];
-  mirrors.forEach((url, index) => {
-    const trimmed = url.trim();
-    if (!trimmed) return;
-    fd.append("secondary_source_urls", trimmed);
-    fd.append("secondary_snapshot_urls", (mirrorCopies[index] ?? "").trim());
-  });
-  // Both-or-neither, matching backend `_optional_point`.
-  if (input.capture_source_lat !== undefined && input.capture_source_lng !== undefined) {
-    fd.append("capture_source_lat", String(input.capture_source_lat));
-    fd.append("capture_source_lng", String(input.capture_source_lng));
-  }
-  if (input.event_time) fd.append("event_time", input.event_time);
-  // Omitted when empty: on save_version an absent value keeps the stored instant.
-  // Publish paths reject its absence.
-  if (input.source_posted_at) {
-    fd.append("source_posted_at", input.source_posted_at);
-  }
+  fd.append("sources", JSON.stringify(input.sources));
+  if (input.occurred_date) fd.append("occurred_date", input.occurred_date);
+  if (input.occurred_time) fd.append("occurred_time", input.occurred_time);
   if (input.proof) fd.append("proof", input.proof);
-  if (input.tag_ids && input.tag_ids.length > 0) {
-    fd.append("tag_ids", JSON.stringify(input.tag_ids));
-  }
-  if (input.conflict_ids && input.conflict_ids.length > 0) {
+  if (input.tag_ids.length > 0) fd.append("tag_ids", JSON.stringify(input.tag_ids));
+  if (input.conflict_ids.length > 0) {
     fd.append("conflict_ids", JSON.stringify(input.conflict_ids));
   }
+  for (const file of input.proof_files) fd.append("proof_files", file);
+  return fd;
 }
 
-/** Multipart fields every geolocation write posts. `sourceKey` is `file` for
- *  create/request, `files` for geolocate and versions. */
-function appendEventFormFields(
-  fd: FormData,
-  input: Omit<EventEditInput, "remove_media_ids" | "source_url" | "files"> & {
-    source_url?: string;
-    files?: File[];
-    remove_media_ids?: string[];
-  },
-  sourceKey: "file" | "files" = "files"
-): void {
-  appendSharedEventFields(fd, input);
-  fd.append("lat", String(input.lat));
-  fd.append("lng", String(input.lng));
-  if (input.event_date) {
-    fd.append("event_date", input.event_date);
-  }
-  for (const file of input.files ?? []) {
-    fd.append(sourceKey, file);
-  }
-  // Rows the replacement file swaps out; a create never sends this.
-  if (input.remove_media_ids?.length) {
-    fd.append("remove_media_ids", JSON.stringify(input.remove_media_ids));
-  }
-  // Matched to `placeholder://` srcs by filename server-side.
-  for (const file of input.proof_files) {
-    fd.append("proof_files", file);
-  }
+function postEventForm<T>(path: string, fd: FormData): Promise<T> {
+  return apiFetch<T>(path, { method: "POST", body: fd });
 }
 
 /** Give an event a vouched location: `requested` | `detected` → `geolocated`.
  *  `POST /events/{id}/geolocate`. */
-export function geolocateEvent(
-  id: string,
-  input: EventEditInput
-): Promise<EventDetail> {
-  const fd = new FormData();
-  appendEventFormFields(fd, input);
-  return apiFetch<EventDetail>(`/events/${id}/geolocate`, {
-    method: "POST",
-    body: fd,
-  });
+export function geolocateEvent(id: string, input: EventWriteInput): Promise<EventDetail> {
+  return postEventForm(`/events/${id}/geolocate`, eventFormData(input));
 }
-
-export type EventCreateInput = Omit<EventEditInput, "remove_media_ids">;
 
 /** Mirrors `schemas/event.VERSION_NOTE_MAX_LENGTH`; change both. */
 export const VERSION_NOTE_MAX_LEN = 280;
 
-/** A correction to a published event: the geolocate form, whole. `source_url` is
- *  optional here alone (omitted keeps the stored source). */
-export type EventVersionInput = Omit<EventEditInput, "source_url"> & {
-  /** Omitted or empty keeps the stored URL; whitespace-only is a 400. */
-  source_url?: string;
-  /** Editor's note, stored on the superseded version. Capped at `VERSION_NOTE_MAX_LEN`. */
-  note?: string;
-  /** Snapshot of `detected_from_url`. Only this endpoint takes it, since that link is immutable. */
-  detected_from_snapshot_url?: string;
-};
-
-/** `POST /events/{id}/versions`: owner-only, `geolocated`-only. Files the superseded
- *  state as a version. */
+/** `POST /events/{id}/versions`: owner-only, `geolocated`-only. Files the superseded state as a
+ *  version; `note` is the editor's words about the edit, stored on it. */
 export function saveVersion(
   id: string,
-  input: EventVersionInput
+  input: EventWriteInput & { note?: string }
 ): Promise<EventDetail> {
-  const fd = new FormData();
-  appendEventFormFields(fd, input);
-  if (input.note?.trim()) {
-    fd.append("note", input.note.trim());
-  }
-  if (input.detected_from_snapshot_url?.trim()) {
-    fd.append("detected_from_snapshot_url", input.detected_from_snapshot_url.trim());
-  }
-  return apiFetch<EventDetail>(`/events/${id}/versions`, {
-    method: "POST",
-    body: fd,
-  });
+  const fd = eventFormData(input);
+  if (input.note?.trim()) fd.append("note", input.note.trim());
+  return postEventForm(`/events/${id}/versions`, fd);
 }
 
 // Version history: reads behind /events/{id}/history and /vN.
@@ -359,22 +242,18 @@ export function parseVersionSegment(segment: string): number | null {
 }
 
 /** One label per versioned field, in changed-list order. Keyed by the fields
- *  `services/versions.build_snapshot` files. */
+ *  `services/versions.build_snapshot` files; `archives` is the sources' archived copies, named
+ *  apart since a copy is recorded without changing what a source says. */
 const VERSION_FIELD_LABELS = {
   title: "Title",
-  source_url: "Source URL",
-  source_media: "Source media",
-  event_coords: "Coordinates",
-  capture_source_coords: "Camera position",
-  event_date: "Event date",
-  event_time: "Event time",
-  source_posted_at: "Source posted",
+  sources: "Sources",
+  coords: "Coordinates",
+  occurred_date: "Event date",
+  occurred_time: "Event time",
   conflicts: "Conflict",
   tags: "Tags",
-  secondary_source_urls: "Secondary sources",
   archives: "Archived copies",
   proof: "Proof",
-  is_graphic: "Graphic flag",
 } as const;
 
 const asString = (value: unknown, fallback: string): string =>
@@ -383,7 +262,7 @@ const asString = (value: unknown, fallback: string): string =>
 const asNullableString = (value: unknown): string | null =>
   typeof value === "string" ? value : null;
 
-const asCoords = (value: unknown): EventDetail["event_coords"] => {
+const asCoords = (value: unknown): EventDetail["coords"] => {
   if (value === null || typeof value !== "object") return null;
   const { lat, lng } = value as { lat?: unknown; lng?: unknown };
   return typeof lat === "number" && typeof lng === "number" ? { lat, lng } : null;
@@ -391,94 +270,92 @@ const asCoords = (value: unknown): EventDetail["event_coords"] => {
 
 const asList = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
 
-/** Archived copies an event view carries, keyed by covered link. The read shape spreads
- *  them over three fields; this one walk gathers them so the version overlay, the
- *  changed-field list and the edit form agree. */
-export function archivedCopies(view: EventDetail): Map<string, ArchivedLink> {
-  const copies = new Map<string, ArchivedLink>();
-  const add = (url: string | null, copy: ArchivedLink | null | undefined) => {
-    if (url && copy) copies.set(url, copy);
-  };
-  add(view.source_url, view.archived_source);
-  add(view.detected_from_url, view.archived_detected_from);
-  view.secondary_source_urls.forEach((url, index) =>
-    add(url, view.archived_secondary_sources[index])
-  );
-  return copies;
-}
+const asMedia = (value: unknown): Media | null =>
+  value !== null && typeof value === "object" && typeof (value as Media).storage_url === "string"
+    ? (value as Media)
+    : null;
 
-/** Archived copies one filed version held (`services/versions.build_snapshot`), keyed by
- *  link. A snapshot without an `archives` key (pre-versioning or redacted) falls back to
- *  the live row's copies, so no phantom change prints. */
-function snapshotArchivedCopies(
-  snapshot: EventVersion["snapshot"],
-  current: EventDetail
-): Map<string, ArchivedLink> {
-  if (!Array.isArray(snapshot.archives)) return archivedCopies(current);
-  const copies = new Map<string, ArchivedLink>();
-  for (const entry of asList<Record<string, unknown>>(snapshot.archives)) {
-    const original = asNullableString(entry?.original_url);
-    const url = asNullableString(entry?.snapshot_url);
-    const provider = entry?.provider;
-    if (
-      original &&
-      url &&
-      (provider === "wayback" || provider === "archive_today" || provider === "ghostarchive")
-    ) {
-      copies.set(original, { url, provider });
-    }
-  }
-  return copies;
+/** One snapshot source (`services/versions.source_entry`) in the read shape. The snapshot keeps
+ *  no id, so the position stands in. Its graphic flag is ratcheted against the live source
+ *  showing the same file, since the file shown is the live object. */
+function snapshotSource(
+  entry: Record<string, unknown>,
+  index: number,
+  versionNo: number,
+  liveGraphicFiles: ReadonlySet<string>
+): Source {
+  const media = asMedia(entry.media);
+  const level = entry.level;
+  return {
+    id: `v${versionNo}-${index}`,
+    title: asString(entry.title, ""),
+    level: level === "indirect" || level === "context" ? level : "direct",
+    sensor: (asNullableString(entry.sensor) as Source["sensor"]) ?? null,
+    captured_at: asNullableString(entry.captured_at),
+    camera_position: asCoords(entry.camera_position),
+    is_graphic:
+      entry.is_graphic === true || (media !== null && liveGraphicFiles.has(media.storage_url)),
+    links: asList<Record<string, unknown>>(entry.links).map((link) => {
+      const snapshotUrl = asNullableString(link.snapshot_url);
+      const provider = snapshotUrl ? snapshotProvider(snapshotUrl) : null;
+      return {
+        url: asString(link.url, ""),
+        posted_at: asNullableString(link.posted_at),
+        archived:
+          snapshotUrl && provider
+            ? {
+                url: snapshotUrl,
+                provider,
+                archived_at: asNullableString(link.archived_at) ?? "",
+              }
+            : null,
+      };
+    }),
+    tags: asList<Source["tags"][number]>(entry.tags),
+    media,
+  };
 }
 
 /** One filed version as the event shape every surface renders.
- *  The anchor (`source_url`, `source_media`) is read from the snapshot alone, never the live
- *  row, so the changed-field list sees different values across a media swap. Identity (id,
- *  owner, status, creation date) comes from the current row.
- *  Archived copies are re-spread over the three fields by link, not position. A conflict
- *  resolves to the live row when its id still exists, else the stored name, so a version
- *  survives a rename or delete.
- *  The snapshot is untyped JSON, so every field is read defensively; a redacted `{}`
- *  snapshot maps to the current row's immutables and empty content. */
+ *  Sources are read from the snapshot alone, never the live row, so the changed-field list sees
+ *  different values across an edit. Identity (id, owner, status, creation date) comes from the
+ *  current row. A conflict resolves to the live row when its id still exists, else the stored
+ *  name, so a version survives a rename or delete.
+ *  The snapshot is untyped JSON, so every field is read defensively; a redacted `{}` snapshot
+ *  maps to the current row's immutables and empty content. */
 export function snapshotToEventView(
   current: EventDetail,
   version: EventVersion
 ): EventDetail {
   const snapshot = version.snapshot;
-  const archivedByUrl = snapshotArchivedCopies(snapshot, current);
   const conflictsById = new Map(current.conflicts.map((c) => [c.id, c]));
-  const secondarySourceUrls = asList<string>(snapshot.secondary_source_urls);
-  const sourceUrl = asNullableString(snapshot.source_url);
-  const media = asList<Media>(snapshot.source_media);
+  const liveGraphicFiles = new Set(
+    current.sources.flatMap((s) => (s.is_graphic && s.media ? [s.media.storage_url] : []))
+  );
+  const sources = asList<Record<string, unknown>>(snapshot.sources).map((entry, index) =>
+    snapshotSource(entry, index, version.version_no, liveGraphicFiles)
+  );
   return {
     ...current,
     version_no: version.version_no,
-    source_url: sourceUrl,
-    media,
-    // Derived from the same media, so a preview shows the footage this version rested on.
-    thumbnail: media[0] ?? null,
-    archived_source: archivedByUrl.get(sourceUrl ?? "") ?? null,
-    archived_detected_from: archivedByUrl.get(current.detected_from_url ?? "") ?? null,
+    sources,
+    is_graphic: sources.some((s) => s.is_graphic),
+    // As the server picks it: the first source file, else the first proof image.
+    thumbnail:
+      sources.find((s) => s.media)?.media ??
+      asList<unknown>(snapshot.proof_media).map(asMedia).find((m) => m !== null) ??
+      null,
     title: asString(snapshot.title, current.title),
-    event_coords: asCoords(snapshot.event_coords),
-    capture_source_coords: asCoords(snapshot.capture_source_coords),
-    event_date: asNullableString(snapshot.event_date),
-    event_time: asNullableString(snapshot.event_time),
-    source_posted_at: asNullableString(snapshot.source_posted_at),
-    // Ratcheted against the live row like the backend column: the media shown is the live
-    // media, so a flag raised later still covers it.
-    is_graphic: current.is_graphic || snapshot.is_graphic === true,
-    secondary_source_urls: secondarySourceUrls,
-    archived_secondary_sources: secondarySourceUrls.map(
-      (url) => archivedByUrl.get(url) ?? null
-    ),
+    coords: asCoords(snapshot.coords),
+    occurred_date: asNullableString(snapshot.occurred_date),
+    occurred_time: asNullableString(snapshot.occurred_time),
     tags: asList<EventDetail["tags"][number]>(snapshot.tags),
     conflicts: asList<{ id: string; name: string }>(snapshot.conflicts).map(
       (stored) =>
         conflictsById.get(stored.id) ?? {
           id: stored.id,
           name: stored.name,
-          ongoing: false,
+          is_ongoing: false,
           start_year: null,
           end_year: null,
           tier: null,
@@ -489,16 +366,16 @@ export function snapshotToEventView(
   };
 }
 
-/** Same moment whatever the spelling (`+00:00` vs `Z`); unparseable values compare as strings. */
-function sameInstant(a: string | null, b: string | null): boolean {
-  if (a === null || b === null) return a === b;
-  const [left, right] = [Date.parse(a), Date.parse(b)];
-  return isNaN(left) || isNaN(right) ? a === b : left === right;
+/** Same moment whatever the spelling (`+00:00` vs `Z`); unparseable values stay as written. */
+function instantKey(value: string | null): string | null {
+  if (value === null) return null;
+  const parsed = Date.parse(value);
+  return isNaN(parsed) ? value : String(parsed);
 }
 
 const sameCoords = (
-  a: EventDetail["event_coords"],
-  b: EventDetail["event_coords"]
+  a: EventDetail["coords"],
+  b: EventDetail["coords"]
 ): boolean => (a === null || b === null ? a === b : a.lat === b.lat && a.lng === b.lng);
 
 const sameList = (a: readonly string[], b: readonly string[]): boolean =>
@@ -512,14 +389,34 @@ const sameTime = (a: string | null, b: string | null): boolean =>
 const sameSet = (a: readonly string[], b: readonly string[]): boolean =>
   sameList([...a].sort(), [...b].sort());
 
-/** A version's archived copies as comparable (link, snapshot) pairs; the snapshot host implies the provider. */
+/** Each source as a comparable value, archived copies left out. The file compares by its stored
+ *  object, so a copied file reads the same as the one it copies. */
+const sourceKeys = (view: EventDetail): string[] =>
+  view.sources.map((s) =>
+    JSON.stringify([
+      s.title,
+      s.level,
+      s.sensor,
+      instantKey(s.captured_at),
+      s.camera_position ? [s.camera_position.lat, s.camera_position.lng] : null,
+      s.is_graphic,
+      s.links.map((l) => `${l.url} ${instantKey(l.posted_at)}`).sort(),
+      s.tags.map((t) => t.id).sort(),
+      s.media?.storage_url ?? null,
+    ])
+  );
+
+/** A version's archived copies as comparable (link, snapshot) pairs; the snapshot host implies
+ *  the provider. */
 const archivedPairs = (view: EventDetail): string[] =>
-  [...archivedCopies(view)].map(([original, copy]) => `${original} ${copy.url}`);
+  view.sources.flatMap((s) =>
+    s.links.flatMap((l) => (l.archived ? [`${l.url} ${l.archived.url}`] : []))
+  );
 
 /** Labels of the versioned fields that differ between a version and the one before it,
  *  computed client side from two adjacent views. Tags and conflicts compare by id, as
- *  sets. Inline images are not their own entry (they live in the proof). Archived copies
- *  compare as (link, snapshot) pairs. */
+ *  sets; sources as a set of values. Inline images are not their own entry (they live in the
+ *  proof). Archived copies compare as (link, snapshot) pairs. */
 export function changedFields(version: EventDetail, previous: EventDetail): string[] {
   const ids = (rows: readonly { id: string }[]) => rows.map((row) => row.id);
   const changed: string[] = [];
@@ -527,32 +424,18 @@ export function changedFields(version: EventDetail, previous: EventDetail): stri
     if (differs) changed.push(label);
   };
   flag(VERSION_FIELD_LABELS.title, version.title !== previous.title);
-  flag(VERSION_FIELD_LABELS.source_url, version.source_url !== previous.source_url);
-  // By identity: a swap is a new row.
-  flag(VERSION_FIELD_LABELS.source_media, !sameList(ids(version.media), ids(previous.media)));
+  flag(VERSION_FIELD_LABELS.sources, !sameSet(sourceKeys(version), sourceKeys(previous)));
+  flag(VERSION_FIELD_LABELS.coords, !sameCoords(version.coords, previous.coords));
+  flag(VERSION_FIELD_LABELS.occurred_date, version.occurred_date !== previous.occurred_date);
   flag(
-    VERSION_FIELD_LABELS.event_coords,
-    !sameCoords(version.event_coords, previous.event_coords)
-  );
-  flag(
-    VERSION_FIELD_LABELS.capture_source_coords,
-    !sameCoords(version.capture_source_coords, previous.capture_source_coords)
-  );
-  flag(VERSION_FIELD_LABELS.event_date, version.event_date !== previous.event_date);
-  flag(VERSION_FIELD_LABELS.event_time, !sameTime(version.event_time, previous.event_time));
-  flag(
-    VERSION_FIELD_LABELS.source_posted_at,
-    !sameInstant(version.source_posted_at, previous.source_posted_at)
+    VERSION_FIELD_LABELS.occurred_time,
+    !sameTime(version.occurred_time, previous.occurred_time)
   );
   flag(
     VERSION_FIELD_LABELS.conflicts,
     !sameSet(ids(version.conflicts), ids(previous.conflicts))
   );
   flag(VERSION_FIELD_LABELS.tags, !sameSet(ids(version.tags), ids(previous.tags)));
-  flag(
-    VERSION_FIELD_LABELS.secondary_source_urls,
-    !sameList(version.secondary_source_urls, previous.secondary_source_urls)
-  );
   flag(
     VERSION_FIELD_LABELS.archives,
     !sameSet(archivedPairs(version), archivedPairs(previous))
@@ -561,92 +444,43 @@ export function changedFields(version: EventDetail, previous: EventDetail): stri
     VERSION_FIELD_LABELS.proof,
     (version.proof ?? null) !== (previous.proof ?? null)
   );
-  flag(VERSION_FIELD_LABELS.is_graphic, version.is_graphic !== previous.is_graphic);
   return changed;
 }
 
 /** The edit form's state as the strings its inputs carry (typed values, not posted values). */
 export interface EventVersionFormState {
   title: string;
-  /** Blank keeps the stored URL, like an omitted field. */
-  sourceUrl: string;
-  /** A staged source-media swap (row marked for removal or file queued); not comparable as a
-   *  value since an upload has no URL yet. */
-  sourceMediaMoved: boolean;
+  /** Whether the posted source list would differ from the stored one (`sourcesChanged`). */
+  sourcesMoved: boolean;
   lat: string;
   lng: string;
-  captureLat: string;
-  captureLng: string;
   eventDate: string;
   eventTime: string;
-  sourcePostedAt: string;
-  isGraphic: boolean;
   proof: string | null;
   tagIds: string[];
   conflictIds: string[];
-  secondarySourceUrls: string[];
-  secondarySnapshotUrls: string[];
-  sourceSnapshotUrl: string;
-  detectedFromSnapshotUrl: string;
 }
 
-const coordsOf = (lat: string, lng: string): EventDetail["event_coords"] => {
+const coordsOf = (lat: string, lng: string): EventDetail["coords"] => {
   const [parsedLat, parsedLng] = [cleanNumber(lat), cleanNumber(lng)];
   return parsedLat === null || parsedLng === null ? null : { lat: parsedLat, lng: parsedLng };
 };
 
 /** Whether saving would file a version that differs from the one on screen. The server
  *  refuses the same edit with `nothing_changed` and is the authority (the row may have
- *  moved).
- *  Delegates to `changedFields` over a candidate built from the form, except two legs:
- *  archived copies (a paste counts only where it differs from the link's stored copy,
- *  and re-spreading would have to invent providers) and source media (a queued upload
- *  has no id to compare). */
+ *  moved). Delegates to `changedFields` over a candidate built from the form, except the
+ *  sources, which the caller compares (`sourcesChanged`): an upload has no stored value yet. */
 export function hasVersionChanges(
   geo: EventDetail,
   state: EventVersionFormState
 ): boolean {
-  const mirrors: string[] = [];
-  const pastedCopies = new Map<string, string>();
-  state.secondarySourceUrls.forEach((raw, index) => {
-    const url = raw.trim();
-    if (!url) return;
-    mirrors.push(url);
-    const copy = (state.secondarySnapshotUrls[index] ?? "").trim();
-    if (copy) pastedCopies.set(url, copy);
-  });
-  const sourceCopy = state.sourceSnapshotUrl.trim();
-  if (sourceCopy && geo.source_url) pastedCopies.set(geo.source_url, sourceCopy);
-  const provenanceCopy = state.detectedFromSnapshotUrl.trim();
-  if (provenanceCopy && geo.detected_from_url) {
-    pastedCopies.set(geo.detected_from_url, provenanceCopy);
-  }
-  const stored = archivedCopies(geo);
-  const copiesMove = [...pastedCopies].some(([url, copy]) => stored.get(url)?.url !== copy);
-  if (copiesMove || state.sourceMediaMoved) return true;
-
+  if (state.sourcesMoved) return true;
   const candidate: EventDetail = {
     ...geo,
     title: state.title.trim(),
-    // Blank keeps the stored source, like the server.
-    source_url: state.sourceUrl.trim() || geo.source_url,
-    event_coords: coordsOf(state.lat, state.lng),
-    capture_source_coords: coordsOf(state.captureLat, state.captureLng),
-    event_date: state.eventDate || null,
-    event_time: state.eventTime || null,
-    // Compared at the input's minute precision: an untouched field is unchanged however many
-    // seconds the column carries, and a blanked one keeps the row's value. The input is a UTC
-    // wall clock, hence the `Z`.
-    source_posted_at:
-      state.sourcePostedAt &&
-      state.sourcePostedAt !== toDatetimeLocalUTC(geo.source_posted_at)
-        ? `${state.sourcePostedAt}Z`
-        : geo.source_posted_at,
-    // Ratcheted like the server: clearing the switch on a flagged row changes nothing.
-    is_graphic: geo.is_graphic || state.isGraphic,
-    secondary_source_urls: mirrors,
-    // Realigned with `mirrors`; `archivedCopies` pairs by position.
-    archived_secondary_sources: mirrors.map((url) => stored.get(url) ?? null),
+    coords: coordsOf(state.lat, state.lng),
+    occurred_date: state.eventDate || null,
+    occurred_time: state.eventTime || null,
     // Only the ids are compared, so the rest of each row is the loaded one.
     tags: state.tagIds.map((id) => ({ id })) as EventDetail["tags"],
     conflicts: state.conflictIds.map((id) => ({ id })) as EventDetail["conflicts"],
@@ -751,100 +585,21 @@ export function eventVersions(
 }
 
 /** `POST /events` (multipart); returns the new id. */
-export function createEvent(input: EventCreateInput): Promise<{ id: string }> {
-  const fd = new FormData();
-  appendEventFormFields(fd, input, "file");
-  return apiFetch<{ id: string }>("/events", {
-    method: "POST",
-    body: fd,
-  });
+export function createEvent(input: EventWriteInput): Promise<{ id: string }> {
+  return postEventForm("/events", eventFormData(input));
 }
 
-/** Open a request: `POST /events/requests` (multipart). The coordinate guess is
- *  both-or-neither; one source media file is required. */
-export interface EventRequestInput {
-  title: string;
-  source_url: string;
-  /** Snapshot of `source_url`, same contract as a geolocation's. */
-  source_snapshot_url?: string;
-  /** Mirrors, same contract as a geolocation's. */
-  secondary_source_urls?: string[];
-  /** Snapshot per mirror, index-aligned. */
-  secondary_snapshot_urls?: string[];
-  proof?: string | null;
-  /** Optional approximate guess: both halves or neither. */
-  lat?: number;
-  lng?: number;
-  /** Optional camera position; both halves or neither. */
-  capture_source_lat?: number;
-  capture_source_lng?: number;
-  /** Optional, ISO YYYY-MM-DD: when the event happened. */
-  event_date?: string;
-  /** Optional, ISO HH:MM: event time-of-day (UTC). */
-  event_time?: string;
-  /** ISO datetime (`YYYY-MM-DDTHH:MM`, UTC): when the source posted. Required. */
-  source_posted_at: string;
-  is_graphic?: boolean;
-  tag_ids?: string[];
-  conflict_ids?: string[];
-  files: File[];
-  /** Inline proof images, uploaded at publish. Optional on a request, which may be unfinished. */
-  proof_files: File[];
-}
-
-/** Multipart fields both request write paths post. Unlike a geolocation, the subject point
- *  is optional per half and proof images have no image floor. */
-function appendRequestFormFields(
-  fd: FormData,
-  input: EventRequestInput & { remove_media_ids?: string[] },
-  sourceKey: "file" | "files"
-): void {
-  appendSharedEventFields(fd, input);
-  if (input.lat !== undefined) fd.append("lat", String(input.lat));
-  if (input.lng !== undefined) fd.append("lng", String(input.lng));
-  if (input.event_date) {
-    fd.append("event_date", input.event_date);
-  }
-  for (const file of input.files) {
-    fd.append(sourceKey, file);
-  }
-  if (input.remove_media_ids?.length) {
-    fd.append("remove_media_ids", JSON.stringify(input.remove_media_ids));
-  }
-  for (const file of input.proof_files) {
-    fd.append("proof_files", file);
-  }
-}
-
-export function createEventRequest(input: EventRequestInput): Promise<EventDetail> {
-  const fd = new FormData();
-  appendRequestFormFields(fd, input, "file");
-  return apiFetch<EventDetail>("/events/requests", {
-    method: "POST",
-    body: fd,
-  });
+/** Open a request: `POST /events/requests` (multipart). The coordinate guess is optional and
+ *  the floor is a direct or indirect source with a file. */
+export function createEventRequest(input: EventWriteInput): Promise<EventDetail> {
+  return postEventForm("/events/requests", eventFormData(input));
 }
 
 /** Correct an open request: `POST /events/{id}/request`, owner-only, `requested`-only. No
- *  version is filed (a request is a question, not a vouched claim): the row is overwritten. */
-export type EventRequestEditInput = EventRequestInput & {
-  /** Existing source media to drop; the replacement rides in `files`. */
-  remove_media_ids: string[];
-  /** Optional here: the bot opens requests whose source date it could not read. Empty keeps
-   *  the stored value. */
-  source_posted_at: string;
-};
-
-export function updateEventRequest(
-  id: string,
-  input: EventRequestEditInput
-): Promise<EventDetail> {
-  const fd = new FormData();
-  appendRequestFormFields(fd, input, "files");
-  return apiFetch<EventDetail>(`/events/${id}/request`, {
-    method: "POST",
-    body: fd,
-  });
+ *  version is filed (a request is a question, not a vouched claim): the row is overwritten.
+ *  Posting no guess clears it. */
+export function updateEventRequest(id: string, input: EventWriteInput): Promise<EventDetail> {
+  return postEventForm(`/events/${id}/request`, eventFormData(input));
 }
 
 /** `POST /events/import-from-tweet`: runs detection over one of your own X posts and
@@ -939,7 +694,7 @@ export function enqueueArchiveImport(
 ): Promise<ArchiveImportJob> {
   return apiFetch<ArchiveImportJob>("/events/import-archive", {
     method: "POST",
-    body: JSON.stringify({ upload_key: uploadKey, post_estimate: postEstimate }),
+    body: JSON.stringify({ upload_key: uploadKey, estimated_post_count: postEstimate }),
   });
 }
 
@@ -990,26 +745,26 @@ export async function awaitImportJob(
 }
 
 /** Human labels of what stops a detection from publishing; empty means "ready" (only the
- *  conflict and capture-source choices remain).
+ *  conflict and sensor choices remain).
  *  Mirrors the server floor in `services/events/batch._publish_detection`, and only that:
- *  form-level requirements (title, source post time) are excluded. The server stays the
- *  authority. `services/events.detection_ready_predicate` is the SQL behind the queue's
- *  `readiness` filter; both are held to `backend/tests/events/_readiness_cases.py` and its
- *  mirror in `events.test.ts`. */
+ *  form-level requirements (title) are excluded. The server stays the authority.
+ *  `services/events.detection_ready_predicate` is the SQL behind the queue's `readiness`
+ *  filter; both are held to `backend/tests/events/_readiness_cases.py` and its mirror in
+ *  `events.test.ts`. */
 export function batchCompletionBlockers(geo: {
-  event_coords: unknown | null;
-  source_url: string | null;
+  coords: unknown | null;
   proof: string | null;
-  media: readonly Pick<Media, "role">[];
+  sources: readonly Pick<Source, "level" | "links" | "media">[];
 }): string[] {
   // In the server's check order.
   const missing: string[] = [];
-  if (!geo.source_url?.trim()) missing.push(FIELD_LABELS.source_url);
-  if (!geo.event_coords) missing.push(FIELD_LABELS.coordinates);
-  // The floor is a `source` media row; `Pick<Media, "role">` keeps tsc holding it there.
-  if (!geo.media.some((m) => m.role === "source")) missing.push(FIELD_LABELS.source_media);
+  if (!geo.coords) missing.push(FIELD_LABELS.coordinates);
   // The leg the queue most often has to flag.
   if (!geo.proof || !proofHasImage(geo.proof)) missing.push(FIELD_LABELS.proof_image);
+  if (geo.sources.some((s) => s.links.length === 0)) missing.push(FIELD_LABELS.source_link);
+  if (!geo.sources.some((s) => s.level !== "context" && s.media !== null)) {
+    missing.push(FIELD_LABELS.source_file);
+  }
   return missing;
 }
 
@@ -1061,94 +816,60 @@ export function reportEvent(
   });
 }
 
+/** What a form's source editors hold against the floor (`sourceFloor`). */
+export interface SourceFloorState {
+  /** A direct or indirect source carries a file. */
+  hasEvidenceFile: boolean;
+  /** Some source has no URL. */
+  missingLink: boolean;
+  /** Some source with a file names no sensor. */
+  missingSensor: boolean;
+}
+
 /** Raw input values a geolocation form validates before submit. */
 export interface EventFieldsState {
   title: string;
   lat: string;
   lng: string;
-  sourceUrl: string;
-  /** ISO datetime (datetime-local value, UTC). Required. */
-  sourcePostedAt: string;
   proof: string | null;
-  /** Source-media count after staging (kept existing + newly staged). */
-  mediaCount: number;
-  hasConflictTag: boolean;
-  hasCaptureSourceTag: boolean;
-}
-
-export interface EventFieldsOptions {
-  /** Require >=1 source media (false when a request supplies it). Default true. */
-  requireMedia?: boolean;
-  /** Require the conflict + capture-source tag floor. Default true. */
-  requireTags?: boolean;
-  /** Require the source post time. Default true; false on a version, since a detection
-   *  published with a NULL post time must stay editable (`POST /events/{id}/versions`
-   *  takes it as optional). */
-  requireSourcePostedAt?: boolean;
+  sources: SourceFloorState;
+  hasConflict: boolean;
 }
 
 /** Every unmet required field for a geolocation, all at once: `label` for
- *  `IncompleteFormNotice`, `key` for the highlight. Mirrors the backend submit check.
- *  Proof must carry an image (`proofHasImage`): text alone can't be audited. */
-export function missingEventFields(
-  s: EventFieldsState,
-  {
-    requireMedia = true,
-    requireTags = true,
-    requireSourcePostedAt = true,
-  }: EventFieldsOptions = {}
-): MissingField[] {
+ *  `IncompleteFormNotice`, `key` for the highlight. Mirrors the backend evidence floor
+ *  (`docs/api.md#evidence-floor`). Proof must carry an image (`proofHasImage`): text alone
+ *  can't be audited. */
+export function missingEventFields(s: EventFieldsState): MissingField[] {
   // Strict parse like `cleanNumber`: `"48.85abc"` is missing, not truncated to 48.85.
   const lat = cleanNumber(s.lat);
   const lng = cleanNumber(s.lng);
   const coordsValid = lat !== null && lng !== null && inBounds(lat, lng);
 
   const missing: MissingField[] = [];
-  if (!s.title.trim()) missing.push({ key: "title", label: FIELD_LABELS.title });
-  if (!coordsValid) missing.push({ key: "coordinates", label: FIELD_LABELS.coordinates });
-  if (!s.sourceUrl.trim()) missing.push({ key: "source_url", label: FIELD_LABELS.source_url });
-  if (requireSourcePostedAt && !s.sourcePostedAt) {
-    missing.push({ key: "source_posted_at", label: FIELD_LABELS.source_posted_at });
-  }
+  const add = (key: MissingFieldKey) => missing.push({ key, label: FIELD_LABELS[key] });
+  if (!s.title.trim()) add("title");
+  if (!coordsValid) add("coordinates");
+  if (!s.sources.hasEvidenceFile) add("source_file");
+  if (s.sources.missingLink) add("source_link");
+  if (s.sources.missingSensor) add("sensor");
   // "Proof" (none) and "Proof image" (text-only) are distinct misses.
-  if (!s.proof) {
-    missing.push({ key: "proof", label: FIELD_LABELS.proof });
-  } else if (!proofHasImage(s.proof)) {
-    missing.push({ key: "proof_image", label: FIELD_LABELS.proof_image });
-  }
-  if (requireMedia && s.mediaCount === 0) {
-    missing.push({ key: "source_media", label: FIELD_LABELS.source_media });
-  }
-  if (requireTags && !s.hasConflictTag) {
-    missing.push({ key: "conflict_tag", label: FIELD_LABELS.conflict_tag });
-  }
-  if (requireTags && !s.hasCaptureSourceTag) {
-    missing.push({ key: "capture_source_tag", label: FIELD_LABELS.capture_source_tag });
-  }
+  if (!s.proof) add("proof");
+  else if (!proofHasImage(s.proof)) add("proof_image");
+  if (!s.hasConflict) add("conflict_tag");
   return missing;
 }
 
-/** Every unmet required field for a request: a title, the source and the footage. Mirrors
- *  `POST /events/requests`. `requireSourcePostedAt` is false on the owner's edit, since the
- *  bot opens requests whose source date it could not read. */
-export function missingEventRequestFields(
-  s: {
-    title: string;
-    sourceUrl: string;
-    sourcePostedAt: string;
-    mediaCount: number;
-  },
-  { requireSourcePostedAt = true }: { requireSourcePostedAt?: boolean } = {}
-): MissingField[] {
+/** Every unmet required field for a request: a title, and a direct or indirect source with a
+ *  file, every source with a URL. Mirrors `POST /events/requests`. */
+export function missingEventRequestFields(s: {
+  title: string;
+  sources: SourceFloorState;
+}): MissingField[] {
   const missing: MissingField[] = [];
-  if (!s.title.trim()) missing.push({ key: "title", label: FIELD_LABELS.title });
-  if (!s.sourceUrl.trim()) missing.push({ key: "source_url", label: FIELD_LABELS.source_url });
-  if (requireSourcePostedAt && !s.sourcePostedAt) {
-    missing.push({ key: "source_posted_at", label: FIELD_LABELS.source_posted_at });
-  }
-  if (s.mediaCount === 0) {
-    missing.push({ key: "source_media", label: FIELD_LABELS.source_media });
-  }
+  const add = (key: MissingFieldKey) => missing.push({ key, label: FIELD_LABELS[key] });
+  if (!s.title.trim()) add("title");
+  if (!s.sources.hasEvidenceFile) add("source_file");
+  if (s.sources.missingLink) add("source_link");
   return missing;
 }
-

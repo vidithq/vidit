@@ -67,7 +67,7 @@ export function MediaGallery({
       // what a portrait video's letterbox bars paint on.
       className={`group relative ${itemHeight} rounded-lg overflow-hidden border border-neutral-700 bg-neutral-900`}
     >
-      {m.media_type === "image" ? (
+      {m.kind === "image" ? (
         <>
           <Image
             src={compact ? displayUrlsFor(m).thumbnail : displayUrlsFor(m).hero}

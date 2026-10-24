@@ -1,5 +1,5 @@
-import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 
 import { FORM_INVALID_LABEL } from "@/components/ui/form-styles";
 
@@ -10,47 +10,28 @@ const baseProps = {
   setLat: () => {},
   lng: "",
   setLng: () => {},
-  captureLat: "",
-  setCaptureLat: () => {},
-  captureLng: "",
-  setCaptureLng: () => {},
 };
 
 describe("LocationPicker", () => {
-  it("renders the Location heading, both coordinate pairs, and the ? help", () => {
+  it("renders the Location heading, the subject pair, and the ? help", () => {
     render(<LocationPicker {...baseProps} />);
     expect(screen.getByText("Location")).toBeInTheDocument();
-    expect(screen.getAllByLabelText("Latitude")).toHaveLength(2);
-    expect(screen.getAllByLabelText("Longitude")).toHaveLength(2);
+    expect(screen.getAllByLabelText("Latitude")).toHaveLength(1);
+    expect(screen.getAllByLabelText("Longitude")).toHaveLength(1);
     expect(
       screen.getByRole("button", { name: "What goes in Location?" })
     ).toBeInTheDocument();
   });
 
-  it("labels the subject and the camera position, and the camera help", () => {
+  it("labels the subject and leaves the camera position to the sources", () => {
     render(<LocationPicker {...baseProps} />);
     expect(screen.getByText("Subject")).toBeInTheDocument();
-    expect(screen.getByText("Camera position")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "What is the camera position?" })
-    ).toBeInTheDocument();
-  });
-
-  it("reports the camera-position inputs distinctly from the subject", () => {
-    const setCaptureLat = vi.fn();
-    render(<LocationPicker {...baseProps} setCaptureLat={setCaptureLat} />);
-    fireEvent.change(document.getElementById("capture_lat")!, {
-      target: { value: "50.1" },
-    });
-    expect(setCaptureLat).toHaveBeenCalledWith("50.1");
+    expect(screen.queryByText("Camera position")).toBeNull();
   });
 
   it("flags the Subject label red when the coordinates are missing", () => {
     render(<LocationPicker {...baseProps} invalid />);
     expect(screen.getByText("Subject").closest("span")).toHaveClass(
-      FORM_INVALID_LABEL
-    );
-    expect(screen.getByText("Camera position").closest("span")).not.toHaveClass(
       FORM_INVALID_LABEL
     );
   });

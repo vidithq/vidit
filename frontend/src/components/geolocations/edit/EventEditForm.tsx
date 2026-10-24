@@ -13,7 +13,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { SectionHeading } from "@/components/ui/SectionHeading";
-import { isSnapshotUrl, SNAPSHOT_HINT } from "@/components/ui/ArchivedCopies";
+import { sourcesBlockWrite } from "@/components/sources/SourcesField";
 import { ARMED_RING } from "@/components/ui/styles";
 import { FORM_ERROR_BANNER, LABEL_TEXT } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
@@ -32,11 +32,10 @@ import {
   hasVersionChanges,
   missingEventFields,
   nothingChangedMessage,
-  parseCaptureCoords,
   saveVersion,
-  type EventFieldsState,
   type EventVersionFormState,
 } from "@/lib/events";
+import { sourceFloor, sourcesChanged, sourceWriteError } from "@/lib/sources";
 import type { EventDetail } from "@/types";
 
 // Ties the rail's submit button and version note to the form in the main column.
@@ -54,7 +53,7 @@ const EDIT_FORM_ID = "event-edit-form";
  * the version it supersedes instead of overwriting it. An optional note travels
  * with that version. No confirm.
  *
- * Built like the create form: `EventFormFields`, `useEventForm`, `MediaManager`.
+ * Built like the create form: `EventFormFields`, `useEventForm`, `SourcesField`.
  * State is seeded from props (the form mounts after the row loaded), so the proof
  * editor gets its `initialContent` on first paint.
  *
@@ -91,46 +90,21 @@ export function EventEditForm({
 
   const form = useEventForm(geo);
 
-  // Only the published-row edit posts it: the provenance link itself is
-  // immutable.
-  const [detectedFromSnapshotUrl, setDetectedFromSnapshotUrl] = useState("");
   // Edit only: a detection has no superseded version to annotate.
   const [editNote, setEditNote] = useState("");
 
-  // Everything both writes post, the evidence anchor included.
+  // Everything both writes post. Required here (the floor check runs first), so a NaN never
+  // reaches a submit.
   const buildCommon = () => ({
     ...form.shared(),
-    title: form.title.trim(),
-    source_url: form.sourceUrl.trim(),
-    remove_media_ids: [...form.removedIds],
-    files: form.newFiles,
-    // Same strict parse as the optional pairs. Required here (the floor check
-    // runs first), so a NaN never reaches a submit.
     lat: cleanNumber(form.lat) ?? NaN,
     lng: cleanNumber(form.lng) ?? NaN,
-    ...parseCaptureCoords(form.captureLat, form.captureLng),
   });
 
   const submitMutation = useMutation(
     () =>
       editingPublished
-        ? saveVersion(geo.id, {
-            ...buildCommon(),
-            // An untouched lossy field is not posted as the input's truncation.
-            // `source_posted_at` is dropped (this endpoint reads that as "keep");
-            // an absent `event_time` clears it, so it goes back at the row's own
-            // precision.
-            source_posted_at:
-              form.sourcePostedAt === form.seeded.sourcePostedAt
-                ? ""
-                : form.sourcePostedAt,
-            event_time:
-              form.eventTime === form.seeded.eventTime
-                ? (geo.event_time ?? undefined)
-                : form.eventTime || undefined,
-            detected_from_snapshot_url: detectedFromSnapshotUrl,
-            note: editNote,
-          })
+        ? saveVersion(geo.id, { ...buildCommon(), note: editNote })
         : geolocateEvent(geo.id, buildCommon()),
     {
       fallback: editingPublished ? "Couldn't save this version." : "Couldn't submit.",
@@ -141,7 +115,7 @@ export function EventEditForm({
       onError: (err) =>
         err instanceof ApiError && err.code === "nothing_changed"
           ? err.message || nothingChangedMessage(geo.version_no)
-          : undefined,
+          : sourceWriteError(err),
       onSuccess: () => {
         // The badge counts `detected` rows, which only submit changes.
         if (!editingPublished) refreshDetectionCount();
@@ -169,48 +143,16 @@ export function EventEditForm({
   const busy = submitMutation.loading;
   const actionError = submitMutation.error;
 
-  // The floor reads the post-edit state: kept media plus staged files, and the
-  // selected curated tags. The server re-checks it on a version.
-  const keptMediaCount =
-    geo.media.filter((m) => !form.removedIds.has(m.id)).length +
-    form.newFiles.length;
-  const selectedCurated = form.taxonomy.curatedTags.filter((t) =>
-    form.selectedTagIds.includes(t.id)
-  );
-
-  const fieldsState = (): EventFieldsState => ({
-    title: form.title,
-    lat: form.lat,
-    lng: form.lng,
-    sourceUrl: form.sourceUrl,
-    sourcePostedAt: form.sourcePostedAt,
-    proof: form.proof,
-    mediaCount: keptMediaCount,
-    hasConflictTag: form.selectedConflictIds.length > 0,
-    hasCaptureSourceTag: selectedCurated.some(
-      (t) => t.category === "capture_source"
-    ),
-  });
-
   const versionState = (): EventVersionFormState => ({
     title: form.title,
-    sourceUrl: form.sourceUrl,
-    sourceMediaMoved: form.removedIds.size > 0 || form.newFiles.length > 0,
+    sourcesMoved: sourcesChanged(geo.sources, form.sources),
     lat: form.lat,
     lng: form.lng,
-    captureLat: form.captureLat,
-    captureLng: form.captureLng,
     eventDate: form.eventDate,
     eventTime: form.eventTime,
-    sourcePostedAt: form.sourcePostedAt,
-    isGraphic: form.isGraphic,
     proof: form.proof,
     tagIds: form.selectedTagIds,
     conflictIds: form.selectedConflictIds,
-    secondarySourceUrls: form.secondarySourceUrls,
-    secondarySnapshotUrls: form.secondarySnapshotUrls,
-    sourceSnapshotUrl: form.sourceSnapshotUrl,
-    detectedFromSnapshotUrl,
   });
 
   // Submit enforces the full floor, then asks to confirm; an incomplete
@@ -225,26 +167,22 @@ export function EventEditForm({
       submitMutation.setError(form.taxonomy.blockedMessage);
       return;
     }
-    // A snapshot that cannot be one is caught before the upload.
-    if (
-      [
-        form.sourceSnapshotUrl,
-        detectedFromSnapshotUrl,
-        ...form.secondarySnapshotUrls,
-      ].some((pasted) => pasted.trim() && !isSnapshotUrl(pasted))
-    ) {
-      submitMutation.setError(SNAPSHOT_HINT);
-      return;
-    }
-    const missing = missingEventFields(fieldsState(), {
-      requireMedia: true,
-      requireTags: true,
-      // Matches `save_version`: a published row may have a blank source post
-      // time. `geolocate` still requires it.
-      requireSourcePostedAt: !editingPublished,
+    const missing = missingEventFields({
+      title: form.title,
+      lat: form.lat,
+      lng: form.lng,
+      proof: form.proof,
+      sources: sourceFloor(form.sources),
+      hasConflict: form.selectedConflictIds.length > 0,
     });
     if (missing.length) {
       form.flagIncomplete(missing);
+      return;
+    }
+    // A running upload or a refused archived copy holds the write.
+    const blocked = sourcesBlockWrite(form.sources);
+    if (blocked) {
+      submitMutation.setError(blocked);
       return;
     }
     // A version writes on the first click; a submit arms and writes on the
@@ -370,16 +308,7 @@ export function EventEditForm({
     >
       {/* `noValidate`: IncompleteFormNotice owns required-field feedback. */}
       <form id={EDIT_FORM_ID} onSubmit={attemptSubmit} className="space-y-6" noValidate>
-        <EventFormFields
-          form={form}
-          row={geo}
-          showProvenance
-          detectedFromSnapshotUrl={detectedFromSnapshotUrl}
-          // Passing the setter turns the locked field's archive mark on.
-          setDetectedFromSnapshotUrl={
-            editingPublished ? setDetectedFromSnapshotUrl : undefined
-          }
-        />
+        <EventFormFields form={form} row={geo} showProvenance />
       </form>
     </PageShell>
   );

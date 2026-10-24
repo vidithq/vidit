@@ -15,8 +15,8 @@ const ITEM: PickableEvent = {
   status: "geolocated",
   media: null,
   is_graphic: false,
-  event_date: "2026-03-14",
-  event_coords: { lat: 49.71, lng: 37.616 },
+  occurred_date: "2026-03-14",
+  coords: { lat: 49.71, lng: 37.616 },
   tags: [],
 };
 

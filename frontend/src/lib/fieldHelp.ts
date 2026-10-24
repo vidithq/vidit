@@ -12,44 +12,48 @@ export const FIELD_HELP = {
     text: "Which armed conflict this event belongs to. The list mirrors Wikipedia's list of ongoing armed conflicts (synced daily; the default suggestions are its major wars), and historical conflicts since 1914 are available via “Include ended conflicts”. Pick “Other” for anything not listed.",
     label: "What is the conflict?",
   },
-  capture_source: {
-    text: "How the footage was captured: drone, dashcam, body / helmet cam, satellite, static camera, or smartphone.",
-    label: "What is the capture source?",
+  sources: {
+    text: "The evidence: one block per source, none of them the main one. A source is one file and the URLs it was posted at. Publishing needs a direct or indirect source with a file; a context source may be a URL only. Add another source for other footage of the same event, and merge two sources that hold the same footage.",
+    label: "What are sources?",
+  },
+  source_level: {
+    text: "Direct: the act while it happens. Indirect: its direct consequences, after the fact (smoke, damage, wreckage). Context: anything else, such as an image from before, a portrait that identifies a victim, or an article or statement without media.",
+    label: "What is the evidence level?",
+  },
+  sensor: {
+    text: "What captured the file: smartphone, satellite, drone, static camera, dashcam, or body / helmet cam. Pick Unknown when the footage does not say. Required on every source with a file to publish.",
+    label: "What is the sensor?",
+  },
+  source_file: {
+    text: "The footage or picture being located, uploaded as soon as you pick it. Not a map screenshot or an annotated export.",
+    label: "What is the source file?",
+  },
+  captured_at: {
+    text: "Optional. When the file was captured (UTC), if known. Not when it was posted, nor when the event was added here.",
+    label: "What is the capture time?",
+  },
+  camera_position: {
+    text: "Optional. Where the camera was, in decimal degrees (latitude then longitude), when that's a different spot from the subject: e.g. a drone or a rooftop looking down at the strike. Leave blank when the camera was at the subject, or the vantage point is unknown.",
+    label: "What is the camera position?",
+  },
+  source_links: {
+    text: "Where the file was posted: the original post or channel first, then each mirror of the same file. Not your own geolocation post. Each link takes its post time (UTC) when known. The archive mark beside a link is its archived copy, so the evidence survives the post being deleted: orange opens the stored copy, grey means there is none yet. The form's mark offers the Wayback Machine with the link filled in and accepts a snapshot from the Wayback Machine, archive.today (or any of its mirrors) or Ghostarchive.",
+    label: "What are the source links?",
   },
   coordinates: {
     text: "Decimal degrees, latitude then longitude (e.g. 48.0159, 37.8024). The subject: the ground location the footage shows, not where the camera was or where it was posted.",
     label: "What are the coordinates?",
   },
-  capture_source_coords: {
-    text: "Optional. Where the camera was, in decimal degrees (latitude then longitude), when that's a different spot from the subject: e.g. a drone or a rooftop looking down at the strike. Leave blank when the camera was at the subject, or the vantage point is unknown.",
-    label: "What is the camera position?",
-  },
-  source_url: {
-    text: "Where the footage was first published (the original post or channel). Not your own geolocation tweet. The archive mark beside the link is its archived copy, so the evidence survives the original being deleted: orange opens the stored copy, grey means there is none yet. Recording one happens from the edit form: the mark there offers the Wayback Machine with the link filled in and accepts a snapshot you took at the Wayback Machine, archive.today (or any of its mirrors) or Ghostarchive.",
-    label: "What is the source?",
-  },
-  secondary_source_urls: {
-    text: "Optional. Mirrors of the same media: the same footage posted on another network, or another post of it from the same point of view. The Source above stays the first place it was published. Each mirror carries the same archive mark as the Source: orange opens its stored copy, grey means there is none yet, and its owner records one from the edit form.",
-    label: "What are secondary sources?",
-  },
-  source_media: {
-    text: "The footage being located. Not a map screenshot or an annotated export.",
-    label: "What is the source media?",
-  },
-  event_date: {
+  occurred_date: {
     text: "When the depicted event happened (from the chyron or context). Not the post date or the date you submit it here. Leave blank when the footage doesn't establish it; it then reads as Unknown.",
     label: "What is the event date?",
   },
-  event_time: {
+  occurred_time: {
     text: "Optional time-of-day the event happened (UTC), if known from the footage or context. Leave blank when only the day is known.",
     label: "What is the event time?",
   },
-  source_posted_at: {
-    text: "When the source posted the media (the Telegram / X post date and time, UTC). Required to publish; a detection can still have it blank when the source's post time wasn't resolved, and you fill it in before submitting. Not when the event happened, nor when you submitted it here.",
-    label: "What is the source post time?",
-  },
   added: {
-    text: "When this was added to Vidit. Not when the event happened, nor when the source posted the media.",
+    text: "When this was added to Vidit. Not when the event happened, nor when a source posted the media.",
     label: "What is the added date?",
   },
   status: {
@@ -57,7 +61,7 @@ export const FIELD_HELP = {
     label: "What does the status mean?",
   },
   detected_from: {
-    text: "The post this entry was read from: the detection was imported from it, or the request was opened from it. Its provenance, kept distinct from Source (the footage origin). It carries the same archive mark as the Source: orange opens its stored copy, grey means there is none yet, and its owner records one from the edit form.",
+    text: "The post this entry was read from: the detection was imported from it, or the request was opened from it. Its provenance, kept distinct from the sources (where the footage was posted).",
     label: "Where was this read from?",
   },
   requested_by: {
@@ -77,11 +81,11 @@ export const FIELD_HELP = {
     label: "What does importing do?",
   },
   section_details: {
-    text: "When the event happened, when the source posted the media, and where it was first published.",
+    text: "When the event happened, as a date and a time of day (UTC), each optional.",
     label: "What goes in Details?",
   },
   section_classification: {
-    text: "Conflict and capture source classify the event; add free tags so others can find it.",
+    text: "The conflict classifies the event; add tags so others can find it.",
     label: "What goes in Classification?",
   },
   section_proof: {
@@ -89,7 +93,7 @@ export const FIELD_HELP = {
     label: "What goes in Proof?",
   },
   detection_queue_filter: {
-    text: "Ready: the import left the detection with every piece of evidence a publish needs, so a review adds the conflict and the capture source, then publishes it. Incomplete: the import left a required piece missing (the source URL, the coordinates, the source media, or a proof image), so it needs a manual pass on the form before it can be published.",
+    text: "Ready: the import left the detection with every piece of evidence a publish needs, so a review adds the conflict and the sensor, then publishes it. Incomplete: the import left a required piece missing (a source URL, the coordinates, a source file, or a proof image), so it needs a manual pass on the form before it can be published.",
     label: "What does this filter select?",
   },
   version_note: {
@@ -129,11 +133,11 @@ export const FIELD_HELP = {
     label: "What does a geolocation need?",
   },
   submit_geolocation: {
-    text: "Add these to publish your geolocation. The request supplies the source media, and you become the owner of the event.",
+    text: "Add these to publish your geolocation. The request supplies its sources, which you can correct, and you become the owner of the event.",
     label: "What does the geolocation need?",
   },
   geolocate_request: {
-    text: "Opens the submit page with this request's footage and source filled in. Publishing your geolocation answers the request, and you become the owner of the event.",
+    text: "Opens the submit page with this request's sources filled in. Publishing your geolocation answers the request, and you become the owner of the event.",
     label: "What does Geolocate do?",
   },
   approval_version: {

@@ -56,7 +56,8 @@ const kindLabel = (kind: FeedKind) =>
 // The predicates `GET /feed` serves besides `kind`.
 const FEED_SECTIONS: ReadonlyArray<EventFilterSectionName> = [
   "conflict",
-  "capture_source",
+  "sensor",
+  "level",
   "tags",
   "approval",
 ];
@@ -80,8 +81,8 @@ function itemDates(item: FeedItem): { label: string; date: string }[] {
     label: item.status === "requested" ? "Requested" : "Published",
     date: item.feed_at,
   };
-  return item.event_date
-    ? [{ label: "Event", date: item.event_date }, entered]
+  return item.occurred_date
+    ? [{ label: "Event", date: item.occurred_date }, entered]
     : [entered];
 }
 
@@ -196,7 +197,7 @@ export default function FeedPage() {
               isGraphic={item.is_graphic}
               {...creditProps(item)}
               dates={itemDates(item)}
-              coords={item.event_coords}
+              coords={item.coords}
               tags={cardTags(item)}
             />
           ))}

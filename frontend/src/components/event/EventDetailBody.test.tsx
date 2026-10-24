@@ -1,9 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { EventDetailBody } from "./EventDetailBody";
-import { FIELD_HELP } from "@/lib/fieldHelp";
 import { displayUrlsFor } from "@/lib/mediaUrls";
+import type { Source } from "@/lib/sources";
+import { source } from "@/test/eventDetail";
 import type { EventDetail } from "@/types";
 
 // The body writes nothing, so who is looking changes none of it: the owner's view is asserted through the same render.
@@ -12,19 +13,53 @@ vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: { id: OWNER_ID } }),
 }));
 
-// The media gallery's alt text is the event title. Named because the detail rows carry archive marks of their own.
+// The media gallery's alt text is the event title.
 const TITLE = "Strike on ammunition depot";
+
+const IMAGE = {
+  id: "m1",
+  storage_url: "/local-storage/evidence.jpg",
+  kind: "image" as const,
+  sha256: "0".repeat(64),
+};
+
+// The footage: a drone image posted twice, the first link archived.
+const FOOTAGE: Source = source({
+  id: "s1",
+  title: "Drone footage of the strike",
+  sensor: "drone",
+  captured_at: "2026-06-01T09:30:00Z",
+  camera_position: { lat: 48.02, lng: 37.79 },
+  links: [
+    {
+      url: "https://t.me/channel/12345",
+      posted_at: "2026-06-01T10:05:00Z",
+      archived: {
+        url: "https://web.archive.org/web/2026/https://t.me/channel/12345",
+        provider: "wayback",
+        archived_at: "2026-06-02T00:00:00Z",
+      },
+    },
+    { url: "https://www.youtube.com/watch?v=x", posted_at: null, archived: null },
+  ],
+  tags: [{ id: "t9", name: "armor" }],
+  media: IMAGE,
+});
+
+// An article: context, a URL only.
+const ARTICLE: Source = source({
+  id: "s2",
+  level: "context",
+  links: [{ url: "https://news.example/a", posted_at: null, archived: null }],
+});
 
 function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   return {
     id: "g1",
     title: TITLE,
-    event_coords: { lat: 48.015883, lng: 37.802411 },
-    capture_source_coords: null,
-    archived_source: null,
-    event_date: "2026-06-01",
-    event_time: null,
-    source_posted_at: "2026-05-30T14:32:00Z",
+    coords: { lat: 48.015883, lng: 37.802411 },
+    occurred_date: "2026-06-01",
+    occurred_time: null,
     is_graphic: false,
     status: "geolocated",
     version_no: 1,
@@ -32,7 +67,6 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     before_closed_status: null,
     detected_from_url: null,
     detected_via: null,
-    archived_detected_from: null,
     owner: {
       id: "u1",
       username: "ana",
@@ -45,31 +79,16 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
         wikidata_id: "Q110999040",
         start_year: 2022,
         end_year: null,
-        ongoing: true,
+        is_ongoing: true,
         tier: "major",
       },
     ],
-    source_url: "https://t.me/channel/12345",
-    secondary_source_urls: [],
-    archived_secondary_sources: [],
+    sources: [FOOTAGE, ARTICLE],
     proof: "<p>Anchor points match the imagery.</p>",
     created_at: "2026-06-02T10:00:00Z",
     geolocated_at: "2026-06-03T10:00:00Z",
     closed_at: null,
-    media: [
-      {
-        id: "m1",
-        storage_url: "/local-storage/evidence.jpg",
-        media_type: "image",
-        role: "source",
-      },
-    ],
-    thumbnail: {
-      id: "m1",
-      storage_url: "/local-storage/evidence.jpg",
-      media_type: "image",
-      role: "source",
-    },
+    thumbnail: IMAGE,
     requested_by: {
       id: "u2",
       username: "poster",
@@ -79,94 +98,145 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   };
 }
 
+const block = (n: number) => screen.getByRole("region", { name: `Source ${n}` });
+
 describe("EventDetailBody", () => {
   it("panel variant: thumbnail media, section headings, no request/author rows", () => {
-    const geo = geoFixture();
-    render(<EventDetailBody geo={geo} variant="panel" />);
-    const img = screen.getByRole("img", { name: geo.title });
+    render(<EventDetailBody geo={geoFixture()} variant="panel" />);
+    const img = screen.getByRole("img", { name: TITLE });
     // Derive the expected URL from the component's helper, decoded to survive next/image's loader encoding.
     expect(decodeURIComponent(img.getAttribute("src") ?? "")).toContain(
-      displayUrlsFor(geo.media[0]).thumbnail
+      displayUrlsFor(IMAGE).thumbnail
     );
-    expect(screen.queryByText("Request")).not.toBeInTheDocument();
     expect(screen.queryByText("Author")).not.toBeInTheDocument();
     // The author's username must appear nowhere in the panel body (it lives in the panel header).
     expect(screen.queryByText("ana")).not.toBeInTheDocument();
     // The panel carries the same section headings as the page (denser).
-    expect(screen.getByText("Source media")).toBeInTheDocument();
+    expect(screen.getByText("Sources")).toBeInTheDocument();
     expect(screen.getByText("Location")).toBeInTheDocument();
     expect(screen.getByText("Details")).toBeInTheDocument();
-    expect(screen.getByText("Event date")).toBeInTheDocument();
     expect(screen.getByText("48.015883, 37.802411")).toBeInTheDocument();
     // An ongoing conflict carries its years too.
-    expect(
-      screen.getByText("Russian invasion of Ukraine (2022-present)")
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Anchor points match the imagery.")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Russian invasion of Ukraine (2022-present)")).toBeInTheDocument();
+    expect(screen.getByText("Anchor points match the imagery.")).toBeInTheDocument();
   });
 
-  it("panel variant carries the same ? help as the page", () => {
-    render(<EventDetailBody geo={geoFixture()} variant="panel" />);
-    expect(
-      screen.getByRole("button", { name: "What are the coordinates?" })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "What is the event date?" })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "What is the source?" })
-    ).toBeInTheDocument();
+  it("page variant: hero media, requested-by + author rows", () => {
+    render(<EventDetailBody geo={geoFixture()} variant="page" />);
+    const img = screen.getByRole("img", { name: TITLE });
+    expect(decodeURIComponent(img.getAttribute("src") ?? "")).toContain(
+      displayUrlsFor(IMAGE).hero
+    );
+    expect(screen.getByText("Requested by")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "poster" })).toHaveAttribute("href", "/profile/poster");
+    expect(screen.getByRole("link", { name: "ana" })).toHaveAttribute("href", "/profile/ana");
   });
 
-  it("splits conflicts and curated tags into their own rows, free tags under Tags", () => {
+  it("renders one block per source, in the order served", () => {
+    render(<EventDetailBody geo={geoFixture()} variant="page" />);
+    const first = block(1);
+    expect(within(first).getByText("Drone footage of the strike")).toBeInTheDocument();
+    expect(within(first).getByText("Direct")).toBeInTheDocument();
+    expect(within(first).getByText("Drone")).toBeInTheDocument();
+    expect(within(first).getByText("1 Jun 2026, 09:30 UTC")).toBeInTheDocument();
+    expect(within(first).getByText("48.020000, 37.790000")).toBeInTheDocument();
+    expect(within(first).getByText("armor")).toBeInTheDocument();
+    // An untitled source is named by its position, and a source without a file shows no media slot.
+    const second = block(2);
+    expect(within(second).getByRole("heading", { name: "Source 2" })).toBeInTheDocument();
+    expect(within(second).getByText("Context")).toBeInTheDocument();
+    expect(within(second).queryByRole("img")).toBeNull();
+    expect(screen.queryByText("No media available")).not.toBeInTheDocument();
+  });
+
+  it("names no sensor without a file, nor an unknown one", () => {
     render(
       <EventDetailBody
-        geo={geoFixture({
-          tags: [
-            { id: "t2", name: "Drone", category: "capture_source" },
-            { id: "t3", name: "armor", category: "free" },
-          ],
-          conflicts: [
-            {
-              id: "c2",
-              name: "Falklands War",
-              wikidata_id: "Q127076",
-              start_year: 1982,
-              end_year: 1982,
-              ongoing: false,
-              tier: null,
-            },
-          ],
-        })}
+        geo={geoFixture({ sources: [{ ...FOOTAGE, sensor: "unknown" }, { ...ARTICLE, sensor: "drone" }] })}
         variant="page"
       />
     );
-    expect(screen.getByText("Conflict")).toBeInTheDocument();
-    // An ended conflict carries its years for disambiguation.
-    expect(screen.getByText("Falklands War (1982)")).toBeInTheDocument();
-    expect(screen.getByText("Capture source")).toBeInTheDocument();
-    expect(screen.getByText("Tags")).toBeInTheDocument();
+    expect(screen.queryByText("Sensor:")).toBeNull();
   });
 
-  it("page variant: hero media, requested-by + author rows, section headings", () => {
-    const geo = geoFixture();
-    render(<EventDetailBody geo={geo} variant="page" />);
-    const img = screen.getByRole("img", { name: geo.title });
-    expect(decodeURIComponent(img.getAttribute("src") ?? "")).toContain(
-      displayUrlsFor(geo.media[0]).hero
-    );
-    expect(screen.getByText("Source media")).toBeInTheDocument();
-    expect(screen.getByText("Details")).toBeInTheDocument();
-    expect(screen.getByText("Requested by")).toBeInTheDocument();
-    const requesterLink = screen.getByRole("link", { name: "poster" });
-    expect(requesterLink).toHaveAttribute("href", "/profile/poster");
-    expect(screen.getByText("Author")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "ana" })).toHaveAttribute(
+  it("lists each link with its post time and its archived copy, named by source and link", () => {
+    render(<EventDetailBody geo={geoFixture()} variant="page" />);
+    const first = block(1);
+    expect(within(first).getByRole("link", { name: "t.me" })).toHaveAttribute(
       "href",
-      "/profile/ana"
+      "https://t.me/channel/12345"
     );
+    expect(within(first).getByText("Posted 1 Jun 2026, 10:05 UTC")).toBeInTheDocument();
+    expect(
+      within(first).getByRole("link", { name: "Wayback Machine copy of source 1, link 1, t.me" })
+    ).toHaveAttribute("href", "https://web.archive.org/web/2026/https://t.me/channel/12345");
+    // A link with no copy states it, inert, for every reader.
+    expect(
+      within(first).getByRole("button", { name: "No archived copy of source 1, link 2, www.youtube.com" })
+    ).toBeDisabled();
+    expect(
+      within(block(2)).getByRole("button", { name: "No archived copy of source 2, news.example" })
+    ).toBeDisabled();
+  });
+
+  it("gates only the flagged source's file", () => {
+    const clip = {
+      ...FOOTAGE,
+      id: "s3",
+      title: "Second angle",
+      is_graphic: true,
+      media: { ...IMAGE, id: "m2", storage_url: "/local-storage/other.jpg" },
+    };
+    render(<EventDetailBody geo={geoFixture({ sources: [FOOTAGE, clip] })} variant="page" />);
+    expect(within(block(1)).queryByRole("button", { name: /Show graphic/ })).toBeNull();
+    expect(
+      within(block(2)).getByRole("button", { name: "Show graphic content (18 or older)" })
+    ).toBeInTheDocument();
+  });
+
+  it("says so when the event has no source yet", () => {
+    render(<EventDetailBody geo={geoFixture({ sources: [], proof: null })} variant="panel" />);
+    expect(screen.getByText("No source yet")).toBeInTheDocument();
+    expect(screen.getByText("No proof provided")).toBeInTheDocument();
+  });
+
+  it("renders video media in the shared player, not as an image", () => {
+    const { container } = render(
+      <EventDetailBody
+        geo={geoFixture({
+          sources: [
+            { ...FOOTAGE, media: { ...IMAGE, id: "m2", storage_url: "/local-storage/clip.mp4", kind: "video" } },
+          ],
+        })}
+        variant="panel"
+      />
+    );
+    // A clip plays in `VideoPlayer`, so the tile is the player's controller, not a bare native element.
+    expect(container.querySelector("media-controller")).not.toBeNull();
+    expect(container.querySelector("video[controls]")).toBeNull();
+  });
+
+  it("renders children between the sources and the key-value rows", () => {
+    render(
+      <EventDetailBody geo={geoFixture()} variant="page">
+        <div data-testid="location-map">map goes here</div>
+      </EventDetailBody>
+    );
+    const slot = screen.getByTestId("location-map");
+    const media = screen.getByRole("img", { name: TITLE });
+    const details = screen.getByText("Details");
+    // Position is the contract, not mere presence: sources, then the slot, then details.
+    expect(media.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(slot.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("lists the conflicts and the event's tags in their own rows", () => {
+    render(
+      <EventDetailBody geo={geoFixture({ tags: [{ id: "t3", name: "night" }] })} variant="page" />
+    );
+    expect(screen.getByText("Conflict")).toBeInTheDocument();
+    expect(screen.getByText("Tags")).toBeInTheDocument();
+    expect(screen.getByText("night")).toBeInTheDocument();
   });
 
   it("geolocated geo shows the Geolocated status, not detected markers", () => {
@@ -216,64 +286,6 @@ describe("EventDetailBody", () => {
     expect(screen.getByText("Author")).toBeInTheDocument();
   });
 
-  it("renders children between media and the key-value rows", () => {
-    render(
-      <EventDetailBody geo={geoFixture()} variant="page">
-        <div data-testid="location-map">map goes here</div>
-      </EventDetailBody>
-    );
-    const slot = screen.getByTestId("location-map");
-    const media = screen.getByRole("img", { name: TITLE });
-    const details = screen.getByText("Details");
-    // Position is the contract, not mere presence: media → slot → details.
-    expect(
-      media.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-    expect(
-      slot.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-  });
-
-  it("renders video media in the shared player, not as an image", () => {
-    const { container } = render(
-      <EventDetailBody
-        geo={geoFixture({
-          media: [
-            {
-              id: "m1",
-              storage_url: "/local-storage/evidence.jpg",
-              media_type: "image",
-              role: "source",
-            },
-            {
-              id: "m2",
-              storage_url: "/local-storage/clip.mp4",
-              media_type: "video",
-              role: "source",
-            },
-          ],
-        })}
-        variant="panel"
-      />
-    );
-    // A clip plays in `VideoPlayer`, so the tile is the player's controller, not a bare native element.
-    expect(container.querySelector("media-controller")).not.toBeNull();
-    expect(container.querySelector("video[controls]")).toBeNull();
-    // The image sibling still renders through next/image.
-    expect(screen.getByRole("img", { name: TITLE })).toBeInTheDocument();
-  });
-
-  it("falls back on empty media and missing proof", () => {
-    render(
-      <EventDetailBody
-        geo={geoFixture({ media: [], proof: null })}
-        variant="panel"
-      />
-    );
-    expect(screen.getByText("No media available")).toBeInTheDocument();
-    expect(screen.getByText("No proof provided")).toBeInTheDocument();
-  });
-
   it("shows the closer's reason on a closed row, beside the status badge", () => {
     render(
       <EventDetailBody
@@ -282,7 +294,7 @@ describe("EventDetailBody", () => {
           before_closed_status: "requested",
           close_reason: "Duplicate of an existing request.",
           closed_at: "2026-06-05T12:00:00Z",
-          event_coords: null,
+          coords: null,
         })}
         variant="page"
       />
@@ -335,46 +347,10 @@ describe("EventDetailBody", () => {
     expect(screen.queryByText("Reason")).not.toBeInTheDocument();
   });
 
-  it("always shows the Source posted row", () => {
-    render(
-      <EventDetailBody
-        geo={geoFixture({ source_posted_at: "2026-05-03T09:15:00Z" })}
-        variant="page"
-      />
-    );
-    expect(screen.getByText("Source posted")).toBeInTheDocument();
-    expect(screen.getByText("3 May 2026, 09:15 UTC")).toBeInTheDocument();
-  });
-
-  it("shows a dash on the Source posted row when the instant is unknown", () => {
-    // A machine detection whose source is an undated footage link (or has none) leaves source_posted_at null.
-    render(
-      <EventDetailBody
-        geo={geoFixture({ source_posted_at: null })}
-        variant="page"
-      />
-    );
-    expect(screen.getByText("Source posted")).toBeInTheDocument();
-    expect(screen.getByText("—")).toBeInTheDocument();
-  });
-
-  it("shows the muted 'To confirm' label on the Source row when no source is declared", () => {
-    // A machine detection is partial by definition: its tweet may declare no source.
-    render(
-      <EventDetailBody
-        geo={geoFixture({ status: "detected", source_url: null })}
-        variant="page"
-      />
-    );
-    expect(screen.getByText("Source")).toBeInTheDocument();
-    expect(screen.getByText("To confirm")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "To confirm" })).not.toBeInTheDocument();
-  });
-
   it("puts the event time on its own row, date-only in Event date", () => {
     render(
       <EventDetailBody
-        geo={geoFixture({ event_date: "2026-06-01", event_time: "14:30:00" })}
+        geo={geoFixture({ occurred_date: "2026-06-01", occurred_time: "14:30:00" })}
         variant="page"
       />
     );
@@ -387,7 +363,7 @@ describe("EventDetailBody", () => {
     // The relaxed request path: an approximate hour (sun position) with no day.
     render(
       <EventDetailBody
-        geo={geoFixture({ event_date: null, event_time: "14:30:00" })}
+        geo={geoFixture({ occurred_date: null, occurred_time: "14:30:00" })}
         variant="page"
       />
     );
@@ -398,147 +374,8 @@ describe("EventDetailBody", () => {
   });
 
   it("omits the Event time row when no time is set", () => {
-    render(<EventDetailBody geo={geoFixture({ event_time: null })} variant="page" />);
+    render(<EventDetailBody geo={geoFixture({ occurred_time: null })} variant="page" />);
     expect(screen.queryByText("Event time")).not.toBeInTheDocument();
-  });
-
-  it("links the archived copy of the source, named for its service", () => {
-    render(
-      <EventDetailBody
-        geo={geoFixture({
-          archived_source: {
-            url: "https://web.archive.org/web/2026/t.me/channel/12345",
-            provider: "wayback",
-          },
-        })}
-        variant="page"
-      />
-    );
-    // Named per service and target: every mark looks alike and a screen reader has nothing else to tell them apart.
-    expect(
-      screen.getByRole("link", { name: "Wayback Machine copy of the source" })
-    ).toHaveAttribute("href", "https://web.archive.org/web/2026/t.me/channel/12345");
-    // The original stays the primary link; the copy is the fallback.
-    expect(screen.getByRole("link", { name: "t.me" })).toBeInTheDocument();
-  });
-
-  // Every unarchived link row states the absence and offers nothing, the owner included: recording
-  // a copy is an edit through the edit form.
-  it("states a missing copy on every link row, offering no action to anyone", () => {
-    render(
-      <EventDetailBody
-        geo={geoFixture({
-          detected_from_url: "https://x.com/ana/status/123",
-          secondary_source_urls: ["https://t.me/mirror/1"],
-          archived_secondary_sources: [null],
-        })}
-        variant="page"
-      />
-    );
-    fireEvent.click(screen.getByRole("button", { name: /1 more source/ }));
-    for (const name of [
-      "No archived copy of the source",
-      "No archived copy of t.me",
-      "No archived copy of the post it was detected from",
-    ]) {
-      expect(screen.getByRole("button", { name })).toBeDisabled();
-    }
-    expect(screen.queryByRole("textbox")).toBeNull();
-  });
-
-  it("shows no archival affordance on a detection that declares no source", () => {
-    render(
-      <EventDetailBody
-        geo={geoFixture({
-          status: "detected",
-          geolocated_at: null,
-          source_url: null,
-        })}
-        variant="page"
-      />
-    );
-    // There is no link, so the mark would be about nothing.
-    expect(screen.queryByRole("img", { name: /archived copy/ })).not.toBeInTheDocument();
-  });
-
-  it("omits the Secondary sources row when the event declares no mirror", () => {
-    render(<EventDetailBody geo={geoFixture()} variant="page" />);
-    expect(screen.queryByText("Secondary sources")).not.toBeInTheDocument();
-  });
-
-  it("collapses the secondary sources behind a count, expanding to the links", () => {
-    render(
-      <EventDetailBody
-        geo={geoFixture({
-          secondary_source_urls: [
-            "https://x.com/user/status/9",
-            "https://www.youtube.com/watch?v=abc",
-          ],
-        })}
-        variant="page"
-      />
-    );
-    expect(screen.getByText("Secondary sources")).toBeInTheDocument();
-    const toggle = screen.getByRole("button", { name: /2 more sources/ });
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
-    // Collapsed: no link is reachable yet.
-    expect(screen.queryByRole("link", { name: "x.com" })).not.toBeInTheDocument();
-
-    fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
-    const link = screen.getByRole("link", { name: "x.com" });
-    expect(link).toHaveAttribute("href", "https://x.com/user/status/9");
-    // Same new-tab affordance as the primary Source row.
-    expect(link).toHaveAttribute("target", "_blank");
-    expect(screen.getByRole("link", { name: "www.youtube.com" })).toBeInTheDocument();
-    // The archive marks carry no `?` of their own: the row's Secondary sources tooltip explains the
-    // mark once for the list.
-    expect(
-      screen.getByRole("button", {
-        name: FIELD_HELP.secondary_source_urls.label,
-      })
-    ).toBeInTheDocument();
-  });
-
-  it("keeps each mirror's archived copy on its own mirror", () => {
-    render(
-      <EventDetailBody
-        geo={geoFixture({
-          secondary_source_urls: [
-            "https://x.com/user/status/9",
-            "https://www.youtube.com/watch?v=abc",
-          ],
-          // Only the second mirror has a copy: alignment is by position, so a copy must not slide onto its neighbour.
-          archived_secondary_sources: [
-            null,
-            {
-              url: "https://web.archive.org/web/2026/youtube.com/watch?v=abc",
-              provider: "wayback",
-            },
-          ],
-        })}
-        variant="page"
-      />
-    );
-    fireEvent.click(screen.getByRole("button", { name: /2 more sources/ }));
-
-    // Named per target so the archived affordances stay tellable apart. Position leads, since a host
-    // isn't an identity (two mirrors of one channel would share a name).
-    const archived = screen.getByRole("link", {
-      name: "Wayback Machine copy of mirror 2, www.youtube.com",
-    });
-    expect(archived).toHaveAttribute(
-      "href",
-      "https://web.archive.org/web/2026/youtube.com/watch?v=abc"
-    );
-    expect(archived).toHaveAttribute("target", "_blank");
-    expect(archived).toHaveAttribute("rel", "noopener noreferrer");
-    // The uncopied mirror says so rather than showing nothing.
-    expect(
-      screen.getByRole("button", { name: "No archived copy of mirror 1, x.com" })
-    ).toBeDisabled();
-    // The mirror itself stays the primary link either way.
-    expect(screen.getByRole("link", { name: "www.youtube.com" })).toBeInTheDocument();
   });
 
   it("a request opened from a post reads Requested from, not Detected from", () => {
@@ -546,7 +383,7 @@ describe("EventDetailBody", () => {
       <EventDetailBody
         geo={geoFixture({
           status: "requested",
-          event_coords: null,
+          coords: null,
           geolocated_at: null,
           detected_from_url: "https://x.com/ana/status/123",
           detected_via: "bot",
@@ -558,143 +395,4 @@ describe("EventDetailBody", () => {
     expect(screen.queryByText("Detected from")).not.toBeInTheDocument();
   });
 
-  it("renders the archived copy beside the Detected from link", () => {
-    render(
-      <EventDetailBody
-        geo={geoFixture({
-          detected_from_url: "https://x.com/ana/status/123",
-          archived_detected_from: {
-            url: "https://web.archive.org/web/2026/x.com/ana/status/123",
-            provider: "wayback",
-          },
-        })}
-        variant="page"
-      />
-    );
-    // Named apart from the source: the provenance link is the analyst's post, not the footage origin, and both rows carry the same mark.
-    expect(
-      screen.getByRole("link", {
-        name: "Wayback Machine copy of the post it was detected from",
-      })
-    ).toHaveAttribute("href", "https://web.archive.org/web/2026/x.com/ana/status/123");
-  });
-
-  it("the map panel carries the copy on every link row it shows", () => {
-    // The panel renders the same rows as the page, so a regression dropping the affordance from one
-    // surface alone would pass the page tests.
-    render(
-      <EventDetailBody
-        geo={geoFixture({
-          archived_source: {
-            url: "https://web.archive.org/web/2026/t.me/channel/12345",
-            provider: "wayback",
-          },
-          detected_from_url: "https://x.com/ana/status/123",
-          archived_detected_from: {
-            url: "https://web.archive.org/web/2026/x.com/ana/status/123",
-            provider: "wayback",
-          },
-          secondary_source_urls: ["https://t.me/mirror/1"],
-          archived_secondary_sources: [
-            {
-              url: "https://web.archive.org/web/2026/t.me/mirror/1",
-              provider: "wayback",
-            },
-          ],
-        })}
-        variant="panel"
-      />
-    );
-    fireEvent.click(screen.getByRole("button", { name: /1 more source/ }));
-    expect(
-      screen.getByRole("link", { name: "Wayback Machine copy of the source" })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "Wayback Machine copy of t.me" })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", {
-        name: "Wayback Machine copy of the post it was detected from",
-      })
-    ).toBeInTheDocument();
-  });
-
-  it("names two mirrors sharing a host apart, and the primary apart from both", () => {
-    const captured = (url: string) => ({ url, provider: "wayback" as const });
-    render(
-      <EventDetailBody
-        geo={geoFixture({
-          archived_source: captured("https://web.archive.org/web/2026/t.me/channel/12345"),
-          secondary_source_urls: ["https://t.me/mirror/1", "https://t.me/mirror/2"],
-          archived_secondary_sources: [
-            captured("https://web.archive.org/web/2026/t.me/mirror/1"),
-            captured("https://web.archive.org/web/2026/t.me/mirror/2"),
-          ],
-        })}
-        variant="page"
-      />
-    );
-    fireEvent.click(screen.getByRole("button", { name: /2 more sources/ }));
-
-    expect(
-      screen.getByRole("link", { name: "Wayback Machine copy of the source" })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "Wayback Machine copy of mirror 1, t.me" })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "Wayback Machine copy of mirror 2, t.me" })
-    ).toBeInTheDocument();
-  });
-
-  it("names a lone mirror by its host, falling back to a literal without one", () => {
-    const { unmount } = render(
-      <EventDetailBody
-        geo={geoFixture({
-          secondary_source_urls: ["https://t.me/mirror/1"],
-          archived_secondary_sources: [
-            {
-              url: "https://web.archive.org/web/2026/t.me/mirror/1",
-              provider: "wayback",
-            },
-          ],
-        })}
-        variant="page"
-      />
-    );
-    fireEvent.click(screen.getByRole("button", { name: /1 more source/ }));
-    expect(
-      screen.getByRole("link", { name: "Wayback Machine copy of t.me" })
-    ).toBeInTheDocument();
-    unmount();
-
-    // A stored value the URL parser gives no host for still announces something a reader can act on.
-    render(
-      <EventDetailBody
-        geo={geoFixture({
-          secondary_source_urls: ["mailto:tips@example.org"],
-          archived_secondary_sources: [
-            { url: "https://web.archive.org/web/2026/tips", provider: "wayback" },
-          ],
-        })}
-        variant="page"
-      />
-    );
-    fireEvent.click(screen.getByRole("button", { name: /1 more source/ }));
-    expect(
-      screen.getByRole("link", { name: "Wayback Machine copy of this mirror" })
-    ).toBeInTheDocument();
-  });
-
-  it("singularises the toggle on a lone secondary source", () => {
-    render(
-      <EventDetailBody
-        geo={geoFixture({ secondary_source_urls: ["https://t.me/mirror/1"] })}
-        variant="panel"
-      />
-    );
-    expect(
-      screen.getByRole("button", { name: /1 more source$/ })
-    ).toBeInTheDocument();
-  });
 });

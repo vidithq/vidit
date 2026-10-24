@@ -25,13 +25,9 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   return {
     id: "d1",
     title: "Strike near Bakhmut",
-    event_coords: { lat: 48.5, lng: 37.8 },
-    capture_source_coords: null,
-    archived_source: null,
-    archived_detected_from: null,
-    event_date: "2026-06-01",
-    event_time: null,
-    source_posted_at: "2026-05-30T14:32:00Z",
+    coords: { lat: 48.5, lng: 37.8 },
+    occurred_date: "2026-06-01",
+    occurred_time: null,
     status: "detected",
     version_no: 1,
     is_graphic: false,
@@ -42,21 +38,29 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     owner: { id: "u1", username: "ana" },
     tags: [],
     conflicts: [],
-    source_url: "https://t.me/channel/12345",
-    secondary_source_urls: [],
-    archived_secondary_sources: [],
+    sources: [
+      {
+        id: "s1",
+        title: "",
+        level: "direct",
+        sensor: null,
+        captured_at: null,
+        camera_position: null,
+        is_graphic: false,
+        links: [{ url: "https://t.me/channel/12345", posted_at: null, archived: null }],
+        tags: [],
+        media: {
+          id: "m1",
+          storage_url: "/local-storage/evidence.jpg",
+          kind: "image",
+          sha256: "0".repeat(64),
+        },
+      },
+    ],
     proof: '<img src="https://cdn.test/p.jpg">',
     created_at: "2026-06-02T10:00:00Z",
     geolocated_at: null,
     closed_at: null,
-    media: [
-      {
-        id: "m1",
-        storage_url: "/local-storage/evidence.jpg",
-        media_type: "image",
-        role: "source",
-      },
-    ],
     thumbnail: null,
     requested_by: null,
     geolocators: [],
@@ -88,7 +92,7 @@ describe("DetectionsPage queue filter", () => {
     });
     fireEvent.focus(help);
     const tooltip = screen.getByRole("tooltip");
-    expect(tooltip).toHaveTextContent("conflict and the capture source");
+    expect(tooltip).toHaveTextContent("conflict and the sensor");
     expect(tooltip).toHaveTextContent("a manual pass on the form");
     // The options themselves carry no native hover text: Vidit never uses it.
     for (const label of ["All", "Ready", "Incomplete"]) {

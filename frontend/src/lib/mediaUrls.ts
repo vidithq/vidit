@@ -9,12 +9,11 @@ import type { Media } from "@/types";
  *   uploads/<geo>/abc_thumb.jpg  max-dim 400 px, JPEG q80
  * The naming mirrors `storage.derivative_key`; change both.
  *
- * Which rows carry the siblings is the `role`, not the `media_type`: `storage.upload_file` and
- * the detection path write them for a `source` image; `storage.upload_proof_image` passes
- * `produce_derivatives=False`, so a `proof` image has an original only. Rewriting a `proof`
- * url to `_thumb` addresses an object never written: the CDN answers 403 and every card
- * paints a broken picture. Videos have no derivatives either (callers skip this via
- * `media.media_type`, see `displayUrlsFor`).
+ * Which objects carry the siblings is the upload path, not the `kind`: `storage.upload_source_file`
+ * and the detection path write them for an image; `storage.upload_proof_image` passes
+ * `produce_derivatives=False` and stores the object under `proof/`, so a proof image has an
+ * original only. Rewriting a proof url to `_thumb` addresses an object never written: the CDN
+ * answers 403 and every card paints a broken picture. Videos have no derivatives either.
  */
 export interface MediaUrlBundle {
   original: string;
@@ -60,12 +59,18 @@ export function posterFrameUrl(src: string): string {
   return src.includes("#") ? src : `${src}#t=0.1`;
 }
 
-/** Pick the URL for a Media row at the desired size. Videos and `proof` images fall back to
- *  the original (no derivatives). Use instead of raw `storage_url`. */
-export function displayUrlsFor(
-  media: Pick<Media, "storage_url" | "media_type" | "role">,
-): MediaUrlBundle {
-  if (media.media_type !== "image" || media.role === "proof") {
+/** A proof image's object: `storage.upload_proof_image` keys it `proof/<user>/<file>`. Mirrors
+ *  that key; change both. */
+const PROOF_OBJECT = /\/proof\/[^/]+\/[^/?#]+(?:[?#].*)?$/;
+
+/** Pick the URL for a Media row at the desired size. Videos and proof images fall back to the
+ *  original (no derivatives). `role`, where the payload carries one (a collection cover tile),
+ *  decides; otherwise the stored key does. Use instead of raw `storage_url`. */
+export type DisplayMedia = Pick<Media, "storage_url" | "kind"> & { role?: "source" | "proof" };
+
+export function displayUrlsFor(media: DisplayMedia): MediaUrlBundle {
+  const proof = media.role ? media.role === "proof" : PROOF_OBJECT.test(media.storage_url);
+  if (media.kind !== "image" || proof) {
     return {
       original: media.storage_url,
       hero: media.storage_url,

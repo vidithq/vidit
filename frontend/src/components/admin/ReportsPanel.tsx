@@ -87,7 +87,7 @@ function ReportRow({
         </span>
         <span className="text-neutral-500">{formatInstant(report.created_at)}</span>
         <span className="text-neutral-500">
-          {report.reporter_user_id ? "signed in" : "anonymous"}
+          {report.reporter_id ? "signed in" : "anonymous"}
         </span>
         {report.event_id !== null && (
           <Link href={eventHref(report.event_id)} className={TEXT_LINK}>

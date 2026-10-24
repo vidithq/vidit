@@ -5,7 +5,7 @@ import { MapPin } from "lucide-react";
 import type { Media } from "@/types";
 import { cn } from "@/lib/cn";
 import { formatDate } from "@/lib/format";
-import { displayUrlsFor, posterFrameUrl } from "@/lib/mediaUrls";
+import { displayUrlsFor, posterFrameUrl, type DisplayMedia } from "@/lib/mediaUrls";
 import { META_LINE, TAPPABLE_HOVER } from "@/components/ui/styles";
 import { GraphicContentGate } from "@/components/ui/GraphicContentGate";
 import { Pill } from "@/components/ui/Pill";
@@ -36,9 +36,8 @@ export function MediaThumb({
   className,
   isGraphic = false,
 }: {
-  /** The kind picks the element; the role tells `displayUrlsFor` whether the
-   *  picture has derivatives. */
-  media?: Pick<Media, "storage_url" | "media_type" | "role">;
+  /** The kind picks the element; `displayUrlsFor` knows whether the picture has derivatives. */
+  media?: DisplayMedia;
   /** Image derivative: 400 px `thumbnail` or 1280 px `hero`. Videos and proof
    *  images have none and ignore it. */
   size?: "thumbnail" | "hero";
@@ -46,7 +45,7 @@ export function MediaThumb({
   isGraphic?: boolean;
 }) {
   const picture = media ? (
-    media.media_type === "image" ? (
+    media.kind === "image" ? (
       // eslint-disable-next-line @next/next/no-img-element
       <img
         src={displayUrlsFor(media)[size]}

@@ -15,7 +15,7 @@ function conflict(overrides: Partial<Conflict> & Pick<Conflict, "id" | "name">):
     wikidata_id: null,
     start_year: null,
     end_year: null,
-    ongoing: true,
+    is_ongoing: true,
     tier: null,
     ...overrides,
   };
@@ -34,19 +34,17 @@ const CONFLICTS: Conflict[] = [
     name: "Falklands War",
     start_year: 1982,
     end_year: 1982,
-    ongoing: false,
+    is_ongoing: false,
   }),
   conflict({
     id: "c4",
     name: "Gulf War",
     start_year: 1990,
     end_year: 1991,
-    ongoing: false,
+    is_ongoing: false,
   }),
   conflict({ id: "c5", name: "Other" }),
 ];
-
-const CURATED: Tag[] = [{ id: "cs1", name: "Drone", category: "capture_source" }];
 
 // Stateful host so pill clicks round-trip through the selection state.
 function Host({ conflicts = CONFLICTS }: { conflicts?: Conflict[] }) {
@@ -57,7 +55,6 @@ function Host({ conflicts = CONFLICTS }: { conflicts?: Conflict[] }) {
     <TagPicker
       tags={tags}
       setTags={setTags}
-      curatedTags={CURATED}
       selectedTagIds={selectedTagIds}
       setSelectedTagIds={setSelectedTagIds}
       conflicts={conflicts}
@@ -90,7 +87,7 @@ describe("TagPicker conflict typeahead", () => {
   it("offers the Other escape in the default list even when not flagged ongoing", () => {
     const flippedOther = [
       conflict({ id: "c1", name: "Major war", tier: "major" }),
-      conflict({ id: "c5", name: "Other", ongoing: false }),
+      conflict({ id: "c5", name: "Other", is_ongoing: false }),
     ];
     render(<Host conflicts={flippedOther} />);
     expect(screen.getByText("Other")).toBeInTheDocument();

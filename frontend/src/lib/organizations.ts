@@ -81,8 +81,8 @@ export function inviteToOrganization(
   });
 }
 
-export function cancelOrganizationInvite(slug: string, inviteId: string): Promise<void> {
-  return apiFetch<void>(`${organizationPath(slug)}/invites/${inviteId}`, {
+export function cancelOrganizationInvite(slug: string, username: string): Promise<void> {
+  return apiFetch<void>(`${organizationPath(slug)}/invites/${encodeURIComponent(username)}`, {
     method: "DELETE",
   });
 }

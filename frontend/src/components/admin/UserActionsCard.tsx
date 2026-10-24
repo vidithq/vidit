@@ -45,7 +45,7 @@ export function UserActionsCard({
   const [xHandle, setXHandle] = useState(user.x_handle ?? "");
   const [showXHandleForm, setShowXHandleForm] = useState(false);
   const [dangerMode, setDangerMode] = useState<DangerMode | null>(null);
-  const [mintingEnabled, setMintingEnabled] = useState(user.invite_minting_enabled);
+  const [mintingEnabled, setMintingEnabled] = useState(user.is_invite_minting_enabled);
 
   const xHandleMutation = useMutation(
     (value: string | null) => setUserXHandle(user.id, { x_handle: value }),
@@ -64,7 +64,7 @@ export function UserActionsCard({
     {
       fallback: "Failed to change invite minting",
       onSuccess: (updated) => {
-        setMintingEnabled(updated.invite_minting_enabled);
+        setMintingEnabled(updated.is_invite_minting_enabled);
         onUpdated(updated);
       },
     },

@@ -157,7 +157,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
             dateSections={[
               {
                 title: "Event date",
-                concept: "event_date",
+                concept: "occurred_date",
                 summary: rangeSummary(dateWindows.eventFrom, dateWindows.eventTo),
                 active: eventWindowActive(dateWindows),
                 children: (

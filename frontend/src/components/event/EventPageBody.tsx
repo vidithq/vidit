@@ -22,7 +22,7 @@ export function EventPageBody({ geo }: { geo: EventDetail }) {
     <EventDetailBody geo={geo} variant="page">
       {/* A located row gets the Location module; a coordless event (a `requested` row served by id) has
           no point, so the block is omitted. */}
-      {geo.event_coords && (
+      {geo.coords && (
         <div>
           <SectionEyebrow title="Location" concept="section_location" />
           {/* Map and coordinates are one module: the coords read as a Details-style row fused to the map's
@@ -36,14 +36,14 @@ export function EventPageBody({ geo }: { geo: EventDetail }) {
                 points={[
                   [
                     geo.id,
-                    geo.event_coords.lat,
-                    geo.event_coords.lng,
+                    geo.coords.lat,
+                    geo.coords.lng,
                     "",
                     "",
                     geo.status === "detected" ? 1 : 0,
                   ],
                 ]}
-                center={{ lat: geo.event_coords.lat, lng: geo.event_coords.lng }}
+                center={{ lat: geo.coords.lat, lng: geo.coords.lng }}
                 zoom={12}
                 embedded
               />
@@ -60,11 +60,11 @@ export function EventPageBody({ geo }: { geo: EventDetail }) {
                   above. */}
               <span className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1 min-w-0">
                 <span className="text-sm text-neutral-200 font-mono">
-                  {formatCoordinates(geo.event_coords.lat, geo.event_coords.lng)}
+                  {formatCoordinates(geo.coords.lat, geo.coords.lng)}
                 </span>
                 <CoordinateActions
-                  lat={geo.event_coords.lat}
-                  lng={geo.event_coords.lng}
+                  lat={geo.coords.lat}
+                  lng={geo.coords.lng}
                 />
               </span>
             </DetailRow>

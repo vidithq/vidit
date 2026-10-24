@@ -32,7 +32,7 @@ const DEBOUNCE_MS = 300;
 function chronological(events: PickableEvent[]): PickableEvent[] {
   return [...events].sort(
     (a, b) =>
-      (a.event_date ?? "9999").localeCompare(b.event_date ?? "9999") ||
+      (a.occurred_date ?? "9999").localeCompare(b.occurred_date ?? "9999") ||
       a.id.localeCompare(b.id),
   );
 }

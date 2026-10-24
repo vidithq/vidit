@@ -211,7 +211,7 @@ function SearchPageBody() {
             ? [
                 {
                   title: "Event date",
-                  concept: "event_date",
+                  concept: "occurred_date",
                   summary: rangeSummary(panel.dates.eventFrom, panel.dates.eventTo),
                   active: eventWindowActive(panel.dates),
                   children: (
@@ -595,7 +595,7 @@ function EventResult({ hit }: { hit: SearchEventHit }) {
       media={hit.media[0]}
       isGraphic={hit.is_graphic}
       {...creditProps(hit)}
-      date={hit.event_date ?? undefined}
+      date={hit.occurred_date ?? undefined}
       coords={{ lat: hit.lat, lng: hit.lng }}
       tags={hit.tags}
     />
@@ -613,7 +613,7 @@ function RequestResult({ hit }: { hit: SearchRequestHit }) {
       media={hit.media[0]}
       isGraphic={hit.is_graphic}
       author={hit.owner}
-      source={{ url: hit.source_url }}
+      source={{ url: hit.source_urls[0] ?? null }}
     />
   );
 }

@@ -6,6 +6,7 @@ import { SourceLabel } from "@/components/ui/SourceLabel";
 import { TAPPABLE_HOVER } from "@/components/ui/styles";
 import { batchCompletionBlockers, detectionEditPath } from "@/lib/events";
 import { formatDate } from "@/lib/format";
+import { firstSourceUrl } from "@/lib/sources";
 import type { DetectedVia, EventDetail } from "@/types";
 
 /** The badge text for a detection short of the evidence floor. One missing piece is named (the
@@ -35,7 +36,7 @@ const ENTRY_LABELS: Record<DetectedVia, string> = {
  *
  * The badge describes the *evidence*, not completeness: **Ready to review** means the machine
  * found everything it could and the detection awaits the judgment a review supplies (conflict,
- * capture source), never that it is finished. It takes the softer outline tone so it can't read as
+ * sensor), never that it is finished. It takes the softer outline tone so it can't read as
  * a published state. The queue filter's `?` explains the two states.
  */
 export function DetectionQueueRow({ detection }: { detection: EventDetail }) {
@@ -67,9 +68,9 @@ export function DetectionQueueRow({ detection }: { detection: EventDetail }) {
           </h3>
           <div className="flex flex-wrap items-center gap-x-3 text-[11px] text-neutral-500">
             <span>
-              {detection.event_date ? formatDate(detection.event_date) : "No event date"}
+              {detection.occurred_date ? formatDate(detection.occurred_date) : "No event date"}
             </span>
-            <SourceLabel variant="inline" url={detection.source_url} />
+            <SourceLabel variant="inline" url={firstSourceUrl(detection)} />
             {detection.detected_via !== null && detection.detected_via !== undefined && (
               <span>{ENTRY_LABELS[detection.detected_via]}</span>
             )}

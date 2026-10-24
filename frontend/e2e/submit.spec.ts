@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { ONE_PIXEL_PNG } from "./support/fixtures";
 import { grantSession, mockApi } from "./support/mockApi";
 import { expectNarrowViewportLayout } from "./support/narrowLayout";
 
@@ -23,6 +24,30 @@ test.describe("submit", () => {
     await expectNarrowViewportLayout(page, publish);
   });
 
+  test("holds two source editors on a narrow column", async ({ page }) => {
+    await page.goto("/submit");
+
+    await page.getByRole("button", { name: "Add a source" }).click();
+    const first = page.getByRole("region", { name: "Source 1" });
+    const second = page.getByRole("region", { name: "Source 2" });
+    await expect(second).toBeVisible();
+
+    // A picked file uploads at once and the slot previews the staged copy.
+    await first.locator('input[type="file"]').setInputFiles({
+      name: "street.png",
+      mimeType: "image/png",
+      buffer: ONE_PIXEL_PNG,
+    });
+    await expect(first.getByText(/^Uploading/)).toHaveCount(0);
+    await expect(first.getByRole("button", { name: "View image" })).toBeVisible();
+    await expect(first.getByLabel("Sensor", { exact: true })).toBeEnabled();
+
+    await first.getByLabel("Source 1 link 1", { exact: true }).fill("https://t.me/channel/12345");
+    await second.getByLabel("Source 2 link 1", { exact: true }).fill("https://x.com/user/status/1");
+    await expectNarrowViewportLayout(page, second.getByRole("button", { name: "Remove source 2", exact: true }));
+    await expectNarrowViewportLayout(page, page.getByRole("button", { name: "Publish geolocation" }));
+  });
+
   test("reads an X post on a narrow column", async ({ page }) => {
     await page.goto("/submit");
 
@@ -36,14 +61,14 @@ test.describe("submit", () => {
     await expectNarrowViewportLayout(page, createDetection);
   });
 
-  // The required instant field is the longest value a form here asks for, and
-  // it wears a mark. At 320px the field is about 248px wide, so the room the
-  // mark leaves is what decides whether the reader can see the instant they
-  // just typed or only the front half of it.
+  // A source's capture time is the longest value a form here asks for, and it
+  // wears a mark. At 320px the field is about 220px wide inside its editor, so
+  // the room the mark leaves is what decides whether the reader can see the
+  // instant they just typed or only the front half of it.
   test("a filled instant field clears its own mark", async ({ page }) => {
     await page.goto("/submit");
 
-    const field = page.locator("#source_posted_at");
+    const field = page.getByRole("region", { name: "Source 1" }).getByLabel(/^Captured \(UTC\)/);
     await expect(field).toBeVisible();
     await field.fill("2025-01-03T14:20");
 

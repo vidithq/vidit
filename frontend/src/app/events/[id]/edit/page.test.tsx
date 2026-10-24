@@ -65,6 +65,7 @@ import {
   updateEventRequest,
 } from "@/lib/events";
 import { ARM_MS } from "@/hooks/useConfirmAction";
+import type { Source } from "@/lib/sources";
 import type { Conflict, EventDetail, Tag } from "@/types";
 
 import EditEventPage from "./page";
@@ -81,26 +82,40 @@ const CONFLICTS: Conflict[] = [
     wikidata_id: "Q110999040",
     start_year: 2022,
     end_year: null,
-    ongoing: true,
+    is_ongoing: true,
     tier: "major",
   },
 ];
 
-const CURATED_TAGS: Tag[] = [
-  { id: "t-drone", name: "Drone", category: "capture_source" },
-];
+const TAGS: Tag[] = [{ id: "t-drone", name: "Drone" }];
+
+/** The row's one source: its footage, posted once, with a seconds-precise post time. */
+const source = (over: Partial<Source> = {}): Source => ({
+  id: "s1",
+  title: "",
+  level: "direct",
+  sensor: "drone",
+  captured_at: null,
+  camera_position: null,
+  is_graphic: false,
+  links: [{ url: "https://t.me/channel/12345", posted_at: "2026-05-30T14:32:27Z", archived: null }],
+  tags: [],
+  media: {
+    id: "m1",
+    storage_url: "/local-storage/evidence.jpg",
+    kind: "image",
+    sha256: "0".repeat(64),
+  },
+  ...over,
+});
 
 function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   return {
     id: "d1",
     title: "Strike near Bakhmut",
-    event_coords: { lat: 48.5, lng: 37.8 },
-    capture_source_coords: null,
-    archived_source: null,
-    archived_detected_from: null,
-    event_date: "2026-06-01",
-    event_time: null,
-    source_posted_at: "2026-05-30T14:32:00Z",
+    coords: { lat: 48.5, lng: 37.8 },
+    occurred_date: "2026-06-01",
+    occurred_time: null,
     status: "detected",
     version_no: 1,
     is_graphic: false,
@@ -111,21 +126,11 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     owner: { id: "u1", username: "ana" },
     tags: [],
     conflicts: [],
-    source_url: "https://t.me/channel/12345",
-    secondary_source_urls: [],
-    archived_secondary_sources: [],
+    sources: [source({ sensor: null })],
     proof: '<img src="https://cdn.test/p.jpg">',
     created_at: "2026-06-02T10:00:00Z",
     geolocated_at: null,
     closed_at: null,
-    media: [
-      {
-        id: "m1",
-        storage_url: "/local-storage/evidence.jpg",
-        media_type: "image",
-        role: "source",
-      },
-    ],
     thumbnail: null,
     requested_by: null,
     geolocators: [],
@@ -133,16 +138,16 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   };
 }
 
-/** A published geolocation the owner is correcting, with the curated picks a publication required. */
+/** A published geolocation the owner is correcting, with the picks a publication required. */
 function publishedFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   return detectionFixture({
     status: "geolocated",
     version_no: 1,
     geolocated_at: "2026-06-02T11:00:00Z",
     // Both carry seconds, which the form inputs lack: an untouched save must not post the truncation back.
-    source_posted_at: "2026-05-30T14:32:27Z",
-    event_time: "14:32:27",
-    tags: CURATED_TAGS,
+    occurred_time: "14:32:27",
+    sources: [source()],
+    tags: TAGS,
     conflicts: CONFLICTS,
     ...overrides,
   });
@@ -152,7 +157,7 @@ function publishedFixture(overrides: Partial<EventDetail> = {}): EventDetail {
 function requestFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   return detectionFixture({
     status: "requested",
-    event_coords: null,
+    coords: null,
     detected_from_url: null,
     requested_by: { id: "u1", username: "ana" },
     proof: null,
@@ -171,17 +176,18 @@ function resource(path: string) {
   if (path.startsWith("/events/d1")) return row;
   if (path.startsWith("/events/detections"))
     return { items: queueItems, total: queueItems.length, page: 1, per_page: 100 };
-  if (path === "/tags?curated=true") return CURATED_TAGS;
   if (path === "/conflicts") return CONFLICTS;
   return null;
 }
 
-/** Make the two curated picks the publish floor asks for. */
+/** Make the two picks the publish floor asks of a review: the conflict and the sensor. */
 function fillTheFloor() {
   fireEvent.click(
     screen.getByRole("button", { name: /Russian invasion of Ukraine/ })
   );
-  fireEvent.click(screen.getByRole("button", { name: "Drone" }));
+  fireEvent.change(screen.getByRole("combobox", { name: /Sensor/ }), {
+    target: { value: "drone" },
+  });
 }
 
 /** Fill the floor, then submit (the first click arms, the second writes). */
@@ -470,17 +476,16 @@ describe("editing a published geolocation", () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith("/events/d1"));
   });
 
-  it("offers the evidence anchor for correction, seeded from the row", () => {
+  it("offers the sources for correction, seeded from the row", () => {
     render(<EditEventPage />);
 
-    // The import often picks the wrong media, so both halves stay editable after publication; the filed version keeps the old ones.
-    expect(screen.getByRole("textbox", { name: /Source URL/ })).toHaveValue(
+    // The import often picks the wrong media, so every source stays editable after publication; the
+    // filed version keeps the old ones.
+    expect(screen.getByRole("textbox", { name: "Source 1 link 1" })).toHaveValue(
       "https://t.me/channel/12345"
     );
-    // Remove opens the picker: an event carries one source media, so a swap is a removal then an upload.
-    expect(
-      screen.getByRole("button", { name: "Remove media" })
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove media" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add a source" })).toBeInTheDocument();
   });
 
   it("saves on the click that made it, then lands on the event", async () => {
@@ -504,10 +509,10 @@ describe("editing a published geolocation", () => {
     expect(screen.queryByText("Detected from")).toBeNull();
   });
 
-  it("keeps the seconds of an untouched source post time and event time", async () => {
+  it("keeps the seconds of an untouched post time and event time", async () => {
     render(<EditEventPage />);
 
-    // Untouched inputs must not post the truncation back: the instant is omitted (keep the row's), the time goes back at its own precision.
+    // Untouched inputs must not post the truncation back: each goes back at the row's own precision.
     fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), {
       target: { value: "Corrected title" },
     });
@@ -515,24 +520,25 @@ describe("editing a published geolocation", () => {
     await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
 
     const [, input] = saveVersionMock.mock.calls[0];
-    expect(input.source_posted_at).toBe("");
-    expect(input.event_time).toBe("14:32:27");
+    expect(input.sources[0].links[0].posted_at).toBe("2026-05-30T14:32:27Z");
+    expect(input.occurred_time).toBe("14:32:27");
   });
 
-  it("posts a source post time the editor actually moved", async () => {
+  it("posts a post time the editor actually moved, as a version", async () => {
     render(<EditEventPage />);
 
-    // The label carries its own `?` button, so the query is narrowed to the input.
-    fireEvent.change(screen.getByLabelText(/^Source posted/, { selector: "input" }), {
+    fireEvent.change(screen.getByLabelText(/^Posted \(UTC\), source 1/), {
       target: { value: "2026-05-30T15:00" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
     await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
 
-    expect(saveVersionMock.mock.calls[0][1].source_posted_at).toBe("2026-05-30T15:00");
+    expect(saveVersionMock.mock.calls[0][1].sources[0].links[0].posted_at).toBe(
+      "2026-05-30T15:00"
+    );
   });
 
-  it("posts the version note beside the evidence anchor", async () => {
+  it("posts the version note beside the whole source list", async () => {
     render(<EditEventPage />);
 
     fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), {
@@ -547,22 +553,22 @@ describe("editing a published geolocation", () => {
     const [id, input] = saveVersionMock.mock.calls[0];
     expect(id).toBe("d1");
     expect(input.note).toBe("Coordinates were off by a block.");
-    // The anchor rides along (the endpoint declares it): an untouched form posts the held source, no media swap.
-    expect(input.source_url).toBe("https://t.me/channel/12345");
-    expect(input.files).toEqual([]);
-    expect(input.remove_media_ids).toEqual([]);
+    // An untouched source goes back with its id and its file, so it is kept, not re-filed.
+    expect(input.sources).toEqual([
+      expect.objectContaining({ id: "s1", media_id: "m1", sensor: "drone" }),
+    ]);
   });
 
-  it("corrects the source URL as a version of its own", async () => {
+  it("corrects a source URL as a version of its own", async () => {
     render(<EditEventPage />);
 
-    fireEvent.change(screen.getByRole("textbox", { name: /Source URL/ }), {
+    fireEvent.change(screen.getByRole("textbox", { name: "Source 1 link 1" }), {
       target: { value: "https://t.me/channel/999" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
     await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
 
-    expect(saveVersionMock.mock.calls[0][1].source_url).toBe(
+    expect(saveVersionMock.mock.calls[0][1].sources[0].links[0].url).toBe(
       "https://t.me/channel/999"
     );
   });
@@ -638,16 +644,12 @@ describe("editing an open request", () => {
   it("offers the fields the request was opened with, seeded from the row", () => {
     render(<EditEventPage />);
 
-    expect(screen.getByRole("textbox", { name: /Title/ })).toHaveValue(
-      "Strike near Bakhmut"
-    );
-    expect(screen.getByRole("textbox", { name: /Source URL/ })).toHaveValue(
+    expect(screen.getByRole("textbox", { name: /Title/ })).toHaveValue("Strike near Bakhmut");
+    expect(screen.getByRole("textbox", { name: "Source 1 link 1" })).toHaveValue(
       "https://t.me/channel/12345"
     );
-    // Footage is swappable as on the published edit: Remove opens the picker.
-    expect(
-      screen.getByRole("button", { name: "Remove media" })
-    ).toBeInTheDocument();
+    // A request's sources are not locked: footage is swappable as on the published edit.
+    expect(screen.getByRole("button", { name: "Remove media" })).toBeInTheDocument();
   });
 
   it("overwrites the request and lands back on it", async () => {
@@ -662,21 +664,20 @@ describe("editing an open request", () => {
     expect(updateRequestMock.mock.calls[0][0]).toBe("d1");
     expect(updateRequestMock.mock.calls[0][1]).toMatchObject({
       title: "Corrected ask",
-      source_url: "https://t.me/channel/12345",
+      sources: [{ id: "s1", media_id: "m1", links: [{ url: "https://t.me/channel/12345" }] }],
     });
     expect(saveVersionMock).not.toHaveBeenCalled();
     expect(geolocateMock).not.toHaveBeenCalled();
     await waitFor(() => expect(push).toHaveBeenCalledWith("/requests/d1"));
   });
 
-  it("saves a request the bot opened with no source instant", async () => {
-    // The bot may open a request with no readable source date, so the instant is not in the floor.
-    row = requestFixture({ source_posted_at: null });
+  it("saves a request whose source names no sensor", async () => {
+    // The request floor asks for a file, not a sensor.
     render(<EditEventPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Save request" }));
     await waitFor(() => expect(updateRequestMock).toHaveBeenCalledTimes(1));
-    expect(updateRequestMock.mock.calls[0][1].source_posted_at).toBe("");
+    expect(updateRequestMock.mock.calls[0][1].sources[0].sensor).toBeNull();
   });
 
   it("labels the post the bot opened the request from Requested from", () => {
@@ -687,9 +688,9 @@ describe("editing an open request", () => {
     expect(screen.queryByText("Detected from")).toBeNull();
   });
 
-  it("covers the footage of a flagged request behind the age gate", () => {
-    // The owner can meet footage here they have never seen: a flagged row's media is covered as on other pages.
-    row = requestFixture({ is_graphic: true });
+  it("covers the footage of a flagged source behind the age gate", () => {
+    // The owner can meet footage here they have never seen: a flagged source's file is covered as on other pages.
+    row = requestFixture({ sources: [source({ sensor: null, is_graphic: true })] });
     render(<EditEventPage />);
 
     expect(

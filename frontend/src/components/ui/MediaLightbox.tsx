@@ -38,8 +38,8 @@ interface ResolvedSource {
 }
 
 function resolveSource(source: LightboxSource): ResolvedSource {
-  if ("media_type" in source) {
-    const isVideo = source.media_type !== "image";
+  if ("storage_url" in source) {
+    const isVideo = source.kind !== "image";
     return {
       // `hero` (max-dim 1280) avoids the original's payload. Videos have no
       // derivatives.

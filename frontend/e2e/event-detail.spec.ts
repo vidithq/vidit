@@ -69,14 +69,14 @@ test.describe("shared event link", () => {
     await expectNarrowViewportLayout(page, page.getByRole("button", { name: "Send report" }));
   });
 
-  test("stacks the Approvals card under the title, before the media", async ({ page }) => {
+  test("stacks the Approvals card under the title, before the sources", async ({ page }) => {
     await mockApi(page);
     await page.goto(`/events/${EVENT_ID}`);
 
     const card = page.getByRole("region", { name: "Approvals" });
     await expect(card.getByRole("list", { name: "Approved by" })).toBeVisible();
     const cardBox = await card.boundingBox();
-    const mediaBox = await page.getByRole("heading", { name: "Source media" }).boundingBox();
+    const mediaBox = await page.getByRole("heading", { name: "Sources" }).boundingBox();
     expect(cardBox!.y + cardBox!.height).toBeLessThanOrEqual(mediaBox!.y);
 
     // Two rows of stamps, oldest first, each a link to its signer's page, the bubble for the
@@ -88,7 +88,6 @@ test.describe("shared event link", () => {
     await expect(first).toHaveAttribute("href", `/profile/${username}`);
     expect((await first.boundingBox())?.width).toBe(28);
     await expectNarrowViewportLayout(page, stamps.getByRole("button", { name: "Show 3 more approvals" }));
-    await expect(page.getByText(EVENT_APPROVALS[0].note!)).toHaveCount(0);
 
     // The bubble shows the rest of the stamps, which wrap inside the card.
     await stamps.getByRole("button", { name: "Show 3 more approvals" }).click();

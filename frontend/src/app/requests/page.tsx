@@ -31,10 +31,11 @@ import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
 
 // Status is fixed to `requested`, so the board offers no Status section: "closed" would read as
-// "done" on a work queue. `GET /events` takes no `media` filter, so Source media stays off too.
+// "done" on a work queue. `GET /events` takes no `media` filter, so Media stays off too.
 const BOARD_SECTIONS: ReadonlyArray<EventFilterSectionName> = [
   "conflict",
-  "capture_source",
+  "sensor",
+  "level",
   "location_guess",
   "tags",
   "author",
@@ -155,9 +156,9 @@ export default function RequestsPage() {
                 media={r.media ?? undefined}
                 isGraphic={r.is_graphic}
                 author={r.owner}
-                date={r.event_date ?? undefined}
+                date={r.occurred_date ?? undefined}
                 age={r.requested_at ? formatOpenAge(r.requested_at) : undefined}
-                coords={r.event_coords}
+                coords={r.coords}
                 tags={r.tags}
               />
             ))}

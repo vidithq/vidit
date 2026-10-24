@@ -11,13 +11,13 @@ afterEach(() => {
 
 describe("FieldHelp", () => {
   it("reveals the registry label + explanation text on hover / focus", async () => {
-    render(<FieldHelp concept="source_url" />);
-    const btn = screen.getByRole("button", { name: FIELD_HELP.source_url.label });
+    render(<FieldHelp concept="sensor" />);
+    const btn = screen.getByRole("button", { name: FIELD_HELP.sensor.label });
     expect(btn).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("tooltip")).toBeNull();
     fireEvent.focus(btn);
     const tooltip = await screen.findByRole("tooltip");
-    expect(tooltip).toHaveTextContent(FIELD_HELP.source_url.text);
+    expect(tooltip).toHaveTextContent(FIELD_HELP.sensor.text);
     expect(btn.getAttribute("aria-describedby")).toBe(tooltip.getAttribute("id"));
   });
 

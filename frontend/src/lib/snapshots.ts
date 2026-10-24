@@ -29,6 +29,22 @@ export const ARCHIVE_TODAY_HOSTS = [
  *  `services/source_archive.py`; change both. */
 export const SNAPSHOT_HOSTS = [WAYBACK_HOST, ...ARCHIVE_TODAY_HOSTS, "ghostarchive.org"];
 
+/** The archive service a stored snapshot URL lives on, read off its host as the server derives
+ *  `provider`; null for a host outside `SNAPSHOT_HOSTS`. */
+export function snapshotProvider(
+  snapshot: string
+): "wayback" | "archive_today" | "ghostarchive" | null {
+  let host: string;
+  try {
+    host = new URL(snapshot).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+  if (host === WAYBACK_HOST) return "wayback";
+  if (ARCHIVE_TODAY_HOSTS.includes(host)) return "archive_today";
+  return host === "ghostarchive.org" ? "ghostarchive" : null;
+}
+
 /** Wayback replay path `/web/<timestamp>/<original url>`, optional replay modifier included.
  *  Mirrors `source_archive._WAYBACK_REPLAY_RE`; change both. The server only checks the
  *  shape, this side reads the link out. */

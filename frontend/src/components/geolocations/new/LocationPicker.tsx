@@ -12,26 +12,11 @@ interface LocationPickerProps {
   lng: string;
   setLng: (v: string) => void;
   invalid?: boolean;
-  /** The optional camera position. Both halves or neither. */
-  captureLat: string;
-  setCaptureLat: (v: string) => void;
-  captureLng: string;
-  setCaptureLng: (v: string) => void;
 }
 
-/** The "Location" section: the subject coordinates and the optional camera
- *  position, shared by the submit and edit forms. */
-export function LocationPicker({
-  lat,
-  setLat,
-  lng,
-  setLng,
-  invalid = false,
-  captureLat,
-  setCaptureLat,
-  captureLng,
-  setCaptureLng,
-}: LocationPickerProps) {
+/** The "Location" section: the subject coordinates, shared by every event form. Each source
+ *  carries its own camera position. */
+export function LocationPicker({ lat, setLat, lng, setLng, invalid = false }: LocationPickerProps) {
   return (
     <Card as="section">
       <SectionHeading title="Location" concept="section_location" />
@@ -44,27 +29,7 @@ export function LocationPicker({
         >
           Subject <FieldHelp concept="coordinates" />
         </span>
-        <CoordinateInputs
-          lat={lat}
-          setLat={setLat}
-          lng={lng}
-          setLng={setLng}
-          invalid={invalid}
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <span className={`${LABEL_TEXT} inline-flex items-center gap-1`}>
-          Camera position <FieldHelp concept="capture_source_coords" />
-        </span>
-        <CoordinateInputs
-          idPrefix="capture_"
-          required={false}
-          lat={captureLat}
-          setLat={setCaptureLat}
-          lng={captureLng}
-          setLng={setCaptureLng}
-        />
+        <CoordinateInputs lat={lat} setLat={setLat} lng={lng} setLng={setLng} invalid={invalid} />
       </div>
     </Card>
   );

@@ -29,8 +29,8 @@ const row = (
   status: "geolocated",
   media: null,
   is_graphic: false,
-  event_date: "2026-03-14",
-  event_coords: { lat: 49.71, lng: 37.616 },
+  occurred_date: "2026-03-14",
+  coords: { lat: 49.71, lng: 37.616 },
   tags: [],
   ...over,
 });
@@ -89,8 +89,8 @@ describe("EventPicker, the events the collection holds", () => {
       <EventPicker
         username="ana"
         events={[
-          row({ id: "e9", title: "Later strike", event_date: "2026-03-16" }),
-          row({ id: "e8", title: "Earlier strike", event_date: "2026-03-14" }),
+          row({ id: "e9", title: "Later strike", occurred_date: "2026-03-16" }),
+          row({ id: "e8", title: "Earlier strike", occurred_date: "2026-03-14" }),
         ]}
         onAdd={vi.fn()}
         onRemove={vi.fn()}
@@ -111,8 +111,8 @@ describe("EventPicker, the events the collection holds", () => {
       <EventPicker
         username="ana"
         events={[
-          row({ id: "e9", title: "Picked first", event_date: "2026-03-14" }),
-          row({ id: "e2", title: "Picked second", event_date: "2026-03-14" }),
+          row({ id: "e9", title: "Picked first", occurred_date: "2026-03-14" }),
+          row({ id: "e2", title: "Picked second", occurred_date: "2026-03-14" }),
         ]}
         onAdd={vi.fn()}
         onRemove={vi.fn()}

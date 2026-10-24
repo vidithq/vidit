@@ -13,8 +13,8 @@ import { SNAPSHOT_HOSTS, snapshotArchivesAnotherLink, WAYBACK_HOST } from "@/lib
 
 interface ArchivedCopiesProps {
   copy: ArchivedLink | null;
-  /** What the copy is of, folded into each accessible name ("the source",
-   *  "mirror 2, t.me"). Build a mirror's value with `mirrorDescription`. */
+  /** What the copy is of, folded into each accessible name ("source 1, t.me",
+   *  "source 2, link 3, x.com"). Build it with `linkDescription`. */
   describes: string;
 }
 
@@ -265,18 +265,19 @@ function SavePageDoor({
   );
 }
 
-export const PRIMARY_SOURCE_DESCRIPTION = "the source";
-
-/** The post a machine detection came from, not the footage source. */
-export const DETECTED_FROM_DESCRIPTION = "the post it was detected from";
-
 /**
- * One mirror's `describes` value: its host, prefixed by position when the list
- * holds more than one, since two mirrors can share a host. A URL with no
+ * One link's `describes` value: its source's position, the link's position when the source
+ * holds more than one, and its host, since two links can share a host. A URL with no
  * parseable host falls back to a literal.
  */
-export function mirrorDescription(hostname: string, index: number, total: number): string {
-  const host = hostname.trim();
-  if (total < 2) return host || "this mirror";
-  return host ? `mirror ${index + 1}, ${host}` : `mirror ${index + 1}`;
+export function linkDescription(
+  sourceIndex: number,
+  hostname: string,
+  linkIndex: number,
+  linkCount: number
+): string {
+  const parts = [`source ${sourceIndex + 1}`];
+  if (linkCount > 1) parts.push(`link ${linkIndex + 1}`);
+  parts.push(hostname.trim() || "this link");
+  return parts.join(", ");
 }

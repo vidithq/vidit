@@ -48,7 +48,7 @@ const LIST = `list-disc space-y-1 pl-4 ${NOTE}`;
 const CARRIES: NumberedStep[] = [
   { title: "Coordinates, in any usual format." },
   { title: "Source: the post you quote, or a single link." },
-  { title: "Source media: the footage in the quoted post." },
+  { title: "Source file: the footage in the quoted post." },
   { title: "Title: the first line with more than coordinates and links." },
   { title: "Proof: your text as written, and your photos as proof images." },
 ];

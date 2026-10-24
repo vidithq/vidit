@@ -12,7 +12,7 @@ import { FIELD_TEXT } from "@/components/ui/Input";
 interface TimelineScrubberProps {
   /** Filtered point set (post conflict/tag/author, pre-window); drives the histogram and axis. */
   points: MapPoint[];
-  /** Which date each point is bucketed/filtered on: 3 = event_date,
+  /** Which date each point is bucketed/filtered on: 3 = occurred_date,
    *  4 = submitted (created_at) date. */
   dateIndex: 3 | 4;
   /** Short label for accessibility ("Event date" / "Added"). */

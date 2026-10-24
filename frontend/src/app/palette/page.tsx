@@ -70,7 +70,6 @@ import { ProgressSteps } from "@/components/ui/ProgressSteps";
 import { ActiveFilterPills } from "@/components/ui/ActiveFilterPills";
 import { ChipBucket } from "@/components/ui/ChipBucket";
 import { FilterSection, chipSummary } from "@/components/ui/FilterSection";
-import { ToggleMatrix } from "@/components/ui/ToggleMatrix";
 import { ToggleRow } from "@/components/ui/ToggleRow";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
@@ -84,7 +83,13 @@ import { MediaGallery } from "@/components/ui/MediaGallery";
 import { MediaDownloadButton } from "@/components/ui/MediaDownloadButton";
 import { MediaLightbox } from "@/components/ui/MediaLightbox";
 import { VideoPlayer } from "@/components/ui/VideoPlayer";
-import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
+import { TaxonomyLoadError } from "@/components/geolocations/TaxonomyLoadError";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { MergeAction } from "@/components/ui/MergeAction";
+import { SourceBlocks } from "@/components/sources/SourceBlock";
+import { SourcesField } from "@/components/sources/SourcesField";
+import { SourcePicker } from "@/components/sources/SourcePicker";
+import { sourceDraftFrom, type Source, type SourceDraft } from "@/lib/sources";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { SourceLabel } from "@/components/ui/SourceLabel";
@@ -92,9 +97,7 @@ import {
   ArchiveAdornment,
   ArchivedCopies,
   ArchiveSnapshotField,
-  DETECTED_FROM_DESCRIPTION,
-  PRIMARY_SOURCE_DESCRIPTION,
-  mirrorDescription,
+  linkDescription,
 } from "@/components/ui/ArchivedCopies";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import {
@@ -167,14 +170,57 @@ const MOCK_TAGS = [
   { id: "2", name: "Drone" },
 ];
 
+// A drone clip's source, shown on every detail surface: a file, two links, one archived.
+const MOCK_SOURCE: Source = {
+  id: "s1",
+  title: "Drone footage of the strike",
+  level: "direct",
+  sensor: "drone",
+  captured_at: "2026-05-09T15:40:00Z",
+  camera_position: { lat: 48.0201, lng: 37.7951 },
+  is_graphic: false,
+  links: [
+    {
+      url: "https://t.me/channel/4242",
+      posted_at: "2026-05-09T15:45:00Z",
+      archived: {
+        url: "https://web.archive.org/web/20260601120000/https://t.me/channel/4242",
+        provider: "wayback",
+        archived_at: "2026-06-01T12:00:00Z",
+      },
+    },
+    { url: "https://www.youtube.com/watch?v=mirror2", posted_at: null, archived: null },
+  ],
+  tags: [{ id: "t4", name: "armor" }],
+  media: {
+    id: "m1",
+    storage_url: "/opengraph-image",
+    kind: "image",
+    sha256: "0".repeat(64),
+    original_filename: "strike.jpg",
+  },
+};
+
+// A context source: a URL only, no file, so no sensor.
+const MOCK_CONTEXT_SOURCE: Source = {
+  ...MOCK_SOURCE,
+  id: "s2",
+  title: "",
+  level: "context",
+  sensor: null,
+  captured_at: null,
+  camera_position: null,
+  links: [{ url: "https://news.example/article", posted_at: null, archived: null }],
+  tags: [],
+  media: null,
+};
+
 // A full geolocation, for the detail body + detection card.
 const MOCK_DETAIL: EventDetail = {
   id: "demo",
   title: "Strike on a depot, Donetsk",
-  event_coords: { lat: 48.0159, lng: 37.8024 },
-  capture_source_coords: null,
-  archived_source: null,
-  event_date: "2026-05-09",
+  coords: { lat: 48.0159, lng: 37.8024 },
+  occurred_date: "2026-05-09",
   is_graphic: false,
   status: "geolocated",
   version_no: 1,
@@ -185,10 +231,7 @@ const MOCK_DETAIL: EventDetail = {
     username: "analyst",
     avatar_url: null,
   },
-  tags: [
-    { id: "t2", name: "Drone", category: "capture_source" },
-    { id: "t3", name: "Donetsk", category: "free" },
-  ],
+  tags: [{ id: "t3", name: "Donetsk" }],
   conflicts: [
     {
       id: "c1",
@@ -196,27 +239,18 @@ const MOCK_DETAIL: EventDetail = {
       wikidata_id: null,
       start_year: 2022,
       end_year: null,
-      ongoing: true,
+      is_ongoing: true,
       tier: "major",
     },
   ],
-  source_url: "https://t.me/channel/4242",
-  // Two mirrors so the detail body's collapsed Secondary sources row shows.
-  secondary_source_urls: [
-    "https://t.me/mirror/1",
-    "https://www.youtube.com/watch?v=mirror2",
-  ],
-  archived_secondary_sources: [null, null],
-  event_time: "15:45:00",
-  source_posted_at: "2026-05-09T15:45:00Z",
+  sources: [MOCK_SOURCE, MOCK_CONTEXT_SOURCE],
+  occurred_time: "15:45:00",
   detected_from_url: null,
   detected_via: null,
-  archived_detected_from: null,
   proof: null,
   created_at: "2026-06-01T00:00:00Z",
   geolocated_at: "2026-06-03T10:00:00Z",
   closed_at: null,
-  media: [],
   thumbnail: null,
   requested_by: null,
   geolocators: [],
@@ -230,16 +264,8 @@ const MOCK_DETECTION_READY: EventDetail = {
   ...MOCK_DETAIL,
   id: "detection-ready",
   status: "detected",
-  source_url: "https://t.me/channel/12345",
   proof: '<img src="/local-storage/demo.jpg">',
-  media: [
-    {
-      id: "m1",
-      storage_url: "/local-storage/demo.jpg",
-      media_type: "image",
-      role: "source",
-    },
-  ],
+  sources: [{ ...MOCK_SOURCE, sensor: null }],
 };
 
 const MOCK_DETECTION_ONE_MISSING: EventDetail = {
@@ -253,44 +279,25 @@ const MOCK_DETECTION_SEVERAL_MISSING: EventDetail = {
   ...MOCK_DETECTION_ONE_MISSING,
   id: "detection-several-missing",
   title: "Smoke over a treeline, location unclear",
-  media: [],
-  source_url: null,
+  sources: [],
 };
 
-// The same detail body with a real source captured at both providers, a
-// provenance link archived at archive.today, plus one mirror archived and one
-// with no copy yet.
+// The same detail body with a provenance link, as an imported row carries it.
 const MOCK_DETAIL_ARCHIVED: EventDetail = {
   ...MOCK_DETAIL,
-  source_url: "https://t.me/channel/12345",
-  archived_source: {
-    url: "https://web.archive.org/web/20260601120000/https://t.me/channel/12345",
-    provider: "wayback",
-  },
   detected_from_url: "https://x.com/analyst/status/1234567890",
-  archived_detected_from: { url: "https://archive.ph/fghij", provider: "archive_today" },
-  archived_secondary_sources: [
-    {
-      url: "https://web.archive.org/web/20260601120100/https://t.me/mirror/1",
-      provider: "wayback",
-    },
-    null,
-  ],
 };
 
 // The lighter geolocation-card payload (feed / recent-submissions shape).
 const MOCK_CARD_GEO = {
   id: "demo",
   title: "Strike on a depot near Donetsk",
-  event_date: "2026-05-09",
+  occurred_date: "2026-05-09",
   status: "detected" as EventStatus,
   lat: 48.0159,
   lng: 37.8024,
   owner: { username: "analyst" },
-  tags: [
-    { id: "t2", name: "Drone", category: "capture_source" as const },
-    { id: "t3", name: "Donetsk", category: "free" as const },
-  ],
+  tags: [{ id: "t3", name: "Donetsk" }],
 };
 
 // Four tiles for the collection mosaic, the shape `GET /collections/{id}`
@@ -298,15 +305,10 @@ const MOCK_CARD_GEO = {
 // items. The app's own OG image stands in for the stored media, extensionless
 // so `displayUrlsFor` finds no sibling and every size resolves to it.
 const MOCK_COVER_TILES = [
-  { url: "/opengraph-image", media_type: "image" as const, role: "source" as const },
-  { url: "/opengraph-image", media_type: "image" as const, role: "source" as const },
-  { url: "/opengraph-image", media_type: "image" as const, role: "source" as const },
-  { url: "/opengraph-image", media_type: "image" as const, role: "source" as const },
-];
-
-const MOCK_CURATED: Tag[] = [
-  { id: "cs1", name: "Drone", category: "capture_source" },
-  { id: "cs2", name: "Satellite", category: "capture_source" },
+  { url: "/opengraph-image", kind: "image" as const, role: "source" as const },
+  { url: "/opengraph-image", kind: "image" as const, role: "source" as const },
+  { url: "/opengraph-image", kind: "image" as const, role: "source" as const },
+  { url: "/opengraph-image", kind: "image" as const, role: "source" as const },
 ];
 
 // A small slice of the conflicts referential for the TagPicker's typeahead:
@@ -319,7 +321,7 @@ const MOCK_CONFLICTS: Conflict[] = [
     wikidata_id: null,
     start_year: 2022,
     end_year: null,
-    ongoing: true,
+    is_ongoing: true,
     tier: "major",
   },
   {
@@ -328,7 +330,7 @@ const MOCK_CONFLICTS: Conflict[] = [
     wikidata_id: null,
     start_year: 2023,
     end_year: null,
-    ongoing: true,
+    is_ongoing: true,
     tier: "minor",
   },
   {
@@ -337,7 +339,7 @@ const MOCK_CONFLICTS: Conflict[] = [
     wikidata_id: null,
     start_year: 1982,
     end_year: 1982,
-    ongoing: false,
+    is_ongoing: false,
     tier: null,
   },
   {
@@ -346,7 +348,7 @@ const MOCK_CONFLICTS: Conflict[] = [
     wikidata_id: null,
     start_year: null,
     end_year: null,
-    ongoing: true,
+    is_ongoing: true,
     tier: null,
   },
 ];
@@ -359,13 +361,15 @@ export default function PalettePage() {
   const [segSel, setSegSel] = useState<"single" | "bulk">("single");
   const [segMode, setSegMode] = useState<"soft" | "hard">("soft");
   const [swOn, setSwOn] = useState(true);
-  const [tpTags, setTpTags] = useState<Tag[]>([
-    { id: "f1", name: "donetsk", category: "free" },
-  ]);
+  const [tpTags, setTpTags] = useState<Tag[]>([{ id: "f1", name: "donetsk" }]);
   const [tpSelected, setTpSelected] = useState<string[]>([]);
   const [tpConflictSel, setTpConflictSel] = useState<string[]>([]);
   const [links, setLinks] = useState<string[]>(["https://t.me/channel/12345"]);
-  const [linkCopies, setLinkCopies] = useState<string[]>([""]);
+  const [paletteSources, setPaletteSources] = useState<SourceDraft[]>(() => [
+    sourceDraftFrom(MOCK_SOURCE),
+    sourceDraftFrom(MOCK_CONTEXT_SOURCE),
+  ]);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   return (
     <PageShell
@@ -579,19 +583,15 @@ export default function PalettePage() {
             <PaletteFilterSection />
           </Item>
 
-          <Item name="<ChipBucket>" usage="A multi-select chip bucket for one filter family (conflicts, capture sources, tags, media types): every option a <Pill>, selected ones filled accent, click toggles membership. Any-match within the bucket; combining buckets is AND on the server.">
+          <Item name="<ChipBucket>" usage="A multi-select chip bucket for one filter family (conflicts, sensors, levels, tags, media types): every option a <Pill>, selected ones filled accent, click toggles membership. Any-match within the bucket; combining buckets is AND on the server.">
             <PaletteChipBucket />
           </Item>
 
-          <Item name="<ToggleRow>" usage="An on/off row: the whole row is the switch (role + click), the <Switch> rendering as its visual span, and it takes the phone tap step. `description` picks the shape: without one the row is the filter toggle, a micro uppercase label on a divided list; with one it is a settings preference, the label at reading size over a line saying what the preference does. The accessible name is the label alone (aria-labelledby on it), never the paragraph under it. `className` carries the caller's own divider and spacing. PreferenceText, exported beside it, is that label-over-description text, shared by the described row and each <ToggleMatrix> row.">
+          <Item name="<ToggleRow>" usage="An on/off row: the whole row is the switch (role + click), the <Switch> rendering as its visual span, and it takes the phone tap step. `description` picks the shape: without one the row is the filter toggle, a micro uppercase label on a divided list; with one it is a settings preference, the label at reading size over a line saying what the preference does. The accessible name is the label alone (aria-labelledby on it), never the paragraph under it. `className` carries the caller's own divider and spacing. Settings lists one described row per notification kind, its Email switch.">
             <PaletteToggleRow />
           </Item>
 
-          <Item name="<ToggleMatrix>" usage="Several booleans per row, one per column: the column headers once at the top, each row's label and description on the left and one switch per column on the right. Each switch is its own 36px button, the <Switch> as its visual span, named '<row label>, <column label>'. A cell in `disabled` keeps its state, leaves the tab order and is described by its reason, printed once under the rows however many cells share it. Columns hold a one-word header, so two switches stay on the row at 320px.">
-            <PaletteToggleMatrix />
-          </Item>
-
-          <Item name="<Pill>" usage="One pill for the whole family (status, tag, filter, badge) at one size. `tone` = accent | secondary | neutral | danger, mirroring the <Button> tones (secondary is the accent outline, no fill). A static <span> by default; pass `onClick` and it becomes an interactive chip (a <button> that brightens on hover), the caller driving the tone off its active state. `label` makes a key/value pill, the key muted before the value (`Conflict: Russo-Ukrainian war`), for a field whose name the value alone does not carry; lib/cardTags.ts keys a card's conflicts and capture sources and drops an Unknown value. className merges via cn (caller wins on a conflicting utility); keep it to orthogonal extras, the size stays one.">
+          <Item name="<Pill>" usage="One pill for the whole family (status, tag, filter, badge) at one size. `tone` = accent | secondary | neutral | danger, mirroring the <Button> tones (secondary is the accent outline, no fill). A static <span> by default; pass `onClick` and it becomes an interactive chip (a <button> that brightens on hover), the caller driving the tone off its active state. `label` makes a key/value pill, the key muted before the value (`Conflict: Russo-Ukrainian war`), for a field whose name the value alone does not carry; lib/cardTags.ts keys a card's conflicts; a source block keys its sensor and drops an Unknown value. className merges via cn (caller wins on a conflicting utility); keep it to orthogonal extras, the size stays one.">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] text-neutral-600 self-center w-12">static</span>
@@ -605,7 +605,7 @@ export default function PalettePage() {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] text-neutral-600 self-center w-12">keyed</span>
                 <Pill label="Conflict">Russo-Ukrainian war</Pill>
-                <Pill label="Capture source">Smartphone</Pill>
+                <Pill label="Sensor">Smartphone</Pill>
                 <Pill>airstrike</Pill>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -738,14 +738,14 @@ export default function PalettePage() {
               </Variant>
               <Variant label="invalid">
                 <Select invalid defaultValue="">
-                  <option value="">Pick a capture source</option>
+                  <option value="">Pick a sensor</option>
                   <option value="drone">Drone</option>
                 </Select>
               </Variant>
             </div>
           </Item>
 
-          <Item name="<DateTimeInput>" usage="A date, a time or an instant: the native control wearing the site's own mark. The browser draws its picker button in engine chrome at engine size, which on the dark field reads as a foreign element; the brick sets `.picker-glyph` (globals.css hides that button, Webkit/Chromium only) and puts a ghost icon button in the field's trailing slot instead, Calendar for anything picking a day and Clock for a time of day, opening the same native picker through showPicker() and falling back to focusing the field. One brick for the event date, the event time and the source post time, on the submit form and the edit form alike. It also owns `has-value`, the class globals.css mutes an empty field's dd/mm/yyyy placeholder off, so no call site derives it. A date field too narrow for an adornment (the search filters, the map scrubber) stays a bare Input of type date and keeps the native button. The mark is a desktop affordance: below `sm` a field cannot hold both a 36px button and the value of an instant, so the slot stands down (`trailingFromSm`) and a tap on the field opens the engine's picker.">
+          <Item name="<DateTimeInput>" usage="A date, a time or an instant: the native control wearing the site's own mark. The browser draws its picker button in engine chrome at engine size, which on the dark field reads as a foreign element; the brick sets `.picker-glyph` (globals.css hides that button, Webkit/Chromium only) and puts a ghost icon button in the field's trailing slot instead, Calendar for anything picking a day and Clock for a time of day, opening the same native picker through showPicker() and falling back to focusing the field. One brick for the event date, the event time, a source's capture time and each link's post time, on every event form. It also owns `has-value`, the class globals.css mutes an empty field's dd/mm/yyyy placeholder off, so no call site derives it. A date field too narrow for an adornment (the search filters, the map scrubber) stays a bare Input of type date and keeps the native button. The mark is a desktop affordance: below `sm` a field cannot hold both a 36px button and the value of an instant, so the slot stands down (`trailingFromSm`) and a tap on the field opens the engine's picker.">
             <div className="w-full max-w-sm space-y-2">
               <Variant label='type="date" (empty)'>
                 <DateTimeInput type="date" value="" onChange={() => {}} />
@@ -766,52 +766,46 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<LinkListInput>" usage="An ordered list of URL fields with a remove per row and one add button: the submit / edit forms' Secondary sources. `max` mirrors the server cap and disables add at the ceiling. Blank rows are the caller's to drop at assembly. `companion` gives every row a second value plus a mark inside the row's URL field (`trailing`) and a line under it (`render`), all three kept index-aligned through adds and removals: on the source forms that is the <ArchiveAdornment> / <ArchiveSnapshotField> pair, so a mirror is archived where it is typed. The list owns which rows are expanded for the same reason it owns the values, and a row seeded with a companion value opens showing it.">
+          <Item name="<LinkListInput>" usage="An ordered list of URL fields with a remove per row and one add button: each source editor's Links. A row is the caller's own value, read and written through `urlOf` / `withUrl`, so what else it carries (a post time, an archived copy) moves with it through adds and removals. `max` mirrors the server cap and disables add at the ceiling. Blank rows are the caller's to drop at assembly. `trailing` puts a mark inside the row's URL field, `detail` a line always under it, and `expansion` a line under it while the row is toggled open: on a source editor that is the <ArchiveAdornment> mark, the post time, and the <ArchiveSnapshotField> paste line. Every row starts closed.">
             <div className="w-full max-w-sm space-y-4">
               <Variant label="editable (max 3 here)">
-                <LinkListInput
-                  values={links}
+                <LinkListInput<string>
+                  rows={links}
                   onChange={setLinks}
+                  urlOf={(url) => url}
+                  withUrl={(_, url) => url}
+                  blank={() => ""}
                   max={3}
-                  itemLabel="Secondary source"
+                  itemLabel="Link"
                   placeholder="https://x.com/user/status/12345"
                 />
               </Variant>
-              <Variant label="with a companion field per row">
-                <LinkListInput
-                  values={links}
+              <Variant label="with an archive mark and a paste line per row">
+                <LinkListInput<string>
+                  rows={links}
                   onChange={setLinks}
+                  urlOf={(url) => url}
+                  withUrl={(_, url) => url}
+                  blank={() => ""}
                   max={3}
-                  itemLabel="Secondary source"
+                  itemLabel="Link"
                   placeholder="https://x.com/user/status/12345"
-                  companion={{
-                    values: linkCopies,
-                    onChange: setLinkCopies,
-                    trailing: ({ index, url, expanded, toggle }) => (
-                      <ArchiveAdornment
-                        describes={mirrorDescription(
-                          safeHostname(url),
-                          index,
-                          links.length
-                        )}
-                        copy={null}
-                        expanded={expanded}
-                        onToggle={toggle}
-                      />
-                    ),
-                    render: ({ index, url, value, onChange }) => (
-                      <ArchiveSnapshotField
-                        link={url}
-                        describes={mirrorDescription(
-                          safeHostname(url),
-                          index,
-                          links.length
-                        )}
-                        value={value}
-                        onChange={onChange}
-                      />
-                    ),
-                  }}
+                  trailing={({ index, row, expanded, toggle }) => (
+                    <ArchiveAdornment
+                      describes={linkDescription(0, safeHostname(row), index, links.length)}
+                      copy={null}
+                      expanded={expanded}
+                      onToggle={toggle}
+                    />
+                  )}
+                  expansion={({ index, row }) => (
+                    <ArchiveSnapshotField
+                      link={row}
+                      describes={linkDescription(0, safeHostname(row), index, links.length)}
+                      value=""
+                      onChange={() => {}}
+                    />
+                  )}
                 />
               </Variant>
             </div>
@@ -846,7 +840,7 @@ export default function PalettePage() {
             <div className={`${FORM_SUCCESS_BANNER} max-w-sm`}>Saved.</div>
           </Item>
 
-          <Item name="LIST_TILE" usage="One item of an admin list: a pending X handle request, a report, a detection stat, the user actions. A bordered tile on the panel; the caller adds the spacing between its lines.">
+          <Item name="LIST_TILE" usage="One item of a list: a source block or a source editor, a report, a detection stat, the user actions. A bordered tile on the panel; the caller adds the spacing between its lines.">
             <div className={`${LIST_TILE} max-w-sm space-y-2 text-sm text-neutral-300`}>
               <p>@osint_hawk_2025</p>
               <p className="text-xs text-neutral-500">Requested 2 days ago</p>
@@ -868,12 +862,11 @@ export default function PalettePage() {
             </span>
           </Item>
 
-          <Item name="<TagPicker>" usage="Conflict typeahead (ongoing by default, ended behind the switch) + curated/free tag selection (Pill chips + inline free-tag creation); submit / edit">
+          <Item name="<TagPicker>" usage="The Classification section of every event form: the conflict typeahead (ongoing by default, ended behind the switch), then the tags as <TagChips> (toggle chips over the one tag catalogue, plus an inline field that creates a tag and selects it). Each source editor renders <TagChips> alone, named for its source.">
             <div className="w-full max-w-2xl">
               <TagPicker
                 tags={tpTags}
                 setTags={setTpTags}
-                curatedTags={MOCK_CURATED}
                 selectedTagIds={tpSelected}
                 setSelectedTagIds={setTpSelected}
                 conflicts={MOCK_CONFLICTS}
@@ -1037,40 +1030,45 @@ export default function PalettePage() {
 
           <Item
             name="<ArchivedCopies>"
-            usage="The archived copy beside an outbound source link, on the event detail surfaces: the primary Source row, the Detected from row, and every expanded secondary mirror. One copy per link, from whichever service produced it, so the affordance is a single lucide mark: the Archive box, one mark for archiving in every state and for every provider, never the services' own logos. Provider identity lives in the accessible name of the stored copy, never in the shape. It is one ghost icon button in exactly two states, and colour says which: accent where a copy exists and the mark opens it, grey and disabled where none does, for every reader including the event's owner. Recording a copy is an edit, so it happens on the forms through <ArchiveAdornment> + <ArchiveSnapshotField> and files a version; nothing here writes. The mark carries no `?` of its own: the row's field concept explains it (source_url, secondary_source_urls, detected_from), so an expanded list of ten mirrors shows one explanation rather than ten. It sits `self-center` because those rows align their text on the baseline, where the square hangs low. Every mark looks alike across the page, so the accessible name carries the state and the target both: PRIMARY_SOURCE_DESCRIPTION for the source, DETECTED_FROM_DESCRIPTION for the provenance link, mirrorDescription(host, index, total) for a mirror, which leads with the position whenever the list holds more than one (two mirrors on one host would otherwise share a name) and falls back to a literal for a URL with no host."
+            usage="The archived copy beside each link of a source block, on the event detail surfaces. One copy per link, from whichever service produced it, so the affordance is a single lucide mark: the Archive box, one mark for archiving in every state and for every provider, never the services' own logos. Provider identity lives in the accessible name of the stored copy, never in the shape. It is one ghost icon button in exactly two states, and colour says which: accent where a copy exists and the mark opens it, grey and disabled where none does, for every reader including the event's owner. Recording a copy is an edit, so it happens on the forms through <ArchiveAdornment> + <ArchiveSnapshotField> and files a version; nothing here writes. The mark carries no `?` of its own: the source_links concept explains it once, so a source with ten links shows one explanation rather than ten. It sits `self-center` because those rows align their text on the baseline, where the square hangs low. Every mark looks alike across the page, so the accessible name carries the state and the target both: linkDescription(source, host, link, total) leads with the source's position, adds the link's position whenever the source holds more than one (two links on one host would otherwise share a name) and falls back to a literal for a URL with no host."
           >
-            <Variant label="a stored copy named for the Wayback Machine (primary source)">
+            <Variant label="a stored copy named for the Wayback Machine (a source's one link)">
               <span className="text-sm text-neutral-300">
                 t.me
                 <ArchivedCopies
                   copy={{
                     url: "https://web.archive.org/web/20260601120000/https://t.me/channel/12345",
                     provider: "wayback",
+                    archived_at: "2026-06-01T12:00:00Z",
                   }}
-                  describes={PRIMARY_SOURCE_DESCRIPTION}
+                  describes={linkDescription(0, "t.me", 0, 1)}
                 />
               </span>
             </Variant>
-            <Variant label="a stored copy named for archive.today, same mark (mirror 2 of a multi-mirror list)">
+            <Variant label="a stored copy named for archive.today, same mark (link 2 of a source)">
               <span className="text-sm text-neutral-300">
                 t.me
                 <ArchivedCopies
-                  copy={{ url: "https://archive.ph/abcde", provider: "archive_today" }}
-                  describes={mirrorDescription("t.me", 1, 2)}
+                  copy={{
+                    url: "https://archive.ph/abcde",
+                    provider: "archive_today",
+                    archived_at: "2026-06-01T12:00:00Z",
+                  }}
+                  describes={linkDescription(0, "t.me", 1, 2)}
                 />
               </span>
             </Variant>
             <Variant label="no copy yet: grey and inert, for every reader">
               <span className="text-sm text-neutral-300">
                 x.com
-                <ArchivedCopies copy={null} describes={DETECTED_FROM_DESCRIPTION} />
+                <ArchivedCopies copy={null} describes={linkDescription(1, "x.com", 0, 1)} />
               </span>
             </Variant>
           </Item>
 
           <Item
             name="<ArchiveAdornment>"
-            usage="The archive mark a link on a form carries, inside the URL field itself (<Input trailing>, or <LockedUrl trailing> where the value is frozen). One mark per link, where the link is typed, so archiving is not a block under the field. On a form it is never grey: whatever state the link is in there is something to do with it. No copy yet is the ArchiveRestore mark, which opens the paste line under the field; a link that already has one carries the Archive mark opening the stored copy (the same mark and name the event page shows) with ArchiveRestore beside it, since one link holds one copy and a wrong paste has to be replaceable. Every name folds in `describes`, because a form carries several of these and they look alike. Nothing is written here: the paste travels with the form."
+            usage="The archive mark a link on a form carries, inside the URL field itself (<Input trailing>). One mark per link, where the link is typed, so archiving is not a block under the field. On a form it is never grey: whatever state the link is in there is something to do with it. No copy yet is the ArchiveRestore mark, which opens the paste line under the field; a link that already has one carries the Archive mark opening the stored copy (the same mark and name the event page shows) with ArchiveRestore beside it, since one link holds one copy and a wrong paste has to be replaceable. Every name folds in `describes`, because a form carries several of these and they look alike. Nothing is written here: the paste travels with the form."
           >
             <Variant label="no copy yet: the mark opens the paste line">
               <div className="w-full max-w-sm">
@@ -1079,7 +1077,7 @@ export default function PalettePage() {
                   defaultValue="https://t.me/channel/12345"
                   trailing={
                     <ArchiveAdornment
-                      describes={PRIMARY_SOURCE_DESCRIPTION}
+                      describes={linkDescription(0, "t.me", 0, 1)}
                       copy={null}
                       expanded={false}
                       onToggle={() => {}}
@@ -1095,8 +1093,12 @@ export default function PalettePage() {
                   defaultValue="https://t.me/channel/12345"
                   trailing={
                     <ArchiveAdornment
-                      describes={PRIMARY_SOURCE_DESCRIPTION}
-                      copy={{ url: "https://archive.ph/abcde", provider: "archive_today" }}
+                      describes={linkDescription(0, "t.me", 0, 1)}
+                      copy={{
+                        url: "https://archive.ph/abcde",
+                        provider: "archive_today",
+                        archived_at: "2026-06-01T12:00:00Z",
+                      }}
                       expanded={false}
                       onToggle={() => {}}
                     />
@@ -1108,13 +1110,13 @@ export default function PalettePage() {
 
           <Item
             name="<ArchiveSnapshotField>"
-            usage="The line the mark opens, directly under the URL field it archives: one field and nothing else. No label, no optional marker, no sentence, because the placeholder states the whole contract and names the three archiving services behind SNAPSHOT_HOSTS. The trailing mark opens web.archive.org/save/<link> for the value currently typed above, so archiving a corrected URL is a re-click; it is the one place on a form a mark goes grey, since a link that does not parse has no page to open. isSnapshotUrl / SNAPSHOT_HINT are the client-side check (https + an allowed archive host) and the one sentence explaining it, reused by the forms to refuse a publish before the upload. Under the field, at most one more line: a red refusal for a value that cannot be a snapshot, or an amber WARNING_CALLOUT naming both URLs when the paste reads as a copy of a different link (snapshotArchivesAnotherLink). The warning blocks nothing, which is why its comparison may be loose; the server checks where a snapshot lives, never what it captured. Nothing is written here: the paste travels with the form as `source_snapshot_url` or as this row's `secondary_snapshot_urls` entry."
+            usage="The line the mark opens, directly under the URL field it archives: one field and nothing else. No label, no optional marker, no sentence, because the placeholder states the whole contract and names the three archiving services behind SNAPSHOT_HOSTS. The trailing mark opens web.archive.org/save/<link> for the value currently typed above, so archiving a corrected URL is a re-click; it is the one place on a form a mark goes grey, since a link that does not parse has no page to open. isSnapshotUrl / SNAPSHOT_HINT are the client-side check (https + an allowed archive host) and the one sentence explaining it, reused by the forms to refuse a publish before the upload. Under the field, at most one more line: a red refusal for a value that cannot be a snapshot, or an amber WARNING_CALLOUT naming both URLs when the paste reads as a copy of a different link (snapshotArchivesAnotherLink). The warning blocks nothing, which is why its comparison may be loose; the server checks where a snapshot lives, never what it captured. Nothing is written here: the paste travels with the form as the link's `snapshot_url`."
           >
             <div className="w-full max-w-sm space-y-2">
               <Variant label="a link is typed: the door is live">
                 <ArchiveSnapshotField
                   link="https://t.me/channel/12345"
-                  describes={PRIMARY_SOURCE_DESCRIPTION}
+                  describes={linkDescription(0, "t.me", 0, 1)}
                   value=""
                   onChange={() => {}}
                 />
@@ -1122,7 +1124,7 @@ export default function PalettePage() {
               <Variant label="no usable link yet: the door is inert">
                 <ArchiveSnapshotField
                   link=""
-                  describes={PRIMARY_SOURCE_DESCRIPTION}
+                  describes={linkDescription(0, "t.me", 0, 1)}
                   value=""
                   onChange={() => {}}
                 />
@@ -1130,7 +1132,7 @@ export default function PalettePage() {
               <Variant label="a paste that cannot be a snapshot">
                 <ArchiveSnapshotField
                   link="https://t.me/channel/12345"
-                  describes={PRIMARY_SOURCE_DESCRIPTION}
+                  describes={linkDescription(0, "t.me", 0, 1)}
                   value="https://example.com/not-an-archive"
                   onChange={() => {}}
                 />
@@ -1138,15 +1140,15 @@ export default function PalettePage() {
               <Variant label="a snapshot of some other link: a warning, not a refusal">
                 <ArchiveSnapshotField
                   link="https://t.me/channel/12345"
-                  describes={PRIMARY_SOURCE_DESCRIPTION}
+                  describes={linkDescription(0, "t.me", 0, 1)}
                   value="https://web.archive.org/web/20260601120000/https://t.me/channel/999"
                   onChange={() => {}}
                 />
               </Variant>
-              <Variant label="one mirror's line">
+              <Variant label="a second link's line">
                 <ArchiveSnapshotField
                   link="https://rumble.com/v-mirror"
-                  describes={mirrorDescription("rumble.com", 1, 2)}
+                  describes={linkDescription(0, "rumble.com", 1, 2)}
                   value=""
                   onChange={() => {}}
                 />
@@ -1236,7 +1238,7 @@ export default function PalettePage() {
                 <StatTile icon={MapPin} label="Geolocated" value={42} href="/search?type=event&status=geolocated" />
                 <StatTile icon={Bot} label="Detected" value={128} href="/search?type=event&status=detected" />
                 <StatTile icon={Swords} label="Top conflict" small value="Russo-Ukrainian War" href="/search?type=event&conflict=Russo-Ukrainian+War" />
-                <StatTile icon={Camera} label="Top capture source" small value="None" />
+                <StatTile icon={Camera} label="Top sensor" small value="None" />
               </StatGrid>
             </div>
           </Item>
@@ -1472,7 +1474,7 @@ export default function PalettePage() {
           </Item>
 
           <Item name="<SectionHeading>" usage="Form section heading (Details, Location, Tags...)">
-            <SectionHeading title="Source media" concept="source_media" />
+            <SectionHeading title="Sources" concept="sources" />
             <SectionHeading title="Proof" concept="section_proof" />
           </Item>
 
@@ -1503,7 +1505,7 @@ export default function PalettePage() {
                 <DetailRow label="Status" concept="status">
                   <StatusBadge status="geolocated" />
                 </DetailRow>
-                <DetailRow label="Source" concept="source_url" value="t.me/channel/123" />
+                <DetailRow label="Event date" concept="occurred_date" value="9 May 2026" />
                 <DetailRow label="Coordinates" concept="coordinates" value="48.0159, 37.8024" />
               </DetailCard>
             </div>
@@ -1608,9 +1610,9 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<CuratedTagsError>" usage="Submit & edit forms (curated tags failed to load)">
+          <Item name="<TaxonomyLoadError>" usage="Event forms (the conflicts failed to load)">
             <div className="w-full max-w-xl">
-              <CuratedTagsError onRetry={() => {}} />
+              <TaxonomyLoadError onRetry={() => {}} />
             </div>
           </Item>
 
@@ -1637,7 +1639,7 @@ export default function PalettePage() {
                 badge={<StatusBadge status="geolocated" />}
                 author={MOCK_CARD_GEO.owner}
                 dates={[
-                  { label: "Event", date: MOCK_CARD_GEO.event_date },
+                  { label: "Event", date: MOCK_CARD_GEO.occurred_date },
                   { label: "Published", date: "2026-05-11" },
                 ]}
                 coords={{ lat: 48.0159, lng: 37.8024 }}
@@ -1655,7 +1657,7 @@ export default function PalettePage() {
                 badge={<StatusBadge status="geolocated" />}
                 author={MOCK_CARD_GEO.owner}
                 coAuthors={[{ username: "bo" }]}
-                date={MOCK_CARD_GEO.event_date}
+                date={MOCK_CARD_GEO.occurred_date}
                 coords={{ lat: 48.0159, lng: 37.8024 }}
                 tags={MOCK_CARD_GEO.tags}
               />
@@ -1686,8 +1688,8 @@ export default function PalettePage() {
                 title={MOCK_DETAIL.title}
                 badge={<StatusBadge status="detected" />}
                 author={{ username: MOCK_DETAIL.owner.username }}
-                date={MOCK_DETAIL.event_date ?? undefined}
-                coords={MOCK_DETAIL.event_coords}
+                date={MOCK_DETAIL.occurred_date ?? undefined}
+                coords={MOCK_DETAIL.coords}
                 tags={MOCK_DETAIL.tags}
               />
             </div>
@@ -1700,7 +1702,7 @@ export default function PalettePage() {
                 detailHref="/events/demo"
                 title={MOCK_CARD_GEO.title}
                 badge={<StatusBadge status="geolocated" />}
-                date={MOCK_CARD_GEO.event_date}
+                date={MOCK_CARD_GEO.occurred_date}
                 coords={{ lat: 48.0159, lng: 37.8024 }}
                 tags={MOCK_CARD_GEO.tags}
                 uniformHeight={false}
@@ -1756,20 +1758,71 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<EventDetailBody>" usage="Geoloc detail page + map panel (page/panel variant)">
+          <Item name="<EventDetailBody>" usage="Geoloc detail page + map panel (page/panel variant): the source blocks, then the Details rows, then the proof.">
             <div className="w-full max-w-2xl space-y-4">
-              <Variant label="source with no archival record yet (the icon pair renders nothing)">
+              <Variant label="page">
                 <EventDetailBody geo={MOCK_DETAIL} variant="page" />
               </Variant>
-              <Variant label="source + archived copies (expand Secondary sources for the one-provider and failed mirrors)">
-                <EventDetailBody geo={MOCK_DETAIL_ARCHIVED} variant="page" />
+              <Variant label="panel, an imported row with its provenance link">
+                <div className="w-[380px] max-w-full space-y-4">
+                  <EventDetailBody geo={MOCK_DETAIL_ARCHIVED} variant="panel" />
+                </div>
               </Variant>
             </div>
           </Item>
 
+          <Item name="<SourceBlock> / <SourceBlocks>" usage="One source of an event on a reading surface (components/sources/SourceBlock.tsx), in a LIST_TILE: its title (or Source N) and level as a <Pill>, its sensor as a key/value pill (none without a file, and Unknown dropped), its file in <MediaGallery> behind its own <GraphicContentGate> when this source is flagged, the capture time and the camera position with <CoordinateActions>, each link through <SourceLabel> with its <ArchivedCopies> mark and post time, and its tags. <SourceBlocks> is the Sources eyebrow over the event's blocks in API order. The page, the map panel and a version page render it through <EventDetailBody>.">
+            <div className="w-full max-w-2xl">
+              <SourceBlocks sources={[MOCK_SOURCE, MOCK_CONTEXT_SOURCE]} alt="Strike on a depot" />
+            </div>
+          </Item>
+
+          <Item name="<SourcesField> / <SourceEditor>" usage="The Sources section of every event form (components/sources/): one <SourceEditor> per source in a LIST_TILE, holding the file slot (MediaManager on <FileManager>; a pick uploads at once through POST /uploads), the level (<SegmentedControl>), the sensor (<Select>, off without a file), the capture time (<DateTimeInput>), the camera position (CoordinateInputs), the links (<LinkListInput> with the archive pair and each link's post time), the tags (<TagChips>) and the graphic flag (<Switch>, locked on a flagged stored source). The section adds Add a source (capped at 10), Copy an existing source (<SourcePicker>), and per editor <MergeAction> and Remove.">
+            <div className="w-full max-w-2xl">
+              <SourcesField
+                sources={paletteSources}
+                setSources={setPaletteSources}
+                tags={tpTags}
+                setTags={setTpTags}
+                invalidKeys={new Set()}
+              />
+            </div>
+          </Item>
+
+          <Item name="<SourcePicker>" usage="Copy an existing source (components/sources/SourcePicker.tsx): a search over GET /sources by URL or title, at least 3 characters, and one Copy per hit naming its title or host, its level, and the event that holds it. A pick fills a new editor, whose write copies the file onto this event.">
+            <div className="w-full max-w-xl">
+              <SourcePicker onPick={() => {}} onClose={() => {}} />
+            </div>
+          </Item>
+
+          <Item name="<MergeAction>" usage="Merge one item of a list into another: Merge opens a <Select> of the item to keep and a confirming Merge, so a stray click merges nothing; the caller folds the item away in onMerge. A source editor carries it to move its links onto another source of the event and drop itself.">
+            <MergeAction
+              subject="Source 2"
+              targets={[{ key: "s1", label: "Source 1" }]}
+              onMerge={() => {}}
+            />
+          </Item>
+
+          <Item name="<ConfirmDialog>" usage="The confirmation step before a final action: a centred MediaOverlay dialog with a Card, its title, a body saying what the action does and what cannot be undone, then Cancel (the initial focus, so Enter on open sends nothing) and the primary confirm. Cancel, Escape and a backdrop click close it; the caller owns the request, and `busy` and `error` show it in flight and refused. Approve opens it, since an approval is final.">
+            <Button variant="secondary" onClick={() => setConfirmOpen(true)}>
+              Approve
+            </Button>
+            {confirmOpen && (
+              <ConfirmDialog
+                title="Approve this version?"
+                confirmLabel="Approve"
+                onConfirm={() => setConfirmOpen(false)}
+                onCancel={() => setConfirmOpen(false)}
+              >
+                <p>You approve version 2 of this geolocation.</p>
+                <p>An approval is final: you cannot revoke it.</p>
+              </ConfirmDialog>
+            )}
+          </Item>
+
           <Item name="Not rendered (runtime state required)" usage="Genuinely impractical to mock here">
             <ul className="text-[11px] text-neutral-500 space-y-1 list-disc pl-4">
-              <li><span className="font-mono text-neutral-400">FileManager / MediaManager</span>: upload, needs real pending files</li>
+              <li><span className="font-mono text-neutral-400">FileManager / MediaManager</span>: upload, needs real pending files (a source editor above shows a stored file)</li>
               <li><span className="font-mono text-neutral-400">BetaBanner</span>: a {"<Pill tone=\"accent\">"} in a <code>position: fixed</code> wrapper, already visible bottom-right from <code>sm</code> up; below <code>sm</code> the same pill rides the nav drawer via {"<BetaBanner inline>"}</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span>: the primary nav, auth/route-driven, always on screen. Two shapes: a fixed rail on the left edge from <code>sm</code> up (glyphs, or glyphs plus labels once expanded), and below <code>sm</code> a floating chip in the top-left corner that opens the same rail as a drawer over the page</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span> chip and drawer: the rail&apos;s own phone shape, rendered by that component rather than a <code>components/ui/</code> primitive, so there is nothing here to reuse. The chip&apos;s open control is a deliberate one-off too: a 44px neutral thumb target, which {"<Button icon>"} does not offer (36px, accent or red)</li>
@@ -1812,10 +1865,9 @@ function paletteApprovalStamps(approvers: readonly (typeof PALETTE_APPROVERS)[nu
 
 const PALETTE_MEDIA: Media = {
   id: "palette-demo",
-  role: "source",
   storage_url: "/opengraph-image",
-  media_type: "image",
-  sha256: null,
+  kind: "image",
+  sha256: "0".repeat(64),
   original_filename: "demo.png",
 };
 
@@ -1930,14 +1982,14 @@ function PaletteFilterSection() {
   return (
     <div className="w-72 bg-neutral-900 rounded-lg border border-neutral-700 px-3">
       <FilterSection
-        title="Capture source"
+        title="Sensor"
         summary={chipSummary(selected)}
         active={selected.length > 0}
         open={open}
         onToggle={() => setOpen((o) => !o)}
       >
         <ChipBucket
-          options={["Drone", "Dashcam", "CCTV"].map((n) => ({ id: n, name: n }))}
+          options={["Drone", "Dashcam", "Static camera"].map((n) => ({ id: n, name: n }))}
           selected={selected}
           onToggle={(n) =>
             setSelected((prev) => (prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n]))
@@ -1958,40 +2010,6 @@ function PaletteChipBucket() {
         setSelected((prev) => (prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n]))
       }
     />
-  );
-}
-
-const PALETTE_MATRIX_COLUMNS = [
-  { id: "email", label: "Email" },
-  { id: "push", label: "Push" },
-];
-
-function PaletteToggleMatrix() {
-  const [on, setOn] = useState<Record<string, Record<string, boolean>>>({
-    follower: { email: true, push: false },
-    invite: { email: true, push: true },
-    credit: { email: false, push: false },
-  });
-  return (
-    <div className="w-full max-w-80 bg-neutral-900 rounded-lg border border-neutral-700 p-3">
-      <ToggleMatrix
-        columns={PALETTE_MATRIX_COLUMNS}
-        rows={[
-          { id: "follower", label: "New follower", description: "Someone follows you.", on: on.follower },
-          {
-            id: "invite",
-            label: "Geolocator invitation",
-            description: "Someone invites you to share the credit.",
-            on: on.invite,
-            disabled: { push: "No device of yours receives push yet." },
-          },
-          { id: "credit", label: "Credit removed", description: "An owner removes you.", on: on.credit },
-        ]}
-        onToggle={(row, column, next) =>
-          setOn((prev) => ({ ...prev, [row]: { ...prev[row], [column]: next } }))
-        }
-      />
-    </div>
   );
 }
 

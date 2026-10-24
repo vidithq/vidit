@@ -95,8 +95,8 @@ const ITEMS: EventListItem[] = [
     id: "e1",
     title: "Strike on the rail junction",
     status: "geolocated",
-    event_date: "2026-03-14",
-    event_coords: { lat: 49.71, lng: 37.616 },
+    occurred_date: "2026-03-14",
+    coords: { lat: 49.71, lng: 37.616 },
     before_closed_status: null,
     requested_at: null,
     geolocators: [],
@@ -110,8 +110,8 @@ const ITEMS: EventListItem[] = [
     id: "e2",
     title: "Damaged locomotive shed",
     status: "detected",
-    event_date: "2026-03-15",
-    event_coords: { lat: 49.613, lng: 37.492 },
+    occurred_date: "2026-03-15",
+    coords: { lat: 49.613, lng: 37.492 },
     before_closed_status: null,
     requested_at: null,
     geolocators: [],
@@ -198,8 +198,8 @@ describe("CollectionPage", () => {
     mockReads(
       collection({
         tags: [
-          { id: "t1", name: "satellite", category: "capture_source" },
-          { id: "t2", name: "rail", category: "free" },
+          { id: "t1", name: "satellite" },
+          { id: "t2", name: "rail" },
         ],
       }),
     );
@@ -226,7 +226,7 @@ describe("CollectionPage", () => {
     mockReads(
       collection({
         cover: [
-          { url: "https://media.example/item.jpg", media_type: "image", role: "source" },
+          { url: "https://media.example/item.jpg", kind: "image", role: "source" },
         ],
       }),
     );

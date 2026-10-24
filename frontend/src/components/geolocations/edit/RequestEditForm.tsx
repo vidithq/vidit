@@ -7,18 +7,14 @@ import {
   useEventForm,
 } from "@/components/geolocations/EventFormFields";
 import { PageShell } from "@/components/ui/PageShell";
-import { isSnapshotUrl, SNAPSHOT_HINT } from "@/components/ui/ArchivedCopies";
+import { sourcesBlockWrite } from "@/components/sources/SourcesField";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { Button } from "@/components/ui/Button";
 import { CloseSection } from "@/components/event/CloseEventForm";
 import { useMutation } from "@/hooks/useMutation";
-import {
-  missingEventRequestFields,
-  parseCaptureCoords,
-  parseGuessCoords,
-  updateEventRequest,
-} from "@/lib/events";
+import { missingEventRequestFields, parseGuessCoords, updateEventRequest } from "@/lib/events";
+import { sourceFloor, sourceWriteError } from "@/lib/sources";
 import type { EventDetail } from "@/types";
 import { Card } from "@/components/ui/Card";
 
@@ -35,10 +31,9 @@ const REQUEST_FORM_ID = "request-edit-form";
  * The fields fill the main column; the save and the close sit in the right rail's
  * actions card, as on the event edit form.
  *
- * The floor is the request floor: a title, the source, and the footage. Placing
- * a coordinate publishes nothing (the geolocate does, through
- * `/submit?request_id=`). The source instant is not in the floor, since the bot
- * opens requests whose source date it could not read.
+ * The floor is the request floor: a title, and a direct or indirect source with
+ * a file, every source with a URL. Placing a coordinate publishes nothing (the
+ * geolocate does, through `/submit?request_id=`).
  */
 export function RequestEditForm({
   geo,
@@ -48,40 +43,18 @@ export function RequestEditForm({
   redirectTo: string;
 }) {
   const router = useRouter();
-  // A `requested` row always has a source URL (`ck_events_source_url_status`);
-  // the block's `?? ""` seed only satisfies the nullable wire type.
   const form = useEventForm(geo);
-
-  const keptMediaCount =
-    geo.media.filter((m) => !form.removedIds.has(m.id)).length +
-    form.newFiles.length;
 
   const saveMutation = useMutation(
     () =>
       updateEventRequest(geo.id, {
         ...form.shared(),
-        title: form.title.trim(),
-        source_url: form.sourceUrl.trim(),
         // Both-or-neither parse, so a half-typed pair is dropped, not a 400.
         ...parseGuessCoords(form.lat, form.lng),
-        ...parseCaptureCoords(form.captureLat, form.captureLng),
-        // An untouched lossy input is not posted as its truncation.
-        // `source_posted_at` is dropped (read as "keep", as on the version
-        // path); an absent `event_time` clears it, so it goes back at the row's
-        // own precision.
-        event_time:
-          form.eventTime === form.seeded.eventTime
-            ? (geo.event_time ?? undefined)
-            : form.eventTime || undefined,
-        source_posted_at:
-          form.sourcePostedAt === form.seeded.sourcePostedAt
-            ? ""
-            : form.sourcePostedAt,
-        remove_media_ids: [...form.removedIds],
-        files: form.newFiles,
       }),
     {
       fallback: "Couldn't save this request.",
+      onError: sourceWriteError,
       onSuccess: () => router.push(redirectTo),
     }
   );
@@ -92,26 +65,18 @@ export function RequestEditForm({
     e.preventDefault();
     saveMutation.reset();
     form.clearIncomplete();
-    // A snapshot that cannot be one is caught before the upload.
-    if (
-      [form.sourceSnapshotUrl, ...form.secondarySnapshotUrls].some(
-        (pasted) => pasted.trim() && !isSnapshotUrl(pasted)
-      )
-    ) {
-      saveMutation.setError(SNAPSHOT_HINT);
-      return;
-    }
-    const missing = missingEventRequestFields(
-      {
-        title: form.title,
-        sourceUrl: form.sourceUrl,
-        sourcePostedAt: form.sourcePostedAt,
-        mediaCount: keptMediaCount,
-      },
-      { requireSourcePostedAt: false }
-    );
+    const missing = missingEventRequestFields({
+      title: form.title,
+      sources: sourceFloor(form.sources),
+    });
     if (missing.length) {
       form.flagIncomplete(missing);
+      return;
+    }
+    // A running upload or a refused archived copy holds the write.
+    const blocked = sourcesBlockWrite(form.sources);
+    if (blocked) {
+      saveMutation.setError(blocked);
       return;
     }
     void saveMutation.run();
@@ -150,12 +115,7 @@ export function RequestEditForm({
     >
       {/* `noValidate`: IncompleteFormNotice owns required-field feedback. */}
       <form id={REQUEST_FORM_ID} onSubmit={attemptSave} className="space-y-6" noValidate>
-        <EventFormFields
-          form={form}
-          row={geo}
-          showProvenance
-          sourcePostedAtRequired={false}
-        />
+        <EventFormFields form={form} row={geo} showProvenance publishes={false} />
       </form>
     </PageShell>
   );

@@ -31,7 +31,8 @@ export interface ApprovalFilters {
 export interface EventFilterParams extends Partial<ApprovalFilters> {
   statuses?: string[];
   conflicts?: string[];
-  captureSources?: string[];
+  sensors?: string[];
+  levels?: string[];
   tags?: string[];
   mediaTypes?: string[];
   author?: string;
@@ -47,7 +48,8 @@ export interface EventFilterParams extends Partial<ApprovalFilters> {
 export function appendEventFilterParams(params: URLSearchParams, f: EventFilterParams): void {
   f.statuses?.forEach((v) => params.append("status", v));
   f.conflicts?.forEach((v) => params.append("conflict", v));
-  f.captureSources?.forEach((v) => params.append("capture_source", v));
+  f.sensors?.forEach((v) => params.append("sensor", v));
+  f.levels?.forEach((v) => params.append("level", v));
   f.tags?.forEach((v) => params.append("tag", v));
   f.mediaTypes?.forEach((v) => params.append("media", v));
   const author = f.author?.trim();
@@ -57,8 +59,8 @@ export function appendEventFilterParams(params: URLSearchParams, f: EventFilterP
   const by = f.approvedBy;
   if (by?.kind === "analyst") params.set("approved_by", by.username);
   else if (by) params.set("approved_by_org", by.slug);
-  if (f.eventFrom) params.set("event_date_from", f.eventFrom);
-  if (f.eventTo) params.set("event_date_to", f.eventTo);
+  if (f.eventFrom) params.set("occurred_date_from", f.eventFrom);
+  if (f.eventTo) params.set("occurred_date_to", f.eventTo);
   if (f.addedFrom) params.set("submitted_from", f.addedFrom);
   if (f.addedTo) params.set("submitted_to", f.addedTo);
 }
@@ -78,14 +80,15 @@ export function readEventFilterParams(params: {
   return {
     statuses: params.getAll("status"),
     conflicts: params.getAll("conflict"),
-    captureSources: params.getAll("capture_source"),
+    sensors: params.getAll("sensor"),
+    levels: params.getAll("level"),
     tags: params.getAll("tag"),
     mediaTypes: params.getAll("media"),
     author: AUTHOR_FILTER_RE.test(author) ? author : "",
     approved: params.get("approved") === "true",
     approvedBy,
-    eventFrom: params.get("event_date_from") ?? "",
-    eventTo: params.get("event_date_to") ?? "",
+    eventFrom: params.get("occurred_date_from") ?? "",
+    eventTo: params.get("occurred_date_to") ?? "",
     addedFrom: params.get("submitted_from") ?? "",
     addedTo: params.get("submitted_to") ?? "",
   };

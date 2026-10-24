@@ -61,8 +61,8 @@ export function OpenRequests({
             badge={entry.status ? <StatusBadge status={entry.status} /> : undefined}
             media={entry.media ?? undefined}
             isGraphic={entry.is_graphic}
-            date={entry.event_date ?? undefined}
-            coords={entry.event_coords}
+            date={entry.occurred_date ?? undefined}
+            coords={entry.coords}
             tags={entry.tags}
           />
         ))}

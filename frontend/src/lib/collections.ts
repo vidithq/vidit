@@ -136,8 +136,8 @@ export type PickableEvent = Pick<
   | "status"
   | "media"
   | "is_graphic"
-  | "event_date"
-  | "event_coords"
+  | "occurred_date"
+  | "coords"
   | "tags"
 >;
 
@@ -169,8 +169,8 @@ export function pickableFromDetail(event: EventDetail): PickableEvent {
     status: event.status,
     media: event.thumbnail,
     is_graphic: event.is_graphic,
-    event_date: event.event_date,
-    event_coords: event.event_coords,
+    occurred_date: event.occurred_date,
+    coords: event.coords,
     tags: event.tags,
   };
 }
@@ -183,8 +183,8 @@ function pickableFromHit(hit: SearchEventHit): PickableEvent {
     status: hit.status,
     media: hit.media[0] ?? null,
     is_graphic: hit.is_graphic,
-    event_date: hit.event_date,
-    event_coords: { lat: hit.lat, lng: hit.lng },
+    occurred_date: hit.occurred_date,
+    coords: { lat: hit.lat, lng: hit.lng },
     tags: hit.tags,
   };
 }
@@ -300,14 +300,14 @@ export function collectionMetaSegments(collection: Collection): string[] {
  *  an embedded map. */
 export function collectionPoints(items: EventListItem[]): MapPoint[] {
   return items.flatMap((item) =>
-    item.event_coords
+    item.coords
       ? [
           [
             item.id,
-            item.event_coords.lat,
-            item.event_coords.lng,
-            item.event_date,
-            item.event_date ?? "",
+            item.coords.lat,
+            item.coords.lng,
+            item.occurred_date,
+            item.occurred_date ?? "",
             item.status === "detected" ? 1 : 0,
           ] as MapPoint,
         ]

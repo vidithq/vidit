@@ -32,7 +32,7 @@ export function CollectionCover({ cover }: { cover: CollectionCoverTile[] }) {
           key={`${tile.url}-${index}`}
           media={{
             storage_url: tile.url,
-            media_type: tile.media_type,
+            kind: tile.kind,
             // A proof-image tile carries `proof`: the slot reads the original,
             // since the proof upload writes no `_hero` / `_thumb` sibling.
             role: tile.role,

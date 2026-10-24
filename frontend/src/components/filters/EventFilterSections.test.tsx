@@ -12,7 +12,7 @@ import {
   type EventFilterValues,
 } from "./EventFilterSections";
 
-const TAGS: Tag[] = [{ id: "t1", name: "Drone", category: "capture_source" }];
+const TAGS: Tag[] = [{ id: "t1", name: "Drone" }];
 const CONFLICTS: Conflict[] = [
   {
     id: "c1",
@@ -20,7 +20,7 @@ const CONFLICTS: Conflict[] = [
     wikidata_id: null,
     start_year: 2022,
     end_year: null,
-    ongoing: true,
+    is_ongoing: true,
     tier: "major",
   },
 ];
@@ -39,8 +39,9 @@ describe("<EventFilterSections>", () => {
     for (const name of [
       "Status",
       "Conflict",
-      "Capture source",
-      "Source media",
+      "Sensor",
+      "Level",
+      "Media",
       "Author",
       "Approvals",
     ]) {
@@ -50,9 +51,9 @@ describe("<EventFilterSections>", () => {
   });
 
   it("starts a section expanded when it holds an active value", () => {
-    renderPanel({ ...EMPTY_EVENT_FILTERS, captureSources: ["Drone"] });
+    renderPanel({ ...EMPTY_EVENT_FILTERS, sensors: ["drone"] });
 
-    expect(header("Capture source")).toHaveAttribute("aria-expanded", "true");
+    expect(header("Sensor")).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("button", { name: "Drone" })).toBeInTheDocument();
     expect(header("Conflict")).toHaveAttribute("aria-expanded", "false");
   });
@@ -76,10 +77,10 @@ describe("<EventFilterSections>", () => {
   });
 
   it("toggles an active section closed and a collapsed one open", () => {
-    renderPanel({ ...EMPTY_EVENT_FILTERS, captureSources: ["Drone"] });
+    renderPanel({ ...EMPTY_EVENT_FILTERS, sensors: ["drone"] });
 
-    fireEvent.click(header("Capture source"));
-    expect(header("Capture source")).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(header("Sensor"));
+    expect(header("Sensor")).toHaveAttribute("aria-expanded", "false");
 
     fireEvent.click(header("Conflict"));
     expect(header("Conflict")).toHaveAttribute("aria-expanded", "true");

@@ -1,11 +1,10 @@
 import { WARNING_CALLOUT } from "@/components/ui/styles";
 import { Button } from "@/components/ui/Button";
 
-// Amber "couldn't load the curated tags" banner with a retry, shared by the submit
-// and detection edit forms.
-export function CuratedTagsError({
+// Amber "couldn't load the conflicts" banner with a retry, shared by the event forms.
+export function TaxonomyLoadError({
   onRetry,
-  message = "Couldn't load the required Conflict and Capture source options.",
+  message = "Couldn't load the Conflict options.",
 }: {
   onRetry: () => void;
   message?: string;

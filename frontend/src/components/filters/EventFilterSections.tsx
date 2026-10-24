@@ -22,11 +22,19 @@ import {
 } from "@/components/ui/FilterSection";
 import { Pill } from "@/components/ui/Pill";
 import type { Concept } from "@/lib/fieldHelp";
+import {
+  LEVEL_LABELS,
+  SENSOR_LABELS,
+  SENSORS,
+  SOURCE_LEVELS,
+  type Sensor,
+  type SourceLevel,
+} from "@/lib/sources";
 
 /**
  * The event filter panel, shared by the map overlay, the search page, the Requests board and the
- * feed: one component owns the section list (the surface's lead sections, Status, Conflict, Capture
- * source, Source media, Location guess, the surface's date sections, Tags, Author, Approvals), so a vocabulary
+ * feed: one component owns the section list (the surface's lead sections, Status, Conflict, Sensor,
+ * Level, Media, Location guess, the surface's date sections, Tags, Author, Approvals), so a vocabulary
  * change lands on all four. Surfaces differ in their injected sections (`leadSections`,
  * `dateSections`) and in `sections`, the subset they offer (the search page's Collections group is
  * narrowed by `author` alone, and only the board offers Location guess).
@@ -40,7 +48,8 @@ import type { Concept } from "@/lib/fieldHelp";
 export interface EventFilterValues extends ApprovalFilters {
   statuses: string[];
   conflicts: string[];
-  captureSources: string[];
+  sensors: string[];
+  levels: string[];
   tags: string[];
   mediaTypes: string[];
   /** `LOCATION_GUESS_OPTIONS` values; read through `hasCoordsFilter`. */
@@ -51,7 +60,8 @@ export interface EventFilterValues extends ApprovalFilters {
 export const EMPTY_EVENT_FILTERS: EventFilterValues = {
   statuses: [],
   conflicts: [],
-  captureSources: [],
+  sensors: [],
+  levels: [],
   tags: [],
   mediaTypes: [],
   locationGuess: [],
@@ -66,8 +76,9 @@ export type EventFilterPatch = (patch: Partial<EventFilterValues>) => void;
 export type EventFilterSectionName =
   | "status"
   | "conflict"
-  | "capture_source"
-  | "source_media"
+  | "sensor"
+  | "level"
+  | "media"
   | "location_guess"
   | "tags"
   | "author"
@@ -77,8 +88,9 @@ export type EventFilterSectionName =
 export const ALL_FILTER_SECTIONS: ReadonlyArray<EventFilterSectionName> = [
   "status",
   "conflict",
-  "capture_source",
-  "source_media",
+  "sensor",
+  "level",
+  "media",
   "tags",
   "author",
   "approval",
@@ -130,7 +142,13 @@ export function hasCoordsFilter(locationGuess: string[]): boolean | undefined {
   return locationGuess[0] === "guessed";
 }
 
-// Fixed media-presence options (Media.media_type values).
+// The sensor and level chips, in the generated vocabulary's order.
+const SENSOR_OPTIONS = SENSORS.map((value) => ({ id: value, name: value, label: SENSOR_LABELS[value] }));
+const LEVEL_OPTIONS = SOURCE_LEVELS.map((value) => ({ id: value, name: value, label: LEVEL_LABELS[value] }));
+const sensorLabel = (value: string) => SENSOR_LABELS[value as Sensor] ?? value;
+const levelLabel = (value: string) => LEVEL_LABELS[value as SourceLevel] ?? value;
+
+// Fixed media-presence options (Media.kind values).
 const MEDIA_TYPES: ReadonlyArray<[string, string]> = [
   ["image", "Image"],
   ["video", "Video"],
@@ -175,10 +193,15 @@ export function buildActiveFilterPills(
       label: n,
       onRemove: () => drop("conflicts", n),
     })),
-    ...values.captureSources.map((n) => ({
-      key: `capture:${n}`,
-      label: n,
-      onRemove: () => drop("captureSources", n),
+    ...values.sensors.map((n) => ({
+      key: `sensor:${n}`,
+      label: sensorLabel(n),
+      onRemove: () => drop("sensors", n),
+    })),
+    ...values.levels.map((n) => ({
+      key: `level:${n}`,
+      label: levelLabel(n),
+      onRemove: () => drop("levels", n),
     })),
     ...values.tags.map((n) => ({
       key: `tag:${n}`,
@@ -248,7 +271,8 @@ export function countActiveFilters(
   return (
     values.statuses.length +
     values.conflicts.length +
-    values.captureSources.length +
+    values.sensors.length +
+    values.levels.length +
     values.tags.length +
     values.mediaTypes.length +
     values.locationGuess.length +
@@ -272,7 +296,7 @@ export function EventFilterSections({
   dateSections = [],
   sections = ALL_FILTER_SECTIONS,
 }: {
-  /** Live tag taxonomy driving the capture-source + free chip buckets. */
+  /** Live tag taxonomy driving the tag chips. */
   tags: Tag[];
   /** Conflicts carried by >=1 live event (`/conflicts?used=true`). */
   conflicts: Conflict[];
@@ -300,8 +324,9 @@ export function EventFilterSections({
   const isActive: Record<string, boolean> = {
     Status: values.statuses.length > 0,
     Conflict: values.conflicts.length > 0,
-    "Capture source": values.captureSources.length > 0,
-    "Source media": values.mediaTypes.length > 0,
+    Sensor: values.sensors.length > 0,
+    Level: values.levels.length > 0,
+    Media: values.mediaTypes.length > 0,
     "Location guess": values.locationGuess.length > 0,
     Tags: values.tags.length > 0,
     Author: !!values.author.trim(),
@@ -321,10 +346,8 @@ export function EventFilterSections({
     });
   };
 
-  // Alphabetical so the free-tag "top N" preview is stable across loads.
-  const byName = (a: Tag, b: Tag) => a.name.localeCompare(b.name);
-  const captureSourceTags = tags.filter((t) => t.category === "capture_source").sort(byName);
-  const freeTags = tags.filter((t) => t.category === "free").sort(byName);
+  // Alphabetical so the tag "top N" preview is stable across loads.
+  const freeTags = [...tags].sort((a: Tag, b: Tag) => a.name.localeCompare(b.name));
 
   const visibleFreeTags = showAllTags
     ? freeTags
@@ -389,31 +412,47 @@ export function EventFilterSections({
         </FilterSection>
       )}
 
-      {offers("capture_source") && captureSourceTags.length > 0 && (
+      {offers("sensor") && (
         <FilterSection
-          title="Capture source"
-          concept="capture_source"
-          summary={chipSummary(values.captureSources)}
-          active={isActive["Capture source"]}
-          open={!!openSections["Capture source"]}
-          onToggle={() => toggleSection("Capture source")}
+          title="Sensor"
+          concept="sensor"
+          summary={chipSummary(values.sensors.map(sensorLabel))}
+          active={isActive.Sensor}
+          open={!!openSections["Sensor"]}
+          onToggle={() => toggleSection("Sensor")}
         >
           <ChipBucket
-            options={captureSourceTags}
-            selected={values.captureSources}
-            onToggle={(n) => toggleIn("captureSources", n)}
+            options={SENSOR_OPTIONS}
+            selected={values.sensors}
+            onToggle={(n) => toggleIn("sensors", n)}
           />
         </FilterSection>
       )}
 
-      {offers("source_media") && (
+      {offers("level") && (
         <FilterSection
-          title="Source media"
-          concept="source_media"
+          title="Level"
+          concept="source_level"
+          summary={chipSummary(values.levels.map(levelLabel))}
+          active={isActive.Level}
+          open={!!openSections["Level"]}
+          onToggle={() => toggleSection("Level")}
+        >
+          <ChipBucket
+            options={LEVEL_OPTIONS}
+            selected={values.levels}
+            onToggle={(n) => toggleIn("levels", n)}
+          />
+        </FilterSection>
+      )}
+
+      {offers("media") && (
+        <FilterSection
+          title="Media"
           summary={chipSummary(values.mediaTypes.map(capitalize))}
-          active={isActive["Source media"]}
-          open={!!openSections["Source media"]}
-          onToggle={() => toggleSection("Source media")}
+          active={isActive.Media}
+          open={!!openSections["Media"]}
+          onToggle={() => toggleSection("Media")}
         >
           <ChipBucket
             options={MEDIA_TYPES.map(([value, label]) => ({ id: value, name: value, label }))}

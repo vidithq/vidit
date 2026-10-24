@@ -71,7 +71,7 @@ export function CollectionReader({
     [items, step],
   );
 
-  const flyTo = current?.event_coords ?? null;
+  const flyTo = current?.coords ?? null;
 
   const jumpToId = useCallback(
     (id: string) => {

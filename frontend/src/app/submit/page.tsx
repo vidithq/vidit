@@ -14,11 +14,10 @@ import {
   geolocateEvent as geolocateEventApi,
   missingEventFields,
   missingEventRequestFields,
-  parseCaptureCoords,
   parseGuessCoords,
   type MissingFieldKey,
 } from "@/lib/events";
-import { toDatetimeLocalUTC } from "@/lib/format";
+import { draftUrls, sourceFloor, sourceWriteError } from "@/lib/sources";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import type { EventDetail } from "@/types";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
@@ -32,11 +31,12 @@ import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { Pill } from "@/components/ui/Pill";
 import { XGlyph } from "@/components/ui/BrandGlyphs";
-import { isSnapshotUrl, SNAPSHOT_HINT } from "@/components/ui/ArchivedCopies";
 import {
   EventFormFields,
+  seedSources,
   useEventForm,
 } from "@/components/geolocations/EventFormFields";
+import { sourcesBlockWrite } from "@/components/sources/SourcesField";
 import { DuplicateProbe } from "@/components/geolocations/new/DuplicateProbe";
 import { eventHref } from "@/lib/routes";
 
@@ -49,24 +49,22 @@ type Mode = "single" | "xpost" | "bulk";
 
 // A publish-floor requirement shown as a tick. `keys` are the `missingEvent*` field keys it
 // covers (proof needs two), so met state derives from the live missing set and the validator
-// stays the one source of truth. `inheritedOnFulfil` marks a floor the request already
-// carries (its media), dropped from the fulfilment checklist.
-type Req = { label: string; keys: MissingFieldKey[]; inheritedOnFulfil?: boolean };
+// stays the one source of truth.
+type Req = { label: string; keys: MissingFieldKey[] };
 
 // The request floor: enough to be actionable by someone else, a subset of the geolocation floor.
 const REQUEST_REQS: Req[] = [
   { label: FIELD_LABELS.title, keys: ["title"] },
-  { label: FIELD_LABELS.source_media, keys: ["source_media"], inheritedOnFulfil: true },
-  { label: FIELD_LABELS.source_url, keys: ["source_url"] },
-  { label: FIELD_LABELS.source_posted_at, keys: ["source_posted_at"] },
+  { label: FIELD_LABELS.source_file, keys: ["source_file"] },
+  { label: FIELD_LABELS.source_link, keys: ["source_link"] },
 ];
 
 // What a full geolocation adds on top of the request floor.
 const GEO_EXTRA_REQS: Req[] = [
   { label: FIELD_LABELS.coordinates, keys: ["coordinates"] },
+  { label: FIELD_LABELS.sensor, keys: ["sensor"] },
   { label: FIELD_LABELS.proof_image, keys: ["proof", "proof_image"] },
   { label: FIELD_LABELS.conflict_tag, keys: ["conflict_tag"] },
-  { label: FIELD_LABELS.capture_source_tag, keys: ["capture_source_tag"] },
 ];
 
 // The readiness tick-list: one static Pill per requirement (`secondary` tone once met,
@@ -137,21 +135,16 @@ function SubmitForm() {
   // on the state bundle (new every render).
   const {
     setTitle,
-    setSourceUrl,
-    setSecondarySourceUrls,
-    setSecondarySnapshotUrls,
-    setIsGraphic,
+    setSources,
     setEventDate,
     setEventTime,
-    setSourcePostedAt,
     setProof,
     setSelectedTagIds,
     setSelectedConflictIds,
   } = form;
 
-  // Load the request being fulfilled to pre-fill and lock inherited fields. The server forces
-  // only `source_url` and media from the request; title, dates, proof and tags are
-  // form-sourced, so this pre-fill is their only carry-over.
+  // Load the request being fulfilled to pre-fill the form. Its sources stay editable: the
+  // geolocate posts the whole list, each kept source with its id.
   useEffect(() => {
     if (!requestIdParam) return;
     getEvent(requestIdParam)
@@ -164,19 +157,11 @@ function SubmitForm() {
         }
         setRequest(b);
         setTitle(b.title);
-        // A `requested` row always carries a source_url (CHECK ties it to status); `?? ""` only
-        // satisfies the nullable wire type.
-        setSourceUrl(b.source_url ?? "");
-        // Mirrors carry over: fulfilment replaces the whole list server side.
-        setSecondarySourceUrls(b.secondary_source_urls);
-        // Blank pastes, one per mirror: the request's copies are shown by the rows, not re-posted.
-        setSecondarySnapshotUrls(b.secondary_source_urls.map(() => ""));
-        // Carry over the dates the poster knew and the in-progress proof (the form mounts after the
-        // request loads, so the editor takes `proof` as its initial content).
-        setIsGraphic(b.is_graphic);
-        setEventDate(b.event_date ?? "");
-        setEventTime(b.event_time?.slice(0, 5) ?? "");
-        setSourcePostedAt(toDatetimeLocalUTC(b.source_posted_at));
+        setSources(seedSources(b));
+        // The form mounts after the request loads, so the editor takes `proof` as its initial
+        // content.
+        setEventDate(b.occurred_date ?? "");
+        setEventTime(b.occurred_time?.slice(0, 5) ?? "");
         setProof(b.proof ?? null);
         setSelectedTagIds(b.tags.map((t) => t.id));
         setSelectedConflictIds(b.conflicts.map((c) => c.id));
@@ -185,76 +170,49 @@ function SubmitForm() {
   }, [
     requestIdParam,
     setTitle,
-    setSourceUrl,
-    setSecondarySourceUrls,
-    setSecondarySnapshotUrls,
-    setIsGraphic,
+    setSources,
     setEventDate,
     setEventTime,
-    setSourcePostedAt,
     setProof,
     setSelectedTagIds,
     setSelectedConflictIds,
   ]);
 
-  // Stable reference (memoised in `useTaxonomy`) so the readiness memos can depend on it.
-  const { curatedTags } = form.taxonomy;
-
-  const lockedFromRequest = request !== null;
+  const fulfilling = request !== null;
   // Import is offered only on a fresh create, not while fulfilling a request.
-  const canImport = !lockedFromRequest;
+  const canImport = !fulfilling;
 
   // The two publish paths share one error banner; each mutation clears the other.
   const requestMutation = useMutation(
     () =>
       createEventRequest({
         ...form.shared(),
-        title: form.title.trim(),
-        source_url: form.sourceUrl.trim(),
-        // Optional guess, both-or-neither, strict parse like the camera point.
+        // Optional guess, both-or-neither, strict parse.
         ...parseGuessCoords(form.lat, form.lng),
-        ...parseCaptureCoords(form.captureLat, form.captureLng),
-        files: form.newFiles,
       }),
     {
       fallback: "Submission failed",
+      onError: sourceWriteError,
       onSuccess: (created) => router.push(`/requests/${created.id}`),
     }
   );
 
   const geolocationMutation = useMutation(
     (): Promise<{ id: string }> => {
-      // Required (gated by `geoReady`), strict parse like the camera point so a coordinate can't
-      // read valid one way and invalid the other.
-      const latNum = cleanNumber(form.lat) ?? NaN;
-      const lngNum = cleanNumber(form.lng) ?? NaN;
-      const capture = parseCaptureCoords(form.captureLat, form.captureLng);
-      // Fulfilling is a lifecycle move on the same event: geolocate transfers ownership to the
-      // fulfiller. Source media is already on the row; only proof images upload at publish.
-      if (request) {
-        return geolocateEventApi(request.id, {
-          ...form.shared(),
-          title: form.title,
-          lat: latNum,
-          lng: lngNum,
-          ...capture,
-          source_url: form.sourceUrl,
-          remove_media_ids: [],
-          files: [],
-        });
-      }
-      return createEvent({
+      // Required (gated by `geoReady`), strict parse so a coordinate can't read valid one way and
+      // invalid the other.
+      const input = {
         ...form.shared(),
-        title: form.title,
-        lat: latNum,
-        lng: lngNum,
-        ...capture,
-        source_url: form.sourceUrl,
-        files: form.newFiles,
-      });
+        lat: cleanNumber(form.lat) ?? NaN,
+        lng: cleanNumber(form.lng) ?? NaN,
+      };
+      // Fulfilling is a lifecycle move on the same event: geolocate transfers ownership to the
+      // fulfiller.
+      return request ? geolocateEventApi(request.id, input) : createEvent(input);
     },
     {
       fallback: "Submission failed",
+      onError: sourceWriteError,
       onSuccess: (result) => router.push(eventHref(result.id)),
     }
   );
@@ -262,50 +220,24 @@ function SubmitForm() {
   const error = requestMutation.error ?? geolocationMutation.error;
   const submitting = requestMutation.loading || geolocationMutation.loading;
 
-  // Live readiness from the shared validators. A fulfilment's media comes from the request.
-  // Memoised so field scans rerun only when an input changes.
+  // Live readiness from the shared validators, memoised so the scans rerun only when an input
+  // changes.
+  const floor = useMemo(() => sourceFloor(form.sources), [form.sources]);
   const geoMissing = useMemo(
     () =>
-      missingEventFields(
-        {
-          title: form.title,
-          lat: form.lat,
-          lng: form.lng,
-          sourceUrl: form.sourceUrl,
-          sourcePostedAt: form.sourcePostedAt,
-          proof: form.proof,
-          mediaCount: form.newFiles.length,
-          hasConflictTag: form.selectedConflictIds.length > 0,
-          hasCaptureSourceTag: curatedTags.some(
-            (t) =>
-              t.category === "capture_source" && form.selectedTagIds.includes(t.id)
-          ),
-        },
-        { requireMedia: !lockedFromRequest }
-      ),
-    [
-      form.title,
-      form.lat,
-      form.lng,
-      form.sourceUrl,
-      form.sourcePostedAt,
-      form.proof,
-      form.newFiles.length,
-      curatedTags,
-      form.selectedTagIds,
-      form.selectedConflictIds,
-      lockedFromRequest,
-    ]
+      missingEventFields({
+        title: form.title,
+        lat: form.lat,
+        lng: form.lng,
+        proof: form.proof,
+        sources: floor,
+        hasConflict: form.selectedConflictIds.length > 0,
+      }),
+    [form.title, form.lat, form.lng, form.proof, floor, form.selectedConflictIds]
   );
   const reqMissing = useMemo(
-    () =>
-      missingEventRequestFields({
-        title: form.title,
-        sourceUrl: form.sourceUrl,
-        sourcePostedAt: form.sourcePostedAt,
-        mediaCount: form.newFiles.length,
-      }),
-    [form.title, form.sourceUrl, form.sourcePostedAt, form.newFiles.length]
+    () => missingEventRequestFields({ title: form.title, sources: floor }),
+    [form.title, floor]
   );
   const geoMissingKeys = useMemo(
     () => new Set<MissingFieldKey>(geoMissing.map((m) => m.key)),
@@ -329,13 +261,9 @@ function SubmitForm() {
     clearIncomplete();
   };
 
-  // A pasted snapshot that cannot be one (source or mirror) is caught before upload: the field
-  // flags itself red and the publish says why. Not a missing field (archives are optional), so
-  // it stays out of the tick-list.
-  const snapshotUnusable =
-    [form.sourceSnapshotUrl, ...form.secondarySnapshotUrls].some(
-      (pasted) => pasted.trim() !== "" && !isSnapshotUrl(pasted)
-    );
+  // A running upload or a pasted snapshot that cannot be one holds the write: the publish says
+  // why. Not a missing field (archives are optional), so it stays out of the tick-list.
+  const blocked = sourcesBlockWrite(form.sources);
 
   const publishGeolocation = async () => {
     resetActions();
@@ -345,8 +273,8 @@ function SubmitForm() {
       geolocationMutation.setError(form.taxonomy.blockedMessage);
       return;
     }
-    if (snapshotUnusable) {
-      geolocationMutation.setError(SNAPSHOT_HINT);
+    if (blocked) {
+      geolocationMutation.setError(blocked);
       return;
     }
     if (geoMissing.length) {
@@ -358,8 +286,8 @@ function SubmitForm() {
 
   const postRequest = async () => {
     resetActions();
-    if (snapshotUnusable) {
-      requestMutation.setError(SNAPSHOT_HINT);
+    if (blocked) {
+      requestMutation.setError(blocked);
       return;
     }
     if (reqMissing.length) {
@@ -390,19 +318,15 @@ function SubmitForm() {
     return <PageLoading label="Loading request…" />;
   }
 
-  // Fulfilment is a distinct entry (its own title, only a geolocation to publish); locked
-  // fields carry their own LockedHint and the readiness list teaches the floor.
-  const pageTitle = lockedFromRequest ? "Geolocate a request" : "Submit";
+  // Fulfilment is a distinct entry (its own title, only a geolocation to publish); the
+  // readiness list teaches the floor.
+  const pageTitle = fulfilling ? "Geolocate a request" : "Submit";
 
   // Both import entries swap out the form for their panel: each writes detections server side
   // and leaves through the review queue.
   const showBulk = canImport && mode === "bulk";
   const showXPost = canImport && mode === "xpost";
-  // On a fulfilment the request supplies media, so it drops out of the floor shown.
-  const geoFulfilReqs = [
-    ...REQUEST_REQS.filter((r) => !r.inheritedOnFulfil),
-    ...GEO_EXTRA_REQS,
-  ];
+  const geoFulfilReqs = [...REQUEST_REQS, ...GEO_EXTRA_REQS];
 
   // The rail holds the conditions and the publish actions, as on the edit page; on a phone it
   // follows the fields. An import entry hides the form, and the rail with it.
@@ -415,7 +339,7 @@ function SubmitForm() {
           </div>
         )}
 
-        {lockedFromRequest ? (
+        {fulfilling ? (
           // Fulfilment can only become a geolocation: one action, no request path.
           <>
             <div className="space-y-2">
@@ -546,21 +470,14 @@ function SubmitForm() {
         className={showBulk || showXPost ? "hidden" : "space-y-6"}
         noValidate
       >
-        <EventFormFields
-          form={form}
-          // The request being fulfilled (supplies the source media and URL the geolocate keeps);
-          // null on a fresh create.
-          row={request}
-          mediaLocked={lockedFromRequest}
-          sourceUrlLocked={lockedFromRequest}
-        />
+        <EventFormFields form={form} row={request} />
 
         <DuplicateProbe
           lat={form.lat}
           lng={form.lng}
-          sourceUrl={form.sourceUrl}
+          sourceUrl={form.sources.flatMap(draftUrls)[0] ?? ""}
           eventDate={form.eventDate}
-          skip={lockedFromRequest}
+          skip={fulfilling}
         />
       </form>
     </PageShell>

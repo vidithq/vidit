@@ -23,63 +23,35 @@ import { pluralNoun } from "@/lib/format";
 const TAG_NAME_MAX_LEN = 100;
 
 interface TagPickerProps {
-  /** Live tags (referenced by at least one geolocation): the free-tag chips and
-   *  the create-new dedup list. */
+  /** Live tags (referenced by at least one event or source) plus the ones created here: the
+   *  chips and the create-new dedup list. */
   tags: Tag[];
   setTags: Dispatch<SetStateAction<Tag[]>>;
-  /** Curated taxonomy (`capture_source`), zero-usage rows included
-   *  (`?curated=true`). */
-  curatedTags: Tag[];
   selectedTagIds: string[];
   setSelectedTagIds: Dispatch<SetStateAction<string[]>>;
   /** `GET /conflicts` (~800 rows), filtered client-side. */
   conflicts: Conflict[];
   selectedConflictIds: string[];
   setSelectedConflictIds: Dispatch<SetStateAction<string[]>>;
-  /** Flag a group blocking submit (red label + outline). */
+  /** Flag the conflict group blocking submit (red label + outline). */
   conflictInvalid?: boolean;
-  captureSourceInvalid?: boolean;
 }
 
 /**
- * Shared tag-selection section for the geolocation and request forms. Conflict
- * is a multi-select typeahead over the conflicts referential; capture source is
- * single-select from the curated taxonomy and hidden when none is passed; free
- * tags come from the live list.
+ * Shared classification section for the event forms. Conflict is a multi-select typeahead over
+ * the conflicts referential; tags are `<TagChips>`.
  */
 export function TagPicker({
   tags,
   setTags,
-  curatedTags,
   selectedTagIds,
   setSelectedTagIds,
   conflicts,
   selectedConflictIds,
   setSelectedConflictIds,
   conflictInvalid = false,
-  captureSourceInvalid = false,
 }: TagPickerProps) {
   const invalidChips = "rounded-md p-2 ring-1 ring-red-500/40";
-  const captureSourceTags = curatedTags.filter(
-    (t) => t.category === "capture_source"
-  );
-  const freeTags = tags.filter((t) => t.category === "free");
-
-  const toggleTag = (tagId: string) => {
-    setSelectedTagIds((prev) =>
-      prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]
-    );
-  };
-
-  // Single-valued (one lens per piece of media): radio-like, and clicking the
-  // active chip clears it.
-  const selectCaptureSource = (tagId: string) => {
-    const captureIds = new Set(captureSourceTags.map((t) => t.id));
-    setSelectedTagIds((prev) => {
-      const withoutCapture = prev.filter((id) => !captureIds.has(id));
-      return prev.includes(tagId) ? withoutCapture : [...withoutCapture, tagId];
-    });
-  };
 
   return (
     <Card as="section">
@@ -100,55 +72,69 @@ export function TagPicker({
         </div>
       )}
 
-      {captureSourceTags.length > 0 && (
-        <div className="space-y-2">
-          <span
-            className={`${FORM_LABEL}${captureSourceInvalid ? ` ${FORM_INVALID_LABEL}` : ""}`}
-          >
-            Capture source <FieldHelp concept="capture_source" />
-          </span>
-          <div className={`flex flex-wrap gap-2${captureSourceInvalid ? ` ${invalidChips}` : ""}`}>
-            {captureSourceTags.map((tag) => (
-              <Pill
-                key={tag.id}
-                tone={selectedTagIds.includes(tag.id) ? "accent" : "neutral"}
-                onClick={() => selectCaptureSource(tag.id)}
-              >
-                {tag.name}
-              </Pill>
-            ))}
-          </div>
-        </div>
-      )}
-
       <div className="space-y-2">
-        <span className={FORM_LABEL}>Free tags</span>
-        {freeTags.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {freeTags.map((tag) => (
-              <Pill
-                key={tag.id}
-                tone={selectedTagIds.includes(tag.id) ? "accent" : "neutral"}
-                onClick={() => toggleTag(tag.id)}
-              >
-                {tag.name}
-              </Pill>
-            ))}
-          </div>
-        )}
-        <NewTagInput
-          existingTags={tags}
-          onCreated={(tag) => {
-            setTags((prev) =>
-              prev.some((t) => t.id === tag.id) ? prev : [...prev, tag]
-            );
-            setSelectedTagIds((prev) =>
-              prev.includes(tag.id) ? prev : [...prev, tag.id]
-            );
-          }}
+        <span className={FORM_LABEL}>Tags</span>
+        <TagChips
+          tags={tags}
+          setTags={setTags}
+          selectedTagIds={selectedTagIds}
+          setSelectedTagIds={setSelectedTagIds}
         />
       </div>
     </Card>
+  );
+}
+
+/**
+ * The tag catalogue as toggle chips, plus an inline field that creates a tag and selects it.
+ * One catalogue serves events and sources, so the event's Classification and each source
+ * editor render the same chips.
+ */
+export function TagChips({
+  tags,
+  setTags,
+  selectedTagIds,
+  setSelectedTagIds,
+  owner,
+}: {
+  tags: Tag[];
+  setTags: Dispatch<SetStateAction<Tag[]>>;
+  selectedTagIds: string[];
+  setSelectedTagIds: (next: string[]) => void;
+  /** Names whose chips these are ("Source 2"), so several pickers on one page read apart. */
+  owner?: string;
+}) {
+  const toggleTag = (tagId: string) =>
+    setSelectedTagIds(
+      selectedTagIds.includes(tagId)
+        ? selectedTagIds.filter((id) => id !== tagId)
+        : [...selectedTagIds, tagId]
+    );
+
+  return (
+    <div className="space-y-2">
+      {tags.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {tags.map((tag) => (
+            <Pill
+              key={tag.id}
+              tone={selectedTagIds.includes(tag.id) ? "accent" : "neutral"}
+              onClick={() => toggleTag(tag.id)}
+            >
+              {tag.name}
+            </Pill>
+          ))}
+        </div>
+      )}
+      <NewTagInput
+        existingTags={tags}
+        label={owner ? `${owner} new tag name` : "New tag name"}
+        onCreated={(tag) => {
+          setTags((prev) => (prev.some((t) => t.id === tag.id) ? prev : [...prev, tag]));
+          if (!selectedTagIds.includes(tag.id)) setSelectedTagIds([...selectedTagIds, tag.id]);
+        }}
+      />
+    </div>
   );
 }
 
@@ -188,7 +174,7 @@ export function ConflictTypeahead({
 
   const q = query.trim().toLowerCase();
   const searchable = conflicts.filter(
-    (c) => !selectedIds.includes(c.id) && (includeEnded || c.ongoing)
+    (c) => !selectedIds.includes(c.id) && (includeEnded || c.is_ongoing)
   );
   // Empty input: major ongoing conflicts plus the "Other" escape row, matched by
   // name alone so it is always offered.
@@ -197,7 +183,7 @@ export function ConflictTypeahead({
       ? conflicts.filter(
           (c) =>
             !selectedIds.includes(c.id) &&
-            (c.name === CONFLICT_OTHER_NAME || (c.ongoing && c.tier === "major"))
+            (c.name === CONFLICT_OTHER_NAME || (c.is_ongoing && c.tier === "major"))
         )
       : searchable.filter((c) => c.name.toLowerCase().includes(q))
   );
@@ -267,15 +253,15 @@ export function ConflictTypeahead({
   );
 }
 
-// Inline "create a free tag". `free` is the only category an analyst can create
-// (`routers/tags.py::USER_CREATABLE_CATEGORIES`). A 409 (name exists,
-// case-sensitive) shows a non-blocking message; the existing tag may be hidden
-// from /tags by the orphan filter.
+// Inline "create a tag". A 409 (name exists, case-sensitive) shows a non-blocking
+// message; the existing tag may be hidden from /tags by the orphan filter.
 function NewTagInput({
   existingTags,
+  label,
   onCreated,
 }: {
   existingTags: Tag[];
+  label: string;
   onCreated: (tag: Tag) => void;
 }) {
   const [name, setName] = useState("");
@@ -286,7 +272,7 @@ function NewTagInput({
     () =>
       apiFetch<Tag>("/tags", {
         method: "POST",
-        body: JSON.stringify({ name: trimmed, category: "free" }),
+        body: JSON.stringify({ name: trimmed }),
       }),
     {
       fallback: "Could not create tag.",
@@ -317,9 +303,7 @@ function NewTagInput({
 
     // Already local: skip the round-trip and select. Exact and case-sensitive,
     // like the backend uniqueness rule.
-    const local = existingTags.find(
-      (t) => t.name === trimmed && t.category === "free",
-    );
+    const local = existingTags.find((t) => t.name === trimmed);
     if (local) {
       create.setError(null);
       onCreated(local);
@@ -350,8 +334,8 @@ function NewTagInput({
           onKeyDown={onKeyDown}
           disabled={busy}
           maxLength={TAG_NAME_MAX_LEN}
-          placeholder="New free tag (e.g. drone)"
-          aria-label="New free tag name"
+          placeholder="New tag (e.g. armor)"
+          aria-label={label}
           className="flex-1 max-w-xs"
         />
         <Button

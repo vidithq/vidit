@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { displayUrlsFor, posterFrameUrl } from "./mediaUrls";
 
 const image = (storage_url: string) =>
-  ({ storage_url, media_type: "image", role: "source" }) as const;
+  ({ storage_url, kind: "image", role: "source" }) as const;
 
 describe("displayUrlsFor", () => {
   it("derives _hero/_thumb siblings for an image", () => {
@@ -18,7 +18,7 @@ describe("displayUrlsFor", () => {
   it("always returns the original for videos", () => {
     const url = "https://cdn.example.com/uploads/g1/clip.mp4";
     expect(
-      displayUrlsFor({ storage_url: url, media_type: "video", role: "source" })
+      displayUrlsFor({ storage_url: url, kind: "video", role: "source" })
     ).toEqual({
       original: url,
       hero: url,
@@ -31,12 +31,21 @@ describe("displayUrlsFor", () => {
     // broken picture.
     const url = "https://cdn.example.com/proof/u1/abc.jpg";
     expect(
-      displayUrlsFor({ storage_url: url, media_type: "image", role: "proof" })
+      displayUrlsFor({ storage_url: url, kind: "image", role: "proof" })
     ).toEqual({
       original: url,
       hero: url,
       thumbnail: url,
     });
+  });
+
+  it("reads a proof image off its key when the payload names no role", () => {
+    const url = "https://cdn.example.com/proof/u1/abc.jpg";
+    expect(displayUrlsFor({ storage_url: url, kind: "image" }).thumbnail).toBe(url);
+    expect(
+      displayUrlsFor({ storage_url: "https://cdn.example.com/uploads/abc.jpg", kind: "image" })
+        .thumbnail
+    ).toBe("https://cdn.example.com/uploads/abc_thumb.jpg");
   });
 
   it("does not mistake the domain dot for an extension", () => {

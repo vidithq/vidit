@@ -59,8 +59,8 @@ const SUBMISSION: EventListItem = {
   id: "e1",
   title: "Strike near Bakhmut",
   status: "geolocated",
-  event_date: "2026-06-01",
-  event_coords: { lat: 48.5, lng: 37.8 },
+  occurred_date: "2026-06-01",
+  coords: { lat: 48.5, lng: 37.8 },
   before_closed_status: null,
   requested_at: null,
   geolocators: [],
@@ -77,7 +77,7 @@ const STATS: UserStats = {
   detected_count: 1,
   media_count: 5,
   top_conflicts: [{ name: "Sahel", count: 3 }],
-  capture_sources: [{ name: "Drone", count: 2 }],
+  sensors: [{ name: "drone", count: 2 }],
   source_hosts: [{ name: "t.me", count: 3 }],
   other_hosts_count: 0,
   no_source_count: 0,
@@ -87,7 +87,7 @@ const STATS: UserStats = {
   })),
 };
 
-// [id, lat, lng, event_date, added_date, detected]
+// [id, lat, lng, occurred_date, added_date, detected]
 const POINT: MapPoint = ["e1", 48.5, 37.8, "2026-06-01", "2026-06-02", 0];
 
 const COLLECTIONS: CollectionPage = {

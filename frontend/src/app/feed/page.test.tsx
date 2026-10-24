@@ -25,7 +25,7 @@ vi.mock("@/hooks/useApiResource", () => ({
   useApiResource: (path: string | null) => {
     const data =
       path === "/tags"
-        ? [{ id: "t1", name: "airstrike", category: "free" }]
+        ? [{ id: "t1", name: "airstrike" }]
         : path === "/conflicts?used=true"
           ? [{ id: "c1", name: "Russo-Ukrainian war" }]
           : path
@@ -62,8 +62,8 @@ function item(extra: Partial<FeedItem>): FeedItem {
   return {
     id: "e1",
     title: "Strike on a depot",
-    event_coords: null,
-    event_date: null,
+    coords: null,
+    occurred_date: null,
     is_graphic: false,
     status: "geolocated",
     before_closed_status: null,
@@ -128,7 +128,7 @@ describe("FeedPage", () => {
   it("cards a request and a geolocation, each linked and credited by kind", () => {
     walk.items = [
       item({ id: "r1", title: "Where is this bridge", status: "requested", owner: BOB }),
-      item({ id: "g1", title: "Strike on a depot", event_coords: { lat: 48.01, lng: 37.8 } }),
+      item({ id: "g1", title: "Strike on a depot", coords: { lat: 48.01, lng: 37.8 } }),
     ];
     render(<FeedPage />);
 
@@ -242,11 +242,11 @@ describe("FeedPage", () => {
     expect(screen.getByText("You have reached the end of the feed")).toBeInTheDocument();
   });
 
-  it("puts the title first, names both dates, and keys the taxonomy without Unknown", () => {
+  it("puts the title first, names both dates, and keys the conflict, tags plain", () => {
     walk.items = [
       item({
         id: "g1",
-        event_date: "2009-08-25",
+        occurred_date: "2009-08-25",
         feed_at: "2026-10-03T09:00:00Z",
         conflicts: [
           {
@@ -255,15 +255,11 @@ describe("FeedPage", () => {
             wikidata_id: null,
             start_year: 2014,
             end_year: null,
-            ongoing: true,
+            is_ongoing: true,
             tier: "major",
           },
         ],
-        tags: [
-          { id: "t1", name: "Smartphone", category: "capture_source" },
-          { id: "t2", name: "Unknown", category: "capture_source" },
-          { id: "t3", name: "airstrike", category: "free" },
-        ],
+        tags: [{ id: "t3", name: "airstrike" }],
       }),
       item({ id: "r1", title: "Where is this bridge", status: "requested", feed_at: "2026-10-04T09:00:00Z" }),
     ];
@@ -281,11 +277,8 @@ describe("FeedPage", () => {
     expect(within(card).getByText("Conflict:").parentElement).toHaveTextContent(
       "Conflict:Russo-Ukrainian war",
     );
-    expect(within(card).getByText("Capture source:").parentElement).toHaveTextContent(
-      "Capture source:Smartphone",
-    );
-    expect(within(card).getAllByText("Capture source:")).toHaveLength(1);
-    expect(within(card).queryByText("Unknown")).toBeNull();
+    // A card carries no source, so it names no sensor.
+    expect(within(card).queryByText("Sensor:")).toBeNull();
     expect(within(card).getByText("airstrike")).toBeInTheDocument();
   });
 

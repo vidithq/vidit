@@ -425,7 +425,7 @@ export function OnboardingPanel() {
             email: managed.email,
             is_admin: managed.is_admin,
             x_handle: managed.x_handle,
-            invite_minting_enabled: managed.invite_minting_enabled,
+            is_invite_minting_enabled: managed.is_invite_minting_enabled,
             sponsor: managedCode?.sponsor ?? null,
           }}
           detectedCount={managed.detected_count}

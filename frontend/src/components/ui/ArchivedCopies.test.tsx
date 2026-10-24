@@ -6,7 +6,6 @@ import {
   ArchivedCopies,
   ArchiveSnapshotField,
   isSnapshotUrl,
-  PRIMARY_SOURCE_DESCRIPTION,
   SNAPSHOT_HINT,
 } from "./ArchivedCopies";
 import { SNAPSHOT_HOSTS } from "@/lib/snapshots";
@@ -16,10 +15,10 @@ describe("ArchivedCopies", () => {
   const WAYBACK = "https://web.archive.org/web/20260601120000/https://t.me/channel/1";
   const ARCHIVE_TODAY = "https://archive.ph/abcde";
 
-  const props = { describes: PRIMARY_SOURCE_DESCRIPTION };
+  const props = { describes: "the source" };
 
   it("links the copy, named for the service that holds it", () => {
-    render(<ArchivedCopies {...props} copy={{ url: WAYBACK, provider: "wayback" }} />);
+    render(<ArchivedCopies {...props} copy={{ url: WAYBACK, provider: "wayback", archived_at: "2026-06-01T12:00:00Z" }} />);
     expect(
       screen.getByRole("link", { name: "Wayback Machine copy of the source" })
     ).toHaveAttribute("href", WAYBACK);
@@ -27,7 +26,7 @@ describe("ArchivedCopies", () => {
 
   it("names the copy for archive.today when that is what holds it", () => {
     render(
-      <ArchivedCopies {...props} copy={{ url: ARCHIVE_TODAY, provider: "archive_today" }} />
+      <ArchivedCopies {...props} copy={{ url: ARCHIVE_TODAY, provider: "archive_today", archived_at: "2026-06-01T12:00:00Z" }} />
     );
     expect(
       screen.getByRole("link", { name: "archive.today copy of the source" })
@@ -44,11 +43,11 @@ describe("ArchivedCopies", () => {
       return svg;
     };
     const drawings = new Set([
-      mark(<ArchivedCopies {...props} copy={{ url: WAYBACK, provider: "wayback" }} />),
+      mark(<ArchivedCopies {...props} copy={{ url: WAYBACK, provider: "wayback", archived_at: "2026-06-01T12:00:00Z" }} />),
       mark(
         <ArchivedCopies
           {...props}
-          copy={{ url: ARCHIVE_TODAY, provider: "archive_today" }}
+          copy={{ url: ARCHIVE_TODAY, provider: "archive_today", archived_at: "2026-06-01T12:00:00Z" }}
         />
       ),
       mark(<ArchivedCopies {...props} copy={null} />),
@@ -62,7 +61,7 @@ describe("ArchivedCopies", () => {
   it("tells two providers apart by name, drawing them alike", () => {
     // The service lives in the accessible name, so two copies must not announce alike.
     const { unmount } = render(
-      <ArchivedCopies {...props} copy={{ url: WAYBACK, provider: "wayback" }} />
+      <ArchivedCopies {...props} copy={{ url: WAYBACK, provider: "wayback", archived_at: "2026-06-01T12:00:00Z" }} />
     );
     expect(
       screen.getByRole("link", { name: "Wayback Machine copy of the source" })
@@ -73,7 +72,7 @@ describe("ArchivedCopies", () => {
     unmount();
 
     render(
-      <ArchivedCopies {...props} copy={{ url: ARCHIVE_TODAY, provider: "archive_today" }} />
+      <ArchivedCopies {...props} copy={{ url: ARCHIVE_TODAY, provider: "archive_today", archived_at: "2026-06-01T12:00:00Z" }} />
     );
     expect(
       screen.getByRole("link", { name: "archive.today copy of the source" })
@@ -98,7 +97,7 @@ describe("ArchivedCopies", () => {
   // the disabled button's).
   it("paints the stored copy accent and the missing one grey", () => {
     const { unmount } = render(
-      <ArchivedCopies {...props} copy={{ url: WAYBACK, provider: "wayback" }} />
+      <ArchivedCopies {...props} copy={{ url: WAYBACK, provider: "wayback", archived_at: "2026-06-01T12:00:00Z" }} />
     );
     expect(
       screen.getByRole("link", { name: "Wayback Machine copy of the source" })
@@ -113,7 +112,7 @@ describe("ArchivedCopies", () => {
 
   // The row explains the mark, so no `?` beside it.
   it("carries no help affordance of its own", () => {
-    render(<ArchivedCopies {...props} copy={{ url: WAYBACK, provider: "wayback" }} />);
+    render(<ArchivedCopies {...props} copy={{ url: WAYBACK, provider: "wayback", archived_at: "2026-06-01T12:00:00Z" }} />);
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.getAllByRole("link")).toHaveLength(1);
   });
@@ -150,7 +149,7 @@ describe("the pasted snapshot, whichever service produced it", () => {
     render(
       <ArchiveSnapshotField
         link={SOURCE}
-        describes={PRIMARY_SOURCE_DESCRIPTION}
+        describes={"the source"}
         value={snapshot}
         onChange={() => {}}
       />
@@ -163,7 +162,7 @@ describe("the pasted snapshot, whichever service produced it", () => {
     render(
       <ArchiveSnapshotField
         link={SOURCE}
-        describes={PRIMARY_SOURCE_DESCRIPTION}
+        describes={"the source"}
         value="https://example.test/not-an-archive"
         onChange={() => {}}
       />
@@ -180,7 +179,7 @@ describe("the pasted snapshot, whichever service produced it", () => {
     render(
       <ArchiveSnapshotField
         link={SOURCE}
-        describes={PRIMARY_SOURCE_DESCRIPTION}
+        describes={"the source"}
         value={snapshot}
         onChange={() => {}}
       />
@@ -196,7 +195,7 @@ describe("the pasted snapshot, whichever service produced it", () => {
     render(
       <ArchiveSnapshotField
         link={SOURCE}
-        describes={PRIMARY_SOURCE_DESCRIPTION}
+        describes={"the source"}
         value={`https://web.archive.org/web/20260601120000/${SOURCE}`}
         onChange={() => {}}
       />

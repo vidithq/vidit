@@ -325,10 +325,10 @@ export function ImportArchivePanel({ username }: { username: string }) {
                 {
                   label: IMPORT_STEP_LABELS[2],
                   spinner: true,
-                  ...(liveJob?.post_estimate != null
+                  ...(liveJob?.estimated_post_count != null
                     ? {
-                        detail: `~${liveJob.post_estimate.toLocaleString()} ${pluralNoun(
-                          liveJob.post_estimate,
+                        detail: `~${liveJob.estimated_post_count.toLocaleString()} ${pluralNoun(
+                          liveJob.estimated_post_count,
                           "post",
                         )} in your archive.`,
                       }
@@ -336,21 +336,21 @@ export function ImportArchivePanel({ username }: { username: string }) {
                 },
                 {
                   label: IMPORT_STEP_LABELS[3],
-                  // Two worker legs: the parse (`progress_total` still null),
+                  // Two worker legs: the parse (`detection_count` still null),
                   // then the per-detection persist. A zero total is complete.
-                  ...(liveJob && liveJob.progress_total !== null
+                  ...(liveJob && liveJob.detection_count !== null
                     ? {
                         progress:
-                          liveJob.progress_total > 0
-                            ? liveJob.progress_done / liveJob.progress_total
+                          liveJob.detection_count > 0
+                            ? liveJob.processed_detection_count / liveJob.detection_count
                             : 1,
                         detail:
-                          `${liveJob.progress_done.toLocaleString()} of ${liveJob.progress_total.toLocaleString()} ${pluralNoun(
-                            liveJob.progress_total,
+                          `${liveJob.processed_detection_count.toLocaleString()} of ${liveJob.detection_count.toLocaleString()} ${pluralNoun(
+                            liveJob.detection_count,
                             "geolocation",
                           )} extracted` +
-                          (liveJob.post_estimate !== null
-                            ? ` · from ~${liveJob.post_estimate.toLocaleString()} posts`
+                          (liveJob.estimated_post_count !== null
+                            ? ` · from ~${liveJob.estimated_post_count.toLocaleString()} posts`
                             : ""),
                       }
                     : { spinner: true, detail: "Reading your posts…" }),
