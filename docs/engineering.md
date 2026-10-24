@@ -31,9 +31,7 @@ flowchart TB
   subgraph sched [Roles without a port, same image]
     direction TB
     worker["`**worker**
-    always on: notification_deliveries, archive_import_jobs, then bot_webhook_events`"]:::shared
-    bot["`**bot**
-    hourly: run_bot.py reconciles the mentions timeline`"]:::shared
+    always on: notification_deliveries, archive_import_jobs, bot_mentions; hourly bot catch-up`"]:::shared
     conf["`**sync-conflicts**
     daily: sync_conflicts.py`"]:::shared
   end
@@ -49,13 +47,12 @@ flowchart TB
   api --> db
   api --> s3
   worker --> db
-  bot --> db
   conf --> db
   worker --> s3
   db -- "daily dump" --> bak
 ```
 
-Each region of the diagram has a section below. What each piece is and why it was picked is [the tech stack](#tech-stack); the code they all run is [the repository layout](#repository-layout-monorepo), [the backend conventions](#backend-conventions) and [the frontend conventions](#frontend-conventions); the roles are [backend roles](#backend-roles), and the three without a port are [scheduler services](#scheduler-services); what an instance runs and configures is [deployment](#deployment), and the backup storage is [`backups.md`](backups.md). The path a change takes to reach an instance is [CI/CD](#cicd). [Local environment](#local-environment) is the same shape on one machine, with a Docker container standing in for the database and `LocalStorage` for the buckets.
+Each region of the diagram has a section below. What each piece is and why it was picked is [the tech stack](#tech-stack); the code they all run is [the repository layout](#repository-layout-monorepo), [the backend conventions](#backend-conventions) and [the frontend conventions](#frontend-conventions); the roles are [backend roles](#backend-roles), and the two without a port are [scheduler services](#scheduler-services); what an instance runs and configures is [deployment](#deployment), and the backup storage is [`backups.md`](backups.md). The path a change takes to reach an instance is [CI/CD](#cicd). [Local environment](#local-environment) is the same shape on one machine, with a Docker container standing in for the database and `LocalStorage` for the buckets.
 
 ---
 
@@ -136,7 +133,7 @@ An instance needs these pieces. [Deployment](#deployment) describes how to run t
 | Piece | Requirement |
 |-------|-------------|
 | Container host | Runs the backend image in each of its [roles](#backend-roles): `api` behind HTTPS, `worker` always on, and `migrate` once per release. |
-| Scheduler | Starts the `bot` role hourly and the `sync-conflicts` role daily. |
+| Scheduler | Starts the `sync-conflicts` role daily. |
 | Database | **PostgreSQL 16** with **PostGIS 3**, reachable from every role. |
 | Object storage | An S3-compatible bucket for media, with versioning and Object Lock, and a CDN in front of it. A second bucket in another region holds the media replica, and off-host storage holds the database dumps ([`backups.md`](backups.md)). |
 | Frontend host | Builds and serves the Next.js app in `frontend/`. |
@@ -247,7 +244,7 @@ The API runs as one uvicorn process with one event loop (the `CMD` in [`backend/
 
 The API process caps every lock wait at `LOCK_TIMEOUT_MS`, 5 seconds. [`main.py`](../backend/app/main.py) calls `bound_lock_waits` from [`database.py`](../backend/app/database.py) at import, and from then on every connection the engine opens sets the Postgres `lock_timeout` in its startup options. A statement that waits longer for a lock fails, and `get_db` answers the request with a `409` carrying the typed envelope `{"code": "lock_timeout", …}`. The cap protects the API's threadpool: a request queued on a lock holds a worker thread for as long as it waits.
 
-The cap applies to the API process only. The import worker, the bot cron, and the conflict-sync cron open their sessions from the same engine but never import `main.py`, so their statements wait for the lock: each service runs on its own compute with no shared threadpool, and waiting costs it nothing. Migrations open their own engine in [`alembic/env.py`](../backend/alembic/env.py) and wait too.
+The cap applies to the API process only. The import worker and the conflict-sync cron open their sessions from the same engine but never import `main.py`, so their statements wait for the lock: each service runs on its own compute with no shared threadpool, and waiting costs it nothing. Migrations open their own engine in [`alembic/env.py`](../backend/alembic/env.py) and wait too.
 
 ### Email
 
@@ -604,8 +601,7 @@ The backend image runs every backend role. Its entrypoint, [`backend/entrypoint.
 |---------|------|-----------|--------------------|
 | `api` | The FastAPI server on `$PORT` (default `8000`), with the proxy-header flags in [Particularities](#particularities-non-obvious-behavior-found-during-development). | Always on; serves `/health`. | N/A |
 | `migrate` | `alembic upgrade head`, then exits. | One-shot, before each new `api` release takes traffic. A non-zero exit means the schema did not reach the head: do not start the new release. | Once per deploy |
-| `worker` | The import worker: notification emails, archive imports, and bot webhook events ([Scheduler services](#scheduler-services)). | Always on; listens on no port. Two workers are safe. | N/A |
-| `bot` | One reconciliation pass of the mention pipeline ([`ingestion.md`](ingestion.md#the-bot)), then exits. | Scheduled. A missed run is harmless. | Hourly, `0 * * * *` |
+| `worker` | The import worker: notification emails, archive imports, the bot mention queue, and the hourly bot catch-up ([Scheduler services](#scheduler-services)). | Always on; listens on no port. Two workers are safe. | N/A |
 | `sync-conflicts` | One pass of the ongoing-conflicts sync ([`conflicts.md`](conflicts.md)), then exits. | Scheduled. A missed run is harmless. | Once a day |
 
 Run a role locally against the image:
@@ -615,7 +611,7 @@ docker build -t vidit-backend backend
 docker run --rm --env-file backend/.env vidit-backend migrate
 ```
 
-Start `api` only after `migrate` succeeds. `worker`, `bot` and `sync-conflicts` wait for the schema to reach the head before their first pass ([Scheduler services](#scheduler-services)), so they can start alongside `migrate`. Any other argument list runs as a plain command, for example `docker run --rm vidit-backend alembic history`. The database backup is not a role: [`backups.md`](backups.md) describes what to dump and how.
+Start `api` only after `migrate` succeeds. `worker` and `sync-conflicts` wait for the schema to reach the head before their first pass ([Scheduler services](#scheduler-services)), so they can start alongside `migrate`. Any other argument list runs as a plain command, for example `docker run --rm vidit-backend alembic history`. The database backup is not a role: [`backups.md`](backups.md) describes what to dump and how.
 
 ### Deployment
 
@@ -626,14 +622,14 @@ To deploy a release tag to an instance:
 1. Take a database snapshot when the tag ships a migration ([`backups.md`](backups.md#manual-snapshot-and-rollback)).
 2. Build the backend image from `backend/` at the tag. [`backend/.dockerignore`](../backend/.dockerignore) keeps local `.env` files, virtual environments, local media and caches out of the image.
 3. Run the `migrate` role once. When it exits non-zero, stop: the schema did not reach the head.
-4. Start `api` with the new image, with `/health` as its healthcheck. Start `worker`, and point the scheduler's `bot` and `sync-conflicts` entries at the new image. The three roles without a port can start alongside `migrate`, since they wait for the schema head ([Scheduler services](#scheduler-services)).
+4. Start `api` with the new image, with `/health` as its healthcheck. Start `worker`, and point the scheduler's `sync-conflicts` entry at the new image. The two roles without a port can start alongside `migrate`, since they wait for the schema head ([Scheduler services](#scheduler-services)).
 5. Build the frontend from `frontend/` at the same tag, with its `NEXT_PUBLIC_*` variables set in the build environment, and publish it.
 
 A code rollback is the same procedure with the previous tag and no `migrate` step. Undoing a migration is in [`backups.md`](backups.md#manual-snapshot-and-rollback).
 
 **Frontend build variables.** Next.js compiles every `NEXT_PUBLIC_*` variable into the bundle at build time, so a change takes a new build. The build reads `NEXT_PUBLIC_API_URL` (required: [`lib/api.ts`](../frontend/src/lib/api.ts) refuses to load without it), `NEXT_PUBLIC_DEMO_VIDEO_URL` (the landing demo video), `NEXT_PUBLIC_MEDIA_HOST` (the host `next/image` loads media from and the proof-image host pin, see [Particularities](#particularities-non-obvious-behavior-found-during-development); set it to the CDN host, or to the bucket endpoint when media is served from the bucket without a CDN, since a build without it allows only the local dev media host), and the Sentry variables under [Observability](#observability-whats-wired-and-how-to-turn-it-on). The version badge reads `NEXT_PUBLIC_BUILD_VERSION`, or `git describe --tags` when it is unset ([`next.config.mjs`](../frontend/next.config.mjs)), so build from a checkout with its tags, or set the variable.
 
-**Database.** Give `api`, `worker`, `bot`, `sync-conflicts` and `migrate` the same `DATABASE_URL`. The backend image carries no `pg_dump` or `pg_restore` client, so database dumps and restores run from a `postgres:16` image ([`backups.md`](backups.md)).
+**Database.** Give `api`, `worker`, `sync-conflicts` and `migrate` the same `DATABASE_URL`. The backend image carries no `pg_dump` or `pg_restore` client, so database dumps and restores run from a `postgres:16` image ([`backups.md`](backups.md)).
 
 **Media bucket.** These settings live on the bucket, not in the code:
 
@@ -650,17 +646,15 @@ Every evidence image upload writes **three** sibling objects: the original (afte
 
 ### Scheduler services
 
-The `worker`, `bot` and `sync-conflicts` [roles](#backend-roles) run from the backend image and listen on no port. Give them no HTTP healthcheck and no `migrate` step. Configure the host to restart a role that exits non-zero.
+The `worker` and `sync-conflicts` [roles](#backend-roles) run from the backend image and listen on no port. Give them no HTTP healthcheck and no `migrate` step. Configure the host to restart a role that exits non-zero.
 
-All three take the API's `DATABASE_URL` and `JWT_SECRET`, because [`config.py`](../backend/app/config.py)'s boot check refuses the placeholder secret against a non-local database. Set `SENTRY_DSN` on each, so a failure reaches Sentry instead of staying in the logs.
+Both take the API's `DATABASE_URL` and `JWT_SECRET`, because [`config.py`](../backend/app/config.py)'s boot check refuses the placeholder secret against a non-local database. Set `SENTRY_DSN` on each, so a failure reaches Sentry instead of staying in the logs.
 
 Only `migrate` changes the schema, and a host can start these roles before it finishes. Each scheduler entry point calls `wait_for_schema_head` in [`schema_gate.py`](../backend/app/schema_gate.py) before its first pass. It compares the database revision with the alembic script head and polls every 5 seconds while the database is behind. After 10 minutes it reports to Sentry and exits non-zero, and the host's restart policy starts it again. A database at a revision the code does not know, as after a code rollback, passes at once.
 
-**`worker`**, always on. It also takes the storage variables (`STORAGE_BACKEND`, `S3_BUCKET`, `AWS_*`) and email variables (`EMAIL_*`, `RESEND_API_KEY`, `FRONTEND_URL`) the API takes, plus the six `X_*` credentials and the two reply caps, `BOT_MAX_REPLIES_PER_HOUR` and `BOT_MAX_REPLIES_PER_AUTHOR_PER_HOUR`, since it posts the webhook path's bot replies, the notification email caps, `NOTIFICATION_EMAIL_DAILY_CAP`, `NOTIFICATION_EMAIL_DAILY_CAP_PER_USER` and `NOTIFICATION_EMAIL_DAILY_CAP_PER_ACTOR`, `EMAIL_PROVIDER_DAILY_QUOTA`, and `API_URL`, the base of the one-click unsubscribe URLs, which `config.py` refuses as a localhost URL when `COOKIE_SECURE` is true. What it drains: the [notification queue](#email) first, then the jobs and mentions in [`ingestion.md`](ingestion.md#archive-import-worker). If the email queue raises, the worker reports it to Sentry and skips it for that pass, so it never holds back the jobs and mentions.
+**`worker`**, always on. It also takes the storage variables (`STORAGE_BACKEND`, `S3_BUCKET`, `AWS_*`) and email variables (`EMAIL_*`, `RESEND_API_KEY`, `FRONTEND_URL`) the API takes, plus the six `X_*` credentials, `X_WEBHOOK_ENABLED` and the two reply caps, `BOT_MAX_REPLIES_PER_HOUR` and `BOT_MAX_REPLIES_PER_AUTHOR_PER_HOUR`, since it runs the bot (see below), the notification email caps, `NOTIFICATION_EMAIL_DAILY_CAP`, `NOTIFICATION_EMAIL_DAILY_CAP_PER_USER` and `NOTIFICATION_EMAIL_DAILY_CAP_PER_ACTOR`, `EMAIL_PROVIDER_DAILY_QUOTA`, and `API_URL`, the base of the one-click unsubscribe URLs, which `config.py` refuses as a localhost URL when `COOKIE_SECURE` is true. What it drains: the [notification queue](#email) first, then the jobs and mentions in [`ingestion.md`](ingestion.md#archive-import-worker). If the email queue raises, the worker reports it to Sentry and skips it for that pass, so it never holds back the jobs and mentions.
 
-**`bot`**, hourly (`0 * * * *`), since the webhook owns latency and the scheduled pass only reconciles. It also takes the six `X_*` credentials, the two `BOT_MAX_REPLIES_*` caps, and `X_WEBHOOK_ENABLED` (see `backend/.env.example`): a bearer token and bot user ID to read, and the four OAuth 1.0a values to post. Without the OAuth values, the bot processes mentions but posts nothing. The process makes one pass, then exits; a failed mentions pull exits non-zero. A missed run is harmless, because the next pass resumes from the ledger. A retry is safe too, but each one pays for another mentions read. What it runs: [`ingestion.md`](ingestion.md#the-bot).
-
-Set the reply caps to the same values on `worker` and `bot`. Defaults and behaviour: [`ingestion.md`](ingestion.md#the-bot).
+The bot runs inside the worker, so no separate schedule exists for it. The worker drains the `queued` rows of `bot_mentions` that the webhook inserts. It also runs the hourly catch-up, which pulls the mentions timeline to queue what the webhook missed: once when the worker starts, then every hour. The catch-up needs `X_BOT_BEARER_TOKEN` and `X_BOT_USER_ID` (see `backend/.env.example`), and the worker skips it when either is empty. Replies need the four OAuth 1.0a values; without them, the bot processes mentions but posts nothing. A failed mentions pull is captured to Sentry and does not stop the other queues. Each pull is billed, so a worker that restarts often pays for one extra read per start. A second worker is safe: the queue claim skips rows another worker holds, but each worker runs its own catch-up. What the bot runs: [`ingestion.md`](ingestion.md#the-bot).
 
 **`sync-conflicts`**, daily. Schedule and behaviour: [`conflicts.md`](conflicts.md).
 
@@ -679,14 +673,14 @@ uv run python scripts/manage_x_webhook.py delete <webhook_id>
 
 Register the webhook **after** you deploy the endpoint: X fires a Challenge-Response Check (CRC) at register time. Once `register` and `subscribe` succeed, set `X_WEBHOOK_ENABLED=true` on the backend roles.
 
-X re-runs the CRC hourly, and the endpoint answers it in-request, using pure HMAC with no database access. A failed check deactivates the webhook silently, and two nets catch that. `manage_x_webhook.py list` shows the webhook's `valid` flag. While `X_WEBHOOK_ENABLED=true`, the poll's gap detector catches it live: a mention the poll processes fresh logs a warning and captures a Sentry message (`webhook gap: mention <id> arrived via reconciliation`). For a known outage longer than the poll covers, X's replay API re-delivers up to 24 hours of events on request, manually, from the developer console or API.
+X re-runs the CRC hourly, and the endpoint answers it in-request, using pure HMAC with no database access. A failed check deactivates the webhook silently, and two nets catch that. `manage_x_webhook.py list` shows the webhook's `valid` flag. While `X_WEBHOOK_ENABLED=true`, the catch-up's gap detector catches it live: a mention the catch-up queues fresh logs a warning and captures a Sentry message (`webhook gap: mention <id> arrived via the catch-up`). For a known outage longer than the catch-up covers, X's replay API re-delivers up to 24 hours of events on request, manually, from the developer console or API.
 
 ### Observability: what's wired and how to turn it on
 
 | Piece | State | How to turn on |
 |---|---|---|
-| Backend Sentry | `init_sentry` in [`backend/app/observability.py`](../backend/app/observability.py) boots the SDK for the API ([`main.py`](../backend/app/main.py)) and the three [scheduler services](#scheduler-services), and only when `SENTRY_DSN` is non-empty. The scheduler services send traces at the same `SENTRY_TRACES_SAMPLE_RATE` as the API. Events carry no frame local variables and no request bodies, and `send_default_pii` stays off, so a password or an API credential held in a variable or sent in a request body never reaches an event. The engine sets `hide_parameters`, so database error text carries no bound parameters. | Create a project at sentry.io (Python / FastAPI), copy the DSN, and set `SENTRY_DSN` and `SENTRY_ENVIRONMENT=production` on `api` and on the three [scheduler services](#scheduler-services). Verify: hit a 5xx path, or run `sentry_sdk.capture_message('hello')` from a shell in an `api` container, and confirm it lands. |
-| Backend logs and request ids | `configure_logging` in [`backend/app/observability.py`](../backend/app/observability.py) runs at the start of the API and of the three scheduler services. Format and routing: [Backend logs](#backend-logs). | On by default. `LOG_LEVEL` sets the level of the `app.*` loggers: `DEBUG`, `INFO` (the default), `WARNING`, `ERROR`, or `CRITICAL`, in any case. |
+| Backend Sentry | `init_sentry` in [`backend/app/observability.py`](../backend/app/observability.py) boots the SDK for the API ([`main.py`](../backend/app/main.py)) and the two [scheduler services](#scheduler-services), and only when `SENTRY_DSN` is non-empty. The scheduler services send traces at the same `SENTRY_TRACES_SAMPLE_RATE` as the API. Events carry no frame local variables and no request bodies, and `send_default_pii` stays off, so a password or an API credential held in a variable or sent in a request body never reaches an event. The engine sets `hide_parameters`, so database error text carries no bound parameters. | Create a project at sentry.io (Python / FastAPI), copy the DSN, and set `SENTRY_DSN` and `SENTRY_ENVIRONMENT=production` on `api` and on the two [scheduler services](#scheduler-services). Verify: hit a 5xx path, or run `sentry_sdk.capture_message('hello')` from a shell in an `api` container, and confirm it lands. |
+| Backend logs and request ids | `configure_logging` in [`backend/app/observability.py`](../backend/app/observability.py) runs at the start of the API and of the two scheduler services. Format and routing: [Backend logs](#backend-logs). | On by default. `LOG_LEVEL` sets the level of the `app.*` loggers: `DEBUG`, `INFO` (the default), `WARNING`, `ERROR`, or `CRITICAL`, in any case. |
 | Frontend Sentry | SDK wired in [`frontend/instrumentation-client.ts`](../frontend/instrumentation-client.ts) + [`sentry.server.config.ts`](../frontend/sentry.server.config.ts) + [`sentry.edge.config.ts`](../frontend/sentry.edge.config.ts); booted by [`frontend/instrumentation.ts`](../frontend/instrumentation.ts) which also re-exports `onRequestError = Sentry.captureRequestError` so errors thrown inside nested React Server Components reach Sentry. `Sentry.init(...)` runs only when `NEXT_PUBLIC_SENTRY_DSN` (client) or `SENTRY_DSN` (server / edge) is non-empty. `app/error.tsx` + `app/global-error.tsx` forward caught exceptions via `Sentry.captureException` (React error boundaries are not auto-captured). `next.config.mjs` is wrapped with `withSentryConfig` (with `tunnelRoute: "/monitoring"`, see the ad-blocker note below). | On the frontend host, set `NEXT_PUBLIC_SENTRY_DSN` and `NEXT_PUBLIC_SENTRY_ENVIRONMENT=production` in the build environment, and `SENTRY_DSN` and `SENTRY_ENVIRONMENT=production` in the server runtime. For source-map upload, also set `SENTRY_ORG`, `SENTRY_PROJECT` and `SENTRY_AUTH_TOKEN` in the build environment. Rebuild the frontend. Verification: see [Frontend Sentry verification](#frontend-sentry-verification) below. |
 | Vercel Web Analytics + Speed Insights | `<Analytics />` + `<SpeedInsights />` (the `/next` entrypoints of `@vercel/analytics` / `@vercel/speed-insights`) render in [`frontend/src/app/layout.tsx`](../frontend/src/app/layout.tsx). Cookieless aggregate page-view counts and Core Web Vitals; no cross-site tracking, so no consent banner is required. Both components no-op outside a Vercel deployment. | On a Vercel host, enable **Analytics** and **Speed Insights** in the project. The components send nothing until both are on. |
 | Uptime monitor | External. Checks `/health` from outside the API's network, so an outage of the host itself alerts. | Add `https://<api-host>/health` as an HTTP monitor on any uptime service, at a 1 to 5 minute interval. The endpoint is unauthenticated and returns `{"status":"ok"}`. |

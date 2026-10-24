@@ -381,18 +381,14 @@ erDiagram
         UUID id PK
         BIGINT mention_post_id "UNIQUE, X snowflake"
         VARCHAR author_x_handle
-        VARCHAR outcome
-        INTEGER created_event_count
-        BIGINT reply_post_id "nullable"
-        TIMESTAMPTZ processed_at
-    }
-
-    bot_webhook_events {
-        UUID id PK
-        JSONB payload
+        JSONB payload "nullable, cleared once done"
         VARCHAR status "queued | running | done | failed"
         INTEGER attempt_count
+        VARCHAR outcome "nullable, set when done"
+        INTEGER created_event_count
+        BIGINT reply_post_id "nullable"
         TIMESTAMPTZ created_at
+        TIMESTAMPTZ processed_at "nullable"
     }
 
     archive_import_jobs {
@@ -1157,31 +1153,23 @@ Composite PK: `(event_id, conflict_id)`
 
 ### `bot_mentions`
 
-The bot's idempotency ledger: one row per processed @-mention of the bot, whatever the outcome, so a mention is processed, and billed, at most once. The webhook and the reconciliation poll share it. See [`ingestion.md`](ingestion.md#the-bot) for the pipeline.
+The bot's queue and ledger: one row per @-mention of the bot. The webhook endpoint ([`POST /webhooks/x`](api.md#post-webhooksx)), which must answer X fast and therefore only inserts, and the hourly catch-up both insert a `queued` row with `ON CONFLICT (mention_post_id) DO NOTHING`. The import worker claims the queued rows and runs them through the shared mention pipeline, then leaves the row as the ledger of what happened, so a mention is processed, and billed, at most once. See [`ingestion.md`](ingestion.md#the-bot) for the pipeline.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
-| `mention_post_id` | `BIGINT` | UNIQUE, NOT NULL. The tagged post's id: an X snowflake. |
+| `mention_post_id` | `BIGINT` | UNIQUE, NOT NULL. The tagged post's id: an X snowflake. The idempotency key, and the catch-up derives its `since_id` cursor from the highest value. |
 | `author_x_handle` | `VARCHAR(50)` | NOT NULL. The tagging analyst's handle, normalized to lowercase with no leading `@`. Stored for forensics, not as a FK. Attribution resolves through the admin-linked `users.x_handle`. |
-| `outcome` | `VARCHAR(20)` | NOT NULL, CHECK in the values below (constraint `ck_bot_mentions_outcome_valid`): `'created'`, `'updated'` (no row created, an open detection overwritten with the newer parse, which earns the success reply as a creation does), `'requested'` (no coordinate, so a `requested` row was opened over the thread's footage instead, which earns its own success reply; see [`ingestion.md`](ingestion.md#the-bot)), `'inherited'` (the author never typed the tag, X's reply prefix carried it over from the parent, so nothing was acquired and nothing answered), `'no_detection'`, `'no_account'` (no live account carries the tagged author's admin-linked `x_handle`, so nothing is created and no reply is sent), `'skipped'` (a match the pass moved nothing on), `'self'` (the bot's own post, ledgered so the cursor advances past it), or `'failed'`. A `failed` row retries only when an operator deletes it. |
+| `payload` | `JSONB` | nullable. The internal `Mention` shape: `tweet_id`, `author_id`, `author_handle`, `text`, `in_reply_to_user_id`, `in_reply_to_status_id`. Carries everything the pipeline needs, so a drain never re-reads, and never re-bills, the paid API. The worker clears it once the row is `done`. |
+| `status` | `VARCHAR(10)` | NOT NULL, default `'queued'`, CHECK in `('queued', 'running', 'done', 'failed')` (constraint `ck_bot_mentions_status_valid`). The row moves `queued` → `running` → `done` \| `failed`. `running` marks a claimed row so a concurrent worker skips it. A row left `running` for more than an hour is claimed again, since its worker died. An exception outside the pipeline puts the row back to `queued`. `done` means the pipeline ran; the per-mention result, including `failed`, is the `outcome`. `failed` means the attempt budget is spent or the payload was malformed. |
+| `attempt_count` | `INTEGER` | NOT NULL, default 0. A claim counter. When it reaches the budget (3), the row lands `failed`, a poison-pill guard. |
+| `outcome` | `VARCHAR(20)` | nullable, CHECK in the values below (constraint `ck_bot_mentions_outcome_valid`). Set exactly when `status` is `done` (constraint `ck_bot_mentions_outcome_done`). Values: `'created'`, `'updated'` (no row created, an open detection overwritten with the newer parse, which earns the success reply as a creation does), `'requested'` (no coordinate, so a `requested` row was opened over the thread's footage instead, which earns its own success reply; see [`ingestion.md`](ingestion.md#the-bot)), `'inherited'` (the author never typed the tag, X's reply prefix carried it over from the parent, so nothing was acquired and nothing answered), `'no_detection'`, `'no_account'` (no live account carries the tagged author's admin-linked `x_handle`, so nothing is created and no reply is sent), `'skipped'` (a match the pass moved nothing on), `'self'` (the bot's own post, recorded so the cursor advances past it), or `'failed'`. A row with the outcome `failed` retries only when an operator deletes it. |
 | `created_event_count` | `INTEGER` | NOT NULL, default 0. Detections only: a mention that opened a request counts 0 here and is told apart by its `outcome`. |
 | `reply_post_id` | `BIGINT` | nullable. The bot's in-thread reply: on success, an event reference plus warnings; on failure, the refusal the engine named, sent only to linked authors (see [`ingestion.md`](ingestion.md#the-bot)). NULL when no reply was earned, reply credentials are absent, or the post failed. The detection stays durable either way. |
-| `processed_at` | `TIMESTAMPTZ` | NOT NULL |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL. When the mention was queued. |
+| `processed_at` | `TIMESTAMPTZ` | nullable. The worker's latest claim while `running`, and its finish once `done` or `failed`. |
 
----
-
-### `bot_webhook_events`
-
-The queue between the X Account Activity webhook endpoint ([`POST /webhooks/x`](api.md#post-webhooksx)), which must answer X fast and therefore only inserts, and the import worker, which drains the queue through the shared mention pipeline. Idempotency lives in [`bot_mentions`](#bot_mentions), not here: a redelivered or poll-raced mention processes once. See [`ingestion.md`](ingestion.md#the-bot).
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `id` | `UUID` | PK, default `uuid4()` |
-| `payload` | `JSONB` | NOT NULL. The internal `Mention` shape: `tweet_id`, `author_id`, `author_handle`, `text`, `in_reply_to_user_id`, `in_reply_to_status_id`. Carries everything the pipeline needs, so a drain never re-reads, and never re-bills, the paid API. |
-| `status` | `VARCHAR(10)` | NOT NULL. `'queued'` → `'running'` → `'done'` \| `'failed'`. `running` marks a claimed row so a concurrent worker skips it. An exception re-queues the row; a hard worker crash strands it, and the reconciliation poll re-delivers the mention. `done` means the pipeline ran; the per-mention outcome, including a ledgered `failed`, lives in `bot_mentions`. `failed` means the attempt budget is spent or the payload was malformed. A composite index on `(status, created_at)` matches the claim query. |
-| `attempt_count` | `INTEGER` | NOT NULL, default 0. A claim counter. When it reaches the budget, the row lands `failed`, a poison-pill guard. |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL |
+A partial index `ix_bot_mentions_claim` on `created_at`, for rows whose `status` is `queued` or `running`, matches the claim query.
 
 ---
 

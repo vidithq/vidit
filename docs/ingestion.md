@@ -25,9 +25,9 @@ flowchart LR
   end
   subgraph bot [Bot: a tag on X]
     direction LR
-    b1["`**drain_webhook_events / run_bot_once**
-    delivery: webhook queue or hourly poll`"]:::spec --> b2["`**process_single_mention**
-    linked account, ledger, reply budget`"]:::spec
+    b1["`**enqueue_mentions**
+    delivery: the webhook or the hourly catch-up, into one table`"]:::spec --> b2["`**drain_mentions**
+    linked account, reply budget, the same table as ledger`"]:::spec
   end
   subgraph archive [Archive: an X export]
     direction LR
@@ -327,39 +327,43 @@ flowchart LR
     direction LR
     l1["`one delivery, one write only the bot makes, or one gesture`"]:::spec
     l2["`shared with the other entries`"]:::shared
-    l3["`the one pipeline both deliveries meet in`"]:::core
+    l3["`the one queue and pipeline both deliveries meet in`"]:::core
     l4[("`what the bot writes`")]:::store
     l1 ~~~ l2 ~~~ l3 ~~~ l4
   end
 
-  subgraph deliveries [Two deliveries, one pipeline]
+  subgraph deliveries [Two deliveries, one queue]
     direction LR
-    wh["`**/webhooks/x, drain_webhook_events**
-    nominal: X posts the mention, the queue holds it, the import worker drains it in seconds`"]:::spec
-    poll["`**run_bot_once**
-    reconciliation: hourly, the mentions timeline past the ledger's last id, so a mid-pull crash resumes`"]:::spec
+    wh["`**/webhooks/x**
+    nominal: X posts the mention and the endpoint queues it in the request`"]:::spec
+    catch["`**catch_up**
+    safety net: the import worker pulls the mentions timeline at start and then hourly`"]:::spec
   end
 
-  one["`**process_single_mention**
-  linked_owner, acquire_tagged_thread, the engine`"]:::core
-  ledger[("`**bot_mentions**
-  the idempotency ledger: a mention is processed, billed and answered at most once`")]:::store
+  queue[("`**bot_mentions**
+  **enqueue_mentions**: one row per mention, ON CONFLICT DO NOTHING; the queue and, once done, the ledger: a mention is processed, billed and answered at most once`")]:::store
+  drain["`**drain_mentions**
+  the import worker claims queued rows, oldest first`"]:::core
+  one["`**linked_owner, acquire_tagged_thread, the engine**`"]:::core
   engine["`**resolve_threads, persist_detections**`"]:::shared
   request["`**open_request**
   events.create_request, a requested row over the thread's footage`"]:::spec
   reply["`**compose_reply, compose_request_reply**
   one in-thread reply, linkless and unique, capped per trailing hour in total and per author`"]:::spec
 
-  wh --> one
-  poll --> one
-  one --> ledger
+  wh --> queue
+  catch --> queue
+  queue --> drain --> one
   one --> engine --> reply
   engine -- "no coordinate, a source link, footage" --> request --> reply
+  drain -- "lands done with its outcome" --> queue
 ```
 
-The webhook is signature-verified ([`/webhooks/x`](api.md#webhooks)) and queues into [`bot_webhook_events`](data-model.md#bot_webhook_events), drained by the always-on [import worker](#archive-import-worker); the poll ([`run_bot.py`](../backend/scripts/run_bot.py)) takes the paid mentions read (see [`x_api.py`](../backend/app/services/x_api.py)).
+The webhook is signature-verified ([`/webhooks/x`](api.md#webhooks)) and inserts a `queued` [`bot_mentions`](data-model.md#bot_mentions) row per mention. The catch-up runs inside the always-on [import worker](#archive-import-worker): once when the worker starts, then every hour, and only when `X_BOT_BEARER_TOKEN` and `X_BOT_USER_ID` are set. It takes the paid mentions read (see [`x_api.py`](../backend/app/services/x_api.py)) from a `since_id` one hour behind the table's highest `mention_post_id`, so a mention the webhook dropped is read again even after a newer one advanced the cursor, and the billed reads stay one pull per hour. Both paths insert through `enqueue_mentions` with `ON CONFLICT (mention_post_id) DO NOTHING`, so a mention both paths saw is one row. While `X_WEBHOOK_ENABLED` is true, a mention the catch-up queues fresh means the webhook missed it, and the worker logs a warning and captures a Sentry message (`webhook gap`).
 
-The [`bot_mentions`](data-model.md#bot_mentions) ledger is written whatever the outcome, so whichever path sees a mention first records it and the other counts it as handled. A `failed` row retries only when an operator deletes it. A mention from a handle with no [linked account](#the-contract) is ledgered `no_account` and produces nothing: no user row, no detection, no reply; the tag itself is the consent for sync. A mention that opened a request is ledgered `requested`, one that landed on a row the analyst already holds is ledgered `skipped`, and one whose tag its author never typed is ledgered `inherited`. When syndication refuses the tagged post outright, because it is deleted, protected, age-restricted or withheld, the mention lands `no_detection` and the failure reply names the restriction.
+The worker drains the queue with `drain_mentions`, oldest first. A claim uses `FOR UPDATE SKIP LOCKED`, sets the row `running`, adds one to `attempt_count` and stamps `processed_at`, so a second worker skips the row. A row that stays `running` for more than an hour (`STALE_RUNNING_AFTER`) is claimed again, since its worker died. A row claimed after its third attempt, or whose `payload` is malformed, lands `failed` and is never retried. A pipeline exception lands the row `done` with the outcome `failed`, captured to Sentry. Any other exception puts the row back to `queued` and propagates, so the worker backs off. Each drain that processed mentions writes one summary line to the log, with the count of each outcome.
+
+A row that lands `done` carries its `outcome` whatever the result, and the worker clears its `payload`, so the table is the ledger the reply caps and the catch-up cursor read. A mention is processed once: whichever path queues it first owns the row, and the other counts it as already handled. A row with the outcome `failed` retries only when an operator deletes it. A mention from a handle with no [linked account](#the-contract) is ledgered `no_account` and produces nothing: no user row, no detection, no reply; the tag itself is the consent for sync. A mention that opened a request is ledgered `requested`, one that landed on a row the analyst already holds is ledgered `skipped`, and one whose tag its author never typed is ledgered `inherited`. When syndication refuses the tagged post outright, because it is deleted, protected, age-restricted or withheld, the mention lands `no_detection` and the failure reply names the restriction.
 
 **A reply only inherits its parent's tag.** X opens a reply with the parent's author and the parent's mentions minus the replier, so an analyst answering a colleague whose post tagged the bot mentions the bot without typing a character. A mention counts as a tag only where its author typed it. On a post that is not a reply, every `@ViditBot` is typed. On a reply, one sitting past that leading run of mentions is typed, which is every analyst who writes their sentence and tags after it, the dot-mention `.@ViditBot` included, since the period is a character X never writes into a prefix. A reply whose only `@ViditBot` sits inside the run is settled by its parent, read once through syndication: a parent that mentions the bot, the bot's own post included, is where the tag came from, so the bot acquires nothing, answers nothing and ledgers the mention `inherited`. A parent that mentions the bot nowhere leaves the tag typed, which is what keeps the bare `@ViditBot` under the analyst's own coordinate post, and [the climb](#what-acquisition-reads) it opens, working. A parent syndication will not serve reads as inherited as well, since silence beats a refusal on a thread the tag may never have been meant for. The rule holds inside the analyst's own thread: a follow-up under a post they already tagged inherits that tag, and a re-tag they mean is typed after the prefix. The parent read is the rule's only cost, one free syndication call, spent only where the text cannot settle it.
 
@@ -454,9 +458,9 @@ The archive-level numbers in [`archive_zip.py`](../backend/app/services/tweet_in
 
 The zip never crosses the API, so the archive limit is not an HTTP body cap, and a request-size cap on a proxy in front of the API does not limit it. The dev upload endpoint stands in for S3 against local storage, using the same form shape.
 
-**The job row.** [`archive_jobs.py`](../backend/app/services/archive_jobs.py) claims the oldest runnable row, the pattern the bot's webhook queue drains with too, and re-checks the staged object's size, since the presign window outlives the enqueue. The terminal states are `done`, with assemble counts stamped, and `failed`, with a terse `error`; both delete the staged object, and the bucket's versioning keeps a noncurrent copy until the lifecycle rule expires it (see [`engineering.md`](engineering.md#deployment)). A job whose owner was soft-deleted, deactivated or left without a handle lands `failed`, so a suspended account accrues no detections, and so does a malformed upload, which the browser strip catches first and the worker validates last. `started_at` doubles as the liveness heartbeat, so a long import never crosses the stale window while it is alive and a reclaim never races a still-running first run, for example two worker instances overlapping during a rolling deploy. A reclaimed run duplicates nothing, because [re-import](#re-import) matching holds every row the first pass wrote.
+**The job row.** [`archive_jobs.py`](../backend/app/services/archive_jobs.py) claims the oldest runnable row, the pattern the bot's [`bot_mentions`](data-model.md#bot_mentions) queue drains with too, and re-checks the staged object's size, since the presign window outlives the enqueue. The terminal states are `done`, with assemble counts stamped, and `failed`, with a terse `error`; both delete the staged object, and the bucket's versioning keeps a noncurrent copy until the lifecycle rule expires it (see [`engineering.md`](engineering.md#deployment)). A job whose owner was soft-deleted, deactivated or left without a handle lands `failed`, so a suspended account accrues no detections, and so does a malformed upload, which the browser strip catches first and the worker validates last. `started_at` doubles as the liveness heartbeat, so a long import never crosses the stale window while it is alive and a reclaim never races a still-running first run, for example two worker instances overlapping during a rolling deploy. A reclaimed run duplicates nothing, because [re-import](#re-import) matching holds every row the first pass wrote.
 
-**Email and runner.** The job typically finishes after the analyst has navigated away, so the outcome arrives by email: the counts (created, updated, skipped, failed) are disjoint buckets, and the warning counts cut across the created and updated ones, under a "what to look at first" heading above a link to the detections queue. The upload page also polls `GET /events/import-archive/{job_id}` while it stays open. During the browser strip and the upload, the page asks the browser to confirm before the analyst leaves, since closing it then discards the archive before any job exists; once the enqueue returns, leaving is safe. The worker polls forever, with a 5-second idle sleep and one fresh session per pass, and each pass also drains the bot's [`bot_webhook_events`](data-model.md#bot_webhook_events) queue; `IMPORT_WORKER_ONCE=1` runs a single drain-and-exit pass over both queues, by hand or as a cron fallback. Deployment: see [`engineering.md`](engineering.md#scheduler-services).
+**Email and runner.** The job typically finishes after the analyst has navigated away, so the outcome arrives by email: the counts (created, updated, skipped, failed) are disjoint buckets, and the warning counts cut across the created and updated ones, under a "what to look at first" heading above a link to the detections queue. The upload page also polls `GET /events/import-archive/{job_id}` while it stays open. During the browser strip and the upload, the page asks the browser to confirm before the analyst leaves, since closing it then discards the archive before any job exists; once the enqueue returns, leaving is safe. The worker polls forever, with a 5-second idle sleep and one fresh session per pass, and each pass also drains the bot's [`bot_mentions`](data-model.md#bot_mentions) queue. In its first pass, and then in one pass every hour, the worker runs the [bot catch-up](#the-bot) before the drains, when the bot is configured. `IMPORT_WORKER_ONCE=1` runs a single pass over the queues and the catch-up, by hand or as a cron fallback. Deployment: see [`engineering.md`](engineering.md#scheduler-services).
 
 ### Re-import
 
@@ -524,5 +528,5 @@ The provenance leg is the thread's post IDs, not a URL and not the anchor alone.
 
 - [`api.md`](api.md#post-eventsimport-from-tweet) for the `import-from-tweet` and `import-archive` request/response contracts.
 - [`data-model.md`](data-model.md#events) for the `events` table columns and CHECK constraints.
-- [`engineering.md`](engineering.md#scheduler-services) for the `bot` and `worker` roles the bot and the import worker run as, and [`engineering.md`](engineering.md#x-webhook-operations) for the webhook runbook.
+- [`engineering.md`](engineering.md#scheduler-services) for the `worker` role the bot and the import worker run as, and [`engineering.md`](engineering.md#x-webhook-operations) for the webhook runbook.
 - [`archival.md`](archival.md) for the archived copies an analyst records against an event's links.

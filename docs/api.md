@@ -3365,12 +3365,14 @@ One Account Activity delivery.
 - The `x-twitter-webhooks-signature` header must carry `sha256=<base64(HMAC-SHA256(consumer_secret, raw_body))>`, compared in constant time. A mismatch is a 401.
 - A body over 512 KiB is a 413, before the body is read.
 - A valid signature always answers 200, because a non-2xx makes X retry and eventually deactivate the webhook. A foreign `for_user_id`, a non-mention event, and the bot's own posts are ignored.
-- Mentions are queued in [`bot_webhook_events`](data-model.md#bot_webhook_events); the import worker runs the pipeline.
+- Mentions are queued as `queued` rows in [`bot_mentions`](data-model.md#bot_mentions), with `ON CONFLICT (mention_post_id) DO NOTHING`; the import worker runs the pipeline. A redelivered mention, or one the hourly catch-up already queued, adds no row.
 
 **Response 200:**
 ```json
 { "queued": 1 }
 ```
+
+`queued` counts the mentions newly inserted by this delivery.
 
 **Response 503:** the consumer secret or the bot user id is not configured.
 

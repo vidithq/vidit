@@ -12,6 +12,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - A site admin links an X handle to an account; analysts no longer file a request for one.
 - API and database fields follow one naming convention: events use `occurred_date`, `occurred_time` and `coords`, media use `kind`, conflicts use `is_ongoing`, and foreign keys end in `_id`. The old field names no longer work, with no alias.
 - An organization invitation is withdrawn by the invitee's username instead of an invitation id, and the organization and event invitation lists report `invited_at` in place of `created_at`.
+- The always-on worker runs the hourly bot mentions catch-up, so the separate `bot` role and its schedule are no longer needed. Mentions queued by the webhook and the catch-up share one table.
 
 ### Removed
 
