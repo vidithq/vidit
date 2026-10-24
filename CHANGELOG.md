@@ -4,6 +4,13 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ## Unreleased
 
+### Added
+
+- An event holds up to 10 sources, none of them the main one. Each has a level (direct, indirect or context), a sensor, a capture time, a camera position, a graphic flag, tags, one file, and up to 10 URLs, each with its post time and archived copy.
+- `POST /uploads` stages one source file before the event write that uses it; a staged file nobody uses is deleted after 24 hours.
+- `GET /sources` finds an existing source by URL or title, and an event form copies it onto another event without storing its file twice.
+- Search matches source titles and source URLs, and the map, list, search and feed filters take `sensor` and `level`.
+
 ### Changed
 
 - Approvals are final: nobody revokes one, Approve asks you to confirm first, and a site admin can delete an approval, after which its reviewer or organization can approve that version again.
@@ -13,6 +20,11 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - API and database fields follow one naming convention: events use `occurred_date`, `occurred_time` and `coords`, media use `kind`, conflicts use `is_ongoing`, and foreign keys end in `_id`. The old field names no longer work, with no alias.
 - An organization invitation is withdrawn by the invitee's username instead of an invitation id, and the organization and event invitation lists report `invited_at` in place of `created_at`.
 - The always-on worker runs the hourly bot mentions catch-up, so the separate `bot` role and its schedule are no longer needed. Mentions queued by the webhook and the catch-up share one table.
+- Every event write takes a `sources` list in place of the source URL, mirror, snapshot, camera position, post time, graphic flag and file fields, and event reads serve `sources` in place of the source and archive fields.
+- Publishing needs a direct or indirect source with a file, a sensor on every source with a file, and a conflict; no tag is required. A request needs a direct or indirect source with a file.
+- The analyst who geolocates a request can correct its sources, and batch completion takes a sensor per detection in place of a capture-source tag.
+- The graphic flag belongs to each source, and an event is graphic when any of its sources is; the admin moderation flag sets or clears it on every source.
+- Profile stats count events per sensor, the source hosts read each event's first source URL, and `GET /tags` lists the tags on live events or their sources.
 
 ### Removed
 
@@ -20,6 +32,8 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - X handle change requests and the admin queue that answered them.
 - Product update emails, their sign-up and Settings consent, and the admin screen that sent them.
 - The `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `PRODUCT_UPDATE_EMAIL_DAILY_CAP` and `PRODUCT_UPDATE_EMAIL_BATCH_SIZE` settings; `NOTIFICATION_EMAIL_DAILY_CAP` must stay below `EMAIL_PROVIDER_DAILY_QUOTA`.
+- Capture-source tags and tag categories: each source's sensor replaces them, and `POST /tags` takes only a name.
+- Archived copies of the post a detection came from and of the links in a proof body.
 
 ## v0.7.4, 2026-10-22
 

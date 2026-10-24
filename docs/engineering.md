@@ -31,7 +31,7 @@ flowchart TB
   subgraph sched [Roles without a port, same image]
     direction TB
     worker["`**worker**
-    always on: notification_deliveries, archive_import_jobs, bot_mentions; hourly bot catch-up`"]:::shared
+    always on: notification_deliveries, archive_import_jobs, bot_mentions; hourly bot catch-up and upload reaper`"]:::shared
     conf["`**sync-conflicts**
     daily: sync_conflicts.py`"]:::shared
   end
@@ -115,7 +115,7 @@ Every image is decoded and re-encoded before it is stored: [`evidence_processing
 | Icons | **lucide-react** |
 | Linting | **ESLint 9** (flat config in [`frontend/eslint.config.mjs`](../frontend/eslint.config.mjs), importing `eslint-config-next/core-web-vitals`). `npm run lint` invokes `eslint` directly. |
 | Tests | **Vitest + Testing Library** (jsdom, config in [`frontend/vitest.config.mts`](../frontend/vitest.config.mts)). Colocated `*.test.ts(x)` under `src/`; `npm test` runs once, `npm run test:watch` watches. `NEXT_PUBLIC_API_URL` is stubbed in the config so importing `lib/api.ts` doesn't trip its boot guard. Layout is not testable there (jsdom has no layout engine): `npm run test:e2e` runs the Playwright suite that measures it, after `npx playwright install chromium` once. See [Narrow-viewport smoke tests](#narrow-viewport-smoke-tests). |
-| API types | **`openapi-typescript`**: [`frontend/src/lib/api-types.ts`](../frontend/src/lib/api-types.ts) is **generated** from the backend OpenAPI spec (`make gen-api-types` dumps `app.openapi()` → `openapi-typescript`). [`types/index.ts`](../frontend/src/types/index.ts) derives its enums (`EventStatus`, `TagCategory`, `MediaType`) from it, so a backend schema change that isn't regenerated is a `tsc` failure, not a runtime surprise. The `api-types` CI job regenerates + `git diff --exit-code`, failing on drift. Don't hand-edit `api-types.ts`. |
+| API types | **`openapi-typescript`**: [`frontend/src/lib/api-types.ts`](../frontend/src/lib/api-types.ts) is **generated** from the backend OpenAPI spec (`make gen-api-types` dumps `app.openapi()` → `openapi-typescript`). [`types/index.ts`](../frontend/src/types/index.ts) derives its enums (`EventStatus`, `MediaType`, the source sensor and level) from it, so a backend schema change that isn't regenerated is a `tsc` failure, not a runtime surprise. The `api-types` CI job regenerates + `git diff --exit-code`, failing on drift. Don't hand-edit `api-types.ts`. |
 
 MapLibre GL JS is open source (BSD-3-Clause). It uses vector tiles and supports client-side clustering. CARTO Dark Matter tiles are free for non-commercial use and match the dark theme.
 
@@ -322,12 +322,13 @@ Every other frontend copy of a backend rule or of the issue tracker is hand-kept
 | `lib/mediaUrls.ts::displayUrlsFor` | `storage.derivative_key` (`_hero`, `_thumb`); `upload_proof_image(produce_derivatives=False)` | a proof image requests a derivative that does not exist (403) |
 | `lib/viewport.ts` | `event_filters.parse_bbox` field order and bounds | map bbox is refused or filters the wrong area |
 | `lib/pagination.ts` | `pagination.next_link` `Link` header shape | paging stops after page one |
-| `lib/events.ts::MAX_SECONDARY_SOURCE_LINKS` | `models/event.MAX_SECONDARY_SOURCE_LINKS` | form allows a link the API refuses |
-| `lib/events.ts::batchCompletionBlockers` | `events/batch._publish_detection`, `events.detection_ready_predicate` | queue labels a row ready that the server refuses |
-| `lib/events.ts::missingEventFields`, `missingEventRequestFields` | `events/rules._require_submission_floor`, `_require_submission_media`, `_require_proof_image` and the request checks in `events/request.py` | the form calls a submission ready that the server refuses, or blocks one it accepts |
+| `lib/events.ts::MAX_SOURCES_PER_EVENT` (the event form's source list) | `models/source.MAX_SOURCES_PER_EVENT` | form offers a source the API refuses (`too_many_sources`) |
+| `lib/events.ts::MAX_LINKS_PER_SOURCE` (each source editor's link list) | `models/source.MAX_LINKS_PER_SOURCE` | form offers a URL the API refuses (`too_many_source_links`) |
+| `lib/events.ts::batchCompletionBlockers` | `events/batch._publish_detection`, `events.detection_ready_predicate` (coordinates, a `direct` or `indirect` source with a file, no source without a URL, a proof image) | queue labels a row ready that the server refuses |
+| `lib/events.ts::missingEventFields`, `missingEventRequestFields` | `events/sources.check_publish_floor` (with `require_sensor=False` on a request), `sources._clean_links` (a URL on every source), `events/rules._require_conflict`, `_require_proof_image` | the form calls a submission ready that the server refuses, or blocks one it accepts |
 | `lib/events.ts::EventView` | `event_filters.VIEWS` (the router takes `str`, so codegen cannot carry it) | `view` parameter refused |
 | `lib/events.ts::DetectionReadiness` | `events/readiness.DETECTION_READINESS` (the router takes `str`, so codegen cannot carry it) | `readiness` parameter refused (422) |
-| `lib/events.ts::snapshotToEventView`, `changedFields`, `hasVersionChanges` | `versions.build_snapshot` fields, `versions.COMPARED_FIELDS` (the snapshot is untyped JSON, so neither codegen nor `tsc` catches a renamed key) | version pages silently blank a field |
+| `lib/events.ts::snapshotToEventView`, `changedFields`, `hasVersionChanges` | `versions.build_snapshot` fields, the source entry of `versions.source_entry`, `versions.COMPARED_FIELDS` (the snapshot is untyped JSON, so neither codegen nor `tsc` catches a renamed key) | version pages silently blank a field or a source |
 | `lib/events.ts::REPORT_DETAILS_MAX_LEN`, `VERSION_NOTE_MAX_LEN` | `schemas/report.DETAILS_MAX_LENGTH`, `schemas/event.VERSION_NOTE_MAX_LENGTH` | server refuses typed text |
 | `components/event/CloseEventForm.tsx::CLOSE_REASON_MAX_LEN` | `schemas/event.EventCloseRequest.close_reason` `max_length` | the server refuses typed text |
 | `components/profile/useProfileEdit.ts::BIO_MAX_LEN` | `schemas/user.BIO_MAX_LEN` | server refuses typed text |
@@ -335,7 +336,6 @@ Every other frontend copy of a backend rule or of the issue tracker is hand-kept
 | `lib/collections.ts::COLLECTION_TITLE_MAX_LEN`, `COLLECTION_DESCRIPTION_MAX_LEN` | `models/event.TITLE_MAX_LENGTH`, `schemas/collection.DESCRIPTION_MAX_LENGTH` | server refuses typed text |
 | `lib/proof.tsx::htmlText` | `sanitize.html_text` | description counter disagrees with the server cap |
 | `lib/proof.tsx::proofImageSrcs`, `proofHasImage` | `sanitize.extract_image_srcs`, `events._require_proof_image` | form calls a proof ready that the server refuses |
-| `lib/cardTags.ts` `UNKNOWN_VALUE` | the `Unknown` row of `CAPTURE_SOURCE_TAGS` in the baseline migration (`alembic/versions/g5i7k9m1o3q5_baseline.py`) | feed cards show a *Capture source: Unknown* pill |
 | `lib/conflicts.ts::CONFLICT_OTHER_NAME` | the `Other` conflict row the baseline migration seeds (`alembic/versions/g5i7k9m1o3q5_baseline.py`) | the conflict picker stops offering the escape value |
 | `lib/collections.ts::COLLECTABLE_STATUSES` | `event_filters.collectable_events` | picker offers rows the add verb refuses (409) |
 | `components/collections/EventPicker.tsx::chronological` | `collections.chronological_key` | the picker orders a collection's events differently from its page |
@@ -379,7 +379,7 @@ Every table, column, constraint and API field follows these rules. The API field
 | Repeated table name | A column does not repeat its table name | `media.kind`, not `media.media_type` |
 | Discriminator | Name it `kind`, never `type` | `media.kind`, `notifications.kind` |
 | Post | Write "post", never "tweet" | `event_detections.from_post_id` |
-| Event source | `source` is reserved for event sources | `source_url`, `event_source_links` |
+| Event source | `source` is reserved for event sources | `sources`, `source_links`, `source_tags`, `media.source_id` |
 | X handle | `x_handle`, with a prefix when the table holds another handle | `users.x_handle`, `bot_mentions.author_x_handle` |
 | Leading underscore | A column or field name never starts with one | `token_hash` |
 | Creation stamp | Every entity table has `created_at`. A join table has none. | `tags.created_at`, `conflicts.created_at` |
@@ -392,7 +392,7 @@ Every table, column, constraint and API field follows these rules. The API field
 - Geometry columns use `geoalchemy2` types, with `spatial_index` stated explicitly (GeoAlchemy2 otherwise creates a GIST index by default).
 - Validate a new migration's whole chain on a fresh database before pushing: `docker-compose up -d`, then `uv run alembic upgrade head`. Verify the current head with `uv run alembic heads`, not by filename sort order.
 
-The chain starts at one baseline migration, the only file whose `down_revision` is `None`. It builds the whole schema in a single step: the `postgis` extension, every table, constraint and index, and the seed rows a fresh database needs (the `capture_source` tag taxonomy and the `Other` conflict escape value). New migrations stack on top of it as usual.
+The chain starts at one baseline migration, the only file whose `down_revision` is `None`. It builds the whole schema in a single step: the `postgis` extension, every table, constraint and index, and its seed rows: the `capture_source` tags, which a later migration maps to source sensors and drops, and the `Other` conflict escape value. New migrations stack on top of it as usual.
 
 A squash replaces the chain with a new baseline that **keeps the previous head's revision id**. A database whose `alembic_version` already holds that id therefore needs no stamp, and the `migrate` role runs nothing. Read the deployed revision before merging a squash, and squash only when it matches the head being replaced:
 
@@ -601,7 +601,7 @@ The backend image runs every backend role. Its entrypoint, [`backend/entrypoint.
 |---------|------|-----------|--------------------|
 | `api` | The FastAPI server on `$PORT` (default `8000`), with the proxy-header flags in [Particularities](#particularities-non-obvious-behavior-found-during-development). | Always on; serves `/health`. | N/A |
 | `migrate` | `alembic upgrade head`, then exits. | One-shot, before each new `api` release takes traffic. A non-zero exit means the schema did not reach the head: do not start the new release. | Once per deploy |
-| `worker` | The import worker: notification emails, archive imports, the bot mention queue, and the hourly bot catch-up ([Scheduler services](#scheduler-services)). | Always on; listens on no port. Two workers are safe. | N/A |
+| `worker` | The import worker: notification emails, archive imports, the bot mention queue, the hourly bot catch-up and the hourly reaper of expired staged uploads ([Scheduler services](#scheduler-services)). | Always on; listens on no port. Two workers are safe. | N/A |
 | `sync-conflicts` | One pass of the ongoing-conflicts sync ([`conflicts.md`](conflicts.md)), then exits. | Scheduled. A missed run is harmless. | Once a day |
 
 Run a role locally against the image:
@@ -652,7 +652,7 @@ Both take the API's `DATABASE_URL` and `JWT_SECRET`, because [`config.py`](../ba
 
 Only `migrate` changes the schema, and a host can start these roles before it finishes. Each scheduler entry point calls `wait_for_schema_head` in [`schema_gate.py`](../backend/app/schema_gate.py) before its first pass. It compares the database revision with the alembic script head and polls every 5 seconds while the database is behind. After 10 minutes it reports to Sentry and exits non-zero, and the host's restart policy starts it again. A database at a revision the code does not know, as after a code rollback, passes at once.
 
-**`worker`**, always on. It also takes the storage variables (`STORAGE_BACKEND`, `S3_BUCKET`, `AWS_*`) and email variables (`EMAIL_*`, `RESEND_API_KEY`, `FRONTEND_URL`) the API takes, plus the six `X_*` credentials, `X_WEBHOOK_ENABLED` and the two reply caps, `BOT_MAX_REPLIES_PER_HOUR` and `BOT_MAX_REPLIES_PER_AUTHOR_PER_HOUR`, since it runs the bot (see below), the notification email caps, `NOTIFICATION_EMAIL_DAILY_CAP`, `NOTIFICATION_EMAIL_DAILY_CAP_PER_USER` and `NOTIFICATION_EMAIL_DAILY_CAP_PER_ACTOR`, `EMAIL_PROVIDER_DAILY_QUOTA`, and `API_URL`, the base of the one-click unsubscribe URLs, which `config.py` refuses as a localhost URL when `COOKIE_SECURE` is true. What it drains: the [notification queue](#email) first, then the jobs and mentions in [`ingestion.md`](ingestion.md#archive-import-worker). If the email queue raises, the worker reports it to Sentry and skips it for that pass, so it never holds back the jobs and mentions.
+**`worker`**, always on. It also takes the storage variables (`STORAGE_BACKEND`, `S3_BUCKET`, `AWS_*`) and email variables (`EMAIL_*`, `RESEND_API_KEY`, `FRONTEND_URL`) the API takes, plus the six `X_*` credentials, `X_WEBHOOK_ENABLED` and the two reply caps, `BOT_MAX_REPLIES_PER_HOUR` and `BOT_MAX_REPLIES_PER_AUTHOR_PER_HOUR`, since it runs the bot (see below), the notification email caps, `NOTIFICATION_EMAIL_DAILY_CAP`, `NOTIFICATION_EMAIL_DAILY_CAP_PER_USER` and `NOTIFICATION_EMAIL_DAILY_CAP_PER_ACTOR`, `EMAIL_PROVIDER_DAILY_QUOTA`, and `API_URL`, the base of the one-click unsubscribe URLs, which `config.py` refuses as a localhost URL when `COOKIE_SECURE` is true. What it drains: the [notification queue](#email) first, then the jobs and mentions in [`ingestion.md`](ingestion.md#archive-import-worker). Once when it starts and then every hour, it also deletes the staged uploads past their expiry and their objects ([`uploads`](data-model.md#uploads)), whether or not the bot is configured. If the email queue raises, the worker reports it to Sentry and skips it for that pass, so it never holds back the jobs and mentions.
 
 The bot runs inside the worker, so no separate schedule exists for it. The worker drains the `queued` rows of `bot_mentions` that the webhook inserts. It also runs the hourly catch-up, which pulls the mentions timeline to queue what the webhook missed: once when the worker starts, then every hour. The catch-up needs `X_BOT_BEARER_TOKEN` and `X_BOT_USER_ID` (see `backend/.env.example`), and the worker skips it when either is empty. Replies need the four OAuth 1.0a values; without them, the bot processes mentions but posts nothing. A failed mentions pull is captured to Sentry and does not stop the other queues. Each pull is billed, so a worker that restarts often pays for one extra read per start. A second worker is safe: the queue claim skips rows another worker holds, but each worker runs its own catch-up. What the bot runs: [`ingestion.md`](ingestion.md#the-bot).
 

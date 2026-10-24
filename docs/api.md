@@ -97,7 +97,9 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/events/import-archive/{job_id}` | 🔒 | Poll your import job (status + import counts) |
 | GET | `/events/{id}` | 🌐 | Full event detail, any lifecycle state |
 | POST | `/events/{id}/report` | 🌐 | Report an event for moderation (anonymous allowed) |
-| POST | `/events` | 🔒 | Create an event born `geolocated` (multipart, uploads media) |
+| POST | `/uploads` | 🔒 | Stage one source file for a later event write (multipart, one file) |
+| GET | `/sources` | 🔒 | Find an existing source by URL or title, to copy into an event form |
+| POST | `/events` | 🔒 | Create an event born `geolocated` (multipart) |
 | POST | `/events/requests` | 🔒 | Open a request (multipart); creates a `requested` event |
 | POST | `/events/{id}/request` | 🔒 | Correct an open request, owner only; overwrites it in place, no version filed |
 | POST | `/events/{id}/geolocate` | 🔒 | Give an event a vouched location: `requested` \| `detected` → `geolocated` |
@@ -133,8 +135,8 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/search` | 🌐 | Free-text search across geolocations / requests / collections / users / organizations |
 | GET | `/search/authors` | 🌐 | Username typeahead for the author filter and the co-geolocator invite |
 | **Tags** | | | |
-| GET | `/tags` | 🌐 | List tags (defaults to ones referenced by live geos) |
-| POST | `/tags` | 🔒 | Create a free tag (curated categories rejected) |
+| GET | `/tags` | 🌐 | List the tags on live events or their sources |
+| POST | `/tags` | 🔒 | Create a tag, or get the one already named so |
 | **Conflicts** | | | |
 | GET | `/conflicts` | 🌐 | List the conflict referential (`?used=true` narrows to conflicts on live events) |
 | **Users** | | | |
@@ -237,6 +239,8 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST /events/import-archive/presign` | 10/hour |
 | `POST /events/import-archive` | 10/hour |
 | `GET /events/import-archive/{job_id}` | 60/min |
+| `POST /uploads` | 30/min |
+| `GET /sources` | 60/min |
 | `POST /events`, `POST /events/requests`, `POST /events/{id}/request` | 30/min |
 | `POST /events/{id}/geolocate`, `POST /events/{id}/versions` | 30/min |
 | `POST /events/batch-complete` | 10/min |
@@ -526,48 +530,39 @@ flowchart LR
 
 ### Event form fields
 
-Five multipart endpoints take the event form. Each posts the whole row state at once. This table states every field once; each endpoint section lists only its own rules.
+Five multipart endpoints take the event form. Each posts the whole row state at once, its sources included. This table states every field once; each endpoint section lists only its own rules.
 
-Columns: **create** [`POST /events`](#post-events), **requests** [`POST /events/requests`](#post-eventsrequests), **request** [`POST /events/{id}/request`](#post-eventsidrequest), **geolocate** [`POST /events/{id}/geolocate`](#post-eventsidgeolocate), **versions** [`POST /events/{id}/versions`](#post-eventsidversions). Values: **req** required; **opt** optional; **keep** optional, and a blank or omitted value keeps what the row holds; **floor** optional on the wire, required by the [evidence floor](#evidence-floor); **no** not accepted, ignored if sent.
+Columns: **create** [`POST /events`](#post-events), **requests** [`POST /events/requests`](#post-eventsrequests), **request** [`POST /events/{id}/request`](#post-eventsidrequest), **geolocate** [`POST /events/{id}/geolocate`](#post-eventsidgeolocate), **versions** [`POST /events/{id}/versions`](#post-eventsidversions). Values: **req** required; **opt** optional; **floor** optional on the wire, required by the [evidence floor](#evidence-floor); **no** not accepted, ignored if sent.
 
 | Field | Rule | create | requests | request | geolocate | versions |
 |---|---|---|---|---|---|---|
 | `title` | 1 to 255 characters | req | req | req | req | req |
 | `lat`, `lng` | Subject point. Latitude in [-90, 90], longitude in [-180, 180]. Both or neither; on request, posting neither clears the guess | req | opt | opt | req | req |
-| `capture_source_lat`, `capture_source_lng` | Camera position. Both or neither | opt | opt | opt | opt | opt |
-| `source_url` | The footage origin, at most 2000 characters | req | req | req | req | keep |
-| `source_snapshot_url` | The [archived copy](#archived-copies) of `source_url`, at most 2000 characters | opt | opt | opt | opt | opt |
-| `detected_from_snapshot_url` | The archived copy of `detected_from_url` | no | no | no | no | opt |
-| `secondary_source_urls` | Repeated field, one per mirror, each at most 2000 characters. Normalized: stripped, blanks and duplicates dropped, an entry equal to `source_url` dropped, order kept. More than 10 after normalization is `too_many_source_links`. Replaces the stored list | opt | opt | opt | opt | opt |
-| `secondary_snapshot_urls` | Repeated field, the archived copy of each mirror, aligned with `secondary_source_urls` by position. Send an empty value for a mirror you did not archive | opt | opt | opt | opt | opt |
+| `sources` | JSON array of [`SourceCreate`](#sources): the event's whole source list, which replaces the stored one. Required on the wire; the floor decides what it must hold | req | req | req | req | req |
 | `occurred_date` | `YYYY-MM-DD`. Blank stores NULL | opt | opt | opt | opt | opt |
 | `occurred_time` | `HH:MM`, UTC. Blank stores NULL. Independent of `occurred_date` | opt | opt | opt | opt | opt |
-| `source_posted_at` | `YYYY-MM-DDTHH:MM`, read as UTC: when the source posted the media | req | req | keep | req | keep |
 | `proof` | An HTML string, sanitized on the [rich text](#rich-text) rules. A `placeholder://<filename>` src resolves against `proof_files`; an already-uploaded URL passes through | opt | opt | opt | opt | opt |
-| `tag_ids` | JSON array of tag ids. Replaces the tag set | floor | opt | opt | floor | floor |
+| `tag_ids` | JSON array of tag ids. Replaces the event's tag set. A source's tags travel in its `tag_ids` | opt | opt | opt | opt | opt |
 | `conflict_ids` | JSON array of [conflict](#conflicts) ids. Replaces the conflict set | floor | opt | opt | floor | floor |
-| `is_graphic` | `true` when the footage shows death, injury or human remains. Defaults to `false`. Ratchets: `false` never clears a set flag; only [`PATCH /admin/events/{id}/moderation`](#patch-admineventsidmoderation) clears it | opt | opt | opt | opt | opt |
 | `note` | At most 280 characters, stored on the version this edit supersedes | no | no | no | no | opt |
-| `file` | Exactly one source file (image or video) | req | req | no | no | no |
-| `remove_media_ids` | JSON array of source media ids to drop | no | no | opt | opt | opt |
-| `files` | Replacement source media, 0 or 1. Kept plus new must total exactly one | no | no | opt | opt | opt |
 | `proof_files` | The proof body's inline images, matched to its `placeholder://` srcs by filename | opt | opt | opt | opt | opt |
 
-`status`, `requested_by` and the [detection provenance](data-model.md#event_detections) (`detected_from_url` among it) accept no field on any of the five. No write moves `detected_from_url`.
+`status`, `requested_by` and the [detection provenance](data-model.md#event_detections) (`detected_from_url` among it) accept no field on any of the five. No write moves `detected_from_url`. A source's file never travels in the event form: it uploads first, through [`POST /uploads`](#post-uploads).
 
 #### Evidence floor
 
-`POST /events`, `geolocate`, `versions` and [`POST /events/batch-complete`](#post-eventsbatch-complete) check the post-write state against one floor, before any upload:
+`POST /events`, `geolocate`, `versions` and [`POST /events/batch-complete`](#post-eventsbatch-complete) check the post-write state against one floor, before anything is written:
 
-1. Exactly one source media.
-2. At least one image in the `proof` body.
-3. At least one [conflict](#conflicts) and at least one tag of category `capture_source` (see [Tags](#tags)). Both domains ship an escape value (conflict `"Other"`, `capture_source` `"Unknown"`), so the floor is always satisfiable. A miss is `tag_requirements_not_met`.
+1. A `direct` or `indirect` source: none is `source_required`, and none with a file is `source_file_required`. A `context` source may be a URL only.
+2. A sensor on every source that has a file, whatever its level: `sensor_required`.
+3. At least one [conflict](#conflicts): `conflict_required`. The `"Other"` conflict keeps the rule satisfiable. No tag is required.
+4. At least one image in the `proof` body: `proof_image_required`.
 
-A `geolocated` row also always carries coordinates and a `source_url`. The two request paths require only the source file; the curated floor binds at the geolocate.
+A `geolocated` row also always carries coordinates. The two request writes check only the first rule: a direct or indirect source with a file, no sensor and no conflict.
 
 #### Archived copies
 
-`source_snapshot_url`, `secondary_snapshot_urls` and `detected_from_snapshot_url` are checked and stored in the same transaction as the write, on the terms [`archival.md`](archival.md) states. A rejected paste is a 400 with one of the `snapshot_*` codes or `original_url_not_on_event`, and nothing is written. A mirror's copy is paired with its mirror before normalization, so a copy whose mirror normalization drops is dropped with it.
+A link's `snapshot_url` is checked and stored in the same transaction as the write, on the terms [`archival.md`](archival.md) states. A rejected paste is a 400 with one of the `snapshot_*` codes, and nothing is written. A link posted without `snapshot_url` holds no copy after the write.
 
 #### Proof-image ceiling
 
@@ -588,31 +583,168 @@ The plain-text projection (`sanitize.html_text`) measures the description cap an
 
 At publish, the server sanitizes the body first, uploads `proof_files`, and then rewrites each `placeholder://` src to the stored URL.
 
+### Sources
+
+An event holds up to 10 [sources](data-model.md#sources), and none is the main one. Each is one block of the event form: a file, the URLs it was posted at, and what is known about its capture. Every event write posts the whole list as the `sources` field.
+
+```mermaid
+flowchart LR
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`a request the form sends`"]:::spec
+    l2["`what a source names`"]:::shared
+    l3["`the check before anything is written`"]:::core
+    l4[("`a store`")]:::store
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
+  end
+
+  upload["`**POST /uploads**
+  one file per request; answers an UploadRead id`"]:::spec
+  picker["`**GET /sources?q=**
+  finds an existing source to copy; answers its media.id`"]:::spec
+  spec_new["`**upload_id**
+  a staged file of yours, consumed by the write`"]:::shared
+  spec_copy["`**media_id**
+  this source's own file is kept; another source's file is copied`"]:::shared
+  spec_id["`**id**
+  a stored source of this event, updated in place`"]:::shared
+  write["`**the event write**
+  multipart: sources as JSON, proof_files as file parts`"]:::spec
+  plan["`**plan_sources**, **check_publish_floor**
+  caps, ids, files, links and snapshots, then the floor of this write`"]:::core
+  rows[("`**sources**, **source_links**, **media**
+  the stored list follows the posted one: missing sources are deleted`")]:::store
+
+  upload --> spec_new --> write
+  picker --> spec_copy --> write
+  spec_id --> write
+  write --> plan --> rows
+```
+
+**`SourceCreate`**, one entry of the `sources` array:
+
+```json
+{
+  "id": null,
+  "title": "Drone footage of the strike",
+  "level": "direct",
+  "sensor": "drone",
+  "captured_at": "2026-03-15T14:20",
+  "camera_position": { "lat": 48.12, "lng": 37.45 },
+  "is_graphic": false,
+  "links": [
+    { "url": "https://t.me/channel/12345", "posted_at": "2026-03-15T18:05", "snapshot_url": null },
+    { "url": "https://x.com/mirror_handle/status/1234567890" }
+  ],
+  "tag_ids": ["uuid"],
+  "upload_id": "uuid",
+  "media_id": null
+}
+```
+
+| Field | Rule |
+|---|---|
+| `id` | A stored source of this event, to update in place. Omit it to create a source. An id that is not one of the event's sources, or that repeats, is `source_not_found` |
+| `title` | Optional, at most 255 characters, stripped. `""` is no title |
+| `level` | Required. `direct` (the act while it happens), `indirect` (its direct consequences, after the fact) or `context` (anything else). See [`data-model.md`](data-model.md#sources) |
+| `sensor` | `smartphone`, `satellite`, `drone`, `static_camera`, `dashcam`, `body_cam` or `unknown`, or `null`. What captured the file; required on a source with a file at publication |
+| `captured_at` | `YYYY-MM-DDTHH:MM`, read as UTC: when the media was captured. Optional |
+| `camera_position` | `{lat, lng}`: where the media was shot from. Optional; a value out of range is `invalid_coordinates` |
+| `is_graphic` | `true` when the media shows death, injury or human remains. Defaults to `false`. On a stored source it only rises: `false` keeps a set flag, and only [`PATCH /admin/events/{id}/moderation`](#patch-admineventsidmoderation) clears it |
+| `links` | 1 to 10 URLs, each `{url, posted_at, snapshot_url}`. `url` is at most 2000 characters; `posted_at` (`YYYY-MM-DDTHH:MM`, UTC) is when the media was posted there; `snapshot_url` is the link's [archived copy](#archived-copies). Each URL is stripped, and blanks and repeats are dropped before the count |
+| `tag_ids` | The source's tags, from the catalogue events use. An unknown id is ignored |
+| `upload_id` | A file you staged through [`POST /uploads`](#post-uploads). The write consumes it: the staged row becomes the source's file |
+| `media_id` | A stored source file. The source's own file keeps it; another source's file, on this event or on any event that is not deleted or withheld, is copied: a new file row on the same stored object, and the new source takes that source's `is_graphic`. Find one through [`GET /sources`](#get-sources) |
+
+A source names one file, through `upload_id` or `media_id`, or none; both is a 422. Every other field outside this table is a 422 too.
+
+**The posted list replaces the stored one.** An entry with `id` updates that source in place, an entry without one creates a source, and a stored source the list leaves out is deleted with its links, tags and file row. Its stored object stays while a copy or a readable version names it ([`data-model.md`](data-model.md#media)). A source's links are replaced whole too, so post back each link's `snapshot_url` to keep its copy. The order is derived (level, then `captured_at`), so the posted order is not stored.
+
+**Every source a person writes needs a URL.** A source posted with no link left after the blanks and repeats are dropped is `source_link_required`. Machine sources may lack one until they are published.
+
 ### Event write errors
 
 The error table every event form endpoint shares. Each endpoint section names which of its rows apply and adds its own.
 
 | Status | Code | Case |
 |---|---|---|
-| 400 | (plain string) | Empty or whitespace-only `title` or `source_url` |
-| 400 | `invalid_coordinates` | A coordinate out of range, or half of a pair |
-| 400 | `media_required` | No source media, or the write would leave none |
+| 400 | (plain string) | Empty or whitespace-only `title` |
+| 400 | `invalid_coordinates` | A coordinate out of range, or half of a pair, on the event or a source's `camera_position` |
 | 400 | `invalid_proof` | `proof` exceeds a [rich text](#rich-text) cap |
 | 400 | `proof_image_required` | No image in the final proof body |
-| 400 | `tag_requirements_not_met` | No conflict, or no `capture_source` tag |
-| 400 | `too_many_source_links` | More than 10 `secondary_source_urls` after normalization |
-| 400 | `invalid_file` | Disallowed type or size, or a proof src naming another event's image |
-| 400 | `evidence_processing_failed` | An image the server refuses (see [File limits](#file-limits)), or a failed upload |
+| 400 | `conflict_required` | No conflict |
+| 400 | `source_required` | No `direct` or `indirect` source |
+| 400 | `source_file_required` | No `direct` or `indirect` source carries a file |
+| 400 | `sensor_required` | A source with a file names no sensor |
+| 400 | `source_link_required` | A source with no URL left after blanks and repeats are dropped |
+| 400 | `invalid_source_url` | A source URL that is not an `http` or `https` link with a host |
+| 400 | `too_many_sources` | More than 10 sources |
+| 400 | `too_many_source_links` | More than 10 URLs on one source, after blanks and repeats are dropped |
+| 400 | `source_not_found` | A source `id` that is not one of the event's sources, or that repeats |
+| 400 | `source_media_not_found` | A `media_id` that names no file of this event or of a readable event |
+| 400 | `upload_not_found` | An `upload_id` that does not exist or is not yours, or that another write already consumed |
+| 400 | `upload_expired` | An `upload_id` past its `expires_at`. Upload the file again |
+| 400 | `invalid_file` | A proof file of a disallowed type or size, or a proof src naming another event's image |
+| 400 | `evidence_processing_failed` | A proof image the server refuses (see [File limits](#file-limits)), or a failed upload |
 | 400 | `proof_files_mismatch` | A `placeholder://` src with no matching `proof_files` upload, or the reverse |
-| 400 | `source_url_required` | A blank `source_url` where the row must carry one |
-| 400 | `snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url`, `snapshot_not_a_snapshot_code`, `original_url_not_on_event` | A rejected [archived copy](#archived-copies) |
+| 400 | `snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url`, `snapshot_not_a_snapshot_code` | A rejected [archived copy](#archived-copies) |
 | 403 | | You are not the owner (where the endpoint is owner-only) |
 | 404 | `event_not_found` | Unknown or soft-deleted event |
 | 409 | `invalid_state` | The row is not in a state this endpoint accepts |
-| 409 | `source_media_conflict` | A concurrent write raced past the one-source-per-event index |
 | 413 | | The body exceeds the platform cap (`max_video_size + max_proof_images_per_event × max_image_size + 10 MB`). The middleware checks it before the body is read, and the 413 carries CORS headers |
-| 422 | `too_many_files` | Over the [proof-image ceiling](#proof-image-ceiling), or kept plus new source media over one |
-| 422 | | A missing required field, `title` over 255 characters, `source_url` or one `secondary_source_urls` item over 2000 characters, or a malformed `occurred_date`, `occurred_time` or `source_posted_at` |
+| 422 | `too_many_files` | Over the [proof-image ceiling](#proof-image-ceiling) |
+| 422 | | A missing required field, `title` over 255 characters, a malformed `occurred_date` or `occurred_time`, or a `sources` entry that fails its schema: an unknown field, a value outside `level` or `sensor`, a URL over 2000 characters, a malformed instant, or both `upload_id` and `media_id`. The `loc` of each entry starts with `["body", "sources", <index>]` |
+
+### `POST /uploads` 🔒
+
+Stage one source file before the event write that uses it: the first layer of the two-layer upload. Each file travels on its own request, so a request carries at most one video. A source of a later event write names the returned `id` as its `upload_id`.
+
+**Request body (`multipart/form-data`):** one `file` part, an image or a video within the [file limits](#file-limits).
+
+**Response 201:** an `UploadRead`.
+```json
+{
+  "id": "uuid",
+  "kind": "video",
+  "sha256": "f7c3bcd13f00e8a4b2d4e9b3f1a2c5d6e7f8901234567890abcdef1234567890",
+  "original_filename": "IMG_2034.MOV",
+  "storage_url": "https://<cloudfront-domain>/uploads/….mp4",
+  "expires_at": "2026-03-17T09:42:00Z"
+}
+```
+
+`storage_url` lets the form preview the file. Only you can reference the upload. It expires 24 hours after it was staged: an event write naming it after `expires_at` is `upload_expired`, and the import worker deletes it within the hour after that. A write that takes it consumes it, so a second write naming it is `upload_not_found`.
+
+**Errors:**
+| Status | Code | Case |
+|---|---|---|
+| 400 | `invalid_file` | Disallowed type or size |
+| 400 | `evidence_processing_failed` | An image the server refuses (see [File limits](#file-limits)), or a failed upload |
+| 429 | `too_many_uploads` | You already hold 20 unexpired staged files no event uses. Submit the form that uses them, or wait for them to expire |
+
+### `GET /sources` 🔒
+
+The source picker: find an existing source to copy into an event form. Matches sources of events that are not deleted or withheld, whose title or one of whose URLs contains `q`, case-insensitive, newest first.
+
+**Query params:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `q` | string, **required** | A URL or part of a title, 3 to 2000 characters |
+| `limit` | int | 1 to 20, default 10 |
+
+**Response 200:** an array of `SourcePickRead`: the [`SourceRead`](#get-eventsid) shape plus `event_id` and `event_title`, the event that holds the source.
+
+To copy a pick, post a new source whose `media_id` is the pick's `media.id`, with the links you want on the copy. A pick with no file has no `media_id` to copy; post its URLs as a new source instead.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 422 | `q` shorter than 3 or longer than 2000 characters, or `limit` outside [1, 20] |
 
 ### `GET /events`
 
@@ -624,8 +756,9 @@ List one lifecycle view, newest or oldest first, as `EventList` cards (no full p
 | `view` | string | `located` (default, the catalog: `geolocated` + `detected` rows, plus a `closed` row whose `before_closed_status` was `detected`) or `requested` (the open-call queue: `requested` rows, plus a `closed` row whose `before_closed_status` was `requested`). A retraction (`closed` off `geolocated`) is in neither and is reachable by its own URL. Anything else → 422. |
 | `status` | string (repeatable) | Narrows within the view, for example `?view=requested&status=closed`. Repeat to OR within the bucket. Values outside `requested` / `detected` / `geolocated` / `closed` return 422; a value the view can't contain returns an empty list. |
 | `conflict` | string (repeatable) | Filter by [conflict](#conflicts) name (`conflicts.name`). OR within the bucket, AND across buckets. |
-| `capture_source` | string (repeatable) | Filter by tag name of category `capture_source`. Same OR / AND semantics. |
-| `tag` | string (repeatable) | Filter by tag name, any category. Same OR / AND semantics. |
+| `sensor` | string (repeatable) | Keeps an event with a source of this sensor: `smartphone`, `satellite`, `drone`, `static_camera`, `dashcam`, `body_cam` or `unknown`. Same OR / AND semantics. Any other value returns 422. |
+| `level` | string (repeatable) | Keeps an event with a source of this evidence level: `direct`, `indirect` or `context`. Same OR / AND semantics. Any other value returns 422. |
+| `tag` | string (repeatable) | Filter by tag name, on the event or on one of its sources. Same OR / AND semantics. |
 | `bbox` | string | `south,west,north,east` (four comma-separated floats). 422 on malformed input; latitudes in [-90, 90], longitudes in [-180, 180], south ≤ north, west ≤ east. |
 | `occurred_date_from` / `occurred_date_to` | date (YYYY-MM-DD) | Inclusive event-date range. Malformed values return 422. |
 | `submitted_from` / `submitted_to` | date (YYYY-MM-DD) | Inclusive submission-date range. Malformed values return 422. |
@@ -654,13 +787,13 @@ List one lifecycle view, newest or oldest first, as `EventList` cards (no full p
     "geolocators": [{ "id": "uuid", "username": "kalush" }],
     "media": {
       "id": "uuid",
-      "role": "source",
-      "storage_url": "https://…/uploads/.../photo.jpg",
-      "kind": "image"
+      "storage_url": "https://…/uploads/….jpg",
+      "kind": "image",
+      "sha256": "…",
+      "original_filename": "photo.jpg"
     },
     "tags": [
-      { "id": "uuid", "name": "Drone", "category": "capture_source" },
-      { "id": "uuid", "name": "airstrike", "category": "free" }
+      { "id": "uuid", "name": "airstrike" }
     ],
     "conflicts": [
       { "id": "uuid", "name": "Russian invasion of Ukraine", "wikidata_id": "Q110999040", "start_year": 2022, "end_year": null, "is_ongoing": true, "tier": "major" }
@@ -671,7 +804,7 @@ List one lifecycle view, newest or oldest first, as `EventList` cards (no full p
 
 **Response headers:** `Link: <…&cursor=…>; rel="next"` when a further page exists.
 
-`coords` is `null` on a coordinate-less `requested` row. `geolocators` is the event's credit line, as on [`GET /events/{id}`](#get-eventsid). `requested_at` is when the row entered `requested`, and `null` on a row that was never a request; the Requests board counts a request's age from it. `is_graphic` is `true` when the author, or an admin overriding the author, flagged the footage as showing death, injury or human remains. A withheld event (`hidden_at` set, see [`GET /events/{id}`](#get-eventsid)) never appears. `media` is the card thumbnail: the event's `source` attachment, else its first `proof` image, else `null`; a proof video is never picked. `backend/app/services/thumbnails.py` holds that rule for every card surface. `conflicts` uses the `ConflictRead` shape of [`GET /conflicts`](#get-conflicts).
+`coords` is `null` on a coordinate-less `requested` row. `geolocators` is the event's credit line, as on [`GET /events/{id}`](#get-eventsid). `requested_at` is when the row entered `requested`, and `null` on a row that was never a request; the Requests board counts a request's age from it. `is_graphic` is `true` when any of the event's sources is flagged as showing death, injury or human remains. A withheld event (`hidden_at` set, see [`GET /events/{id}`](#get-eventsid)) never appears. `media` is the card thumbnail: the file of the first source that has one, in source order, else the first proof image, else `null`; a proof video is never picked. `backend/app/services/thumbnails.py` holds that rule for every card surface. `tags` are the event's own; a card carries no source. `conflicts` uses the `ConflictRead` shape of [`GET /conflicts`](#get-conflicts).
 
 ---
 
@@ -686,13 +819,13 @@ Compact `[id, lat, lng, occurred_date, added_date, detected]` tuples for client-
 | Param | Type | Description |
 |-------|------|-------------|
 | `bbox` | string, **required** | Same shape and validation as on `GET /events`. Missing, empty, or malformed → 422. A box crossing the antimeridian is not modeled; widen it to the full longitude range. |
-| `media` | string (repeatable) | `?media=image&media=video` matches an event carrying any attachment of a listed type. Values outside `image` / `video` → 422. |
-| `conflict`, `capture_source`, `tag`, `occurred_date_from`, `occurred_date_to`, `submitted_from`, `submitted_to`, `author`, `approved`, `approved_by`, `approved_by_org` | | Same semantics as on [`GET /events`](#get-events). |
+| `media` | string (repeatable) | `?media=image&media=video` matches an event carrying a source file or a proof image of a listed type. Values outside `image` / `video` → 422. |
+| `conflict`, `sensor`, `level`, `tag`, `occurred_date_from`, `occurred_date_to`, `submitted_from`, `submitted_to`, `author`, `approved`, `approved_by`, `approved_by_org` | | Same semantics as on [`GET /events`](#get-events). |
 
 | Status | Meaning |
 |--------|---------|
 | 200 | Points inside `bbox` |
-| 422 | `bbox` missing or malformed, a malformed date filter, or a `media`, `author`, `approved_by` or `approved_by_org` value outside its domain |
+| 422 | `bbox` missing or malformed, a malformed date filter, or a `media`, `sensor`, `level`, `author`, `approved_by` or `approved_by_org` value outside its domain |
 
 **Response 200:**
 ```json
@@ -708,14 +841,14 @@ Compact `[id, lat, lng, occurred_date, added_date, detected]` tuples for client-
 
 Soft-warning probe for the submit form: geolocations that might describe the same event. Advisory only; it never blocks a submission.
 
-Match rule: within about 500 m geodesic of the proposed `(lat, lng)` **and** either the same source-URL host or the same `occurred_date`. The host leg also matches an existing event's secondary source links. A scheme-stripped URL (`t.me/channel/12345`) still yields a host. A malformed host or date disables that leg, and no usable leg returns `[]`.
+Match rule: within about 500 m geodesic of the proposed `(lat, lng)` **and** either a source URL on the same host or the same `occurred_date`. The host leg matches any URL of any source of an existing event. A scheme-stripped URL (`t.me/channel/12345`) still yields a host. A malformed host or date disables that leg, and no usable leg returns `[]`.
 
 **Query params:**
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `lat` | float | yes | Latitude (-90 to 90) of the prospective submission. |
 | `lng` | float | yes | Longitude (-180 to 180). |
-| `source_url` | string | no | Source URL for the host leg. |
+| `source_url` | string | no | One source URL the form holds, for the host leg. |
 | `occurred_date` | string (YYYY-MM-DD) | no | Compared exactly for the date leg. |
 
 **Response 200:** up to 10 candidates, nearest first.
@@ -726,7 +859,7 @@ Match rule: within about 500 m geodesic of the proposed `(lat, lng)` **and** eit
     "title": "Strike on depot, Donetsk",
     "coords": { "lat": 48.123, "lng": 37.456 },
     "occurred_date": "2026-05-01",
-    "source_url": "https://t.me/somechannel/12345",
+    "source_urls": ["https://t.me/somechannel/12345"],
     "distance_m": 55.4,
     "owner": { "id": "uuid", "username": "kalush" }
   }
@@ -739,7 +872,7 @@ Match rule: within about 500 m geodesic of the proposed `(lat, lng)` **and** eit
 
 Import one of your own X posts. The route runs the shared detection engine over the post and writes one detection, owned by you, per coordinate the post carries. The bot and the archive backfill run the same engine and write path (see [`ingestion.md`](ingestion.md#the-contract)).
 
-**Own posts only.** The post's author must equal the X handle linked to your account (`users.x_handle`, compared case-insensitively). A post by anyone else, or a caller with no linked handle, returns `400 not_your_post`. Submit third-party footage through [`POST /events`](#post-events) with a `source_url` instead.
+**Own posts only.** The post's author must equal the X handle linked to your account (`users.x_handle`, compared case-insensitively). A post by anyone else, or a caller with no linked handle, returns `400 not_your_post`. Submit third-party footage through [`POST /events`](#post-events) with a source instead.
 
 [`ingestion.md`](ingestion.md#what-acquisition-reads) states which posts acquisition reads. Responses from X's public syndication endpoint are cached in memory for 1 h per post id.
 
@@ -858,20 +991,44 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
   "id": "uuid",
   "title": "Strike on depot, Donetsk",
   "coords": { "lat": 48.123, "lng": 37.456 },
-  "capture_source_coords": null,
-  "source_url": "https://t.me/channel/12345",
-  "archived_source": {
-    "url": "https://web.archive.org/web/20260316094500/https://t.me/channel/12345",
-    "provider": "wayback"
-  },
-  "secondary_source_urls": ["https://x.com/mirror_handle/status/1234567890"],
-  "archived_secondary_sources": [
-    { "url": "https://archive.ph/aBcDe", "provider": "archive_today" }
+  "sources": [
+    {
+      "id": "uuid",
+      "title": "",
+      "level": "direct",
+      "sensor": "drone",
+      "captured_at": null,
+      "camera_position": null,
+      "is_graphic": false,
+      "links": [
+        {
+          "url": "https://t.me/channel/12345",
+          "posted_at": "2026-03-14T18:05:00Z",
+          "archived": {
+            "url": "https://web.archive.org/web/20260316094500/https://t.me/channel/12345",
+            "provider": "wayback",
+            "archived_at": "2026-03-16T09:45:00Z"
+          }
+        },
+        {
+          "url": "https://x.com/mirror_handle/status/1234567890",
+          "posted_at": null,
+          "archived": null
+        }
+      ],
+      "tags": [],
+      "media": {
+        "id": "uuid",
+        "storage_url": "https://<cloudfront-domain>/uploads/….mp4",
+        "kind": "video",
+        "sha256": "f7c3bcd13f00e8a4b2d4e9b3f1a2c5d6e7f8901234567890abcdef1234567890",
+        "original_filename": "IMG_2034.MOV"
+      }
+    }
   ],
   "proof": "<p>Matched the ridgeline and the pylon.</p><img src=\"https://media.example/proof/…jpg\">",
   "occurred_date": "2026-03-15",
   "occurred_time": "14:30:00",
-  "source_posted_at": "2026-03-14T18:05:00Z",
   "created_at": "2026-03-16T09:42:00Z",
   "geolocated_at": "2026-03-16T09:42:00Z",
   "closed_at": null,
@@ -882,25 +1039,14 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
   "before_closed_status": null,
   "detected_from_url": null,
   "detected_via": null,
-  "archived_detected_from": null,
   "owner": { "id": "uuid", "username": "kalush" },
   "requested_by": null,
   "geolocators": [
     { "id": "uuid", "username": "kalush" }
   ],
-  "media": [
-    {
-      "id": "uuid",
-      "role": "source",
-      "storage_url": "https://<cloudfront-domain>/uploads/.../video.mp4",
-      "kind": "video",
-      "sha256": "f7c3bcd13f00e8a4b2d4e9b3f1a2c5d6e7f8901234567890abcdef1234567890",
-      "original_filename": "IMG_2034.MOV"
-    }
-  ],
-  "thumbnail": { "…": "same MediaRead shape as media[]" },
+  "thumbnail": { "…": "MediaRead, as in sources[].media" },
   "tags": [
-    { "id": "uuid", "name": "Drone", "category": "capture_source" }
+    { "id": "uuid", "name": "airstrike" }
   ],
   "conflicts": [
     { "id": "uuid", "name": "Russian invasion of Ukraine", "wikidata_id": "Q110999040", "start_year": 2022, "end_year": null, "is_ongoing": true, "tier": "major" }
@@ -911,13 +1057,11 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
 | Field | Meaning |
 |---|---|
 | `coords` | The subject point. `null` on a coordinate-less `requested` event; every `geolocated` row carries it |
-| `capture_source_coords` | The optional camera position |
-| `source_url`, `source_posted_at` | `null` on a `detected` row with no declared source; a `requested` or `geolocated` row always carries a `source_url` |
-| `archived_source` | The archived copy of `source_url`: `url` is the snapshot, `provider` is `wayback` or `archive_today`. `null` until the owner records one (see [`archival.md`](archival.md)) |
-| `secondary_source_urls` | The ordered mirrors, empty when there are none |
-| `archived_secondary_sources` | Same length and order as `secondary_source_urls`; entry `i` covers mirror `i`, on the terms of `archived_source` |
-| `detected_from_url` | The post an imported row came from; `null` for a human submit. Read from the event's [`event_detections`](data-model.md#event_detections) row |
-| `archived_detected_from` | The archived copy of `detected_from_url`, on the same terms; `null` for a human submit |
+| `sources` | Every source, as `SourceRead`, in the derived order: `direct`, then `indirect`, then `context`, then by `captured_at` with unknown last. Empty on a detection that declared none. A published row always carries a `direct` or `indirect` source with a file |
+| `sources[].links` | The source's URLs, ordered by `posted_at` with unknown last. `archived` is the link's archived copy: `url` is the snapshot, `provider` is `wayback`, `archive_today` or `ghostarchive`, read off the snapshot's host, and `archived_at` is when it was recorded. `null` until an analyst records one (see [`archival.md`](archival.md)) |
+| `sources[].media` | The source's file, `null` for a source that is only URLs. A proof image lives inline in the `proof` HTML as an `img` src |
+| `sources[].sensor` | `null` on a source without a file, and on a machine source until review |
+| `detected_from_url` | The post an imported row came from; `null` for a human submit. Read from the event's [`event_detections`](data-model.md#event_detections) row. Not a source |
 | `detected_via` | The ingest entry that produced a machine detection: `bot`, `paste` or `archive`. Stamped once at creation; `null` for a human submit and for a machine row that names no entry. Read from the `event_detections` row |
 | `requested_by` | The analyst who opened the request; `null` on a directly created event |
 | `geolocators` | Who vouched the location, oldest first: the owner and every analyst who accepted an [invitation](#shared-credit). Empty until the first geolocate. A soft-deleted analyst is left out |
@@ -925,9 +1069,8 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
 | `version_no` | `1` until the owner corrects the event, then one higher per [correction](#post-eventsidversions) |
 | `geolocated_at` | When the row became `geolocated`; `null` before publication |
 | `close_reason`, `before_closed_status` | `null` while the event is open |
-| `media` | The `source` attachment only. A `proof` image lives inline in the `proof` HTML as an `img` src |
 | `thumbnail` | The card thumbnail, on the rule of [`GET /events`](#get-events) |
-| `is_graphic` | `true` when the footage is flagged as showing death, injury or human remains |
+| `is_graphic` | `true` when any source is flagged as showing death, injury or human remains. Derived from the sources; each source carries its own flag |
 
 **Errors:**
 | Code | Case |
@@ -982,7 +1125,7 @@ Create an event directly, born `geolocated`. To open a request without coordinat
 
 **Response 201:** an [`EventRead`](#get-eventsid), `"status": "geolocated"`, with `requested_by: null` and you in `geolocators`.
 
-**Errors:** the [event write errors](#event-write-errors), except the plain-string 400, `source_url_required`, 403, 404 and `invalid_state`.
+**Errors:** the [event write errors](#event-write-errors), except the plain-string 400, `source_not_found`, 403, 404 and `invalid_state`.
 
 ---
 
@@ -996,12 +1139,12 @@ Your queue of machine-`detected` events awaiting a geolocate, newest first. Scop
 |-------|------|-------------|
 | `readiness` | string | `all` (default), `ready`, or `incomplete`. Any other value returns 422. |
 
-**Readiness.** A detection is `ready` when it carries a `source` media row, a non-blank `source_url`, coordinates, and a proof body with at least one image, so only a conflict and a `capture_source` tag stand between it and a publish. `incomplete` is the exact complement. The filter runs in SQL over the whole queue, not over the loaded page.
+**Readiness.** A detection is `ready` when it carries coordinates, a `direct` or `indirect` source with a file, no source without a URL, and a proof body with at least one image, so only a conflict and a sensor stand between it and a publish. `incomplete` is the exact complement. The filter runs in SQL over the whole queue, not over the loaded page.
 
 **Response 200:**
 ```json
 {
-  "items": [ { "id": "uuid", "status": "detected", "media": [], "tags": [] } ],
+  "items": [ { "id": "uuid", "status": "detected", "sources": [], "tags": [] } ],
   "total": 248,
   "page": 1,
   "per_page": 20,
@@ -1021,13 +1164,13 @@ Your queue of machine-`detected` events awaiting a geolocate, newest first. Scop
 
 ### `POST /events/requests` 🔒
 
-Open a request: create a `requested` event. One source file is required. Coordinates, the camera point, tags, conflicts and the event date are optional, and the proof body may carry images or none. You are recorded as both `owner` and `requested_by`; `requested_by` survives the later geolocate.
+Open a request: create a `requested` event. A `direct` or `indirect` source with a file is required, and every source needs a URL; sensors are optional. Coordinates, tags, conflicts and the event date are optional, and the proof body may carry images or none. You are recorded as both `owner` and `requested_by`; `requested_by` survives the later geolocate.
 
 **Request body (`multipart/form-data`):** the [event form](#event-form-fields), **requests** column.
 
-**Response 201:** an [`EventRead`](#get-eventsid), `"status": "requested"`, with `coords` and `capture_source_coords` `null` unless you sent a guess.
+**Response 201:** an [`EventRead`](#get-eventsid), `"status": "requested"`, with `coords` `null` unless you sent a guess.
 
-**Errors:** the [event write errors](#event-write-errors), except `proof_image_required`, `tag_requirements_not_met`, `source_url_required`, 403, 404, `invalid_state` and `source_media_conflict`.
+**Errors:** the [event write errors](#event-write-errors), except `proof_image_required`, `conflict_required`, `sensor_required`, `source_not_found`, 403, 404 and `invalid_state`.
 
 ---
 
@@ -1037,13 +1180,12 @@ Correct an open request in place. Owner only, and only while `requested`. **No v
 
 **Request body (`multipart/form-data`):** the [event form](#event-form-fields), **request** column. Rules specific to this path:
 
-- `source_url` is the requester's evidence anchor. A fulfiller cannot rewrite it, so this is the one write that moves it before publication.
-- `source_posted_at` keeps the stored instant when blank, NULL included, so you can correct a bot-opened request whose source date was never read (see [`ingestion.md`](ingestion.md#the-bot)).
-- The source media moves on `remove_media_ids` + `files`. The row must still carry exactly one source media afterwards. The replaced media's objects are deleted.
+- `sources` replaces the request's sources, on the floor of a request: a `direct` or `indirect` source with a file. Post each stored source's `id` to keep it, and its file's `media_id` to keep the file.
+- A file the write drops is deleted with its object, unless a copy on another event still names it.
 
 **Response 200:** an [`EventRead`](#get-eventsid), still `"status": "requested"` and `"version_no": 1`.
 
-**Errors:** the [event write errors](#event-write-errors), except `proof_image_required`, `tag_requirements_not_met` and `source_url_required`. 403 means you are not the owner. 409 `invalid_state` means the row is not `requested`.
+**Errors:** the [event write errors](#event-write-errors), except `proof_image_required`, `conflict_required` and `sensor_required`. 403 means you are not the owner. 409 `invalid_state` means the row is not `requested`.
 
 ---
 
@@ -1053,10 +1195,9 @@ Give an event a vouched location: `requested` | `detected` → `geolocated`, wri
 
 **Request body (`multipart/form-data`):** the [event form](#event-form-fields), **geolocate** column. The [evidence floor](#evidence-floor) applies to the post-geolocate state. Rules specific to this path:
 
-- On a `requested` row, the server ignores `source_url` and keeps the request's own, and files `source_snapshot_url` against that kept URL. The requester moves it through [`POST /events/{id}/request`](#post-eventsidrequest).
-- On a `detected` row with no declared source, a blank `source_url` is `source_url_required`.
-- `secondary_source_urls` is never ignored: the submitted list replaces the stored one on both row kinds.
-- Dropped source media is deleted with its object, since nothing is versioned before publication.
+- `sources` replaces the stored sources on both row kinds. A request's sources are not locked: you correct them like any other field. Post each stored source's `id` to keep it, and its file's `media_id` to keep the file.
+- A detection's sources come from the import with no sensor; the publish floor asks you for one on every source with a file, and for a URL on every source.
+- A file the write drops is deleted with its object, since nothing is versioned before publication, unless a copy on another event still names it.
 
 **Response 200:** an [`EventRead`](#get-eventsid), `"status": "geolocated"`, with you added to `geolocators`.
 
@@ -1066,7 +1207,7 @@ Give an event a vouched location: `requested` | `detected` → `geolocated`, wri
 
 ### `POST /events/batch-complete` 🔒
 
-Publish a selection of your own detections in one call: the bulk form of the `detected` → `geolocated` transition. **JSON, not multipart**: nothing uploads and no other field is written. The call supplies only what the machine can't judge: the conflicts, once for the selection, and one `capture_source` tag per row.
+Publish a selection of your own detections in one call: the bulk form of the `detected` → `geolocated` transition. **JSON, not multipart**: nothing uploads and no other field is written. The call supplies only what the machine can't judge: the conflicts, once for the selection, and one sensor per row.
 
 Each row runs in its own transaction against the [evidence floor](#evidence-floor). A row that fails rolls back alone and stays a detection; the rest still publish. A published row credits you in `event_geolocators`. Owner only: every targeted detection must be yours.
 
@@ -1075,8 +1216,8 @@ Each row runs in its own transaction against the [evidence floor](#evidence-floo
 {
   "conflict_ids": ["3f1c…"],
   "rows": [
-    { "event_id": "9a2b…", "capture_source_tag_id": "77de…" },
-    { "event_id": "5c04…", "capture_source_tag_id": "9b31…" }
+    { "event_id": "9a2b…", "sensor": "smartphone" },
+    { "event_id": "5c04…", "sensor": "drone" }
   ]
 }
 ```
@@ -1084,7 +1225,7 @@ Each row runs in its own transaction against the [evidence floor](#evidence-floo
 | Field | Type | Description |
 |-------|------|-------------|
 | `conflict_ids` | UUID[] | 1 to 10 [conflicts](#conflicts), applied to every row, replacing the conflicts the detections held |
-| `rows` | object[] | 1 to 100 rows, one per `event_id` (a repeated id is a 422). `event_id` is a `detected` row you own. `capture_source_tag_id` replaces the row's `capture_source` tag; its other tags stay |
+| `rows` | object[] | 1 to 100 rows, one per `event_id` (a repeated id is a 422). `event_id` is a `detected` row you own. `sensor` is one of the [source sensors](#sources) and goes onto every source of the detection that carries a file; a value outside the list is a 422 |
 
 **Response 200:** verdicts in submission order.
 ```json
@@ -1103,21 +1244,21 @@ A `200` does not mean every row published; read `published` and `failed`. A fail
 
 | `code` | Case |
 |--------|------|
-| `source_url_required` | The detection carries no source URL |
-| `coordinates_required` | The detection carries no point |
-| `media_required` | The detection carries no `source` media row |
-| `proof_image_required` | The stored proof body holds no image |
-| `tag_requirements_not_met` | The row's `capture_source_tag_id` is unknown or not a `capture_source` tag |
+| `event_not_found` | Hard-deleted, soft-deleted or withheld by an admin |
 | `invalid_state` | The row is no longer `detected` |
-| `event_not_found` | Hard-deleted, or soft-deleted by an admin |
+| `coordinates_required` | The detection carries no point |
+| `proof_image_required` | The stored proof body holds no image |
+| `source_link_required` | A source of the detection carries no URL |
+| `source_required` | The detection carries no `direct` or `indirect` source |
+| `source_file_required` | No `direct` or `indirect` source of the detection carries a file |
 | `internal_error` | A database failure on that row alone. The detection is untouched and retriable as-is |
 
 **Errors** (whole call, evaluated before any row publishes):
 | Code | Case |
 |------|------|
-| 400 | `tag_requirements_not_met`: no `conflict_ids` entry resolves to a live conflict |
+| 400 | `conflict_required`: no `conflict_ids` entry resolves to a live conflict |
 | 403 | A targeted detection belongs to another analyst; nothing is published |
-| 422 | Empty `conflict_ids` or `rows`, over 10 conflicts, over 100 rows, a repeated `event_id`, or a malformed UUID |
+| 422 | Empty `conflict_ids` or `rows`, over 10 conflicts, over 100 rows, a repeated `event_id`, a malformed UUID, or a `sensor` outside the list |
 
 ---
 
@@ -1127,24 +1268,23 @@ Correct a published event. Owner only, and only while `geolocated`. The write fi
 
 **Request body (`multipart/form-data`):** the [event form](#event-form-fields), **versions** column. The [evidence floor](#evidence-floor) is re-checked against the post-edit state.
 
-**Editability.** Every field the publish form wrote is editable and versioned, the evidence anchor included: the title, both coordinate sets, the event date and time, `source_posted_at`, `is_graphic`, the tags, the conflicts, the proof body, the secondary source links, `source_url`, and the source media. The version records the `source_url` and source media it supersedes. `detected_from_url` is the one field no write moves.
+**Editability.** Every field the publish form wrote is editable and versioned, the sources included: the title, the coordinates, the event date and time, the tags, the conflicts, the proof body, and every source with its links, tags, sensor, capture time, camera position, graphic flag and file. The version records each source as it stood, its file included. `detected_from_url` is the one field no write moves.
 
-**Archived copies.** `source_snapshot_url`, `detected_from_snapshot_url` and `secondary_snapshot_urls` archive a link without changing it. Each lands in the version this call produces, and a save whose only change is a copy files a version like any other. `detected_from_snapshot_url` on a row with no provenance link is `original_url_not_on_event`. See [`archival.md`](archival.md).
+**Archived copies.** A link's `snapshot_url` archives that link without changing it. The copy lands in the version this call produces, and a save whose only change is a copy files a version like any other. See [`archival.md`](archival.md).
 
 **Approvals.** The new version ends every current [approval](#approvals) of the event, and the same transaction writes a `re_approve_requested` notification for each analyst who approved the superseded version and for each live member of an organization that approved it.
 
 Rules specific to this path:
 
-- `source_url`: blank or omitted keeps the stored URL; whitespace-only is `source_url_required`.
-- `nothing_changed` (409): the edit moves no versioned field and no archived copy. `note` is not a versioned field. The check runs before any upload.
-- `version_limit` (409): the event already carries 100 versions. A save whose only change is archived copies is exempt.
-- `remove_media_ids` drops the source media row but keeps its object, which the filed version renders.
+- `nothing_changed` (409): the edit moves no versioned field, no source and no archived copy. Sources compare by content, not by position: their fields, their links, their tag ids and the stored file they name. `note` is not a versioned field. The check runs before any write. A new `upload_id` always counts as a change.
+- `version_limit` (409): the event already carries 100 versions. A save whose only change is a link's archived copy is exempt.
+- A source the edit drops, or a file it replaces, loses its row but keeps its object, which the filed version renders.
 
 **Media and history.**
 
 - A proof image the new body drops is deleted, row and object, unless a readable past version displays it.
-- A replaced source media object stays until the event is deleted or the last readable version naming it is [redacted](#post-admineventsidversionsversion_noredact).
-- An already-uploaded src in `proof` must be one of this event's own images (a proof image, its source media, or a source media a past version names). Any other stored image is `invalid_file`.
+- A dropped source file stays until the event is deleted or the last readable version naming it is [redacted](#post-admineventsidversionsversion_noredact), and longer while a copy on another event names it.
+- An already-uploaded src in `proof` must be one of this event's own images (a proof image, a source's file, or a source file a past version names). Any other stored image is `invalid_file`.
 
 **Response 200:** an [`EventRead`](#get-eventsid), with `version_no` one higher.
 
@@ -1171,28 +1311,33 @@ The event's superseded versions, newest first. Public, like the event. The live 
       "redacted": false,
       "snapshot": {
         "title": "Strike on depot, Donetsk",
-        "source_url": "https://t.me/channel/12345",
-        "source_media": [ { "…": "MediaRead, as in media[] on GET /events/{id}" } ],
         "coords": { "lat": 48.123, "lng": 37.456 },
-        "capture_source_coords": null,
         "occurred_date": "2026-03-15",
         "occurred_time": "14:30:00",
-        "source_posted_at": "2026-03-14T18:05:00+00:00",
-        "is_graphic": false,
-        "secondary_source_urls": [],
-        "tags": [{ "id": "uuid", "name": "Drone", "category": "capture_source" }],
+        "sources": [
+          {
+            "title": "",
+            "level": "direct",
+            "sensor": "drone",
+            "captured_at": null,
+            "camera_position": null,
+            "is_graphic": false,
+            "links": [
+              {
+                "url": "https://t.me/channel/12345",
+                "posted_at": "2026-03-14T18:05:00+00:00",
+                "snapshot_url": "https://web.archive.org/web/20260316094500/https://t.me/channel/12345",
+                "archived_at": "2026-03-16T09:45:00+00:00"
+              }
+            ],
+            "tags": [],
+            "media": { "…": "MediaRead, as in sources[].media on GET /events/{id}" }
+          }
+        ],
+        "tags": [{ "id": "uuid", "name": "airstrike" }],
         "conflicts": [{ "id": "uuid", "name": "Russian invasion of Ukraine" }],
         "proof": "<p>Matched the ridgeline.</p><img src=\"https://media.example/proof/…jpg\">",
-        "proof_media": [ { "…": "MediaRead" } ],
-        "archives": [
-          {
-            "original_url": "https://t.me/channel/12345",
-            "origin": "source_url",
-            "snapshot_url": "https://web.archive.org/web/20260316094500/https://t.me/channel/12345",
-            "provider": "wayback",
-            "created_at": "2026-03-16T09:45:00+00:00"
-          }
-        ]
+        "proof_media": [ { "…": "MediaRead" } ]
       }
     }
   ],
@@ -1203,8 +1348,7 @@ The event's superseded versions, newest first. Public, like the event. The live 
 - `version_no` is the version the row **holds**. An event at `version_no` 3 answers with snapshots 2 and 1.
 - `edited_by` is the analyst whose edit superseded that version, `null` once their account is erased. `note` is their optional line, `null` when they left none. `created_at` is when the edit happened.
 - `redacted` is `true` on a version an admin [blanked](#post-admineventsidversionsversion_noredact). It keeps its number, `created_at` and `edited_by`, and serves `{}` as `snapshot` with `note` `null`.
-- `snapshot` carries the editable fields as they stood. Tags and conflicts carry their names beside their ids. `source_media` and `proof_media` carry each media whole, because the row may be gone. `archives` lists the archived copies held at that version, one per link, sorted by `original_url`.
-- Every snapshot names `source_url` and `source_media`. A snapshot filed before another field was versioned omits that field; read it from the live row.
+- `snapshot` carries the editable fields as they stood. Tags and conflicts carry their names beside their ids. `sources` holds each source in the order the event then read, with its links, their archived copies, its tags and its file; a source entry carries no `id`, and the snapshot stores `snapshot_url` where the live read serves `archived`. Each `media` and `proof_media` entry is carried whole, because the row may be gone.
 
 **Errors:**
 | Code | Case |
@@ -1701,7 +1845,7 @@ Decline an approval request addressed to you, or to an organization you are a me
 
 ## Search
 
-Full-text discovery across five result groups: `geolocations` (located view: `geolocated` and `detected` rows with coordinates), `requests` (`requested` rows), `collections`, `users`, and `organizations`. Matching uses the Postgres `simple` dictionary, and the response is grouped by entity. Search does not index `source_url` or proof content.
+Full-text discovery across five result groups: `geolocations` (located view: `geolocated` and `detected` rows with coordinates), `requests` (`requested` rows), `collections`, `users`, and `organizations`. Matching uses the Postgres `simple` dictionary, and the response is grouped by entity. Proof content is not searched.
 
 ### `GET /search` 🌐
 
@@ -1711,7 +1855,7 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
 | `q` | string | Free-text query. |
 | `type` | enum | `all` (default), `event` (both event groups), `geolocation`, `request`, `collection`, `user`, or `organization`. Anything else → 422. |
 | `limit` | int | Per-group cap. 1 ≤ `limit` ≤ 50, default 20. |
-| *filter set* | | The event filters of [`GET /events`](#get-events): `status`, `conflict`, `capture_source`, `tag`, `media` (repeatable), `occurred_date_from` / `occurred_date_to`, `submitted_from` / `submitted_to`, `author`, `approved`, `approved_by`, `approved_by_org`. They scope the two event groups; a `status` value a group's view can't contain empties that group. |
+| *filter set* | | The event filters of [`GET /events`](#get-events): `status`, `conflict`, `sensor`, `level`, `tag`, `media` (repeatable), `occurred_date_from` / `occurred_date_to`, `submitted_from` / `submitted_to`, `author`, `approved`, `approved_by`, `approved_by_org`. They scope the two event groups; a `status` value a group's view can't contain empties that group. |
 
 **Rules.**
 
@@ -1719,6 +1863,7 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
 - An empty `q` with an active filter enters **browse mode**: the filtered view, newest first, with plain titles as their own highlight.
 - Any active filter empties the users and organizations groups.
 - The collections group reads one filter, `author`, which narrows it to that analyst's collections. Any other active filter empties it. With an empty `q`, `author` lists the analyst's collections newest first.
+- An event hit matches on its title, on a source's title, or on a source URL that contains `q` as a case-insensitive substring, so a pasted link finds the events that cite it. The title highlight and the rank read the event title only.
 - A collection hit matches on its title and `description_text` together. It is the full [`CollectionRead`](#get-collectionsid) and carries no `*_highlight` field. A withheld collection, one whose owner is soft-deleted, and one holding nothing showable are absent.
 - An organization hit matches on its name, slug and bio together. It carries the public fields of the [organization page](#get-organizationsslug) header: no approval request audience and no creator. `member_count` counts live members.
 - Ranking is `ts_rank` descending, then `created_at` descending.
@@ -1740,8 +1885,8 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
       "status": "geolocated",
       "owner": { "id": "uuid", "username": "osint_analyst" },
       "geolocators": [{ "id": "uuid", "username": "osint_analyst" }],
-      "media": [{ "id": "uuid", "role": "source", "storage_url": "…", "kind": "image" }],
-      "tags": [{ "id": "uuid", "name": "airstrike", "category": "free" }]
+      "media": [{ "id": "uuid", "storage_url": "…", "kind": "image", "sha256": "…", "original_filename": null }],
+      "tags": [{ "id": "uuid", "name": "airstrike" }]
     }
   ],
   "requests": [
@@ -1749,12 +1894,12 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
       "id": "uuid",
       "title": "Footage from Kharkiv area, can someone place it?",
       "title_highlight": "Footage from Kharkiv area, can someone place it?",
-      "source_url": "https://twitter.com/…",
+      "source_urls": ["https://twitter.com/…"],
       "status": "requested",
       "created_at": "2026-04-12T08:00:00Z",
       "is_graphic": false,
       "owner": { "id": "uuid", "username": "kharkiv_osint" },
-      "media": [{ "id": "uuid", "role": "source", "storage_url": "…", "kind": "image" }],
+      "media": [{ "id": "uuid", "storage_url": "…", "kind": "image", "sha256": "…", "original_filename": null }],
       "tags": []
     }
   ],
@@ -1788,6 +1933,7 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
 ```
 
 - `media` on both event groups holds at most one row, the card thumbnail of [`GET /events`](#get-events).
+- `source_urls` on a request hit lists every URL of every source of the request, in source order.
 - `bio_highlight` is `null` when only the username, or an organization's name or slug, matched.
 - Groups you did not request through `type` come back as empty arrays.
 - `total` holds each group's match count before the `limit` cap, in browse mode too.
@@ -1796,7 +1942,7 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
 **Errors:**
 | Code | Case |
 |------|------|
-| 422 | `type` outside the allowed set, or `limit` outside [1, 50] |
+| 422 | `type` outside the allowed set, `limit` outside [1, 50], or a `sensor` or `level` value outside its domain |
 
 ---
 
@@ -1813,23 +1959,17 @@ Username typeahead for the `author` filter, which is an exact match. Case-insens
 
 ## Tags
 
+One catalogue of free tags, shared by events and their sources. Conflicts are not tags: see [`GET /conflicts`](#get-conflicts). What captured a source's file is its `sensor`, not a tag.
+
 ### `GET /tags`
 
-List tags. By default, returns only tags referenced by at least one **live** geolocation. Returned whole, not paged (see [Pagination](#pagination)).
-
-**Query params:**
-| Param | Type | Description |
-|-------|------|-------------|
-| `category` | string | `capture_source` or `free` |
-| `curated` | bool | When `true`, return the full curated `capture_source` taxonomy whatever its usage. |
-
-Conflicts are not tags: see [`GET /conflicts`](#get-conflicts).
+List the tags on at least one **live** event (not deleted, not withheld) or on one of its sources, ordered by name. Returned whole, not paged (see [Pagination](#pagination)). Takes no query params.
 
 **Response 200:** an array of `TagRead`.
 ```json
 [
-  { "id": "uuid", "name": "Drone", "category": "capture_source" },
-  { "id": "uuid", "name": "airstrike", "category": "free" }
+  { "id": "uuid", "name": "airstrike" },
+  { "id": "uuid", "name": "power grid" }
 ]
 ```
 
@@ -1837,27 +1977,18 @@ Conflicts are not tags: see [`GET /conflicts`](#get-conflicts).
 
 ### `POST /tags` 🔒
 
-Create a tag. Only `free` tags are creatable; `capture_source` is server-managed.
+Create a tag.
 
 **Request body:**
 ```json
-{
-  "name": "drone strike",
-  "category": "free"
-}
+{ "name": "drone strike" }
 ```
 
 `name` is stripped of surrounding whitespace, then must be 1 to 100 characters; empty or whitespace-only is a 422. Name matching is case-sensitive, like the DB unique constraint: `Drone` and `drone` are distinct tags.
 
 **Response 201:** the new `TagRead`.
 
-**Response 200:** a tag with this name already exists in the same category. The response is that existing `TagRead`, and no row is created.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 403 | `category` is not `free` |
-| 409 | A tag with this name exists under another category |
+**Response 200:** a tag with this name already exists, in use or not. The response is that existing `TagRead`, and no row is created.
 
 ---
 
@@ -1962,12 +2093,12 @@ One collection's header: owner, title, description, tags, item count, and the da
   "description": "<p>Strikes and their aftermath at the plant, 2025 to 2026.</p>",
   "description_text": "Strikes and their aftermath at the plant, 2025 to 2026.",
   "cover": [
-    { "url": "https://…/uploads/geo/…jpg", "kind": "image", "role": "source" },
-    { "url": "https://…/uploads/geo/…mp4", "kind": "video", "role": "source" }
+    { "url": "https://…/uploads/…jpg", "kind": "image", "role": "source" },
+    { "url": "https://…/uploads/…mp4", "kind": "video", "role": "source" }
   ],
   "tags": [
-    { "id": "uuid", "name": "satellite", "category": "capture_source" },
-    { "id": "uuid", "name": "power grid", "category": "free" }
+    { "id": "uuid", "name": "nuclear plant" },
+    { "id": "uuid", "name": "power grid" }
   ],
   "event_count": 12,
   "first_date": "2026-03-01",
@@ -1983,8 +2114,8 @@ All computed fields are computed per read over the events the collection shows, 
 | `description_text` | The description's plain-text projection |
 | `event_count` | How many events the collection shows |
 | `first_date`, `last_date` | The smallest and largest `occurred_date` among them; both `null` when none carries a date |
-| `cover` | Zero to four tiles, in item order, skipping graphic items, each the item's card media (an image preferred over a clip). `kind` is `image` or `video`. `role` is `source` or `proof`; a `proof` `url` has no `_hero` / `_thumb` derivatives, so read it as is |
-| `tags` | The union of the items' tags (`TagRead`), ordered by `category` then `name`. A collection carries no tag of its own |
+| `cover` | Zero to four tiles, in item order, skipping graphic items, each the item's card media (an image preferred over a clip). `kind` is `image` or `video`. `role` is `source` for a source's file or `proof` for a proof image; a `proof` `url` has no `_hero` / `_thumb` derivatives, so read it as is |
+| `tags` | The union of the tags of the items and of their sources (`TagRead`), ordered by `name`. A collection carries no tag of its own |
 
 A withheld collection (`hidden_at`, see [`PATCH /admin/collections/{id}/moderation`](#patch-admincollectionsidmoderation)) answers 404 for everyone but an admin, its owner included. So does a collection whose owner is soft-deleted.
 
@@ -2124,7 +2255,7 @@ Aggregated shape of an analyst's work, computed over existing columns.
   "total_events": 3,
   "media_count": 2,
   "top_conflicts": [{ "name": "Russo-Ukrainian War", "count": 2 }],
-  "capture_sources": [{ "name": "dashcam", "count": 1 }],
+  "sensors": [{ "name": "dashcam", "count": 1 }],
   "source_hosts": [{ "name": "x.com", "count": 1 }, { "name": "t.me", "count": 1 }],
   "other_hosts_count": 0,
   "no_source_count": 1,
@@ -2134,8 +2265,9 @@ Aggregated shape of an analyst's work, computed over existing columns.
 
 Every field describes one population: the visible events (`deleted_at IS NULL`, `hidden_at IS NULL`) in `geolocated` or `detected` that credit the analyst, as owner or as a [co-geolocator](#shared-credit). That set is `total_events`. `requested` and `closed` rows take part in no aggregate.
 
-- `top_conflicts` and `capture_sources` hold at most 5 entries, ordered by count descending, then name.
-- `source_hosts` groups the set by the host of `source_url`, lowercased, with a leading `www.` removed. At most 5 entries, ordered by count descending, then host. `other_hosts_count` counts events on any further host. `no_source_count` counts events whose `source_url` is null or has no readable host. The five counts plus those two add up to `total_events`.
+- `media_count` counts the files of the set: source files and proof images.
+- `top_conflicts` and `sensors` hold at most 5 entries, ordered by count descending, then name. `sensors` counts events per sensor their sources name, so an event with two sensors counts under both; `name` is the sensor value.
+- `source_hosts` groups the set by the host of each event's first source URL (the first link of its first source, in source order), lowercased, with a leading `www.` removed. At most 5 entries, ordered by count descending, then host. `other_hosts_count` counts events on any further host. `no_source_count` counts events with no source URL, or one with no readable host. The five counts plus those two add up to `total_events`.
 - `activity` buckets `occurred_date` by calendar month, from the analyst's earliest dated event to the latest, oldest first, zero-filled. `period` is `YYYY-MM`. An event with no `occurred_date` takes no bucket. The span covers at most the 10 most recent calendar years and then starts at January of the oldest year shown; events outside it still count in every other aggregate.
 
 [`design.md`](design.md#public-profile) describes how the profile renders these fields.
@@ -2876,7 +3008,7 @@ A detection, a retraction and a withdrawn request are in neither kind. A soft-de
 |-------|------|-------------|
 | `scope` | string | `following` (default) keeps the geolocations crediting an analyst you follow and the requests one of them opened, and is empty when you follow nobody. `all` keeps every row. Anything else returns 422. |
 | `kind` | string (repeatable) | `geolocation` or `request` keeps that kind of row. Both, or none, keep both. Anything else returns 422. |
-| `conflict`, `capture_source`, `tag` | string (repeatable) | Same semantics as on [`GET /events`](#get-events). |
+| `conflict`, `sensor`, `level`, `tag` | string (repeatable) | Same semantics as on [`GET /events`](#get-events). |
 | `approved`, `approved_by`, `approved_by_org` | | Same semantics as on [`GET /events`](#get-events). |
 | `limit` | int | Rows per page, default 10. See [Pagination](#pagination). |
 | `cursor` | string | Opaque cursor from the previous page's `Link: rel="next"` header. See [Pagination](#pagination). |
@@ -2929,7 +3061,7 @@ Quality signal on the machine-extraction pipeline. A **machine detection** is an
 
 - **`machine_rejected`** counts machine detections dismissed before publication: closed out of `detected` (`before_closed_status = "detected"`), or soft-deleted while `detected`. That includes the pending detections of a soft-deleted account. A detection that was ever promoted to `geolocated` is not a reject.
 - **`reject_rate`** is `machine_rejected / machine_total` as a 0 to 1 ratio, `0` when there are no machine detections. Both counts cover every machine row, soft-deleted or not.
-- **`pending_*`** profile the live `detected` queue (`deleted_at IS NULL`, machine rows only): detections missing a source media, a proof image, or a `source_url`.
+- **`pending_*`** profile the live `detected` queue (`deleted_at IS NULL`, machine rows only): detections missing a file on a `direct` or `indirect` source (`pending_missing_source_media`), a proof image, or any source URL (`pending_missing_source_url`).
 
 **Response 200:**
 ```json
@@ -3042,7 +3174,7 @@ Case-insensitive substring match on username or email. `%` and `_` match themsel
 Remove a user. Both modes invalidate the points cache. Audited as `user_soft_deleted` or `user_hard_deleted`.
 
 - **Soft delete** (default) sets `users.deleted_at`, passes every owned live event another live analyst is credited on to the earliest of them, who receives an `ownership_transferred` notification, and soft-deletes every other live event the user owns. `transferred_events` counts the events handed over. The user can no longer log in (an opaque 401, like wrong credentials), and their profile answers 404. Idempotent: a repeat keeps the original timestamp.
-- **Hard delete** (`?hard=true`, GDPR erasure) drops the user row, every event and [collection](#collections) they owned, then sweeps their storage objects (event media of both roles and the profile picture). An owned event that credits another live analyst is kept instead: it passes to the earliest of them by credit time, with its media, versions and files, and that analyst receives an `ownership_transferred` notification that does not name the erased user. A soft-deleted co-geolocator is skipped. An event the user's soft delete hid (its `deleted_at` equals the user's) passes too and is restored; an event soft-deleted on its own is never handed over: it is deleted and swept like an uncredited one. Their own approvals go; an approval they placed for an organization stays the organization's, with `reviewer` set to `null`. Invite codes they issued or used survive with the reference set to NULL. The DB commits before the storage sweep.
+- **Hard delete** (`?hard=true`, GDPR erasure) drops the user row, every event and [collection](#collections) they owned, then sweeps their storage objects (source files, proof images, the files they staged through [`POST /uploads`](#post-uploads), and the profile picture). An object a copy on another event still names stays. An owned event that credits another live analyst is kept instead: it passes to the earliest of them by credit time, with its media, versions and files, and that analyst receives an `ownership_transferred` notification that does not name the erased user. A soft-deleted co-geolocator is skipped. An event the user's soft delete hid (its `deleted_at` equals the user's) passes too and is restored; an event soft-deleted on its own is never handed over: it is deleted and swept like an uncredited one. Their own approvals go; an approval they placed for an organization stays the organization's, with `reviewer` set to `null`. Invite codes they issued or used survive with the reference set to NULL. The DB commits before the storage sweep.
 - **Both modes** hand an organization's org manager role to its earliest-joined live member when the user was its last live org manager (see [Organizations](#organizations)). On a hard delete, this and the event hand-over commit in one transaction.
 
 **Response 200:**
@@ -3081,7 +3213,7 @@ Hard-delete every detection the user owns, soft-deleted ones included (rows, med
 Remove an event. Both modes invalidate the points cache. Audited as `geolocation_soft_deleted` or `geolocation_hard_deleted`.
 
 - **Soft delete** (default) sets `deleted_at`; rows and storage objects stay, and every public read filters the event out. Idempotent: a repeat keeps the original timestamp and appends no audit row.
-- **Hard delete** (`?hard=true`, GDPR erasure) drops the row and its media rows, then deletes the storage objects, including superseded source objects its versions name. The DB commits before the storage sweep; a per-key storage failure is logged and swallowed.
+- **Hard delete** (`?hard=true`, GDPR erasure) drops the row, its sources and its media rows, then deletes the storage objects, including the dropped source files its versions name. An object a copy on another event still names stays. The DB commits before the storage sweep; a per-key storage failure is logged and swallowed.
 
 **Response 200:**
 ```json
@@ -3248,7 +3380,7 @@ Close one report with a verdict and apply it to the target. A report is resolved
 
 `resolution` is one of:
 
-- `marked_graphic`: sets the event's `is_graphic`. Events only, since a collection holds no footage of its own.
+- `marked_graphic`: sets `is_graphic` on every source of the event. Events only, since a collection holds no footage of its own.
 - `hidden`: withholds the target, stamping `events.hidden_at` or `collections.hidden_at`.
 - `dismissed`: closes the report and leaves the target untouched.
 
@@ -3264,7 +3396,7 @@ Close one report with a verdict and apply it to the target. A report is resolved
 
 ### `PATCH /admin/events/{id}/moderation` 🛡️
 
-Set an event's moderation state directly, with no report behind it. The only verb that can undo a takedown or clear `is_graphic`. Both fields are optional and independent: `null` or omitted leaves that axis as it is, and a value equal to the stored one writes nothing and appends no audit row. Audited as `event_marked_graphic`, `event_unmarked_graphic`, `event_hidden` or `event_unhidden`, one row per axis that changed. Invalidates the points cache when `hidden` changes.
+Set an event's moderation state directly, with no report behind it. The only verb that can undo a takedown or clear a graphic flag. `is_graphic` sets or clears the flag on every source of the event; an event with no source has no flag to move. Both fields are optional and independent: `null` or omitted leaves that axis as it is, and a value equal to the stored one writes nothing and appends no audit row. Audited as `event_marked_graphic`, `event_unmarked_graphic`, `event_hidden` or `event_unhidden`, one row per axis that changed. Invalidates the points cache when `hidden` changes.
 
 **Request body:**
 ```json
@@ -3291,7 +3423,7 @@ Set an event's moderation state directly, with no report behind it. The only ver
 
 Blank one filed version. [`event_versions`](data-model.md#event_versions) is append-only and a version number is a public address, so redaction sets `snapshot` to `{}` and `note` to `null` and keeps the row, `version_no`, `created_at` and `edited_by`. [`GET /events/{id}/versions`](#get-eventsidversions) keeps listing it with `redacted: true`.
 
-A redacted version holds no evidence alive. A proof image that no readable version and no current proof body references is deleted, row and object. So is the storage object of a source media this version alone named. Audited as `event_version_redacted`.
+A redacted version holds no evidence alive. A proof image that no readable version and no current proof body references is deleted, row and object. So is the storage object of a source file this version alone named, unless a `media` row still names it. Audited as `event_version_redacted`.
 
 Idempotent: redacting an already-redacted version returns it unchanged and appends no audit row.
 
@@ -3449,4 +3581,4 @@ The server decodes each image before it stores it. The content must be JPEG, PNG
 - The width times the height in its header exceeds the pixel limit. The check runs before any pixel is decoded.
 - It is animated. Upload it as a video instead.
 
-An event upload returns 400 `evidence_processing_failed` for a refused image, and `PUT /users/me/avatar` returns 422 `invalid_avatar`.
+`POST /uploads` and an event write's proof images return 400 `evidence_processing_failed` for a refused image, and `PUT /users/me/avatar` returns 422 `invalid_avatar`.

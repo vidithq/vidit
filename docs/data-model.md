@@ -28,21 +28,23 @@ flowchart LR
   requested["`**requested**
   requested_at; a coordinate is optional, so the ask may carry a guess`"]:::core
   detected["`**detected**
-  detected_at; source_url optional, public from the moment it lands`"]:::core
+  detected_at; sources optional, public from the moment it lands`"]:::core
   geolocated["`**geolocated**
-  geolocated_at; ck_events_coords_status and ck_events_source_url_status make the coordinate and the source NOT NULL here`"]:::core
+  geolocated_at; ck_events_coords_status makes the coordinate NOT NULL here`"]:::core
   closed["`**closed**
   closed_at, close_reason, and before_closed_status: withdrawn, rejected or retracted`"]:::core
 
   amend["`**update_request**
   the owner corrects the open question: overwritten in place, no version filed`"]:::spec
   vouch["`**services/events.geolocate**
-  a person vouches: coordinate, source_url, one proof image. owner_id moves to the fulfiller`"]:::spec
+  a person vouches: coordinate, a direct or indirect source with its file, one proof image. owner_id moves to the fulfiller`"]:::spec
   version["`**POST /events/{id}/versions**
   every later correction; refused past 100 versions`"]:::spec
   close["`**close**
   the owner takes the row back, from any live status`"]:::spec
 
+  evidence[("`**sources** + **source_links** + **media**
+  the evidence the row rests on; each write posts the whole list`")]:::store
   detection[("`**event_detections**
   where a machine-written row came from: the post, its thread, the entry`")]:::store
   credit[("`**event_geolocators**
@@ -78,6 +80,11 @@ flowchart LR
   requested --> vouch
   detected --> vouch
   vouch --> geolocated --> version --> geolocated
+  ask --> evidence
+  engine --> evidence
+  amend --> evidence
+  vouch --> evidence
+  version --> evidence
   vouch --> credit
   geolocated --> invite --> credit
   credit --> leave
@@ -98,7 +105,7 @@ flowchart LR
   shelve --> shelves
 ```
 
-The three entries on the left are the three ways a row is born: a request and a direct submit come from [`POST /events/requests` and `POST /events`](api.md#post-events), and a machine detection comes from the [ingest engine](ingestion.md). The four statuses and the constraints that pin them are [`events`](#events). The four writes are `update_request`, `geolocate`, `save_version` and `close`, all in [`api.md`](api.md). Two of them correct a row rather than move it, and they differ on what the row is: `update_request` overwrites an open question, while `save_version` files what it supersedes, because a published row is a vouched claim. The tables on the right exist because a write happened: [`event_geolocators`](#event_geolocators) records who vouched (the owner and every analyst who accepted an invitation), who is invited and who lost the credit, [`event_detections`](#event_detections) records where an imported row came from, [`event_versions`](#event_versions) holds what a correction superseded, [`event_approvals`](#event_approvals) holds who attested which version, [`approval_requests`](#approval_requests) holds who was asked to (a departure withdraws the open requests its analyst sent), an [organization](#organizations) can stand behind an approval or a request in place of one analyst, [`content_reports`](#content_reports) holds what a viewer flagged, and [`collections`](#collections) with [`collection_events`](#collection_events) holds the curated sets a credited analyst puts the row on.
+The three entries on the left are the three ways a row is born: a request and a direct submit come from [`POST /events/requests` and `POST /events`](api.md#post-events), and a machine detection comes from the [ingest engine](ingestion.md). The four statuses and the constraints that pin them are [`events`](#events). The four writes are `update_request`, `geolocate`, `save_version` and `close`, all in [`api.md`](api.md). Two of them correct a row rather than move it, and they differ on what the row is: `update_request` overwrites an open question, while `save_version` files what it supersedes, because a published row is a vouched claim. [`sources`](#sources), with their [`source_links`](#source_links) and files in [`media`](#media), hold the evidence the row rests on: every write but `close` posts the whole list, and the floor a status demands is in [`api.md`](api.md#evidence-floor). The tables on the right exist because a write happened: [`event_geolocators`](#event_geolocators) records who vouched (the owner and every analyst who accepted an invitation), who is invited and who lost the credit, [`event_detections`](#event_detections) records where an imported row came from, [`event_versions`](#event_versions) holds what a correction superseded, [`event_approvals`](#event_approvals) holds who attested which version, [`approval_requests`](#approval_requests) holds who was asked to (a departure withdraws the open requests its analyst sent), an [organization](#organizations) can stand behind an approval or a request in place of one analyst, [`content_reports`](#content_reports) holds what a viewer flagged, and [`collections`](#collections) with [`collection_events`](#collection_events) holds the curated sets a credited analyst puts the row on.
 
 ## Schema overview
 
@@ -168,12 +175,9 @@ erDiagram
         UUID requested_by_id FK "nullable, who opened the request"
         VARCHAR title
         GEOMETRY coords "nullable, the subject; required at geolocated"
-        GEOMETRY capture_source_coords "nullable, the camera position"
-        TEXT source_url "nullable, required at requested/geolocated"
         TEXT proof "sanitized HTML"
         DATE occurred_date "nullable"
         TIME occurred_time "nullable, optional UTC hour"
-        TIMESTAMPTZ source_posted_at "nullable, when the source posted (UTC)"
         TIMESTAMPTZ requested_at "nullable, entered requested"
         TIMESTAMPTZ detected_at "nullable, entered detected"
         TIMESTAMPTZ geolocated_at "nullable, entered geolocated"
@@ -183,7 +187,6 @@ erDiagram
         VARCHAR before_closed_status "nullable, requested | detected | geolocated"
         TIMESTAMPTZ deleted_at "nullable, admin soft-delete"
         TIMESTAMPTZ hidden_at "nullable, admin takedown"
-        BOOLEAN is_graphic "death, injury or human remains"
         INTEGER version_no "which version the live row is, from 1"
         TIMESTAMPTZ created_at
         TIMESTAMPTZ updated_at
@@ -253,16 +256,49 @@ erDiagram
         TIMESTAMPTZ resolved_at "nullable"
     }
 
-    event_source_links {
+    sources {
+        UUID id PK
         UUID event_id FK
-        INT position
-        TEXT url
+        VARCHAR title "empty string for none"
+        VARCHAR level "direct | indirect | context"
+        VARCHAR sensor "nullable, what captured the media"
+        TIMESTAMPTZ captured_at "nullable, when the media was captured"
+        GEOMETRY camera_position "nullable, where the media was shot from"
+        BOOLEAN is_graphic "death, injury or human remains"
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    source_links {
+        UUID id PK
+        UUID source_id FK
+        TEXT url "UNIQUE per source"
+        TIMESTAMPTZ posted_at "nullable, when the media was posted there"
+        TEXT snapshot_url "nullable, the archived copy"
+        TIMESTAMPTZ archived_at "nullable, set with snapshot_url"
+        TIMESTAMPTZ created_at
+    }
+
+    source_tags {
+        UUID source_id FK
+        UUID tag_id FK
+    }
+
+    uploads {
+        UUID id PK
+        UUID uploader_id FK
+        TEXT storage_key
+        VARCHAR kind "image | video"
+        VARCHAR sha256
+        TEXT original_filename "nullable"
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ expires_at "24 hours after created_at"
     }
 
     media {
         UUID id PK
-        UUID event_id FK
-        VARCHAR role "source | proof"
+        UUID source_id FK "nullable, UNIQUE, a source's file"
+        UUID event_id FK "nullable, a proof image's event"
         TEXT storage_url
         VARCHAR kind
         VARCHAR sha256 "hex-encoded SHA-256 of uploaded bytes"
@@ -273,7 +309,6 @@ erDiagram
     tags {
         UUID id PK
         VARCHAR name
-        VARCHAR category "capture_source | free"
         TIMESTAMPTZ created_at
     }
 
@@ -410,16 +445,6 @@ erDiagram
         TIMESTAMPTZ finished_at "nullable"
     }
 
-    source_archives {
-        UUID id PK
-        UUID event_id FK
-        TEXT original_url
-        VARCHAR origin "source_url | secondary_source | detected_from | proof_link"
-        TEXT snapshot_url
-        VARCHAR provider "wayback | archive_today | ghostarchive"
-        TIMESTAMPTZ created_at
-    }
-
     users |o--o{ invite_codes : "used_by_id"
     users |o--o{ invite_codes : "created_by_id"
     invite_codes ||--o{ pending_registrations : "invite_code_id"
@@ -427,7 +452,13 @@ erDiagram
     users |o--o{ audit_log : "actor_id"
     users ||--o{ events : "owner_id"
     users |o--o{ events : "requested_by_id"
+    events ||--o{ sources : "event_id"
+    sources ||--o{ source_links : "source_id"
+    sources ||--o{ source_tags : "source_id"
+    tags ||--o{ source_tags : "tag_id"
+    sources ||--o| media : "source_id"
     events ||--o{ media : "event_id"
+    users ||--o{ uploads : "uploader_id"
     events ||--o{ event_tags : "event_id"
     tags ||--o{ event_tags : "tag_id"
     events ||--o{ event_conflicts : "event_id"
@@ -440,7 +471,6 @@ erDiagram
     events ||--o{ approval_requests : "event_id"
     users ||--o{ approval_requests : "requester_id"
     users |o--o{ approval_requests : "target_user_id"
-    events ||--o{ event_source_links : "event_id"
     events ||--o{ event_versions : "event_id"
     users |o--o{ event_versions : "edited_by_id"
     users |o--o{ event_versions : "redacted_by_id"
@@ -467,7 +497,6 @@ erDiagram
     users |o--o{ organization_members : "invited_by_id"
     users |o--o{ organizations : "created_by_id"
     users ||--o{ archive_import_jobs : "owner_id"
-    events ||--o{ source_archives : "event_id"
 ```
 
 ---
@@ -611,12 +640,9 @@ One row represents one event across its whole lifecycle. `status` tracks the lif
 | `requested_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. Records who opened the request. This is preserved across fulfilment so the identity of the requester is not erased. NULL for a directly submitted geolocation. |
 | `title` | `VARCHAR(255)` | NOT NULL |
 | `coords` | `GEOMETRY(Point, 4326)` | nullable. The subject: what the footage shows. Tied to `status` by `ck_events_coords_status`: required for `geolocated`, optional otherwise. A `requested` request may carry an approximate guess. Each event has one subject point. |
-| `capture_source_coords` | `GEOMETRY(Point, 4326)` | nullable. The camera position: where the footage was shot from. Always optional, one per event. |
-| `source_url` | `TEXT` | nullable. Where the footage was first published. Tied to `status` by `ck_events_source_url_status`: required for `requested` and `geolocated`, optional for `detected`. A machine detection may declare no source; see [`ingestion.md`](ingestion.md). |
 | `proof` | `TEXT` | NOT NULL. Sanitized HTML, on the [rich text](api.md#rich-text) rules. A human submit carries the analyst's write-up, and a machine detection carries the tweet or thread text, one `p` per line, followed by its proof images as `img`. A submission with no proof body, or a body with no text and no image, stores `''`, not NULL. |
 | `occurred_date` | `DATE` | nullable in every status. When the depicted event happened. NULL when unknown: the footage doesn't always establish the date, and it renders as *Unknown*. For a machine detection, this is provisionally the originating post's date; the owner corrects it at submit. |
 | `occurred_time` | `TIME` | nullable. An optional time of day for `occurred_date`, in UTC. NULL when the hour is unknown. |
-| `source_posted_at` | `TIMESTAMPTZ` | nullable. When the original source posted the media: a real post instant, so a full UTC timestamp when known. Distinct from `occurred_date` (when the event happened), [`event_detections.post_at`](#event_detections) (when the analyst posted the geolocation), and `created_at` (when the row was submitted). A human submit or a machine detection with a quoted source always sets it. A machine detection with only a footage link and no quote leaves it `NULL`, because the link carries no date, except a Telegram footage link whose public embed was chased. That case carries the post's own date; see [`ingestion.md`](ingestion.md#archive-formats). |
 | `requested_at` | `TIMESTAMPTZ` | nullable. Stamped when the event entered `requested`. |
 | `detected_at` | `TIMESTAMPTZ` | nullable. Stamped when a machine produced it, entering `detected`. The provenance of an imported row is its [`event_detections`](#event_detections) row. |
 | `geolocated_at` | `TIMESTAMPTZ` | nullable. Stamped when a person vouched for it and published it, entering `geolocated`. |
@@ -627,36 +653,37 @@ One row represents one event across its whole lifecycle. `status` tracks the lif
 | `deleted_at` | `TIMESTAMPTZ` | nullable. A non-NULL value marks an admin soft-delete: the row and its media stay in place, but every public read filters it out, admins included. |
 | `hidden_at` | `TIMESTAMPTZ` | nullable. A non-NULL value marks a takedown: the row is withheld from every public read the same way `deleted_at` is, but an admin still reads it (judging the [content report](#content_reports) that led to the takedown means seeing what was withheld), and the state is reversible, which is what separates it from `deleted_at`. Set by `POST /admin/reports/{id}/resolve` (`resolution = "hidden"`) or directly by `PATCH /admin/events/{id}/moderation`; cleared only by the latter. |
 | `version_no` | `INTEGER` | NOT NULL, `server_default 1`. Which version of the event the live row is. It starts at 1 and moves forward one step per correction, which files the superseded state in [`event_versions`](#event_versions). Only a `geolocated` row can move past 1, because saving a version is the published-row correction path; see [`POST /events/{id}/versions`](api.md#post-eventsidversions). An open request is corrected in place by [`POST /events/{id}/request`](api.md#post-eventsidrequest) and stays at 1: a version supersedes a vouched claim, and a request is a question. |
-| `is_graphic` | `BOOLEAN` | NOT NULL, default `false`. `TRUE` when the footage shows death, injury or human remains. The author sets it on the create / edit forms; an admin can override it, directly (`PATCH /admin/events/{id}/moderation`) or by resolving a report as `marked_graphic`. Public column, carried by every event read schema: the frontend covers a flagged event's media behind [`GraphicContentGate`](design.md#components) until the viewer confirms they want to see it. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
+
+The evidence is not on this row. An event's footage, its URLs and the camera position are its [`sources`](#sources), and `Event.is_graphic` is derived from them: `true` when any source is graphic. In Python it reads the loaded sources; in SQL it is an `EXISTS` over `sources`, so a filter can use it. Every event read schema carries it, and the frontend covers a graphic source behind [`GraphicContentGate`](design.md#components) until the viewer confirms they want to see it.
 
 **Check constraints:**
 - `ck_events_status_valid`: `status IN ('requested', 'detected', 'geolocated', 'closed')`. Pins the value domain at the database. The column is a plain `VARCHAR`, not a native enum, so this constraint rejects a bad write at the Postgres level, not only at the app-layer `Literal`.
 - `ck_events_coords_status`: `status <> 'geolocated' OR coords IS NOT NULL`. A `geolocated` event always has a subject coordinate. The other states leave it free, so a `requested` request may carry an approximate guess.
-- `ck_events_source_url_status`: `status NOT IN ('requested', 'geolocated') OR source_url IS NOT NULL`. A `requested` or `geolocated` event always has a source URL. A detection may carry none; see [`ingestion.md`](ingestion.md). The promotion to `geolocated` enforces the same rule in `services/events.geolocate` before the row can violate this CHECK.
 - `ck_events_closed_stamp` (`status <> 'closed' OR closed_at IS NOT NULL`) and `ck_events_geolocated_stamp` (`status <> 'geolocated' OR geolocated_at IS NOT NULL`). These tie the terminal stamps to status. An app path that forgets to stamp is rejected at write time, not stored as silent bad data.
 - `ck_events_before_closed_status`: `(status = 'closed' AND before_closed_status IS NOT NULL AND before_closed_status IN ('requested', 'detected', 'geolocated')) OR (status <> 'closed' AND before_closed_status IS NULL)`. The field is non-NULL and in-domain exactly when `closed`, and NULL otherwise. The explicit `IS NOT NULL` clause is required: `NULL IN (...)` evaluates to unknown, not false, so without it a `closed` row could keep a NULL discriminator and slip through.
 
-**Temporal fields: four kinds of time.** A geolocation carries several timestamps. Each marks a different point on the path from an event to a Vidit row. They are distinct by design:
+**Temporal fields: five kinds of time.** A geolocation carries several timestamps. Each marks a different point on the path from an event to a Vidit row. They are distinct by design:
 
 ```
-event happens ──▶ source posts the media ──▶ analyst posts the geoloc on X ──▶ imported to Vidit
- occurred_date           source_posted_at            event_detections.post_at         created_at
- (+ occurred_time)       (UTC instant)               (UTC instant, machine path)      (UTC instant)
+event happens ──▶ media captured ──▶ media posted at a URL ──▶ analyst posts the geoloc on X ──▶ imported to Vidit
+ occurred_date     sources.          source_links.posted_at    event_detections.post_at         created_at
+ (+ occurred_time)  captured_at      (UTC instant)             (UTC instant, machine path)      (UTC instant)
 ```
 
 | Field | Meaning | Filled by | Null? |
 |---|---|---|---|
 | `occurred_date` (+ `occurred_time`) | when the depicted event happened | analyst, or detection (post date) | date nullable in every status: NULL when the footage doesn't establish it. Time optional: the hour is often unknown. |
-| `source_posted_at` | when the source posted the media | analyst, or detection (a quoted source's date) | nullable. `NULL` on a `detected` row whose source is a footage link with no date, or whose source is undeclared. |
+| `sources.captured_at` | when one source's media was captured | analyst | nullable. A machine source carries none. |
+| `source_links.posted_at` | when the media was posted at one URL | analyst, or detection (a quoted source's date) | nullable. `NULL` on a machine source whose link carries no date. |
 | `event_detections.post_at` | when the analyst posted it on X | machine-written rows only (the imported post's time) | no row for a human submit |
 | `created_at` | when it was submitted to Vidit | system | NOT NULL |
 
-`occurred_date` is *editorial*: a real-world event, often known only to the day, with no canonical time zone. It stores a bare date plus an optional UTC hour. `source_posted_at` and `event_detections.post_at` are *post instants*: known to the minute when present, and always UTC, so they store full timestamps. All entered times follow the UTC convention.
+`occurred_date` is *editorial*: a real-world event, often known only to the day, with no canonical time zone. It stores a bare date plus an optional UTC hour. `captured_at`, `posted_at` and `event_detections.post_at` are *instants*: known to the minute when present, and always UTC, so they store full timestamps. All entered times follow the UTC convention.
 
 **Indexes:**
-- `GIST(coords)`. Required for geospatial queries: bounding-box filtering and proximity sort. `capture_source_coords` is not indexed, because no spatial read consumes it.
+- `GIST(coords)`. Required for geospatial queries: bounding-box filtering and proximity sort.
 - `(owner_id)`. Supports profile lookup.
 - `(occurred_date)` and `(created_at)`. Support time-based queries.
 - `(owner_id, created_at DESC)`. A composite index for profile listing. Single-author reads key on `owner_id`.
@@ -664,9 +691,9 @@ event happens ──▶ source posts the media ──▶ analyst posts the geolo
 - `ix_events_status_created_at` on `(status, created_at)`. The requested view, the map, and the detections queue all filter on `status`, newest first.
 - `ix_events_created_at_id` on `(created_at, id)`. Backs the keyset that the capped list endpoints page on. `GET /events` and `GET /events/detections` order by `created_at DESC, id DESC` and cut each page with a row comparison over that pair; see [`api.md`](api.md#pagination).
 - `ix_events_timeline_at_id` on `(feed_at, id)`, where `feed_at` is `coalesce(CASE WHEN status = 'requested' THEN requested_at ELSE geolocated_at END, created_at)`. Partial: visible (`deleted_at` and `hidden_at` NULL) `geolocated` and `requested` rows. Backs the keyset of [`GET /feed`](api.md#get-feed), which orders by `feed_at DESC, id DESC`, so a page reads the index in order instead of sorting. The expression matches `models/event.feed_at` exactly; the planner ignores the index on any difference.
-- `ix_events_search_fts`: GIN index on `to_tsvector('simple', coalesce(title, ''))`. Backs `GET /search`; both the located and requested views run through it. The `simple` configuration, not `english`, keeps matching predictable for the corpus of place names and analyst handles. Soft-delete is filtered at query time. `source_url` is not in the indexed expression, because Postgres' simple parser tokenizes URLs as host and path units.
+- `ix_events_search_fts`: GIN index on `to_tsvector('simple', coalesce(title, ''))`. Backs `GET /search`; both the located and requested views run through it. The `simple` configuration, not `english`, keeps matching predictable for the corpus of place names and analyst handles. Soft-delete is filtered at query time. Source titles have their own index, [`ix_sources_search_fts`](#sources). Source URLs are matched by substring rather than through a text index, because Postgres' simple parser tokenizes URLs as host and path units.
 
-> `coords` and `capture_source_coords` are PostGIS points in WGS84 (SRID 4326, standard GPS coordinates). GeoAlchemy2 exposes them as `.lat` and `.lng` through `WKBElement`, or as `ST_X` and `ST_Y` in raw SQL.
+> `coords` and `sources.camera_position` are PostGIS points in WGS84 (SRID 4326, standard GPS coordinates). GeoAlchemy2 exposes them as `.lat` and `.lng` through `WKBElement`, or as `ST_X` and `ST_Y` in raw SQL.
 
 ---
 
@@ -678,7 +705,7 @@ Where a machine-written row came from: the post it was imported from, the thread
 |--------|------|-------------|
 | `event_id` | `UUID` | PK, FK → `events.id` ON DELETE CASCADE |
 | `via` | `VARCHAR(20)` | nullable, `ck_event_detections_via_valid`: `'bot'`, `'paste'` or `'archive'`, the ingest entry that produced the row (see [`ingestion.md`](ingestion.md)). Stamped once at creation by the shared write path and never moved, so a re-import through another entry does not rewrite where the row first came from. NULL on some machine rows. Read-only on `EventRead` as `detected_via`. |
-| `from_url` | `TEXT` | NOT NULL. The post the row was imported from, as a link an analyst can open: the display value, written from `from_post_id` at the engine's exit. A provenance link, distinct from `events.source_url`. Read on `EventRead` as `detected_from_url`. |
+| `from_url` | `TEXT` | NOT NULL. The post the row was imported from, as a link an analyst can open: the display value, written from `from_post_id` at the engine's exit. A provenance link, not a source: the event's [sources](#sources) are the footage it rests on. Read on `EventRead` as `detected_from_url`. |
 | `from_post_id` | `BIGINT` | nullable. The ID of the post. It anchors the display link and is the post-ID leg of the re-import match: one post spells its URL several ways, so the ID keeps two spellings on one detection. |
 | `thread_post_ids` | `BIGINT[]` | nullable. Every post ID of the thread the detection was read from, the anchor included. The [re-import](ingestion.md#re-import) match reads it: a detection matches a row when their post-ID sets intersect. Some machine rows carry their anchor ID alone. |
 | `post_at` | `TIMESTAMPTZ` | nullable. When the analyst published the geolocation on X: the post time of `from_url`. This is the precedence input for the "who geolocated it first" claim and dispute pipeline. The system captures it at import, because the post may later be deleted. A re-import updates this column and no other. |
@@ -794,9 +821,9 @@ One superseded version of a published event. Correcting a `geolocated` row must 
 
 Read it as "the snapshots, then the live row": an event at `version_no` 3 carries rows 1 and 2 here, and the live row is version 3. Publication writes nothing here, so version 1 is the published row itself.
 
-One write files a version, through `services/versions.file_version`: the owner's edit ([`POST /events/{id}/versions`](api.md#post-eventsidversions)), which is also where an [archived copy](#source_archives) of one of the row's links is recorded, since that is a change to what the published record says about its own evidence. The number is taken under the event's row lock.
+One write files a version, through `services/versions.file_version`: the owner's edit ([`POST /events/{id}/versions`](api.md#post-eventsidversions)), which is also where an [archived copy](#source_links) of one of the row's links is recorded, since that is a change to what the published record says about its own evidence. The number is taken under the event's row lock.
 
-An event carries at most 100 versions (`services/versions.MAX_VERSIONS_PER_EVENT`); a save whose only change is archived copies is exempt. [`api.md`](api.md#post-eventsidversions) states the refusal. A version has to differ from the row it supersedes, so a save that moves no versioned field and no archived copy files nothing.
+An event carries at most 100 versions (`services/versions.MAX_VERSIONS_PER_EVENT`); a save whose only change is a link's archived copy is exempt. [`api.md`](api.md#post-eventsidversions) states the refusal. A version has to differ from the row it supersedes, so a save that moves no versioned field and no archived copy files nothing.
 
 Redaction is that one write, and it is still not a delete: an admin blanks `snapshot` and `note` in place and stamps `redacted_at` / `redacted_by_id`, so the row, its number and its byline stay. See [`POST /admin/events/{id}/versions/{version_no}/redact`](api.md#post-admineventsidversionsversion_noredact).
 
@@ -807,7 +834,7 @@ Redaction is that one write, and it is still not a delete: an admin blanks `snap
 | `version_no` | `INTEGER` | NOT NULL. The version this row **holds**, not the one that replaced it. |
 | `edited_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The analyst whose edit superseded this version. NULL once that account is erased: an event legitimately outlives an editor who is not its owner. |
 | `note` | `TEXT` | nullable. The editor's own words about the edit. Bounded to 280 characters by the schema, not the column, which stays unbounded `TEXT`. |
-| `snapshot` | `JSONB` | NOT NULL. The editable fields as they stood: `title`, `source_url`, `source_media`, `coords`, `capture_source_coords`, `occurred_date`, `occurred_time`, `source_posted_at`, `is_graphic`, `secondary_source_urls`, `tags`, `conflicts`, `proof` (the HTML string, as `events.proof` stores it), `proof_media`, and `archives`. `source_media` and `proof_media` carry each [media](#media) whole (`id`, `role`, `storage_url`, `kind`, `sha256`, `original_filename`); `proof_media` holds the images this version's own proof body referenced, not every `proof` row the event holds. `archives` carries the version's [archived copies](#source_archives) (`original_url`, `origin`, `snapshot_url`, `provider`, `created_at`), sorted by `original_url` so a stored list never reshuffles between versions. Tags and conflicts carry their names alongside their ids, so a version stays readable after a referential row is renamed. `{}` on a redacted version. |
+| `snapshot` | `JSONB` | NOT NULL. The editable fields as they stood (`services/versions.build_snapshot`): `title`, `coords`, `occurred_date`, `occurred_time`, `sources`, `tags`, `conflicts`, `proof` (the HTML string, as `events.proof` stores it), and `proof_media`. `sources` lists each [source](#sources) in the event's source order (`services/versions.source_entry`): `title`, `level`, `sensor`, `captured_at`, `camera_position`, `is_graphic`, `links` (each `url`, `posted_at`, `snapshot_url`, `archived_at`), `tags`, and `media`, its file or `null`. A source entry carries no id: a source is filed by its content, not its row. `media` and each `proof_media` entry carry the [media](#media) row whole (`id`, `storage_url`, `kind`, `sha256`, `original_filename`); `proof_media` holds the images this version's own proof body referenced, not every proof image the event holds. Tags and conflicts carry their names alongside their ids, so a version stays readable after a referential row is renamed. `{}` on a redacted version. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL. When the edit that superseded this version happened. |
 | `redacted_at` | `TIMESTAMPTZ` | nullable. When an admin blanked this version's content. NULL on every ordinary row. |
 | `redacted_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. Which admin redacted it. NULL once that account is erased; the readable trail is the `audit_log` row the same write files. |
@@ -818,25 +845,83 @@ There is no secondary index: the only read is "this event's history, by version"
 
 **Media rows are not versioned; the files they name outlive them.** A `media` row a readable snapshot's `proof_media` points at is never hard-deleted, so a past version stays renderable after the current proof body drops the image. The shared intake checks this before it deletes a proof row; see `services/versions.referenced_media_urls`.
 
-The `source` media cannot take that route: [`uq_media_source_per_event`](#media) allows one per event, so a correction that swaps the anchor deletes the row it replaces. The snapshot carries that media whole instead, and its S3 object is left in place, which is what keeps `/vN` renderable; `services/versions.referenced_source_media` is what resolves those objects for the sweeps that would otherwise orphan or delete them. A redacted version displays nothing, so it holds nothing alive: redacting the last version that showed a proof image deletes that image, row and object, and the last one that named a superseded source frees its file.
+A source's file cannot take that route: a correction that drops a source, or replaces its file, deletes the `media` row with it. The snapshot carries the source whole instead, its file included, and the stored object stays while a readable snapshot names it, which is what keeps `/vN` renderable. The [reference-counted sweep](#media) reads the snapshots for that reason, and `services/versions.referenced_source_media` resolves those objects for the hard deletes. A redacted version displays nothing, so it holds nothing alive: redacting the last version that showed a proof image deletes that image, row and object, and the last one that named a dropped source's file frees it, unless a `media` row still names it.
 
 ---
 
-### `event_source_links`
+### `sources`
 
-An event's ordered secondary source links: mirrors of the same footage on another network, or another post from the same point of view. The primary source stays the scalar `events.source_url`, which a `requested` row protects from its fulfiller; these rows are optional extras with no such protection. See [`api.md`](api.md#post-events).
+One piece of evidence an event rests on: at most one file, the URLs that file was posted at, and what is known about its capture. An event holds up to 10 sources (`MAX_SOURCES_PER_EVENT` in [`models/source.py`](../backend/app/models/source.py)), and none is the main one. A source belongs to one event; adding an existing source to another event copies it (see Reuse by copy below). [`api.md`](api.md#sources) states the write contract.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
-| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE |
-| `position` | `INTEGER` | list index, `0`-based |
-| `url` | `TEXT` | NOT NULL |
+| `id` | `UUID` | PK, default `uuid4()` |
+| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, NOT NULL, indexed |
+| `title` | `VARCHAR(255)` | NOT NULL, server_default `''`. An optional label; `''` is no title. Searched by `GET /search` through `ix_sources_search_fts`. |
+| `level` | `VARCHAR(10)` | NOT NULL, CHECK in `('direct', 'indirect', 'context')` (constraint `ck_sources_level_valid`). The evidence level: how close the source stands to the act. See the table below. |
+| `sensor` | `VARCHAR(20)` | nullable, CHECK in `('smartphone', 'satellite', 'drone', 'static_camera', 'dashcam', 'body_cam', 'unknown')` when set (constraint `ck_sources_sensor_valid`). What captured the media. NULL on a source without a file, and on a machine source until the review supplies it. `unknown` keeps the choice satisfiable for media of uncertain provenance. |
+| `captured_at` | `TIMESTAMPTZ` | nullable. When the media was captured (UTC). Distinct from the event's `occurred_date` and from a link's `posted_at`. |
+| `camera_position` | `GEOMETRY(Point, 4326)` | nullable. Where the media was shot from. Not indexed, because no spatial read consumes it. |
+| `is_graphic` | `BOOLEAN` | NOT NULL, default `false`. `TRUE` when the media shows death, injury or human remains. An event is graphic when any of its sources is (`Event.is_graphic`). |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
+| `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()`, moved on every update |
 
-Composite PK: `(event_id, position)`. `position` sits in the key, so the stored order is the read order, and Postgres rejects a duplicate slot.
+| Level | What the source shows | Supports a publication |
+|---|---|---|
+| `direct` | The act while it happens | yes |
+| `indirect` | The direct consequences of the act, after the fact | yes |
+| `context` | Anything else: an image from before, a portrait that identifies a victim, an article or a statement without media | no |
 
-There is no secondary index: every read is "this event's links, in order", served by the PK's leading `event_id`. `MAX_SECONDARY_SOURCE_LINKS = 10` (`backend/app/models/event.py`) caps how many rows an event carries. The write forms normalize and enforce this cap before insert: they strip whitespace, drop blanks, drop duplicates, and drop the entry equal to `source_url`, preserving order.
+The `sensor` and `level` value domains have one home, the `Sensor` and `SourceLevel` aliases in [`models/source.py`](../backend/app/models/source.py). The column CHECKs, the schemas, the `sensor` and `level` filters and the generated frontend types derive from them; the frontend owns the display labels.
 
-The system writes this list wholesale, not row by row. A create sets the full ordered list once, and every later write replaces the whole list with whatever the form submits: the requester's own edit of an open request, and the geolocate, including for requested events. Unlike `source_url`, there is no requester protection here. Hard-deleting the event cascades to the rows.
+**Indexes:**
+- `ix_sources_event_id` on `(event_id)`. Serves "this event's sources" and the cascade.
+- `ix_sources_search_fts`: GIN index on `to_tsvector('simple', coalesce(title, ''))`. Backs the source-title leg of event search ([`GET /search`](api.md#get-search)), on the same `simple` configuration as `ix_events_search_fts`.
+
+**The order is derived, not stored.** An event's sources read by level (`direct`, then `indirect`, then `context`), then by `captured_at` with unknown last, then by `created_at` and `id` (`models/source.source_order`). There is no position column, so no write reorders a list by hand.
+
+**A write posts the whole list.** Every event write posts the event's full source list, and the stored sources follow it (`services/events/sources.apply_sources`): an entry naming a stored source's `id` updates that source in place, an entry without one creates a source, and a stored source the list leaves out is deleted, its links, tags and `media` row with it. The source's file outlives its row while a copy or a readable version names it (see [`media`](#media)). A request's sources are not locked: the analyst who geolocates a request rewrites them like any other field.
+
+**The graphic flag only rises from the forms.** A posted `false` leaves a stored source's `is_graphic` set. Only an admin clears it, through [`PATCH /admin/events/{id}/moderation`](api.md#patch-admineventsidmoderation), which sets or clears the flag on every source of the event; resolving a report as `marked_graphic` sets it on every source.
+
+**Reuse by copy.** An event form adds an existing source to another event by naming that source's file: the write creates a new source with its own links and a new `media` row on the same stored object, and the copy takes the original's graphic flag. The two sources then live apart, and the stored object stays until no `media` row names it.
+
+**Versioned with the event.** A source is part of what an event says, so an edit to a source on a `geolocated` event files a version like any other edit, and the snapshot keeps each source whole ([`event_versions`](#event_versions)).
+
+---
+
+### `source_links`
+
+One URL a source's media was posted at: the same media is often posted in several places. A source carries 1 to 10 links (`MAX_LINKS_PER_SOURCE`); an analyst's write refuses a source with none, and a machine source may carry none until it is published.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `UUID` | PK, default `uuid4()` |
+| `source_id` | `UUID` | FK → `sources.id` ON DELETE CASCADE, NOT NULL |
+| `url` | `TEXT` | NOT NULL. The API caps input at 2000 characters (`SOURCE_URL_MAX_LENGTH`). |
+| `posted_at` | `TIMESTAMPTZ` | nullable. When the media was posted at this URL (UTC). NULL unless known. |
+| `snapshot_url` | `TEXT` | nullable. The archived copy an analyst recorded for this URL, checked for provider and path shape before it is stored (see [`archival.md`](archival.md)). |
+| `archived_at` | `TIMESTAMPTZ` | nullable. When that copy was recorded. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
+
+**Constraints:**
+- `uq_source_links_source_url` on `(source_id, url)`. One row per URL on a source. Its leading `source_id` also serves "this source's links", so the table has no other index.
+- `ck_source_links_archive_stamp`: `(snapshot_url IS NULL) = (archived_at IS NULL)`. A copy and its stamp travel together.
+
+A source's links read by `posted_at` with unknown last, then `created_at` and `id`. A write replaces a source's links whole: it strips each URL, drops blanks and repeats, and checks each pasted snapshot. A re-posted snapshot that names the stored copy (`services/source_archive.same_snapshot`) keeps its `archived_at`; any other paste is stamped at the write. The archive provider (`wayback`, `archive_today` or `ghostarchive`) is not a column: the read derives it from the snapshot URL's host (`services/source_archive.provider_of`).
+
+---
+
+### `source_tags`
+
+Many-to-many junction table between `sources` and `tags`, same shape as [`event_tags`](#event_tags). Events and sources share one tag catalogue.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `source_id` | `UUID` | FK → `sources.id` ON DELETE CASCADE |
+| `tag_id` | `UUID` | FK → `tags.id` ON DELETE CASCADE |
+
+Composite PK: `(source_id, tag_id)`. `ix_source_tags_tag_id` on `(tag_id)` backs the tag deletion cascade and the list of tags in use ([`GET /tags`](api.md#get-tags)).
 
 ---
 
@@ -851,12 +936,12 @@ One row names one target, through `event_id` or `collection_id`. Two real foreig
 | `id` | `UUID` | PK, default `uuid4()` |
 | `event_id` | `UUID` | FK → `events.id` ON DELETE SET NULL, nullable. NULL once the reported event is hard-deleted: the report is the record that a complaint was filed and how it was answered, so it outlives the event. NULL too on a report filed against a collection. An orphaned report accepts only the `dismissed` verdict; every other verdict mutates a row that is gone, and answers 409 `report_target_gone`. |
 | `collection_id` | `UUID` | FK → `collections.id` ON DELETE SET NULL, nullable. The other target, on the same terms as `event_id` above and NULL for a report filed against an event. It empties when the collection goes, which a collection only does with its owner's account (`collections.owner_id` cascades), and the report survives that erasure the way it survives an event's. |
-| `reason` | `VARCHAR(30)` | NOT NULL, CHECK in `('illegal_content', 'graphic_not_flagged', 'copyright', 'privacy', 'other')`. `illegal_content` is the legal escalation (material whose hosting is itself unlawful); `graphic_not_flagged` says the footage shows death, injury or human remains without the author's `events.is_graphic` declaration; `copyright` and `privacy` are third-party rights claims; `other` keeps the form answerable when none of the four fits, with `details` carrying the story. |
+| `reason` | `VARCHAR(30)` | NOT NULL, CHECK in `('illegal_content', 'graphic_not_flagged', 'copyright', 'privacy', 'other')`. `illegal_content` is the legal escalation (material whose hosting is itself unlawful); `graphic_not_flagged` says the footage shows death, injury or human remains without its source's `is_graphic` flag; `copyright` and `privacy` are third-party rights claims; `other` keeps the form answerable when none of the four fits, with `details` carrying the story. |
 | `details` | `TEXT` | nullable. The reporter's own words. Bounded to 2000 characters by the schema, not the column, which stays unbounded `TEXT`. |
 | `reporter_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. NULL for an anonymous report, and again once the reporter's account is erased (the report outlives the account, including a GDPR erasure). |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL. The application stamps it on insert; the column carries no server default, so a raw `INSERT` must supply it. |
 | `resolved_at` | `TIMESTAMPTZ` | nullable. Non-NULL exactly when `resolution` is (`ck_content_reports_resolution_stamp`), so `resolved_at IS NULL` is the single-column test for an open report. |
-| `resolution` | `VARCHAR(30)` | nullable, CHECK in `('marked_graphic', 'hidden', 'dismissed')` when set. `marked_graphic` sets `events.is_graphic`, `hidden` withholds the target from every public read via `events.hidden_at` or `collections.hidden_at`, `dismissed` closes the report and leaves the target untouched. `marked_graphic` is an event verdict only: the flag is a column on the event, so a collection report answering it is a 409 `report_verdict_not_applicable` rather than a verdict that changed nothing. There is no re-resolve: a report already carrying a verdict answers a second resolve attempt with 409. |
+| `resolution` | `VARCHAR(30)` | nullable, CHECK in `('marked_graphic', 'hidden', 'dismissed')` when set. `marked_graphic` sets `is_graphic` on every source of the event, `hidden` withholds the target from every public read via `events.hidden_at` or `collections.hidden_at`, `dismissed` closes the report and leaves the target untouched. `marked_graphic` is an event verdict only: the flag lives on an event's sources, so a collection report answering it is a 409 `report_verdict_not_applicable` rather than a verdict that changed nothing. There is no re-resolve: a report already carrying a verdict answers a second resolve attempt with 409. |
 | `resolved_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The admin who resolved it, NULL until then and again after a GDPR erasure of that admin's account. |
 
 **Check constraints:**
@@ -1061,14 +1146,61 @@ Both foreign keys cascade, so neither a hard-deleted event nor a hard-deleted co
 
 ### `media`
 
-Every uploaded file for an event, source footage and proof-body images alike, split by `role`. Each row has one `event_id` owner. A request is a `requested` event, so all evidence lives on one table, and fulfilling a request never moves media.
+One stored file: a source's file, or an inline image of an event's proof body. A row hangs off exactly one parent: a [source](#sources) through `source_id`, or an event through `event_id` for a proof image.
+
+```mermaid
+flowchart LR
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`a write`"]:::spec
+    l2["`a row that names the object`"]:::shared
+    l3["`the check that decides a delete`"]:::core
+    l4[("`a store`")]:::store
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
+  end
+
+  stage["`**POST /uploads**
+  one source file per request; expires after 24 hours`"]:::spec
+  upload["`**uploads** row
+  a file no event holds yet`"]:::shared
+  write["`**an event write**
+  a source names upload_id or media_id`"]:::spec
+  source_row["`**media** row, source_id set
+  one per source`"]:::shared
+  copy_row["`**media** row on another source
+  a copy: same storage_url, new row`"]:::shared
+  proof_row["`**media** row, event_id set
+  a proof image`"]:::shared
+  snapshot["`**event_versions.snapshot**
+  a readable version that renders the file`"]:::shared
+  object[("`**the stored object**
+  plus its _hero and _thumb derivatives for a source image`")]:::store
+  sweep["`**sweep_unreferenced**
+  after the commit: delete only when no media row and no readable snapshot names it`"]:::core
+  reaper["`**reap_expired_uploads**
+  the import worker, hourly`"]:::spec
+
+  stage --> upload --> write --> source_row
+  write --> copy_row
+  source_row --> object
+  copy_row --> object
+  proof_row --> object
+  snapshot --> object
+  object --> sweep
+  upload -- "expired" --> reaper --> sweep
+```
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
-| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, NOT NULL. Always set. Files upload at publish, so there is no unattached staging row; see Upload timing below. |
-| `role` | `VARCHAR(10)` | NOT NULL, CHECK in `('source', 'proof')` (constraint `ck_media_role_valid`). `'source'` for the footage, at most one per event, enforced by a partial unique index, or `'proof'` for inline images referenced from the proof body, with no per-event limit. |
-| `storage_url` | `TEXT` | NOT NULL. An S3 or CloudFront URL. |
+| `source_id` | `UUID` | FK → `sources.id` ON DELETE CASCADE, nullable. The source this file belongs to. UNIQUE (`uq_media_source_id`): one file per source. |
+| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, nullable, indexed. The event whose proof body displays this image. |
+| `storage_url` | `TEXT` | NOT NULL. An S3 or CloudFront URL. Several rows may hold the same value: see Reference counting below. |
 | `kind` | `VARCHAR(10)` | NOT NULL, CHECK in `('image', 'video')` (constraint `ck_media_kind_valid`). The stored MIME type is not a column: an analyst's upload keeps the accepted type it arrived as, and a machine-imported photo is re-encoded to one format at ingest whichever entry read the post; see [`ingestion.md`](ingestion.md#the-contract). |
 | `sha256` | `VARCHAR(64)` | NOT NULL. Hex-encoded SHA-256 of the uploaded bytes, captured at upload time. A stable content fingerprint that survives storage-class changes and copies, unlike the S3 ETag, which is an MD5 for non-multipart uploads and is not stable across copies. **The hash is computed on the bytes that land on S3, for images after the EXIF strip, so an auditor downloading the public URL can independently verify it.** |
 | `original_filename` | `TEXT` | nullable. The client-supplied filename, for example `IMG_1234.jpg`. Surfaced on the public read API so investigators can trace evidence back to a source post by filename. |
@@ -1076,31 +1208,58 @@ Every uploaded file for an event, source footage and proof-body images alike, sp
 
 `uploaded_ip` and `uploaded_user_agent` are **not stored**: Vidit stores no IP address or User-Agent, for privacy.
 
+**Check constraints:**
+- `ck_media_one_parent`: `num_nonnulls(source_id, event_id) = 1`. A row is a source's file or a proof image, never both and never neither.
+
 **Indexes:**
 - `ix_media_sha256` on `(sha256)`: backs "find every row with this content hash" audit and dedup queries.
-- unique `uq_media_source_per_event` on `(event_id) WHERE role = 'source'`. Enforces the "at most one source media per event" cap.
+- `ix_media_storage_url` on `(storage_url)`: backs the reference count below, "every row naming this object".
+- `uq_media_source_id` on `(source_id)`, and the index on `(event_id)`: serve each parent's read and its cascade.
 
-Each request and each `geolocated` event requires at least one `source` media row. The `geolocate` transition requires at least one `proof` image. A `requested` event carries the poster's evidence from the start.
+The model reads a row's role off the foreign key that is set (`Media.role`: `source` or `proof`). Only a source image has `_hero` and `_thumb` derivatives, so the sweeps and the cover tiles read it.
 
-**Upload timing.** Persistence happens only at publish. While the analyst writes, the proof editor holds local previews. Submit uploads every file, source and proof, through the same evidence intake, in one transaction. As a result, `event_id` is always set: there is no staging table, no `event_id IS NULL` orphan, and no proof-image reaper.
+**Two upload paths.** A source file uploads on its own request before the event write, through [`POST /uploads`](api.md#post-uploads), which stores the object and records an [`uploads`](#uploads) row; the event write names that row in a source's `upload_id` and turns it into the source's `media` row. Keeping every request to one file keeps a video within the request size limit. Proof images still travel inside the event write, as `proof_files` matched to the proof body's `placeholder://` srcs, and become rows with `event_id` set in the same transaction.
+
+**Reference counting.** Adding an existing source to another event copies the `media` row, not the object, so several rows may name one stored object. A write therefore never deletes an object outright: after the commit, `services/evidence_intake.sweep_unreferenced` deletes the objects that no `media` row and no readable [version snapshot](#event_versions) names. The event and user hard deletes, a redaction, the detection re-import and the upload reaper all go through the same check, so a copy on another event keeps its file.
+
+---
+
+### `uploads`
+
+A source file stored ahead of the event write that references it: the first layer of the two-layer upload. A row is a file no event holds yet. The event write that takes it creates the source's `media` row and deletes the `uploads` row ([`services/uploads.py`](../backend/app/services/uploads.py)).
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `UUID` | PK, default `uuid4()`. What a source names as `upload_id`. |
+| `uploader_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL, indexed. Only the uploader may reference the row. |
+| `storage_key` | `TEXT` | NOT NULL. The object's key, under `uploads/`. |
+| `kind` | `VARCHAR(10)` | NOT NULL, CHECK in `('image', 'video')` (constraint `ck_uploads_kind_valid`). |
+| `sha256` | `VARCHAR(64)` | NOT NULL. As on [`media`](#media), carried onto the `media` row. |
+| `original_filename` | `TEXT` | nullable. The sanitized client filename, carried onto the `media` row. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
+| `expires_at` | `TIMESTAMPTZ` | NOT NULL. 24 hours after `created_at` (`UPLOAD_TTL` in [`models/upload.py`](../backend/app/models/upload.py)). A write naming the row after this instant is refused with `upload_expired`. |
+
+**Indexes:**
+- `ix_uploads_uploader_id` on `(uploader_id)`. Serves the per-account count and the erasure.
+- `ix_uploads_expires_at` on `(expires_at)`. Backs the reaper.
+
+An account holds at most 20 unexpired rows (`MAX_PENDING_UPLOADS_PER_USER`); the 21st upload is refused with `too_many_uploads`. The import worker runs `reap_expired_uploads` once when it starts and then every hour, on the bot catch-up cadence, whether or not the bot is configured: it deletes the expired rows, then sweeps their objects through the reference count. The hard delete of a user sweeps the account's staged objects, and the foreign key cascade drops the rows.
 
 ---
 
 ### `tags`
 
+One catalogue of free tags, shared by events ([`event_tags`](#event_tags)) and their sources ([`source_tags`](#source_tags)). Analysts create them through [`POST /tags`](api.md#post-tags).
+
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
-| `name` | `VARCHAR(100)` | UNIQUE, NOT NULL |
-| `category` | `VARCHAR(20)` | NOT NULL, CHECK in `('capture_source', 'free')` (constraint `ck_tags_category_valid`). |
+| `name` | `VARCHAR(100)` | UNIQUE, NOT NULL. Matching is case-sensitive, like the constraint. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL |
 
-Tags with category `capture_source` describe the original "lens" that captured the media: `Smartphone`, `Satellite`, `Drone`, `Static camera`, `Dashcam`, `Body / helmet cam`, plus an `Unknown` escape value. The [baseline migration](engineering.md#migration-house-style) seeds them, since the category is required on the submit form and the options must exist on a fresh database.
-Tags with category `free` are user-created and free-form.
+Conflicts are not tags: they live in the dedicated [`conflicts`](#conflicts) table and link to events through [`event_conflicts`](#event_conflicts). What captured a source's media is not a tag either: it is the source's [`sensor`](#sources).
 
-Conflicts are not a tag category. They live in the dedicated [`conflicts`](#conflicts) table and link to events through [`event_conflicts`](#event_conflicts).
-
-`capture_source` is **curated**, server-managed and not user-creatable, and **required**: a submission must carry at least one `capture_source` tag and at least one conflict; see [`api.md`](api.md) → `POST /events`. The API layer enforces this rule, not a database constraint. Both domains ship an escape value: `capture_source` has `"Unknown"`, and conflict has `"Other"`. `name` is globally UNIQUE across both categories, so a `capture_source` tag cannot share a name with a `free` tag.
+No tag is required on any write. The publish floor asks for a conflict, and the review supplies a sensor; see [`api.md`](api.md#evidence-floor).
 
 ---
 
@@ -1193,26 +1352,6 @@ The durable queue behind `POST /events/import-archive`. The endpoint stages the 
 
 ---
 
-### `source_archives`
-
-One row per link an analyst has recorded an archived copy for: the event's `source_url`, its [`event_source_links`](#event_source_links) mirrors, its `event_detections.from_url`, or an `http(s)` href in the proof body's HTML. A row exists because a copy exists, so there is no queue state and no attempt counter. The capture happens in the analyst's own browser, and the write forms are where the snapshot URL comes back: `source_snapshot_url`, `secondary_snapshot_urls` and, on [`POST /events/{id}/versions`](api.md#post-eventsidversions), `detected_from_snapshot_url`. See [`archival.md`](archival.md) for the flow and the validation.
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `id` | `UUID` | PK, default `uuid4()` |
-| `event_id` | `UUID` | FK → `events.id`, ON DELETE CASCADE, NOT NULL, indexed |
-| `original_url` | `TEXT` | NOT NULL. The link exactly as stored on the event. It is never normalized, because it is half the row's identity and what the read surface matches against `events.source_url`. |
-| `origin` | `VARCHAR(20)` | NOT NULL, `ck_source_archives_origin_valid`: `'source_url'` (the event's declared footage source), `'secondary_source'` (a row of [`event_source_links`](#event_source_links)), `'detected_from'` (the event's `event_detections.from_url`, the post a machine detection came from), or `'proof_link'` (an href inside the proof body). A link reachable from several of these is stored once, under the first of them it appears in. |
-| `snapshot_url` | `TEXT` | NOT NULL. The archived copy, checked for provider and path shape before it is stored (see [`archival.md`](archival.md)). |
-| `provider` | `VARCHAR(20)` | NOT NULL, `ck_source_archives_provider_valid`: `'wayback'`, `'archive_today'` or `'ghostarchive'`. Inferred from the snapshot's host at write time, and what the read surface names the copy from. |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL |
-
-`UNIQUE (event_id, original_url)` is one copy per link. It is also the owner's correction path: pasting a second snapshot for a link overwrites the row rather than adding a competing one.
-
-The table holds the copies as they stand. On a `geolocated` event, the edit that writes one also files an [`event_versions`](#event_versions) row, whose `archives` fragment is what the copies were at that version, so the history reads them back after a correction overwrites the live row.
-
----
-
 ## Design decisions
 
 ### Why HTML for `proof` and `description`?
@@ -1221,8 +1360,11 @@ The rich editor reads and writes HTML, so the column stores the sanitized HTML i
 ### Why `event_tags` and not an array column on `events`?
 This is a many-to-many relationship: a geolocation can carry several tags, and a tag can appear on many geolocations. The `event_tags` junction table is the standard solution. It supports efficient filtering (`WHERE tag_id = X`) and indexing on both sides. The alternative, a `tag_ids[]` array on `events`, would make filters more complex and less performant at scale.
 
-### Why a single `tags` table with a category?
-Capture-source and free-form tags share the same mechanics: filtering and many-to-many association. A single table plus a `category` field avoids duplicating the logic. The distinction stays queryable: `WHERE category = 'capture_source'`.
+### Why is the sensor a column and not a tag?
+A sensor is one closed value per source, required on every source with a file at publication, and filtered on as a domain of its own. A column with a CHECK holds all three, and the value domain generates into the frontend types. A tag holds none of them: tags are free, many per row, and shared by events and sources.
+
+### Why do several `media` rows share one stored object?
+A source added to another event is a copy, so each event keeps a source it can edit and delete on its own. Copying the row and not the object keeps one file for one piece of footage, which keeps its `sha256` and its storage cost single. The price is the reference count: an object is deleted only when no row and no readable version names it.
 
 ### Why `GEOMETRY` instead of two `lat` / `lng` columns?
 PostGIS enables native geospatial queries: bounding-box filtering, distance computation, and clustering. GeoAlchemy2 exposes those types directly to SQLAlchemy.
