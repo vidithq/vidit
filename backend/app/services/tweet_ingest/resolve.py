@@ -265,20 +265,27 @@ def sole_candidate(thread: list[TweetRecord]) -> str | None:
 
 
 def resolve_secondary_sources(thread: list[TweetRecord], source_url: str | None) -> list[str]:
-    """The mirrors: the source candidates the slot did not take.
+    """The mirrors: the source candidates the slot did not take, each a source of its own.
 
     The candidate matching ``source_url`` by identity is excluded; when the
-    source was ambiguous every candidate lands here. Blanks and the cap are the
-    normalizer's job.
+    source was ambiguous every candidate lands here. Blanks and repeats are
+    dropped, and the list is cut so the declared source and the mirrors fit
+    ``models/source.MAX_SOURCES_PER_EVENT``.
     """
     primary = link_identity(source_url) if source_url else None
     urls = [
         candidate for candidate in thread_candidates(thread) if link_identity(candidate) != primary
     ]
-    # Local import keeps ``tweet_ingest`` importable without the service layer.
-    from app.services.events import truncate_secondary_source_urls
+    # Local import keeps ``tweet_ingest`` importable without the model layer.
+    from app.models.source import MAX_SOURCES_PER_EVENT
 
-    return truncate_secondary_source_urls(urls, source_url)
+    cleaned: list[str] = []
+    for raw in urls:
+        url = raw.strip()
+        if url and url != (source_url or "").strip() and url not in cleaned:
+            cleaned.append(url)
+    # Each mirror becomes its own source beside the declared one.
+    return cleaned[: MAX_SOURCES_PER_EVENT - 1]
 
 
 def _chased_footage(thread: list[TweetRecord], link: str) -> TelegramFootage | None:
@@ -408,7 +415,7 @@ class Detection:
     source_posted_at: datetime | None
     # When the analyst posted this geolocation (``detected_post_at``).
     detected_post_at: datetime | None
-    # The mirrors (:func:`resolve_secondary_sources`); prefill the secondary links.
+    # The mirrors (:func:`resolve_secondary_sources`), each written as a source of its own.
     secondary_source_urls: list[str] = field(default_factory=list)
     # role=source (at most one) vs role=proof.
     source_media: list[ParsedMedia] = field(default_factory=list)
