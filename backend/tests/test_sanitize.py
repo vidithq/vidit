@@ -7,7 +7,6 @@ import pytest
 from app.config import settings
 from app.services.sanitize import (
     extract_image_srcs,
-    extract_link_hrefs,
     html_from_text,
     html_text,
     rewrite_image_srcs,
@@ -328,11 +327,6 @@ def test_excessive_length_rejected():
 def test_extract_image_srcs_in_order_and_deduped():
     html = '<img src="/a.png"><ul><li><img src="/b.png"></li></ul><img src="/a.png"><img alt="x">'
     assert extract_image_srcs(html) == ["/a.png", "/b.png"]
-
-
-def test_extract_link_hrefs_in_order_and_decoded():
-    html = '<a href="https://a.example">a</a><a href="http://b.example/?x=1&amp;y=2">d</a>'
-    assert extract_link_hrefs(html) == ["https://a.example", "http://b.example/?x=1&y=2"]
 
 
 # --- text projection ------------------------------------------------------------

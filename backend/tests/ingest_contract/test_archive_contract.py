@@ -2,8 +2,9 @@
 
 Assembles every typology this entry runs into one X export, runs ``read_tweets``,
 ``stitch``, ``resolve_threads``, ``persist_detections`` against the test database, and
-asserts per typology the ``detected`` status, ``source_url`` NULL where the contract says
-so, the media roles in the ``media`` table, and the proof images injected into the proof JSON.
+asserts per typology the ``detected`` status, no source where the contract declares none,
+the sources' links and files, the proof media rows, and the proof images injected into the
+proof JSON.
 
 A shape this entry cannot be pointed at declares ``paths.archive.skip`` beside the fixture.
 Offline: media bytes come from ``TINY_JPEG`` / ``TINY_MP4`` and the chased-source case stubs
@@ -21,6 +22,7 @@ import pytest
 from app.database import SessionLocal
 from app.models.event import STATUS_DETECTED, Event, EventDetection
 from app.models.media import Media
+from app.models.source import Source
 from app.models.user import User
 from app.services.auth import hash_password
 from app.services.detection import backfill_from_archive, persist_detections
@@ -40,6 +42,9 @@ from app.services.tweet_ingest import (
 from tests._fixtures import TINY_JPEG, TINY_MP4
 
 from . import loader
+
+_TG_URL = "https://t.me/somechannel/12345"
+_TG_POSTED_AT = datetime.fromisoformat("2026-03-04T09:00:00+00:00")
 
 
 @pytest.fixture
@@ -64,7 +69,7 @@ def owner(db):
     user_id = user.id
     yield user
     db.expire_all()
-    # media rows cascade off the event FK (ondelete=CASCADE).
+    # Sources and media rows cascade off the event FK (ondelete=CASCADE).
     db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
@@ -117,7 +122,7 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
     assert outcome.refusals == {COORDS_MISSING: 4}
     assert outcome.reason is None
 
-    # Source-less typologies: source_url NULL, source_posted_at NULL.
+    # Source-less typologies: no source link (a self video still fills a link-less source).
     for typology in [
         "referenceless_annotation",
         "self_video_no_signal",
@@ -127,8 +132,7 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
         "x_profile_link",
     ]:
         for row in _rows_for(db, owner, typology):
-            assert row.source_url is None, typology
-            assert row.source_posted_at is None, typology
+            assert _source_links(row) == [[] for _ in row.sources], typology
 
     # self_thread: provenance is the head permalink; occurred_date is the head's post date.
     [thread_row] = _rows_for(db, owner, "self_thread")
@@ -139,7 +143,7 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
     [mention_row] = _rows_for(db, owner, "mention_prefix")
     assert mention_row.title == loader.load_expected("mention_prefix")["title"]
 
-    # Link typologies: source_url is the declared link, no source media (not chased here).
+    # Link typologies: one direct source with the declared link and no file (not chased here).
     link_expected = {
         "telegram_link": "https://t.me/somechannel/12345",
         "youtube_link": "https://www.youtube.com/watch?v=FAKEVIDEO01",
@@ -148,9 +152,9 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
     }
     for typology, url in link_expected.items():
         [row] = _rows_for(db, owner, typology)
-        assert row.source_url == url, typology
-        source_rows = db.query(Media).filter(Media.event_id == row.id, Media.role == "source")
-        assert source_rows.count() == 0, typology
+        assert _source_links(row) == [[(url, None)]], typology
+        assert [(s.level, s.sensor) for s in row.sources] == [("direct", None)], typology
+        assert _source_files(db, row) == [], typology
 
     # Media roles + proof-image injection, per typology.
     # referenceless: 2 proof images, both injected into the proof.
@@ -246,13 +250,10 @@ async def test_x_status_link_chase_persists_source_media(db, owner, tmp_path, mo
     assert len(outcome.created) == 1
 
     [row] = db.query(Event).filter(Event.owner_id == owner.id).all()
-    assert row.source_url == expected["source_url"]
-    source_media = db.query(Media).filter(Media.event_id == row.id, Media.role == "source").all()
-    assert len(source_media) == 1
-    assert source_media[0].kind == "video"
-    proof_media = db.query(Media).filter(Media.event_id == row.id, Media.role == "proof").all()
-    assert len(proof_media) == 1
-    assert proof_media[0].kind == "image"
+    [source] = row.sources
+    assert [link.url for link in source.links] == [expected["source_url"]]
+    assert source.media is not None and source.media.kind == "video"
+    assert [m.kind for m in row.media] == ["image"]
 
 
 async def _run_telegram_chase(db, owner: User, tmp_path, monkeypatch, *, embed: Any) -> Event:
@@ -296,7 +297,7 @@ async def _run_telegram_chase(db, owner: User, tmp_path, monkeypatch, *, embed: 
 
 
 async def test_telegram_chase_fills_date_and_source_media(db, owner, tmp_path, monkeypatch):
-    """A chased t.me link: the embed's date fills ``source_posted_at`` and its video becomes the source media; OP photos stay proof."""
+    """A chased t.me link: the embed's date fills the link's post time and its video becomes the source's file; OP photos stay proof."""
     from app.services.tweet_ingest.records import ChasedPost
 
     embed = ChasedPost(
@@ -312,33 +313,28 @@ async def test_telegram_chase_fills_date_and_source_media(db, owner, tmp_path, m
     )
     row = await _run_telegram_chase(db, owner, tmp_path, monkeypatch, embed=embed)
 
-    assert row.source_url == "https://t.me/somechannel/12345"
-    assert row.source_posted_at == datetime.fromisoformat("2026-03-04T09:00:00+00:00")
-    source = db.query(Media).filter(Media.event_id == row.id, Media.role == "source").all()
+    assert _source_links(row) == [[(_TG_URL, _TG_POSTED_AT)]]
+    source = _source_files(db, row)
     assert len(source) == 1 and source[0].kind == "video"
-    proof = db.query(Media).filter(Media.event_id == row.id, Media.role == "proof").all()
-    assert len(proof) == 2 and all(m.kind == "image" for m in proof)
+    assert [m.kind for m in row.media] == ["image", "image"]
 
 
 async def test_telegram_chase_sensitive_degrades_to_date_only(db, owner, tmp_path, monkeypatch):
-    """A sensitive t.me post: the date fills, no source media is stored, the backfill does not fail."""
+    """A sensitive t.me post: the date fills, the source has no file, the backfill does not fail."""
     from app.services.tweet_ingest.records import ChasedPost
 
     embed = ChasedPost(url="https://t.me/somechannel/12345", posted_at="2026-03-04T09:00:00+00:00")
     row = await _run_telegram_chase(db, owner, tmp_path, monkeypatch, embed=embed)
 
-    assert row.source_url == "https://t.me/somechannel/12345"
-    assert row.source_posted_at == datetime.fromisoformat("2026-03-04T09:00:00+00:00")
-    source = db.query(Media).filter(Media.event_id == row.id, Media.role == "source").all()
-    assert len(source) == 0
-    proof = db.query(Media).filter(Media.event_id == row.id, Media.role == "proof").all()
-    assert len(proof) == 2 and all(m.kind == "image" for m in proof)
+    assert _source_links(row) == [[(_TG_URL, _TG_POSTED_AT)]]
+    assert _source_files(db, row) == []
+    assert [m.kind for m in row.media] == ["image", "image"]
 
 
 async def test_reimport_fills_a_detection_an_earlier_run_left_bare(
     db, owner, tmp_path, monkeypatch
 ):
-    """A re-import with the chase on fills source_url, date and media on the same row a chase-less pass left bare."""
+    """A re-import with the chase on fills the source, its post time and its file on the same row a chase-less pass left bare."""
     import app.services.tweet_ingest.archive as archive_mod
     import app.services.tweet_ingest.chase.telegram as telegram_mod
     from app.services.tweet_ingest.records import ChasedPost, ChaseResult
@@ -382,9 +378,7 @@ async def test_reimport_fills_a_detection_an_earlier_run_left_bare(
     assert len(stale.created) == 1
     stale_row = db.query(Event).filter(Event.id == stale.created[0]).one()
     stale_id, stale_created_at = stale_row.id, stale_row.created_at
-    assert stale_row.source_url is None
-    assert stale_row.source_links == []
-    assert db.query(Media).filter(Media.event_id == stale_id, Media.role == "source").all() == []
+    assert stale_row.sources == []
 
     # The same export with the chase on.
     outcome = await backfill_from_archive(db, owner=owner, archive_dir=archive, chase=True)
@@ -396,10 +390,9 @@ async def test_reimport_fills_a_detection_an_earlier_run_left_bare(
     assert row.created_at == stale_created_at
     assert row.status == STATUS_DETECTED
     assert row.detection.from_url == permalink
-    assert row.source_url == "https://t.me/somechannel/12345"
-    assert row.source_posted_at == datetime.fromisoformat("2026-03-04T09:00:00+00:00")
-    assert row.source_links == []
-    source = db.query(Media).filter(Media.event_id == row.id, Media.role == "source").all()
+    assert _source_links(row) == [[(_TG_URL, _TG_POSTED_AT)]]
+    assert [(s.level, s.sensor) for s in row.sources] == [("direct", None)]
+    source = _source_files(db, row)
     assert len(source) == 1 and source[0].kind == "video"
 
 
@@ -455,15 +448,34 @@ def _telegram_source_archive(tmp_path: Any, tweet_id: str) -> Any:
     return archive
 
 
+def _source_files(db, event: Event) -> list[Media]:
+    return (
+        db.query(Media)
+        .join(Source, Media.source_id == Source.id)
+        .filter(Source.event_id == event.id)
+        .all()
+    )
+
+
+def _source_links(event: Event) -> list[list[tuple[str, datetime | None]]]:
+    """Each source's links as ``(url, posted_at)``, in the derived source order."""
+    return [[(link.url, link.posted_at) for link in source.links] for source in event.sources]
+
+
 def _media_roles(db, event: Event) -> dict[str, int]:
+    """Proof images on the event and files on its sources, counted per role."""
     counts: dict[str, int] = {}
-    for media in db.query(Media).filter(Media.event_id == event.id).all():
+    for media in db.query(Media).filter(Media.event_id == event.id).all() + _source_files(
+        db, event
+    ):
         counts[media.role] = counts.get(media.role, 0) + 1
     return counts
 
 
 def _media_types(db, event: Event) -> set[str]:
-    return {m.kind for m in db.query(Media).filter(Media.event_id == event.id).all()}
+    return {m.kind for m in db.query(Media).filter(Media.event_id == event.id).all()} | {
+        m.kind for m in _source_files(db, event)
+    }
 
 
 def _fixture_occurred_date(typology: str) -> date:

@@ -102,7 +102,7 @@ def admin_user(db):
 
 @pytest.fixture
 def free_tag(db):
-    tag = Tag(name=f"tag-{uuid.uuid4().hex[:8]}", category="free")
+    tag = Tag(name=f"tag-{uuid.uuid4().hex[:8]}")
     db.add(tag)
     db.commit()
     tag_id = tag.id
@@ -122,18 +122,5 @@ def conflict(db):
     yield row
     db.execute(
         Conflict.__table__.delete().where(Conflict.id == conflict_id),
-    )
-    db.commit()
-
-
-@pytest.fixture
-def capture_source_tag(db):
-    tag = Tag(name=f"capture-{uuid.uuid4().hex[:8]}", category="capture_source")
-    db.add(tag)
-    db.commit()
-    tag_id = tag.id
-    yield tag
-    db.execute(
-        Tag.__table__.delete().where(Tag.id == tag_id),
     )
     db.commit()

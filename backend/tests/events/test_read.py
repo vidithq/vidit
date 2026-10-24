@@ -70,7 +70,7 @@ def test_list_conflict_filter_does_not_match_free_tag_of_same_name(db, author):
 
     Conflict filtering joins the `conflicts` referential, never the tags table.
     """
-    free = Tag(name=f"clash-{uuid.uuid4().hex[:8]}", category="free")
+    free = Tag(name=f"clash-{uuid.uuid4().hex[:8]}")
     db.add(free)
     db.commit()
     geo = _make_geo(db, author=author, tags=[free])
@@ -84,31 +84,54 @@ def test_list_conflict_filter_does_not_match_free_tag_of_same_name(db, author):
         db.commit()
 
 
-def test_list_filters_by_capture_source(db, author, capture_source_tag):
-    with_cs = _make_geo(db, author=author, tags=[capture_source_tag])
-    other = _make_geo(db, author=author)
+def test_sensor_filter_matches_any_source_and_ors_within_the_list(db, author):
+    """``?sensor=`` keeps an event when any of its sources has a listed sensor."""
+    mixed = _make_geo(
+        db, author=author, sensor="smartphone", secondary_source_urls=["https://t.me/c/2"]
+    )
+    drone = _make_geo(db, author=author, sensor="drone")
+    satellite = _make_geo(db, author=author, sensor="satellite")
 
-    response = client.get(f"/api/v1/events?capture_source={capture_source_tag.name}")
+    response = client.get(
+        "/api/v1/events", params={"sensor": ["unknown", "drone"], "author": author.username}
+    )
     assert response.status_code == 200
     ids = {row["id"] for row in response.json()}
-    assert str(with_cs.id) in ids
-    assert str(other.id) not in ids
+    assert ids == {str(mixed.id), str(drone.id)}
+    assert str(satellite.id) not in ids
 
 
-def test_capture_source_filter_does_not_match_free_tag_of_same_name(db, author):
-    """A free tag named like a capture-source tag must not match `?capture_source=`."""
-    free = Tag(name=f"lens-{uuid.uuid4().hex[:8]}", category="free")
-    db.add(free)
+def test_level_filter_keeps_events_with_a_source_of_that_level(db, author):
+    indirect = _make_geo(db, author=author)
+    indirect.sources[0].level = "indirect"
     db.commit()
-    geo = _make_geo(db, author=author, tags=[free])
-    try:
-        response = client.get(f"/api/v1/events?capture_source={free.name}")
+    direct = _make_geo(db, author=author)
+
+    def ids(levels: list[str]) -> set[str]:
+        response = client.get(
+            "/api/v1/events/points",
+            params={"bbox": WORLD_BBOX, "level": levels, "author": author.username},
+        )
         assert response.status_code == 200
-        ids = {row["id"] for row in response.json()}
-        assert str(geo.id) not in ids
-    finally:
-        db.execute(Tag.__table__.delete().where(Tag.id == free.id))
-        db.commit()
+        return {row[0] for row in response.json()}
+
+    assert ids(["indirect"]) == {str(indirect.id)}
+    assert ids(["direct", "indirect"]) == {str(indirect.id), str(direct.id)}
+
+
+def test_tag_filter_matches_a_source_tag(db, author, free_tag):
+    """``?tag=`` matches a tag on the event or on any of its sources."""
+    on_source = _make_geo(db, author=author)
+    on_source.sources[0].tags = [free_tag]
+    db.commit()
+    on_event = _make_geo(db, author=author, tags=[free_tag])
+    untagged = _make_geo(db, author=author)
+
+    response = client.get("/api/v1/events", params={"tag": free_tag.name})
+    assert response.status_code == 200
+    ids = {row["id"] for row in response.json()}
+    assert {str(on_source.id), str(on_event.id)} <= ids
+    assert str(untagged.id) not in ids
 
 
 def test_list_filters_by_author_exact_case_insensitive(db, author):
@@ -235,7 +258,9 @@ def test_detail_returns_full_shape(db, author, free_tag):
     assert body["title"] == geo.title
     assert body["coords"]["lat"] == pytest.approx(48.7)
     assert body["coords"]["lng"] == pytest.approx(34.7)
-    assert body["capture_source_coords"] is None
+    [source] = body["sources"]
+    assert (source["level"], source["sensor"]) == ("direct", "smartphone")
+    assert [link["url"] for link in source["links"]] == ["https://example.com/source"]
     assert body["owner"]["username"] == author.username
     # `AuthorRef` field-set guard: the byline renders these fields off this block.
     assert set(body["owner"]) == {
@@ -341,7 +366,8 @@ def test_points_cache_key_covers_bbox():
         return _build_points_cache_key(
             bbox=bbox,
             conflict=None,
-            capture_source=None,
+            sensor=None,
+            level=None,
             tag=None,
             occurred_date_from=None,
             occurred_date_to=None,
@@ -375,8 +401,6 @@ def test_points_null_event_date_serialises_as_null(db, author):
         owner_id=author.id,
         title="Dateless geo",
         coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://x.com/a/status/2",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         occurred_date=None,
         geolocated_at=datetime.now(UTC),
     )
@@ -405,8 +429,6 @@ def test_detected_row_renders_marked_across_surfaces(db, author):
         owner_id=author.id,
         title="Detected geo",
         coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://x.com/a/status/1",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         occurred_date=date(2026, 5, 1),
         status=STATUS_DETECTED,
         detected_at=datetime.now(UTC),
@@ -455,29 +477,29 @@ def test_points_cache_keys_on_filter_combination(db, author, free_tag):
 
 
 def test_points_filters_media(db, author):
-    """``media`` narrows the point set to events carrying that attachment type."""
+    """``media`` matches a source file or a proof image of that type."""
     from app.models.media import Media
 
     plain = _make_geo(db, author=author, lat=40.0, lng=40.0)
     with_video = _make_geo(db, author=author, lat=41.0, lng=41.0)
+    with_video.sources[0].media = Media(
+        sha256=fake_sha256(), storage_url="s3://x/v.mp4", kind="video"
+    )
+    proof_only = _make_geo(db, author=author, lat=42.0, lng=42.0)
     db.add(
         Media(
-            sha256=fake_sha256(),
-            event_id=with_video.id,
-            role="source",
-            storage_url="s3://x/v.mp4",
-            kind="video",
+            sha256=fake_sha256(), event_id=proof_only.id, storage_url="s3://x/p.jpg", kind="image"
         )
     )
     db.commit()
 
     def ids(query: str) -> set[str]:
-        url = f"/api/v1/events/points?bbox={WORLD_BBOX}&{query}"
+        url = f"/api/v1/events/points?bbox={WORLD_BBOX}&author={author.username}&{query}"
         return {row[0] for row in client.get(url).json()}
 
-    media_ids = ids("media=video")
-    assert str(with_video.id) in media_ids
-    assert str(plain.id) not in media_ids
+    assert ids("media=video") == {str(with_video.id)}
+    assert ids("media=image") == {str(proof_only.id)}
+    assert str(plain.id) not in ids("media=image&media=video")
 
     # A junk media value is rejected (422), not silently treated as "no match".
     assert client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}&media=bogus").status_code == 422
@@ -494,7 +516,8 @@ def test_points_cache_key_builder_is_separator_safe():
     colliding_a = _build_points_cache_key(
         bbox=WORLD_BOUNDS,
         conflict=["a:b"],
-        capture_source=None,
+        sensor=None,
+        level=None,
         tag=None,
         occurred_date_from=None,
         occurred_date_to=None,
@@ -505,7 +528,8 @@ def test_points_cache_key_builder_is_separator_safe():
     colliding_b = _build_points_cache_key(
         bbox=WORLD_BOUNDS,
         conflict=["a"],
-        capture_source=None,
+        sensor=None,
+        level=None,
         tag=["b"],
         occurred_date_from=None,
         occurred_date_to=None,
@@ -519,7 +543,8 @@ def test_points_cache_key_builder_is_separator_safe():
     same_a = _build_points_cache_key(
         bbox=WORLD_BOUNDS,
         conflict=["ukraine"],
-        capture_source=None,
+        sensor=None,
+        level=None,
         tag=None,
         occurred_date_from="2024-01-01",
         occurred_date_to=None,
@@ -530,7 +555,8 @@ def test_points_cache_key_builder_is_separator_safe():
     same_b = _build_points_cache_key(
         bbox=WORLD_BOUNDS,
         conflict=["ukraine"],
-        capture_source=None,
+        sensor=None,
+        level=None,
         tag=None,
         occurred_date_from="2024-01-01",
         occurred_date_to=None,
@@ -540,11 +566,12 @@ def test_points_cache_key_builder_is_separator_safe():
     )
     assert same_a == same_b, "identical filter tuples must produce the same key"
 
-    # capture_source participates in the key (guards against the bucket being dropped).
+    # sensor and level participate in the key (guards against a bucket being dropped).
     cs_a = _build_points_cache_key(
         bbox=WORLD_BOUNDS,
         conflict=None,
-        capture_source=["Satellite"],
+        sensor=["satellite"],
+        level=None,
         tag=None,
         occurred_date_from=None,
         occurred_date_to=None,
@@ -555,7 +582,8 @@ def test_points_cache_key_builder_is_separator_safe():
     cs_b = _build_points_cache_key(
         bbox=WORLD_BOUNDS,
         conflict=None,
-        capture_source=["Drone"],
+        sensor=["drone"],
+        level=None,
         tag=None,
         occurred_date_from=None,
         occurred_date_to=None,
@@ -563,13 +591,26 @@ def test_points_cache_key_builder_is_separator_safe():
         submitted_to=None,
         author=None,
     )
-    assert cs_a != cs_b, "capture_source must participate in the cache key"
+    assert cs_a != cs_b, "sensor must participate in the cache key"
+    level_key = _build_points_cache_key(
+        bbox=WORLD_BOUNDS,
+        conflict=None,
+        sensor=["satellite"],
+        level=["indirect"],
+        tag=None,
+        occurred_date_from=None,
+        occurred_date_to=None,
+        submitted_from=None,
+        submitted_to=None,
+        author=None,
+    )
+    assert level_key != cs_a, "level must participate in the cache key"
 
 
 @pytest.mark.parametrize(
     "bucket",
-    ["conflict", "capture_source", "tag"],
-    ids=["conflict-list", "capture-source-list", "tag-list"],
+    ["conflict", "sensor", "level", "tag"],
+    ids=["conflict-list", "sensor-list", "level-list", "tag-list"],
 )
 def test_points_cache_key_is_list_order_insensitive(bucket):
     """``?bucket=a&bucket=b`` and ``?bucket=b&bucket=a`` hit the same cache entry.
@@ -578,7 +619,7 @@ def test_points_cache_key_is_list_order_insensitive(bucket):
     """
     from app.routers.events.read import _build_points_cache_key
 
-    buckets = ("conflict", "capture_source", "tag")
+    buckets = ("conflict", "sensor", "level", "tag")
     forward = _build_points_cache_key(
         bbox=WORLD_BOUNDS,
         **{bucket: ["alpha", "beta"]},
@@ -604,8 +645,8 @@ def test_points_cache_key_is_list_order_insensitive(bucket):
 
 def test_points_or_within_free_tag_list(db, author):
     """Multiple ``?tag=`` values match geos carrying ANY listed tag (OR, not AND)."""
-    tag_a = Tag(name=f"a-{uuid.uuid4().hex[:8]}", category="free")
-    tag_b = Tag(name=f"b-{uuid.uuid4().hex[:8]}", category="free")
+    tag_a = Tag(name=f"a-{uuid.uuid4().hex[:8]}")
+    tag_b = Tag(name=f"b-{uuid.uuid4().hex[:8]}")
     db.add_all([tag_a, tag_b])
     db.commit()
 
@@ -631,7 +672,7 @@ def test_points_or_within_conflict_list(db, author):
     """Multiple ``?conflict=`` values match geos in ANY listed conflict (OR within the list)."""
     conflict_a = Conflict(name=f"ca-{uuid.uuid4().hex[:8]}", is_ongoing=True, origin="manual")
     conflict_b = Conflict(name=f"cb-{uuid.uuid4().hex[:8]}", is_ongoing=True, origin="manual")
-    free_same_name = Tag(name=conflict_a.name + "-free", category="free")
+    free_same_name = Tag(name=conflict_a.name + "-free")
     db.add_all([conflict_a, conflict_b, free_same_name])
     db.commit()
 
@@ -659,7 +700,7 @@ def test_points_or_within_conflict_list(db, author):
 def test_points_and_across_conflict_and_tag(db, author):
     """``?conflict=X&tag=Y`` returns the intersection (AND across buckets, not a union)."""
     conflict = Conflict(name=f"conf-{uuid.uuid4().hex[:8]}", is_ongoing=True, origin="manual")
-    free = Tag(name=f"free-{uuid.uuid4().hex[:8]}", category="free")
+    free = Tag(name=f"free-{uuid.uuid4().hex[:8]}")
     db.add_all([conflict, free])
     db.commit()
 

@@ -20,6 +20,7 @@ from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event, EventDet
 from app.models.password_reset_token import (
     PasswordResetToken,
 )
+from app.models.source import Source, SourceLink
 from app.models.user import User
 from app.services import maintenance as maintenance_service
 from app.services.auth import hash_password
@@ -187,7 +188,7 @@ def _detection(db, owner, **kwargs) -> Event:
         owner_id=owner.id,
         title=f"Detection {uuid.uuid4().hex[:8]}",
         coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://x.com/a/status/1",
+        sources=[Source(level="direct", links=[SourceLink(url="https://x.com/a/status/1")])],
         detection=EventDetection(from_url="https://x.com/a/status/1"),
         status=STATUS_DETECTED,
         detected_at=datetime.now(UTC),

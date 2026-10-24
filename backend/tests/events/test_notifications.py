@@ -15,7 +15,7 @@ from app.services import notification_delivery
 from app.services.auth import hash_password
 from tests.conftest import login_as
 from tests.events._helpers import client, notifications_of
-from tests.events.test_requests import _geolocate_fulfilment, _make_request
+from tests.events.test_requests import _geolocate_fulfilment, _kept, _make_request
 
 _FEED = "/api/v1/notifications"
 _UNREAD = "/api/v1/notifications/unread-count"
@@ -62,11 +62,9 @@ def third_user(db):
     db.commit()
 
 
-def test_fulfilment_by_another_analyst_notifies_the_requester(
-    db, author, second_user, conflict, capture_source_tag
-):
+def test_fulfilment_by_another_analyst_notifies_the_requester(db, author, second_user, conflict):
     request = _make_request(db, author=author)
-    response = _geolocate_fulfilment(client, request.id, second_user, conflict, capture_source_tag)
+    response = _geolocate_fulfilment(request.id, second_user, conflict, _kept(request))
     assert response.status_code == 200, response.text
 
     rows = _rows(db, author)
@@ -83,9 +81,9 @@ def test_fulfilment_by_another_analyst_notifies_the_requester(
     assert items[0]["read_at"] is None
 
 
-def test_self_fulfilment_notifies_nobody(db, author, conflict, capture_source_tag):
+def test_self_fulfilment_notifies_nobody(db, author, conflict):
     request = _make_request(db, author=author)
-    response = _geolocate_fulfilment(client, request.id, author, conflict, capture_source_tag)
+    response = _geolocate_fulfilment(request.id, author, conflict, _kept(request))
     assert response.status_code == 200, response.text
     assert _rows(db, author) == []
 

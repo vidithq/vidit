@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-import uuid
 from datetime import UTC, date, datetime
-
-from geoalchemy2.shape import from_shape
-from shapely.geometry import Point
 
 from app.models.event import Event
 from app.models.user import User
 from tests.conftest import login_as
-from tests.events._helpers import client
+from tests.events._helpers import _make_geo, client
 
 
 def _make_geo_with_source(
@@ -22,22 +18,19 @@ def _make_geo_with_source(
     lng: float,
     source_url: str,
     occurred_date_value: date,
+    secondary_source_urls: list[str] | None = None,
 ) -> Event:
-    """Pins the source URL and event date, which ``_make_geo`` defaults away from the
+    """Pins the source URLs and event date, which ``_make_geo`` defaults away from the
     host / date legs."""
-    geo = Event(
-        owner_id=author.id,
-        title=f"Geo {uuid.uuid4().hex[:8]}",
-        coords=from_shape(Point(lng, lat), srid=4326),
+    return _make_geo(
+        db,
+        author=author,
+        lat=lat,
+        lng=lng,
         source_url=source_url,
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        secondary_source_urls=secondary_source_urls,
         occurred_date=occurred_date_value,
-        geolocated_at=datetime.now(UTC),
     )
-    db.add(geo)
-    db.commit()
-    db.refresh(geo)
-    return geo
 
 
 def test_possible_duplicates_requires_auth():
@@ -49,7 +42,6 @@ def test_possible_duplicates_requires_auth():
             "lng": 34.5,
             "source_url": "https://example.com/x",
             "occurred_date": "2026-05-01",
-            "source_posted_at": "2026-05-01T12:00",
         },
     )
     assert response.status_code == 401
@@ -84,6 +76,32 @@ def test_possible_duplicates_returns_host_match(db, author):
     assert hit["distance_m"] < 200, (
         f"two coords ~55 m apart should report a small distance, got {hit['distance_m']}"
     )
+
+
+def test_possible_duplicates_matches_the_host_of_any_source(db, author):
+    """The host leg reaches every source's URLs, and the hit lists them all."""
+    target = _make_geo_with_source(
+        db,
+        author=author,
+        lat=48.50000,
+        lng=34.50000,
+        source_url="https://x.com/a/status/1",
+        secondary_source_urls=["https://t.me/otherchannel/7"],
+        occurred_date_value=date(2026, 5, 1),
+    )
+    login_as(client, author)
+    response = client.get(
+        "/api/v1/events/possible-duplicates",
+        params={
+            "lat": 48.50050,
+            "lng": 34.50000,
+            "source_url": "https://t.me/otherchannel/8",
+            "occurred_date": "2025-01-01",  # no date match → host leg only
+        },
+    )
+    assert response.status_code == 200
+    hit = next(h for h in response.json() if h["id"] == str(target.id))
+    assert hit["source_urls"] == ["https://x.com/a/status/1", "https://t.me/otherchannel/7"]
 
 
 def test_possible_duplicates_returns_date_match(db, author):
@@ -128,7 +146,6 @@ def test_possible_duplicates_excludes_distant_rows(db, author):
             "lng": 34.50000,
             "source_url": "https://t.me/somechannel/99999",
             "occurred_date": "2026-05-01",
-            "source_posted_at": "2026-05-01T12:00",
         },
     )
     assert response.status_code == 200
@@ -162,7 +179,6 @@ def test_possible_duplicates_rejects_like_meta_characters_in_host(db, author):
             # non-matching date leg. Without it ``%.com`` would match ``twitter.com``.
             "source_url": "https://%.com/x",
             "occurred_date": "2025-01-01",
-            "source_posted_at": "2026-05-01T12:00",
         },
     )
     assert response.status_code == 200
@@ -189,7 +205,6 @@ def test_possible_duplicates_excludes_soft_deleted(db, author):
             "lng": 34.50000,
             "source_url": "https://t.me/somechannel/99999",
             "occurred_date": "2026-05-01",
-            "source_posted_at": "2026-05-01T12:00",
         },
     )
     assert response.status_code == 200
@@ -268,7 +283,6 @@ def test_possible_duplicates_orders_by_distance(db, author):
             "lng": 34.50000,
             "source_url": "https://t.me/somechannel/ccc",
             "occurred_date": "2026-05-01",
-            "source_posted_at": "2026-05-01T12:00",
         },
     )
     assert response.status_code == 200

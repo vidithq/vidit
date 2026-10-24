@@ -87,9 +87,7 @@ def test_list_conflicts_used_filters_to_live_events(conflicts_pair, db):
         owner_id=owner.id,
         title="used-conflict probe",
         coords=from_shape(Point(30.0, 50.0), srid=4326),
-        source_url="https://example.test/src",
         occurred_date=datetime.now(UTC).date(),
-        source_posted_at=datetime.now(UTC),
         geolocated_at=datetime.now(UTC),
     )
     geo.conflicts = [ongoing]

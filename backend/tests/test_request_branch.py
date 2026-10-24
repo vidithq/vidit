@@ -241,7 +241,7 @@ def test_a_coordinate_in_the_quoted_post_drafts_nothing() -> None:
 
 
 def test_two_spellings_of_one_telegram_post_draft_one_source_url() -> None:
-    """The source is stored canonical: dedup compares ``source_url`` as a string
+    """The source is stored canonical: dedup compares a source link's URL as a string
     (``detection._match_legs``), so ``www.`` and share parameters must not change it."""
     spellings = [
         "https://t.me/example_channel/351",

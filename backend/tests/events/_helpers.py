@@ -1,10 +1,13 @@
 """Shared ``client``, the ``_make_geo`` row factory, the published-event, approval and
-notification helpers, and the ``proof_*`` multipart helpers."""
+notification helpers, the ``proof_*`` multipart helpers, and the source helpers
+(``stage_file``, ``source_spec``, ``sources_field``) the event forms take."""
 
 from __future__ import annotations
 
+import json
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
+from typing import Any
 
 from fastapi.testclient import TestClient
 from geoalchemy2.shape import from_shape
@@ -22,10 +25,11 @@ from app.models.event import (
     EventDetection,
     EventGeolocator,
 )
+from app.models.media import Media
 from app.models.notification import NotificationDelivery
+from app.models.source import Source, SourceLink
 from app.models.tag import Tag
 from app.models.user import User
-from app.services.events import build_source_link_rows
 from tests._fixtures import TINY_JPEG, fake_sha256
 from tests.conftest import login_as
 
@@ -67,13 +71,15 @@ def _make_geo(
     conflicts: list[Conflict] | None = None,
     status: str | None = None,
     detected_from_url: str | None = None,
-    # ``None`` models a source-less detection; only valid with status ``detected``
-    # (``ck_events_source_url_status``).
+    # The URL of the one ``direct`` source; ``None`` (and no media) models a source-less
+    # detection.
     source_url: str | None = "https://example.com/source",
+    # Each its own ``direct`` source, as the migration and the imports write them.
     secondary_source_urls: list[str] | None = None,
     with_media: bool = False,
     is_graphic: bool = False,
     hidden: bool = False,
+    sensor: str | None = "smartphone",
 ) -> Event:
     now = datetime.now(UTC)
     geo = Event(
@@ -82,11 +88,43 @@ def _make_geo(
         coords=(
             from_shape(Point(lng, lat), srid=4326) if lat is not None and lng is not None else None
         ),
-        source_url=source_url,
         occurred_date=occurred_date or date(2026, 5, 1),
-        source_posted_at=source_posted_at or datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        is_graphic=is_graphic,
     )
+    sources: list[Source] = []
+    if source_url is not None or with_media:
+        sources.append(
+            Source(
+                level="direct",
+                sensor=sensor,
+                is_graphic=is_graphic,
+                created_at=now,
+                links=(
+                    [
+                        SourceLink(
+                            url=source_url,
+                            posted_at=source_posted_at or datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+                        )
+                    ]
+                    if source_url is not None
+                    else []
+                ),
+                media=(
+                    Media(sha256=fake_sha256(), storage_url="s3://x/m.jpg", kind="image")
+                    if with_media
+                    else None
+                ),
+            )
+        )
+    for offset, url in enumerate(secondary_source_urls or [], start=1):
+        sources.append(
+            Source(
+                level="direct",
+                sensor="unknown",
+                created_at=now + timedelta(microseconds=offset),
+                links=[SourceLink(url=url)],
+            )
+        )
+    geo.sources = sources
     if status is not None:
         geo.status = status
     if proof is not None:
@@ -113,22 +151,7 @@ def _make_geo(
         geo.tags = tags
     if conflicts:
         geo.conflicts = conflicts
-    if secondary_source_urls:
-        geo.source_links = build_source_link_rows(secondary_source_urls)
     db.add(geo)
-    db.flush()
-    if with_media:
-        from app.models.media import Media
-
-        db.add(
-            Media(
-                sha256=fake_sha256(),
-                event_id=geo.id,
-                role="source",
-                storage_url="s3://x/m.jpg",
-                kind="image",
-            )
-        )
     db.commit()
     db.refresh(geo)
     return geo
@@ -144,6 +167,64 @@ def proof_form_field(filename: str = "proof-1.jpg") -> str:
 
 def proof_file_part(filename: str = "proof-1.jpg") -> tuple[str, tuple[str, bytes, str]]:
     return ("proof_files", (filename, TINY_JPEG, "image/jpeg"))
+
+
+def stage_file(
+    user: User,
+    content: bytes = TINY_JPEG,
+    filename: str = "footage.jpg",
+    content_type: str = "image/jpeg",
+) -> str:
+    """``POST /uploads`` as ``user``: the id of the staged file a source names."""
+    response = client.post(
+        "/api/v1/uploads",
+        headers=login_as(client, user),
+        files={"file": (filename, content, content_type)},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()["id"]
+
+
+def source_spec(
+    url: str | None = "https://example.com/source",
+    *,
+    level: str = "direct",
+    sensor: str | None = "smartphone",
+    upload_id: str | None = None,
+    media_id: str | None = None,
+    posted_at: str | None = "2026-05-01T12:00",
+    snapshot_url: str | None = None,
+    links: list[dict[str, Any]] | None = None,
+    **extra: Any,
+) -> dict[str, Any]:
+    """One ``SourceCreate`` as a form posts it; ``links`` replaces the one built from ``url``."""
+    spec: dict[str, Any] = {
+        "level": level,
+        "sensor": sensor,
+        "links": (
+            links
+            if links is not None
+            else [{"url": url, "posted_at": posted_at, "snapshot_url": snapshot_url}]
+            if url is not None
+            else []
+        ),
+        **extra,
+    }
+    if upload_id is not None:
+        spec["upload_id"] = upload_id
+    if media_id is not None:
+        spec["media_id"] = media_id
+    return spec
+
+
+def sources_field(*specs: dict[str, Any]) -> str:
+    """The ``sources`` form field: a JSON array of :func:`source_spec` entries."""
+    return json.dumps(list(specs))
+
+
+def filed_source(user: User, url: str = "https://example.com/source", **kw: Any) -> str:
+    """A ``sources`` field holding one direct source with a freshly staged file."""
+    return sources_field(source_spec(url, upload_id=stage_file(user), **kw))
 
 
 def published_geo(db, owner: User, **kw) -> Event:

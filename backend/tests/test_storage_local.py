@@ -15,7 +15,7 @@ from app.services.storage import (
     StorageDeleteError,
     derivative_key,
     sweep_keys,
-    upload_file,
+    upload_source_file,
 )
 
 
@@ -58,19 +58,18 @@ async def test_local_storage_upload_bytes_writes_payload(tmp_path: Path):
     assert result.sha256 == hashlib.sha256(b"raw-bytes").hexdigest()
 
 
-async def test_upload_file_helper_routes_through_local(tmp_path: Path):
+async def test_upload_source_file_helper_routes_through_local(tmp_path: Path):
     """Images go through the EXIF-strip pipeline, so the stored file is the re-encoded
     copy and the hash is of what landed, not of the input."""
     import hashlib
 
     from tests._fixtures import TINY_JPEG
 
-    geo_id = uuid4()
     file = _upload_file("photo.jpg", TINY_JPEG, "image/jpeg")
 
-    result = await upload_file(file, geo_id)
+    result = await upload_source_file(file)
 
-    assert result.url.startswith(f"{LOCAL_STORAGE_URL_PREFIX}/uploads/{geo_id}/")
+    assert result.url.startswith(f"{LOCAL_STORAGE_URL_PREFIX}/uploads/")
     assert result.url.endswith(".jpg")
     relative = result.url.removeprefix(f"{LOCAL_STORAGE_URL_PREFIX}/")
     on_disk = (tmp_path / relative).read_bytes()
@@ -78,7 +77,7 @@ async def test_upload_file_helper_routes_through_local(tmp_path: Path):
     assert result.sha256 == hashlib.sha256(on_disk).hexdigest()
 
 
-async def test_upload_file_writes_hero_and_thumbnail_derivatives(tmp_path: Path):
+async def test_upload_source_file_writes_hero_and_thumbnail_derivatives(tmp_path: Path):
     """An image upload lands three objects: original, hero (max-dim 1280) and thumbnail
     (max-dim 400). The ``_hero.jpg`` / ``_thumb.jpg`` naming is shared with the
     frontend ``mediaUrls``."""
@@ -88,10 +87,9 @@ async def test_upload_file_writes_hero_and_thumbnail_derivatives(tmp_path: Path)
 
     from tests._fixtures import TINY_JPEG
 
-    geo_id = uuid4()
     file = _upload_file("photo.jpg", TINY_JPEG, "image/jpeg")
 
-    result = await upload_file(file, geo_id)
+    result = await upload_source_file(file)
 
     original_relative = result.url.removeprefix(f"{LOCAL_STORAGE_URL_PREFIX}/")
     assert (tmp_path / original_relative).exists(), "original missing on disk"
@@ -109,24 +107,22 @@ async def test_upload_file_writes_hero_and_thumbnail_derivatives(tmp_path: Path)
     assert PILImage.open(_BytesIO(thumb_bytes)).format == "JPEG"
 
 
-async def test_upload_file_derives_extension_from_content_type_not_filename(tmp_path: Path):
+async def test_upload_source_file_derives_extension_from_content_type_not_filename(tmp_path: Path):
     """The S3 key extension comes from the validated MIME type, not the
     attacker-controlled ``file.filename`` (long suffix, RTL override, lying extension)."""
-    geo_id = uuid4()
     # '.html' on a video/mp4 payload: the content type wins.
     file = _upload_file("evil.html", b"fake-mp4-bytes", "video/mp4")
 
-    result = await upload_file(file, geo_id)
+    result = await upload_source_file(file)
 
     assert result.url.endswith(".mp4")
 
 
-async def test_upload_file_skips_derivatives_for_video(tmp_path: Path):
+async def test_upload_source_file_skips_derivatives_for_video(tmp_path: Path):
     """Videos produce no JPEG derivatives, so a rollback sweeps no missing sibling keys."""
-    geo_id = uuid4()
     file = _upload_file("clip.mp4", b"fake-mp4-bytes", "video/mp4")
 
-    result = await upload_file(file, geo_id)
+    result = await upload_source_file(file)
     assert result.derivative_keys == ()
 
 
@@ -156,7 +152,9 @@ def test_derivative_key_handles_extensionless_keys():
     assert derivative_key("uploads/abc/photo", "hero") == "uploads/abc/photo_hero.jpg"
 
 
-async def test_upload_file_sweeps_partial_triple_on_mid_flight_failure(tmp_path: Path, monkeypatch):
+async def test_upload_source_file_sweeps_partial_triple_on_mid_flight_failure(
+    tmp_path: Path, monkeypatch
+):
     """A hero or thumb failure after the original landed sweeps the original and any
     derivative before the exception propagates (best effort), so the bucket never
     holds a partial triple."""
@@ -175,15 +173,14 @@ async def test_upload_file_sweeps_partial_triple_on_mid_flight_failure(tmp_path:
 
     monkeypatch.setattr(LocalStorage, "upload_bytes", flaky_upload_bytes)
 
-    geo_id = uuid4()
     file = _upload_file("photo.jpg", TINY_JPEG, "image/jpeg")
     with pytest.raises(RuntimeError, match="simulated hero PUT failure"):
-        await upload_file(file, geo_id)
+        await upload_source_file(file)
 
-    geo_dir = tmp_path / "uploads" / str(geo_id)
-    leftovers = list(geo_dir.iterdir()) if geo_dir.exists() else []
+    uploads_dir = tmp_path / "uploads"
+    leftovers = list(uploads_dir.iterdir()) if uploads_dir.exists() else []
     assert leftovers == [], (
-        f"mid-flight sweep failed — partial upload left behind: {[p.name for p in leftovers]}"
+        f"mid-flight sweep failed, partial upload left behind: {[p.name for p in leftovers]}"
     )
 
 

@@ -39,45 +39,28 @@ def test_parse_json_id_list_empty_is_empty_list():
     assert parse_json_id_list("", field="tag_ids") == []
 
 
-def test_parse_json_id_list_as_uuid_coerces_valid_uuids():
+def test_parse_json_id_list_coerces_valid_uuids():
     a, b = uuid.uuid4(), uuid.uuid4()
     raw = json.dumps([str(a), str(b)])
-    assert parse_json_id_list(raw, field="tag_ids", as_uuid=True) == [a, b]
+    assert parse_json_id_list(raw, field="tag_ids") == [a, b]
 
 
-def test_parse_json_id_list_as_uuid_rejects_malformed_element():
+def test_parse_json_id_list_rejects_malformed_element():
     # Must 422, not reach a UUID column as a psycopg DataError (500).
     raw = json.dumps(["not-a-uuid"])
     with pytest.raises(HTTPException) as exc:
-        parse_json_id_list(raw, field="tag_ids", as_uuid=True)
+        parse_json_id_list(raw, field="tag_ids")
     assert exc.value.status_code == 422
-
-
-def test_parse_json_id_list_default_keeps_strings():
-    # remove_media_ids is compared as strings downstream: no UUID coercion.
-    raw = json.dumps(["not-a-uuid", "also-not-a-uuid"])
-    assert parse_json_id_list(raw, field="remove_media_ids") == [
-        "not-a-uuid",
-        "also-not-a-uuid",
-    ]
 
 
 def test_parse_json_id_list_over_cap_rejected():
     raw = json.dumps([str(uuid.uuid4()) for _ in range(MAX_ID_LIST_LENGTH + 1)])
     with pytest.raises(HTTPException) as exc:
-        parse_json_id_list(raw, field="tag_ids", as_uuid=True)
-    assert exc.value.status_code == 422
-
-
-def test_parse_json_id_list_over_cap_rejected_without_uuid_coercion():
-    # The length cap applies regardless of as_uuid.
-    raw = json.dumps([str(i) for i in range(MAX_ID_LIST_LENGTH + 1)])
-    with pytest.raises(HTTPException) as exc:
-        parse_json_id_list(raw, field="remove_media_ids")
+        parse_json_id_list(raw, field="tag_ids")
     assert exc.value.status_code == 422
 
 
 def test_parse_json_id_list_at_cap_is_allowed():
     raw = json.dumps([str(uuid.uuid4()) for _ in range(MAX_ID_LIST_LENGTH)])
-    result = parse_json_id_list(raw, field="tag_ids", as_uuid=True)
+    result = parse_json_id_list(raw, field="tag_ids")
     assert len(result) == MAX_ID_LIST_LENGTH

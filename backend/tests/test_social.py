@@ -30,6 +30,7 @@ from app.models.event import (
 )
 from app.models.follow import Follow
 from app.models.media import Media
+from app.models.source import Source, SourceLink
 from app.models.tag import Tag
 from app.models.user import User
 from app.services import social as social_service
@@ -66,8 +67,18 @@ def _make_geo(db, *, author: User, title: str = "Strike", event: date | None = N
         owner_id=author.id,
         title=title,
         coords=from_shape(Point(37.802, 48.012), srid=4326),
-        source_url="https://example.com/proof",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        sources=[
+            Source(
+                level="direct",
+                sensor="smartphone",
+                links=[
+                    SourceLink(
+                        url="https://example.com/proof",
+                        posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+                    )
+                ],
+            )
+        ],
         occurred_date=event or date.today(),
         geolocated_at=datetime.now(UTC),
     )
@@ -264,7 +275,7 @@ def _make_request(db, *, requester: User, title: str = "Help", at: datetime | No
         owner_id=requester.id,
         requested_by_id=requester.id,
         title=title,
-        source_url="https://example.com/ask",
+        sources=[Source(level="direct", links=[SourceLink(url="https://example.com/ask")])],
         status=STATUS_REQUESTED,
         requested_at=at or datetime.now(UTC),
     )
@@ -337,8 +348,7 @@ def test_feed_following_carries_geolocations_and_requests_credited(db, cleanup):
     db.add(
         Media(
             sha256=fake_sha256(),
-            event_id=geo.id,
-            role="source",
+            source_id=geo.sources[0].id,
             storage_url=f"http://localhost:8000/local-storage/uploads/{geo.id}/thumb.jpg",
             kind="image",
         )
@@ -560,8 +570,8 @@ def conflict(db):
 @pytest.fixture
 def tags(db):
     rows = [
-        Tag(name=f"capture-{uuid.uuid4().hex[:8]}", category="capture_source"),
-        Tag(name=f"tag-{uuid.uuid4().hex[:8]}", category="free"),
+        Tag(name=f"source-tag-{uuid.uuid4().hex[:8]}"),
+        Tag(name=f"tag-{uuid.uuid4().hex[:8]}"),
     ]
     db.add_all(rows)
     db.commit()
@@ -571,11 +581,11 @@ def tags(db):
     db.commit()
 
 
-def test_feed_filters_by_kind_conflict_capture_source_and_tag(db, conflict, tags, cleanup):
+def test_feed_filters_by_kind_conflict_sensor_level_and_tag(db, conflict, tags, cleanup):
     """``kind`` keeps one kind of row; the taxonomy filters match as on ``GET /events``, in both
-    scopes, and the next-page link carries them."""
+    scopes, and the next-page link carries them. ``tag`` matches a tag on a source too."""
     record_user, record_geo = cleanup
-    capture, free = tags
+    source_tag, free = tags
     viewer = _make_user(db, suffix="viewer")
     analyst = _make_user(db, suffix="analyst")
     record_user(viewer)
@@ -583,11 +593,14 @@ def test_feed_filters_by_kind_conflict_capture_source_and_tag(db, conflict, tags
 
     tagged_geo = _make_geo(db, author=analyst, title="Tagged geo")
     tagged_geo.conflicts = [conflict]
-    tagged_geo.tags = [capture, free]
+    tagged_geo.tags = [free]
+    tagged_geo.sources[0].sensor = "drone"
+    tagged_geo.sources[0].tags = [source_tag]
     plain_geo = _make_geo(db, author=analyst, title="Plain geo")
     tagged_ask = _make_request(db, requester=analyst, title="Tagged ask")
     tagged_ask.conflicts = [conflict]
     tagged_ask.tags = [free]
+    tagged_ask.sources[0].level = "indirect"
     plain_ask = _make_request(db, requester=analyst, title="Plain ask")
     db.add(Follow(follower_id=viewer.id, followed_id=analyst.id))
     db.commit()
@@ -607,9 +620,10 @@ def test_feed_filters_by_kind_conflict_capture_source_and_tag(db, conflict, tags
         "Plain ask",
     }
     assert titles(f"conflict={conflict.name}") == {"Tagged geo", "Tagged ask"}
-    assert titles(f"capture_source={capture.name}") == {"Tagged geo"}
-    # A capture-source filter names a capture-source tag: a free tag of the same list misses.
-    assert titles(f"capture_source={free.name}") == set()
+    assert titles("sensor=drone") == {"Tagged geo"}
+    assert titles("sensor=drone&sensor=smartphone") == {"Tagged geo", "Plain geo"}
+    assert titles("level=indirect") == {"Tagged ask"}
+    assert titles(f"tag={source_tag.name}") == {"Tagged geo"}
     assert titles(f"tag={free.name}&kind=request") == {"Tagged ask"}
 
     all_scope = client.get(
@@ -619,6 +633,8 @@ def test_feed_filters_by_kind_conflict_capture_source_and_tag(db, conflict, tags
     assert [item["title"] for item in all_scope.json()] == ["Tagged ask"]
 
     assert client.get("/api/v1/feed?kind=detection", headers=headers).status_code == 422
+    assert client.get("/api/v1/feed?sensor=tripod", headers=headers).status_code == 422
+    assert client.get("/api/v1/feed?level=primary", headers=headers).status_code == 422
 
 
 # ── GET /users/{username} — follower counters + is_following ─────────────

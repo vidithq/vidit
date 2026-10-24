@@ -124,7 +124,7 @@ def test_proof_keeps_a_reference_link_readable():
 
 def test_split_media_promotes_only_the_first_own_video_to_source():
     # Proof embeds images only, so a video left there would be dropped at persistence.
-    # The second video stays annotation: one role=source media per event.
+    # The second video stays annotation: a source holds one file.
     record = _rec(media=[_media("image", "op"), _media("video", "op"), _media("video", "op")])
     source, proof = split_media([record])
     assert [m.kind for m in source] == ["video"]

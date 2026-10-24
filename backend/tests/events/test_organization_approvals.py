@@ -33,7 +33,7 @@ from tests.events._helpers import (
     published_geo,
 )
 from tests.events.test_approval_requests import _age_declines
-from tests.events.test_versions import _form, _save_version
+from tests.events.test_versions import _form, _kept, _save_version
 from tests.events.test_versions import _published as _published_with_floor
 
 _EVENTS = "/api/v1/events"
@@ -201,18 +201,18 @@ def test_an_organization_approval_stays_listed_when_its_member_is_banned(
 
 
 def test_a_new_version_asks_no_org_manager_who_holds_credit(
-    db, author, make_user, make_org, conflict, capture_source_tag
+    db, author, make_user, make_org, conflict
 ):
     acting, co = make_user(), make_user()
     org = make_org(managers=[acting, co])
-    geo = _published_with_floor(db, author, conflict, capture_source_tag)
+    geo = _published_with_floor(db, author, conflict)
     assert _approve(geo, acting, org).status_code == 201
     db.add(
         EventGeolocator(event_id=geo.id, user_id=co.id, state="active", joined_at=datetime.now(UTC))
     )
     db.commit()
 
-    saved = _save_version(geo.id, author, data=_form(conflict, capture_source_tag))
+    saved = _save_version(geo.id, author, data=_form(conflict, _kept(geo)))
     assert saved.status_code == 200, saved.text
     assert len(_rows(db, acting, "re_approve_requested")) == 1
     assert _rows(db, co, "re_approve_requested") == []
@@ -323,16 +323,14 @@ def test_one_standing_approval_per_organization_and_version(db, author, make_use
 # ── A new version resets organization approvals ─────────────────────
 
 
-def test_a_new_version_resets_and_asks_every_member(
-    db, author, make_user, make_org, conflict, capture_source_tag
-):
+def test_a_new_version_resets_and_asks_every_member(db, author, make_user, make_org, conflict):
     acting, other_manager, member = make_user(), make_user(), make_user()
     org = make_org(managers=[acting, other_manager], members=[member])
-    geo = _published_with_floor(db, author, conflict, capture_source_tag)
+    geo = _published_with_floor(db, author, conflict)
     assert _approve(geo, acting, org).status_code == 201
     assert _approve(geo, acting).status_code == 201
 
-    saved = _save_version(geo.id, author, data=_form(conflict, capture_source_tag))
+    saved = _save_version(geo.id, author, data=_form(conflict, _kept(geo)))
     assert saved.status_code == 200, saved.text
     db.refresh(geo)
 
@@ -349,14 +347,12 @@ def test_a_new_version_resets_and_asks_every_member(
     assert row["organization"]["slug"] == org.slug
 
 
-def test_a_reapproval_email_names_the_organization(
-    db, author, make_user, make_org, conflict, capture_source_tag
-):
+def test_a_reapproval_email_names_the_organization(db, author, make_user, make_org, conflict):
     manager, member = make_user(), make_user()
     org = make_org(managers=[manager], members=[member])
-    geo = _published_with_floor(db, author, conflict, capture_source_tag)
+    geo = _published_with_floor(db, author, conflict)
     assert _approve(geo, manager, org).status_code == 201
-    saved = _save_version(geo.id, author, data=_form(conflict, capture_source_tag))
+    saved = _save_version(geo.id, author, data=_form(conflict, _kept(geo)))
     assert saved.status_code == 200, saved.text
     [asked] = _rows(db, member, "re_approve_requested")
     built = notification_delivery._email_for(asked, "probe@example.com")

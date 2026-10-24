@@ -26,6 +26,7 @@ from app.models.event import (
     Event,
 )
 from app.models.media import Media
+from app.models.source import Source, SourceLink
 from app.models.tag import Tag, event_tags
 from app.models.user import User
 from app.schemas.collection import DESCRIPTION_MAX_LENGTH, MAX_CREATE_EVENTS
@@ -149,11 +150,16 @@ def _make_event(
         owner_id=owner.id,
         title=f"Event {uuid.uuid4().hex[:8]}",
         coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://example.com/source",
+        sources=[
+            Source(
+                level="direct",
+                is_graphic=is_graphic,
+                links=[SourceLink(url="https://example.com/source")],
+            )
+        ],
         occurred_date=occurred_date,
         occurred_time=occurred_time,
         status=status,
-        is_graphic=is_graphic,
         geolocated_at=now if status == STATUS_GEOLOCATED else None,
         detected_at=now if status == STATUS_DETECTED else None,
         requested_at=now if status == STATUS_REQUESTED else None,
@@ -1123,15 +1129,27 @@ def test_event_collections_are_owner_only(db, cleanup, owner, stranger):
     )
 
 
-def _add_media(db, event: Event, name: str, kind: str = "image", role: str = "source"):
-    """Give one event a media row the card rule may pick."""
-    db.add(
-        Media(
-            sha256=fake_sha256(),
-            event_id=event.id,
-            role=role,
-            storage_url=f"https://media.example.com/{name}",
-            kind=kind,
+def _add_media(
+    db,
+    event: Event,
+    name: str,
+    kind: str = "image",
+    role: str = "source",
+    level: str = "direct",
+    is_graphic: bool = False,
+):
+    """Give one event a file the card rule may pick: a new source of ``level`` carrying it, or a
+    proof image."""
+    media = Media(sha256=fake_sha256(), storage_url=f"https://media.example.com/{name}", kind=kind)
+    if role == "proof":
+        event.media.append(media)
+        return
+    event.sources.append(
+        Source(
+            level=level,
+            is_graphic=is_graphic,
+            links=[SourceLink(url=f"https://example.com/{name}")],
+            media=media,
         )
     )
 
@@ -1189,6 +1207,38 @@ def test_mosaic_skips_a_graphic_item_and_keeps_walking(db, cleanup, owner):
     assert _tile_urls(collection) == [
         "https://media.example.com/day2.jpg",
         "https://media.example.com/day3.jpg",
+    ]
+
+
+def test_mosaic_skips_an_item_with_any_graphic_source(db, cleanup, owner):
+    """An item is graphic when any of its sources is: a flagged context source keeps the
+    item off the mosaic even though the source with the file is not flagged."""
+    collection = _make_collection(db, cleanup, owner=owner)
+    flagged = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 3, 1))
+    _add_media(db, flagged, "unflagged.jpg")
+    _add_media(db, flagged, "context.mp4", kind="video", level="context", is_graphic=True)
+    shown = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 3, 2))
+    _add_media(db, shown, "shown.jpg")
+    for event in (flagged, shown):
+        _add(db, collection, event)
+    db.commit()
+
+    assert _tile_urls(collection) == ["https://media.example.com/shown.jpg"]
+
+
+def test_a_tile_takes_the_first_source_image_in_source_order(db, cleanup, owner):
+    """Source files come first in source order (level before insertion), proof images after
+    them, and the first image of that walk is the tile."""
+    collection = _make_collection(db, cleanup, owner=owner)
+    event = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 3, 1))
+    _add_media(db, event, "context.jpg", level="context")
+    _add_media(db, event, "proof.jpg", role="proof")
+    _add_media(db, event, "indirect.jpg", level="indirect")
+    _add(db, collection, event)
+    db.commit()
+
+    assert client.get(f"/api/v1/collections/{collection.id}").json()["cover"] == [
+        {"url": "https://media.example.com/indirect.jpg", "kind": "image", "role": "source"}
     ]
 
 
@@ -1268,8 +1318,8 @@ def make_tag(db):
     Separate from ``cleanup``: ``tags`` is keyed on a unique name, and the sweep clears ``event_tags`` before ``cleanup`` deletes the events."""
     created: list[uuid.UUID] = []
 
-    def _make(name: str, category: str = "free") -> Tag:
-        tag = Tag(name=f"{name}-{uuid.uuid4().hex[:8]}", category=category)
+    def _make(name: str) -> Tag:
+        tag = Tag(name=f"{name}-{uuid.uuid4().hex[:8]}")
         db.add(tag)
         db.commit()
         db.refresh(tag)
@@ -1289,32 +1339,41 @@ def _tag_names(payload: dict) -> list[str]:
 
 
 def test_tags_are_the_union_of_the_items_tags(db, cleanup, owner, make_tag):
-    """Two items sharing a tag and carrying one more each yield three tags: the shared one once, ordered by category then name."""
+    """Two items sharing a tag and carrying one more each yield three tags: the shared one once, ordered by name."""
     shared = make_tag("shared")
     only_first = make_tag("alpha")
     only_second = make_tag("beta")
-    curated = make_tag("drone", category="capture_source")
 
     collection = _make_collection(db, cleanup, owner=owner)
     first = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 3, 1))
     second = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 4, 1))
-    first.tags = [shared, only_first, curated]
+    first.tags = [shared, only_first]
     second.tags = [shared, only_second]
     _add(db, collection, first)
     _add(db, collection, second)
     db.commit()
 
     body = client.get(f"/api/v1/collections/{collection.id}").json()
-    # ``capture_source`` before ``free``, then by name inside each category.
-    assert _tag_names(body) == [curated.name] + sorted(
-        [shared.name, only_first.name, only_second.name]
-    )
-    assert [tag["category"] for tag in body["tags"]] == [
-        "capture_source",
-        "free",
-        "free",
-        "free",
-    ]
+    assert _tag_names(body) == sorted([shared.name, only_first.name, only_second.name])
+    assert set(body["tags"][0]) == {"id", "name"}
+
+
+def test_tags_include_the_tags_of_the_items_sources(db, cleanup, owner, make_tag):
+    """An item's tags are its own and its sources': a tag on both counts once, and the
+    union stays ordered by name."""
+    on_event = make_tag("m-event")
+    on_source = make_tag("a-source")
+    on_both = make_tag("z-both")
+
+    collection = _make_collection(db, cleanup, owner=owner)
+    event = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 3, 1))
+    event.tags = [on_event, on_both]
+    event.sources[0].tags = [on_source, on_both]
+    _add(db, collection, event)
+    db.commit()
+
+    body = client.get(f"/api/v1/collections/{collection.id}").json()
+    assert _tag_names(body) == [on_source.name, on_event.name, on_both.name]
 
 
 def test_an_item_leaving_the_collectable_set_takes_its_tags_with_it(db, cleanup, owner, make_tag):
@@ -1364,16 +1423,17 @@ def test_a_collection_holding_nothing_tagged_has_no_tags(db, cleanup, owner):
 
 def test_every_read_surface_carries_the_same_tags(db, cleanup, owner, make_tag):
     """One read shape: the collection page, search hit and profile list share a builder, so the tags cannot differ."""
-    curated = make_tag("satellite", category="capture_source")
+    on_source = make_tag("satellite")
     free = make_tag("corridor")
 
     collection = _make_collection(db, cleanup, owner=owner, title="Shelved")
     event = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 3, 1))
-    event.tags = [curated, free]
+    event.tags = [free]
+    event.sources[0].tags = [on_source]
     _add(db, collection, event)
     db.commit()
 
-    expected = [curated.name, free.name]
+    expected = [free.name, on_source.name]
     assert _tag_names(client.get(f"/api/v1/collections/{collection.id}").json()) == expected
 
     hits = client.get(f"/api/v1/search?type=collection&author={owner.username}").json()

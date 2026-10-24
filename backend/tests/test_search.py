@@ -21,6 +21,8 @@ from app.models.collection import Collection, CollectionEvent
 from app.models.event import STATUS_DETECTED, STATUS_REQUESTED, Event
 from app.models.media import Media
 from app.models.organization import Organization, OrganizationMember
+from app.models.source import Source, SourceLink
+from app.models.tag import Tag
 from app.models.user import User
 from app.services.auth import hash_password
 from app.services.search import HIGHLIGHT_START, HIGHLIGHT_STOP
@@ -61,6 +63,17 @@ def caller(db):
     db.expire_all()
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
+
+
+def _source(url: str, *, title: str = "", is_graphic: bool = False, **kw) -> Source:
+    """One direct source with ``url`` as its only link."""
+    return Source(
+        level="direct",
+        title=title,
+        is_graphic=is_graphic,
+        links=[SourceLink(url=url, posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC))],
+        **kw,
+    )
 
 
 def _unique_token() -> str:
@@ -122,8 +135,7 @@ def test_search_matches_geolocation_by_title(db, caller):
         owner_id=caller.id,
         title=f"Spotted {token} convoy near checkpoint",
         coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://example.com/post-a",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        sources=[_source("https://example.com/post-a")],
         occurred_date=date(2026, 5, 1),
         geolocated_at=datetime.now(UTC),
     )
@@ -132,18 +144,16 @@ def test_search_matches_geolocation_by_title(db, caller):
     db.add(
         Media(
             sha256=fake_sha256(),
-            event_id=geo.id,
-            role="source",
+            source_id=geo.sources[0].id,
             storage_url=f"http://localhost:8000/local-storage/geolocation_media/{geo.id}/x.jpg",
             kind="image",
         )
     )
-    # The thumbnail pick prefers ``source`` (``services.thumbnails``), so proof stays off the hit.
+    # The thumbnail pick prefers a source file (``services.thumbnails``), so proof stays off the hit.
     db.add(
         Media(
             sha256=fake_sha256(),
             event_id=geo.id,
-            role="proof",
             storage_url=f"http://localhost:8000/local-storage/geolocation_media/{geo.id}/p.jpg",
             kind="image",
         )
@@ -164,7 +174,7 @@ def test_search_matches_geolocation_by_title(db, caller):
         assert f"{HIGHLIGHT_START}{token}{HIGHLIGHT_STOP}" in hit["title_highlight"]
         # Regression: the located group carries the picked thumbnail, as the list view does.
         assert [m["kind"] for m in hit["media"]] == ["image"]
-        assert all(m["role"] == "source" for m in hit["media"])
+        assert hit["media"][0]["storage_url"].endswith(f"{geo_id}/x.jpg")
         # An unflagged event reads false rather than omitting the key.
         assert hit["is_graphic"] is False
     finally:
@@ -179,8 +189,7 @@ def test_search_proof_only_event_surfaces_proof_image_thumbnail(db, caller):
         owner_id=caller.id,
         title=f"Proof-only {token} strike footage",
         coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://example.com/post-proof-only",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        sources=[_source("https://example.com/post-proof-only")],
         occurred_date=date(2026, 5, 1),
         geolocated_at=datetime.now(UTC),
     )
@@ -188,8 +197,7 @@ def test_search_proof_only_event_surfaces_proof_image_thumbnail(db, caller):
         owner_id=caller.id,
         title=f"Video-proof {token} strike footage",
         coords=from_shape(Point(34.6, 48.6), srid=4326),
-        source_url="https://example.com/post-proof-video",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        sources=[_source("https://example.com/post-proof-video")],
         occurred_date=date(2026, 5, 1),
         geolocated_at=datetime.now(UTC),
     )
@@ -199,7 +207,6 @@ def test_search_proof_only_event_surfaces_proof_image_thumbnail(db, caller):
         Media(
             sha256=fake_sha256(),
             event_id=proof_only.id,
-            role="proof",
             storage_url=f"http://localhost:8000/local-storage/geolocation_media/{proof_only.id}/p.jpg",
             kind="image",
         )
@@ -209,7 +216,6 @@ def test_search_proof_only_event_surfaces_proof_image_thumbnail(db, caller):
         Media(
             sha256=fake_sha256(),
             event_id=video_only.id,
-            role="proof",
             storage_url=f"http://localhost:8000/local-storage/geolocation_media/{video_only.id}/p.mp4",
             kind="video",
         )
@@ -224,38 +230,96 @@ def test_search_proof_only_event_surfaces_proof_image_thumbnail(db, caller):
         assert response.status_code == 200
         hits = {h["id"]: h for h in response.json()["geolocations"]}
         proof_hit = hits[str(ids[0])]
-        assert [(m["role"], m["kind"]) for m in proof_hit["media"]] == [("proof", "image")]
+        assert [m["kind"] for m in proof_hit["media"]] == ["image"]
+        assert proof_hit["media"][0]["storage_url"].endswith(f"{ids[0]}/p.jpg")
         assert hits[str(ids[1])]["media"] == []
     finally:
         db.query(Event).filter(Event.id.in_(ids)).delete(synchronize_session=False)
         db.commit()
 
 
-def test_search_does_not_match_geolocation_by_source_url(db, caller):
-    """``source_url`` is intentionally not in the FTS index (see the migration's rationale)."""
+def test_search_matches_a_request_by_source_title_and_url(db, caller):
+    """A request matches on a source title (full text) and on a source URL (substring), and the
+    hit lists every source URL in source order."""
     token = _unique_token()
-    geo = Event(
+    request = Event(
         owner_id=caller.id,
+        requested_by_id=caller.id,
         title="Plain title with no match",
+        sources=[
+            _source(f"https://t.me/{token}/1", title=f"Night {token} footage"),
+            Source(
+                level="context",
+                links=[
+                    SourceLink(url="https://example.com/context-a"),
+                    SourceLink(url="https://example.com/context-b"),
+                ],
+            ),
+        ],
+        status=STATUS_REQUESTED,
+        requested_at=datetime.now(UTC),
+    )
+    db.add(request)
+    db.commit()
+    request_id = request.id
+    try:
+        for q in (f"night {token}", f"t.me/{token}"):
+            response = client.get("/api/v1/search", params={"q": q, "type": "request"})
+            assert response.status_code == 200
+            assert [h["id"] for h in response.json()["requests"]] == [str(request_id)], q
+        hit = response.json()["requests"][0]
+        assert hit["source_urls"] == [
+            f"https://t.me/{token}/1",
+            "https://example.com/context-a",
+            "https://example.com/context-b",
+        ]
+    finally:
+        db.query(Event).filter(Event.id == request_id).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_a_source_match_still_obeys_the_filters(db, caller, other_author):
+    """A hit on a source title or URL is narrowed by the filters like a title hit: the author,
+    the tag on a source, and the sensor."""
+    token = _unique_token()
+    tag = Tag(name=f"tag-{token}")
+    db.add(tag)
+    mine = Event(
+        owner_id=caller.id,
+        title="Mine",
         coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url=f"https://example.com/{token}/post",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        sources=[
+            _source(f"https://t.me/{token}/1", title=f"Thermal {token}", sensor="drone", tags=[tag])
+        ],
         occurred_date=date(2026, 5, 1),
         geolocated_at=datetime.now(UTC),
     )
-    db.add(geo)
+    theirs = Event(
+        owner_id=other_author.id,
+        title="Theirs",
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
+        sources=[_source(f"https://t.me/{token}/2", title=f"Thermal {token}", sensor="smartphone")],
+        occurred_date=date(2026, 5, 1),
+        geolocated_at=datetime.now(UTC),
+    )
+    db.add_all([mine, theirs])
     db.commit()
-    geo_id = geo.id
+    ids = [mine.id, theirs.id]
     try:
-        response = client.get(
-            f"/api/v1/search?q={token}&type=geolocation",
-            headers=login_as(client, caller),
-        )
-        assert response.status_code == 200
-        ids = [h["id"] for h in response.json()["geolocations"]]
-        assert str(geo_id) not in ids
+
+        def hits(**params) -> list[str]:
+            response = client.get("/api/v1/search", params={"type": "geolocation", **params})
+            assert response.status_code == 200, response.text
+            return sorted(h["id"] for h in response.json()["geolocations"])
+
+        assert hits(q=f"thermal {token}") == sorted(str(i) for i in ids)
+        for q in (f"thermal {token}", f"t.me/{token}"):
+            assert hits(q=q, author=caller.username) == [str(ids[0])], q
+            assert hits(q=q, tag=tag.name) == [str(ids[0])], q
+            assert hits(q=q, sensor="smartphone") == [str(ids[1])], q
     finally:
-        db.query(Event).filter(Event.id == geo_id).delete(synchronize_session=False)
+        db.query(Event).filter(Event.id.in_(ids)).delete(synchronize_session=False)
+        db.execute(Tag.__table__.delete().where(Tag.id == tag.id))
         db.commit()
 
 
@@ -265,8 +329,7 @@ def test_search_excludes_soft_deleted_geolocations(db, caller):
         owner_id=caller.id,
         title=f"Soft-deleted {token} should be hidden",
         coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://example.com/post-b",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        sources=[_source("https://example.com/post-b")],
         occurred_date=date(2026, 5, 1),
         geolocated_at=datetime.now(UTC),
         deleted_at=datetime.now(UTC),
@@ -291,8 +354,7 @@ def test_search_matches_request_by_title(db, caller):
     request = Event(
         owner_id=caller.id,
         title=f"Request {token} — please geolocate",
-        source_url="https://example.com/request-a",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        sources=[_source("https://example.com/request-a")],
         status=STATUS_REQUESTED,
         requested_at=datetime.now(UTC),
     )
@@ -301,8 +363,7 @@ def test_search_matches_request_by_title(db, caller):
     db.add(
         Media(
             sha256=fake_sha256(),
-            event_id=request.id,
-            role="source",
+            source_id=request.sources[0].id,
             storage_url=(f"http://localhost:8000/local-storage/request_uploads/{request.id}/x.jpg"),
             kind="image",
         )
@@ -328,26 +389,25 @@ def test_search_matches_request_by_title(db, caller):
 
 
 def test_search_hits_carry_the_graphic_flag(db, caller):
-    """Both result groups report the graphic flag."""
+    """Both result groups report the graphic flag, true when any source is graphic."""
     token = _unique_token()
     geo = Event(
         owner_id=caller.id,
         title=f"Graphic {token} aftermath",
         coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://example.com/post-graphic",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        sources=[
+            _source("https://example.com/post-graphic"),
+            _source("https://example.com/post-graphic-2", is_graphic=True),
+        ],
         occurred_date=date(2026, 5, 1),
         geolocated_at=datetime.now(UTC),
-        is_graphic=True,
     )
     request = Event(
         owner_id=caller.id,
         title=f"Graphic {token} request",
-        source_url="https://example.com/request-graphic",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        sources=[_source("https://example.com/request-graphic", is_graphic=True)],
         status=STATUS_REQUESTED,
         requested_at=datetime.now(UTC),
-        is_graphic=True,
     )
     db.add_all([geo, request])
     db.commit()
@@ -371,8 +431,7 @@ def test_search_excludes_soft_deleted_requests(db, caller):
     request = Event(
         owner_id=caller.id,
         title=f"Hidden request {token}",
-        source_url="https://example.com/request-b",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        sources=[_source("https://example.com/request-b")],
         status=STATUS_REQUESTED,
         requested_at=datetime.now(UTC),
         deleted_at=datetime.now(UTC),
@@ -677,16 +736,14 @@ def test_search_type_all_returns_every_group(db, caller, seed_collection):
         owner_id=caller.id,
         title=f"Geo {token} unique-token row",
         coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://example.com",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        sources=[_source("https://example.com")],
         occurred_date=date(2026, 5, 1),
         geolocated_at=datetime.now(UTC),
     )
     request = Event(
         owner_id=caller.id,
         title=f"Request {token} unique-token row",
-        source_url="https://example.com",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        sources=[_source("https://example.com")],
         status=STATUS_REQUESTED,
         requested_at=datetime.now(UTC),
     )
@@ -701,8 +758,7 @@ def test_search_type_all_returns_every_group(db, caller, seed_collection):
     db.add(
         Media(
             sha256=fake_sha256(),
-            event_id=request.id,
-            role="source",
+            source_id=request.sources[0].id,
             storage_url=(f"http://localhost:8000/local-storage/request_uploads/{request.id}/x.jpg"),
             kind="image",
         )
@@ -746,16 +802,14 @@ def test_search_type_filter_scopes_to_one_group(db, caller):
         owner_id=caller.id,
         title=f"Geo only {token}",
         coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://example.com",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        sources=[_source("https://example.com")],
         occurred_date=date(2026, 5, 1),
         geolocated_at=datetime.now(UTC),
     )
     request = Event(
         owner_id=caller.id,
         title=f"Request also {token}",
-        source_url="https://example.com",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        sources=[_source("https://example.com")],
         status=STATUS_REQUESTED,
         requested_at=datetime.now(UTC),
     )
@@ -764,8 +818,7 @@ def test_search_type_filter_scopes_to_one_group(db, caller):
     db.add(
         Media(
             sha256=fake_sha256(),
-            event_id=request.id,
-            role="source",
+            source_id=request.sources[0].id,
             storage_url=(f"http://localhost:8000/local-storage/request_uploads/{request.id}/x.jpg"),
             kind="image",
         )
@@ -795,8 +848,7 @@ def test_search_limit_caps_per_group(db, caller):
         b = Event(
             owner_id=caller.id,
             title=f"Request {token} number {i}",
-            source_url="https://example.com",
-            source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+            sources=[_source("https://example.com")],
             status=STATUS_REQUESTED,
             requested_at=datetime.now(UTC),
         )
@@ -807,8 +859,7 @@ def test_search_limit_caps_per_group(db, caller):
         db.add(
             Media(
                 sha256=fake_sha256(),
-                event_id=b.id,
-                role="source",
+                source_id=b.sources[0].id,
                 storage_url=(f"http://localhost:8000/local-storage/request_uploads/{b.id}/x.jpg"),
                 kind="image",
             )
@@ -871,8 +922,7 @@ def test_search_strips_planted_sentinel_bytes_from_title(db, caller):
         owner_id=caller.id,
         title=f"planted \x02bad\x03 then {token} fragment",
         coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://example.com",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        sources=[_source("https://example.com")],
         occurred_date=date(2026, 5, 1),
         geolocated_at=datetime.now(UTC),
     )
@@ -915,8 +965,7 @@ def _seed_geo(db, owner, title):
         owner_id=owner.id,
         title=title,
         coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://example.com/post-a",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        sources=[_source("https://example.com/post-a")],
         occurred_date=date(2026, 5, 1),
         geolocated_at=datetime.now(UTC),
     )
@@ -954,9 +1003,7 @@ def test_author_with_empty_query_browses_the_authors_view(db, caller, other_auth
         title=f"Where is {token}",
         status=STATUS_REQUESTED,
         requested_at=datetime.now(UTC),
-        # ``ck_events_source_url_status`` requires it on a request.
-        source_url="https://example.com/request-footage",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        sources=[_source("https://example.com/request-footage")],
         occurred_date=date(2026, 5, 1),
     )
     db.add(request_row)

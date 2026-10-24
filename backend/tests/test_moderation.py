@@ -24,6 +24,7 @@ from app.models.audit_log import AuditLog
 from app.models.collection import Collection
 from app.models.content_report import ContentReport
 from app.models.event import Event
+from app.models.source import Source, SourceLink
 from app.models.user import User
 from app.services.auth import hash_password
 from tests._fixtures import collection_description
@@ -94,8 +95,10 @@ def event(db, regular_user):
         owner_id=regular_user.id,
         title=f"Moderated {uuid.uuid4().hex[:8]}",
         coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://example.com/source",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        sources=[
+            Source(level="direct", links=[SourceLink(url="https://example.com/source")]),
+            Source(level="context", links=[SourceLink(url="https://example.com/context")]),
+        ],
         geolocated_at=datetime.now(UTC),
     )
     db.add(row)
@@ -382,7 +385,13 @@ def test_moderation_hides_then_restores_the_event(db, admin_user, event):
     assert db.query(Event).filter(Event.id == event.id).one().hidden_at is None
 
 
+def _source_flags(db, event) -> list[bool]:
+    db.expire_all()
+    return [row.is_graphic for row in db.query(Source).filter(Source.event_id == event.id)]
+
+
 def test_moderation_overrides_the_graphic_flag_both_ways(db, admin_user, event):
+    """The override sets, then clears, the flag on every source of the event."""
     headers = login_as(client, admin_user)
 
     marked = client.patch(
@@ -393,6 +402,7 @@ def test_moderation_overrides_the_graphic_flag_both_ways(db, admin_user, event):
     assert marked.status_code == 200, marked.text
     assert marked.json()["is_graphic"] is True
     assert _audit(db, admin_user, "event_marked_graphic") is not None
+    assert _source_flags(db, event) == [True, True]
 
     cleared = client.patch(
         f"/api/v1/admin/events/{event.id}/moderation",
@@ -403,8 +413,7 @@ def test_moderation_overrides_the_graphic_flag_both_ways(db, admin_user, event):
     assert cleared.json()["is_graphic"] is False
     assert _audit(db, admin_user, "event_unmarked_graphic") is not None
 
-    db.expire_all()
-    assert db.query(Event).filter(Event.id == event.id).one().is_graphic is False
+    assert _source_flags(db, event) == [False, False]
 
 
 def test_moderation_no_op_writes_no_audit_row(db, admin_user, event):

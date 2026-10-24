@@ -129,8 +129,6 @@ def _make_geo(
         owner_id=author.id,
         title=title or f"Geo {uuid.uuid4().hex[:8]}",
         coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://example.com/source",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         occurred_date=occurred_date or date(2026, 5, 1),
         status=status,
         geolocated_at=now if status == STATUS_GEOLOCATED else None,

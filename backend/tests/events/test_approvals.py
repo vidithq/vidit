@@ -24,7 +24,7 @@ from tests.events._helpers import (
     notifications_of,
     published_geo,
 )
-from tests.events.test_versions import _form, _save_version
+from tests.events.test_versions import WAYBACK, _form, _kept, _save_version
 from tests.events.test_versions import _published as _published_with_floor
 
 _EVENTS = "/api/v1/events"
@@ -213,14 +213,14 @@ def test_a_soft_deleted_reviewer_is_left_out(db, author, second_user):
 
 
 def test_a_new_version_resets_approvals_and_asks_reviewers_again(
-    db, author, second_user, make_user, conflict, capture_source_tag
+    db, author, second_user, make_user, conflict
 ):
-    geo = _published_with_floor(db, author, conflict, capture_source_tag)
+    geo = _published_with_floor(db, author, conflict)
     third = make_user()
     kept = approve(geo, second_user).json()
     other = approve(geo, third).json()
 
-    response = _save_version(geo.id, author, data=_form(conflict, capture_source_tag))
+    response = _save_version(geo.id, author, data=_form(conflict, _kept(geo)))
     assert response.status_code == 200, response.text
     assert response.json()["version_no"] == 2
 
@@ -249,19 +249,12 @@ def test_a_new_version_resets_approvals_and_asks_reviewers_again(
     ]
 
 
-def test_an_archive_only_save_resets_approvals_too(
-    db, author, second_user, conflict, capture_source_tag
-):
-    geo = _published_with_floor(db, author, conflict, capture_source_tag)
-    assert (
-        _save_version(geo.id, author, data=_form(conflict, capture_source_tag)).status_code == 200
-    )
+def test_an_archive_only_save_resets_approvals_too(db, author, second_user, conflict):
+    geo = _published_with_floor(db, author, conflict)
+    assert _save_version(geo.id, author, data=_form(conflict, _kept(geo))).status_code == 200
     assert approve(geo, second_user, version_no=2).status_code == 201
 
-    wayback = f"https://web.archive.org/web/20260811120000/{geo.source_url}"
-    response = _save_version(
-        geo.id, author, data=_form(conflict, capture_source_tag, source_snapshot_url=wayback)
-    )
+    response = _save_version(geo.id, author, data=_form(conflict, _kept(geo, snapshot_url=WAYBACK)))
     assert response.status_code == 200, response.text
     assert response.json()["version_no"] == 3
 

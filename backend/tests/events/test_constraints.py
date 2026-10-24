@@ -1,4 +1,5 @@
-"""DB-level CHECK constraints on ``events``, reached through the ORM and the API.
+"""DB-level CHECK constraints on ``events`` and ``sources``, reached through the ORM and
+the API.
 
 Each test builds a row that violates one CHECK and asserts the commit raises (the
 idiom of ``test_social.py::test_check_constraint_blocks_self_follow``), rolling back
@@ -23,8 +24,16 @@ from app.models.event import (
     Event,
     EventGeolocator,
 )
+from app.models.source import Source, SourceLink
 from tests.conftest import login_as
-from tests.events._helpers import _make_geo, client, proof_file_part, proof_form_field
+from tests.events._helpers import (
+    _make_geo,
+    client,
+    proof_file_part,
+    proof_form_field,
+    source_spec,
+    sources_field,
+)
 
 
 def _bare_event(db, *, author, **overrides) -> Event:
@@ -32,8 +41,6 @@ def _bare_event(db, *, author, **overrides) -> Event:
     fields = {
         "owner_id": author.id,
         "title": "Constraint probe",
-        "source_url": "https://example.com/post",
-        "source_posted_at": datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
     }
     fields.update(overrides)
     return Event(**fields)
@@ -72,55 +79,6 @@ def test_coords_status_check_allows_requested_without_coords(db, author):
         status=STATUS_REQUESTED,
         requested_at=datetime.now(UTC),
         coords=None,
-    )
-    db.add(ok)
-    db.commit()
-    db.delete(ok)
-    db.commit()
-
-
-def test_source_url_status_check_rejects_geolocated_without_source_url(db, author):
-    """A ``geolocated`` row needs a ``source_url``: the backstop behind the promotion
-    gate in ``services/events.geolocate``."""
-    bad = _bare_event(
-        db,
-        author=author,
-        status=STATUS_GEOLOCATED,
-        geolocated_at=datetime.now(UTC),
-        coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url=None,
-    )
-    db.add(bad)
-    with pytest.raises(IntegrityError, match="ck_events_source_url_status"):
-        db.commit()
-    db.rollback()
-
-
-def test_source_url_status_check_rejects_requested_without_source_url(db, author):
-    """Same for ``requested``."""
-    bad = _bare_event(
-        db,
-        author=author,
-        status=STATUS_REQUESTED,
-        requested_at=datetime.now(UTC),
-        source_url=None,
-    )
-    db.add(bad)
-    with pytest.raises(IntegrityError, match="ck_events_source_url_status"):
-        db.commit()
-    db.rollback()
-
-
-def test_source_url_status_check_allows_detected_without_source_url(db, author):
-    """A machine detection whose tweet declared no source persists with NULL
-    ``source_url`` and ``source_posted_at``."""
-    ok = _bare_event(
-        db,
-        author=author,
-        status=STATUS_DETECTED,
-        detected_at=datetime.now(UTC),
-        source_url=None,
-        source_posted_at=None,
     )
     db.add(ok)
     db.commit()
@@ -222,22 +180,60 @@ def test_geolocated_stamp_check_rejects_geolocated_without_geolocated_at(db, aut
     db.rollback()
 
 
-def test_geolocate_rejects_missing_coordinates_at_the_form_boundary(
-    db, author, conflict, capture_source_tag
-):
+@pytest.mark.parametrize(
+    ("field", "value", "constraint"),
+    [
+        ("level", "primary", "ck_sources_level_valid"),
+        ("sensor", "periscope", "ck_sources_sensor_valid"),
+    ],
+)
+def test_source_checks_reject_values_outside_the_domain(db, author, field, value, constraint):
+    """``level`` and ``sensor`` are closed lists in Postgres, not only in the Literals."""
+    geo = _make_geo(db, author=author)
+    source = Source(event_id=geo.id, level="direct", links=[SourceLink(url="https://e.com/x")])
+    setattr(source, field, value)
+    db.add(source)
+    with pytest.raises(IntegrityError, match=constraint):
+        db.commit()
+    db.rollback()
+
+
+def test_source_link_archive_stamp_check_pairs_the_copy_with_its_time(db, author):
+    """A snapshot URL without ``archived_at`` is rejected, so a copy always says when."""
+    geo = _make_geo(db, author=author)
+    db.add(
+        SourceLink(
+            source_id=geo.sources[0].id,
+            url="https://example.com/mirror",
+            snapshot_url="https://web.archive.org/web/2026/https://example.com/mirror",
+        )
+    )
+    with pytest.raises(IntegrityError, match="ck_source_links_archive_stamp"):
+        db.commit()
+    db.rollback()
+
+
+def test_a_source_holds_each_url_once(db, author):
+    geo = _make_geo(db, author=author, source_url="https://example.com/post")
+    db.add(SourceLink(source_id=geo.sources[0].id, url="https://example.com/post"))
+    with pytest.raises(IntegrityError, match="uq_source_links_source_url"):
+        db.commit()
+    db.rollback()
+
+
+def test_geolocate_rejects_missing_coordinates_at_the_form_boundary(db, author, conflict):
     """``lat`` / ``lng`` are required Form fields, so omitting them 422s before the
     service or the CHECK is reached."""
     geo = _make_geo(db, author=author, status=STATUS_DETECTED, with_media=True)
+    [source] = geo.sources
     response = client.post(
         f"/api/v1/events/{geo.id}/geolocate",
         headers=login_as(client, author),
         data={
             "title": "No coordinates supplied",
-            "source_url": "https://example.com/post",
             "occurred_date": "2026-05-01",
-            "source_posted_at": "2026-05-01T12:00",
-            "tag_ids": json.dumps([str(capture_source_tag.id)]),
             "conflict_ids": json.dumps([str(conflict.id)]),
+            "sources": sources_field(source_spec(id=str(source.id), media_id=str(source.media.id))),
             "proof": proof_form_field(),
         },
         files=[proof_file_part()],

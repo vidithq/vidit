@@ -18,7 +18,7 @@ from app.config import settings
 from app.database import SessionLocal
 from app.models.bot_mention import BotMention
 from app.models.event import STATUS_DETECTED, STATUS_REQUESTED, Event
-from app.models.media import Media
+from app.models.upload import Upload
 from app.models.user import User
 from app.services.bot import (
     REPLY_MAX_WEIGHTED_LEN,
@@ -525,9 +525,13 @@ async def test_a_tagged_post_creates_a_detection(db, linked_owner):
     point = to_shape(event.coords)
     assert point.y == pytest.approx(48.123456)
     assert point.x == pytest.approx(37.654321)
-    assert event.source_url == _SOURCE_URL
-    assert event.source_posted_at is not None
-    assert event.source_posted_at.date().isoformat() == "2026-03-10"
+    # The declared source: one direct source with no sensor, its URL and post time, no file.
+    (source,) = event.sources
+    assert (source.level, source.sensor, source.media) == ("direct", None, None)
+    (link,) = source.links
+    assert link.url == _SOURCE_URL
+    assert link.posted_at is not None
+    assert link.posted_at.date().isoformat() == "2026-03-10"
 
     # The proof is the post as written, minus the bot tag and media wrappers.
     proof = event.proof
@@ -565,8 +569,11 @@ async def test_the_two_post_field_format_lands_one_detection(db, linked_owner):
     assert event.status == STATUS_DETECTED
     assert event.detection.from_url == f"https://x.com/{HANDLE}/status/{TWO_POST_PARENT_ID}"
     assert event.title == "Depot strike geolocated"
-    assert event.source_url == "https://www.tiktok.com/@war/video/7"
-    assert event.source_posted_at is None
+    (source,) = event.sources
+    assert [(link.url, link.posted_at) for link in source.links] == [
+        ("https://www.tiktok.com/@war/video/7", None)
+    ]
+    assert source.media is None
 
     proof = event.proof
     assert "Matched the tower skyline" in proof  # the parent's line
@@ -979,9 +986,10 @@ async def test_a_coordinate_less_mirror_post_opens_a_request(
 ):
     """The branch on both chase technologies.
 
-    The row is owned by the analyst, stamped ``requested_at``, carries the
-    original as source and the footage as its one ``role=source`` media, with
-    no coordinate. Provenance lets a second tag recognise it.
+    The row is owned by the analyst, stamped ``requested_at``, and carries one
+    direct source with the original's URL and the footage as its file (staged as
+    an upload and taken by the write), with no coordinate and no sensor.
+    Provenance lets a second tag recognise it.
     """
     outcome, _, posted, liked = await _run(db, [mention_id])
 
@@ -995,21 +1003,24 @@ async def test_a_coordinate_less_mirror_post_opens_a_request(
     assert row.coords is None
     assert row.requested_at is not None
     assert row.owner_id == linked_owner.id == row.requested_by_id
+    (source,) = row.sources
+    assert (source.level, source.sensor) == ("direct", None)
+    (link,) = source.links
     # The chased original, not the mirroring post.
-    assert row.source_url == source_url
+    assert link.url == source_url
     assert row.detection.from_url == f"https://x.com/{HANDLE}/status/{mention_id}"
     assert row.detection.via == "bot"
     assert row.detection.from_post_id == int(mention_id)
     assert row.detection.thread_post_ids == [int(mention_id)]
     # Fifth provenance column (``events.stamp_provenance``): when the analyst posted the mirror.
     assert row.detection.post_at is not None
-    assert row.detection.post_at != row.source_posted_at
+    assert row.detection.post_at != link.posted_at
     # The chase served a date: no date warning.
-    assert row.source_posted_at is not None
+    assert link.posted_at is not None
 
-    (media,) = db.query(Media).filter(Media.event_id == row.id).all()
-    assert media.role == "source"
-    assert media.kind == "video"
+    assert source.media is not None and source.media.kind == "video"
+    assert row.media == []
+    assert db.query(Upload).filter(Upload.uploader_id == linked_owner.id).count() == 0
 
     ledger = db.query(BotMention).filter(BotMention.mention_post_id == mention_id).one()
     assert ledger.outcome == "requested"
@@ -1098,12 +1109,10 @@ async def test_a_mirror_of_a_clip_on_another_host_opens_a_request(db, linked_own
     assert outcome.requests_opened == 1
     row = _request_row(db, linked_owner)
     assert row.status == STATUS_REQUESTED
-    assert row.source_url == _OTHER_HOST_SOURCE
-    assert row.source_posted_at is None
-
-    (media,) = db.query(Media).filter(Media.event_id == row.id).all()
-    assert media.role == "source"
-    assert media.kind == "video"
+    (source,) = row.sources
+    assert [(link.url, link.posted_at) for link in source.links] == [(_OTHER_HOST_SOURCE, None)]
+    assert source.media is not None and source.media.kind == "video"
+    assert row.media == []
 
     (payload,) = posted
     text = payload["text"]

@@ -29,11 +29,13 @@ from tests.events._helpers import (
     client,
     proof_file_part,
     proof_form_field,
+    source_spec,
+    sources_field,
 )
 from tests.events.conftest import _delete_user_and_events
 
-# One geo tweet like a real export entry. It declares no source, so ``source_url`` stays
-# NULL until geolocate.
+# One geo tweet like a real export entry. It declares no source URL, so the detection holds
+# no source until geolocate.
 _TWEET_ID = "9001"
 _TWEETS_JS = (
     "window.YTD.tweets.part0 = "
@@ -97,9 +99,7 @@ def _extract_token(text: str) -> str:
     return text[idx:end]
 
 
-def test_gold_path_register_import_geolocate_publish(
-    db, email_recorder, invite_code, conflict, capture_source_tag
-):
+def test_gold_path_register_import_geolocate_publish(db, email_recorder, invite_code, conflict):
     handle = f"gold{uuid.uuid4().hex[:8]}"
     user_id = None
     try:
@@ -175,7 +175,7 @@ def test_gold_path_register_import_geolocate_publish(
         # username: the permalink has to open the analyst's actual post.
         assert row.detection.from_url == f"https://x.com/{invite_code.x_handle}/status/{_TWEET_ID}"
         assert row.detection.via == "archive"
-        assert row.source_url is None  # the tweet declared no source
+        assert row.sources == []  # the tweet declared no source
         assert row.proof is not None  # the tweet text became the proof body
         media = db.query(Media).filter(Media.event_id == row.id).all()
         assert [(m.role, m.kind) for m in media] == [("proof", "image")]
@@ -198,29 +198,38 @@ def test_gold_path_register_import_geolocate_publish(
         assert event_id in {r["id"] for r in queue.json()["items"]}
 
         # ── 4. The owner geolocates over the evidence floor ─────────────
+        staged = client.post(
+            "/api/v1/uploads",
+            headers=auth_headers,
+            files={"file": ("footage.jpg", TINY_JPEG, "image/jpeg")},
+        )
+        assert staged.status_code == 201, staged.text
         geolocated = client.post(
             f"/api/v1/events/{event_id}/geolocate",
             data={
                 "title": "Depot strike, verified",
                 "lat": "48.213",
                 "lng": "37.512",
-                "source_url": f"https://x.com/{handle}/status/{_TWEET_ID}",
                 "occurred_date": "2025-11-12",
-                "source_posted_at": "2025-11-12T14:33",
                 "proof": proof_form_field(),
-                "tag_ids": json.dumps([str(capture_source_tag.id)]),
                 "conflict_ids": json.dumps([str(conflict.id)]),
+                "sources": sources_field(
+                    source_spec(
+                        f"https://x.com/{handle}/status/{_TWEET_ID}",
+                        posted_at="2025-11-12T14:33",
+                        upload_id=staged.json()["id"],
+                    )
+                ),
             },
-            files=[
-                ("files", ("footage.jpg", TINY_JPEG, "image/jpeg")),
-                proof_file_part(),
-            ],
+            files=[proof_file_part()],
             headers=auth_headers,
         )
         assert geolocated.status_code == 200, geolocated.text
         body = geolocated.json()
         assert body["status"] == STATUS_GEOLOCATED
         assert [g["username"] for g in body["geolocators"]] == [handle]
+        [source] = body["sources"]
+        assert source["sensor"] == "smartphone" and source["media"]["kind"] == "image"
 
         # Frozen: a second geolocate 409s.
         frozen = client.post(
@@ -229,9 +238,8 @@ def test_gold_path_register_import_geolocate_publish(
                 "title": "x",
                 "lat": "1",
                 "lng": "1",
-                "source_url": "https://example.com/s",
                 "occurred_date": "2025-11-12",
-                "source_posted_at": "2025-11-12T14:33",
+                "sources": sources_field(source_spec("https://example.com/s")),
             },
             headers=auth_headers,
         )

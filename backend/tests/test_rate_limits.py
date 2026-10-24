@@ -10,6 +10,7 @@ X-Forwarded-For IP, so buckets don't bleed between tests.
 
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Any, NamedTuple
 
@@ -157,13 +158,9 @@ def test_shared_limiter_fires_on_a_second_router(live_limiter, user, db):
     name = f"rl-{uuid.uuid4().hex[:8]}"
     try:
         for i in range(30):
-            r = client.post(
-                "/api/v1/tags", json={"name": name, "category": "free"}, headers=headers
-            )
+            r = client.post("/api/v1/tags", json={"name": name}, headers=headers)
             assert r.status_code in (200, 201), f"request {i} was {r.status_code}"
-        blocked = client.post(
-            "/api/v1/tags", json={"name": name, "category": "free"}, headers=headers
-        )
+        blocked = client.post("/api/v1/tags", json={"name": name}, headers=headers)
         assert blocked.status_code == 429
     finally:
         db.query(Tag).filter(Tag.name == name).delete(synchronize_session=False)
@@ -383,12 +380,10 @@ _SUBMIT_FORM = {
     "title": "rate limit probe",
     "lat": "0",
     "lng": "0",
-    "source_url": "https://example.com/post",
-    "source_posted_at": "2026-01-01T00:00",
+    "sources": json.dumps([{"level": "direct", "links": [{"url": "https://example.com/post"}]}]),
     "occurred_date": "not-a-date",
 }
-_SUBMIT_FILE = {"files": {"file": ("probe.txt", b"probe", "text/plain")}}
-_GEOLOCATE_FILE = {"files": {"files": ("probe.txt", b"probe", "text/plain")}}
+_SUBMIT_FILE = {"files": {"proof_files": ("probe.txt", b"probe", "text/plain")}}
 
 
 class _Case(NamedTuple):
@@ -487,7 +482,7 @@ _DOCUMENTED_LIMITS = [
         f"/api/v1/events/{_MISSING_ID}/geolocate",
         30,
         "user",
-        {"data": _SUBMIT_FORM, **_GEOLOCATE_FILE},
+        {"data": _SUBMIT_FORM, **_SUBMIT_FILE},
     ),
     # The conflict id resolves to nothing, so the call 400s before any lock.
     _Case(
@@ -501,7 +496,7 @@ _DOCUMENTED_LIMITS = [
                 "rows": [
                     {
                         "event_id": str(_MISSING_ID),
-                        "capture_source_tag_id": str(_MISSING_ID),
+                        "sensor": "smartphone",
                     }
                 ],
             }
@@ -527,8 +522,17 @@ _DOCUMENTED_LIMITS = [
         "/api/v1/tags",
         30,
         "user",
-        {"json": {"name": "rate-limit-probe", "category": "capture_source"}},
+        {"json": {"name": "rate-limit-probe"}},
     ),
+    # The `text/plain` probe is rejected before any storage write.
+    _Case(
+        "post",
+        "/api/v1/uploads",
+        30,
+        "user",
+        {"files": {"file": ("probe.txt", b"probe", "text/plain")}},
+    ),
+    _Case("get", "/api/v1/sources", 60, "user", {"params": {"q": "rate-limit-probe"}}),
     _Case("patch", ME, 30, "user", {"json": {"bio": "probe"}}),
     # The PUT probe is `text/plain`: rejected before any storage write.
     _Case(
