@@ -8,9 +8,9 @@ that (a JSON body never fits it). No rate limiter: a signature rejection is
 one HMAC, cheaper than limiter bookkeeping.
 
 The POST does no pipeline work: it verifies, reduces the payload to the
-internal ``Mention`` shape, inserts ``bot_webhook_events`` rows and answers
-200 (one insert batch, one commit, since X retries on slow answers). The
-import worker drains the queue (``services/bot``).
+internal ``Mention`` shape, inserts ``queued`` ``bot_mentions`` rows and
+answers 200 (one insert batch, one commit, since X retries on slow answers).
+The import worker drains them (``services/bot``).
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.config import settings
 from app.dependencies import get_db
-from app.services.bot import enqueue_webhook_mentions
+from app.services.bot import enqueue_mentions
 from app.services.x_api import Mention
 
 logger = logging.getLogger(__name__)
@@ -156,4 +156,5 @@ async def receive_account_activity(request: Request, db: Session = Depends(get_d
     if not mentions:
         return {"queued": 0}
     # Sync SQLAlchemy insert: off the event loop.
-    return {"queued": await run_in_threadpool(enqueue_webhook_mentions, db, mentions)}
+    queued = await run_in_threadpool(enqueue_mentions, db, mentions)
+    return {"queued": len(queued)}

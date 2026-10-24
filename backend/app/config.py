@@ -99,7 +99,7 @@ class Settings(BaseSettings):
 
     # X bot (docs/ingestion.md). Reading mentions needs the bearer token and the
     # bot's numeric user id (stored to skip a lookup per run); both empty means
-    # the runner refuses to start. Replies need all four OAuth 1.0a credentials;
+    # the worker skips the catch-up. Replies need all four OAuth 1.0a credentials;
     # empty means mentions are processed but nothing is posted.
     x_bot_bearer_token: str = ""
     x_bot_user_id: str = ""
@@ -111,7 +111,7 @@ class Settings(BaseSettings):
     x_bot_access_token: str = ""
     x_bot_access_token_secret: str = ""
     # Whether the X Account Activity webhook is live in this deployment. While
-    # false, a mention arriving via the cron raises no gap warning.
+    # false, a mention the catch-up queues raises no gap warning.
     x_webhook_enabled: bool = False
     # Billed-spend ceilings on replies. Anyone can tag the bot and each reply is
     # billed, so the window posts at most this many replies (success + failure),

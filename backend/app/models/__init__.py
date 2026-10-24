@@ -3,7 +3,6 @@ from app.models.approval_request import ApprovalRequest
 from app.models.archive_import_job import ArchiveImportJob
 from app.models.audit_log import AuditLog
 from app.models.bot_mention import BotMention
-from app.models.bot_webhook_event import BotWebhookEvent
 from app.models.collection import Collection, CollectionEvent
 from app.models.conflict import Conflict, event_conflicts
 from app.models.content_report import ContentReport
@@ -30,7 +29,6 @@ __all__ = [
     "AuditLog",
     "PasswordResetToken",
     "BotMention",
-    "BotWebhookEvent",
     "Collection",
     "CollectionEvent",
     "Conflict",

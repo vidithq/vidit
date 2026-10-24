@@ -23,11 +23,13 @@ from app.models.user import User
 from app.services.bot import (
     REPLY_MAX_WEIGHTED_LEN,
     BotNotConfigured,
+    BotRunOutcome,
+    catch_up,
     compose_failure_reply,
     compose_reply,
     compose_request_reply,
+    drain_mentions,
     reply_weighted_len,
-    run_bot_once,
 )
 from app.services.tweet_ingest import (
     DUPLICATE_MEDIA,
@@ -469,6 +471,22 @@ def _cleanup():
         session.close()
 
 
+async def _pass(
+    db,
+    *,
+    syndication_client: httpx.Client | None = None,
+    x_read_client: httpx.Client | None = None,
+    x_write_client: httpx.Client | None = None,
+) -> BotRunOutcome:
+    """One catch-up then one drain, as a worker pass runs them, with the counts of both."""
+    seen = catch_up(db, x_read_client=x_read_client)
+    outcome = await drain_mentions(
+        db, syndication_client=syndication_client, x_write_client=x_write_client
+    )
+    outcome.mentions_seen, outcome.already_handled = seen.mentions_seen, seen.already_handled
+    return outcome
+
+
 async def _run(
     db,
     mention_ids,
@@ -488,9 +506,7 @@ async def _run(
         _mentions_client(mention_ids, seen_params, reply_to, handle, parent_of) as read,
         _write_client(posted, liked) as write,
     ):
-        outcome = await run_bot_once(
-            db, syndication_client=syn, x_read_client=read, x_write_client=write
-        )
+        outcome = await _pass(db, syndication_client=syn, x_read_client=read, x_write_client=write)
     return outcome, seen_params, posted, liked
 
 
@@ -636,7 +652,14 @@ async def test_rerun_is_idempotent_and_advances_since_id(db, linked_owner):
 async def test_poll_overlap_recovers_mention_dropped_by_webhook(db, linked_owner):
     # The webhook dropped TAGGED_ID, so the ledger max leapfrogged it; since_id
     # sits one overlap behind the max and recovers it.
-    db.add(BotMention(mention_post_id=NO_COORD_ID, author_x_handle=HANDLE, outcome="no_detection"))
+    db.add(
+        BotMention(
+            mention_post_id=NO_COORD_ID,
+            author_x_handle=HANDLE,
+            status="done",
+            outcome="no_detection",
+        )
+    )
     db.commit()
 
     def handler(req: httpx.Request) -> httpx.Response:
@@ -662,9 +685,7 @@ async def test_poll_overlap_recovers_mention_dropped_by_webhook(db, linked_owner
         httpx.Client(transport=httpx.MockTransport(handler)) as read,
         _write_client(posted, liked) as write,
     ):
-        outcome = await run_bot_once(
-            db, syndication_client=syn, x_read_client=read, x_write_client=write
-        )
+        outcome = await _pass(db, syndication_client=syn, x_read_client=read, x_write_client=write)
 
     assert outcome.created_event_count == 1  # the dropped mention processed
     assert outcome.already_handled == 1  # the ledgered one re-read, absorbed
@@ -1189,7 +1210,7 @@ async def test_self_mention_is_ledgered_so_cursor_advances(db):
         httpx.Client(transport=httpx.MockTransport(handler)) as read,
         _syndication_client() as syn,
     ):
-        outcome = await run_bot_once(db, syndication_client=syn, x_read_client=read)
+        outcome = await _pass(db, syndication_client=syn, x_read_client=read)
 
     assert outcome.created_event_count == 0
     ledger = db.query(BotMention).filter(BotMention.mention_post_id == NO_COORD_ID).one()
@@ -1251,7 +1272,7 @@ async def test_gap_detector_fires_on_failed_verdict_too(db, linked_owner, monkey
             httpx.Client(transport=httpx.MockTransport(read_handler)) as read,
             _write_client(posted, liked) as write,
         ):
-            outcome = await run_bot_once(
+            outcome = await _pass(
                 db, syndication_client=syn, x_read_client=read, x_write_client=write
             )
 
@@ -1282,7 +1303,7 @@ async def test_poll_stays_gap_silent_while_webhook_disabled(db, linked_owner, mo
 async def test_unconfigured_bot_refuses_to_run(db, monkeypatch):
     monkeypatch.setattr(settings, "x_bot_bearer_token", "")
     with pytest.raises(BotNotConfigured):
-        await run_bot_once(db)
+        catch_up(db)
 
 
 def test_compose_reply_is_linkless_and_carries_the_warnings():

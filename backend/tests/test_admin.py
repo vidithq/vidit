@@ -371,6 +371,7 @@ def test_list_invite_codes_carries_redeemer_onboarding_stats(admin_user, regular
     mention = BotMention(
         mention_post_id=uuid.uuid4().int >> 66,
         author_x_handle=handle.upper(),
+        status="done",
         outcome="created",
         created_event_count=3,
     )
