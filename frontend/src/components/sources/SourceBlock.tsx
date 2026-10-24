@@ -1,5 +1,6 @@
 import { CoordinateActions } from "@/components/event/CoordinateActions";
 import { ArchivedCopies, linkDescription } from "@/components/ui/ArchivedCopies";
+import { HorizontalScroller } from "@/components/ui/HorizontalScroller";
 import { MediaGallery } from "@/components/ui/MediaGallery";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -111,7 +112,10 @@ export function SourceBlock({
   );
 }
 
-/** An event's sources under a **Sources** eyebrow, in the order the API serves them. */
+/**
+ * An event's sources under a **Sources** eyebrow, in the order the API serves them: a vertical
+ * stack in the map panel, a `<HorizontalScroller>` row on the page.
+ */
 export function SourceBlocks({
   sources,
   alt,
@@ -121,6 +125,23 @@ export function SourceBlocks({
   alt: string;
   compact?: boolean;
 }) {
+  const blocks = sources.map((source, index) => (
+    <SourceBlock key={source.id} source={source} index={index} alt={alt} compact={compact} />
+  ));
+  if (!compact && sources.length > 0) {
+    return (
+      <HorizontalScroller
+        heading={
+          <SectionEyebrow margin="none" title={`Sources (${sources.length})`} concept="sources" />
+        }
+        label="Sources"
+        previousLabel="Previous source"
+        nextLabel="Next source"
+      >
+        {blocks}
+      </HorizontalScroller>
+    );
+  }
   return (
     <div className={compact ? "space-y-2" : "space-y-3"}>
       <SectionEyebrow
@@ -132,15 +153,7 @@ export function SourceBlocks({
       {sources.length === 0 ? (
         <p className="text-sm text-neutral-500 italic">No source yet</p>
       ) : (
-        sources.map((source, index) => (
-          <SourceBlock
-            key={source.id}
-            source={source}
-            index={index}
-            alt={alt}
-            compact={compact}
-          />
-        ))
+        blocks
       )}
     </div>
   );

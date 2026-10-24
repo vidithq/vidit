@@ -4,6 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 
 import type { Media } from "@/types";
+import { cn } from "@/lib/cn";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import { GraphicContentGate } from "@/components/ui/GraphicContentGate";
 import { MediaDownloadButton } from "@/components/ui/MediaDownloadButton";
@@ -111,7 +112,7 @@ export function MediaGallery({
   const tiles = compact ? (
     <div className="space-y-2">{items}</div>
   ) : (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{items}</div>
+    <div className={cn("grid grid-cols-1 gap-4", items.length > 1 && "sm:grid-cols-2")}>{items}</div>
   );
 
   return (

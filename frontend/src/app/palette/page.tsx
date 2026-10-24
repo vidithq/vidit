@@ -56,6 +56,7 @@ import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { OutboundLink } from "@/components/ui/OutboundLink";
 import { StatTile, StatGrid } from "@/components/ui/StatTile";
+import { HorizontalScroller } from "@/components/ui/HorizontalScroller";
 import { IconTile } from "@/components/ui/IconTile";
 import { ActivityHeatmap } from "@/components/ui/ActivityHeatmap";
 import { SourceHostBar } from "@/components/ui/SourceHostBar";
@@ -86,7 +87,7 @@ import { VideoPlayer } from "@/components/ui/VideoPlayer";
 import { TaxonomyLoadError } from "@/components/geolocations/TaxonomyLoadError";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { MergeAction } from "@/components/ui/MergeAction";
-import { SourceBlocks } from "@/components/sources/SourceBlock";
+import { SourceBlock, SourceBlocks } from "@/components/sources/SourceBlock";
 import { SourcesField } from "@/components/sources/SourcesField";
 import { SourcePicker } from "@/components/sources/SourcePicker";
 import { sourceDraftFrom, type Source, type SourceDraft } from "@/lib/sources";
@@ -1177,7 +1178,7 @@ export default function PalettePage() {
             </span>
           </Item>
 
-          <Item name="<MediaGallery>" usage="The detail-surface media block: geoloc detail + map panel + request detail. variant=page (2-up hero grid) / panel (stacked thumbnails); one marked empty box, shown here through the shared TileNotice. A video tile is <VideoPlayer>, whose own bar already covers play, download and the expand control, so a clip carries no floating tile control at all. An image tile is cropped, so the tile itself opens <MediaLightbox> at hero resolution, and its download floats in the corner under HOVER_REVEAL. The card-sized media slot is private to <EntityCard> (its no-media box shows in the detection demo below).">
+          <Item name="<MediaGallery>" usage="The detail-surface media block: geoloc detail + map panel + request detail. variant=page (hero tiles, a lone one at full width, 2-up from two) / panel (stacked thumbnails); one marked empty box, shown here through the shared TileNotice. A video tile is <VideoPlayer>, whose own bar already covers play, download and the expand control, so a clip carries no floating tile control at all. An image tile is cropped, so the tile itself opens <MediaLightbox> at hero resolution, and its download floats in the corner under HOVER_REVEAL. The card-sized media slot is private to <EntityCard> (its no-media box shows in the detection demo below).">
             <div className="w-full max-w-sm">
               <MediaGallery media={[]} alt="demo" />
             </div>
@@ -1772,9 +1773,24 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SourceBlock> / <SourceBlocks>" usage="One source of an event on a reading surface (components/sources/SourceBlock.tsx), in a LIST_TILE: its title (or Source N) and level as a <Pill>, its sensor as a key/value pill (none without a file, and Unknown dropped), its file in <MediaGallery> behind its own <GraphicContentGate> when this source is flagged, the capture time and the camera position with <CoordinateActions>, each link through <SourceLabel> with its <ArchivedCopies> mark and post time, and its tags. <SourceBlocks> is the Sources eyebrow over the event's blocks in API order. The page, the map panel and a version page render it through <EventDetailBody>.">
+          <Item name="<SourceBlock> / <SourceBlocks>" usage="One source of an event on a reading surface (components/sources/SourceBlock.tsx), in a LIST_TILE: its title (or Source N) and level as a <Pill>, its sensor as a key/value pill (none without a file, and Unknown dropped), its file in <MediaGallery> behind its own <GraphicContentGate> when this source is flagged, the capture time and the camera position with <CoordinateActions>, each link through <SourceLabel> with its <ArchivedCopies> mark and post time, and its tags. <SourceBlocks> renders the event's blocks in API order: a <HorizontalScroller> row under a Sources (N) eyebrow in the page variant of <EventDetailBody>, a vertical stack under Sources in its panel variant.">
             <div className="w-full max-w-2xl">
               <SourceBlocks sources={[MOCK_SOURCE, MOCK_CONTEXT_SOURCE]} alt="Strike on a depot" />
+            </div>
+          </Item>
+
+          <Item name="<HorizontalScroller>" usage="A row of same-width items that scrolls sideways (components/ui/HorizontalScroller.tsx): native overflow scrolling with one snap point per item, focusable so the arrow keys scroll it. Two items fit once the row is 32rem wide; below that one fits and the next peeks. With more than one item, the header shows the shown range (1 to 2 of 5) and previous and next ghost icon buttons that scroll by one item, without smoothing under prefers-reduced-motion, and go inert at the ends. The event page's sources row is its consumer.">
+            <div className="w-full max-w-2xl">
+              <HorizontalScroller
+                heading={<SectionEyebrow margin="none" title="Sources (3)" />}
+                label="Sources"
+                previousLabel="Previous source"
+                nextLabel="Next source"
+              >
+                {[MOCK_SOURCE, MOCK_CONTEXT_SOURCE, MOCK_SOURCE].map((source, index) => (
+                  <SourceBlock key={index} source={source} index={index} alt="Strike on a depot" />
+                ))}
+              </HorizontalScroller>
             </div>
           </Item>
 

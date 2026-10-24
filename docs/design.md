@@ -225,7 +225,7 @@ The vocabulary:
 
 #### Media
 
-- [`<MediaGallery>`](../frontend/src/components/ui/MediaGallery.tsx) is the detail-surface block: a 2-up `hero` grid on the page, stacked `thumbnail` tiles in the panel.
+- [`<MediaGallery>`](../frontend/src/components/ui/MediaGallery.tsx) is the detail-surface block: `hero` tiles on the page, a lone tile at full width and two or more in a 2-up grid, and stacked `thumbnail` tiles in the panel.
 - [`<VideoPlayer>`](../frontend/src/components/ui/VideoPlayer.tsx) is the one player, mounted by the gallery's video tiles and by the shared viewer. The landing page's demo clip is a one-off: it stays idle until a visitor clicks play, then hands playback to the browser's own controls.
 - The player engine is [media-chrome](https://media-chrome.mux.dev): web-component controls around a native `<video>`, skinned through CSS variables on the controller (neutral-100 glyphs, flat controls on a translucent dark bar). This keeps the chrome independent of the React version and out of specificity conflicts with Tailwind.
 - The bar holds play, scrub, time, mute, volume, download, and one big-view control. It hides after two undisturbed seconds of playback and returns on pointer move, hover, or focus.
@@ -321,7 +321,7 @@ flowchart LR
 
 #### Source blocks
 
-An event's evidence is its list of [sources](data-model.md#sources), up to 10, none of them the main one. A reading surface renders one block per source and a form renders one editor per source. The block, the editor, the section that lists the editors and the picker live in [`components/sources/`](../frontend/src/components/sources), each with a `/palette` entry: [`<SourceBlock>`](../frontend/src/components/sources/SourceBlock.tsx), [`<SourceEditor>`](../frontend/src/components/sources/SourceEditor.tsx), [`<SourcesField>`](../frontend/src/components/sources/SourcesField.tsx) and [`<SourcePicker>`](../frontend/src/components/sources/SourcePicker.tsx). [`<EventDetailBody>`](../frontend/src/components/event/EventDetailBody.tsx) renders the blocks under a **Sources** eyebrow, so the full page, the map side panel and a version page render a source the same way. The source state, its payload and its floor have one home, [`lib/sources.ts`](../frontend/src/lib/sources.ts).
+An event's evidence is its list of [sources](data-model.md#sources), up to 10, none of them the main one. A reading surface renders one block per source and a form renders one editor per source. The block, the editor, the section that lists the editors and the picker live in [`components/sources/`](../frontend/src/components/sources), each with a `/palette` entry: [`<SourceBlock>`](../frontend/src/components/sources/SourceBlock.tsx), [`<SourceEditor>`](../frontend/src/components/sources/SourceEditor.tsx), [`<SourcesField>`](../frontend/src/components/sources/SourcesField.tsx) and [`<SourcePicker>`](../frontend/src/components/sources/SourcePicker.tsx). [`<EventDetailBody>`](../frontend/src/components/event/EventDetailBody.tsx) renders the blocks, so the full page, the map side panel and a version page render a source the same way. The source state, its payload and its floor have one home, [`lib/sources.ts`](../frontend/src/lib/sources.ts).
 
 **On a reading surface**, the blocks follow the order the API serves (`direct`, then `indirect`, then `context`, then by capture time). Each block is a `LIST_TILE` region named *Source N*. It shows:
 
@@ -333,6 +333,15 @@ An event's evidence is its list of [sources](data-model.md#sources), up to 10, n
 - The source's tags as plain pills.
 
 An event with no source yet reads *No source yet* under the eyebrow.
+
+The page variant of `<EventDetailBody>` (the event page, a version page, a request page) lays the blocks out as one row in [`<HorizontalScroller>`](../frontend/src/components/ui/HorizontalScroller.tsx), under a **Sources (N)** eyebrow. The map panel stacks them under **Sources**. The scroller works as follows:
+
+- The row scrolls sideways with native overflow scrolling, one snap point per item, by trackpad, touch or the arrow keys once the row has focus.
+- Every item has the same width and the row's height, so a short block stretches to match its neighbour.
+- Two items fit side by side once the row is 32rem wide. Below that, one item fits and the next peeks to show that the row scrolls.
+- With more than one item, the header shows the range in view (*1 to 2 of 5*) and the ghost icon buttons **Previous source** and **Next source**. An item counts as in view once half of it shows.
+- Each button scrolls by one item, without smoothing under `prefers-reduced-motion`, and turns disabled at its end of the row.
+- With one item, the header holds the eyebrow alone.
 
 [`<ArchivedCopies>`](../frontend/src/components/ui/ArchivedCopies.tsx) is that archived-copy mark, one per link:
 

@@ -26,9 +26,10 @@ export type EventDetailBodyData = EventDetail;
 interface EventDetailBodyProps {
   geo: EventDetailBodyData;
   /**
-   * `panel`: map's 380px overlay: stacked `thumbnail` media, bare rows, no request-trace or author
-   * rows (the author is in the panel header). `page`: full detail page: 2-up `hero` media grid,
-   * card-chrome rows plus request-trace and author rows, section headings.
+   * `panel`: map's 380px overlay: stacked sources with `thumbnail` media, bare rows, no
+   * request-trace or author rows (the author is in the panel header). `page`: full detail page: a
+   * sideways row of sources with `hero` media, card-chrome rows plus request-trace and author rows,
+   * section headings.
    */
   variant: "panel" | "page";
   /** Rendered between the sources and the key-value rows (the full page slots its Location map here). */
