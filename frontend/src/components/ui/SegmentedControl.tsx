@@ -59,7 +59,10 @@ export function SegmentedControl<T extends string>({
               // `sm` only, where the track is pinned to the column and an
               // unshrinkable option would scroll the page sideways.
               "px-3 py-1 text-sm rounded transition-colors truncate max-sm:px-2 max-sm:min-w-0 max-sm:text-xs",
-              fullWidth ? "flex-1" : "max-sm:flex-1",
+              // Below `sm` each option starts from its label's width and the spare room is
+              // shared out, so a long label ("People I follow") keeps its words at 320px
+              // where equal thirds would cut it.
+              fullWidth ? "flex-1 max-sm:flex-auto" : "max-sm:flex-auto",
               active
                 ? opt.tone === "danger"
                   ? "bg-red-500/10 text-red-300"
