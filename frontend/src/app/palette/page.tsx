@@ -194,6 +194,7 @@ const MOCK_SOURCE: Source = {
   tags: [{ id: "t4", name: "armor" }],
   media: {
     id: "m1",
+    role: "source",
     storage_url: "/opengraph-image",
     kind: "image",
     sha256: "0".repeat(64),
@@ -1865,6 +1866,7 @@ function paletteApprovalStamps(approvers: readonly (typeof PALETTE_APPROVERS)[nu
 
 const PALETTE_MEDIA: Media = {
   id: "palette-demo",
+  role: "source",
   storage_url: "/opengraph-image",
   kind: "image",
   sha256: "0".repeat(64),

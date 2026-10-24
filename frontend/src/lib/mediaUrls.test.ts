@@ -39,13 +39,11 @@ describe("displayUrlsFor", () => {
     });
   });
 
-  it("reads a proof image off its key when the payload names no role", () => {
+  it("derives siblings for a source image whatever its key", () => {
     const url = "https://cdn.example.com/proof/u1/abc.jpg";
-    expect(displayUrlsFor({ storage_url: url, kind: "image" }).thumbnail).toBe(url);
-    expect(
-      displayUrlsFor({ storage_url: "https://cdn.example.com/uploads/abc.jpg", kind: "image" })
-        .thumbnail
-    ).toBe("https://cdn.example.com/uploads/abc_thumb.jpg");
+    expect(displayUrlsFor({ storage_url: url, kind: "image", role: "source" }).thumbnail).toBe(
+      "https://cdn.example.com/proof/u1/abc_thumb.jpg"
+    );
   });
 
   it("does not mistake the domain dot for an extension", () => {

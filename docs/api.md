@@ -787,6 +787,7 @@ List one lifecycle view, newest or oldest first, as `EventList` cards (no full p
     "geolocators": [{ "id": "uuid", "username": "kalush" }],
     "media": {
       "id": "uuid",
+      "role": "source",
       "storage_url": "https://…/uploads/….jpg",
       "kind": "image",
       "sha256": "…",
@@ -1019,6 +1020,7 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
       "tags": [],
       "media": {
         "id": "uuid",
+        "role": "source",
         "storage_url": "https://<cloudfront-domain>/uploads/….mp4",
         "kind": "video",
         "sha256": "f7c3bcd13f00e8a4b2d4e9b3f1a2c5d6e7f8901234567890abcdef1234567890",
@@ -1060,6 +1062,7 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
 | `sources` | Every source, as `SourceRead`, in the derived order: `direct`, then `indirect`, then `context`, then by `captured_at` with unknown last. Empty on a detection that declared none. A published row always carries a `direct` or `indirect` source with a file |
 | `sources[].links` | The source's URLs, ordered by `posted_at` with unknown last. `archived` is the link's archived copy: `url` is the snapshot, `provider` is `wayback`, `archive_today` or `ghostarchive`, read off the snapshot's host, and `archived_at` is when it was recorded. `null` until an analyst records one (see [`archival.md`](archival.md)) |
 | `sources[].media` | The source's file, `null` for a source that is only URLs. A proof image lives inline in the `proof` HTML as an `img` src |
+| `sources[].media.role` | `source` for a source's file, `proof` for a proof image, derived from the row's parent. Every `MediaRead` carries it, `thumbnail` and snapshot `proof_media` included. Only a `source` image has `_hero` / `_thumb` derivatives, so read a `proof` `storage_url` as is |
 | `sources[].sensor` | `null` on a source without a file, and on a machine source until review |
 | `detected_from_url` | The post an imported row came from; `null` for a human submit. Read from the event's [`event_detections`](data-model.md#event_detections) row. Not a source |
 | `detected_via` | The ingest entry that produced a machine detection: `bot`, `paste` or `archive`. Stamped once at creation; `null` for a human submit and for a machine row that names no entry. Read from the `event_detections` row |
@@ -1885,7 +1888,7 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
       "status": "geolocated",
       "owner": { "id": "uuid", "username": "osint_analyst" },
       "geolocators": [{ "id": "uuid", "username": "osint_analyst" }],
-      "media": [{ "id": "uuid", "storage_url": "…", "kind": "image", "sha256": "…", "original_filename": null }],
+      "media": [{ "id": "uuid", "role": "source", "storage_url": "…", "kind": "image", "sha256": "…", "original_filename": null }],
       "tags": [{ "id": "uuid", "name": "airstrike" }]
     }
   ],
@@ -1899,7 +1902,7 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
       "created_at": "2026-04-12T08:00:00Z",
       "is_graphic": false,
       "owner": { "id": "uuid", "username": "kharkiv_osint" },
-      "media": [{ "id": "uuid", "storage_url": "…", "kind": "image", "sha256": "…", "original_filename": null }],
+      "media": [{ "id": "uuid", "role": "source", "storage_url": "…", "kind": "image", "sha256": "…", "original_filename": null }],
       "tags": []
     }
   ],

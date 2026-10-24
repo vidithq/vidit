@@ -130,6 +130,7 @@ export const EVENT: EventDetail = {
       tags: [],
       media: {
         id: "55555555-5555-4555-8555-555555555551",
+        role: "source",
         kind: "image",
         storage_url: MEDIA_URL,
         original_filename: "street.png",
@@ -139,6 +140,7 @@ export const EVENT: EventDetail = {
   ],
   thumbnail: {
     id: "55555555-5555-4555-8555-555555555551",
+    role: "source",
     kind: "image",
     storage_url: MEDIA_URL,
     original_filename: "street.png",

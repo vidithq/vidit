@@ -7,6 +7,7 @@ import type { EventDetail } from "@/types";
 
 const MEDIA = {
   id: "m1",
+  role: "source" as const,
   storage_url: "/local-storage/evidence.jpg",
   kind: "image" as const,
   sha256: "0".repeat(64),

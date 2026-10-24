@@ -11,7 +11,13 @@ import { SourceEditor, type SourceEditorInvalid } from "./SourceEditor";
 const SNAPSHOT_PLACEHOLDER =
   "Paste a snapshot link (web.archive.org, archive.today, ghostarchive.org)";
 
-const FILE = { id: "m1", kind: "image" as const, sha256: "0", storage_url: "https://cdn/x.jpg" };
+const FILE = {
+  id: "m1",
+  role: "source" as const,
+  kind: "image" as const,
+  sha256: "0",
+  storage_url: "https://cdn/x.jpg",
+};
 
 /** A stateful host, so edits round-trip through the draft as they do in the form. */
 function Host({

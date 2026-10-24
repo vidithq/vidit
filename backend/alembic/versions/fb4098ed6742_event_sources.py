@@ -266,12 +266,6 @@ def upgrade() -> None:
     op.create_index("ix_media_storage_url", "media", ["storage_url"])
 
 
-def _without_role(entry: Any) -> Any:
-    if isinstance(entry, dict):
-        return {key: value for key, value in entry.items() if key != "role"}
-    return entry
-
-
 def _sources_snapshot(old: dict[str, Any]) -> dict[str, Any]:
     """One version snapshot in the ``sources`` shape, same content."""
     archives = {
@@ -306,7 +300,7 @@ def _sources_snapshot(old: dict[str, Any]) -> dict[str, Any]:
                 "is_graphic": bool(old.get("is_graphic", False)),
                 "links": [link(source_url, old.get("source_posted_at"))] if source_url else [],
                 "tags": [],
-                "media": _without_role(source_media[0]) if source_media else None,
+                "media": source_media[0] if source_media else None,
             }
         )
     for url in old.get("secondary_source_urls") or []:
@@ -343,7 +337,7 @@ def _sources_snapshot(old: dict[str, Any]) -> dict[str, Any]:
         {"id": t["id"], "name": t["name"]} for t in tags if t.get("category") != "capture_source"
     ]
     if "proof_media" in old:
-        new["proof_media"] = [_without_role(m) for m in old.get("proof_media") or []]
+        new["proof_media"] = old.get("proof_media") or []
     new["sources"] = sources
     return new
 
@@ -367,7 +361,7 @@ def _legacy_snapshot(new: dict[str, Any], tag_ids: dict[str, str]) -> dict[str, 
     old = {key: value for key, value in new.items() if key not in ("sources", "tags")}
     old["source_url"] = source_url
     media = primary.get("media") if primary else None
-    old["source_media"] = [{**media, "role": "source"}] if media else []
+    old["source_media"] = [media] if media else []
     old["capture_source_coords"] = primary.get("camera_position") if primary else None
     old["source_posted_at"] = source_link.get("posted_at") if source_link else None
     old["is_graphic"] = any(bool(s.get("is_graphic")) for s in sources)
@@ -379,9 +373,7 @@ def _legacy_snapshot(new: dict[str, Any], tag_ids: dict[str, str]) -> dict[str, 
         tags.append({"id": tag_ids[name], "name": name, "category": "capture_source"})
     old["tags"] = tags
     if "proof_media" in new:
-        old["proof_media"] = [
-            {**m, "role": "proof"} for m in new.get("proof_media") or [] if isinstance(m, dict)
-        ]
+        old["proof_media"] = new.get("proof_media") or []
     kept = {url for url in [source_url, *secondary] if url}
     archived: dict[str, dict[str, Any]] = {}
     for source, link in links:

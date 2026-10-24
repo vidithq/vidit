@@ -16,7 +16,13 @@ import {
 } from "./sources";
 import { source } from "@/test/eventDetail";
 
-const FILE = { id: "m1", kind: "image" as const, sha256: "0", storage_url: "https://cdn/x.jpg" };
+const FILE = {
+  id: "m1",
+  role: "source" as const,
+  kind: "image" as const,
+  sha256: "0",
+  storage_url: "https://cdn/x.jpg",
+};
 
 const STORED = source({
   id: "s1",

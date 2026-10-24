@@ -31,7 +31,7 @@ import {
   type SourceDraft,
   type SourceLevel,
 } from "@/lib/sources";
-import type { Tag } from "@/types";
+import type { Media, Tag } from "@/types";
 
 const LEVEL_OPTIONS = SOURCE_LEVELS.map((value) => ({ value, label: LEVEL_LABELS[value] }));
 
@@ -82,8 +82,13 @@ export function SourceEditor({
   // A picked file previews from its object URL until the staged copy answers.
   const pending = file?.state === "uploading" ? file.file : null;
   const pendingFiles = useMemo(() => (pending ? [pending] : []), [pending]);
-  const shown =
-    file?.state === "stored" ? file.media : file?.state === "staged" ? file.upload : null;
+  // A staged upload is a source file, so it has derivatives like a stored one.
+  const shown: Media | null =
+    file?.state === "stored"
+      ? file.media
+      : file?.state === "staged"
+        ? { ...file.upload, role: "source" }
+        : null;
 
   const describe = (i: number, url: string) =>
     linkDescription(index, safeHostname(url.trim()), i, draft.links.length);

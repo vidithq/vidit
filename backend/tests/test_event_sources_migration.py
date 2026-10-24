@@ -228,11 +228,11 @@ def _assert_head(cur, ids: dict[str, str]) -> None:
     (snapshot,) = _one(cur, "SELECT snapshot FROM event_versions WHERE event_id = %s", ids["full"])
     assert not {"source_url", "source_media", "secondary_source_urls", "archives"} & set(snapshot)
     assert snapshot["tags"] == [{"id": ids["night"], "name": "night"}]
-    assert snapshot["proof_media"] == [{"id": "p", "storage_url": "s3://x/p.jpg"}]
+    assert snapshot["proof_media"] == [{"id": "p", "role": "proof", "storage_url": "s3://x/p.jpg"}]
     main_entry, mirror_entry = snapshot["sources"]
     assert main_entry["sensor"] == "drone" and main_entry["is_graphic"] is True
     assert main_entry["camera_position"] == {"lat": 48.4, "lng": 34.4}
-    assert main_entry["media"] == {"id": "m", "storage_url": "s3://x/v1.jpg"}
+    assert main_entry["media"] == {"id": "m", "role": "source", "storage_url": "s3://x/v1.jpg"}
     assert main_entry["links"] == [
         {
             "url": "https://x.com/a/status/1",

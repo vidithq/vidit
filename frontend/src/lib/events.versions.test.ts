@@ -29,7 +29,13 @@ const FOOTAGE: Source = source({
       archived: { url: WAYBACK, provider: "wayback", archived_at: "2026-06-01T00:00:00Z" },
     },
   ],
-  media: { id: "m1", kind: "image", sha256: "0", storage_url: "https://m/source.jpg" },
+  media: {
+    id: "m1",
+    role: "source",
+    kind: "image",
+    sha256: "0",
+    storage_url: "https://m/source.jpg",
+  },
 });
 
 const MIRRORS: Source = source({

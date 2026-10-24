@@ -51,6 +51,7 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
         tags: [],
         media: {
           id: "m1",
+          role: "source",
           storage_url: "/local-storage/evidence.jpg",
           kind: "image",
           sha256: "0".repeat(64),

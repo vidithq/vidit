@@ -9,11 +9,9 @@ import type { Media } from "@/types";
  *   uploads/<geo>/abc_thumb.jpg  max-dim 400 px, JPEG q80
  * The naming mirrors `storage.derivative_key`; change both.
  *
- * Which objects carry the siblings is the upload path, not the `kind`: `storage.upload_source_file`
- * and the detection path write them for an image; `storage.upload_proof_image` passes
- * `produce_derivatives=False` and stores the object under `proof/`, so a proof image has an
- * original only. Rewriting a proof url to `_thumb` addresses an object never written: the CDN
- * answers 403 and every card paints a broken picture. Videos have no derivatives either.
+ * Only a source image carries the siblings: a proof image (`role: "proof"`) has an original only,
+ * and rewriting its url to `_thumb` addresses an object never written, so the CDN answers 403.
+ * Videos have no derivatives either.
  */
 export interface MediaUrlBundle {
   original: string;
@@ -59,18 +57,12 @@ export function posterFrameUrl(src: string): string {
   return src.includes("#") ? src : `${src}#t=0.1`;
 }
 
-/** A proof image's object: `storage.upload_proof_image` keys it `proof/<user>/<file>`. Mirrors
- *  that key; change both. */
-const PROOF_OBJECT = /\/proof\/[^/]+\/[^/?#]+(?:[?#].*)?$/;
-
 /** Pick the URL for a Media row at the desired size. Videos and proof images fall back to the
- *  original (no derivatives). `role`, where the payload carries one (a collection cover tile),
- *  decides; otherwise the stored key does. Use instead of raw `storage_url`. */
-export type DisplayMedia = Pick<Media, "storage_url" | "kind"> & { role?: "source" | "proof" };
+ *  original (no derivatives). Use instead of raw `storage_url`. */
+export type DisplayMedia = Pick<Media, "storage_url" | "kind" | "role">;
 
 export function displayUrlsFor(media: DisplayMedia): MediaUrlBundle {
-  const proof = media.role ? media.role === "proof" : PROOF_OBJECT.test(media.storage_url);
-  if (media.kind !== "image" || proof) {
+  if (media.kind !== "image" || media.role === "proof") {
     return {
       original: media.storage_url,
       hero: media.storage_url,

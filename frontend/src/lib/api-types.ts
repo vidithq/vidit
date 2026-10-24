@@ -3837,6 +3837,11 @@ export interface components {
             kind: "image" | "video";
             /** Original Filename */
             original_filename?: string | null;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "source" | "proof";
             /** Sha256 */
             sha256: string;
             /** Storage Url */

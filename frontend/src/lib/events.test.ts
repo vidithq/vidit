@@ -78,7 +78,13 @@ describe("missingEventFields", () => {
 });
 
 describe("batchCompletionBlockers", () => {
-  const FILE = { id: "m1", kind: "image" as const, sha256: "0", storage_url: "https://cdn/x.jpg" };
+  const FILE = {
+    id: "m1",
+    role: "source" as const,
+    kind: "image" as const,
+    sha256: "0",
+    storage_url: "https://cdn/x.jpg",
+  };
   const LINK = { url: "https://x.com/a/status/1", posted_at: null, archived: null };
   // A detection as the import leaves it, missing only the sensor and conflict the batch supplies.
   const importedDetection = {

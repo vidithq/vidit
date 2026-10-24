@@ -12,8 +12,8 @@ from app.database import Base, literal_check
 MediaKind = Literal["image", "video"]
 
 # Which parent a media row hangs off, derived from the set foreign key: a source's file, or an
-# inline image of an event's proof body. Read by the cover tile and the storage sweeps (only a
-# source image has hero and thumbnail derivatives).
+# inline image of an event's proof body. Served on ``MediaRead`` and the cover tile, and read by
+# the storage sweeps (only a source image has hero and thumbnail derivatives).
 MediaRole = Literal["source", "proof"]
 
 

@@ -6,6 +6,7 @@ import type { Media } from "@/types";
 
 const VIDEO: Media = {
   id: "v1",
+  role: "source",
   storage_url: "/media/clip.mp4",
   kind: "video",
   sha256: "0".repeat(64),

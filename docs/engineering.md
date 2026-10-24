@@ -319,7 +319,7 @@ Every other frontend copy of a backend rule or of the issue tracker is hand-kept
 | `components/profile/RecentSubmissions.tsx` link `status=geolocated` | `event_filters.published_events()` | *Show more* expands a different set than the preview |
 | `components/collections/CollectionsSection.tsx` link `type=collection` | the filter `search.search_collections` reads, including the `author` exception | *Show more* lands on an empty group |
 | `lib/archive.ts` keep-allowlist, root discovery, `MAX_UPLOAD_BYTES` | `tweet_ingest/archive_zip.py` | client trims files the server needs, or uploads an export it refuses |
-| `lib/mediaUrls.ts::displayUrlsFor` | `storage.derivative_key` (`_hero`, `_thumb`); `upload_proof_image(produce_derivatives=False)` and its `proof/<user>/` key, which marks a proof image where the payload names no `role` (an event's `thumbnail`) | a proof image requests a derivative that does not exist (403) |
+| `lib/mediaUrls.ts::displayUrlsFor` | `storage.derivative_key` (`_hero`, `_thumb`) | a source image requests a derivative that does not exist (403) |
 | `lib/viewport.ts` | `event_filters.parse_bbox` field order and bounds | map bbox is refused or filters the wrong area |
 | `lib/pagination.ts` | `pagination.next_link` `Link` header shape | paging stops after page one |
 | `lib/events.ts::MAX_SOURCES_PER_EVENT` (the event form's source list) | `models/source.MAX_SOURCES_PER_EVENT` | form offers a source the API refuses (`too_many_sources`) |

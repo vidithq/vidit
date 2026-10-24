@@ -18,6 +18,7 @@ const TITLE = "Strike on ammunition depot";
 
 const IMAGE = {
   id: "m1",
+  role: "source" as const,
   storage_url: "/local-storage/evidence.jpg",
   kind: "image" as const,
   sha256: "0".repeat(64),

@@ -6,6 +6,7 @@ import type { Media } from "@/types";
 
 const IMAGE: Media = {
   id: "m1",
+  role: "source",
   storage_url: "/media/shot.jpg",
   kind: "image",
   sha256: "0".repeat(64),

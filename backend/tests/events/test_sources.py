@@ -13,6 +13,7 @@ from app.models.event import Event
 from app.models.media import Media
 from app.models.source import Source
 from app.models.upload import Upload
+from app.schemas.media import MediaRead
 from app.services import uploads as uploads_service
 from app.services.storage import get_storage
 from tests._fixtures import TINY_JPEG, stored_path
@@ -526,3 +527,10 @@ def test_a_proof_image_is_a_media_row_of_the_event_not_of_a_source(db, author, c
     proof = [m for m in event.media]
     assert len(proof) == 1 and proof[0].source_id is None and proof[0].role == "proof"
     assert db.query(Media).filter(Media.source_id == event.sources[0].id).one().role == "source"
+
+
+def test_the_media_read_names_a_source_file_and_a_proof_image(db, author, conflict):
+    created = _create(author, conflict, filed_source(author))
+    assert created.json()["sources"][0]["media"]["role"] == "source"
+    event = db.get(Event, uuid.UUID(created.json()["id"]))
+    assert [MediaRead.model_validate(m).role for m in event.media] == ["proof"]
