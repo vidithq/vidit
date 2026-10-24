@@ -45,7 +45,7 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
         level: "direct",
         sensor: null,
         captured_at: null,
-        camera_position: null,
+        sensor_position: null,
         is_graphic: false,
         links: [{ url: "https://t.me/channel/12345", posted_at: null, archived: null }],
         tags: [],

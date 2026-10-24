@@ -4414,7 +4414,6 @@ export interface components {
          * @description A source the picker found (``GET /sources``), with the event that holds it.
          */
         SourcePickRead: {
-            camera_position: components["schemas"]["CoordsRead"] | null;
             /** Captured At */
             captured_at: string | null;
             /**
@@ -4441,6 +4440,7 @@ export interface components {
             media: components["schemas"]["MediaRead"] | null;
             /** Sensor */
             sensor: ("smartphone" | "satellite" | "drone" | "static_camera" | "dashcam" | "body_cam" | "unknown") | null;
+            sensor_position: components["schemas"]["CoordsRead"] | null;
             /** Tags */
             tags: components["schemas"]["TagRead"][];
             /** Title */
@@ -4451,7 +4451,6 @@ export interface components {
          * @description One source of an event, in the event's derived source order.
          */
         SourceRead: {
-            camera_position: components["schemas"]["CoordsRead"] | null;
             /** Captured At */
             captured_at: string | null;
             /**
@@ -4471,6 +4470,7 @@ export interface components {
             media: components["schemas"]["MediaRead"] | null;
             /** Sensor */
             sensor: ("smartphone" | "satellite" | "drone" | "static_camera" | "dashcam" | "body_cam" | "unknown") | null;
+            sensor_position: components["schemas"]["CoordsRead"] | null;
             /** Tags */
             tags: components["schemas"]["TagRead"][];
             /** Title */

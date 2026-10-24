@@ -79,7 +79,7 @@ def test_an_event_holds_several_sources_in_level_then_capture_order(author, conf
             upload_id=earlier,
             sensor="drone",
             captured_at="2026-05-01T09:00",
-            camera_position={"lat": 48.4, "lng": 34.4},
+            sensor_position={"lat": 48.4, "lng": 34.4},
         ),
     )
     response = _create(author, conflict, sources)
@@ -92,7 +92,7 @@ def test_an_event_holds_several_sources_in_level_then_capture_order(author, conf
         ("context", "https://ctx.example/article"),
     ]
     assert read[0]["sensor"] == "drone"
-    assert read[0]["camera_position"] == {"lat": 48.4, "lng": 34.4}
+    assert read[0]["sensor_position"] == {"lat": 48.4, "lng": 34.4}
     assert read[1]["title"] == "Second angle"
     assert read[3]["media"] is None and read[3]["sensor"] is None
     assert all(s["media"] is not None for s in read[:3])

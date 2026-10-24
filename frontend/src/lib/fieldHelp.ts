@@ -32,16 +32,16 @@ export const FIELD_HELP = {
     text: "Optional. When the file was captured (UTC), if known. Not when it was posted, nor when the event was added here.",
     label: "What is the capture time?",
   },
-  camera_position: {
-    text: "Optional. Where the camera was, in decimal degrees (latitude then longitude), when that's a different spot from the subject: e.g. a drone or a rooftop looking down at the strike. Leave blank when the camera was at the subject, or the vantage point is unknown.",
-    label: "What is the camera position?",
+  sensor_position: {
+    text: "Optional. Where the sensor was, in decimal degrees (latitude then longitude), when that's a different spot from the subject: e.g. a drone or a rooftop looking down at the strike. Leave blank when the sensor was at the subject, or the vantage point is unknown.",
+    label: "What is the sensor position?",
   },
   source_links: {
     text: "Where the file was posted: the original post or channel first, then each mirror of the same file. Not your own geolocation post. Each link takes its post time (UTC) when known. The archive mark beside a link is its archived copy, so the evidence survives the post being deleted: orange opens the stored copy, grey means there is none yet. The form's mark offers the Wayback Machine with the link filled in and accepts a snapshot from the Wayback Machine, archive.today (or any of its mirrors) or Ghostarchive.",
     label: "What are the source links?",
   },
   coordinates: {
-    text: "Decimal degrees, latitude then longitude (e.g. 48.0159, 37.8024). The subject: the ground location the footage shows, not where the camera was or where it was posted.",
+    text: "Decimal degrees, latitude then longitude (e.g. 48.0159, 37.8024). The subject: the ground location the footage shows, not where the sensor was or where it was posted.",
     label: "What are the coordinates?",
   },
   occurred_date: {

@@ -6,7 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
-- An event holds up to 10 sources, none of them the main one. Each has a level (direct, indirect or context), a sensor, a capture time, a camera position, a graphic flag, tags, one file, and up to 10 URLs, each with its post time and archived copy.
+- An event holds up to 10 sources, none of them the main one. Each has a level (direct, indirect or context), a sensor, a capture time, a sensor position, a graphic flag, tags, one file, and up to 10 URLs, each with its post time and archived copy.
 - `POST /uploads` stages one source file before the event write that uses it; a staged file nobody uses is deleted after 24 hours.
 - `GET /sources` finds an existing source by URL or title, and an event form copies it onto another event without storing its file twice.
 - Search matches source titles and source URLs, and the map, list, search and feed filters take `sensor` and `level`.
@@ -21,7 +21,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - API and database fields follow one naming convention: events use `occurred_date`, `occurred_time` and `coords`, media use `kind`, conflicts use `is_ongoing`, and foreign keys end in `_id`. The old field names no longer work, with no alias.
 - An organization invitation is withdrawn by the invitee's username instead of an invitation id, and the organization and event invitation lists report `invited_at` in place of `created_at`.
 - The always-on worker runs the hourly bot mentions catch-up, so the separate `bot` role and its schedule are no longer needed. Mentions queued by the webhook and the catch-up share one table.
-- Every event write takes a `sources` list in place of the source URL, mirror, snapshot, camera position, post time, graphic flag and file fields, and event reads serve `sources` in place of the source and archive fields.
+- Every event write takes a `sources` list in place of the source URL, mirror, snapshot, sensor position, post time, graphic flag and file fields, and event reads serve `sources` in place of the source and archive fields.
 - Publishing needs a direct or indirect source with a file, a sensor on every source with a file, and a conflict; no tag is required. A request needs a direct or indirect source with a file.
 - The analyst who geolocates a request can correct its sources, and batch completion takes a sensor per detection in place of a capture-source tag.
 - The graphic flag belongs to each source, and an event is graphic when any of its sources is; the admin moderation flag sets or clears it on every source.

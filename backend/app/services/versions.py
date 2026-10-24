@@ -119,7 +119,7 @@ def source_entry(source: Source) -> dict[str, Any]:
         "level": source.level,
         "sensor": source.sensor,
         "captured_at": source.captured_at.isoformat() if source.captured_at else None,
-        "camera_position": point_shape(source.camera_position),
+        "sensor_position": point_shape(source.sensor_position),
         "is_graphic": source.is_graphic,
         "links": [
             {

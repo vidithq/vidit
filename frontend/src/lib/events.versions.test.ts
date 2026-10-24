@@ -275,7 +275,7 @@ describe("changedFields", () => {
       { sensor: "satellite" },
       { level: "indirect" },
       { title: "Drone footage" },
-      { camera_position: { lat: 1, lng: 2 } },
+      { sensor_position: { lat: 1, lng: 2 } },
       { media: { id: "m0", kind: "image", sha256: "0", storage_url: "https://m/old.jpg" } },
     ]) {
       const before = snapshotToEventView(

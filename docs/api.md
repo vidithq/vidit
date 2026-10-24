@@ -635,7 +635,7 @@ flowchart LR
   "level": "direct",
   "sensor": "drone",
   "captured_at": "2026-03-15T14:20",
-  "camera_position": { "lat": 48.12, "lng": 37.45 },
+  "sensor_position": { "lat": 48.12, "lng": 37.45 },
   "is_graphic": false,
   "links": [
     { "url": "https://t.me/channel/12345", "posted_at": "2026-03-15T18:05", "snapshot_url": null },
@@ -654,7 +654,7 @@ flowchart LR
 | `level` | Required. `direct` (the act while it happens), `indirect` (its direct consequences, after the fact) or `context` (anything else). See [`data-model.md`](data-model.md#sources) |
 | `sensor` | `smartphone`, `satellite`, `drone`, `static_camera`, `dashcam`, `body_cam` or `unknown`, or `null`. What captured the file; required on a source with a file at publication |
 | `captured_at` | `YYYY-MM-DDTHH:MM`, read as UTC: when the media was captured. Optional |
-| `camera_position` | `{lat, lng}`: where the media was shot from. Optional; a value out of range is `invalid_coordinates` |
+| `sensor_position` | `{lat, lng}`: where the media was shot from. Optional; a value out of range is `invalid_coordinates` |
 | `is_graphic` | `true` when the media shows death, injury or human remains. Defaults to `false`. On a stored source it only rises: `false` keeps a set flag, and only [`PATCH /admin/events/{id}/moderation`](#patch-admineventsidmoderation) clears it |
 | `links` | 1 to 10 URLs, each `{url, posted_at, snapshot_url}`. `url` is at most 2000 characters; `posted_at` (`YYYY-MM-DDTHH:MM`, UTC) is when the media was posted there; `snapshot_url` is the link's [archived copy](#archived-copies). Each URL is stripped, and blanks and repeats are dropped before the count |
 | `tag_ids` | The source's tags, from the catalogue events use. An unknown id is ignored |
@@ -674,7 +674,7 @@ The error table every event form endpoint shares. Each endpoint section names wh
 | Status | Code | Case |
 |---|---|---|
 | 400 | (plain string) | Empty or whitespace-only `title` |
-| 400 | `invalid_coordinates` | A coordinate out of range, or half of a pair, on the event or a source's `camera_position` |
+| 400 | `invalid_coordinates` | A coordinate out of range, or half of a pair, on the event or a source's `sensor_position` |
 | 400 | `invalid_proof` | `proof` exceeds a [rich text](#rich-text) cap |
 | 400 | `proof_image_required` | No image in the final proof body |
 | 400 | `conflict_required` | No conflict |
@@ -999,7 +999,7 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
       "level": "direct",
       "sensor": "drone",
       "captured_at": null,
-      "camera_position": null,
+      "sensor_position": null,
       "is_graphic": false,
       "links": [
         {
@@ -1271,7 +1271,7 @@ Correct a published event. Owner only, and only while `geolocated`. The write fi
 
 **Request body (`multipart/form-data`):** the [event form](#event-form-fields), **versions** column. The [evidence floor](#evidence-floor) is re-checked against the post-edit state.
 
-**Editability.** Every field the publish form wrote is editable and versioned, the sources included: the title, the coordinates, the event date and time, the tags, the conflicts, the proof body, and every source with its links, tags, sensor, capture time, camera position, graphic flag and file. The version records each source as it stood, its file included. `detected_from_url` is the one field no write moves.
+**Editability.** Every field the publish form wrote is editable and versioned, the sources included: the title, the coordinates, the event date and time, the tags, the conflicts, the proof body, and every source with its links, tags, sensor, capture time, sensor position, graphic flag and file. The version records each source as it stood, its file included. `detected_from_url` is the one field no write moves.
 
 **Archived copies.** A link's `snapshot_url` archives that link without changing it. The copy lands in the version this call produces, and a save whose only change is a copy files a version like any other. See [`archival.md`](archival.md).
 
@@ -1323,7 +1323,7 @@ The event's superseded versions, newest first. Public, like the event. The live 
             "level": "direct",
             "sensor": "drone",
             "captured_at": null,
-            "camera_position": null,
+            "sensor_position": null,
             "is_graphic": false,
             "links": [
               {

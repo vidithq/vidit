@@ -87,7 +87,7 @@ class SourceCreate(BaseModel):
     level: SourceLevel
     sensor: Sensor | None = None
     captured_at: UtcDatetime | None = None
-    camera_position: CoordsCreate | None = None
+    sensor_position: CoordsCreate | None = None
     # Ratchets on a stored source: a posted false keeps a flagged source flagged.
     is_graphic: bool = False
     links: list[SourceLinkCreate] = Field(default_factory=list, max_length=_LIST_PARSE_CEILING)
@@ -126,7 +126,7 @@ class SourceRead(BaseModel):
     level: SourceLevel
     sensor: Sensor | None
     captured_at: datetime | None
-    camera_position: CoordsRead | None
+    sensor_position: CoordsRead | None
     is_graphic: bool
     # Ordered by ``posted_at``.
     links: list[SourceLinkRead]

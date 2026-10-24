@@ -15,7 +15,7 @@ import { LEVEL_LABELS, SENSOR_LABELS, shownSensor, type Source } from "@/lib/sou
 /**
  * One source of an event on a reading surface, read like the event's Details card: its file
  * (behind its own graphic gate when this source is flagged) or a *No file* box, then one row
- * each for the title, level, sensor, capture time, camera position, links and tags. A row with
+ * each for the title, level, sensor, capture time, sensor position, links and tags. A row with
  * no value drops out, except the title, which reads *Untitled*.
  *
  * `compact` is the map panel's density: `thumbnail` media and bare rows in a `LIST_TILE`.
@@ -70,7 +70,7 @@ function SourceRows({
 }) {
   // A source without a file names no sensor.
   const sensor = source.media ? shownSensor(source.sensor) : null;
-  const camera = source.camera_position;
+  const position = source.sensor_position;
   const links = source.links;
   return (
     <>
@@ -94,9 +94,9 @@ function SourceRows({
           value={formatInstant(source.captured_at)}
         />
       )}
-      {camera && (
-        <DetailRow label="Camera position" concept="camera_position" compact={compact} align="center">
-          <CoordinateValue lat={camera.lat} lng={camera.lng} />
+      {position && (
+        <DetailRow label="Sensor position" concept="sensor_position" compact={compact} align="center">
+          <CoordinateValue lat={position.lat} lng={position.lng} />
         </DetailRow>
       )}
       {links.length > 0 && (

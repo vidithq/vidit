@@ -5,14 +5,14 @@ Revises: 4c85d28351c8
 Create Date: 2026-10-24 18:00:00.000000
 
 An event's evidence moves to ``sources``: each source holds its level, sensor, capture time,
-camera position, graphic flag, file (``media.source_id``), URLs (``source_links``, with the
+sensor position, graphic flag, file (``media.source_id``), URLs (``source_links``, with the
 archived copy of each) and tags (``source_tags``). ``uploads`` stages a source file before the
 event write that references it.
 
 Data mapping:
 
 * An event with a ``source_url`` or a source file gets one ``direct`` source: its sensor is the
-  event's capture-source tag (else ``unknown``), its file the source media row, its camera
+  event's capture-source tag (else ``unknown``), its file the source media row, its sensor
   position ``capture_source_coords``, its graphic flag the event's, and its one link
   ``source_url`` with ``source_posted_at`` and that URL's archived copy.
 * Each ``event_source_links`` row becomes its own ``direct`` source, sensor ``unknown``, no
@@ -22,7 +22,7 @@ Data mapping:
 * The ``capture_source`` tags go (their names became sensors), then ``tags.category``.
 
 The downgrade maps each event back onto one source: the first source with a file (else the
-first source) gives ``source_url``, its first link's post time, its camera position, its sensor
+first source) gives ``source_url``, its first link's post time, its sensor position, its sensor
 tag and its file; every other link becomes a secondary link (ten at most), and the other
 sources' files are deleted. It restores what the upgrade wrote, except that an event that
 carried no capture-source tag comes back with ``Unknown``.
@@ -85,7 +85,7 @@ def upgrade() -> None:
         sa.Column("sensor", sa.String(length=20), nullable=True),
         sa.Column("captured_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
-            "camera_position",
+            "sensor_position",
             Geometry(geometry_type="POINT", srid=4326, spatial_index=False),
             nullable=True,
         ),
@@ -173,7 +173,7 @@ def upgrade() -> None:
     )
     op.execute(
         f"""
-        INSERT INTO sources (id, event_id, title, level, sensor, captured_at, camera_position,
+        INSERT INTO sources (id, event_id, title, level, sensor, captured_at, sensor_position,
                              is_graphic, created_at, updated_at)
         SELECT ms.source_id, e.id, '', 'direct',
                COALESCE((
@@ -296,7 +296,7 @@ def _sources_snapshot(old: dict[str, Any]) -> dict[str, Any]:
                 "level": "direct",
                 "sensor": SENSOR_OF_TAG.get(capture[0], "unknown") if capture else "unknown",
                 "captured_at": None,
-                "camera_position": old.get("capture_source_coords"),
+                "sensor_position": old.get("capture_source_coords"),
                 "is_graphic": bool(old.get("is_graphic", False)),
                 "links": [link(source_url, old.get("source_posted_at"))] if source_url else [],
                 "tags": [],
@@ -310,7 +310,7 @@ def _sources_snapshot(old: dict[str, Any]) -> dict[str, Any]:
                 "level": "direct",
                 "sensor": "unknown",
                 "captured_at": None,
-                "camera_position": None,
+                "sensor_position": None,
                 "is_graphic": False,
                 "links": [link(url, None)],
                 "tags": [],
@@ -362,7 +362,7 @@ def _legacy_snapshot(new: dict[str, Any], tag_ids: dict[str, str]) -> dict[str, 
     old["source_url"] = source_url
     media = primary.get("media") if primary else None
     old["source_media"] = [media] if media else []
-    old["capture_source_coords"] = primary.get("camera_position") if primary else None
+    old["capture_source_coords"] = primary.get("sensor_position") if primary else None
     old["source_posted_at"] = source_link.get("posted_at") if source_link else None
     old["is_graphic"] = any(bool(s.get("is_graphic")) for s in sources)
     old["secondary_source_urls"] = secondary
@@ -484,7 +484,7 @@ def downgrade() -> None:
     )
     op.execute(
         """
-        UPDATE events e SET capture_source_coords = s.camera_position
+        UPDATE events e SET capture_source_coords = s.sensor_position
         FROM ranked_sources rs JOIN sources s ON s.id = rs.source_id
         WHERE rs.event_id = e.id AND rs.primary_rank = 1
         """

@@ -314,7 +314,7 @@ A `detected` row is **public on every read surface from the moment it lands**, b
 
 ### What a detection writes
 
-[`detection.persist_detections`](../backend/app/services/detection.py) turns the `Detection`'s source fields into [sources](data-model.md#sources) on the row. Every machine source is `direct` and carries no sensor, no title, no capture time and no camera position: the review supplies the sensor, at the form or per row in [`POST /events/batch-complete`](api.md#post-eventsbatch-complete).
+[`detection.persist_detections`](../backend/app/services/detection.py) turns the `Detection`'s source fields into [sources](data-model.md#sources) on the row. Every machine source is `direct` and carries no sensor, no title, no capture time and no sensor position: the review supplies the sensor, at the form or per row in [`POST /events/batch-complete`](api.md#post-eventsbatch-complete).
 
 | `Detection` field | Becomes |
 |---|---|

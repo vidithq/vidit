@@ -219,7 +219,7 @@ def build_version_read(row: EventVersion) -> EventVersionRead:
 
 def build_source_read(source: Source) -> SourceRead:
     """One source's wire shape; the caller loads its links, tags and media (``SOURCE_LOAD``)."""
-    point = point_shape(source.camera_position)
+    point = point_shape(source.sensor_position)
     links: list[SourceLinkRead] = []
     for link in source.links:
         provider = provider_of(link.snapshot_url) if link.snapshot_url else None
@@ -235,7 +235,7 @@ def build_source_read(source: Source) -> SourceRead:
         level=source.level,
         sensor=source.sensor,
         captured_at=source.captured_at,
-        camera_position=CoordsRead(**point) if point is not None else None,
+        sensor_position=CoordsRead(**point) if point is not None else None,
         is_graphic=source.is_graphic,
         links=links,
         tags=source.tags,

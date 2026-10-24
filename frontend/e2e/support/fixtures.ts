@@ -114,7 +114,7 @@ export const EVENT: EventDetail = {
       level: "direct",
       sensor: "dashcam",
       captured_at: "2025-01-03T14:20:00Z",
-      camera_position: null,
+      sensor_position: null,
       is_graphic: false,
       links: [
         {

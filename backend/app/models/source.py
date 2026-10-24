@@ -84,7 +84,7 @@ class Source(Base):
     # link's ``posted_at``.
     captured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Where the media was shot from. Unindexed: no spatial read uses it.
-    camera_position = mapped_column(
+    sensor_position = mapped_column(
         Geometry("POINT", srid=4326, spatial_index=False), nullable=True
     )
     # TRUE when the media shows death, injury or human remains. Read surfaces cover it until

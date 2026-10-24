@@ -56,7 +56,7 @@ export interface SourceCreate {
   level: SourceLevel;
   sensor: Sensor | null;
   captured_at: string | null;
-  camera_position: { lat: number; lng: number } | null;
+  sensor_position: { lat: number; lng: number } | null;
   is_graphic: boolean;
   links: { url: string; posted_at: string | null; snapshot_url: string | null }[];
   tag_ids: string[];
@@ -98,8 +98,8 @@ export interface SourceDraft {
   capturedAt: string;
   /** The stored instant, posted back when the input still holds its seed. */
   storedCapturedAt: string | null;
-  cameraLat: string;
-  cameraLng: string;
+  sensorLat: string;
+  sensorLng: string;
   isGraphic: boolean;
   /** The stored source is flagged: only an admin clears it. */
   graphicLocked: boolean;
@@ -123,8 +123,8 @@ export function newSourceDraft(): SourceDraft {
     sensor: "",
     capturedAt: "",
     storedCapturedAt: null,
-    cameraLat: "",
-    cameraLng: "",
+    sensorLat: "",
+    sensorLng: "",
     isGraphic: false,
     graphicLocked: false,
     links: [blankLink()],
@@ -149,8 +149,8 @@ function draftFields(source: Source) {
     sensor: source.sensor ?? ("" as const),
     capturedAt: toDatetimeLocalUTC(source.captured_at),
     storedCapturedAt: source.captured_at,
-    cameraLat: source.camera_position ? String(source.camera_position.lat) : "",
-    cameraLng: source.camera_position ? String(source.camera_position.lng) : "",
+    sensorLat: source.sensor_position ? String(source.sensor_position.lat) : "",
+    sensorLng: source.sensor_position ? String(source.sensor_position.lng) : "",
     tagIds: source.tags.map((t) => t.id),
   };
 }
@@ -257,8 +257,8 @@ export function draftUrls(draft: SourceDraft): string[] {
 /** One editor as the write posts it. */
 export function sourceCreatePayload(draft: SourceDraft): SourceCreate {
   const file = fileReference(draft.file);
-  const lat = cleanNumber(draft.cameraLat);
-  const lng = cleanNumber(draft.cameraLng);
+  const lat = cleanNumber(draft.sensorLat);
+  const lng = cleanNumber(draft.sensorLng);
   const seen = new Set<string>();
   const links: SourceCreate["links"] = [];
   for (const link of draft.links) {
@@ -280,7 +280,7 @@ export function sourceCreatePayload(draft: SourceDraft): SourceCreate {
     sensor: file.upload_id || file.media_id ? draft.sensor || null : null,
     captured_at: instant(draft.capturedAt, draft.storedCapturedAt),
     // Both halves or neither: a half-typed pair is dropped rather than refused.
-    camera_position: lat !== null && lng !== null ? { lat, lng } : null,
+    sensor_position: lat !== null && lng !== null ? { lat, lng } : null,
     is_graphic: draft.isGraphic,
     links,
     tag_ids: draft.tagIds,
@@ -300,11 +300,11 @@ export function sourcesChanged(stored: Source[], drafts: SourceDraft[]): boolean
     const posted = sourceCreatePayload(draft);
     if (posted.media_id !== source.media?.id || posted.upload_id) return true;
     if (draft.file?.state === "uploading" || draft.file?.state === "failed") return true;
-    const camera = source.camera_position;
-    const sameCamera =
-      camera === null
-        ? posted.camera_position === null
-        : posted.camera_position?.lat === camera.lat && posted.camera_position?.lng === camera.lng;
+    const position = source.sensor_position;
+    const samePosition =
+      position === null
+        ? posted.sensor_position === null
+        : posted.sensor_position?.lat === position.lat && posted.sensor_position?.lng === position.lng;
     const storedLinks = source.links.map((l) => `${l.url} ${l.posted_at} ${l.archived?.url ?? ""}`);
     const postedLinks = posted.links.map(
       (l) => `${l.url} ${l.posted_at} ${l.snapshot_url ?? ""}`,
@@ -314,7 +314,7 @@ export function sourcesChanged(stored: Source[], drafts: SourceDraft[]): boolean
       posted.level !== source.level ||
       posted.sensor !== source.sensor ||
       posted.captured_at !== source.captured_at ||
-      !sameCamera ||
+      !samePosition ||
       // The flag only rises on a stored source.
       (posted.is_graphic && !source.is_graphic) ||
       [...storedLinks].sort().join("\n") !== [...postedLinks].sort().join("\n") ||

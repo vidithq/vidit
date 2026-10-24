@@ -13,14 +13,14 @@ interface CoordinateInputsProps {
   lng: string;
   setLng: (v: string) => void;
   invalid?: boolean;
-  /** Distinct ids so a camera pair doesn't collide with `lat` / `lng`. */
+  /** Distinct ids so a sensor pair doesn't collide with `lat` / `lng`. */
   idPrefix?: string;
-  /** The optional camera pair passes `false`. */
+  /** The optional sensor pair passes `false`. */
   required?: boolean;
 }
 
 /** The latitude / longitude input pair, shared by `LocationPicker` (the subject) and each
- *  `SourceEditor` (its camera position). */
+ *  `SourceEditor` (its sensor position). */
 export function CoordinateInputs({
   lat,
   setLat,

@@ -263,7 +263,7 @@ erDiagram
         VARCHAR level "direct | indirect | context"
         VARCHAR sensor "nullable, what captured the media"
         TIMESTAMPTZ captured_at "nullable, when the media was captured"
-        GEOMETRY camera_position "nullable, where the media was shot from"
+        GEOMETRY sensor_position "nullable, where the media was shot from"
         BOOLEAN is_graphic "death, injury or human remains"
         TIMESTAMPTZ created_at
         TIMESTAMPTZ updated_at
@@ -656,7 +656,7 @@ One row represents one event across its whole lifecycle. `status` tracks the lif
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
-The evidence is not on this row. An event's footage, its URLs and the camera position are its [`sources`](#sources), and `Event.is_graphic` is derived from them: `true` when any source is graphic. In Python it reads the loaded sources; in SQL it is an `EXISTS` over `sources`, so a filter can use it. Every event read schema carries it, and the frontend covers a graphic source behind [`GraphicContentGate`](design.md#components) until the viewer confirms they want to see it.
+The evidence is not on this row. An event's footage, its URLs and the sensor position are its [`sources`](#sources), and `Event.is_graphic` is derived from them: `true` when any source is graphic. In Python it reads the loaded sources; in SQL it is an `EXISTS` over `sources`, so a filter can use it. Every event read schema carries it, and the frontend covers a graphic source behind [`GraphicContentGate`](design.md#components) until the viewer confirms they want to see it.
 
 **Check constraints:**
 - `ck_events_status_valid`: `status IN ('requested', 'detected', 'geolocated', 'closed')`. Pins the value domain at the database. The column is a plain `VARCHAR`, not a native enum, so this constraint rejects a bad write at the Postgres level, not only at the app-layer `Literal`.
@@ -693,7 +693,7 @@ event happens ──▶ media captured ──▶ media posted at a URL ──▶
 - `ix_events_timeline_at_id` on `(feed_at, id)`, where `feed_at` is `coalesce(CASE WHEN status = 'requested' THEN requested_at WHEN status = 'detected' THEN detected_at ELSE geolocated_at END, created_at)`. Partial: visible (`deleted_at` and `hidden_at` NULL) `geolocated`, `requested` and `detected` rows. Backs the keyset of [`GET /feed`](api.md#get-feed), which orders by `feed_at DESC, id DESC`, so a page reads the index in order instead of sorting. The expression matches `models/event.feed_at` exactly; the planner ignores the index on any difference.
 - `ix_events_search_fts`: GIN index on `to_tsvector('simple', coalesce(title, ''))`. Backs `GET /search`; both the located and requested views run through it. The `simple` configuration, not `english`, keeps matching predictable for the corpus of place names and analyst handles. Soft-delete is filtered at query time. Source titles have their own index, [`ix_sources_search_fts`](#sources). Source URLs are matched by substring rather than through a text index, because Postgres' simple parser tokenizes URLs as host and path units.
 
-> `coords` and `sources.camera_position` are PostGIS points in WGS84 (SRID 4326, standard GPS coordinates). GeoAlchemy2 exposes them as `.lat` and `.lng` through `WKBElement`, or as `ST_X` and `ST_Y` in raw SQL.
+> `coords` and `sources.sensor_position` are PostGIS points in WGS84 (SRID 4326, standard GPS coordinates). GeoAlchemy2 exposes them as `.lat` and `.lng` through `WKBElement`, or as `ST_X` and `ST_Y` in raw SQL.
 
 ---
 
@@ -834,7 +834,7 @@ Redaction is that one write, and it is still not a delete: an admin blanks `snap
 | `version_no` | `INTEGER` | NOT NULL. The version this row **holds**, not the one that replaced it. |
 | `edited_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The analyst whose edit superseded this version. NULL once that account is erased: an event legitimately outlives an editor who is not its owner. |
 | `note` | `TEXT` | nullable. The editor's own words about the edit. Bounded to 280 characters by the schema, not the column, which stays unbounded `TEXT`. |
-| `snapshot` | `JSONB` | NOT NULL. The editable fields as they stood (`services/versions.build_snapshot`): `title`, `coords`, `occurred_date`, `occurred_time`, `sources`, `tags`, `conflicts`, `proof` (the HTML string, as `events.proof` stores it), and `proof_media`. `sources` lists each [source](#sources) in the event's source order (`services/versions.source_entry`): `title`, `level`, `sensor`, `captured_at`, `camera_position`, `is_graphic`, `links` (each `url`, `posted_at`, `snapshot_url`, `archived_at`), `tags`, and `media`, its file or `null`. A source entry carries no id: a source is filed by its content, not its row. `media` and each `proof_media` entry carry the [media](#media) row whole (`id`, `storage_url`, `kind`, `sha256`, `original_filename`); `proof_media` holds the images this version's own proof body referenced, not every proof image the event holds. Tags and conflicts carry their names alongside their ids, so a version stays readable after a referential row is renamed. `{}` on a redacted version. |
+| `snapshot` | `JSONB` | NOT NULL. The editable fields as they stood (`services/versions.build_snapshot`): `title`, `coords`, `occurred_date`, `occurred_time`, `sources`, `tags`, `conflicts`, `proof` (the HTML string, as `events.proof` stores it), and `proof_media`. `sources` lists each [source](#sources) in the event's source order (`services/versions.source_entry`): `title`, `level`, `sensor`, `captured_at`, `sensor_position`, `is_graphic`, `links` (each `url`, `posted_at`, `snapshot_url`, `archived_at`), `tags`, and `media`, its file or `null`. A source entry carries no id: a source is filed by its content, not its row. `media` and each `proof_media` entry carry the [media](#media) row whole (`id`, `storage_url`, `kind`, `sha256`, `original_filename`); `proof_media` holds the images this version's own proof body referenced, not every proof image the event holds. Tags and conflicts carry their names alongside their ids, so a version stays readable after a referential row is renamed. `{}` on a redacted version. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL. When the edit that superseded this version happened. |
 | `redacted_at` | `TIMESTAMPTZ` | nullable. When an admin blanked this version's content. NULL on every ordinary row. |
 | `redacted_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. Which admin redacted it. NULL once that account is erased; the readable trail is the `audit_log` row the same write files. |
@@ -861,7 +861,7 @@ One piece of evidence an event rests on: at most one file, the URLs that file wa
 | `level` | `VARCHAR(10)` | NOT NULL, CHECK in `('direct', 'indirect', 'context')` (constraint `ck_sources_level_valid`). The evidence level: how close the source stands to the act. See the table below. |
 | `sensor` | `VARCHAR(20)` | nullable, CHECK in `('smartphone', 'satellite', 'drone', 'static_camera', 'dashcam', 'body_cam', 'unknown')` when set (constraint `ck_sources_sensor_valid`). What captured the media. NULL on a source without a file, and on a machine source until the review supplies it. `unknown` keeps the choice satisfiable for media of uncertain provenance. |
 | `captured_at` | `TIMESTAMPTZ` | nullable. When the media was captured (UTC). Distinct from the event's `occurred_date` and from a link's `posted_at`. |
-| `camera_position` | `GEOMETRY(Point, 4326)` | nullable. Where the media was shot from. Not indexed, because no spatial read consumes it. |
+| `sensor_position` | `GEOMETRY(Point, 4326)` | nullable. Where the media was shot from. Not indexed, because no spatial read consumes it. |
 | `is_graphic` | `BOOLEAN` | NOT NULL, default `false`. `TRUE` when the media shows death, injury or human remains. An event is graphic when any of its sources is (`Event.is_graphic`). |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()`, moved on every update |

@@ -30,7 +30,7 @@ const FOOTAGE: Source = source({
   title: "Drone footage of the strike",
   sensor: "drone",
   captured_at: "2026-06-01T09:30:00Z",
-  camera_position: { lat: 48.02, lng: 37.79 },
+  sensor_position: { lat: 48.02, lng: 37.79 },
   links: [
     {
       url: "https://t.me/channel/12345",

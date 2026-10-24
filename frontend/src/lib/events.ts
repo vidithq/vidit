@@ -292,7 +292,7 @@ function snapshotSource(
     level: level === "indirect" || level === "context" ? level : "direct",
     sensor: (asNullableString(entry.sensor) as Source["sensor"]) ?? null,
     captured_at: asNullableString(entry.captured_at),
-    camera_position: asCoords(entry.camera_position),
+    sensor_position: asCoords(entry.sensor_position),
     is_graphic:
       entry.is_graphic === true || (media !== null && liveGraphicFiles.has(media.storage_url)),
     links: asList<Record<string, unknown>>(entry.links).map((link) => {
@@ -398,7 +398,7 @@ const sourceKeys = (view: EventDetail): string[] =>
       s.level,
       s.sensor,
       instantKey(s.captured_at),
-      s.camera_position ? [s.camera_position.lat, s.camera_position.lng] : null,
+      s.sensor_position ? [s.sensor_position.lat, s.sensor_position.lng] : null,
       s.is_graphic,
       s.links.map((l) => `${l.url} ${instantKey(l.posted_at)}`).sort(),
       s.tags.map((t) => t.id).sort(),

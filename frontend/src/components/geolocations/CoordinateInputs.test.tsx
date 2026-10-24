@@ -104,7 +104,7 @@ describe("CoordinateInputs", () => {
     ).toBeEnabled();
   });
 
-  it("keeps the camera pair's field ids distinct from the subject's", () => {
+  it("keeps the sensor pair's field ids distinct from the subject's", () => {
     render(<CoordinateInputs {...baseProps} idPrefix="capture_" required={false} />);
     expect(document.getElementById("capture_lat")).toBeInTheDocument();
     expect(document.getElementById("capture_lng")).toBeInTheDocument();

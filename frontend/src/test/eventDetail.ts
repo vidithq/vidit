@@ -8,7 +8,7 @@ export const source = (overrides: Partial<Source> = {}): Source => ({
   level: "direct",
   sensor: null,
   captured_at: null,
-  camera_position: null,
+  sensor_position: null,
   is_graphic: false,
   links: [{ url: "https://t.me/channel/12345", posted_at: null, archived: null }],
   tags: [],
@@ -50,7 +50,7 @@ export const snapshotSource = (s: Source): Record<string, unknown> => ({
   level: s.level,
   sensor: s.sensor,
   captured_at: s.captured_at,
-  camera_position: s.camera_position,
+  sensor_position: s.sensor_position,
   is_graphic: s.is_graphic,
   links: s.links.map((l) => ({
     url: l.url,

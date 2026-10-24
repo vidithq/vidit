@@ -23,10 +23,10 @@ describe("LocationPicker", () => {
     ).toBeInTheDocument();
   });
 
-  it("labels the subject and leaves the camera position to the sources", () => {
+  it("labels the subject and leaves the sensor position to the sources", () => {
     render(<LocationPicker {...baseProps} />);
     expect(screen.getByText("Subject")).toBeInTheDocument();
-    expect(screen.queryByText("Camera position")).toBeNull();
+    expect(screen.queryByText("Sensor position")).toBeNull();
   });
 
   it("flags the Subject label red when the coordinates are missing", () => {

@@ -64,7 +64,7 @@ class PlannedSource:
     # Blanks and repeats dropped, snapshots checked.
     links: list[SourceLinkCreate]
     tags: list[Tag]
-    camera_position: WKBElement | None
+    sensor_position: WKBElement | None
     # The stored source this one updates, or None to create one.
     stored: Source | None
     # Where the file comes from: kept in place, a staged upload, or a copy of a stored file.
@@ -156,16 +156,16 @@ def plan_sources(
             media = files[spec.media_id]
             keeps_media = stored is not None and media.source_id == stored.id
             copy_of = None if keeps_media else media
-        camera = spec.camera_position
+        position = spec.sensor_position
         planned.append(
             PlannedSource(
                 spec=spec,
                 links=_clean_links(spec),
                 tags=[tags_by_id[t] for t in dict.fromkeys(spec.tag_ids) if t in tags_by_id],
-                camera_position=_optional_point(
-                    camera.lat if camera else None,
-                    camera.lng if camera else None,
-                    field="camera_position",
+                sensor_position=_optional_point(
+                    position.lat if position else None,
+                    position.lng if position else None,
+                    field="sensor_position",
                 ),
                 stored=stored,
                 keeps_media=keeps_media,
@@ -299,7 +299,7 @@ def apply_sources(db: Session, geo: Event, planned: list[PlannedSource]) -> list
             source.level = p.spec.level
             source.sensor = p.spec.sensor
             source.captured_at = p.spec.captured_at
-            source.camera_position = p.camera_position
+            source.sensor_position = p.sensor_position
             source.is_graphic = p.is_graphic
             source.links = links_by_source[index]
             source.tags = p.tags
@@ -355,13 +355,13 @@ def comparable(sources: Iterable[Source] | Iterable[PlannedSource], *, archives:
                 file = f"upload:{item.upload.id}"
             else:
                 file = None
-            camera = spec.camera_position
+            position = spec.sensor_position
             value = {
                 "title": spec.title,
                 "level": spec.level,
                 "sensor": spec.sensor,
                 "captured_at": _instant(spec.captured_at),
-                "camera_position": [camera.lat, camera.lng] if camera else None,
+                "sensor_position": [position.lat, position.lng] if position else None,
                 "is_graphic": item.is_graphic,
                 "links": sorted(
                     _comparable_link(link.url, link.posted_at, link.snapshot_url, archives=archives)
@@ -371,13 +371,13 @@ def comparable(sources: Iterable[Source] | Iterable[PlannedSource], *, archives:
                 "file": file,
             }
         else:
-            point = versions.point_shape(item.camera_position)
+            point = versions.point_shape(item.sensor_position)
             value = {
                 "title": item.title,
                 "level": item.level,
                 "sensor": item.sensor,
                 "captured_at": _instant(item.captured_at),
-                "camera_position": [point["lat"], point["lng"]] if point else None,
+                "sensor_position": [point["lat"], point["lng"]] if point else None,
                 "is_graphic": item.is_graphic,
                 "links": sorted(
                     _comparable_link(link.url, link.posted_at, link.snapshot_url, archives=archives)

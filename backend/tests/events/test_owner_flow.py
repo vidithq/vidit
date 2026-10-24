@@ -142,7 +142,7 @@ def test_geolocate_writes_fields_and_freezes(db, author, conflict):
     sources = _kept(
         geo,
         sensor="drone",
-        camera_position={"lat": 50.3, "lng": 30.6},
+        sensor_position={"lat": 50.3, "lng": 30.6},
         posted_at="2026-06-30T07:45",
     )
     response = client.post(
@@ -166,7 +166,7 @@ def test_geolocate_writes_fields_and_freezes(db, author, conflict):
     assert body["occurred_date"] == "2026-07-01"
     [source] = body["sources"]
     assert source["sensor"] == "drone"
-    assert source["camera_position"] == {"lat": 50.3, "lng": 30.6}
+    assert source["sensor_position"] == {"lat": 50.3, "lng": 30.6}
     assert source["links"][0]["posted_at"].startswith("2026-06-30T07:45")
     assert body["tags"] == []
     assert {c["id"] for c in body["conflicts"]} == {str(conflict.id)}

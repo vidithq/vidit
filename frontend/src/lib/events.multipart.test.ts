@@ -36,7 +36,7 @@ const SOURCE: SourceCreate = {
   level: "direct",
   sensor: "drone",
   captured_at: null,
-  camera_position: { lat: 50.1, lng: 30.2 },
+  sensor_position: { lat: 50.1, lng: 30.2 },
   is_graphic: false,
   links: [{ url: "https://t.me/c/1", posted_at: "2026-01-02T10:00", snapshot_url: null }],
   tag_ids: [],

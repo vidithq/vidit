@@ -44,7 +44,7 @@ def _event(cur, owner: str, status: str, source_url: str | None, **cols) -> str:
             status,
             source_url,
             cols.get("posted_at"),
-            cols.get("camera"),
+            cols.get("sensor_position"),
             cols.get("graphic", False),
         ),
     )
@@ -65,7 +65,7 @@ def _seed(cur) -> dict[str, str]:
         "geolocated",
         "https://x.com/a/status/1",
         posted_at="2026-05-01T12:00:00+00:00",
-        camera="SRID=4326;POINT(34.4 48.4)",
+        sensor_position="SRID=4326;POINT(34.4 48.4)",
         graphic=True,
     )
     ids["request"] = _event(cur, owner, "requested", "https://t.me/c/9")
@@ -176,7 +176,7 @@ def _sources(cur, event: str) -> list:
     return _all(
         cur,
         "SELECT s.id, s.level, s.sensor, s.is_graphic, s.title, "
-        "ST_Y(s.camera_position), ST_X(s.camera_position) FROM sources s "
+        "ST_Y(s.sensor_position), ST_X(s.sensor_position) FROM sources s "
         "WHERE s.event_id = %s ORDER BY s.created_at",
         event,
     )
@@ -231,7 +231,7 @@ def _assert_head(cur, ids: dict[str, str]) -> None:
     assert snapshot["proof_media"] == [{"id": "p", "role": "proof", "storage_url": "s3://x/p.jpg"}]
     main_entry, mirror_entry = snapshot["sources"]
     assert main_entry["sensor"] == "drone" and main_entry["is_graphic"] is True
-    assert main_entry["camera_position"] == {"lat": 48.4, "lng": 34.4}
+    assert main_entry["sensor_position"] == {"lat": 48.4, "lng": 34.4}
     assert main_entry["media"] == {"id": "m", "role": "source", "storage_url": "s3://x/v1.jpg"}
     assert main_entry["links"] == [
         {

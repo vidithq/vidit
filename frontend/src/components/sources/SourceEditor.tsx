@@ -43,7 +43,7 @@ export interface SourceEditorInvalid {
 
 /**
  * One source block of an event form: the file (uploaded on its own request as soon as it is
- * picked), the level, the sensor, the capture time, the camera position, the links with their
+ * picked), the level, the sensor, the capture time, the sensor position, the links with their
  * post time and archived copy, the tags and the graphic flag.
  *
  * The editor holds no state of its own: `update` patches the draft in the form's list, and
@@ -190,15 +190,15 @@ export function SourceEditor({
 
       <div className="space-y-1.5">
         <span className={FORM_LABEL}>
-          Camera position <FieldHelp concept="camera_position" />
+          Sensor position <FieldHelp concept="sensor_position" />
         </span>
         <CoordinateInputs
-          idPrefix={id("camera_")}
+          idPrefix={id("sensor_")}
           required={false}
-          lat={draft.cameraLat}
-          setLat={(cameraLat) => update({ cameraLat })}
-          lng={draft.cameraLng}
-          setLng={(cameraLng) => update({ cameraLng })}
+          lat={draft.sensorLat}
+          setLat={(sensorLat) => update({ sensorLat })}
+          lng={draft.sensorLng}
+          setLng={(sensorLng) => update({ sensorLng })}
         />
       </div>
 

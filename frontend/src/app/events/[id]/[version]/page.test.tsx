@@ -53,7 +53,7 @@ const EVENT: EventDetail = {
   owner: OWNER,
   tags: [],
   conflicts: [],
-  sources: [{ id: "s1", title: "", level: "direct", sensor: null, captured_at: null, camera_position: null, is_graphic: false, links: [{ url: "https://t.me/channel/12345", posted_at: null, archived: null }], tags: [], media: null }],
+  sources: [{ id: "s1", title: "", level: "direct", sensor: null, captured_at: null, sensor_position: null, is_graphic: false, links: [{ url: "https://t.me/channel/12345", posted_at: null, archived: null }], tags: [], media: null }],
   proof: "",
   created_at: "2026-06-01T10:00:00Z",
   geolocated_at: "2026-06-01T10:00:00Z",

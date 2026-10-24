@@ -72,7 +72,7 @@ describe("SourceBlock", () => {
       media: IMAGE,
       sensor: "drone",
       captured_at: "2026-06-01T09:30:00Z",
-      camera_position: { lat: 48.02, lng: 37.79 },
+      sensor_position: { lat: 48.02, lng: 37.79 },
       tags: [{ id: "t1", name: "armor" }],
     });
     expect(rowLabels(block)).toEqual([
@@ -80,7 +80,7 @@ describe("SourceBlock", () => {
       "Level",
       "Sensor",
       "Captured",
-      "Camera position",
+      "Sensor position",
       "Published",
       "Tags",
     ]);

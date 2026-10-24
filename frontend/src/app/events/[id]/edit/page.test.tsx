@@ -96,7 +96,7 @@ const source = (over: Partial<Source> = {}): Source => ({
   level: "direct",
   sensor: "drone",
   captured_at: null,
-  camera_position: null,
+  sensor_position: null,
   is_graphic: false,
   links: [{ url: "https://t.me/channel/12345", posted_at: "2026-05-30T14:32:27Z", archived: null }],
   tags: [],

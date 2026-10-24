@@ -28,7 +28,7 @@ const STORED = source({
   id: "s1",
   sensor: "drone",
   captured_at: "2026-05-09T15:40:27Z",
-  camera_position: { lat: 48.1, lng: 37.9 },
+  sensor_position: { lat: 48.1, lng: 37.9 },
   links: [
     {
       url: "https://t.me/c/1",
@@ -59,7 +59,7 @@ describe("sourceCreatePayload", () => {
       sensor: "drone",
       // An untouched instant keeps its seconds.
       captured_at: "2026-05-09T15:40:27Z",
-      camera_position: { lat: 48.1, lng: 37.9 },
+      sensor_position: { lat: 48.1, lng: 37.9 },
       is_graphic: false,
       links: [
         {
@@ -78,15 +78,15 @@ describe("sourceCreatePayload", () => {
     expect(sourceCreatePayload(draft).captured_at).toBe("2026-05-09T16:00");
   });
 
-  it("drops blank and repeated URLs, and a half-typed camera pair", () => {
-    const draft = linked("https://t.me/c/1", { cameraLat: "48.1", cameraLng: "" });
+  it("drops blank and repeated URLs, and a half-typed sensor pair", () => {
+    const draft = linked("https://t.me/c/1", { sensorLat: "48.1", sensorLng: "" });
     draft.links.push(
       { url: "  ", postedAt: "", snapshotUrl: "", stored: null },
       { url: " https://t.me/c/1 ", postedAt: "", snapshotUrl: "", stored: null }
     );
     const posted = sourceCreatePayload(draft);
     expect(posted.links.map((l) => l.url)).toEqual(["https://t.me/c/1"]);
-    expect(posted.camera_position).toBeNull();
+    expect(posted.sensor_position).toBeNull();
   });
 
   it("names a staged file by its upload and none while the upload runs", () => {

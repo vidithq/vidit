@@ -178,7 +178,7 @@ const MOCK_SOURCE: Source = {
   level: "direct",
   sensor: "drone",
   captured_at: "2026-05-09T15:40:00Z",
-  camera_position: { lat: 48.0201, lng: 37.7951 },
+  sensor_position: { lat: 48.0201, lng: 37.7951 },
   is_graphic: false,
   links: [
     {
@@ -211,7 +211,7 @@ const MOCK_CONTEXT_SOURCE: Source = {
   level: "context",
   sensor: null,
   captured_at: null,
-  camera_position: null,
+  sensor_position: null,
   links: [{ url: "https://news.example/article", posted_at: null, archived: null }],
   tags: [],
   media: null,
@@ -1783,7 +1783,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SourceBlock> / <SourceBlocks>" usage="One source of an event on a reading surface (components/sources/SourceBlock.tsx), read like the event's Details card: a <DetailCard> region named Source N, its file in the lead slot through <MediaGallery> (behind its own <GraphicContentGate> when this source is flagged, a No file box without one), then <DetailRow>s for Title (Untitled when empty), Level as a <Pill>, Sensor (none without a file, and Unknown dropped), Captured, Camera position with <CoordinateActions>, Published (Published in N places for two or more links; each link through <SourceLabel withPath> with its post date or date unknown and its <ArchivedCopies> mark) and Tags as <DetailPills>. A row with no value drops out, except Title. The map panel keeps a LIST_TILE with bare compact rows. <SourceBlocks> renders the event's blocks in API order: a <HorizontalScroller> row under a Sources (N) eyebrow in the page variant of <EventDetailBody>, a vertical stack under Sources in its panel variant.">
+          <Item name="<SourceBlock> / <SourceBlocks>" usage="One source of an event on a reading surface (components/sources/SourceBlock.tsx), read like the event's Details card: a <DetailCard> region named Source N, its file in the lead slot through <MediaGallery> (behind its own <GraphicContentGate> when this source is flagged, a No file box without one), then <DetailRow>s for Title (Untitled when empty), Level as a <Pill>, Sensor (none without a file, and Unknown dropped), Captured, Sensor position with <CoordinateActions>, Published (Published in N places for two or more links; each link through <SourceLabel withPath> with its post date or date unknown and its <ArchivedCopies> mark) and Tags as <DetailPills>. A row with no value drops out, except Title. The map panel keeps a LIST_TILE with bare compact rows. <SourceBlocks> renders the event's blocks in API order: a <HorizontalScroller> row under a Sources (N) eyebrow in the page variant of <EventDetailBody>, a vertical stack under Sources in its panel variant.">
             <div className="w-full max-w-2xl">
               <SourceBlocks sources={[MOCK_SOURCE, MOCK_CONTEXT_SOURCE]} alt="Strike on a depot" />
             </div>
@@ -1804,7 +1804,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SourcesField> / <SourceEditor>" usage="The Sources section of every event form (components/sources/): one <SourceEditor> per source in a LIST_TILE, holding the file slot (MediaManager on <FileManager>; a pick uploads at once through POST /uploads), the level (<SegmentedControl>), the sensor (<Select>, off without a file), the capture time (<DateTimeInput>), the camera position (CoordinateInputs), the links (<LinkListInput> with the archive pair and each link's post time), the tags (<TagChips>) and the graphic flag (<Switch>, locked on a flagged stored source). The section adds Add a source (capped at 10), Copy an existing source (<SourcePicker>), and per editor <MergeAction> and Remove.">
+          <Item name="<SourcesField> / <SourceEditor>" usage="The Sources section of every event form (components/sources/): one <SourceEditor> per source in a LIST_TILE, holding the file slot (MediaManager on <FileManager>; a pick uploads at once through POST /uploads), the level (<SegmentedControl>), the sensor (<Select>, off without a file), the capture time (<DateTimeInput>), the sensor position (CoordinateInputs), the links (<LinkListInput> with the archive pair and each link's post time), the tags (<TagChips>) and the graphic flag (<Switch>, locked on a flagged stored source). The section adds Add a source (capped at 10), Copy an existing source (<SourcePicker>), and per editor <MergeAction> and Remove.">
             <div className="w-full max-w-2xl">
               <SourcesField
                 sources={paletteSources}
