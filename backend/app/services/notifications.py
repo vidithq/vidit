@@ -45,7 +45,6 @@ from app.services.pagination import keyset_before
 from app.services.preferences import email_enabled
 
 _Actor = aliased(User)
-_Approval = aliased(EventApproval)
 
 ACTOR_EMAIL_WINDOW = timedelta(hours=24)
 # An invitation withdrawn and sent again inside this window raises no second notification: the
@@ -271,7 +270,7 @@ def notify_approval_received(
 ) -> None:
     """Tell the owner of ``event``, and every geolocator whose approval request the approval
     resolved (``requester_ids``), that ``approval``'s reviewer approved its live version, for its
-    organization when set. Each row points at ``approval`` and hides once it is revoked."""
+    organization when set. Each row points at ``approval`` and goes when it is deleted."""
     for recipient_id in {event.owner_id, *requester_ids}:
         _emit(
             db,
@@ -282,19 +281,6 @@ def notify_approval_received(
             organization_id=approval.organization_id,
             approval=approval,
         )
-
-
-def notify_approval_revoked(db: Session, *, event: Event, approval: EventApproval) -> None:
-    """Tell the owner of ``event`` that ``approval`` was revoked. The row names the approval's
-    reviewer and organization, never who revoked it."""
-    _emit(
-        db,
-        recipient_id=event.owner_id,
-        kind="approval_revoked",
-        actor_id=approval.reviewer_id,
-        event_id=event.id,
-        organization_id=approval.organization_id,
-    )
 
 
 def notify_approval_request_received(
@@ -347,8 +333,6 @@ def notify_re_approve_requested(
     """Ask every analyst whose own approval of ``superseded_version`` stood to review the new
     one, and every live member outside the event's current and former geolocators of an
     organization whose approval of it stood.
-
-    A revoked approval asks nothing.
     """
     # Imported here: services/organizations imports this module.
     from app.services.organizations import live_member_ids
@@ -358,7 +342,6 @@ def notify_re_approve_requested(
         select(EventApproval.reviewer_id, EventApproval.organization_id).where(
             EventApproval.event_id == event.id,
             EventApproval.version_no == superseded_version,
-            EventApproval.revoked_at.is_(None),
         )
     ).tuples():
         if organization_id is None:
@@ -383,14 +366,12 @@ def notify_re_approve_requested(
 
 
 def _visible_rows(db: Session, user: User) -> Query[Notification]:
-    """``user``'s rows whose event and actor a reader may still see, and whose approval stands:
-    the actor is neither soft-deleted nor deactivated, the rule the drain applies to the
-    recipient, and an ``approval_received`` row hides once its approval is revoked."""
+    """``user``'s rows whose event and actor a reader may still see: the actor is neither
+    soft-deleted nor deactivated, the rule the drain applies to the recipient."""
     return (
         db.query(Notification)
         .outerjoin(Event, Notification.event_id == Event.id)
         .outerjoin(_Actor, Notification.actor_id == _Actor.id)
-        .outerjoin(_Approval, Notification.approval_id == _Approval.id)
         .filter(
             Notification.user_id == user.id,
             or_(Notification.event_id.is_(None), and_(*visible_events())),
@@ -398,7 +379,6 @@ def _visible_rows(db: Session, user: User) -> Query[Notification]:
                 Notification.actor_id.is_(None),
                 and_(_Actor.deleted_at.is_(None), _Actor.is_active.is_(True)),
             ),
-            or_(Notification.approval_id.is_(None), _Approval.revoked_at.is_(None)),
         )
     )
 

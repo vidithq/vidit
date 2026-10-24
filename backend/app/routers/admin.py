@@ -37,6 +37,7 @@ from app.schemas.organization import (
 )
 from app.schemas.report import ContentReportList, ContentReportRead, ContentReportUpdate
 from app.services import admin as admin_service
+from app.services import approvals as approvals_service
 from app.services import maintenance as maintenance_service
 from app.services import organizations as organizations_service
 from app.services import registration as registration_service
@@ -224,6 +225,22 @@ def delete_organization(
         organizations_service.delete_organization(db, actor=current_user, slug=slug)
     except organizations_service.OrganizationError as exc:
         raise_typed_error(exc, organizations_service.ORGANIZATION_ERROR_STATUS)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete("/approvals/{approval_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("60/hour")
+def delete_approval(
+    request: Request,
+    approval_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> Response:
+    """Delete one approval, as themselves or for an organization, and write it to the admin log."""
+    try:
+        approvals_service.delete_as_admin(db, approval_id=approval_id, actor=current_user)
+    except approvals_service.ApprovalError as exc:
+        raise_typed_error(exc, approvals_service.APPROVAL_ERROR_STATUS)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

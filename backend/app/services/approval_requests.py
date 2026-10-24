@@ -46,8 +46,8 @@ from app.schemas.organization import OrganizationRef
 from app.schemas.user import AuthorRef
 from app.services import notifications
 from app.services.approvals import (
-    closed_organization_ids,
-    closed_reviewer_ids,
+    approved_organization_ids,
+    approved_reviewer_ids,
     ever_credited,
     is_geolocator,
 )
@@ -332,7 +332,7 @@ def _eligible_analysts(
         User.deleted_at.is_(None),
         User.is_active.is_(True),
         User.id.not_in(ever_credited_ids(geo.id)),
-        User.id.not_in(closed_reviewer_ids(geo)),
+        User.id.not_in(approved_reviewer_ids(geo)),
         ~_asked(geo, requester, ApprovalRequest.target_user_id == User.id),
         ~_declined_recently(geo, requester, ApprovalRequest.target_user_id == User.id),
         _suggested_analyst(requester.id, exact),
@@ -349,7 +349,7 @@ def _eligible_organizations(
 ) -> list[Organization]:
     stmt = select(Organization).where(
         _can_act_for(geo),
-        Organization.id.not_in(closed_organization_ids(geo)),
+        Organization.id.not_in(approved_organization_ids(geo)),
         ~_asked(geo, requester, ApprovalRequest.target_organization_id == Organization.id),
         ~_declined_recently(
             geo, requester, ApprovalRequest.target_organization_id == Organization.id
@@ -461,7 +461,7 @@ def _check_analyst_target(
     if not admitted:
         raise RequestsNotAcceptedError(REFUSAL_MESSAGE)
     reviewed = db.scalar(
-        select(exists(closed_reviewer_ids(geo).where(EventApproval.reviewer_id == target.id)))
+        select(exists(approved_reviewer_ids(geo).where(EventApproval.reviewer_id == target.id)))
     )
     if reviewed:
         raise TargetAlreadyReviewedError("This analyst already reviewed the live version")
@@ -494,7 +494,9 @@ def _check_organization_target(
     if not admitted:
         raise RequestsNotAcceptedError(REFUSAL_MESSAGE)
     approved = db.scalar(
-        select(exists(closed_organization_ids(geo).where(EventApproval.organization_id == org.id)))
+        select(
+            exists(approved_organization_ids(geo).where(EventApproval.organization_id == org.id))
+        )
     )
     if approved:
         raise TargetAlreadyReviewedError("This organization already approved the live version")

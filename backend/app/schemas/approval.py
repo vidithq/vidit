@@ -3,35 +3,19 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.approval import ApprovalRevoker, ApprovalVerdict
-from app.schemas import OptionalText
 from app.schemas.notification import NotificationEventRef
 from app.schemas.organization import OrganizationRef
 from app.schemas.user import AuthorRef
 
-APPROVAL_NOTE_MAX_LENGTH = 280
-REVOKE_REASON_MAX_LENGTH = 2000
-
 
 class ApprovalCreate(BaseModel):
-    """Body of ``POST /events/{id}/approvals``: the version you read, an optional note, and the
-    slug of the organization you approve for as one of its members (your own approval without
-    it)."""
+    """Body of ``POST /events/{id}/approvals``: the version you read, and the slug of the
+    organization you approve for as one of its members (your own approval without it)."""
 
     model_config = ConfigDict(extra="forbid")
 
     version_no: int = Field(ge=1)
-    note: OptionalText = Field(default=None, max_length=APPROVAL_NOTE_MAX_LENGTH)
     organization: str | None = Field(default=None, min_length=1, max_length=50)
-
-
-class ApprovalRevoke(BaseModel):
-    """Optional body of ``POST /events/{id}/approvals/{approval_id}/revoke``: a public reason,
-    stored as null when blank."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    reason: OptionalText = Field(default=None, max_length=REVOKE_REASON_MAX_LENGTH)
 
 
 class ApprovalRead(BaseModel):
@@ -41,22 +25,16 @@ class ApprovalRead(BaseModel):
     ``reviewer`` the member who placed it; null for an analyst's own review.
     ``reviewer`` is null on an organization's review once the account of the
     member who placed it is erased: the review stays the organization's.
-    ``current`` is true while the review covers the live version and is not
-    revoked. ``revoked_as`` says who revoked it: the reviewer, another member of
-    the organization, or a site admin.
+    ``current`` is true while the review covers the live version of a published
+    event.
     """
 
     id: uuid.UUID
     version_no: int
-    verdict: ApprovalVerdict
     reviewer: AuthorRef | None
     organization: OrganizationRef | None
-    note: str | None
     created_at: datetime
     current: bool
-    revoked_at: datetime | None
-    revoke_reason: str | None
-    revoked_as: ApprovalRevoker | None
 
 
 class ApprovalList(BaseModel):

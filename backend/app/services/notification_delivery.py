@@ -258,18 +258,6 @@ def _approval_received(n: Notification) -> _Copy:
     )
 
 
-def _approval_revoked(n: Notification) -> _Copy:
-    # The signer is the organization the approval was placed for, or else its reviewer.
-    signer, title = _organization_name(n) or n.actor.username, n.event.title
-    return _Copy(
-        title=f"The approval by {signer} of your geolocation was revoked",
-        text=f"The approval by {signer} of “{title}” was revoked. It no longer stands.",
-        action="View the geolocation",
-        path=_event_path(n),
-        setting="Approval revoked",
-    )
-
-
 def _approval_request_received(n: Notification) -> _Copy:
     actor, title, org = n.actor.username, n.event.title, _organization_name(n)
     target = org or "you"
@@ -320,7 +308,6 @@ _COPY: dict[NotificationKind, Callable[[Notification], _Copy]] = {
     "organization_manager_inherited": _organization_manager_inherited,
     "re_approve_requested": _re_approve_requested,
     "approval_received": _approval_received,
-    "approval_revoked": _approval_revoked,
     "approval_request_received": _approval_request_received,
     "approval_request_declined": _approval_request_declined,
     "organization_approval_removed": _organization_approval_removed,

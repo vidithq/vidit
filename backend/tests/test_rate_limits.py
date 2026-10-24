@@ -627,13 +627,7 @@ _DOCUMENTED_LIMITS = [
     _Case(
         "post", f"/api/v1/events/{_MISSING_ID}/approvals", 60, "user", {"json": {"version_no": 1}}
     ),
-    _Case(
-        "post",
-        f"/api/v1/events/{_MISSING_ID}/approvals/{_MISSING_ID}/revoke",
-        60,
-        "user",
-        {"json": {"reason": "probe"}},
-    ),
+    _Case("delete", f"/api/v1/admin/approvals/{_MISSING_ID}", 60, "admin"),
     _Case("get", f"/api/v1/events/{_MISSING_ID}/approval-requests", 120),
     _Case("get", f"/api/v1/events/{_MISSING_ID}/approval-request-targets", 120),
     _Case(

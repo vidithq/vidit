@@ -19,7 +19,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.models.approval import JOINED_AS_GEOLOCATOR_REASON, EventApproval
+from app.models.approval import EventApproval
 from app.models.approval_request import ApprovalRequest
 from app.models.collection import Collection, CollectionEvent
 from app.models.event import (
@@ -202,7 +202,7 @@ def accept(db: Session, *, geo: Event, user: User) -> Event:
     _require_published(geo)
     db.delete(invitation)
     db.add(EventGeolocator(event_id=geo.id, user_id=user.id))
-    revoke_approvals_on_join(db, geo=geo, user=user)
+    delete_approvals_on_join(db, geo=geo, user=user)
     db.execute(
         delete(ApprovalRequest).where(
             ApprovalRequest.event_id == geo.id,
@@ -222,26 +222,17 @@ def decline(db: Session, *, geo: Event, user: User) -> None:
     db.commit()
 
 
-def revoke_approvals_on_join(db: Session, *, geo: Event, user: User) -> None:
-    """Revoke every unrevoked approval ``user`` gave ``geo``, with
-    :data:`JOINED_AS_GEOLOCATOR_REASON`: a geolocator cannot approve their own event.
+def delete_approvals_on_join(db: Session, *, geo: Event, user: User) -> None:
+    """Delete every approval ``user`` gave ``geo``: a geolocator cannot approve their own event.
 
     Every version, not only the live one, since the reviewer is no longer independent of the
-    work, and the approvals they placed for an organization too. Staged in the caller's
-    transaction.
+    work, and the approvals they placed for an organization too. The notifications that reported
+    them go with them. Staged in the caller's transaction.
     """
     db.execute(
-        update(EventApproval)
-        .where(
+        delete(EventApproval).where(
             EventApproval.event_id == geo.id,
             EventApproval.reviewer_id == user.id,
-            EventApproval.revoked_at.is_(None),
-        )
-        .values(
-            revoked_at=datetime.now(UTC),
-            revoked_by_id=user.id,
-            revoke_reason=JOINED_AS_GEOLOCATOR_REASON,
-            revoked_as="reviewer",
         )
     )
 

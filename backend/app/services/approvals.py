@@ -2,20 +2,21 @@
 version of a published event holds.
 
 An approval binds to ``(event_id, version_no)``. It is current while that version is the live
-one and nobody revoked it, so a new version ends every approval without a write here
+one, so a new version ends every approval without a write here
 (``services/versions.file_version`` notifies the reviewers, and an organization's members).
 Placing one locks the event row and compares the version the client read with the live one, so
 an approval never lands on a version its reviewer did not see.
 
 The event's geolocators (its owner and every credited co-geolocator) cannot approve it, neither
-as themselves nor for an organization, and neither can a former co-geolocator, removed or gone. Accepting a co-geolocator invitation revokes the
-invitee's approvals (``geolocator_credit.revoke_approvals_on_join``). A reviewer who revoked their
-own approval may approve that version again in a new row; a revocation by anyone else closes the
-version to them (:func:`closes_review`). Any member of an organization revokes its approval in one
-click, and the organization may approve again unless a site admin revoked it. A member who leaves
-or is removed leaves the organization's past approvals as they are. An approval resolves every
-open approval request its target (the analyst, or the organization) received for the event, and
-the requesters hear of it as the owner does.
+as themselves nor for an organization, and neither can a former co-geolocator, removed or gone.
+
+An approval is final: nobody revokes it. Two paths delete one. Accepting a co-geolocator
+invitation deletes the invitee's approvals of the event
+(``geolocator_credit.delete_approvals_on_join``), and a site admin deletes any approval
+(:func:`delete_as_admin`), which writes an ``admin_events`` row. A member who leaves or is
+removed leaves the organization's past approvals as they are. An approval resolves every open
+approval request its target (the analyst, or the organization) received for the event, and the
+requesters hear of it as the owner does.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ from datetime import UTC, datetime
 from sqlalchemy import ColumnElement, Select, and_, or_, select, update
 from sqlalchemy.orm import Session, joinedload
 
-from app.models.approval import JOINED_AS_GEOLOCATOR_REASON, ApprovalRevoker, EventApproval
+from app.models.approval import EventApproval
 from app.models.approval_request import ApprovalRequest
 from app.models.event import (
     STATUS_GEOLOCATED,
@@ -68,20 +69,8 @@ class AlreadyApprovedError(ApprovalError):
     code = "already_approved"
 
 
-class ReapprovalRefusedError(ApprovalError):
-    code = "reapproval_refused"
-
-
 class ApprovalNotFoundError(ApprovalError):
     code = "approval_not_found"
-
-
-class AlreadyRevokedError(ApprovalError):
-    code = "already_revoked"
-
-
-class RevokeForbiddenError(ApprovalError):
-    code = "revoke_forbidden"
 
 
 class NotOrganizationMemberError(ApprovalError):
@@ -93,10 +82,7 @@ APPROVAL_ERROR_STATUS: dict[str, int] = {
     "version_mismatch": 409,
     "geolocator_cannot_approve": 403,
     "already_approved": 409,
-    "reapproval_refused": 409,
     "approval_not_found": 404,
-    "already_revoked": 409,
-    "revoke_forbidden": 403,
     "not_organization_member": 403,
 }
 
@@ -122,39 +108,21 @@ def may_approve(db: Session, *, geo: Event, user: User | None) -> bool:
     )
 
 
-def closes_review(*, organization: bool) -> ColumnElement[bool]:
-    """The reviews (``EventApproval``) that close their version to another review by the same
-    analyst, or for the same organization: one that stands, or one revoked by anyone but its own
-    side. An analyst's self-revoke reopens the version, unless it was the revocation stamped when
-    they joined the geolocators. An organization's approval revoked by one of its members reopens
-    it; one revoked by a site admin does not. Mirrored by the frontend's
-    lib/approvals.closesReview; change both."""
-    if organization:
-        return or_(EventApproval.revoked_at.is_(None), EventApproval.revoked_as == "site_admin")
-    return or_(
-        EventApproval.revoked_at.is_(None),
-        EventApproval.revoked_as != "reviewer",
-        EventApproval.revoke_reason == JOINED_AS_GEOLOCATOR_REASON,
-    )
-
-
-def closed_reviewer_ids(geo: Event) -> Select[tuple[uuid.UUID | None]]:
-    """The analysts the live version of ``geo`` is closed to as reviewers (:func:`closes_review`)."""
+def approved_reviewer_ids(geo: Event) -> Select[tuple[uuid.UUID | None]]:
+    """The analysts who approved the live version of ``geo`` as themselves."""
     return select(EventApproval.reviewer_id).where(
         EventApproval.event_id == geo.id,
         EventApproval.version_no == geo.version_no,
         EventApproval.organization_id.is_(None),
-        closes_review(organization=False),
     )
 
 
-def closed_organization_ids(geo: Event) -> Select[tuple[uuid.UUID | None]]:
-    """The organizations the live version of ``geo`` is closed to (:func:`closes_review`)."""
+def approved_organization_ids(geo: Event) -> Select[tuple[uuid.UUID | None]]:
+    """The organizations that approved the live version of ``geo``."""
     return select(EventApproval.organization_id).where(
         EventApproval.event_id == geo.id,
         EventApproval.version_no == geo.version_no,
         EventApproval.organization_id.is_not(None),
-        closes_review(organization=True),
     )
 
 
@@ -164,7 +132,6 @@ def build_read(row: EventApproval, *, live_version: int) -> ApprovalRead:
     return ApprovalRead(
         id=row.id,
         version_no=row.version_no,
-        verdict=row.verdict,
         # An organization's approval stays the organization's: a reviewer erased or banned
         # since is not named.
         reviewer=(
@@ -177,14 +144,8 @@ def build_read(row: EventApproval, *, live_version: int) -> ApprovalRead:
             if row.organization is not None
             else None
         ),
-        note=row.note,
         created_at=row.created_at,
-        current=row.version_no == live_version
-        and row.revoked_at is None
-        and row.event.status == STATUS_GEOLOCATED,
-        revoked_at=row.revoked_at,
-        revoke_reason=row.revoke_reason,
-        revoked_as=row.revoked_as,
+        current=row.version_no == live_version and row.event.status == STATUS_GEOLOCATED,
     )
 
 
@@ -202,7 +163,7 @@ def _reviewer_shown() -> ColumnElement[bool]:
 def list_approvals(
     db: Session, *, geo: Event, version_no: int | None, reviewer: str | None
 ) -> list[EventApproval]:
-    """The reviews of ``geo``, by version then oldest first, revoked ones included.
+    """The reviews of ``geo``, by version then oldest first.
 
     ``version_no`` keeps one version and ``reviewer`` one analyst's own reviews (by username,
     without those they placed for an organization); either may be omitted. A soft-deleted
@@ -238,7 +199,6 @@ def approve(
     geo: Event,
     reviewer: User,
     version_no: int,
-    note: str | None,
     organization: Organization | None = None,
 ) -> EventApproval:
     """Approve the live version of ``geo`` as ``reviewer``, or for ``organization`` with
@@ -249,9 +209,7 @@ def approve(
     takes no new one); 403 ``not_organization_member`` when ``reviewer`` is not a member of
     ``organization``; 403 ``geolocator_cannot_approve`` for a current or former geolocator of the event; 409
     ``version_mismatch`` when ``version_no`` is not the live version; 409 ``already_approved``
-    when the approval ``reviewer``, or ``organization``, gave that version stands; 409
-    ``reapproval_refused`` when a revocation closed the version to them (:func:`closes_review`).
-    A self-revoked approval stays as history beside the new row.
+    when ``reviewer``, or ``organization``, already approved that version.
     """
     geo = lock_event(db, geo.id)
     # Mirrored by the frontend's lib/approvals.canApprove; change both.
@@ -279,28 +237,19 @@ def approve(
         mine = same_version.filter(
             EventApproval.reviewer_id == reviewer.id, EventApproval.organization_id.is_(None)
         )
-        if mine.filter(EventApproval.revoked_at.is_(None)).first() is not None:
+        if mine.first() is not None:
             raise AlreadyApprovedError("You already approved this version")
-        if mine.filter(closes_review(organization=False)).first() is not None:
-            raise ReapprovalRefusedError(
-                "Your approval of this version was revoked; you cannot approve it again"
-            )
         target = ApprovalRequest.target_user_id == reviewer.id
     else:
         theirs = same_version.filter(EventApproval.organization_id == organization.id)
-        if theirs.filter(EventApproval.revoked_at.is_(None)).first() is not None:
+        if theirs.first() is not None:
             raise AlreadyApprovedError(f"{organization.name} already approved this version")
-        if theirs.filter(closes_review(organization=True)).first() is not None:
-            raise ReapprovalRefusedError(
-                f"A site admin revoked {organization.name}'s approval of this version"
-            )
         target = ApprovalRequest.target_organization_id == organization.id
     row = EventApproval(
         event_id=geo.id,
         version_no=version_no,
         reviewer_id=reviewer.id,
         organization_id=organization.id if organization is not None else None,
-        note=note,
     )
     db.add(row)
     requester_ids = db.scalars(
@@ -315,77 +264,33 @@ def approve(
     return row
 
 
-def _revoker_role(db: Session, row: EventApproval, actor: User) -> ApprovalRevoker:
-    """The role ``actor`` revokes ``row`` in, or 403 ``revoke_forbidden``.
-
-    An analyst's approval: its reviewer, then a site admin. An organization's approval: its
-    current members (its reviewer among them), then a site admin. A reviewer who left the
-    organization no longer acts in its name.
-    """
-    if row.organization_id is None:
-        if row.reviewer_id == actor.id:
-            return "reviewer"
-    elif is_organization_member(db, org_id=row.organization_id, user_id=actor.id):
-        return "reviewer" if row.reviewer_id == actor.id else "organization_member"
-    if actor.is_admin:
-        return "site_admin"
-    raise RevokeForbiddenError(
-        "Only the reviewer or a site admin can revoke this approval"
-        if row.organization_id is None
-        else "Only a member of the organization or a site admin can revoke this approval"
-    )
-
-
-def revoke(
-    db: Session,
-    *,
-    geo: Event,
-    approval_id: uuid.UUID,
-    actor: User,
-    reason: str | None = None,
-) -> EventApproval:
-    """Revoke one approval of ``geo``, with an optional public ``reason``, and notify the owner.
-
-    The reviewer revokes their own; a member revokes any approval placed for their organization;
-    a site admin revokes any, which writes an ``admin_events`` row. Anyone else is
-    403 ``revoke_forbidden``. 404 ``approval_not_found`` for an id that is not an approval of
-    ``geo``; 409 ``already_revoked`` for one already revoked.
-    """
-    geo = lock_event(db, geo.id)
-    row = (
-        db.query(EventApproval)
-        .options(joinedload(EventApproval.reviewer), joinedload(EventApproval.organization))
-        .filter(EventApproval.id == approval_id, EventApproval.event_id == geo.id)
-        .first()
-    )
+def delete_as_admin(db: Session, *, approval_id: uuid.UUID, actor: User) -> None:
+    """Delete one approval as a site admin and write an ``admin_events`` row. The notifications
+    that reported it go with it. 404 ``approval_not_found`` for an unknown id. The caller checks
+    that ``actor`` is a site admin."""
+    event_id = db.scalar(select(EventApproval.event_id).where(EventApproval.id == approval_id))
+    if event_id is None:
+        raise ApprovalNotFoundError("No such approval")
+    lock_event(db, event_id)
+    row = db.get(EventApproval, approval_id)
     if row is None:
-        raise ApprovalNotFoundError("No such approval on this event")
-    role = _revoker_role(db, row, actor)
-    if row.revoked_at is not None:
-        raise AlreadyRevokedError("This approval is already revoked")
-    row.revoked_at = datetime.now(UTC)
-    row.revoked_by_id = actor.id
-    row.revoke_reason = reason
-    row.revoked_as = role
-    notifications.notify_approval_revoked(db, event=geo, approval=row)
-    if role == "site_admin":
-        log_admin_event(
-            db,
-            actor_id=actor.id,
-            action="approval_revoked",
-            target={
-                "geolocation_id": str(geo.id),
-                "approval_id": str(row.id),
-                "reviewer_id": str(row.reviewer_id) if row.reviewer_id is not None else None,
-                "organization_id": (
-                    str(row.organization_id) if row.organization_id is not None else None
-                ),
-                "version_no": row.version_no,
-            },
-        )
+        raise ApprovalNotFoundError("No such approval")
+    log_admin_event(
+        db,
+        actor_id=actor.id,
+        action="approval_deleted",
+        target={
+            "geolocation_id": str(row.event_id),
+            "approval_id": str(row.id),
+            "reviewer_id": str(row.reviewer_id) if row.reviewer_id is not None else None,
+            "organization_id": (
+                str(row.organization_id) if row.organization_id is not None else None
+            ),
+            "version_no": row.version_no,
+        },
+    )
+    db.delete(row)
     db.commit()
-    db.refresh(row)
-    return row
 
 
 def list_for_organization(

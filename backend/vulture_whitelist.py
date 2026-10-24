@@ -111,8 +111,6 @@ redacted  # schemas/event.py EventVersionRead (wire field, built in routers/even
 # Written by ``services/versions.redact_version``, read by nothing in ``app/``;
 # the readable trail is the ``admin_events`` row the same write files.
 redacted_by_id  # models/event.py EventVersion
-# Written by ``services/approvals.revoke``; the public read is ``revoked_as``, the role.
-revoked_by_id  # models/approval.py EventApproval
 analysts  # schemas/approval_request.py ApprovalRequestTargetList (wire field)
 approval  # schemas/approval.py OrganizationApprovalRead (wire field)
 viewer_invite_pending  # schemas/event.py EventRead: set by GET /events/{id}, read on the wire

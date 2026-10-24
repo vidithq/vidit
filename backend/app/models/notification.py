@@ -29,7 +29,6 @@ NotificationKind = Literal[
     "organization_manager_inherited",
     "re_approve_requested",
     "approval_received",
-    "approval_revoked",
     "approval_request_received",
     "approval_request_declined",
     "organization_approval_removed",
@@ -50,7 +49,6 @@ NOTIFICATION_KINDS: dict[NotificationKind, bool] = {
     "organization_manager_inherited": True,
     "re_approve_requested": False,
     "approval_received": False,
-    "approval_revoked": False,
     "approval_request_received": True,
     "approval_request_declined": False,
     "organization_approval_removed": False,
@@ -87,8 +85,8 @@ class Notification(Base):
     # The name of an organization the row speaks of once it is gone: an
     # ``organization_approval_removed`` row outlives the organization it names.
     organization_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    # The approval an ``approval_received`` row reports: the feed hides the row once it is
-    # revoked.
+    # The approval an ``approval_received`` row reports: the row goes when the approval is
+    # deleted.
     approval_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("event_approvals.id", ondelete="CASCADE"), nullable=True
     )

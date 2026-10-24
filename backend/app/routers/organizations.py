@@ -86,8 +86,7 @@ def list_organization_approvals(
     cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
     db: Session = Depends(get_db),
 ) -> list[OrganizationApprovalRead]:
-    """The approvals placed in the organization's name, newest first, revoked ones included,
-    capped at 100 per page (``Link: rel="next"`` cursor)."""
+    """The approvals placed in the organization's name, newest first, capped at 100 per page (``Link: rel="next"`` cursor)."""
     with _typed_errors():
         org = organizations_service.get_by_slug(db, slug)
     size = page_size(limit)

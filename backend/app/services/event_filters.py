@@ -374,7 +374,6 @@ def _standing_approval(*criteria: ColumnElement[bool]) -> ColumnElement[bool]:
         exists().where(
             EventApproval.event_id == Event.id,
             EventApproval.version_no == Event.version_no,
-            EventApproval.revoked_at.is_(None),
             *criteria,
         ),
     )

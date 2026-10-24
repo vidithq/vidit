@@ -145,8 +145,8 @@ def is_organization_manager(db: Session, *, org_id: uuid.UUID, user_id: uuid.UUI
 
 
 def is_organization_member(db: Session, *, org_id: uuid.UUID, user_id: uuid.UUID) -> bool:
-    """Whether ``user_id`` acts in the organization's name: any member approves, revokes its
-    approvals and answers its approval requests."""
+    """Whether ``user_id`` acts in the organization's name: any member approves for it and
+    answers its approval requests."""
     return _membership(db, org_id, user_id) is not None
 
 
@@ -355,7 +355,7 @@ def delete_organization(db: Session, *, actor: User, slug: str) -> dict[str, obj
         db.execute(
             select(Event.id, Event.owner_id)
             .join(EventApproval, EventApproval.event_id == Event.id)
-            .where(EventApproval.organization_id == org.id, EventApproval.revoked_at.is_(None))
+            .where(EventApproval.organization_id == org.id)
             .distinct()
         ).tuples()
     )
