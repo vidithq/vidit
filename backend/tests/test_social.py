@@ -35,6 +35,7 @@ from app.models.user import User
 from app.services import social as social_service
 from app.services.auth import hash_password
 from app.services.pagination import MAX_PAGE_SIZE, encode_cursor
+from tests._fixtures import fake_sha256
 from tests.conftest import login_as
 
 client = TestClient(app)
@@ -335,6 +336,7 @@ def test_feed_following_carries_geolocations_and_requests_credited(db, cleanup):
     stranger_ask = _make_request(db, requester=stranger, title="Stranger ask")
     db.add(
         Media(
+            sha256=fake_sha256(),
             event_id=geo.id,
             role="source",
             storage_url=f"http://localhost:8000/local-storage/uploads/{geo.id}/thumb.jpg",

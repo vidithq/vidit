@@ -26,7 +26,7 @@ from app.models.media import Media
 from app.models.user import User
 from app.services import storage as storage_module
 from app.services.auth import hash_password
-from tests._fixtures import TINY_JPEG, store_bytes
+from tests._fixtures import TINY_JPEG, fake_sha256, store_bytes
 from tests.conftest import login_as
 
 client = TestClient(app)
@@ -890,6 +890,7 @@ def test_hard_delete_sweeps_source_image_derivatives(admin_user, geolocation, db
     geo_id = geolocation.id
     db.add(
         Media(
+            sha256=fake_sha256(),
             event_id=geo_id,
             role="source",
             storage_url=f"http://localhost:8000/local-storage/uploads/{geo_id}/photo.png",
@@ -1344,6 +1345,7 @@ def _seed_request(db, *, author_id: uuid.UUID) -> uuid.UUID:
     db.flush()
     db.add(
         Media(
+            sha256=fake_sha256(),
             event_id=request.id,
             role="source",
             storage_url=(f"http://localhost:8000/local-storage/request_uploads/{request.id}/x.jpg"),
@@ -1604,12 +1606,14 @@ def test_pending_quality_counts_missing_pieces(admin_user, regular_user, events_
     db.add_all(
         [
             Media(
+                sha256=fake_sha256(),
                 event_id=complete.id,
                 role="source",
                 storage_url=f"http://localhost:8000/local-storage/x/{complete.id}/s.jpg",
                 media_type="image",
             ),
             Media(
+                sha256=fake_sha256(),
                 event_id=complete.id,
                 role="proof",
                 storage_url=f"http://localhost:8000/local-storage/x/{complete.id}/p.jpg",
@@ -1716,12 +1720,14 @@ def test_pending_proof_video_counts_as_missing_proof_image(
     db.add_all(
         [
             Media(
+                sha256=fake_sha256(),
                 event_id=video_proof.id,
                 role="source",
                 storage_url=f"http://localhost:8000/local-storage/x/{video_proof.id}/s.jpg",
                 media_type="image",
             ),
             Media(
+                sha256=fake_sha256(),
                 event_id=video_proof.id,
                 role="proof",
                 storage_url=f"http://localhost:8000/local-storage/x/{video_proof.id}/p.mp4",

@@ -218,7 +218,7 @@ def test_a_withdraw_and_invite_loop_notifies_once(db, author, second_user):
 def test_one_actor_queues_a_capped_number_of_emails(db, author, make_user, monkeypatch):
     monkeypatch.setattr(settings, "notification_email_daily_cap_per_actor", 2)
     geo = published_geo(db, author)
-    invitees = [make_user(email_verified_at=datetime.now(UTC)) for _ in range(3)]
+    invitees = [make_user() for _ in range(3)]
     for invitee in invitees:
         assert _invite(geo, author, invitee.username).status_code == 201
 
@@ -238,7 +238,6 @@ def test_the_per_actor_cap_spares_fan_out_and_is_not_spent_by_it(
     db, author, second_user, make_user, monkeypatch
 ):
     monkeypatch.setattr(settings, "notification_email_daily_cap_per_actor", 1)
-    second_user.email_verified_at = datetime.now(UTC)
     db.add(
         UserPreferences(
             user_id=second_user.id,
@@ -256,7 +255,7 @@ def test_the_per_actor_cap_spares_fan_out_and_is_not_spent_by_it(
             event_id=geo.id,
         )
     db.commit()
-    invitee = make_user(email_verified_at=datetime.now(UTC))
+    invitee = make_user()
     assert _invite(geo, author, invitee.username).status_code == 201
 
     def emails(user: User) -> int:
@@ -286,7 +285,6 @@ def test_the_invitation_and_the_hand_over_reach_the_inbox(
 ):
     outbox: list[email.Email] = []
     monkeypatch.setattr(email, "send", outbox.append)
-    second_user.email_verified_at = datetime.now(UTC)
     db.commit()
     owner_name = author.username
     geo = published_geo(db, author, title="Bridge strike")

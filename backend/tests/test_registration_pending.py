@@ -265,7 +265,6 @@ def test_confirm_creates_user_and_signs_them_in(client, invite_code, email_recor
 
     user = db.query(User).filter(User.email == payload["email"]).first()
     assert user is not None
-    assert user.email_verified_at is not None
     assert (
         db.query(PendingRegistration).filter(PendingRegistration.email == payload["email"]).first()
         is None

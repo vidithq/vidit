@@ -24,7 +24,7 @@ from app.models.organization import Organization, OrganizationMember
 from app.models.user import User
 from app.services.auth import hash_password
 from app.services.search import HIGHLIGHT_START, HIGHLIGHT_STOP
-from tests._fixtures import collection_description
+from tests._fixtures import collection_description, fake_sha256
 from tests.conftest import login_as
 
 client = TestClient(app)
@@ -131,6 +131,7 @@ def test_search_matches_geolocation_by_title(db, caller):
     db.flush()
     db.add(
         Media(
+            sha256=fake_sha256(),
             event_id=geo.id,
             role="source",
             storage_url=f"http://localhost:8000/local-storage/geolocation_media/{geo.id}/x.jpg",
@@ -140,6 +141,7 @@ def test_search_matches_geolocation_by_title(db, caller):
     # The thumbnail pick prefers ``source`` (``services.thumbnails``), so proof stays off the hit.
     db.add(
         Media(
+            sha256=fake_sha256(),
             event_id=geo.id,
             role="proof",
             storage_url=f"http://localhost:8000/local-storage/geolocation_media/{geo.id}/p.jpg",
@@ -195,6 +197,7 @@ def test_search_proof_only_event_surfaces_proof_image_thumbnail(db, caller):
     db.flush()
     db.add(
         Media(
+            sha256=fake_sha256(),
             event_id=proof_only.id,
             role="proof",
             storage_url=f"http://localhost:8000/local-storage/geolocation_media/{proof_only.id}/p.jpg",
@@ -204,6 +207,7 @@ def test_search_proof_only_event_surfaces_proof_image_thumbnail(db, caller):
     # Defensive: a proof video should not exist but must never be picked.
     db.add(
         Media(
+            sha256=fake_sha256(),
             event_id=video_only.id,
             role="proof",
             storage_url=f"http://localhost:8000/local-storage/geolocation_media/{video_only.id}/p.mp4",
@@ -296,6 +300,7 @@ def test_search_matches_request_by_title(db, caller):
     db.flush()
     db.add(
         Media(
+            sha256=fake_sha256(),
             event_id=request.id,
             role="source",
             storage_url=(f"http://localhost:8000/local-storage/request_uploads/{request.id}/x.jpg"),
@@ -695,6 +700,7 @@ def test_search_type_all_returns_every_group(db, caller, seed_collection):
     db.flush()
     db.add(
         Media(
+            sha256=fake_sha256(),
             event_id=request.id,
             role="source",
             storage_url=(f"http://localhost:8000/local-storage/request_uploads/{request.id}/x.jpg"),
@@ -757,6 +763,7 @@ def test_search_type_filter_scopes_to_one_group(db, caller):
     db.flush()
     db.add(
         Media(
+            sha256=fake_sha256(),
             event_id=request.id,
             role="source",
             storage_url=(f"http://localhost:8000/local-storage/request_uploads/{request.id}/x.jpg"),
@@ -799,6 +806,7 @@ def test_search_limit_caps_per_group(db, caller):
     for b in requests:
         db.add(
             Media(
+                sha256=fake_sha256(),
                 event_id=b.id,
                 role="source",
                 storage_url=(f"http://localhost:8000/local-storage/request_uploads/{b.id}/x.jpg"),

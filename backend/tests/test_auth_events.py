@@ -453,12 +453,9 @@ def test_hsts_header_on_csrf_rejection(client, existing_user):
 
 def test_password_reset_completed_writes_event(client, existing_user, db, monkeypatch):
     """Reset-password end to end writes the audit row."""
-    from app.models.auth_token import PURPOSE_PASSWORD_RESET
     from app.services import auth_tokens
 
-    raw_token = auth_tokens.mint(
-        db, user_id=existing_user.id, purpose=PURPOSE_PASSWORD_RESET, ttl_minutes=60
-    )
+    raw_token = auth_tokens.mint(db, user_id=existing_user.id, ttl_minutes=60)
     db.commit()
 
     cutoff = datetime.now(UTC) - timedelta(seconds=5)

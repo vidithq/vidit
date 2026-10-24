@@ -30,7 +30,7 @@ from app.models.notification import (
 from app.models.user import User
 from app.services import email
 from app.services.email_layout import Action, app_url
-from app.services.notifications import has_verified_email, is_visible
+from app.services.notifications import is_visible
 from app.services.preferences import email_enabled, email_unsubscribe_token
 
 logger = logging.getLogger(__name__)
@@ -326,9 +326,6 @@ def _email_for(n: Notification, to: str) -> email.Email:
 
 
 def _send_email(row: NotificationDelivery, recipient: User) -> DeliveryOutcome:
-    if not has_verified_email(recipient):
-        return "skipped"
-    assert recipient.email is not None
     n = row.notification
     if n.kind not in _COPY:
         logger.warning("notification email %s skipped: no copy for kind %r", row.id, n.kind)

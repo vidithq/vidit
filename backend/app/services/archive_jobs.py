@@ -278,8 +278,6 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
     job.skipped_count = len(outcome.skipped)
     job.failed_count = outcome.failed
     _finish(db, job, status="done")
-    if owner.email is None:
-        return
     # The durable outcome is the job row: a mailer outage must not fail or re-run the import.
     email.send_best_effort(
         email.archive_import_complete_email(
@@ -320,7 +318,7 @@ def _delete_staged_best_effort(key: str) -> None:
 
 def _notify_failure_best_effort(db: Session, job: ArchiveImportJob) -> None:
     owner = db.get(User, job.owner_id)
-    if owner is None or owner.deleted_at is not None or owner.email is None:
+    if owner is None or owner.deleted_at is not None:
         return
     email.send_best_effort(
         email.archive_import_failed_email(to=owner.email), what="archive import failed"

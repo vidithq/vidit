@@ -32,7 +32,7 @@ from app.schemas.collection import DESCRIPTION_MAX_LENGTH, MAX_CREATE_EVENTS
 from app.services import collections as collections_service
 from app.services.auth import hash_password
 from app.services.sanitize import html_from_text
-from tests._fixtures import collection_description
+from tests._fixtures import collection_description, fake_sha256
 from tests.conftest import login_as
 
 client = TestClient(app)
@@ -1126,6 +1126,7 @@ def _add_media(db, event: Event, name: str, media_type: str = "image", role: str
     """Give one event a media row the card rule may pick."""
     db.add(
         Media(
+            sha256=fake_sha256(),
             event_id=event.id,
             role=role,
             storage_url=f"https://media.example.com/{name}",

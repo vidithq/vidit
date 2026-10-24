@@ -29,7 +29,7 @@ from app.models.event import (
 from app.models.media import Media
 from app.models.source_archive import SourceArchive
 from app.services import versions as versions_service
-from tests._fixtures import TINY_JPEG
+from tests._fixtures import TINY_JPEG, fake_sha256
 from tests.conftest import login_as
 from tests.events._helpers import (
     _make_geo,
@@ -63,6 +63,7 @@ def _published(db, author, conflict, capture_source_tag, *, proof_url=STORED_PRO
     )
     db.add(
         Media(
+            sha256=fake_sha256(),
             event_id=geo.id,
             role="proof",
             storage_url=proof_url,

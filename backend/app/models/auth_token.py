@@ -6,10 +6,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 
-# Source of truth for `purpose` values; mirrored in the migration's CHECK.
-PURPOSE_PASSWORD_RESET = "password_reset"
-ALL_PURPOSES = (PURPOSE_PASSWORD_RESET,)
-
 
 class AuthToken(Base):
     """One row per outstanding password-reset token.
@@ -26,7 +22,6 @@ class AuthToken(Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     token_hash: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
-    purpose: Mapped[str] = mapped_column(Text, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -37,7 +32,6 @@ class AuthToken(Base):
 
     __table_args__ = (
         Index("ix_auth_tokens_user_id", "user_id"),
-        Index("ix_auth_tokens_user_purpose", "user_id", "purpose"),
         Index(
             "ix_auth_tokens_live_expires_at",
             "expires_at",

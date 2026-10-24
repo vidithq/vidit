@@ -29,7 +29,6 @@ from app.models.auth_event import (
     EVENT_REGISTER_PENDING,
     EVENT_REGISTER_RESENT,
 )
-from app.models.auth_token import PURPOSE_PASSWORD_RESET
 from app.models.user import User
 from app.ratelimit import limiter
 from app.routers._errors import raise_typed_error
@@ -245,23 +244,15 @@ def login(
     db: Session = Depends(get_db),
 ):
     user = db.query(User).filter(User.email == body.email).first()
-    # Always run bcrypt (dummy hash for unknown, soft-deleted or credential-less
-    # users) so every failure branch takes the same time; otherwise response
-    # time is an oracle for known-but-deleted emails.
+    # Always run bcrypt (dummy hash for unknown or soft-deleted users) so every
+    # failure branch takes the same time; otherwise response time is an oracle
+    # for known-but-deleted emails.
     password_hash = (
-        user.password_hash
-        if user is not None and user.deleted_at is None and user.password_hash is not None
-        else DUMMY_PASSWORD_HASH
+        user.password_hash if user is not None and user.deleted_at is None else DUMMY_PASSWORD_HASH
     )
     password_ok = verify_password(body.password, password_hash)
     # The dummy hash's plaintext is public, so a match there must not sign in.
-    if (
-        user is None
-        or user.deleted_at is not None
-        or not user.is_active
-        or user.password_hash is None
-        or not password_ok
-    ):
+    if user is None or user.deleted_at is not None or not user.is_active or not password_ok:
         # Log the matched user_id when there is one, NULL otherwise, so
         # existence is not leaked. A deactivated account is treated like a
         # soft-deleted one.
@@ -358,11 +349,10 @@ def _process_forgot_password(user_id, email_address: str) -> None:
         if user is None or user.deleted_at is not None:
             return
 
-        auth_tokens.revoke_all_live_for_user(db, user_id=user.id, purpose=PURPOSE_PASSWORD_RESET)
+        auth_tokens.revoke_all_live_for_user(db, user_id=user.id)
         raw_token = auth_tokens.mint(
             db,
             user_id=user.id,
-            purpose=PURPOSE_PASSWORD_RESET,
             ttl_minutes=settings.password_reset_token_minutes,
         )
         db.commit()
@@ -404,10 +394,7 @@ def forgot_password(
         # No-op branch: the live-user branch only schedules a task before returning.
         return
 
-    # A found user always has an email (lookup is by email); the column is
-    # nullable for legacy rows.
-    if user.email is not None:
-        background_tasks.add_task(_process_forgot_password, user.id, user.email)
+    background_tasks.add_task(_process_forgot_password, user.id, user.email)
 
 
 @router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)
@@ -417,7 +404,7 @@ def reset_password(
     body: ResetPasswordRequest,
     db: Session = Depends(get_db),
 ) -> None:
-    row = auth_tokens.consume(db, body.token, PURPOSE_PASSWORD_RESET)
+    row = auth_tokens.consume(db, body.token)
     if row is None:
         # One opaque error for every failure mode, so a probe can't tell
         # whether a leaked token is still live.
@@ -464,10 +451,7 @@ def change_password(
 
     The heads-up email is a best-effort background task after the commit.
     """
-    # NULL hash (credential-less account) has no password to re-assert.
-    if current_user.password_hash is None or not verify_password(
-        body.current_password, current_user.password_hash
-    ):
+    if not verify_password(body.current_password, current_user.password_hash):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
 
     # Capture the address before the commit: ``expire_on_commit`` would make a
@@ -488,9 +472,8 @@ def change_password(
     db.refresh(current_user)
     issue_session_cookies(response, create_access_token(current_user))
 
-    if notify_to is not None:
-        background_tasks.add_task(
-            _send_password_changed_notification_best_effort,
-            user_id=user_id,
-            to=notify_to,
-        )
+    background_tasks.add_task(
+        _send_password_changed_notification_best_effort,
+        user_id=user_id,
+        to=notify_to,
+    )

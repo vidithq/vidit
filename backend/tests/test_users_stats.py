@@ -42,6 +42,7 @@ from app.models.media import Media
 from app.models.tag import Tag
 from app.models.user import User
 from app.services.auth import hash_password
+from tests._fixtures import fake_sha256
 
 client = TestClient(app)
 
@@ -181,7 +182,13 @@ def _make_geo(
     db.flush()
     if with_media:
         db.add(
-            Media(event_id=geo.id, role="source", storage_url="s3://x/m.jpg", media_type="image")
+            Media(
+                sha256=fake_sha256(),
+                event_id=geo.id,
+                role="source",
+                storage_url="s3://x/m.jpg",
+                media_type="image",
+            )
         )
     db.commit()
     db.refresh(geo)

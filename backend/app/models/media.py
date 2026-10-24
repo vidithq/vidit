@@ -35,8 +35,8 @@ class Media(Base):
     storage_url: Mapped[str] = mapped_column(Text, nullable=False)
     media_type: Mapped[MediaType] = mapped_column(String(10), nullable=False)
     # Hex SHA-256 of the uploaded bytes: a content fingerprint stable across
-    # copies, unlike the S3 ETag. NULL on rows predating the column.
-    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # copies, unlike the S3 ETag.
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     # Sanitised client filename, public so investigators can trace evidence to a post.
     original_filename: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -49,8 +49,8 @@ class Media(Base):
 
     __table_args__ = (
         literal_check("role", MediaRole, "ck_media_role_valid"),
-        # Partial index on the populated cohort: "every row with this hash".
-        Index("ix_media_sha256", "sha256", postgresql_where="sha256 IS NOT NULL"),
+        # "Every row with this hash".
+        Index("ix_media_sha256", "sha256"),
         # At most one source media per event.
         Index(
             "uq_media_source_per_event",

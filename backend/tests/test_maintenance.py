@@ -17,7 +17,6 @@ from app.database import SessionLocal
 from app.main import app
 from app.models.admin_event import AdminEvent
 from app.models.auth_token import (
-    PURPOSE_PASSWORD_RESET,
     AuthToken,
 )
 from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event
@@ -89,26 +88,22 @@ def test_reap_auth_tokens_drops_expired_and_old_consumed(db, regular_user):
     expired = AuthToken(
         user_id=regular_user.id,
         token_hash=f"exp-{uuid.uuid4().hex}",
-        purpose=PURPOSE_PASSWORD_RESET,
         expires_at=now - timedelta(hours=1),
     )
     live = AuthToken(
         user_id=regular_user.id,
         token_hash=f"live-{uuid.uuid4().hex}",
-        purpose=PURPOSE_PASSWORD_RESET,
         expires_at=now + timedelta(hours=1),
     )
     old_consumed = AuthToken(
         user_id=regular_user.id,
         token_hash=f"old-{uuid.uuid4().hex}",
-        purpose=PURPOSE_PASSWORD_RESET,
         expires_at=now - timedelta(days=60),
         consumed_at=now - timedelta(days=45),
     )
     fresh_consumed = AuthToken(
         user_id=regular_user.id,
         token_hash=f"fresh-{uuid.uuid4().hex}",
-        purpose=PURPOSE_PASSWORD_RESET,
         expires_at=now - timedelta(days=1),
         consumed_at=now - timedelta(hours=2),
     )

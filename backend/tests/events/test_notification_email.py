@@ -25,12 +25,6 @@ def outbox(monkeypatch) -> list[email.Email]:
     return sent
 
 
-def _verify(db, *users: User) -> None:
-    for user in users:
-        user.email_verified_at = datetime.now(UTC)
-    db.commit()
-
-
 def _email_off(db, user: User, kind: str) -> None:
     db.add(UserPreferences(user_id=user.id, notification_overrides={kind: False}))
     db.commit()
@@ -57,7 +51,6 @@ def _fulfil(db, requester: User, fulfiller: User, conflict, tag):
 def test_fulfilment_queues_and_the_drain_sends_one_branded_email(
     db, author, second_user, conflict, capture_source_tag, outbox
 ):
-    _verify(db, author)
     request = _fulfil(db, author, second_user, conflict, capture_source_tag)
     # The action only queues: nothing is sent inside the request.
     assert outbox == []
@@ -81,7 +74,6 @@ def test_fulfilment_queues_and_the_drain_sends_one_branded_email(
 def test_no_row_when_the_switch_is_off(
     db, author, second_user, conflict, capture_source_tag, outbox
 ):
-    _verify(db, author)
     _email_off(db, author, "request_fulfilled")
     _fulfil(db, author, second_user, conflict, capture_source_tag)
     assert _deliveries(db, author) == []
@@ -90,7 +82,6 @@ def test_no_row_when_the_switch_is_off(
 def test_default_off_kind_queues_only_for_an_analyst_who_turned_it_on(
     db, author, second_user, admin_user
 ):
-    _verify(db, author, second_user)
     db.add(UserPreferences(user_id=second_user.id, notification_overrides={"new_follower": True}))
     db.commit()
     headers = login_as(client, admin_user)
@@ -102,18 +93,16 @@ def test_default_off_kind_queues_only_for_an_analyst_who_turned_it_on(
     assert [r.status for r in _deliveries(db, second_user)] == ["queued"]
 
 
-def test_unverified_address_gets_no_row(
+def test_any_account_with_an_address_gets_a_row(
     db, author, second_user, conflict, capture_source_tag, outbox
 ):
     _fulfil(db, author, second_user, conflict, capture_source_tag)
-    assert author.email_verified_at is None
-    assert _deliveries(db, author) == []
+    assert [r.status for r in _deliveries(db, author)] == ["queued"]
 
 
 def test_drain_skips_a_row_whose_switch_or_address_changed(
     db, author, second_user, conflict, capture_source_tag, outbox
 ):
-    _verify(db, author)
     _fulfil(db, author, second_user, conflict, capture_source_tag)
     _email_off(db, author, "request_fulfilled")
 
@@ -126,7 +115,6 @@ def test_drain_skips_a_row_whose_switch_or_address_changed(
 def test_drain_skips_a_row_whose_event_was_taken_down(
     db, author, second_user, conflict, capture_source_tag, outbox
 ):
-    _verify(db, author)
     request = _fulfil(db, author, second_user, conflict, capture_source_tag)
     db.refresh(request)
     request.hidden_at = datetime.now(UTC)
@@ -140,7 +128,6 @@ def test_drain_skips_a_row_whose_event_was_taken_down(
 def test_global_cap_holds_notification_email_but_not_auth_email(
     db, author, second_user, conflict, capture_source_tag, outbox, monkeypatch
 ):
-    _verify(db, author)
     _fulfil(db, author, second_user, conflict, capture_source_tag)
     monkeypatch.setattr(settings, "notification_email_daily_cap", 0)
 
@@ -156,7 +143,6 @@ def test_global_cap_holds_notification_email_but_not_auth_email(
 def test_per_user_cap_holds_only_that_recipient(
     db, author, second_user, conflict, capture_source_tag, outbox, monkeypatch
 ):
-    _verify(db, author, second_user)
     _fulfil(db, author, second_user, conflict, capture_source_tag)
     _fulfil(db, author, second_user, conflict, capture_source_tag)
     _fulfil(db, second_user, author, conflict, capture_source_tag)
@@ -192,7 +178,6 @@ def test_the_caps_count_rows_that_may_have_gone_out(
     attempts,
     counted,
 ):
-    _verify(db, author)
     _fulfil(db, author, second_user, conflict, capture_source_tag)
     _fulfil(db, author, second_user, conflict, capture_source_tag)
     first = _deliveries(db, author)[0]
@@ -214,7 +199,6 @@ def test_send_failure_never_breaks_the_action(
         raise email.EmailRejectedError("provider down")
 
     monkeypatch.setattr(email, "send", _down)
-    _verify(db, author)
     _fulfil(db, author, second_user, conflict, capture_source_tag)
 
     notification_delivery.drain(db)
@@ -232,7 +216,6 @@ def test_refusals_retry_after_a_pause_then_fail(
         raise email.EmailRejectedError("422")
 
     monkeypatch.setattr(email, "send", _refuse)
-    _verify(db, author)
     _fulfil(db, author, second_user, conflict, capture_source_tag)
 
     for attempt in range(1, notification_delivery.MAX_ATTEMPTS + 1):
@@ -255,7 +238,6 @@ def test_unknown_outcome_stays_sending_then_goes_stale(
         raise email.EmailSendError("timeout")
 
     monkeypatch.setattr(email, "send", _timeout)
-    _verify(db, author)
     _fulfil(db, author, second_user, conflict, capture_source_tag)
 
     notification_delivery.drain(db)
@@ -273,7 +255,6 @@ def test_unknown_outcome_stays_sending_then_goes_stale(
 def test_a_row_queued_too_long_is_skipped(
     db, author, second_user, conflict, capture_source_tag, outbox, monkeypatch
 ):
-    _verify(db, author)
     _fulfil(db, author, second_user, conflict, capture_source_tag)
     [row] = _deliveries(db, author)
     row.created_at = (
@@ -294,7 +275,6 @@ def test_every_kind_that_can_email_has_copy():
 
 def _two_queued_rows(db, author, second_user, admin_user, conflict, tag) -> None:
     """A request_fulfilled row for ``author``, then a new_follower row for ``second_user``."""
-    _verify(db, author, second_user)
     _fulfil(db, author, second_user, conflict, tag)
     db.add(UserPreferences(user_id=second_user.id, notification_overrides={"new_follower": True}))
     db.commit()
@@ -343,7 +323,6 @@ def test_a_row_that_raises_is_retried_and_the_drain_goes_on(
 def test_a_failed_write_after_a_send_never_requeues_the_row(
     db, author, second_user, conflict, capture_source_tag, monkeypatch, outcome
 ):
-    _verify(db, author)
     _fulfil(db, author, second_user, conflict, capture_source_tag)
     row = notification_delivery._claim_next(db, now=datetime.now(UTC))
     assert row is not None
@@ -361,7 +340,6 @@ def test_a_failed_write_after_a_send_never_requeues_the_row(
 def test_the_one_click_unsubscribe_turns_off_that_kind_by_email_only(
     db, author, second_user, conflict, capture_source_tag, outbox
 ):
-    _verify(db, author)
     _fulfil(db, author, second_user, conflict, capture_source_tag)
     notification_delivery.drain(db)
     [message] = [m for m in outbox if m.to == author.email]

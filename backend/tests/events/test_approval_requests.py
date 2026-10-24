@@ -502,10 +502,6 @@ def test_a_request_emails_the_target_and_a_decline_emails_only_on_opt_in(
 ):
     geo = published_geo(db, author)
     target = make_user(audience="everyone")
-    now = datetime.now(UTC)
-    author.email_verified_at = now
-    target.email_verified_at = now
-    db.commit()
 
     created = _request(geo, author, target).json()
     notification_delivery.drain(db)

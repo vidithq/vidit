@@ -86,7 +86,6 @@ def detections_awaiting_completion(
             *visible_events(),
             User.deleted_at.is_(None),
             User.is_active.is_(True),
-            User.email.isnot(None),
         )
         .group_by(User.id)
         .order_by(func.count(Event.id).desc())

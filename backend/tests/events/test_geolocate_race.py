@@ -36,6 +36,7 @@ from app.models.user import User
 from app.services import evidence_intake
 from app.services.auth import create_access_token, hash_password
 from app.services.auth_cookies import CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE
+from tests._fixtures import fake_sha256
 from tests.conftest import TEST_CSRF_TOKEN, login_as
 from tests.events._helpers import client, proof_file_part, proof_form_field
 
@@ -91,6 +92,7 @@ def _make_requested_with_media(db, *, author):
     db.flush()
     db.add(
         Media(
+            sha256=fake_sha256(),
             event_id=request.id,
             role="source",
             storage_url=f"http://localhost:8000/local-storage/request_uploads/{request.id}/x.jpg",

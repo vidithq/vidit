@@ -523,8 +523,8 @@ def test_a_request_to_a_large_organization_stays_under_the_per_actor_email_cap(
 ):
     """Every member gets the row, and the requester's emails stop at the per-actor cap."""
     monkeypatch.setattr(settings, "notification_email_daily_cap_per_actor", 2)
-    manager = make_user(email_verified_at=datetime.now(UTC))
-    members = [make_user(email_verified_at=datetime.now(UTC)) for _ in range(2)]
+    manager = make_user()
+    members = [make_user() for _ in range(2)]
     org = make_org(managers=[manager], members=members, audience="everyone")
     geo = published_geo(db, author)
     assert _ask(geo, author, org).status_code == 201
@@ -580,7 +580,7 @@ def test_organization_rows_name_the_organization_in_email(
 ):
     sent: list[email.Email] = []
     monkeypatch.setattr(email, "send", sent.append)
-    manager = make_user(email_verified_at=datetime.now(UTC))
+    manager = make_user()
     org = make_org(managers=[manager], audience="everyone")
     geo = published_geo(db, author)
     request_id = _ask(geo, author, org).json()["id"]
@@ -626,7 +626,6 @@ def test_deleting_an_organization_removes_everything_in_its_name(
 ):
     swept: list[list[str]] = []
     monkeypatch.setattr(organizations, "sweep_keys", lambda keys, **_: swept.append(list(keys)))
-    author.email_verified_at = datetime.now(UTC)
     manager, member, invitee, outsider = make_user(), make_user(), make_user(), make_user()
     org = make_org(managers=[manager], members=[member], audience="everyone")
     db.add(OrganizationInvite(organization_id=org.id, user_id=invitee.id, invited_by_id=manager.id))

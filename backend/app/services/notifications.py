@@ -1,9 +1,8 @@
 """Stored notifications: emitting a row, the feed, and per-row read state.
 
 An emitter adds its row to the caller's session and never commits, so the row
-lands in the transaction of the action it reports. When the recipient has a
-verified address and their email switch for the kind is on, a
-``notification_deliveries`` row joins it for the worker to send. An actor who queued
+lands in the transaction of the action it reports. When the recipient's email
+switch for the kind is on, a ``notification_deliveries`` row joins it for the worker to send. An actor who queued
 ``settings.notification_email_daily_cap_per_actor`` emails of the kinds they send straight at
 someone (:data:`ACTOR_CAPPED_KINDS`) in the trailing day queues no more of them: the row still
 reaches the feed. Reads hide a
@@ -101,21 +100,9 @@ def _emit(
     if recipient is None:
         return
     if (
-        has_verified_email(recipient)
-        and (
-            actor_id is None
-            or kind not in ACTOR_CAPPED_KINDS
-            or not _actor_email_capped(db, actor_id)
-        )
-        and email_enabled(db, user_id=recipient_id, kind=kind)
-    ):
+        actor_id is None or kind not in ACTOR_CAPPED_KINDS or not _actor_email_capped(db, actor_id)
+    ) and email_enabled(db, user_id=recipient_id, kind=kind):
         db.add(NotificationDelivery(notification=row))
-
-
-def has_verified_email(user: User) -> bool:
-    """Notification email goes only to a proven address; an older account
-    without the verification stamp gets none."""
-    return user.email is not None and user.email_verified_at is not None
 
 
 def notify_request_fulfilled(db: Session, *, event: Event, fulfiller: User) -> None:

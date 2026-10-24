@@ -426,11 +426,11 @@ def _media_unchanged(stored: list[Media], resolved: list[_ResolvedMedia]) -> boo
     """Whether the row holds exactly the media the detection resolved to.
 
     Compared by ``(role, sha256)`` as a multiset, since S3 keys carry a fresh ``uuid4`` per
-    upload. A row predating ``sha256`` compares unequal and is replaced (the safe direction).
+    upload.
     """
     if len(stored) != len(resolved):
         return False
-    return sorted((m.role, m.sha256 or "") for m in stored) == sorted(
+    return sorted((m.role, m.sha256) for m in stored) == sorted(
         (item.role, item.sha256) for item in resolved
     )
 
@@ -589,9 +589,8 @@ def _rows_with_duplicate_media(db: Session, ids: list[uuid.UUID]) -> set[uuid.UU
         mine.extend(
             (event_id, sha)
             for event_id, sha in db.query(Media.event_id, Media.sha256).filter(
-                Media.event_id.in_(chunk), Media.sha256.isnot(None)
+                Media.event_id.in_(chunk)
             )
-            if sha is not None  # narrowing: the filter above already excludes NULL
         )
     if not mine:
         return set()

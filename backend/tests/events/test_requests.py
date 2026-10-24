@@ -37,7 +37,7 @@ from app.services.events import (
 )
 from app.services.evidence_intake import collect_media_keys
 from app.services.sanitize import extract_image_srcs
-from tests._fixtures import TINY_JPEG
+from tests._fixtures import TINY_JPEG, fake_sha256
 from tests._fixtures import tiny_jpeg as _tiny_jpeg
 from tests.conftest import login_as
 from tests.events._helpers import (
@@ -89,6 +89,7 @@ def _make_request(
     if with_media:
         db.add(
             Media(
+                sha256=fake_sha256(),
                 event_id=request.id,
                 role="source",
                 storage_url=(

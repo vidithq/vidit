@@ -1,8 +1,7 @@
 """End-to-end tests for /auth/forgot-password and /auth/reset-password.
 
 The tests go through the endpoints, where wrong-token and replay safety must
-hold; the purpose match is the one case pinned at the service level, since the
-CHECK constraint allows a single stored value. The email service is patched
+hold. The email service is patched
 with a recorder to assert the right *Email* went to the right recipient.
 """
 
@@ -17,7 +16,6 @@ from fastapi.testclient import TestClient
 from app.database import SessionLocal
 from app.main import app
 from app.models.auth_token import (
-    PURPOSE_PASSWORD_RESET,
     AuthToken,
 )
 from app.models.user import User
@@ -122,7 +120,6 @@ def test_forgot_password_known_email_mints_token_and_sends(
         db.query(AuthToken)
         .filter(
             AuthToken.user_id == user.id,
-            AuthToken.purpose == PURPOSE_PASSWORD_RESET,
             AuthToken.consumed_at.is_(None),
         )
         .all()
@@ -141,7 +138,6 @@ def test_forgot_password_revokes_previously_outstanding_tokens(
         db.query(AuthToken)
         .filter(
             AuthToken.user_id == user.id,
-            AuthToken.purpose == PURPOSE_PASSWORD_RESET,
             AuthToken.consumed_at.is_(None),
         )
         .all()
@@ -150,7 +146,6 @@ def test_forgot_password_revokes_previously_outstanding_tokens(
         db.query(AuthToken)
         .filter(
             AuthToken.user_id == user.id,
-            AuthToken.purpose == PURPOSE_PASSWORD_RESET,
             AuthToken.consumed_at.isnot(None),
         )
         .all()
@@ -280,7 +275,6 @@ def test_reset_password_rejects_expired_token(client, user_factory, db):
     raw = auth_tokens.mint(
         db,
         user_id=user.id,
-        purpose=PURPOSE_PASSWORD_RESET,
         ttl_minutes=15,
     )
     db.commit()
@@ -294,25 +288,6 @@ def test_reset_password_rejects_expired_token(client, user_factory, db):
         json={"token": raw, "new_password": "newpassword2"},
     )
     assert response.status_code == 400
-
-
-def test_consume_rejects_a_token_minted_for_another_purpose(user_factory, db):
-    """``consume`` must match on ``purpose``, not on the token hash alone.
-
-    Asserted from the consume side: the CHECK constraint allows one stored purpose.
-    """
-    user, _ = user_factory()
-    raw = auth_tokens.mint(
-        db,
-        user_id=user.id,
-        purpose=PURPOSE_PASSWORD_RESET,
-        ttl_minutes=60,
-    )
-    db.commit()
-
-    assert auth_tokens.consume(db, raw, "email_verification") is None
-    # Still live: a mismatched purpose must not burn the token either.
-    assert auth_tokens.consume(db, raw, PURPOSE_PASSWORD_RESET) is not None
 
 
 # ── Race-safety regression ────────────────────────────────────────────────
@@ -334,7 +309,6 @@ def test_consume_atomic_under_parallel_use(user_factory):
         raw = auth_tokens.mint(
             minting_session,
             user_id=user.id,
-            purpose=PURPOSE_PASSWORD_RESET,
             ttl_minutes=15,
         )
         minting_session.commit()
@@ -349,7 +323,7 @@ def test_consume_atomic_under_parallel_use(user_factory):
         session = SessionLocal()
         try:
             barrier.wait(timeout=2)
-            row = auth_tokens.consume(session, raw, PURPOSE_PASSWORD_RESET)
+            row = auth_tokens.consume(session, raw)
             session.commit()
             results.append(row)
         except BaseException as exc:  # noqa: BLE001
@@ -370,16 +344,3 @@ def test_consume_atomic_under_parallel_use(user_factory):
         f"exactly one consume() must succeed; got {len(winners)} successes "
         f"out of {len(results)} attempts"
     )
-
-
-def test_credential_less_account_cannot_log_in(client, user_factory):
-    """A profile with no password never authenticates: 401, not a crash on the NULL hash."""
-    user, _ = user_factory(password=None)
-    assert user.password_hash is None
-
-    response = client.post(
-        "/api/v1/auth/login",
-        json={"email": user.email, "password": "anything-at-all"},
-    )
-
-    assert response.status_code == 401

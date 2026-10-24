@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient
 from app.config import settings
 from app.database import SessionLocal
 from app.main import app
-from app.models.auth_token import PURPOSE_PASSWORD_RESET, AuthToken
+from app.models.auth_token import AuthToken
 from app.models.user import User
 from app.routers import auth as auth_router
 from app.services import auth as auth_service
@@ -185,7 +185,6 @@ def _mint_reset_token(db, user: User) -> str:
     raw = auth_tokens.mint(
         db,
         user_id=user.id,
-        purpose=PURPOSE_PASSWORD_RESET,
         ttl_minutes=settings.password_reset_token_minutes,
     )
     db.commit()
@@ -227,7 +226,7 @@ def test_reset_password_rejects_soft_deleted_user_with_live_token(client, user_f
     db.expire_all()
     row = (
         db.query(AuthToken)
-        .filter(AuthToken.user_id == user.id, AuthToken.purpose == PURPOSE_PASSWORD_RESET)
+        .filter(AuthToken.user_id == user.id)
         .order_by(AuthToken.created_at.desc())
         .first()
     )

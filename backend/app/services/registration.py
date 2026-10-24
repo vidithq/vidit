@@ -323,7 +323,6 @@ def confirm_pending_registration(db: Session, raw_token: str) -> User:
         username=claimed_username,
         email=claimed_email,
         password_hash=claimed_password_hash,
-        email_verified_at=now,
     )
     db.add(user)
     try:

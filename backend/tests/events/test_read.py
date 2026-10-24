@@ -16,6 +16,7 @@ from app.models.conflict import Conflict
 from app.models.event import STATUS_DETECTED, STATUS_REQUESTED, Event
 from app.models.tag import Tag
 from app.services.event_filters import parse_bbox
+from tests._fixtures import fake_sha256
 from tests.events._helpers import WORLD_BBOX, _make_geo, client
 
 # The parsed twin of ``WORLD_BBOX``, which the cache-key builder keys on.
@@ -458,7 +459,13 @@ def test_points_filters_media(db, author):
     plain = _make_geo(db, author=author, lat=40.0, lng=40.0)
     with_video = _make_geo(db, author=author, lat=41.0, lng=41.0)
     db.add(
-        Media(event_id=with_video.id, role="source", storage_url="s3://x/v.mp4", media_type="video")
+        Media(
+            sha256=fake_sha256(),
+            event_id=with_video.id,
+            role="source",
+            storage_url="s3://x/v.mp4",
+            media_type="video",
+        )
     )
     db.commit()
 

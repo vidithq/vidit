@@ -15,7 +15,7 @@ from fastapi import UploadFile
 
 from app.models.event import STATUS_DETECTED, Event
 from app.models.media import Media
-from tests._fixtures import TINY_JPEG
+from tests._fixtures import TINY_JPEG, fake_sha256
 from tests.conftest import login_as
 from tests.events._helpers import (
     _make_geo,
@@ -178,6 +178,7 @@ def test_geolocate_drops_stale_proof_media(db, author, conflict, capture_source_
     """A proof image the incoming proof no longer references is deleted (row and S3 object)."""
     geo = _detected(db, author, with_media=True)
     stale = Media(
+        sha256=fake_sha256(),
         event_id=geo.id,
         role="proof",
         storage_url="http://localhost:8000/local-storage/proof/u/stale.jpg",
@@ -220,7 +221,15 @@ async def test_second_source_insert_races_to_409_not_500(db, author, tmp_path, m
     geo = _detected(db, author)  # born media-less: the count check saw zero
     # The competing writer's source row is already committed.
     winner_url = "http://localhost:8000/local-storage/uploads/w/winner.jpg"
-    db.add(Media(event_id=geo.id, role="source", storage_url=winner_url, media_type="image"))
+    db.add(
+        Media(
+            sha256=fake_sha256(),
+            event_id=geo.id,
+            role="source",
+            storage_url=winner_url,
+            media_type="image",
+        )
+    )
     db.commit()
 
     loser = UploadFile(

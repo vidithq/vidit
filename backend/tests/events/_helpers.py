@@ -25,7 +25,7 @@ from app.models.notification import NotificationDelivery
 from app.models.tag import Tag
 from app.models.user import User
 from app.services.events import build_source_link_rows
-from tests._fixtures import TINY_JPEG
+from tests._fixtures import TINY_JPEG, fake_sha256
 from tests.conftest import login_as
 
 client = TestClient(app)
@@ -120,7 +120,13 @@ def _make_geo(
         from app.models.media import Media
 
         db.add(
-            Media(event_id=geo.id, role="source", storage_url="s3://x/m.jpg", media_type="image")
+            Media(
+                sha256=fake_sha256(),
+                event_id=geo.id,
+                role="source",
+                storage_url="s3://x/m.jpg",
+                media_type="image",
+            )
         )
     db.commit()
     db.refresh(geo)
