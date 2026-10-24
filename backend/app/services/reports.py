@@ -307,10 +307,15 @@ def list_reports(db: Session, *, page: int, per_page: int) -> tuple[list[Content
 
 
 def _mark_graphic(db: Session, *, event: Event, actor_id: uuid.UUID, graphic: bool) -> bool:
-    """Set or clear the graphic flag. Returns whether it changed (a no-op writes no audit row)."""
-    if event.is_graphic == graphic:
+    """Set or clear the graphic flag on every source of the event.
+
+    Returns whether a source changed (a no-op writes no audit row).
+    """
+    moved = [source for source in event.sources if source.is_graphic != graphic]
+    if not moved:
         return False
-    event.is_graphic = graphic
+    for source in moved:
+        source.is_graphic = graphic
     log_admin_event(
         db,
         actor_id=actor_id,

@@ -61,9 +61,8 @@ pending_registrations_deleted  # schemas/admin.py
 analysts_notified  # schemas/admin.py AdminMaintenanceResponse
 detections_pending  # schemas/admin.py AdminMaintenanceResponse
 digest_send_failures  # schemas/admin.py AdminMaintenanceResponse
-archived_source  # schemas/event.py EventRead
-archived_secondary_sources  # schemas/event.py EventRead
-archived_detected_from  # schemas/event.py EventRead
+source_urls  # schemas/event.py PossibleDuplicateRead + schemas/search.py SearchRequestHit
+event_title  # schemas/source.py SourcePickRead
 machine_total  # schemas/admin.py AdminDetectionStatsRead
 machine_rejected  # schemas/admin.py AdminDetectionStatsRead
 reject_rate  # schemas/admin.py AdminDetectionStatsRead
@@ -97,7 +96,7 @@ geolocated_count  # schemas/user.py UserStatsRead (wire field)
 detected_count  # schemas/user.py UserStatsRead
 total_events  # schemas/user.py UserStatsRead
 top_conflicts  # schemas/user.py UserStatsRead
-capture_sources  # schemas/user.py UserStatsRead
+sensors  # schemas/user.py UserStatsRead
 activity  # schemas/user.py UserStatsRead
 source_hosts  # schemas/user.py UserStatsRead
 other_hosts_count  # schemas/user.py UserStatsRead
@@ -129,3 +128,5 @@ _body  # main.py enforce_request_body_size
 # The SQL half of ``Event.is_machine_detection``, bound by the
 # ``@is_machine_detection.inplace.expression`` decorator.
 _is_machine_detection_expression  # models/event.py Event
+# The SQL half of ``Event.is_graphic``, bound the same way.
+_is_graphic_expression  # models/event.py Event

@@ -28,7 +28,9 @@ from app.routers import (
     organizations,
     search,
     social,
+    sources,
     tags,
+    uploads,
     users,
     webhooks,
 )
@@ -223,7 +225,9 @@ app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["
 app.include_router(organizations.router, prefix="/api/v1/organizations", tags=["organizations"])
 app.include_router(search.router, prefix="/api/v1/search", tags=["search"])
 app.include_router(social.router, prefix="/api/v1", tags=["social"])
+app.include_router(sources.router, prefix="/api/v1/sources", tags=["sources"])
 app.include_router(tags.router, prefix="/api/v1/tags", tags=["tags"])
+app.include_router(uploads.router, prefix="/api/v1/uploads", tags=["uploads"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
 app.include_router(webhooks.router, prefix="/api/v1/webhooks", tags=["webhooks"])
 

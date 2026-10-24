@@ -302,8 +302,3 @@ def html_text(html: str) -> str:
 def extract_image_srcs(html: str) -> list[str]:
     """Image srcs of a rich-text body, in document order, deduped."""
     return list(dict.fromkeys(_Reader(html).urls["img"]))
-
-
-def extract_link_hrefs(html: str) -> list[str]:
-    """Link hrefs of a rich-text body, in document order."""
-    return _Reader(html).urls["a"]

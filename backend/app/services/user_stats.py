@@ -10,13 +10,13 @@ import uuid
 from collections import Counter
 from datetime import date
 
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.conflict import Conflict, event_conflicts
 from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event
 from app.models.media import Media
-from app.models.tag import Tag, event_tags
+from app.models.source import Source, SourceLink, source_order
 from app.schemas.user import ActivityBucket, TagCount, UserStatsRead
 from app.services.event_filters import credited_to, visible_events
 from app.services.sanitize import normalised_host
@@ -29,7 +29,7 @@ COUNTED_STATUSES = (STATUS_GEOLOCATED, STATUS_DETECTED)
 # per cell). Older years drop out of the grid but still count elsewhere.
 MAX_ACTIVITY_YEARS = 10
 
-# One ceiling for the conflicts, capture sources, and source hosts lists.
+# One ceiling for the conflicts, sensors, and source hosts lists.
 TOP_N = 5
 
 
@@ -65,9 +65,11 @@ def get_user_stats(db: Session, *, user_id: uuid.UUID) -> UserStatsRead:
     geolocated = by_status.get(STATUS_GEOLOCATED, 0)
     detected = by_status.get(STATUS_DETECTED, 0)
 
+    # Proof images and sources' files alike.
     media_count = (
         db.query(func.count(Media.id))
-        .join(Event, Media.event_id == Event.id)
+        .outerjoin(Source, Source.id == Media.source_id)
+        .join(Event, Event.id == func.coalesce(Media.event_id, Source.event_id))
         .filter(*live)
         .scalar()
         or 0
@@ -84,26 +86,42 @@ def get_user_stats(db: Session, *, user_id: uuid.UUID) -> UserStatsRead:
         .all()
     )
 
-    capture_rows = (
-        db.query(Tag.name, func.count(Event.id).label("cnt"))
-        .join(event_tags, event_tags.c.tag_id == Tag.id)
-        .join(Event, Event.id == event_tags.c.event_id)
-        .filter(*live, Tag.category == "capture_source")
-        .group_by(Tag.name)
-        .order_by(func.count(Event.id).desc(), Tag.name)
+    # An event counts once per sensor its sources name.
+    sensor_rows = (
+        db.query(Source.sensor, func.count(func.distinct(Event.id)).label("cnt"))
+        .join(Event, Event.id == Source.event_id)
+        .filter(*live, Source.sensor.isnot(None))
+        .group_by(Source.sensor)
+        .order_by(func.count(func.distinct(Event.id)).desc(), Source.sensor)
         .limit(TOP_N)
         .all()
     )
 
-    # The host is folded in Python (:func:`sanitize.normalised_host`, the one
-    # home for the rule). Grouping on the URL in SQL bounds this loop by
-    # distinct links, not event count, on a public endpoint.
+    # One URL per event, its first source's first link, so the hosts sum to the total. The host
+    # is folded in Python (:func:`sanitize.normalised_host`, the one home for the rule).
+    # Grouping on the URL in SQL bounds this loop by distinct links, not event count, on a
+    # public endpoint.
+    first_link = (
+        select(Source.event_id.label("event_id"), SourceLink.url.label("url"))
+        .join(SourceLink, SourceLink.source_id == Source.id)
+        .distinct(Source.event_id)
+        .order_by(
+            Source.event_id,
+            *source_order(),
+            SourceLink.posted_at.asc().nulls_last(),
+            SourceLink.created_at,
+            SourceLink.id,
+        )
+        .subquery()
+    )
     tally: Counter[str] = Counter()
     no_source_count = 0
     url_rows = (
-        db.query(Event.source_url, func.count(Event.id))
+        db.query(first_link.c.url, func.count(Event.id))
+        .select_from(Event)
+        .outerjoin(first_link, first_link.c.event_id == Event.id)
         .filter(*live)
-        .group_by(Event.source_url)
+        .group_by(first_link.c.url)
         .all()
     )
     for url, url_count in url_rows:
@@ -139,7 +157,7 @@ def get_user_stats(db: Session, *, user_id: uuid.UUID) -> UserStatsRead:
         total_events=geolocated + detected,
         media_count=media_count,
         top_conflicts=[TagCount(name=name, count=count) for name, count in conflict_rows],
-        capture_sources=[TagCount(name=name, count=count) for name, count in capture_rows],
+        sensors=[TagCount(name=sensor, count=count) for sensor, count in sensor_rows],
         source_hosts=[TagCount(name=host, count=count) for host, count in source_hosts],
         other_hosts_count=other_hosts_count,
         no_source_count=no_source_count,

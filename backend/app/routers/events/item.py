@@ -27,26 +27,22 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.dependencies import get_current_user, get_current_user_optional, get_db
 from app.models.content_report import ContentReport
-from app.models.event import (
-    SOURCE_URL_MAX_LENGTH,
-    TITLE_MAX_LENGTH,
-    Event,
-)
+from app.models.event import TITLE_MAX_LENGTH, Event
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
 from app.routers._errors import raise_typed_error
 from app.routers._forms import (
-    parse_iso_datetime,
     parse_json_id_list,
     parse_optional_iso_date,
-    parse_optional_iso_datetime,
     parse_optional_iso_time,
 )
 from app.routers.events._common import (
-    SecondarySourceUrl,
+    SOURCE_LOAD,
+    SOURCES_FIELD_DESCRIPTION,
     _raise_event_error,
     build_event_read,
     build_version_read,
+    parse_sources,
     raise_archive_error,
     raise_version_error,
     resolve_live_event,
@@ -74,7 +70,7 @@ from app.services.pagination import (
     paged,
 )
 from app.services.source_archive import SnapshotRejected
-from app.services.thumbnails import thumbnail_media_criteria
+from app.services.thumbnails import thumbnail_loads
 
 router = APIRouter()
 
@@ -82,31 +78,21 @@ router = APIRouter()
 _DETAIL_LOADS = (
     joinedload(Event.owner),
     joinedload(Event.requested_by),
-    selectinload(Event.media.and_(thumbnail_media_criteria())),
+    *thumbnail_loads(),
     selectinload(Event.tags),
     selectinload(Event.conflicts),
     CREDIT_LOAD,
-    # ``build_event_read`` reads this set; without it, a lazy query per event.
-    selectinload(Event.archives),
-    selectinload(Event.source_links),
+    # ``build_event_read`` reads these; without them, a lazy query per event.
+    SOURCE_LOAD,
     selectinload(Event.detection),
 )
 
 
 def _serialize_event(db: Session, geo: Event) -> EventRead:
-    """Build the read model for a just-mutated row, re-projecting the points
+    """Build the read model for a just-mutated row, re-projecting the point
     the way ``GET /{id}`` does so the shapes match."""
-    lat, lng, capture_lat, capture_lng = (
-        db.query(
-            ST_Y(Event.coords),
-            ST_X(Event.coords),
-            ST_Y(Event.capture_source_coords),
-            ST_X(Event.capture_source_coords),
-        )
-        .filter(Event.id == geo.id)
-        .one()
-    )
-    return build_event_read(geo, lat=lat, lng=lng, capture_lat=capture_lat, capture_lng=capture_lng)
+    lat, lng = db.query(ST_Y(Event.coords), ST_X(Event.coords)).filter(Event.id == geo.id).one()
+    return build_event_read(geo, lat=lat, lng=lng)
 
 
 # Ahead of the ``/{geolocation_id}`` reads: the extra path segment means the
@@ -166,8 +152,6 @@ def get_event(
             Event,
             ST_Y(Event.coords).label("lat"),
             ST_X(Event.coords).label("lng"),
-            ST_Y(Event.capture_source_coords).label("capture_lat"),
-            ST_X(Event.capture_source_coords).label("capture_lng"),
         )
         .options(*_DETAIL_LOADS)
         .filter(Event.id == geolocation_id, Event.deleted_at.is_(None))
@@ -178,8 +162,8 @@ def get_event(
     if row is None:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    geo, lat, lng, capture_lat, capture_lng = row
-    read = build_event_read(geo, lat=lat, lng=lng, capture_lat=capture_lat, capture_lng=capture_lng)
+    geo, lat, lng = row
+    read = build_event_read(geo, lat=lat, lng=lng)
     if current_user is not None:
         read.viewer_invite_pending = has_pending_invite(
             db, event_id=geo.id, user_id=current_user.id
@@ -209,68 +193,40 @@ def geolocate_event(
     request: Request,
     geolocation_id: uuid.UUID,
     # Multipart like create: the service writes the whole form and flips to
-    # ``geolocated`` atomically. ``max_length`` uses the shared model constants
-    # so over-length input is rejected before files hit S3.
+    # ``geolocated`` atomically. ``max_length`` uses the shared model constant
+    # so over-length input is rejected before any work.
     title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
     lat: float = Form(...),
     lng: float = Form(...),
-    capture_source_lat: float | None = Form(None),
-    capture_source_lng: float | None = Form(None),
-    source_url: str = Form(..., max_length=SOURCE_URL_MAX_LENGTH),
-    # Archived copy of the stored source URL, checked against what this write stores.
-    source_snapshot_url: str | None = Form(None, max_length=SOURCE_URL_MAX_LENGTH),
-    # Mirrors, repeated per link. The list REPLACES what the row held, even on a
-    # requested fulfilment (no requester protection, see the service docstring).
-    secondary_source_urls: list[SecondarySourceUrl] = Form([]),
-    # Archived copy of each mirror, aligned by position with the list above and
-    # blank where not archived: the client posts one entry per mirror so
-    # ``pair_secondary_snapshots`` can key them before normalization drops rows.
-    secondary_snapshot_urls: list[SecondarySourceUrl] = Form([]),
     # Optional like create; NULL reads as "Unknown".
     occurred_date: str | None = Form(None),
     occurred_time: str | None = Form(None),
-    source_posted_at: str = Form(...),
     proof: str | None = Form(None),
     tag_ids: str | None = Form(None),
     conflict_ids: str | None = Form(None),
-    # Graphic-content declaration. Ratchets: omitting it keeps an existing
-    # flag; only the admin moderation endpoint clears one.
-    is_graphic: bool = Form(False),
-    # Ids of media to drop (JSON array). A replacement source rides in
-    # ``files``; new inline proof images in ``proof_files``.
-    remove_media_ids: str | None = Form(None),
-    files: list[UploadFile] | None = File(None),
+    sources: str = Form(..., description=SOURCES_FIELD_DESCRIPTION),
+    # New inline proof images, matched to ``placeholder://`` srcs.
     proof_files: list[UploadFile] | None = File(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Give an event a vouched location: ``requested`` | ``detected`` → ``geolocated``.
 
-    The caller posts the whole form (title, coordinates, source URL, dates,
-    graphic flag, proof + images, tags, source media via ``files`` /
-    ``remove_media_ids``). On success the row is published as ``geolocated`` and
-    the caller is credited as a geolocator; later corrections go through
-    ``save_version``. A detection is owner-only (403 otherwise); a ``requested``
-    event is answerable by anyone and the fulfiller becomes its owner
-    (``requested_by`` keeps the poster). Blocked (400) until the evidence floor
-    is met (one source media, a proof image, a conflict, the ``capture_source``
-    tag). Other statuses 409; soft-deleted 404.
-
-    ``source_snapshot_url`` and ``secondary_snapshot_urls`` record archived
-    copies in the same write, on the checks every archived-copy field runs (a
-    paste that is not a snapshot of its link is a 400 and nothing is written).
-    Changing the source URL without pasting a new snapshot leaves no archived
-    source rather than the old one's copy.
+    The caller posts the whole form (title, coordinates, dates, proof + images, tags,
+    conflicts, sources). On success the row is published as ``geolocated`` and the caller is
+    credited as a geolocator; later corrections go through ``save_version``. A detection is
+    owner-only (403 otherwise); a ``requested`` event is answerable by anyone and the
+    fulfiller becomes its owner (``requested_by`` keeps the poster) and may correct its
+    sources. Blocked (400) until the floor is met (a direct or indirect source with its file,
+    a sensor on every file, a proof image, a conflict). Other statuses 409; soft-deleted 404.
     """
-    files = files or []
+    parsed_sources = parse_sources(sources)
     proof_files = proof_files or []
     parsed_occurred_date = parse_optional_iso_date(occurred_date, field="occurred_date")
     parsed_occurred_time = parse_optional_iso_time(occurred_time, field="occurred_time")
-    parsed_source_posted_at = parse_iso_datetime(source_posted_at, field="source_posted_at")
     proof_data = proof or None
-    parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids", as_uuid=True)
-    parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids", as_uuid=True)
-    parsed_remove_ids = parse_json_id_list(remove_media_ids, field="remove_media_ids")
+    parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids")
+    parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids")
 
     # The service enforces per-status ownership under a row lock.
     geo = resolve_live_event(db, geolocation_id)
@@ -283,21 +239,12 @@ def geolocate_event(
                 title=title,
                 lat=lat,
                 lng=lng,
-                capture_source_lat=capture_source_lat,
-                capture_source_lng=capture_source_lng,
-                source_url=source_url,
-                source_snapshot_url=source_snapshot_url,
-                secondary_source_urls=secondary_source_urls,
-                secondary_snapshot_urls=secondary_snapshot_urls,
                 occurred_date=parsed_occurred_date,
                 occurred_time=parsed_occurred_time,
-                source_posted_at=parsed_source_posted_at,
                 proof_data=proof_data,
                 tag_ids=parsed_tag_ids,
                 conflict_ids=parsed_conflict_ids,
-                is_graphic=is_graphic,
-                remove_media_ids=parsed_remove_ids,
-                files=files,
+                sources=parsed_sources,
                 proof_files=proof_files,
             )
         )
@@ -313,31 +260,17 @@ def geolocate_event(
 def update_event_request(
     request: Request,
     geolocation_id: uuid.UUID,
-    # Multipart like ``POST /events/requests``: same fields and ceilings. The
-    # source media uses the plural swap pair the published writes take, since
-    # the row already carries a file.
+    # Multipart like ``POST /events/requests``: same fields and ceilings.
     title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
-    source_url: str = Form(..., max_length=SOURCE_URL_MAX_LENGTH),
-    source_snapshot_url: str | None = Form(None, max_length=SOURCE_URL_MAX_LENGTH),
-    secondary_source_urls: list[SecondarySourceUrl] = Form([]),
-    secondary_snapshot_urls: list[SecondarySourceUrl] = Form([]),
     proof: str | None = Form(None),
     # The approximate guess a request may carry: both halves or neither.
     lat: float | None = Form(None),
     lng: float | None = Form(None),
-    capture_source_lat: float | None = Form(None),
-    capture_source_lng: float | None = Form(None),
     occurred_date: str | None = Form(None),
     occurred_time: str | None = Form(None),
-    # Optional: the bot opens requests whose source date it could not read.
-    # Empty or omitted keeps what the row holds (NULL included).
-    source_posted_at: str | None = Form(None),
     tag_ids: str | None = Form(None),
     conflict_ids: str | None = Form(None),
-    is_graphic: bool = Form(False),
-    # Ids of source media to drop (JSON array); the replacement rides in ``files``.
-    remove_media_ids: str | None = Form(None),
-    files: list[UploadFile] | None = File(None),
+    sources: str = Form(..., description=SOURCES_FIELD_DESCRIPTION),
     proof_files: list[UploadFile] | None = File(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -346,30 +279,23 @@ def update_event_request(
 
     No version is filed: a version supersedes a vouched claim, and a request is
     a question. The row keeps its id, ``requested_at``, requester and
-    provenance columns, and moves ``updated_at``. Allowed only while
-    ``requested`` (409 otherwise).
+    provenance, and moves ``updated_at``. Allowed only while ``requested`` (409
+    otherwise).
 
-    Every create-form field is editable, the coordinate guess and camera point
-    included; the curated floor stays unenforced until geolocate. Source media
-    moves on the ``remove_media_ids`` + ``files`` pair under the one-source cap
-    and the row must still carry footage. Soft-deleted rows read as 404.
+    Every create-form field is editable, the coordinate guess included; the
+    publication floor stays unenforced until geolocate, but the row must still
+    hold a direct or indirect source with its file. Soft-deleted rows read as 404.
     """
-    files = files or []
+    parsed_sources = parse_sources(sources)
     proof_files = proof_files or []
     if not title.strip():
         raise HTTPException(status_code=400, detail="title is required")
-    if not source_url.strip():
-        raise HTTPException(status_code=400, detail="source_url is required")
 
     proof_data = proof or None
-    parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids", as_uuid=True)
-    parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids", as_uuid=True)
-    parsed_remove_ids = parse_json_id_list(remove_media_ids, field="remove_media_ids")
+    parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids")
+    parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids")
     parsed_occurred_date = parse_optional_iso_date(occurred_date, field="occurred_date")
     parsed_occurred_time = parse_optional_iso_time(occurred_time, field="occurred_time")
-    parsed_source_posted_at = parse_optional_iso_datetime(
-        source_posted_at, field="source_posted_at"
-    )
 
     # The service re-checks ownership and status under the row lock (race-free).
     geo = resolve_live_event(db, geolocation_id)
@@ -380,23 +306,14 @@ def update_event_request(
                 geo=geo,
                 current_user=current_user,
                 title=title,
-                source_url=source_url,
-                source_snapshot_url=source_snapshot_url,
-                secondary_source_urls=secondary_source_urls,
-                secondary_snapshot_urls=secondary_snapshot_urls,
                 proof_data=proof_data,
                 lat=lat,
                 lng=lng,
-                capture_source_lat=capture_source_lat,
-                capture_source_lng=capture_source_lng,
                 occurred_date=parsed_occurred_date,
                 occurred_time=parsed_occurred_time,
-                source_posted_at=parsed_source_posted_at,
                 tag_ids=parsed_tag_ids,
                 conflict_ids=parsed_conflict_ids,
-                is_graphic=is_graphic,
-                remove_media_ids=parsed_remove_ids,
-                files=files,
+                sources=parsed_sources,
                 proof_files=proof_files,
             )
         )
@@ -417,39 +334,14 @@ def save_event_version(
     title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
     lat: float = Form(...),
     lng: float = Form(...),
-    capture_source_lat: float | None = Form(None),
-    capture_source_lng: float | None = Form(None),
-    # Footage origin, versioned with the rest. Optional here: omitted or empty
-    # keeps the row's value (FastAPI reads empty as absent); whitespace-only is
-    # a 400 since a published row always carries one.
-    source_url: str | None = Form(None, max_length=SOURCE_URL_MAX_LENGTH),
-    # Archived copy of the source URL this write stores.
-    source_snapshot_url: str | None = Form(None, max_length=SOURCE_URL_MAX_LENGTH),
-    # Archived copy of a machine detection's origin post. The provenance link
-    # is immutable; archiving it is not a change. Absent on human submits.
-    detected_from_snapshot_url: str | None = Form(None, max_length=SOURCE_URL_MAX_LENGTH),
-    # Mirrors: the list replaces what the row held. The archived copy of each
-    # rides in ``secondary_snapshot_urls``, index-aligned (one entry per mirror,
-    # blank where none) so a copy never arrives without its link.
-    secondary_source_urls: list[SecondarySourceUrl] = Form([]),
-    secondary_snapshot_urls: list[SecondarySourceUrl] = Form([]),
     occurred_date: str | None = Form(None),
     occurred_time: str | None = Form(None),
-    # Optional: a detection with an unresolved source post time publishes with
-    # NULL, so an edit must be able to leave it NULL. Absent or empty keeps the
-    # row's value; a value replaces it.
-    source_posted_at: str | None = Form(None),
     proof: str | None = Form(None),
     tag_ids: str | None = Form(None),
     conflict_ids: str | None = Form(None),
-    # Ratchets as on geolocate.
-    is_graphic: bool = Form(False),
+    sources: str = Form(..., description=SOURCES_FIELD_DESCRIPTION),
     # The editor's note, stored on the version this edit supersedes.
     note: str | None = Form(None, max_length=VERSION_NOTE_MAX_LENGTH),
-    # Ids of media to drop (JSON array); the filed version keeps the dropped
-    # one renderable.
-    remove_media_ids: str | None = Form(None),
-    files: list[UploadFile] | None = File(None),
     # New inline proof images, matched to ``placeholder://`` srcs.
     proof_files: list[UploadFile] | None = File(None),
     current_user: User = Depends(get_current_user),
@@ -461,26 +353,19 @@ def save_event_version(
     is filed as an ``event_versions`` row and the event moves to the next
     ``version_no``, in one transaction under a row lock.
 
-    The evidence anchor is versioned too: ``source_url`` and the source media
-    (``remove_media_ids`` + ``files``, one-source cap) are editable, and the
-    filed version keeps what it supersedes. The published evidence floor is
-    re-checked on the post-edit state. Soft-deleted rows read as 404.
-
-    Archived copies are recorded here too: ``source_snapshot_url``,
-    ``detected_from_snapshot_url`` and ``secondary_snapshot_urls`` archive a link
-    without changing it and land in the produced version. A save whose only
-    change is a copy is accepted even at the version ceiling.
+    The sources are versioned too: the posted list replaces the stored one and
+    the filed version keeps what it supersedes, files included. The publication
+    floor is re-checked on the post-edit state. A save whose only change is a
+    link's archived copy is accepted even at the version ceiling. Soft-deleted
+    rows read as 404.
     """
+    parsed_sources = parse_sources(sources)
     proof_files = proof_files or []
     parsed_occurred_date = parse_optional_iso_date(occurred_date, field="occurred_date")
     parsed_occurred_time = parse_optional_iso_time(occurred_time, field="occurred_time")
-    parsed_source_posted_at = parse_optional_iso_datetime(
-        source_posted_at, field="source_posted_at"
-    )
     proof_data = proof or None
-    parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids", as_uuid=True)
-    parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids", as_uuid=True)
-    parsed_remove_ids = parse_json_id_list(remove_media_ids, field="remove_media_ids")
+    parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids")
+    parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids")
 
     # The service re-checks ownership and status under the row lock (race-free).
     geo = resolve_live_event(db, geolocation_id)
@@ -493,22 +378,12 @@ def save_event_version(
                 title=title,
                 lat=lat,
                 lng=lng,
-                capture_source_lat=capture_source_lat,
-                capture_source_lng=capture_source_lng,
-                source_url=source_url,
-                source_snapshot_url=source_snapshot_url,
-                detected_from_snapshot_url=detected_from_snapshot_url,
-                secondary_source_urls=secondary_source_urls,
-                secondary_snapshot_urls=secondary_snapshot_urls,
                 occurred_date=parsed_occurred_date,
                 occurred_time=parsed_occurred_time,
-                source_posted_at=parsed_source_posted_at,
                 proof_data=proof_data,
                 tag_ids=parsed_tag_ids,
                 conflict_ids=parsed_conflict_ids,
-                is_graphic=is_graphic,
-                remove_media_ids=parsed_remove_ids,
-                files=files or [],
+                sources=parsed_sources,
                 proof_files=proof_files,
                 note=note,
             )

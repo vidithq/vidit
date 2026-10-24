@@ -74,8 +74,8 @@ class CollectionCoverTile(BaseModel):
     (``models/media.MediaKind``) lets a client pick the element that renders
     it (most source media are clips, and an ``<img>`` on one paints an empty
     band). ``role`` (``models/media.MediaRole``) says whether the picture has
-    display derivatives: only a ``source`` image does
-    (``services/storage.upload_file``); a ``proof`` image has no ``_hero`` /
+    display derivatives: only a source's image does
+    (``services/storage.upload_source_file``); a ``proof`` image has no ``_hero`` /
     ``_thumb`` sibling.
     """
 
@@ -103,8 +103,8 @@ class CollectionRead(BaseModel):
     media. Each tile carries url, kind and role together (see
     :class:`CollectionCoverTile`).
 
-    ``tags`` is the union of the tags of the events the collection may show,
-    ordered by category then name (``services/collections.tags_for``), derived
+    ``tags`` is the union of the tags of the events the collection may show
+    and their sources, ordered by name (``services/collections.tags_for``), derived
     and never stored; empty when nothing is tagged.
     """
 

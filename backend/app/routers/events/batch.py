@@ -1,10 +1,9 @@
 """Batch completion: publish a selection of detections in one call.
 
-A detection arrives with title, coordinates, source and usually proof images;
-what the machine can't supply is the conflict and the capture source. This
-endpoint takes those (conflicts once for the selection, capture source per row)
-and runs each detection through the same evidence floor as
-``POST /events/{id}/geolocate``. Transactions and verdicts are per row.
+A detection arrives with title, coordinates, sources and usually proof images;
+what the machine can't supply is the conflict and the sensor. This endpoint
+takes those (conflicts once for the selection, sensor per row) and runs each
+detection through the same floor as ``POST /events/{id}/geolocate``. Transactions and verdicts are per row.
 """
 
 from fastapi import APIRouter, Depends, Request
@@ -36,11 +35,12 @@ def batch_complete_events(
     """Publish the selected detections: ``detected`` → ``geolocated``.
 
     JSON, not multipart: nothing uploads. The detections keep their imported
-    evidence; the call supplies the conflict set and one ``capture_source`` tag
-    per row.
+    evidence; the call supplies the conflict set and one sensor per row, which
+    goes onto every source that carries a file.
 
     Each row commits on its own: one that fails the floor (no proof image,
-    source media, coordinates or source URL) rolls back alone, stays a
+    coordinates, direct or indirect source file, or a source without a URL)
+    rolls back alone, stays a
     detection and gets its reason in ``rows[]``. Publishing credits the caller
     as geolocator, as the single-row transition does.
 
@@ -53,7 +53,7 @@ def batch_complete_events(
             db,
             current_user=current_user,
             conflict_ids=body.conflict_ids,
-            rows=[(row.event_id, row.capture_source_tag_id) for row in body.rows],
+            rows=[(row.event_id, row.sensor) for row in body.rows],
         )
     except EvidenceIntakeError as exc:
         _raise_event_error(exc)

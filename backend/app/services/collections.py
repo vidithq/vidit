@@ -27,13 +27,14 @@ from datetime import date, datetime, time
 from typing import Any, NamedTuple
 
 from geoalchemy2.functions import ST_X, ST_Y
-from sqlalchemy import ColumnElement, func, select
+from sqlalchemy import ColumnElement, func, select, union
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models.collection import Collection, CollectionEvent
 from app.models.event import Event
 from app.models.media import Media
+from app.models.source import Source, source_tags
 from app.models.tag import Tag, event_tags
 from app.models.user import User
 from app.schemas.collection import (
@@ -48,7 +49,7 @@ from app.services.geolocator_credit import CREDIT_LOAD
 from app.services.pagination import keyset_after
 from app.services.permissions import ensure_owner
 from app.services.sanitize import html_text, sanitize_html
-from app.services.thumbnails import pick_thumbnail, thumbnail_media_criteria
+from app.services.thumbnails import has_thumbnail, thumbnail_candidates, thumbnail_loads
 
 
 class CollectionError(Exception):
@@ -219,32 +220,17 @@ def stats_for(db: Session, collection_ids: Sequence[uuid.UUID]) -> dict[uuid.UUI
 COVER_TILES = 4
 
 
-def _has_thumbnail_media() -> ColumnElement[bool]:
-    """Correlated EXISTS: this event carries media a card may show.
-
-    Keeps text-only items out of the ranking so the mosaic still fills from
-    later ones (:func:`services.thumbnails.thumbnail_media_criteria`).
-    """
-    return (
-        select(1)
-        .select_from(Media)
-        .where(Media.event_id == Event.id, thumbnail_media_criteria())
-        .correlate(Event)
-        .exists()
-    )
-
-
-def _tile_media(rows: Sequence[Media]) -> Media | None:
-    """The media one item contributes to a mosaic, images preferred.
+def _tile_media(event: Event) -> Media | None:
+    """The file one item contributes to a mosaic, images preferred.
 
     :func:`services.thumbnails.pick_thumbnail`, except a tile prefers an image
     over a source clip (a tile never plays). Kept here because every other card
     surface must go on naming the item's own footage.
     """
-    picked = pick_thumbnail(rows)
-    if picked is None or picked.kind == "image":
-        return picked
-    return next((row for row in rows if row.kind == "image"), picked)
+    candidates = thumbnail_candidates(event)
+    if not candidates:
+        return None
+    return next((row for row in candidates if row.kind == "image"), candidates[0])
 
 
 def cover_tiles_for(
@@ -253,10 +239,10 @@ def cover_tiles_for(
     """The mosaic each collection wears, up to :data:`COVER_TILES` tiles.
 
     Walks the collectable items (:func:`services.event_filters.collectable_events`)
-    in chronological order, skips ``is_graphic`` ones (so no reader meets
-    death or injury on a card they did not open, and the walk continues), and
-    takes one tile per item from :func:`_tile_media`. Nothing showable gives an
-    empty list (the card placeholder).
+    in chronological order, skips graphic ones (``Event.is_graphic``, so no
+    reader meets death or injury on a card they did not open, and the walk
+    continues), and takes one tile per item from :func:`_tile_media`. Nothing
+    showable gives an empty list (the card placeholder).
 
     A tile carries ``role`` because proof images have no display derivative
     (``services/storage.upload_proof_image``), so a client reads the original.
@@ -282,8 +268,8 @@ def cover_tiles_for(
         .where(
             CollectionEvent.collection_id.in_(collection_ids),
             collectable_events(),
-            Event.is_graphic.is_(False),
-            _has_thumbnail_media(),
+            ~Event.is_graphic,
+            has_thumbnail(),
         )
         .subquery()
     )
@@ -291,14 +277,14 @@ def cover_tiles_for(
         db.query(ranked.c.collection_id, Event)
         .select_from(ranked)
         .join(Event, Event.id == ranked.c.event_id)
-        .options(selectinload(Event.media.and_(thumbnail_media_criteria())))
+        .options(*thumbnail_loads())
         .filter(ranked.c.rank <= COVER_TILES)
         .order_by(ranked.c.collection_id, ranked.c.rank)
         .all()
     )
     tiles: dict[uuid.UUID, list[CollectionCoverTile]] = {}
     for collection_id, event in rows:
-        media = _tile_media(event.media)
+        media = _tile_media(event)
         if media is None:
             continue
         tiles.setdefault(collection_id, []).append(
@@ -318,21 +304,28 @@ def tags_for(db: Session, collection_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID
     collectable events (:func:`services.event_filters.collectable_events`),
     computed on read and never stored.
 
-    ``DISTINCT`` over (collection, tag) makes it a union, ordered by category
-    then name so cards and the header print the same list. A collection with
-    nothing tagged is absent from the mapping.
+    The tags of an item are its own and its sources'. ``DISTINCT`` over
+    (collection, tag) makes it a union, ordered by name so cards and the
+    header print the same list. A collection with nothing tagged is absent
+    from the mapping.
     """
     if not collection_ids:
         return {}
+    item_tags = union(
+        select(event_tags.c.event_id, event_tags.c.tag_id),
+        select(Source.event_id, source_tags.c.tag_id).join(
+            source_tags, source_tags.c.source_id == Source.id
+        ),
+    ).subquery()
     rows = (
         db.query(CollectionEvent.collection_id, Tag)
         .select_from(CollectionEvent)
         .join(Event, Event.id == CollectionEvent.event_id)
-        .join(event_tags, event_tags.c.event_id == Event.id)
-        .join(Tag, Tag.id == event_tags.c.tag_id)
+        .join(item_tags, item_tags.c.event_id == Event.id)
+        .join(Tag, Tag.id == item_tags.c.tag_id)
         .filter(CollectionEvent.collection_id.in_(collection_ids), collectable_events())
         .distinct()
-        .order_by(CollectionEvent.collection_id, Tag.category, Tag.name)
+        .order_by(CollectionEvent.collection_id, Tag.name)
         .all()
     )
     tags: dict[uuid.UUID, list[TagRead]] = {}
@@ -619,7 +612,7 @@ def list_items(
             joinedload(Event.owner),
             selectinload(Event.tags),
             selectinload(Event.conflicts),
-            selectinload(Event.media.and_(thumbnail_media_criteria())),
+            *thumbnail_loads(),
             CREDIT_LOAD,
         )
         .filter(CollectionEvent.collection_id == collection_id, collectable_events())

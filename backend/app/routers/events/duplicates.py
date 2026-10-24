@@ -13,16 +13,15 @@ from fastapi import (
 from geoalchemy2 import Geography
 from geoalchemy2.functions import ST_X, ST_Y
 from sqlalchemy import ColumnElement, cast, func, or_
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.dependencies import get_current_user, get_db
-from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event, EventSourceLink
+from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event
+from app.models.source import Source, SourceLink
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
-from app.schemas.event import (
-    CoordsRead,
-    PossibleDuplicateRead,
-)
+from app.schemas.event import PossibleDuplicateRead
+from app.schemas.source import CoordsRead
 from app.services.event_filters import visible_events
 
 router = APIRouter()
@@ -87,8 +86,8 @@ def list_possible_duplicates(
     Returns geolocations that might be the same event as the one being
     submitted; never blocks the submit.
 
-    Match rule: within ~500m of (lat, lng) AND (same source host OR same
-    occurred_date). Coordinate-less rows never match. Authenticated-only so the
+    Match rule: within ~500m of (lat, lng) AND (a source URL on the same host
+    OR same occurred_date). ``source_url`` is one URL the form holds. Coordinate-less rows never match. Authenticated-only so the
     proximity probe isn't exposed to anonymous scraping.
 
     A half-typed source URL disables the host leg and an unparseable date the
@@ -123,12 +122,9 @@ def list_possible_duplicates(
     # Annotated because mypy would infer the narrower type from the first append.
     match_clauses: list[ColumnElement[bool]] = []
     if host is not None:
-        # ILIKE substring on the source URL (no URL parser in Postgres). The
+        # ILIKE substring over every source URL (no URL parser in Postgres). The
         # host is whitelisted to LIKE-safe chars in `_extract_host`.
-        match_clauses.append(Event.source_url.ilike(f"%{host}%"))
-        # Same leg over the secondary links: the analyst may paste a mirror an
-        # existing event recorded as secondary.
-        match_clauses.append(Event.source_links.any(EventSourceLink.url.ilike(f"%{host}%")))
+        match_clauses.append(Event.sources.any(Source.links.any(SourceLink.url.ilike(f"%{host}%"))))
     if parsed_date is not None:
         match_clauses.append(Event.occurred_date == parsed_date)
 
@@ -142,7 +138,7 @@ def list_possible_duplicates(
             ST_X(Event.coords).label("lng"),
             distance_m,
         )
-        .options(joinedload(Event.owner))
+        .options(joinedload(Event.owner), selectinload(Event.sources).selectinload(Source.links))
         .filter(*visible_events())
         # Located rows only: a request may carry an approximate guess, so
         # proximity alone would surface it; filter on status like
@@ -161,7 +157,7 @@ def list_possible_duplicates(
             title=geo.title,
             coords=CoordsRead(lat=row_lat, lng=row_lng),
             occurred_date=geo.occurred_date,
-            source_url=geo.source_url,
+            source_urls=[link.url for source in geo.sources for link in source.links],
             distance_m=float(dist),
             owner=geo.owner,
         )

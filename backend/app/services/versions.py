@@ -10,11 +10,10 @@ published row itself.
 Media rows are not versioned, so the shared intake asks here before dropping a
 proof-media row: a row some snapshot displayed stays, object included.
 
-Source media takes the other route: an event carries at most one ``source``
-media (``uq_media_source_per_event``), so a swap deletes the replaced row. The
-snapshot carries the media's whole render shape (:func:`build_snapshot`), only
-the S3 object is held alive, and :func:`referenced_source_media` names those
-objects for the sweeps.
+Source files take the other route: a source an edit drops or re-files goes
+with its row. The snapshot carries each source's whole render shape
+(:func:`build_snapshot`), only the stored object is held alive, and
+:func:`referenced_source_media` names those objects for the sweeps.
 
 :func:`redact_version` blanks a filed row's content, keeping its number. A
 redacted snapshot contributes nothing to either floor above.
@@ -41,6 +40,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.models.conflict import Conflict
 from app.models.event import Event, EventVersion
 from app.models.media import Media
+from app.models.source import Source
 from app.models.tag import Tag
 from app.models.user import User
 from app.schemas.media import MediaRead
@@ -56,21 +56,15 @@ MAX_VERSIONS_PER_EVENT = 100
 # history whole and the cursor walk would never run.
 HISTORY_PAGE_SIZE = 50
 
-# Fields the no-change check reads, as :func:`build_snapshot` stores them. Three
-# of its keys are absent on purpose: ``proof_media`` derives from the proof body;
-# ``archives`` has a stored ``created_at`` a paste cannot state (callers compare
-# through :func:`archived_pairs`); ``source_media`` names stored rows while an
-# incoming swap has no id yet (callers compare the swap itself).
+# Fields the no-change check reads, as :func:`build_snapshot` stores them. Two of
+# its keys are absent on purpose: ``proof_media`` derives from the proof body, and
+# ``sources`` name stored files and archive stamps an incoming write cannot state
+# (callers compare them through ``services/events/sources.comparable``).
 COMPARED_FIELDS: tuple[str, ...] = (
     "title",
-    "source_url",
     "coords",
-    "capture_source_coords",
     "occurred_date",
     "occurred_time",
-    "source_posted_at",
-    "is_graphic",
-    "secondary_source_urls",
     "tags",
     "conflicts",
     "proof",
@@ -100,7 +94,7 @@ def point_shape(value: Any) -> dict[str, float] | None:
 
 def tag_entries(tags: Iterable[Tag]) -> list[dict[str, str]]:
     """Tags as a snapshot stores them. The name stays readable after a rename or delete."""
-    return [{"id": str(t.id), "name": t.name, "category": t.category} for t in tags]
+    return [{"id": str(t.id), "name": t.name} for t in tags]
 
 
 def conflict_entries(conflicts: Iterable[Conflict]) -> list[dict[str, str]]:
@@ -111,15 +105,34 @@ def conflict_entries(conflicts: Iterable[Conflict]) -> list[dict[str, str]]:
 def media_entry(media: Media) -> dict[str, Any]:
     """One media row as a snapshot stores it, serialised through ``MediaRead``.
 
-    Stores the whole row, not a reference: a replaced source media row is
-    deleted. ``mode="json"`` makes the UUID a string for JSONB.
+    Stores the whole row, not a reference: a dropped source's row is deleted.
+    ``mode="json"`` makes the UUID a string for JSONB.
     """
     return MediaRead.model_validate(media).model_dump(mode="json")
 
 
-def archived_pairs(geo: Event) -> dict[str, str]:
-    """Each archived link of the event with the snapshot URL it currently holds."""
-    return {a.original_url: a.snapshot_url for a in geo.archives}
+def source_entry(source: Source) -> dict[str, Any]:
+    """One source as a snapshot stores it: the shape ``schemas/source.SourceRead`` serves,
+    minus the id (a source is re-filed by its content, not its row)."""
+    return {
+        "title": source.title,
+        "level": source.level,
+        "sensor": source.sensor,
+        "captured_at": source.captured_at.isoformat() if source.captured_at else None,
+        "camera_position": point_shape(source.camera_position),
+        "is_graphic": source.is_graphic,
+        "links": [
+            {
+                "url": link.url,
+                "posted_at": link.posted_at.isoformat() if link.posted_at else None,
+                "snapshot_url": link.snapshot_url,
+                "archived_at": link.archived_at.isoformat() if link.archived_at else None,
+            }
+            for link in source.links
+        ],
+        "tags": tag_entries(source.tags),
+        "media": media_entry(source.media) if source.media is not None else None,
+    }
 
 
 def build_snapshot(geo: Event) -> dict[str, Any]:
@@ -129,43 +142,23 @@ def build_snapshot(geo: Event) -> dict[str, Any]:
     field an edit can change is carried, so snapshots plus the live row are a
     complete history.
 
-    ``source_media`` holds at most one entry (matching
-    ``schemas/event.EventRead.media``) with the whole render shape, since a swap
-    deletes the row; the S3 object stays (see :func:`referenced_source_media`).
-    ``proof_media`` lists only images THIS version's proof body references,
-    otherwise it would misreport the version and pin images forever.
-    ``archives`` is sorted by link so a reshuffle does not read as an edit.
+    ``sources`` hold each source with its links, tags and file in the event's
+    order (:func:`source_entry`); a dropped source's object stays (see
+    :func:`referenced_source_media`). ``proof_media`` lists only images THIS
+    version's proof body references, otherwise it would misreport the version
+    and pin images forever.
     """
     displayed = set(extract_image_srcs(geo.proof))
     return {
         "title": geo.title,
-        "source_url": geo.source_url,
-        "source_media": [media_entry(m) for m in geo.media if m.role == "source"],
         "coords": point_shape(geo.coords),
-        "capture_source_coords": point_shape(geo.capture_source_coords),
         "occurred_date": geo.occurred_date.isoformat() if geo.occurred_date is not None else None,
         "occurred_time": geo.occurred_time.isoformat() if geo.occurred_time is not None else None,
-        "source_posted_at": (
-            geo.source_posted_at.isoformat() if geo.source_posted_at is not None else None
-        ),
-        "is_graphic": geo.is_graphic,
-        "secondary_source_urls": [link.url for link in geo.source_links],
+        "sources": [source_entry(source) for source in geo.sources],
         "tags": tag_entries(geo.tags),
         "conflicts": conflict_entries(geo.conflicts),
         "proof": geo.proof,
-        "proof_media": [
-            media_entry(m) for m in geo.media if m.role == "proof" and m.storage_url in displayed
-        ],
-        "archives": [
-            {
-                "original_url": a.original_url,
-                "origin": a.origin,
-                "snapshot_url": a.snapshot_url,
-                "provider": a.provider,
-                "created_at": a.created_at.isoformat(),
-            }
-            for a in sorted(geo.archives, key=lambda a: a.original_url)
-        ],
+        "proof_media": [media_entry(m) for m in geo.media if m.storage_url in displayed],
     }
 
 
@@ -177,8 +170,8 @@ def _ids(entries: Any) -> list[str]:
 def matches_current(current: Mapping[str, Any], proposed: Mapping[str, Any]) -> bool:
     """True when every versioned field of ``proposed`` equals the stored one's.
 
-    Both arguments are snapshots from :func:`build_snapshot`. Archived copies
-    are the caller's own leg (:func:`archived_pairs`).
+    Both arguments are snapshots from :func:`build_snapshot`. Sources are the
+    caller's own leg (``services/events/sources.comparable``).
 
     Tags and conflicts compare as sets of ids, so ordering or a rename is not a
     change. Run it under the caller's lock before anything is staged, so a
@@ -240,7 +233,7 @@ def file_version(
 
 
 def _media_entries(fragment: Any) -> list[dict[str, Any]]:
-    """One snapshot's ``proof_media`` / ``source_media`` value, defensively.
+    """One snapshot's media list, defensively.
 
     A redacted snapshot is ``{}`` and older versions may lack the key, so
     anything but a list of objects reads as no entries. A text round-trip is
@@ -254,9 +247,13 @@ def _media_entries(fragment: Any) -> list[dict[str, Any]]:
     return [entry for entry in fragment if isinstance(entry, dict)]
 
 
-def media_fragment(snapshot: Mapping[str, Any], key: str) -> list[dict[str, Any]]:
-    """That media fragment of one already-read snapshot (single-row :func:`_fragments`)."""
-    return _media_entries(snapshot.get(key))
+def source_media_of(snapshot: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The files of one already-read snapshot's sources."""
+    return [
+        source["media"]
+        for source in _media_entries(snapshot.get("sources"))
+        if isinstance(source.get("media"), dict)
+    ]
 
 
 def _fragments(db: Session, event_id: uuid.UUID, key: str) -> list[dict[str, Any]]:
@@ -289,12 +286,16 @@ def referenced_media_urls(db: Session, event_id: uuid.UUID) -> set[str]:
 
 
 def referenced_source_media(db: Session, event_id: uuid.UUID) -> list[dict[str, Any]]:
-    """Every source media this event's readable snapshots render.
+    """Every source file this event's readable snapshots render.
 
-    Returns entries, not URLs: a swap deletes the row, so the S3 key (derivatives
-    included) resolves from the snapshot alone. Sweeps ask here first.
+    Returns entries, not URLs: a dropped source deletes the row, so the storage key
+    (derivatives included) resolves from the snapshot alone. Sweeps ask here first.
     """
-    return _fragments(db, event_id, "source_media")
+    return [
+        source["media"]
+        for source in _fragments(db, event_id, "sources")
+        if isinstance(source.get("media"), dict)
+    ]
 
 
 def count_versions(db: Session, event_id: uuid.UUID) -> int:

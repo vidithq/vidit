@@ -33,26 +33,70 @@ class InvalidProofError(EventError):
     code = "invalid_proof"
 
 
-class TagRequirementsError(EventError):
-    code = "tag_requirements_not_met"
+class ConflictRequiredError(EventError):
+    """A publication names no conflict. Maps to 400."""
+
+    code = "conflict_required"
 
 
 class ProofImageRequiredError(EventError):
     code = "proof_image_required"
 
 
-class SourceUrlRequiredError(EventError):
-    """The geolocate promotion requires a source URL, as ``ck_events_source_url_status``
-    pins in the DB (a detection may be born without one). Maps to 400."""
+class SourceRequiredError(EventError):
+    """The event holds no ``direct`` or ``indirect`` source; ``context`` sources alone do not
+    support it. Maps to 400."""
 
-    code = "source_url_required"
+    code = "source_required"
+
+
+class SourceFileRequiredError(EventError):
+    """No ``direct`` or ``indirect`` source carries a file. Maps to 400."""
+
+    code = "source_file_required"
+
+
+class SourceLinkRequiredError(EventError):
+    """A source carries no URL. Maps to 400."""
+
+    code = "source_link_required"
+
+
+class SensorRequiredError(EventError):
+    """A source with a file names no sensor at publication. Maps to 400."""
+
+    code = "sensor_required"
+
+
+class InvalidSourceUrlError(EventError):
+    """A source URL is not an ``http(s)`` link with a host. Maps to 400."""
+
+    code = "invalid_source_url"
+
+
+class TooManySourcesError(EventError):
+    """More than ``models/source.MAX_SOURCES_PER_EVENT`` sources. Maps to 400."""
+
+    code = "too_many_sources"
 
 
 class TooManySourceLinksError(EventError):
-    """More than :data:`MAX_SECONDARY_SOURCE_LINKS` links, counted after
-    normalization. Maps to 400."""
+    """More than ``models/source.MAX_LINKS_PER_SOURCE`` URLs on one source, counted after
+    blanks and repeats are dropped. Maps to 400."""
 
     code = "too_many_source_links"
+
+
+class SourceNotFoundError(EventError):
+    """A source's ``id`` names no source of this event, or appears twice. Maps to 400."""
+
+    code = "source_not_found"
+
+
+class SourceMediaNotFoundError(EventError):
+    """A source's ``media_id`` names no file of a readable source. Maps to 400."""
+
+    code = "source_media_not_found"
 
 
 class EventNotFoundError(EventError):

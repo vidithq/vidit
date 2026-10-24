@@ -10,10 +10,11 @@ from app.models.event import (
     DetectedVia,
     EventStatus,
 )
-from app.models.source_archive import SourceArchiveProvider
+from app.models.source import Sensor
 from app.schemas import UsernameRef
 from app.schemas.conflict import ConflictRead
 from app.schemas.media import MediaRead
+from app.schemas.source import CoordsRead, SourceRead
 from app.schemas.tag import TagRead
 from app.schemas.user import AuthorRef
 
@@ -74,29 +75,6 @@ class ArchiveImportJobRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class CoordsRead(BaseModel):
-    """One WGS84 point on the wire, nested so a payload can carry two points."""
-
-    lat: float
-    lng: float
-
-
-class ArchivedLinkRead(BaseModel):
-    """One link's archived copy: where it lives, and who holds it.
-
-    ``null`` on the carrying field means no copy is recorded. An object so the
-    read surface can pick an icon from ``provider``.
-    """
-
-    model_config = ConfigDict(from_attributes=True)
-
-    # The snapshot URL (provider and path shape checked by
-    # ``services/source_archive.validate_snapshot``).
-    url: str
-    # Inferred from the snapshot's host at write time.
-    provider: SourceArchiveProvider
-
-
 # Boundary cap on the note attached to a version (the column is unbounded
 # ``Text``), so an over-long note is a 422.
 VERSION_NOTE_MAX_LENGTH = 280
@@ -107,9 +85,9 @@ class EventVersionRead(BaseModel):
 
     ``version_no`` is the version this row holds: an event at version 3
     answers with snapshots 2 and 1. ``snapshot`` carries the editable fields as
-    they stood (``services/versions.build_snapshot``), including the evidence
-    anchor and the source media as the shape ``EventRead`` serves, since the
-    row itself is gone after a correction.
+    they stood (``services/versions.build_snapshot``), including each source
+    with its links, tags and file as the shape ``SourceRead`` serves, since a
+    source an edit drops is gone with its row.
     """
 
     id: uuid.UUID
@@ -160,16 +138,16 @@ MAX_COMPLETION_CONFLICTS = 10
 
 
 class BatchCompletionRowCreate(BaseModel):
-    """One detection in a batch completion and its chosen capture source."""
+    """One detection in a batch completion and the sensor of its sources' files."""
 
     event_id: uuid.UUID
-    capture_source_tag_id: uuid.UUID
+    sensor: Sensor
 
 
 class BatchCompletionCreate(BaseModel):
     """Body of ``POST /events/batch-complete``.
 
-    One conflict set for the whole selection; the capture source varies per row.
+    One conflict set for the whole selection; the sensor varies per row.
     """
 
     conflict_ids: list[uuid.UUID] = Field(min_length=1, max_length=MAX_COMPLETION_CONFLICTS)
@@ -218,37 +196,20 @@ class EventRead(BaseModel):
     # ``geolocated`` row. Required-nullable: ``build_event_read`` always passes
     # it, so the key is always serialised.
     coords: CoordsRead | None
-    # Where the footage was shot from.
-    capture_source_coords: CoordsRead | None
-    # NULL only on a machine detection; ``requested`` / ``geolocated`` rows
-    # always carry one (``ck_events_source_url_status``). Required-nullable.
-    source_url: str | None
-    # The archived copy of ``source_url``, the fallback once the original dies.
-    # NULL until the owner pastes one back. Required-nullable.
-    archived_source: ArchivedLinkRead | None
-    # Mirrors of the same media on other networks, in submitted order. Not the
-    # evidence anchor: a submitter replaces the whole list at geolocate and at
-    # every later correction.
-    secondary_source_urls: list[str]
-    # Archived copies of ``secondary_source_urls``: same length and order,
-    # entry ``i`` covers mirror ``i``, NULL like ``archived_source``.
-    archived_secondary_sources: list[ArchivedLinkRead | None]
+    # In their derived order: level, then capture time (``models/source.source_order``).
+    sources: list[SourceRead]
     # Sanitised HTML (``services/sanitize.sanitize_html``).
     proof: str | None
     occurred_date: date | None
     # UTC; NULL when the hour is unknown.
     occurred_time: time | None
-    # When the original source posted the media (UTC). NULL when unknown.
-    # Distinct from ``occurred_date`` and ``created_at``. Required-nullable.
-    source_posted_at: datetime | None
     created_at: datetime
     # When the row became ``geolocated``: the date credited to version 1 on the
     # version pages. NULL until publication.
     geolocated_at: datetime | None
     # NULL until the event is closed.
     closed_at: datetime | None
-    # Footage shows death, injury or human remains (author-set, admin
-    # overridable). Plain ``bool``: the column is NOT NULL.
+    # Whether any source is graphic (``Source.is_graphic``); derived, never stored.
     is_graphic: bool
     # See ``models.event.STATUS_*``.
     status: EventStatus
@@ -259,21 +220,17 @@ class EventRead(BaseModel):
     close_reason: str | None
     # Drives the badge and requested-view routing. NULL while open.
     before_closed_status: BeforeClosedStatus | None
-    # The post a machine detection was imported from (not the footage origin).
-    # NULL for human submits.
+    # The post a machine detection was imported from (not a source). NULL for
+    # human submits.
     detected_from_url: str | None
     # Ingest entry that produced the detection. Read-only, never moved by a
     # re-import. NULL for human submits and older machine rows.
     detected_via: DetectedVia | None
-    # Archived copy of ``detected_from_url``, same terms as ``archived_source``.
-    archived_detected_from: ArchivedLinkRead | None
     owner: AuthorRef
     # Who opened the request, kept across fulfilment. NULL for a direct geolocation.
     requested_by: AuthorRef | None
     # Durable geolocation credit, oldest first. Empty until ``geolocated``.
     geolocators: list[AuthorRef]
-    # ONLY ``source`` rows: proof images travel inside the proof HTML.
-    media: list[MediaRead]
     # Card / preview thumbnail (``services.thumbnails`` owns the pick rule), so
     # a preview needn't re-derive it client-side.
     thumbnail: MediaRead | None
@@ -305,7 +262,7 @@ class EventList(BaseModel):
     # See ``EventRead.geolocators``; the card's byline.
     geolocators: list[AuthorRef]
     # Card thumbnail (``services.thumbnails``), None when neither exists. One
-    # media keeps the list light; ``EventRead.media`` has the full set. No
+    # media keeps the list light; ``EventRead.sources`` has the full set. No
     # default so a constructor can't silently ship a false "no media".
     media: MediaRead | None
     tags: list[TagRead]
@@ -376,8 +333,9 @@ class PossibleDuplicateRead(BaseModel):
     coords: CoordsRead
     # Nullable but always serialised (``duplicates.list_possible_duplicates``).
     occurred_date: date | None
-    # A ``detected`` candidate may carry no source. Required-nullable.
-    source_url: str | None
+    # Every link of the candidate's sources, in source order; a ``detected``
+    # candidate may carry none.
+    source_urls: list[str]
     # Geodesic distance in metres from the caller-supplied (lat, lng); float so
     # small distances don't round.
     distance_m: float

@@ -12,10 +12,10 @@ Errors are `EventError` subclasses with stable `.code` strings. Add each new
 code to `_EVENT_ERROR_STATUS` in `routers/events/_common.py`.
 
 One module per verb over shared modules. A verb module imports shared modules,
-a shared module imports at most ``errors``, ``errors`` imports no sibling, and
+a shared module imports only other shared modules, ``errors`` imports no sibling, and
 no verb module imports another.
 
-* ``errors``, ``coordinates``, ``source_links``, ``rules``: shared.
+* ``errors``, ``coordinates``, ``sources``, ``rules``: shared.
 * ``readiness``: the batch publish floor as one SQL predicate.
 * ``create``, ``request``, ``geolocation``, ``revision``, ``batch``,
   ``closure``: one per verb.
@@ -28,6 +28,7 @@ from .closure import close
 from .coordinates import validate_coordinates
 from .create import create_with_evidence
 from .errors import (
+    ConflictRequiredError,
     CoordinatesRequiredError,
     EventError,
     EventNotFoundError,
@@ -36,25 +37,24 @@ from .errors import (
     InvalidProofError,
     NothingChangedError,
     ProofImageRequiredError,
-    SourceUrlRequiredError,
-    TagRequirementsError,
+    SensorRequiredError,
+    SourceFileRequiredError,
+    SourceLinkRequiredError,
+    SourceMediaNotFoundError,
+    SourceNotFoundError,
+    SourceRequiredError,
     TooManySourceLinksError,
+    TooManySourcesError,
 )
 from .geolocation import geolocate
 from .readiness import DETECTION_READINESS, detection_ready_predicate
 from .request import ImportProvenance, create_request, stamp_provenance, update_request
 from .revision import save_version
-from .source_links import (
-    build_source_link_rows,
-    normalize_secondary_source_urls,
-    pair_secondary_snapshots,
-    replace_source_links,
-    truncate_secondary_source_urls,
-)
 
 __all__ = [
     "DETECTION_READINESS",
     "ROW_INTERNAL_ERROR_CODE",
+    "ConflictRequiredError",
     "CoordinatesRequiredError",
     "DetectionCompletion",
     "EventError",
@@ -65,22 +65,22 @@ __all__ = [
     "InvalidProofError",
     "NothingChangedError",
     "ProofImageRequiredError",
-    "SourceUrlRequiredError",
-    "TagRequirementsError",
+    "SensorRequiredError",
+    "SourceFileRequiredError",
+    "SourceLinkRequiredError",
+    "SourceMediaNotFoundError",
+    "SourceNotFoundError",
+    "SourceRequiredError",
     "TooManySourceLinksError",
-    "build_source_link_rows",
+    "TooManySourcesError",
     "close",
     "complete_detections",
     "create_request",
     "create_with_evidence",
     "detection_ready_predicate",
     "geolocate",
-    "normalize_secondary_source_urls",
-    "pair_secondary_snapshots",
-    "replace_source_links",
     "save_version",
     "stamp_provenance",
-    "truncate_secondary_source_urls",
     "update_request",
     "validate_coordinates",
 ]

@@ -10,28 +10,15 @@ from sqlalchemy.orm import Session
 
 from app.models.event import STATUS_REQUESTED, DetectedVia, Event, EventDetection
 from app.models.user import User
-from app.services import source_archive
+from app.schemas.source import SourceCreate
 from app.services.event_filters import lock_event
-from app.services.evidence_intake import attach_evidence_and_commit, collect_media_keys
+from app.services.evidence_intake import attach_evidence_and_commit
 from app.services.permissions import ensure_owner
-from app.services.storage import sweep_keys
 
 from .coordinates import _optional_point
 from .errors import EventStateError
-from .rules import (
-    _apply_source_removals,
-    _plan_source_swap,
-    _require_submission_media,
-    _resolve_conflicts,
-    _resolve_tags,
-    _sanitize_proof,
-)
-from .source_links import (
-    build_source_link_rows,
-    normalize_secondary_source_urls,
-    pair_secondary_snapshots,
-    replace_source_links,
-)
+from .rules import _resolve_conflicts, _resolve_tags, _sanitize_proof
+from .sources import apply_sources, check_publish_floor, plan_sources, planned_floor
 
 
 @dataclass(frozen=True)
@@ -46,8 +33,8 @@ class ImportProvenance:
     url: str
     thread_tweet_ids: list[int]
     via: DetectedVia
-    # When the post the row was read from was posted; not ``occurred_date`` or
-    # ``source_posted_at``.
+    # When the post the row was read from was posted; not ``occurred_date`` or a source
+    # link's ``posted_at``.
     post_at: datetime | None
 
 
@@ -71,59 +58,40 @@ async def create_request(
     *,
     current_user: User,
     title: str,
-    source_url: str,
-    secondary_source_urls: list[str],
     proof_data: str | None,
     lat: float | None = None,
     lng: float | None = None,
-    capture_source_lat: float | None = None,
-    capture_source_lng: float | None = None,
     occurred_date: date | None = None,
     occurred_time: time | None = None,
-    source_posted_at: datetime | None,
     tag_ids: list,
     conflict_ids: list,
-    is_graphic: bool = False,
-    file: UploadFile,
+    sources: list[SourceCreate],
     proof_files: list[UploadFile],
-    source_snapshot_url: str | None = None,
-    secondary_snapshot_urls: list[str] | None = None,
     provenance: ImportProvenance | None = None,
 ) -> Event:
-    """Create a ``requested`` event with its source media (an open call).
+    """Create a ``requested`` event with its sources (an open call).
 
     ``owner_id`` and ``requested_by_id`` are both ``current_user``: the poster
     keeps edit rights until a fulfiller takes over and stays credited as
     requester.
 
-    Coordinates (a guess) and the camera point are optional, both-or-neither.
-    Tags are optional (:func:`geolocate` enforces the floor). One source file
-    is required. The proof body may carry images (``proof_files`` resolve
-    ``placeholder://`` srcs) but has no image floor.
-
-    ``source_snapshot_url`` and ``secondary_snapshot_urls`` are archived copies,
-    on the same terms as :func:`create_with_evidence`.
+    Coordinates (a guess) are optional, both-or-neither. Tags, conflicts and sensors are
+    optional (:func:`geolocate` enforces the publication floor), but the footage must be on
+    the row from the start: a ``direct`` or ``indirect`` source with its file. The proof body
+    may carry images (``proof_files`` resolve ``placeholder://`` srcs) but has no image floor.
 
     ``provenance`` is set only by a machine writer (``detection.open_request``)
     and attaches the ``event_detections`` row via :func:`stamp_provenance`, so a re-import
-    recognises the row. ``source_posted_at`` is optional here (a chase may
-    serve no date); the form keeps it required for people
-    (``routers/events/write``).
+    recognises the row.
 
-    Raises :class:`InvalidCoordinatesError`, :class:`MediaRequiredError`,
-    :class:`InvalidProofError`, :class:`TooManySourceLinksError`, or a shared
-    file-validation error. Any failure rolls back and sweeps what landed.
+    Raises :class:`InvalidCoordinatesError`, the source errors of ``sources.plan_sources`` and
+    ``sources.check_publish_floor``, :class:`InvalidProofError`, ``SnapshotRejected``, or a
+    proof intake error. Any failure rolls back and sweeps what landed.
     """
     guess_point = _optional_point(lat, lng, field="coords")
-    capture_point = _optional_point(capture_source_lat, capture_source_lng, field="capture_source")
-    mirror_snapshots = pair_secondary_snapshots(
-        secondary_source_urls, secondary_snapshot_urls or []
-    )
-    secondary_links = normalize_secondary_source_urls(secondary_source_urls, source_url)
-
-    _require_submission_media(file is not None)
-
     proof_data = _sanitize_proof(proof_data)
+    planned = plan_sources(db, geo=None, specs=sources, uploader=current_user)
+    check_publish_floor(planned_floor(planned), require_sensor=False)
 
     geo = Event(
         owner_id=current_user.id,
@@ -131,13 +99,9 @@ async def create_request(
         requested_by_id=current_user.id,
         title=title,
         coords=guess_point,
-        capture_source_coords=capture_point,
-        source_url=source_url,
         # ``proof`` lands via the intake below; the model default covers a blank request.
         occurred_date=occurred_date,
         occurred_time=occurred_time,
-        source_posted_at=source_posted_at,
-        is_graphic=is_graphic,
         status=STATUS_REQUESTED,
         requested_at=datetime.now(UTC),
     )
@@ -145,20 +109,14 @@ async def create_request(
         stamp_provenance(geo, provenance)
     geo.tags = _resolve_tags(db, tag_ids)
     geo.conflicts = _resolve_conflicts(db, conflict_ids)
-    geo.source_links = build_source_link_rows(secondary_links)
 
     db.add(geo)
     db.flush()
-
-    # After the flush that mints the id, before the first upload.
-    if source_snapshot_url:
-        source_archive.stage_source_snapshot(db, event=geo, snapshot_url=source_snapshot_url)
-    source_archive.stage_secondary_snapshots(db, event=geo, snapshots=mirror_snapshots)
+    apply_sources(db, geo, planned)
 
     await attach_evidence_and_commit(
         db,
         event=geo,
-        source_files=[file],
         proof_html=proof_data,
         proof_files=proof_files,
         sweep_context="event request create rollback",
@@ -174,24 +132,15 @@ async def update_request(
     geo: Event,
     current_user: User,
     title: str,
-    source_url: str,
-    secondary_source_urls: list[str],
     proof_data: str | None,
     lat: float | None = None,
     lng: float | None = None,
-    capture_source_lat: float | None = None,
-    capture_source_lng: float | None = None,
     occurred_date: date | None = None,
     occurred_time: time | None = None,
-    source_posted_at: datetime | None,
     tag_ids: list,
     conflict_ids: list,
-    is_graphic: bool = False,
-    remove_media_ids: list,
-    files: list[UploadFile],
+    sources: list[SourceCreate],
     proof_files: list[UploadFile],
-    source_snapshot_url: str | None = None,
-    secondary_snapshot_urls: list[str] | None = None,
 ) -> Event:
     """Correct an open request in place (owner-only, only while ``requested``).
 
@@ -200,27 +149,16 @@ async def update_request(
     id, ``requested_at``, requester and provenance stay. Past fulfilment,
     :func:`save_version` does this and files a version.
 
-    Fields follow :func:`create_request`: optional both-or-neither coordinates,
-    no curated floor (:func:`geolocate` binds it), links normalized against the
-    stored source URL, optional proof images. ``source_posted_at`` is optional
-    (the bot may not read a date): None or empty keeps the stored value, as in
-    :func:`save_version`, and nothing here clears it. ``is_graphic`` ratchets
-    (see :func:`geolocate`).
-
-    Source media moves on the ``remove_media_ids`` + ``files`` pair of
-    :func:`geolocate`, under the same one-source cap, and one source must
-    remain. Dropped media's S3 objects are swept after the commit (no version
-    references them).
+    Fields and floor follow :func:`create_request`. The posted ``sources`` replace the stored
+    ones (``sources.apply_sources``); a file nothing names any more is swept after the commit
+    (no version renders it).
 
     The row is locked and the status re-checked, as in :func:`geolocate`,
     :func:`save_version` and :func:`close`, so a racing fulfilment or withdrawal
     gives the loser a 409.
 
     Raises :class:`EventStateError` (409) off ``requested``, the 403 of
-    ``ensure_owner``, :class:`InvalidCoordinatesError` /
-    :class:`InvalidProofError` / :class:`MediaRequiredError` /
-    :class:`TooManySourceLinksError` (400), :class:`TooManyFilesError` (422),
-    and the shared file-validation errors.
+    ``ensure_owner``, and the errors of :func:`create_request`.
     """
     geo = lock_event(db, geo.id)
     ensure_owner(geo, current_user)
@@ -228,63 +166,29 @@ async def update_request(
         raise EventStateError("Only an open request can be edited")
 
     guess_point = _optional_point(lat, lng, field="coords")
-    capture_point = _optional_point(capture_source_lat, capture_source_lng, field="capture_source")
-    mirror_snapshots = pair_secondary_snapshots(
-        secondary_source_urls, secondary_snapshot_urls or []
-    )
-    # Against the stored source URL, so a source moved down to the mirrors is not listed twice.
-    stored_source_url = source_url.strip()
-    secondary_links = normalize_secondary_source_urls(secondary_source_urls, stored_source_url)
-
-    # Before any S3 work, so a refused swap writes nothing.
-    swap = _plan_source_swap(geo, remove_media_ids=remove_media_ids, files=files)
-
     proof_data = _sanitize_proof(proof_data)
-
-    _require_submission_media(swap.survivors > 0)
+    planned = plan_sources(db, geo=geo, specs=sources, uploader=current_user)
+    check_publish_floor(planned_floor(planned), require_sensor=False)
 
     # The collection assignments lazy-load, which would flush a half-edited row.
     with db.no_autoflush:
         geo.title = title
-        geo.source_url = stored_source_url
         geo.coords = guess_point
-        geo.capture_source_coords = capture_point
         geo.occurred_date = occurred_date
         geo.occurred_time = occurred_time
-        # None means keep: an empty datetime input is indistinguishable from an
-        # absent field, and assigning it would clear a stored instant.
-        if source_posted_at is not None:
-            geo.source_posted_at = source_posted_at
-        geo.is_graphic = geo.is_graphic or is_graphic
         geo.tags = _resolve_tags(db, tag_ids)
         geo.conflicts = _resolve_conflicts(db, conflict_ids)
-
-    replace_source_links(db, geo, secondary_links)
-
-    # A dropped mirror takes its copy with it, and the archived source follows
-    # the stored URL. Both run before the pastes so a re-paste lands in the freed slot.
-    source_archive.drop_mirror_archives(db, event=geo, kept=secondary_links)
-    source_archive.reconcile_source_archive(db, event=geo)
-    if source_snapshot_url:
-        source_archive.stage_source_snapshot(db, event=geo, snapshot_url=source_snapshot_url)
-    source_archive.stage_secondary_snapshots(db, event=geo, snapshots=mirror_snapshots)
-
-    # Collect the keys before the flush drops the rows. Deletes flush before the
-    # replacement insert, or ``uq_media_source_per_event`` trips.
-    removed_keys = collect_media_keys(swap.removed)
-    _apply_source_removals(db, swap)
+    removed = apply_sources(db, geo, planned)
 
     await attach_evidence_and_commit(
         db,
         event=geo,
-        source_files=files,
         proof_html=proof_data,
         proof_files=proof_files,
         sweep_context=f"event {geo.id} request edit rollback",
+        removed=removed,
     )
 
-    # Best-effort sweep; no version renders these objects.
-    sweep_keys(removed_keys, context=f"event {geo.id} request edit media removal")
     db.refresh(geo)
     # No points-cache invalidation: the map serves located rows only.
     return geo

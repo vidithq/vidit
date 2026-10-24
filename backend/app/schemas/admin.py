@@ -198,9 +198,9 @@ class AdminCollectionModerationUpdate(BaseModel):
 class AdminEventModerationUpdate(BaseModel):
     """Body for ``PATCH /admin/events/{id}/moderation``.
 
-    Two independent optional axes: ``is_graphic`` overrides the author's
-    declaration, ``hidden`` withholds or restores the event. ``None`` leaves
-    that axis as is.
+    Two independent optional axes: ``is_graphic`` overrides the authors'
+    declaration on every source of the event, ``hidden`` withholds or restores
+    the event. ``None`` leaves that axis as is.
     """
 
     is_graphic: bool | None = None
@@ -217,6 +217,7 @@ class AdminEventModerationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    # Whether any source is graphic (``Event.is_graphic``).
     is_graphic: bool
     hidden_at: datetime | None
 

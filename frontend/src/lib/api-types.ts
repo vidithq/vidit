@@ -921,12 +921,8 @@ export interface paths {
          * @description Direct geolocate: create an event born ``geolocated``.
          *
          *     Parses the form into clean types; business rules and IO live in
-         *     ``services/events.create_with_evidence``.
-         *
-         *     ``source_snapshot_url`` and ``secondary_snapshot_urls`` record archived
-         *     copies in the same write (``services/source_archive``); a paste that is
-         *     not a snapshot of its link is a 400 with the failing check's code and no
-         *     event is created.
+         *     ``services/events.create_with_evidence``. A pasted archived copy that is not
+         *     a snapshot is a 400 with the failing check's code and no event is created.
          */
         post: operations["create_event_api_v1_events_post"];
         delete?: never;
@@ -949,11 +945,12 @@ export interface paths {
          * @description Publish the selected detections: ``detected`` → ``geolocated``.
          *
          *     JSON, not multipart: nothing uploads. The detections keep their imported
-         *     evidence; the call supplies the conflict set and one ``capture_source`` tag
-         *     per row.
+         *     evidence; the call supplies the conflict set and one sensor per row, which
+         *     goes onto every source that carries a file.
          *
          *     Each row commits on its own: one that fails the floor (no proof image,
-         *     source media, coordinates or source URL) rolls back alone, stays a
+         *     coordinates, direct or indirect source file, or a source without a URL)
+         *     rolls back alone, stays a
          *     detection and gets its reason in ``rows[]``. Publishing credits the caller
          *     as geolocator, as the single-row transition does.
          *
@@ -1146,8 +1143,8 @@ export interface paths {
          *     Returns geolocations that might be the same event as the one being
          *     submitted; never blocks the submit.
          *
-         *     Match rule: within ~500m of (lat, lng) AND (same source host OR same
-         *     occurred_date). Coordinate-less rows never match. Authenticated-only so the
+         *     Match rule: within ~500m of (lat, lng) AND (a source URL on the same host
+         *     OR same occurred_date). ``source_url`` is one URL the form holds. Coordinate-less rows never match. Authenticated-only so the
          *     proximity probe isn't exposed to anonymous scraping.
          *
          *     A half-typed source URL disables the host leg and an unparseable date the
@@ -1178,8 +1175,8 @@ export interface paths {
          * Create Event Request
          * @description Open a request (a ``requested`` event).
          *
-         *     One source media file is required: the evidence the poster has must be on
-         *     the row from the start. Business rules and IO live in
+         *     The footage the poster has must be on the row from the start: a direct or
+         *     indirect source with its file. Business rules and IO live in
          *     ``services/events.create_request``.
          */
         post: operations["create_event_request_api_v1_events_requests_post"];
@@ -1369,21 +1366,13 @@ export interface paths {
          * Geolocate Event
          * @description Give an event a vouched location: ``requested`` | ``detected`` → ``geolocated``.
          *
-         *     The caller posts the whole form (title, coordinates, source URL, dates,
-         *     graphic flag, proof + images, tags, source media via ``files`` /
-         *     ``remove_media_ids``). On success the row is published as ``geolocated`` and
-         *     the caller is credited as a geolocator; later corrections go through
-         *     ``save_version``. A detection is owner-only (403 otherwise); a ``requested``
-         *     event is answerable by anyone and the fulfiller becomes its owner
-         *     (``requested_by`` keeps the poster). Blocked (400) until the evidence floor
-         *     is met (one source media, a proof image, a conflict, the ``capture_source``
-         *     tag). Other statuses 409; soft-deleted 404.
-         *
-         *     ``source_snapshot_url`` and ``secondary_snapshot_urls`` record archived
-         *     copies in the same write, on the checks every archived-copy field runs (a
-         *     paste that is not a snapshot of its link is a 400 and nothing is written).
-         *     Changing the source URL without pasting a new snapshot leaves no archived
-         *     source rather than the old one's copy.
+         *     The caller posts the whole form (title, coordinates, dates, proof + images, tags,
+         *     conflicts, sources). On success the row is published as ``geolocated`` and the caller is
+         *     credited as a geolocator; later corrections go through ``save_version``. A detection is
+         *     owner-only (403 otherwise); a ``requested`` event is answerable by anyone and the
+         *     fulfiller becomes its owner (``requested_by`` keeps the poster) and may correct its
+         *     sources. Blocked (400) until the floor is met (a direct or indirect source with its file,
+         *     a sensor on every file, a proof image, a conflict). Other statuses 409; soft-deleted 404.
          */
         post: operations["geolocate_event_api_v1_events__geolocation_id__geolocate_post"];
         delete?: never;
@@ -1538,13 +1527,12 @@ export interface paths {
          *
          *     No version is filed: a version supersedes a vouched claim, and a request is
          *     a question. The row keeps its id, ``requested_at``, requester and
-         *     provenance columns, and moves ``updated_at``. Allowed only while
-         *     ``requested`` (409 otherwise).
+         *     provenance, and moves ``updated_at``. Allowed only while ``requested`` (409
+         *     otherwise).
          *
-         *     Every create-form field is editable, the coordinate guess and camera point
-         *     included; the curated floor stays unenforced until geolocate. Source media
-         *     moves on the ``remove_media_ids`` + ``files`` pair under the one-source cap
-         *     and the row must still carry footage. Soft-deleted rows read as 404.
+         *     Every create-form field is editable, the coordinate guess included; the
+         *     publication floor stays unenforced until geolocate, but the row must still
+         *     hold a direct or indirect source with its file. Soft-deleted rows read as 404.
          */
         post: operations["update_event_request_api_v1_events__geolocation_id__request_post"];
         delete?: never;
@@ -1582,15 +1570,11 @@ export interface paths {
          *     is filed as an ``event_versions`` row and the event moves to the next
          *     ``version_no``, in one transaction under a row lock.
          *
-         *     The evidence anchor is versioned too: ``source_url`` and the source media
-         *     (``remove_media_ids`` + ``files``, one-source cap) are editable, and the
-         *     filed version keeps what it supersedes. The published evidence floor is
-         *     re-checked on the post-edit state. Soft-deleted rows read as 404.
-         *
-         *     Archived copies are recorded here too: ``source_snapshot_url``,
-         *     ``detected_from_snapshot_url`` and ``secondary_snapshot_urls`` archive a link
-         *     without changing it and land in the produced version. A save whose only
-         *     change is a copy is accepted even at the version ceiling.
+         *     The sources are versioned too: the posted list replaces the stored one and
+         *     the filed version keeps what it supersedes, files included. The publication
+         *     floor is re-checked on the post-edit state. A save whose only change is a
+         *     link's archived copy is accepted even at the version ceiling. Soft-deleted
+         *     rows read as 404.
          */
         post: operations["save_event_version_api_v1_events__geolocation_id__versions_post"];
         delete?: never;
@@ -1638,7 +1622,7 @@ export interface paths {
          *     ``scope=following`` (default) keeps the geolocations credited to analysts
          *     the current user follows and the requests they own, and is empty when they
          *     follow nobody; ``scope=all`` keeps every row. ``kind``, ``conflict``,
-         *     ``capture_source``, ``tag``, ``approved``, ``approved_by`` and
+         *     ``sensor``, ``level``, ``tag``, ``approved``, ``approved_by`` and
          *     ``approved_by_org`` narrow the rows as on ``GET /events``. Cursor-paged, capped at 100 rows; the
          *     ``Link: rel="next"`` cursor is present exactly when a next page holds a row.
          */
@@ -2054,6 +2038,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pick Sources
+         * @description Sources of live events whose title or one of whose URLs contains ``q``, newest first.
+         *
+         *     The form copies a pick into its source list by naming the pick's
+         *     ``media.id`` as ``media_id`` (``SourceCreate``): the copy is a new source
+         *     on the same stored file.
+         */
+        get: operations["pick_sources_api_v1_sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tags": {
         parameters: {
             query?: never;
@@ -2063,22 +2071,48 @@ export interface paths {
         };
         /**
          * List Tags
-         * @description Return tags referenced by at least one *live* geolocation, so the map
+         * @description Return tags referenced by at least one *live* event or one of its sources, so the map
          *     filter shows no chips that match nothing.
          *
-         *     ``curated=true`` instead returns the full curated ``capture_source``
-         *     taxonomy regardless of usage: the submit form needs every option in this
-         *     required bucket, even for the first analyst to tag it.
-         *
          *     Bounded by ``REFERENTIAL_MAX_ROWS``, not the 100-row list cap: pickers and
-         *     the filter panel hydrate the vocabulary whole and filter client-side. The
-         *     ceiling bounds ``free``-category growth; a response landing on it is
-         *     logged because the payload can't say it was cut.
+         *     the filter panel hydrate the vocabulary whole and filter client-side. A
+         *     response landing on the ceiling is logged because the payload can't say it
+         *     was cut.
          */
         get: operations["list_tags_api_v1_tags_get"];
         put?: never;
-        /** Create Tag */
+        /**
+         * Create Tag
+         * @description Create a free tag, or return the one already named so (200).
+         *
+         *     The lookup covers every tag, orphans included, because ``GET /tags`` hides
+         *     orphans and a 409 would leave the form no way out.
+         */
         post: operations["create_tag_api_v1_tags_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Upload
+         * @description Stage one source file; a source of a later event write names it by ``id``.
+         *
+         *     The file is validated (type, size) and stored now, and the row expires
+         *     after 24 hours unless a write takes it. 400 on an invalid file, 429 past
+         *     the per-account ceiling of staged files.
+         */
+        post: operations["create_upload_api_v1_uploads_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2541,9 +2575,9 @@ export interface components {
          * AdminEventModerationUpdate
          * @description Body for ``PATCH /admin/events/{id}/moderation``.
          *
-         *     Two independent optional axes: ``is_graphic`` overrides the author's
-         *     declaration, ``hidden`` withholds or restores the event. ``None`` leaves
-         *     that axis as is.
+         *     Two independent optional axes: ``is_graphic`` overrides the authors'
+         *     declaration on every source of the event, ``hidden`` withholds or restores
+         *     the event. ``None`` leaves that axis as is.
          */
         AdminEventModerationUpdate: {
             /** Hidden */
@@ -2952,12 +2986,14 @@ export interface components {
         };
         /**
          * ArchivedLinkRead
-         * @description One link's archived copy: where it lives, and who holds it.
-         *
-         *     ``null`` on the carrying field means no copy is recorded. An object so the
-         *     read surface can pick an icon from ``provider``.
+         * @description One link's archived copy.
          */
         ArchivedLinkRead: {
+            /**
+             * Archived At
+             * Format: date-time
+             */
+            archived_at: string;
             /**
              * Provider
              * @enum {string}
@@ -2997,7 +3033,7 @@ export interface components {
          * BatchCompletionCreate
          * @description Body of ``POST /events/batch-complete``.
          *
-         *     One conflict set for the whole selection; the capture source varies per row.
+         *     One conflict set for the whole selection; the sensor varies per row.
          */
         BatchCompletionCreate: {
             /** Conflict Ids */
@@ -3019,19 +3055,19 @@ export interface components {
         };
         /**
          * BatchCompletionRowCreate
-         * @description One detection in a batch completion and its chosen capture source.
+         * @description One detection in a batch completion and the sensor of its sources' files.
          */
         BatchCompletionRowCreate: {
-            /**
-             * Capture Source Tag Id
-             * Format: uuid
-             */
-            capture_source_tag_id: string;
             /**
              * Event Id
              * Format: uuid
              */
             event_id: string;
+            /**
+             * Sensor
+             * @enum {string}
+             */
+            sensor: "smartphone" | "satellite" | "drone" | "static_camera" | "dashcam" | "body_cam" | "unknown";
         };
         /**
          * BatchCompletionRowRead
@@ -3053,19 +3089,8 @@ export interface components {
         };
         /** Body_create_event_api_v1_events_post */
         Body_create_event_api_v1_events_post: {
-            /** Capture Source Lat */
-            capture_source_lat?: number | null;
-            /** Capture Source Lng */
-            capture_source_lng?: number | null;
             /** Conflict Ids */
             conflict_ids?: string | null;
-            /** File */
-            file: string;
-            /**
-             * Is Graphic
-             * @default false
-             */
-            is_graphic: boolean;
             /** Lat */
             lat: number;
             /** Lng */
@@ -3079,21 +3104,10 @@ export interface components {
             /** Proof Files */
             proof_files?: string[] | null;
             /**
-             * Secondary Snapshot Urls
-             * @default []
+             * Sources
+             * @description JSON array of SourceCreate: the event's whole source list, which replaces the stored one.
              */
-            secondary_snapshot_urls: string[];
-            /**
-             * Secondary Source Urls
-             * @default []
-             */
-            secondary_source_urls: string[];
-            /** Source Posted At */
-            source_posted_at: string;
-            /** Source Snapshot Url */
-            source_snapshot_url?: string | null;
-            /** Source Url */
-            source_url: string;
+            sources: string;
             /** Tag Ids */
             tag_ids?: string | null;
             /** Title */
@@ -3101,19 +3115,8 @@ export interface components {
         };
         /** Body_create_event_request_api_v1_events_requests_post */
         Body_create_event_request_api_v1_events_requests_post: {
-            /** Capture Source Lat */
-            capture_source_lat?: number | null;
-            /** Capture Source Lng */
-            capture_source_lng?: number | null;
             /** Conflict Ids */
             conflict_ids?: string | null;
-            /** File */
-            file: string;
-            /**
-             * Is Graphic
-             * @default false
-             */
-            is_graphic: boolean;
             /** Lat */
             lat?: number | null;
             /** Lng */
@@ -3127,41 +3130,24 @@ export interface components {
             /** Proof Files */
             proof_files?: string[] | null;
             /**
-             * Secondary Snapshot Urls
-             * @default []
+             * Sources
+             * @description JSON array of SourceCreate: the event's whole source list, which replaces the stored one.
              */
-            secondary_snapshot_urls: string[];
-            /**
-             * Secondary Source Urls
-             * @default []
-             */
-            secondary_source_urls: string[];
-            /** Source Posted At */
-            source_posted_at: string;
-            /** Source Snapshot Url */
-            source_snapshot_url?: string | null;
-            /** Source Url */
-            source_url: string;
+            sources: string;
             /** Tag Ids */
             tag_ids?: string | null;
             /** Title */
             title: string;
         };
+        /** Body_create_upload_api_v1_uploads_post */
+        Body_create_upload_api_v1_uploads_post: {
+            /** File */
+            file: string;
+        };
         /** Body_geolocate_event_api_v1_events__geolocation_id__geolocate_post */
         Body_geolocate_event_api_v1_events__geolocation_id__geolocate_post: {
-            /** Capture Source Lat */
-            capture_source_lat?: number | null;
-            /** Capture Source Lng */
-            capture_source_lng?: number | null;
             /** Conflict Ids */
             conflict_ids?: string | null;
-            /** Files */
-            files?: string[] | null;
-            /**
-             * Is Graphic
-             * @default false
-             */
-            is_graphic: boolean;
             /** Lat */
             lat: number;
             /** Lng */
@@ -3174,24 +3160,11 @@ export interface components {
             proof?: string | null;
             /** Proof Files */
             proof_files?: string[] | null;
-            /** Remove Media Ids */
-            remove_media_ids?: string | null;
             /**
-             * Secondary Snapshot Urls
-             * @default []
+             * Sources
+             * @description JSON array of SourceCreate: the event's whole source list, which replaces the stored one.
              */
-            secondary_snapshot_urls: string[];
-            /**
-             * Secondary Source Urls
-             * @default []
-             */
-            secondary_source_urls: string[];
-            /** Source Posted At */
-            source_posted_at: string;
-            /** Source Snapshot Url */
-            source_snapshot_url?: string | null;
-            /** Source Url */
-            source_url: string;
+            sources: string;
             /** Tag Ids */
             tag_ids?: string | null;
             /** Title */
@@ -3199,21 +3172,8 @@ export interface components {
         };
         /** Body_save_event_version_api_v1_events__geolocation_id__versions_post */
         Body_save_event_version_api_v1_events__geolocation_id__versions_post: {
-            /** Capture Source Lat */
-            capture_source_lat?: number | null;
-            /** Capture Source Lng */
-            capture_source_lng?: number | null;
             /** Conflict Ids */
             conflict_ids?: string | null;
-            /** Detected From Snapshot Url */
-            detected_from_snapshot_url?: string | null;
-            /** Files */
-            files?: string[] | null;
-            /**
-             * Is Graphic
-             * @default false
-             */
-            is_graphic: boolean;
             /** Lat */
             lat: number;
             /** Lng */
@@ -3228,24 +3188,11 @@ export interface components {
             proof?: string | null;
             /** Proof Files */
             proof_files?: string[] | null;
-            /** Remove Media Ids */
-            remove_media_ids?: string | null;
             /**
-             * Secondary Snapshot Urls
-             * @default []
+             * Sources
+             * @description JSON array of SourceCreate: the event's whole source list, which replaces the stored one.
              */
-            secondary_snapshot_urls: string[];
-            /**
-             * Secondary Source Urls
-             * @default []
-             */
-            secondary_source_urls: string[];
-            /** Source Posted At */
-            source_posted_at?: string | null;
-            /** Source Snapshot Url */
-            source_snapshot_url?: string | null;
-            /** Source Url */
-            source_url?: string | null;
+            sources: string;
             /** Tag Ids */
             tag_ids?: string | null;
             /** Title */
@@ -3263,19 +3210,8 @@ export interface components {
         };
         /** Body_update_event_request_api_v1_events__geolocation_id__request_post */
         Body_update_event_request_api_v1_events__geolocation_id__request_post: {
-            /** Capture Source Lat */
-            capture_source_lat?: number | null;
-            /** Capture Source Lng */
-            capture_source_lng?: number | null;
             /** Conflict Ids */
             conflict_ids?: string | null;
-            /** Files */
-            files?: string[] | null;
-            /**
-             * Is Graphic
-             * @default false
-             */
-            is_graphic: boolean;
             /** Lat */
             lat?: number | null;
             /** Lng */
@@ -3288,24 +3224,11 @@ export interface components {
             proof?: string | null;
             /** Proof Files */
             proof_files?: string[] | null;
-            /** Remove Media Ids */
-            remove_media_ids?: string | null;
             /**
-             * Secondary Snapshot Urls
-             * @default []
+             * Sources
+             * @description JSON array of SourceCreate: the event's whole source list, which replaces the stored one.
              */
-            secondary_snapshot_urls: string[];
-            /**
-             * Secondary Source Urls
-             * @default []
-             */
-            secondary_source_urls: string[];
-            /** Source Posted At */
-            source_posted_at?: string | null;
-            /** Source Snapshot Url */
-            source_snapshot_url?: string | null;
-            /** Source Url */
-            source_url: string;
+            sources: string;
             /** Tag Ids */
             tag_ids?: string | null;
             /** Title */
@@ -3330,8 +3253,8 @@ export interface components {
          *     (``models/media.MediaKind``) lets a client pick the element that renders
          *     it (most source media are clips, and an ``<img>`` on one paints an empty
          *     band). ``role`` (``models/media.MediaRole``) says whether the picture has
-         *     display derivatives: only a ``source`` image does
-         *     (``services/storage.upload_file``); a ``proof`` image has no ``_hero`` /
+         *     display derivatives: only a source's image does
+         *     (``services/storage.upload_source_file``); a ``proof`` image has no ``_hero`` /
          *     ``_thumb`` sibling.
          */
         CollectionCoverTile: {
@@ -3433,8 +3356,8 @@ export interface components {
          *     media. Each tile carries url, kind and role together (see
          *     :class:`CollectionCoverTile`).
          *
-         *     ``tags`` is the union of the tags of the events the collection may show,
-         *     ordered by category then name (``services/collections.tags_for``), derived
+         *     ``tags`` is the union of the tags of the events the collection may show
+         *     and their sources, ordered by name (``services/collections.tags_for``), derived
          *     and never stored; empty when nothing is tagged.
          */
         CollectionRead: {
@@ -3599,7 +3522,7 @@ export interface components {
         };
         /**
          * CoordsRead
-         * @description One WGS84 point on the wire, nested so a payload can carry two points.
+         * @description One WGS84 point on the wire, nested so a payload can carry several points.
          */
         CoordsRead: {
             /** Lat */
@@ -3677,13 +3600,8 @@ export interface components {
         };
         /** EventRead */
         EventRead: {
-            archived_detected_from: components["schemas"]["ArchivedLinkRead"] | null;
-            /** Archived Secondary Sources */
-            archived_secondary_sources: (components["schemas"]["ArchivedLinkRead"] | null)[];
-            archived_source: components["schemas"]["ArchivedLinkRead"] | null;
             /** Before Closed Status */
             before_closed_status: ("requested" | "detected" | "geolocated") | null;
-            capture_source_coords: components["schemas"]["CoordsRead"] | null;
             /** Close Reason */
             close_reason: string | null;
             /** Closed At */
@@ -3711,8 +3629,6 @@ export interface components {
             id: string;
             /** Is Graphic */
             is_graphic: boolean;
-            /** Media */
-            media: components["schemas"]["MediaRead"][];
             /** Occurred Date */
             occurred_date: string | null;
             /** Occurred Time */
@@ -3721,12 +3637,8 @@ export interface components {
             /** Proof */
             proof: string | null;
             requested_by: components["schemas"]["AuthorRef"] | null;
-            /** Secondary Source Urls */
-            secondary_source_urls: string[];
-            /** Source Posted At */
-            source_posted_at: string | null;
-            /** Source Url */
-            source_url: string | null;
+            /** Sources */
+            sources: components["schemas"]["SourceRead"][];
             /**
              * Status
              * @enum {string}
@@ -3763,9 +3675,9 @@ export interface components {
          *
          *     ``version_no`` is the version this row holds: an event at version 3
          *     answers with snapshots 2 and 1. ``snapshot`` carries the editable fields as
-         *     they stood (``services/versions.build_snapshot``), including the evidence
-         *     anchor and the source media as the shape ``EventRead`` serves, since the
-         *     row itself is gone after a correction.
+         *     they stood (``services/versions.build_snapshot``), including each source
+         *     with its links, tags and file as the shape ``SourceRead`` serves, since a
+         *     source an edit drops is gone with its row.
          */
         EventVersionRead: {
             /**
@@ -3925,13 +3837,8 @@ export interface components {
             kind: "image" | "video";
             /** Original Filename */
             original_filename?: string | null;
-            /**
-             * Role
-             * @enum {string}
-             */
-            role: "source" | "proof";
             /** Sha256 */
-            sha256?: string | null;
+            sha256: string;
             /** Storage Url */
             storage_url: string;
         };
@@ -4255,8 +4162,8 @@ export interface components {
             /** Occurred Date */
             occurred_date: string | null;
             owner: components["schemas"]["AuthorRef"];
-            /** Source Url */
-            source_url: string | null;
+            /** Source Urls */
+            source_urls: string[];
             /** Title */
             title: string;
         };
@@ -4415,8 +4322,8 @@ export interface components {
             /** Media */
             media: components["schemas"]["MediaRead"][];
             owner: components["schemas"]["AuthorRef"];
-            /** Source Url */
-            source_url: string | null;
+            /** Source Urls */
+            source_urls: string[];
             /**
              * Status
              * @enum {string}
@@ -4487,6 +4394,81 @@ export interface components {
             username: string;
             /** Username Highlight */
             username_highlight: string;
+        };
+        /** SourceLinkRead */
+        SourceLinkRead: {
+            archived: components["schemas"]["ArchivedLinkRead"] | null;
+            /** Posted At */
+            posted_at: string | null;
+            /** Url */
+            url: string;
+        };
+        /**
+         * SourcePickRead
+         * @description A source the picker found (``GET /sources``), with the event that holds it.
+         */
+        SourcePickRead: {
+            camera_position: components["schemas"]["CoordsRead"] | null;
+            /** Captured At */
+            captured_at: string | null;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /** Event Title */
+            event_title: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Graphic */
+            is_graphic: boolean;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "direct" | "indirect" | "context";
+            /** Links */
+            links: components["schemas"]["SourceLinkRead"][];
+            media: components["schemas"]["MediaRead"] | null;
+            /** Sensor */
+            sensor: ("smartphone" | "satellite" | "drone" | "static_camera" | "dashcam" | "body_cam" | "unknown") | null;
+            /** Tags */
+            tags: components["schemas"]["TagRead"][];
+            /** Title */
+            title: string;
+        };
+        /**
+         * SourceRead
+         * @description One source of an event, in the event's derived source order.
+         */
+        SourceRead: {
+            camera_position: components["schemas"]["CoordsRead"] | null;
+            /** Captured At */
+            captured_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Graphic */
+            is_graphic: boolean;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "direct" | "indirect" | "context";
+            /** Links */
+            links: components["schemas"]["SourceLinkRead"][];
+            media: components["schemas"]["MediaRead"] | null;
+            /** Sensor */
+            sensor: ("smartphone" | "satellite" | "drone" | "static_camera" | "dashcam" | "body_cam" | "unknown") | null;
+            /** Tags */
+            tags: components["schemas"]["TagRead"][];
+            /** Title */
+            title: string;
         };
         /**
          * SponsoredInviteCodeCreate
@@ -4559,18 +4541,11 @@ export interface components {
         };
         /** TagCreate */
         TagCreate: {
-            /** Category */
-            category: string;
             /** Name */
             name: string;
         };
         /** TagRead */
         TagRead: {
-            /**
-             * Category
-             * @enum {string}
-             */
-            category: "capture_source" | "free";
             /**
              * Id
              * Format: uuid
@@ -4617,6 +4592,33 @@ export interface components {
         TweetImportRequest: {
             /** Url */
             url: string;
+        };
+        /**
+         * UploadRead
+         * @description A staged source file, referenced by a source's ``upload_id`` until ``expires_at``.
+         */
+        UploadRead: {
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "image" | "video";
+            /** Original Filename */
+            original_filename: string | null;
+            /** Sha256 */
+            sha256: string;
+            /** Storage Url */
+            storage_url: string;
         };
         /**
          * UserInviteMintingUpdate
@@ -4743,10 +4745,13 @@ export interface components {
          *     ``total_events``; every other field describes it. ``requested`` and
          *     ``closed`` rows take part in no aggregate.
          *
-         *     ``source_hosts`` breaks the set down by ``source_url`` host (lowercased,
-         *     leading ``www.`` removed): top hosts, with ``other_hosts_count`` the tail
-         *     and ``no_source_count`` the events with no readable host. The three sum to
-         *     ``total_events``.
+         *     ``sensors`` counts the events per sensor their sources name (an event with
+         *     two sensors counts under both).
+         *
+         *     ``source_hosts`` breaks the set down by the host of each event's first
+         *     source URL (lowercased, leading ``www.`` removed): top hosts, with
+         *     ``other_hosts_count`` the tail and ``no_source_count`` the events with no
+         *     readable host. The three sum to ``total_events``.
          *
          *     ``activity`` counts ``occurred_date`` per calendar month over the analyst's
          *     span, earliest first, zero-filled, empty when no event carries a date.
@@ -4754,8 +4759,6 @@ export interface components {
         UserStatsRead: {
             /** Activity */
             activity: components["schemas"]["ActivityBucket"][];
-            /** Capture Sources */
-            capture_sources: components["schemas"]["TagCount"][];
             /** Detected Count */
             detected_count: number;
             /** Geolocated Count */
@@ -4766,6 +4769,8 @@ export interface components {
             no_source_count: number;
             /** Other Hosts Count */
             other_hosts_count: number;
+            /** Sensors */
+            sensors: components["schemas"]["TagCount"][];
             /** Source Hosts */
             source_hosts: components["schemas"]["TagCount"][];
             /** Top Conflicts */
@@ -6290,7 +6295,8 @@ export interface operations {
                 view?: string;
                 status?: string[] | null;
                 conflict?: string[] | null;
-                capture_source?: string[] | null;
+                sensor?: string[] | null;
+                level?: string[] | null;
                 tag?: string[] | null;
                 bbox?: string | null;
                 occurred_date_from?: string | null;
@@ -6580,7 +6586,8 @@ export interface operations {
                 /** @description south,west,north,east, four floats */
                 bbox: string;
                 conflict?: string[] | null;
-                capture_source?: string[] | null;
+                sensor?: string[] | null;
+                level?: string[] | null;
                 tag?: string[] | null;
                 occurred_date_from?: string | null;
                 occurred_date_to?: string | null;
@@ -7432,7 +7439,8 @@ export interface operations {
                 cursor?: string | null;
                 kind?: ("geolocation" | "request")[] | null;
                 conflict?: string[] | null;
-                capture_source?: string[] | null;
+                sensor?: string[] | null;
+                level?: string[] | null;
                 tag?: string[] | null;
                 approved?: boolean;
                 approved_by?: string | null;
@@ -8173,7 +8181,8 @@ export interface operations {
                 limit?: number;
                 status?: string[] | null;
                 conflict?: string[] | null;
-                capture_source?: string[] | null;
+                sensor?: string[] | null;
+                level?: string[] | null;
                 tag?: string[] | null;
                 occurred_date_from?: string | null;
                 occurred_date_to?: string | null;
@@ -8247,12 +8256,44 @@ export interface operations {
             };
         };
     };
+    pick_sources_api_v1_sources_get: {
+        parameters: {
+            query: {
+                /** @description A URL or part of a title */
+                q: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourcePickRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_tags_api_v1_tags_get: {
         parameters: {
-            query?: {
-                category?: string | null;
-                curated?: boolean;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -8266,15 +8307,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TagRead"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -8301,6 +8333,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TagRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_upload_api_v1_uploads_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_create_upload_api_v1_uploads_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadRead"];
                 };
             };
             /** @description Validation Error */

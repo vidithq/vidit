@@ -2,16 +2,15 @@ import uuid
 
 from pydantic import BaseModel
 
-from app.models.media import MediaKind, MediaRole
+from app.models.media import MediaKind
 
 
 class MediaRead(BaseModel):
     id: uuid.UUID
-    role: MediaRole
     storage_url: str
     kind: MediaKind
-    # Hex SHA-256; ``None`` on rows predating the column (``models/media.py``).
-    sha256: str | None = None
+    # Hex SHA-256 of the stored bytes.
+    sha256: str
     # Public so investigators can trace evidence to a post by filename.
     original_filename: str | None = None
 
