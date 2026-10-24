@@ -11,6 +11,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - Notification settings are one email switch per kind, and the in-app notification list always shows every kind.
 - A site admin links an X handle to an account; analysts no longer file a request for one.
 - API and database fields follow one naming convention: events use `occurred_date`, `occurred_time` and `coords`, media use `kind`, conflicts use `is_ongoing`, and foreign keys end in `_id`. The old field names no longer work, with no alias.
+- An organization invitation is withdrawn by the invitee's username instead of an invitation id, and the organization and event invitation lists report `invited_at` in place of `created_at`.
 
 ### Removed
 

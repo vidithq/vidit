@@ -67,7 +67,7 @@ Every request passes the middleware chain, then the guards its route declares, t
 
 **Request id.** Every response carries an `X-Request-ID` header, a 500 included. Send your own `X-Request-ID` of 1 to 64 characters from `A-Z`, `a-z`, `0-9`, `.`, `_`, and `-`, with at least one letter or digit, and the response echoes it. The API replaces any other value with an id of its own. The backend logs every line of the request under that id, so quote it when you report a failed request.
 
-**Auth audit log.** Each `/auth/*` endpoint writes an [`auth_events`](data-model.md#auth_events) row as a best-effort side effect. An audit failure never breaks the auth flow.
+**Auth audit log.** Each `/auth/*` endpoint writes an [`audit_log`](data-model.md#audit_log) row as a best-effort side effect. An audit failure never breaks the auth flow.
 
 ---
 
@@ -170,7 +170,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/organizations/{slug}/invites` | 🔒 | Pending invites (managers) |
 | GET | `/organizations/{slug}/invite-candidates` | 🔒 | The mutual follows you can invite (managers) |
 | POST | `/organizations/{slug}/invites` | 🔒 | Invite an analyst in mutual follow (org managers) |
-| DELETE | `/organizations/{slug}/invites/{invite_id}` | 🔒 | Withdraw a pending invite (managers) |
+| DELETE | `/organizations/{slug}/invites/{username}` | 🔒 | Withdraw a pending invite (managers) |
 | POST | `/organizations/{slug}/invite/accept` | 🔒 | Accept your invite |
 | POST | `/organizations/{slug}/invite/decline` | 🔒 | Decline your invite |
 | PATCH | `/organizations/{slug}/members/{username}` | 🔒 | Change a member's role (managers) |
@@ -282,7 +282,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `PUT`/`DELETE /organizations/{slug}/avatar` | 20/min |
 | `GET /organizations/{slug}/invites`, `GET /organizations/{slug}/invite-candidates`, `GET /organizations/{slug}/approval-requests` | 60/min |
 | `POST /organizations/{slug}/invites` | 30/hour |
-| `DELETE /organizations/{slug}/invites/{invite_id}` | 60/min |
+| `DELETE /organizations/{slug}/invites/{username}` | 60/min |
 | `POST /organizations/{slug}/invite/accept`, `POST /organizations/{slug}/invite/decline` | 30/min |
 | `PATCH`/`DELETE /organizations/{slug}/members/{username}` | 60/min |
 | **Admin** 🛡️ | |
@@ -553,7 +553,7 @@ Columns: **create** [`POST /events`](#post-events), **requests** [`POST /events/
 | `files` | Replacement source media, 0 or 1. Kept plus new must total exactly one | no | no | opt | opt | opt |
 | `proof_files` | The proof body's inline images, matched to its `placeholder://` srcs by filename | opt | opt | opt | opt | opt |
 
-`status`, `requested_by` and the provenance columns (`detected_from_url` among them) accept no field on any of the five. No write moves `detected_from_url`.
+`status`, `requested_by` and the [detection provenance](data-model.md#event_detections) (`detected_from_url` among it) accept no field on any of the five. No write moves `detected_from_url`.
 
 #### Evidence floor
 
@@ -916,8 +916,9 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
 | `archived_source` | The archived copy of `source_url`: `url` is the snapshot, `provider` is `wayback` or `archive_today`. `null` until the owner records one (see [`archival.md`](archival.md)) |
 | `secondary_source_urls` | The ordered mirrors, empty when there are none |
 | `archived_secondary_sources` | Same length and order as `secondary_source_urls`; entry `i` covers mirror `i`, on the terms of `archived_source` |
+| `detected_from_url` | The post an imported row came from; `null` for a human submit. Read from the event's [`event_detections`](data-model.md#event_detections) row |
 | `archived_detected_from` | The archived copy of `detected_from_url`, on the same terms; `null` for a human submit |
-| `detected_via` | The ingest entry that produced a machine detection: `bot`, `paste` or `archive`. Stamped once at creation; `null` for a human submit and for machine rows older than the field |
+| `detected_via` | The ingest entry that produced a machine detection: `bot`, `paste` or `archive`. Stamped once at creation; `null` for a human submit and for a machine row that names no entry. Read from the `event_detections` row |
 | `requested_by` | The analyst who opened the request; `null` on a directly created event |
 | `geolocators` | Who vouched the location, oldest first: the owner and every analyst who accepted an [invitation](#shared-credit). Empty until the first geolocate. A soft-deleted analyst is left out |
 | `viewer_invite_pending` | `true` when you are signed in and hold a pending [invitation](#shared-credit) to share the event's credit; the event page shows the invitation card from it. `false` for anyone else, and on the responses of the write verbs |
@@ -1308,20 +1309,17 @@ flowchart LR
   the owner removes, a co-geolocator leaves`"]:::spec
   erase["`**DELETE /admin/users/{id}?hard=true**`"]:::spec
   accept["`**accept**
-  deletes the invitation, credits the invitee, calls delete_approvals_on_join`"]:::core
+  turns the invited row active, calls delete_approvals_on_join`"]:::core
   handover["`**hand_over_owned_events**
   owner_id moves to the earliest live co-geolocator`"]:::core
-  invites[("`**event_geolocator_invites**
-  pending only`")]:::store
   credits[("`**event_geolocators**
-  the credit`")]:::store
+  one row per analyst and event: invited, active or departed`")]:::store
   credited["`**credited_to**
   profile, stats, feed, author filter, collections`"]:::shared
 
-  invite --> invites
-  drop --> invites
+  invite --> credits
+  drop --> credits
   answer --> accept
-  accept --> invites
   accept --> credits
   remove --> credits
   erase --> handover
@@ -1331,9 +1329,9 @@ flowchart LR
 
 An event's geolocators are the analysts it credits. The owner is always one of them; any other is an analyst the owner invited who accepted. Credit grants no write right: editing, filing a version, closing and inviting stay with the owner. Every read that lists an analyst's work matches any credited analyst: the profile count and feed, the profile stats, the follow feed, the `author` filter of [`GET /events`](#get-events) and [`GET /search`](#get-search), the author typeahead, and the collection add check.
 
-- **Invitation.** The owner of a `geolocated` event invites an analyst by username. The invitation waits in `event_geolocator_invites`, and the invitee receives a `co_geolocator_invite` [notification](#notifications). An event holds at most 10 live geolocators and pending invitations together, a soft-deleted analyst not counted (`MAX_EVENT_GEOLOCATORS` in [`services/geolocator_credit.py`](../backend/app/services/geolocator_credit.py)).
-- **Answer.** Accepting deletes the invitation and credits the invitee in one transaction, which also deletes the invitee's [approvals](#approvals) of the event (`delete_approvals_on_join`) and deletes the open [approval requests](#approval-requests) addressed to them. Declining or a withdrawal deletes the invitation.
-- **Removal.** The owner removes a co-geolocator, who receives a `co_geolocator_removed` notification, or a co-geolocator leaves. The owner cannot leave. The removed analyst's collections drop the event in the same transaction, and an `event_geolocator_departures` row records the departure: a former geolocator never [approves](#approvals) the event or receives an [approval request](#approval-requests) for it. The open approval requests the analyst sent about the event are withdrawn (`status` `withdrawn`), since only a geolocator asks for one; they keep counting toward the daily cap.
+- **Invitation.** The owner of a `geolocated` event invites an analyst by username. The invitation waits as an `invited` row in [`event_geolocators`](data-model.md#event_geolocators), and the invitee receives a `co_geolocator_invite` [notification](#notifications). An event holds at most 10 `active` geolocators and `invited` invitations together, a soft-deleted analyst not counted (`MAX_EVENT_GEOLOCATORS` in [`services/geolocator_credit.py`](../backend/app/services/geolocator_credit.py)).
+- **Answer.** Accepting turns the invitation into credit, the row `active`, in one transaction, which also deletes the invitee's [approvals](#approvals) of the event (`delete_approvals_on_join`) and deletes the open [approval requests](#approval-requests) addressed to them. Declining or a withdrawal deletes the invitation, or returns a former geolocator's row to `departed`.
+- **Removal.** The owner removes a co-geolocator, who receives a `co_geolocator_removed` notification, or a co-geolocator leaves. The owner cannot leave. The removed analyst's collections drop the event in the same transaction, and the analyst's row turns `departed`: a former geolocator never [approves](#approvals) the event or receives an [approval request](#approval-requests) for it. The open approval requests the analyst sent about the event are withdrawn (`status` `withdrawn`), since only a geolocator asks for one; they keep counting toward the daily cap.
 - **Erasure.** A hard delete of the owner's account hands the event, unless it is soft-deleted, to the earliest live co-geolocator; see [`DELETE /admin/users/{id}`](#delete-adminusersid).
 
 Every write locks the event row first, so an invitation, its answer and an erasure on the same event serialize. A soft-deleted or withheld event answers 404 on every route below.
@@ -1345,7 +1343,7 @@ Pending invitations on the event, oldest first. The owner reads every one; anyon
 **Response 200:**
 ```json
 [
-  { "user": { "id": "uuid", "username": "bo", "avatar_url": null }, "created_at": "2026-10-15T09:00:00Z" }
+  { "user": { "id": "uuid", "username": "bo", "avatar_url": null }, "invited_at": "2026-10-15T09:00:00Z" }
 ]
 ```
 
@@ -1453,7 +1451,7 @@ flowchart LR
   place["`**approve**
   locks the event, refuses geolocators, non-members and a stale version`"]:::core
   delete["`**delete_as_admin**
-  deletes the row and writes an approval_deleted admin event`"]:::core
+  deletes the row and writes an approval_deleted audit_log row`"]:::core
   file["`**file_version**
   the live version moves on`"]:::core
   join["`**delete_approvals_on_join**`"]:::core
@@ -2346,7 +2344,7 @@ flowchart LR
   flag[("`**users.is_invite_minting_enabled**`")]:::store
   code[("`**invite_codes**
   created_by_id is the sponsor`")]:::store
-  audit[("`**admin_events**
+  audit[("`**audit_log**
   invite_sponsored, invite_revoked`")]:::store
   confirm["`**confirm_pending_registration**
   copies x_handle, stamps used_by_id`"]:::core
@@ -2368,7 +2366,7 @@ The code behaves like one an admin mints through [`POST /admin/invite-codes`](#p
 
 `invite_codes.created_by_id` records you as the sponsor. The account created from the code reads its sponsor through that row, and the admin console shows the sponsor per account and per code. You revoke an active code you minted through [`POST /users/me/invite-codes/{id}/revoke`](#post-usersmeinvite-codesidrevoke), and an admin revokes any code through [`POST /admin/invite-codes/{id}/revoke`](#post-admininvite-codesidrevoke).
 
-You mint at most 5 codes per UTC day. Every code minted since 00:00 UTC counts, revoked or used. Each mint writes an `admin_events` row with action `invite_sponsored`, `actor_id` set to you, and target `{"invite_code_id": …, "x_handle": …}`.
+You mint at most 5 codes per UTC day. Every code minted since 00:00 UTC counts, revoked or used. Each mint writes an `audit_log` row with action `invite_sponsored`, `actor_id` set to you, and target `{"invite_code_id": …, "x_handle": …}`.
 
 **Body:**
 ```json
@@ -2392,7 +2390,7 @@ You mint at most 5 codes per UTC day. Every code minted since 00:00 UTC counts, 
 
 Revoke an active invite code you minted, for example one bound to the wrong handle. The endpoint sets `revoked_at` through the same service as [`POST /admin/invite-codes/{id}/revoke`](#post-admininvite-codesidrevoke). The row stays and lists as `revoked` in [`GET /users/me/invite-codes`](#get-usersmeinvite-codes).
 
-The revoke works while an admin keeps minting off for your account. A revoked code still counts against the daily quota of the day you minted it. Each revoke writes an `admin_events` row with action `invite_revoked`, `actor_id` set to you, and target `{"invite_code_id": …}`.
+The revoke works while an admin keeps minting off for your account. A revoked code still counts against the daily quota of the day you minted it. Each revoke writes an `audit_log` row with action `invite_revoked`, `actor_id` set to you, and target `{"invite_code_id": …}`.
 
 **Response 200:** the revoked code, in the shape of an `items` entry of [`GET /users/me/invite-codes`](#get-usersmeinvite-codes).
 
@@ -2663,12 +2661,12 @@ flowchart LR
   org manager only`"]:::spec
   mutual["`**is_mutual_follow**
   inviter and invitee follow each other`"]:::core
-  pending[("`**organization_invites**
-  one per analyst and organization`")]:::store
+  pending[("`**organization_members**
+  state invited: one row per analyst and organization`")]:::store
   accept["`**POST .../invite/accept**`"]:::shared
   decline["`**POST .../invite/decline**`"]:::shared
   members[("`**organization_members**
-  role: manager or member`")]:::store
+  state active, role: manager or member`")]:::store
   manage["`**PATCH** or **DELETE .../members/{username}**
   role change, removal, leave`"]:::spec
   last["`**_guard_last_manager**
@@ -2788,7 +2786,7 @@ Remove the organization's picture and its stored object. Managers only.
 
 Pending invites, newest first. Managers only.
 
-**Response 200:** a list of `{ "id", "user": AuthorRef, "invited_by": AuthorRef | null, "created_at" }`.
+**Response 200:** a list of `{ "user": AuthorRef, "invited_by": AuthorRef | null, "invited_at" }`. An invite has no id: the organization and the invitee's username name it.
 
 ---
 
@@ -2812,11 +2810,11 @@ Invite an analyst. Org managers only. Writes an `organization_invite` [notificat
 
 ---
 
-### `DELETE /organizations/{slug}/invites/{invite_id}` 🔒
+### `DELETE /organizations/{slug}/invites/{username}` 🔒
 
-Withdraw a pending invite. Managers only. Nobody is notified.
+Withdraw the pending invite of the analyst with that username. Managers only. Nobody is notified.
 
-**Response 204:** no body.
+**Response 204:** no body. **Errors:** `not_organization_manager`, `invite_not_found` (the analyst holds no pending invite, or is unknown or soft-deleted).
 
 ---
 
@@ -2913,7 +2911,7 @@ A detection, a retraction and a withdrawn request are in neither kind. A soft-de
 
 ## Admin
 
-All routes below are mounted under `/admin` and gated by the `require_admin` dependency, which layers on `get_current_user`, so a deactivated admin (`is_active=false`) loses access immediately. A path naming an unknown id returns 404. Each state-changing route appends an `admin_events` row, named under its endpoint. Outside `/admin`, the `viewer_*` fields a route returns follow the caller's own role, so being a site admin does not set them.
+All routes below are mounted under `/admin` and gated by the `require_admin` dependency, which layers on `get_current_user`, so a deactivated admin (`is_active=false`) loses access immediately. A path naming an unknown id returns 404. Each state-changing route appends an `audit_log` row, named under its endpoint. Outside `/admin`, the `viewer_*` fields a route returns follow the caller's own role, so being a site admin does not set them.
 
 <details>
 <summary>Admin endpoints. Expand for contracts.</summary>
@@ -2927,7 +2925,7 @@ All routes below are mounted under `/admin` and gated by the `require_admin` dep
 
 ### `GET /admin/detection-stats` 🛡️
 
-Quality signal on the machine-extraction pipeline. A **machine detection** is an event imported from X (the archive backfill or the bot), identified by `detected_from_url` being set. Read-only, no audit row.
+Quality signal on the machine-extraction pipeline. A **machine detection** is an event imported from X (the archive backfill or the bot), identified by an [`event_detections`](data-model.md#event_detections) row. Read-only, no audit row.
 
 - **`machine_rejected`** counts machine detections dismissed before publication: closed out of `detected` (`before_closed_status = "detected"`), or soft-deleted while `detected`. That includes the pending detections of a soft-deleted account. A detection that was ever promoted to `geolocated` is not a reject.
 - **`reject_rate`** is `machine_rejected / machine_total` as a 0 to 1 ratio, `0` when there are no machine detections. Both counts cover every machine row, soft-deleted or not.
@@ -3001,7 +2999,7 @@ List invite codes, newest first, including exhausted, revoked and expired ones. 
 - `archives_imported` counts `done` archive-import jobs.
 - `bot_detection_count` sums `bot_mentions.created_event_count` for the account's X handle (case-insensitive), a total that later deletes do not reduce.
 - `detected_count` and `geolocated_count` count the live events the account owns in that status.
-- `last_seen_at` is the account's most recent authenticated request, refreshed at most once per 15 minutes and stamped at sign-in. It falls back to the newest `login` auth event, and is `null` when neither exists.
+- `last_seen_at` is the account's most recent authenticated request, refreshed at most once per 15 minutes and stamped at sign-in. It falls back to the newest `login` row of the [`audit_log`](data-model.md#audit_log), and is `null` when neither exists.
 
 ### `POST /admin/invite-codes/{id}/revoke` 🛡️
 
@@ -3235,7 +3233,7 @@ The moderation queue: open reports first, then newest first within each group, e
 
 **Response 200:** `{items, total, page, per_page}`, whose `items` are [`ContentReportRead`](#post-eventsidreport).
 
-- `resolved_at` and `resolution` are both `null` while a report is open and both set once it is resolved. The resolving admin is recorded in `admin_events`, not on the wire.
+- `resolved_at` and `resolution` are both `null` while a report is open and both set once it is resolved. The resolving admin is recorded in `audit_log`, not on the wire.
 - A row names one target. `event_id` carries the event's id. `collection` carries the collection's current title and owner, read at queue time.
 - Both are `null` when the target is gone (a hard-deleted event, or a collection erased with its owner). Such a report takes only `dismissed`.
 

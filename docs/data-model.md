@@ -43,10 +43,12 @@ flowchart LR
   close["`**close**
   the owner takes the row back, from any live status`"]:::spec
 
+  detection[("`**event_detections**
+  where a machine-written row came from: the post, its thread, the entry`")]:::store
   credit[("`**event_geolocators**
-  durable credit, owner included`")]:::store
+  one row per analyst and event: invited, active or departed; the owner is active`")]:::store
   invite["`**POST /events/{id}/geolocator-invites**
-  the owner invites; the invitee accepts into event_geolocators`"]:::spec
+  the owner invites; the invitee accepts, and the row turns active`"]:::spec
   versions[("`**event_versions**
   the superseded state, as version_no moves on`")]:::store
   approve["`**POST /events/{id}/approvals**
@@ -58,9 +60,7 @@ flowchart LR
   approval_requests[("`**approval_requests**
   open until approved, declined or withdrawn`")]:::store
   leave["`**DELETE /events/{id}/geolocators/{username}**
-  the owner removes a co-geolocator, or one leaves`"]:::spec
-  departures[("`**event_geolocator_departures**
-  who held the credit and lost it; they never approve the row`")]:::store
+  the owner removes a co-geolocator, or one leaves: the row turns departed, and the analyst never approves the row`"]:::spec
   orgs[("`**organizations**
   an approval, or a request for one, may be placed in its name`")]:::store
   reports[("`**content_reports**
@@ -72,6 +72,7 @@ flowchart LR
 
   ask --> requested
   engine --> detected
+  engine --> detection
   submit --> vouch
   requested --> amend --> requested
   requested --> vouch
@@ -79,7 +80,7 @@ flowchart LR
   vouch --> geolocated --> version --> geolocated
   vouch --> credit
   geolocated --> invite --> credit
-  credit --> leave --> departures
+  credit --> leave
   leave --> approval_requests
   approvals -.-> orgs
   approval_requests -.-> orgs
@@ -97,7 +98,7 @@ flowchart LR
   shelve --> shelves
 ```
 
-The three entries on the left are the three ways a row is born: a request and a direct submit come from [`POST /events/requests` and `POST /events`](api.md#post-events), and a machine detection comes from the [ingest engine](ingestion.md). The four statuses and the constraints that pin them are [`events`](#events). The four writes are `update_request`, `geolocate`, `save_version` and `close`, all in [`api.md`](api.md). Two of them correct a row rather than move it, and they differ on what the row is: `update_request` overwrites an open question, while `save_version` files what it supersedes, because a published row is a vouched claim. The tables on the right exist because a write happened: [`event_geolocators`](#event_geolocators) records who vouched, the owner and every analyst who accepted an invitation ([`event_geolocator_invites`](#event_geolocator_invites)), [`event_versions`](#event_versions) holds what a correction superseded, [`event_geolocator_departures`](#event_geolocator_departures) holds who lost the credit, [`event_approvals`](#event_approvals) holds who attested which version, [`approval_requests`](#approval_requests) holds who was asked to (a departure withdraws the open requests its analyst sent), an [organization](#organizations) can stand behind an approval or a request in place of one analyst, [`content_reports`](#content_reports) holds what a viewer flagged, and [`collections`](#collections) with [`collection_events`](#collection_events) holds the curated sets a credited analyst puts the row on.
+The three entries on the left are the three ways a row is born: a request and a direct submit come from [`POST /events/requests` and `POST /events`](api.md#post-events), and a machine detection comes from the [ingest engine](ingestion.md). The four statuses and the constraints that pin them are [`events`](#events). The four writes are `update_request`, `geolocate`, `save_version` and `close`, all in [`api.md`](api.md). Two of them correct a row rather than move it, and they differ on what the row is: `update_request` overwrites an open question, while `save_version` files what it supersedes, because a published row is a vouched claim. The tables on the right exist because a write happened: [`event_geolocators`](#event_geolocators) records who vouched (the owner and every analyst who accepted an invitation), who is invited and who lost the credit, [`event_detections`](#event_detections) records where an imported row came from, [`event_versions`](#event_versions) holds what a correction superseded, [`event_approvals`](#event_approvals) holds who attested which version, [`approval_requests`](#approval_requests) holds who was asked to (a departure withdraws the open requests its analyst sent), an [organization](#organizations) can stand behind an approval or a request in place of one analyst, [`content_reports`](#content_reports) holds what a viewer flagged, and [`collections`](#collections) with [`collection_events`](#collection_events) holds the curated sets a credited analyst puts the row on.
 
 ## Schema overview
 
@@ -121,18 +122,11 @@ erDiagram
         TIMESTAMPTZ created_at
     }
 
-    admin_events {
+    audit_log {
         UUID id PK
-        UUID actor_id FK "nullable"
+        UUID actor_id FK "nullable, the acting account"
         TEXT action
-        JSON target "nullable"
-        TIMESTAMPTZ created_at
-    }
-
-    auth_events {
-        UUID id PK
-        UUID user_id FK "nullable"
-        TEXT event
+        JSON target "nullable, NULL for an action on one's own account"
         TIMESTAMPTZ created_at
     }
 
@@ -176,15 +170,10 @@ erDiagram
         GEOMETRY coords "nullable, the subject; required at geolocated"
         GEOMETRY capture_source_coords "nullable, the camera position"
         TEXT source_url "nullable, required at requested/geolocated"
-        BIGINT detected_from_post_id "nullable, detection provenance id"
-        BIGINT_ARRAY detected_thread_post_ids "nullable, the thread's post ids"
-        TEXT detected_from_url "nullable, detection provenance link"
-        VARCHAR detected_via "nullable, bot | paste | archive"
         TEXT proof "sanitized HTML"
         DATE occurred_date "nullable"
         TIME occurred_time "nullable, optional UTC hour"
         TIMESTAMPTZ source_posted_at "nullable, when the source posted (UTC)"
-        TIMESTAMPTZ detected_post_at "nullable, analyst's X post time"
         TIMESTAMPTZ requested_at "nullable, entered requested"
         TIMESTAMPTZ detected_at "nullable, entered detected"
         TIMESTAMPTZ geolocated_at "nullable, entered geolocated"
@@ -225,22 +214,22 @@ erDiagram
         UUID resolved_by_id FK "nullable"
     }
 
+    event_detections {
+        UUID event_id PK, FK
+        VARCHAR via "nullable, bot | paste | archive"
+        TEXT from_url "the post the row was imported from"
+        BIGINT from_post_id "nullable, the re-import match anchor"
+        BIGINT_ARRAY thread_post_ids "nullable, the thread's post ids"
+        TIMESTAMPTZ post_at "nullable, analyst's X post time"
+    }
+
     event_geolocators {
-        UUID event_id FK
-        UUID user_id FK
-        TIMESTAMPTZ created_at
-    }
-
-    event_geolocator_invites {
-        UUID event_id FK
-        UUID user_id FK "the invitee"
-        TIMESTAMPTZ created_at
-    }
-
-    event_geolocator_departures {
-        UUID event_id FK
-        UUID user_id FK "the former geolocator"
-        TIMESTAMPTZ created_at "the first departure"
+        UUID event_id PK, FK
+        UUID user_id PK, FK
+        VARCHAR state "invited | active | departed"
+        TIMESTAMPTZ invited_at "nullable, set while invited"
+        TIMESTAMPTZ joined_at "nullable, set while active"
+        TIMESTAMPTZ departed_at "nullable, the first departure"
     }
 
     event_approvals {
@@ -363,16 +352,11 @@ erDiagram
     organization_members {
         UUID organization_id PK "FK"
         UUID user_id PK "FK"
+        UUID invited_by_id FK "nullable, the org manager who invited"
+        VARCHAR state "invited | active"
         VARCHAR role "manager | member"
-        TIMESTAMPTZ joined_at
-    }
-
-    organization_invites {
-        UUID id PK
-        UUID organization_id FK
-        UUID user_id FK "the invitee"
-        UUID invited_by_id FK "nullable"
-        TIMESTAMPTZ created_at
+        TIMESTAMPTZ invited_at "nullable, set while invited"
+        TIMESTAMPTZ joined_at "nullable, set while active"
     }
 
     notification_deliveries {
@@ -444,8 +428,7 @@ erDiagram
     users |o--o{ invite_codes : "created_by_id"
     invite_codes ||--o{ pending_registrations : "invite_code_id"
     users ||--o{ password_reset_tokens : "user_id"
-    users |o--o{ admin_events : "actor_id"
-    users |o--o{ auth_events : "user_id"
+    users |o--o{ audit_log : "actor_id"
     users ||--o{ events : "owner_id"
     users |o--o{ events : "requested_by_id"
     events ||--o{ media : "event_id"
@@ -455,10 +438,7 @@ erDiagram
     conflicts ||--o{ event_conflicts : "conflict_id"
     events ||--o{ event_geolocators : "event_id"
     users ||--o{ event_geolocators : "user_id"
-    events ||--o{ event_geolocator_invites : "event_id"
-    users ||--o{ event_geolocator_invites : "user_id"
-    events ||--o{ event_geolocator_departures : "event_id"
-    users ||--o{ event_geolocator_departures : "user_id"
+    events ||--o| event_detections : "event_id"
     events ||--o{ event_approvals : "event_id"
     users |o--o{ event_approvals : "reviewer_id"
     events ||--o{ approval_requests : "event_id"
@@ -486,11 +466,9 @@ erDiagram
     event_approvals |o--o{ notifications : "approval_id"
     organizations ||--o{ organization_members : "organization_id"
     users ||--o{ organization_members : "user_id"
-    organizations ||--o{ organization_invites : "organization_id"
     organizations |o--o{ event_approvals : "organization_id"
     organizations |o--o{ approval_requests : "target_organization_id"
-    users ||--o{ organization_invites : "user_id"
-    users |o--o{ organization_invites : "invited_by_id"
+    users |o--o{ organization_members : "invited_by_id"
     users |o--o{ organizations : "created_by_id"
     users ||--o{ archive_import_jobs : "owner_id"
     events ||--o{ source_archives : "event_id"
@@ -578,7 +556,7 @@ An account created from a sponsored code reaches its sponsor through the code ro
 
 A sponsor mints at most 5 codes per UTC day (`DAILY_MINT_LIMIT` in [`services/sponsored_invites.py`](../backend/app/services/sponsored_invites.py)). The count covers every row with that `created_by_id` and a `created_at` since 00:00 UTC, revoked or used. The mint locks the sponsor's `users` row, so two concurrent mints cannot both pass the count.
 
-`DELETE /admin/invite-codes/{id}` drops a row whose `used_by_id` is NULL, the cleanup for codes that were minted and never used. A row naming a redeemer is refused: it is that account's origin record. The `admin_events` row for the deletion carries the `code` value, so the trail names what left the table.
+`DELETE /admin/invite-codes/{id}` drops a row whose `used_by_id` is NULL, the cleanup for codes that were minted and never used. A row naming a redeemer is refused: it is that account's origin record. The `audit_log` row for the deletion carries the `code` value, so the trail names what left the table.
 
 ---
 
@@ -605,42 +583,24 @@ Lifecycle: `POST /auth/register` inserts a row through `services/registration.py
 
 ---
 
-### `auth_events`
+### `audit_log`
 
-An append-only audit log for auth-relevant events. The auth router populates it synchronously on `login`, `failed_login`, `logout`, `register_pending`, `register_resent`, `register_confirmed`, `password_reset_requested`, `password_reset_completed`, and `password_changed`. Writes happen inside a SAVEPOINT (`db.begin_nested()`), so an INSERT failure rolls back only the audit row and the caller's transaction stays usable.
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `id` | `UUID` | PK, default `uuid4()` |
-| `user_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. NULL when the email didn't match a live user: `failed_login`, the `password_reset_requested` no-op branch, `register_pending`, both branches of `register_resent`, and anonymous logout. This prevents the row from doubling as a probe-able email-to-existence oracle. |
-| `event` | `TEXT` | NOT NULL. A plain string, not a database enum, so adding a new event kind doesn't require a migration. |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
-
-Indexes:
-
-- `ix_auth_events_user_id_created_at` on `(user_id, created_at)`. Supports the forensics query "what did this user do, latest first".
-- `ix_auth_events_event_created_at` on `(event, created_at)`. Supports the query "did event X spike recently".
-
-The table stores no IP address or User-Agent: Vidit stores neither, for privacy. There is no retention policy.
-
----
-
-### `admin_events`
-
-An append-only audit log for admin actions taken through the `/admin` page, and for sponsored invite mints. It is a sibling to the `auth_events` table above.
+An append-only log of the actions that change an account or that a site admin or sponsor takes. [`services/audit.log_auth_event`](../backend/app/services/audit.py) writes the account actions: the auth router calls it synchronously on `login`, `failed_login`, `logout`, `register_pending`, `register_resent`, `register_confirmed`, `password_reset_requested`, `password_reset_completed` and `password_changed`. The write runs inside a SAVEPOINT (`db.begin_nested()`), so an INSERT failure rolls back only the audit row and the caller's transaction stays usable. [`services/admin.log_admin_event`](../backend/app/services/admin.py) writes the admin actions and the sponsored invite mints in the caller's transaction.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
-| `actor_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The admin, or the sponsor on an `invite_sponsored` row and on an `invite_revoked` row for a code the sponsor revoked. |
-| `action` | `TEXT` | NOT NULL, for example `invite_created`, `invite_revoked`, `invite_deleted`, `invite_sponsored`, `invite_minting_enabled` and `invite_minting_disabled` |
-| `target` | `JSON` | nullable. Free-form context: target IDs and parameters. |
+| `actor_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The acting account: the site admin, the sponsor on an `invite_sponsored` row and on an `invite_revoked` row for a code the sponsor revoked, or the account itself for an account action. NULL for a `failed_login`, a `password_reset_requested` no-op, a `register_pending` and a `register_resent` whose email matches no live account, and for an anonymous logout. This keeps the table from becoming a probe-able email-to-existence oracle. NULL again once the account is erased. |
+| `action` | `TEXT` | NOT NULL. A plain string, not a database enum, so a new action needs no migration. For example `login`, `failed_login`, `invite_created`, `invite_revoked`, `invite_deleted`, `invite_sponsored`, `invite_minting_enabled` and `invite_minting_disabled`. |
+| `target` | `JSON` | nullable. What the action touched: target IDs and parameters. NULL for an action on one's own account. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
 Indexes:
 
-- `ix_admin_events_actor_id` on `(actor_id)`. Supports the query "what did this admin do?".
-- `ix_admin_events_created_at` on `(created_at)`. Supports chronological scans.
+- `ix_audit_log_actor_id_created_at` on `(actor_id, created_at)`. Supports the forensics query "what did this account do, latest first".
+- `ix_audit_log_action_created_at` on `(action, created_at)`. Supports the query "did action X spike recently".
+
+The table stores no IP address or User-Agent: Vidit stores neither, for privacy. There is no retention period.
 
 ---
 
@@ -657,17 +617,12 @@ One row represents one event across its whole lifecycle. `status` tracks the lif
 | `coords` | `GEOMETRY(Point, 4326)` | nullable. The subject: what the footage shows. Tied to `status` by `ck_events_coords_status`: required for `geolocated`, optional otherwise. A `requested` request may carry an approximate guess. Each event has one subject point. |
 | `capture_source_coords` | `GEOMETRY(Point, 4326)` | nullable. The camera position: where the footage was shot from. Always optional, one per event. |
 | `source_url` | `TEXT` | nullable. Where the footage was first published. Tied to `status` by `ck_events_source_url_status`: required for `requested` and `geolocated`, optional for `detected`. A machine detection may declare no source; see [`ingestion.md`](ingestion.md). |
-| `detected_from_post_id` | `BIGINT` | nullable. The ID of the post a machine detection was imported from. It anchors the display link and is the post-ID leg of the re-import match: one post spells its URL several ways, so the ID keeps two spellings on one detection. NULL for human submits. Indexed with `owner_id`, partial on the populated cohort. |
-| `detected_thread_post_ids` | `BIGINT[]` | nullable. Every post ID of the thread the detection was read from, the anchor included. The [re-import](ingestion.md#re-import) match reads it: a detection matches a row when their post-ID sets intersect. Written once at creation, like the other provenance columns. NULL for human submits; some machine rows carry their anchor ID alone. GIN-indexed, partial on the populated cohort. |
-| `detected_from_url` | `TEXT` | nullable. The post a machine detection was imported from, as a link an analyst can open: the display value, written from `detected_from_post_id` at the engine's exit. A provenance link, distinct from `source_url`. NULL for human submits. |
-| `detected_via` | `VARCHAR(20)` | nullable, `ck_events_detected_via_valid`: `'bot'`, `'paste'` or `'archive'`, the ingest entry that produced the row (see [`ingestion.md`](ingestion.md)). Stamped once at creation by the shared write path and never moved, so a re-import through another entry does not rewrite where the row first came from. Read-only on `EventRead`. NULL for human submits and on some machine rows. This and the three `detected_from_*` columns above are stamped on a `requested` row the bot opened as well as on a detection, which is what lets a second tag on the same post recognise it. |
 | `proof` | `TEXT` | NOT NULL. Sanitized HTML, on the [rich text](api.md#rich-text) rules. A human submit carries the analyst's write-up, and a machine detection carries the tweet or thread text, one `p` per line, followed by its proof images as `img`. A submission with no proof body, or a body with no text and no image, stores `''`, not NULL. |
 | `occurred_date` | `DATE` | nullable in every status. When the depicted event happened. NULL when unknown: the footage doesn't always establish the date, and it renders as *Unknown*. For a machine detection, this is provisionally the originating post's date; the owner corrects it at submit. |
 | `occurred_time` | `TIME` | nullable. An optional time of day for `occurred_date`, in UTC. NULL when the hour is unknown. |
-| `source_posted_at` | `TIMESTAMPTZ` | nullable. When the original source posted the media: a real post instant, so a full UTC timestamp when known. Distinct from `occurred_date` (when the event happened), `detected_post_at` (when the analyst posted the geolocation), and `created_at` (when the row was submitted). A human submit or a machine detection with a quoted source always sets it. A machine detection with only a footage link and no quote leaves it `NULL`, because the link carries no date, except a Telegram footage link whose public embed was chased. That case carries the post's own date; see [`ingestion.md`](ingestion.md#archive-formats). |
-| `detected_post_at` | `TIMESTAMPTZ` | nullable. When the analyst published this on X: the post time of `detected_from_url`, whether the row is a detection or a request the bot opened. This is the precedence input for the "who geolocated it first" claim/dispute pipeline. The system captures it at import, because the post may later be deleted. NULL for human submits. |
+| `source_posted_at` | `TIMESTAMPTZ` | nullable. When the original source posted the media: a real post instant, so a full UTC timestamp when known. Distinct from `occurred_date` (when the event happened), [`event_detections.post_at`](#event_detections) (when the analyst posted the geolocation), and `created_at` (when the row was submitted). A human submit or a machine detection with a quoted source always sets it. A machine detection with only a footage link and no quote leaves it `NULL`, because the link carries no date, except a Telegram footage link whose public embed was chased. That case carries the post's own date; see [`ingestion.md`](ingestion.md#archive-formats). |
 | `requested_at` | `TIMESTAMPTZ` | nullable. Stamped when the event entered `requested`. |
-| `detected_at` | `TIMESTAMPTZ` | nullable. Stamped when a machine produced it, entering `detected`. |
+| `detected_at` | `TIMESTAMPTZ` | nullable. Stamped when a machine produced it, entering `detected`. The provenance of an imported row is its [`event_detections`](#event_detections) row. |
 | `geolocated_at` | `TIMESTAMPTZ` | nullable. Stamped when a person vouched for it and published it, entering `geolocated`. |
 | `closed_at` | `TIMESTAMPTZ` | nullable. Stamped when the event entered the terminal `closed` state. |
 | `status` | `VARCHAR(20)` | NOT NULL, `server_default 'geolocated'`. The lifecycle runs `requested` (an open call to geolocate) → `detected` (a machine detection, marked on every surface, immutable until vouched) → `geolocated` (a person vouched for it and published it; always has a location, and every later correction is a version) → `closed` (the owner took the row back, from any of the three live states). It is a plain string, not a native enum, and `ck_events_status_valid` pins the value domain. The default keeps a direct human submit correct without setting the value explicitly; the requested and detected paths pass `status` explicitly. The `update_request`, `geolocate`, `save_version` and `close` writes are documented in [`api.md`](api.md). |
@@ -682,7 +637,6 @@ One row represents one event across its whole lifecycle. `status` tracks the lif
 
 **Check constraints:**
 - `ck_events_status_valid`: `status IN ('requested', 'detected', 'geolocated', 'closed')`. Pins the value domain at the database. The column is a plain `VARCHAR`, not a native enum, so this constraint rejects a bad write at the Postgres level, not only at the app-layer `Literal`.
-- `ck_events_detected_via_valid`: `detected_via IS NULL OR detected_via IN ('bot', 'paste', 'archive')`. The same reason as the status domain, for the ingest entry. NULL is in-domain: a human submit names no entry.
 - `ck_events_coords_status`: `status <> 'geolocated' OR coords IS NOT NULL`. A `geolocated` event always has a subject coordinate. The other states leave it free, so a `requested` request may carry an approximate guess.
 - `ck_events_source_url_status`: `status NOT IN ('requested', 'geolocated') OR source_url IS NOT NULL`. A `requested` or `geolocated` event always has a source URL. A detection may carry none; see [`ingestion.md`](ingestion.md). The promotion to `geolocated` enforces the same rule in `services/events.geolocate` before the row can violate this CHECK.
 - `ck_events_closed_stamp` (`status <> 'closed' OR closed_at IS NOT NULL`) and `ck_events_geolocated_stamp` (`status <> 'geolocated' OR geolocated_at IS NOT NULL`). These tie the terminal stamps to status. An app path that forgets to stamp is rejected at write time, not stored as silent bad data.
@@ -692,7 +646,7 @@ One row represents one event across its whole lifecycle. `status` tracks the lif
 
 ```
 event happens ──▶ source posts the media ──▶ analyst posts the geoloc on X ──▶ imported to Vidit
- occurred_date           source_posted_at            detected_post_at                 created_at
+ occurred_date           source_posted_at            event_detections.post_at         created_at
  (+ occurred_time)       (UTC instant)               (UTC instant, machine path)      (UTC instant)
 ```
 
@@ -700,10 +654,10 @@ event happens ──▶ source posts the media ──▶ analyst posts the geolo
 |---|---|---|---|
 | `occurred_date` (+ `occurred_time`) | when the depicted event happened | analyst, or detection (post date) | date nullable in every status: NULL when the footage doesn't establish it. Time optional: the hour is often unknown. |
 | `source_posted_at` | when the source posted the media | analyst, or detection (a quoted source's date) | nullable. `NULL` on a `detected` row whose source is a footage link with no date, or whose source is undeclared. |
-| `detected_post_at` | when the analyst posted it on X | machine-written rows only (the imported post's time) | NULL for human submits |
+| `event_detections.post_at` | when the analyst posted it on X | machine-written rows only (the imported post's time) | no row for a human submit |
 | `created_at` | when it was submitted to Vidit | system | NOT NULL |
 
-`occurred_date` is *editorial*: a real-world event, often known only to the day, with no canonical time zone. It stores a bare date plus an optional UTC hour. `source_posted_at` and `detected_post_at` are *post instants*: known to the minute when present, and always UTC, so they store full timestamps. All entered times follow the UTC convention.
+`occurred_date` is *editorial*: a real-world event, often known only to the day, with no canonical time zone. It stores a bare date plus an optional UTC hour. `source_posted_at` and `event_detections.post_at` are *post instants*: known to the minute when present, and always UTC, so they store full timestamps. All entered times follow the UTC convention.
 
 **Indexes:**
 - `GIST(coords)`. Required for geospatial queries: bounding-box filtering and proximity sort. `capture_source_coords` is not indexed, because no spatial read consumes it.
@@ -714,67 +668,79 @@ event happens ──▶ source posts the media ──▶ analyst posts the geolo
 - `ix_events_status_created_at` on `(status, created_at)`. The requested view, the map, and the detections queue all filter on `status`, newest first.
 - `ix_events_created_at_id` on `(created_at, id)`. Backs the keyset that the capped list endpoints page on. `GET /events` and `GET /events/detections` order by `created_at DESC, id DESC` and cut each page with a row comparison over that pair; see [`api.md`](api.md#pagination).
 - `ix_events_timeline_at_id` on `(feed_at, id)`, where `feed_at` is `coalesce(CASE WHEN status = 'requested' THEN requested_at ELSE geolocated_at END, created_at)`. Partial: visible (`deleted_at` and `hidden_at` NULL) `geolocated` and `requested` rows. Backs the keyset of [`GET /feed`](api.md#get-feed), which orders by `feed_at DESC, id DESC`, so a page reads the index in order instead of sorting. The expression matches `models/event.feed_at` exactly; the planner ignores the index on any difference.
-- `ix_events_detected_from_url`: partial index on `(detected_from_url) WHERE detected_from_url IS NOT NULL`. Backs the admin machine-detection cohort scans, which count the rows carrying a provenance link at all. Human rows are always NULL here.
-- `ix_events_owner_detected_from_post_id`: partial index on `(owner_id, detected_from_post_id) WHERE detected_from_post_id IS NOT NULL`. Backs the post-id leg of the re-import match, one lookup per detection during a backfill, scoped to the importer's own rows.
-- `ix_events_detected_thread_post_ids`: partial GIN index on `(detected_thread_post_ids) WHERE detected_thread_post_ids IS NOT NULL`. Backs the array-overlap leg of the re-import match, one lookup per detection during a backfill.
 - `ix_events_search_fts`: GIN index on `to_tsvector('simple', coalesce(title, ''))`. Backs `GET /search`; both the located and requested views run through it. The `simple` configuration, not `english`, keeps matching predictable for the corpus of place names and analyst handles. Soft-delete is filtered at query time. `source_url` is not in the indexed expression, because Postgres' simple parser tokenizes URLs as host and path units.
 
 > `coords` and `capture_source_coords` are PostGIS points in WGS84 (SRID 4326, standard GPS coordinates). GeoAlchemy2 exposes them as `.lat` and `.lng` through `WKBElement`, or as `ST_X` and `ST_Y` in raw SQL.
 
 ---
 
+### `event_detections`
+
+Where a machine-written row came from: the post it was imported from, the thread that post sits in and the ingest entry that read it. One row per imported event, whether the event is a `detected` row or a `requested` row the bot opened. A human submit has no row. [`services/events/request.stamp_provenance`](../backend/app/services/events/request.py) writes the row once at creation, and [`Event.detection`](../backend/app/models/event.py) reads it. `Event.is_machine_detection` is true when the row exists and `requested_at` is NULL.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `event_id` | `UUID` | PK, FK → `events.id` ON DELETE CASCADE |
+| `via` | `VARCHAR(20)` | nullable, `ck_event_detections_via_valid`: `'bot'`, `'paste'` or `'archive'`, the ingest entry that produced the row (see [`ingestion.md`](ingestion.md)). Stamped once at creation by the shared write path and never moved, so a re-import through another entry does not rewrite where the row first came from. NULL on some machine rows. Read-only on `EventRead` as `detected_via`. |
+| `from_url` | `TEXT` | NOT NULL. The post the row was imported from, as a link an analyst can open: the display value, written from `from_post_id` at the engine's exit. A provenance link, distinct from `events.source_url`. Read on `EventRead` as `detected_from_url`. |
+| `from_post_id` | `BIGINT` | nullable. The ID of the post. It anchors the display link and is the post-ID leg of the re-import match: one post spells its URL several ways, so the ID keeps two spellings on one detection. |
+| `thread_post_ids` | `BIGINT[]` | nullable. Every post ID of the thread the detection was read from, the anchor included. The [re-import](ingestion.md#re-import) match reads it: a detection matches a row when their post-ID sets intersect. Some machine rows carry their anchor ID alone. |
+| `post_at` | `TIMESTAMPTZ` | nullable. When the analyst published the geolocation on X: the post time of `from_url`. This is the precedence input for the "who geolocated it first" claim and dispute pipeline. The system captures it at import, because the post may later be deleted. A re-import updates this column and no other. |
+
+**Indexes:**
+- `ix_event_detections_from_post_id`: partial index on `(from_post_id) WHERE from_post_id IS NOT NULL`. Backs the post-ID leg of the re-import match, one lookup per detection during a backfill.
+- `ix_event_detections_thread_post_ids`: partial GIN index on `(thread_post_ids) WHERE thread_post_ids IS NOT NULL`. Backs the array-overlap leg of the re-import match, one lookup per detection during a backfill.
+
+The match joins to `events` to scope itself to the importer's own rows. The admin machine-detection cohort tests whether the row exists, through the primary key.
+
+---
+
 ### `event_geolocators`
 
-Durable credit for the geolocation: who vouched for the location. `owner_id` is always among these rows. The system writes at least one row at the `geolocate` transition, and one more each time an invited analyst accepts (see [`event_geolocator_invites`](#event_geolocator_invites)). Credit grants no write right: every write still checks `owner_id`. Every read that lists an analyst's work matches an event on `owner_id` or on these rows (`services/event_filters.credited_to`).
+One analyst's standing on one event's credit, one row per pair. A row is `invited` while the owner's invitation waits, `active` while the analyst holds the credit, and `departed` once they held it and lost it. The `active` rows are the credit: who vouched for the location. `owner_id` is always among them on a `geolocated` event. The system writes the owner's `active` row at the `geolocate` transition, and a row turns `active` each time an invited analyst accepts. Credit grants no write right: every write still checks `owner_id`. Every read that lists an analyst's work matches an event on `owner_id` or on an `active` row (`services/event_filters.credited_to`).
+
+```mermaid
+stateDiagram-v2
+  classDef held fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef gone fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+
+  [*] --> active: geolocate, for the owner
+  [*] --> invited: invite
+  invited --> active: accept
+  invited --> departed: decline or withdraw, row has departed_at
+  invited --> [*]: decline or withdraw, row has no departed_at
+  active --> departed: remove or leave
+  departed --> invited: invite, departed_at kept
+
+  class invited,active held
+  class departed gone
+```
+
+In the diagram, a green state counts toward the cap of 10 per event (`MAX_EVENT_GEOLOCATORS` in [`services/geolocator_credit.py`](../backend/app/services/geolocator_credit.py)), counting only analysts whose account is live. A blue state is a former geolocator. `[*]` is no row.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
-| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE |
-| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
+| `event_id` | `UUID` | PK, FK → `events.id` ON DELETE CASCADE |
+| `user_id` | `UUID` | PK, FK → `users.id` ON DELETE CASCADE |
+| `state` | `VARCHAR(20)` | NOT NULL, `ck_event_geolocators_state_valid`: `'invited'`, `'active'` or `'departed'`. |
+| `invited_at` | `TIMESTAMPTZ` | nullable. When the owner sent the latest invitation. NOT NULL while `invited`. |
+| `joined_at` | `TIMESTAMPTZ` | nullable. When the analyst took the credit. NOT NULL while `active`. Orders `Event.geolocators`, the earliest first. |
+| `departed_at` | `TIMESTAMPTZ` | nullable. The first departure; a later one leaves it unchanged, and a new invitation keeps it. NOT NULL while `departed`. |
 
-Composite PK: `(event_id, user_id)`. Makes the credit idempotent.
-
-**Indexes:**
-- `ix_event_geolocators_user_created_at` on `(user_id, created_at)`. Supports the reverse query, a user's geolocations, for the profile page.
-
-The composite PK's leading `event_id` serves the forward read, who geolocated event X. A row is deleted when the owner removes a co-geolocator or a co-geolocator leaves; the owner's own row stays. `hard_delete_user` hands each owned event that has another live geolocator to the earliest of them by `created_at`, and deletes the rest, so erasing a user never leaves a `geolocated` event with zero geolocators.
-
----
-
-### `event_geolocator_invites`
-
-A pending invitation to share an event's credit. The owner of a `geolocated` event writes the row; the invitee answers it through [`/events/{id}/geolocator-invites`](api.md#shared-credit). Accepting deletes the row, inserts the `event_geolocators` row and deletes the invitee's [approvals](#event_approvals) of the event, on every version, in one transaction; declining or a withdrawal deletes it. A row exists only while the invitation is pending.
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE |
-| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE. The invitee. |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
-
-Composite PK: `(event_id, user_id)`: one pending invitation per analyst and event. Its leading `event_id` serves the event's invitation list.
+Composite PK: `(event_id, user_id)`. It allows one row per analyst and event, and its leading `event_id` serves both the forward read, who geolocated event X, and the event's invitation list. `ck_event_geolocators_state_stamp` requires the stamp of the current state: `invited_at` for `invited`, `joined_at` for `active`, `departed_at` for `departed`.
 
 **Indexes:**
-- `ix_event_geolocator_invites_user_id` on `(user_id)`. Backs the cascade when an invitee's account is erased.
+- `ix_event_geolocators_user_id_joined_at` on `(user_id, joined_at) WHERE state = 'active'`. Supports the reverse query, a user's geolocations, for the profile page.
+- `ix_event_geolocators_user_id` on `(user_id)`. Backs the cascade when an analyst's account is erased.
 
-The service caps geolocators plus pending invitations at 10 per event (`MAX_EVENT_GEOLOCATORS`).
+[`services/geolocator_credit`](../backend/app/services/geolocator_credit.py) moves a row between states, locking the event first:
 
----
+- An invitation inserts an `invited` row, or turns a `departed` row `invited`.
+- Accepting turns the row `active`, stamps `joined_at`, and deletes the invitee's [approvals](#event_approvals) of the event, on every version, in one transaction.
+- Declining or a withdrawal returns a former geolocator's row to `departed` and deletes any other row.
+- A removal or a leave turns an `active` row `departed`.
 
-### `event_geolocator_departures`
-
-An analyst who held an event's credit and lost it: the owner removed them, or they left. [`services/geolocator_credit.remove`](../backend/app/services/geolocator_credit.py) writes the row in the transaction that deletes the `event_geolocators` row. A former geolocator neither approves the event nor receives an approval request for it, as a current one.
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE |
-| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE. The former geolocator. |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL. The first departure; a later one leaves the row unchanged. |
-
-Composite PK: `(event_id, user_id)`. Its leading `event_id` serves the eligibility checks.
-
-**Indexes:**
-- `ix_event_geolocator_departures_user_id` on `(user_id)`. Backs the cascade when the analyst's account is erased.
+An analyst is *ever credited* on an event when they are its owner, hold a row that is not `invited`, or hold an `invited` row that keeps `departed_at`. A former geolocator is no more independent of the work than a current one, so an ever-credited analyst neither approves the event nor receives an approval request for it. `hard_delete_user` hands each owned event that has another live `active` geolocator to the earliest of them by `joined_at`, and deletes the rest, so erasing a user never leaves a `geolocated` event with zero geolocators.
 
 ---
 
@@ -848,7 +814,7 @@ Redaction is that one write, and it is still not a delete: an admin blanks `snap
 | `snapshot` | `JSONB` | NOT NULL. The editable fields as they stood: `title`, `source_url`, `source_media`, `coords`, `capture_source_coords`, `occurred_date`, `occurred_time`, `source_posted_at`, `is_graphic`, `secondary_source_urls`, `tags`, `conflicts`, `proof` (the HTML string, as `events.proof` stores it), `proof_media`, and `archives`. `source_media` and `proof_media` carry each [media](#media) whole (`id`, `role`, `storage_url`, `kind`, `sha256`, `original_filename`); `proof_media` holds the images this version's own proof body referenced, not every `proof` row the event holds. `archives` carries the version's [archived copies](#source_archives) (`original_url`, `origin`, `snapshot_url`, `provider`, `created_at`), sorted by `original_url` so a stored list never reshuffles between versions. Tags and conflicts carry their names alongside their ids, so a version stays readable after a referential row is renamed. `{}` on a redacted version. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL. When the edit that superseded this version happened. |
 | `redacted_at` | `TIMESTAMPTZ` | nullable. When an admin blanked this version's content. NULL on every ordinary row. |
-| `redacted_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. Which admin redacted it. NULL once that account is erased; the readable trail is the `admin_events` row the same write files. |
+| `redacted_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. Which admin redacted it. NULL once that account is erased; the readable trail is the `audit_log` row the same write files. |
 
 **Unique constraint:** `uq_event_versions_event_no` on `(event_id, version_no)`. The writer takes the number off the locked event row, so a duplicate is a bug Postgres rejects rather than a second history entry for one version.
 
@@ -1013,34 +979,21 @@ A collective with its own public profile at `/organizations/{slug}`. Only a site
 
 ### `organization_members`
 
-One analyst's membership in one organization. An analyst can belong to several organizations.
+One analyst's standing in one organization, one row per pair: a pending invitation, or a membership with its role. An analyst can belong to several organizations. An org manager's invitation inserts an `invited` row with the `member` role, and accepting turns it `active`. Declining, a withdrawal and leaving delete the row, so a row is `invited` only while the invitee has not answered.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
-| `organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, NOT NULL |
-| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL |
-| `role` | `VARCHAR(20)` | NOT NULL, CHECK in `('manager', 'member')` (constraint `ck_organization_members_role_valid`). `manager` is an org manager, who holds the membership powers. Every member acts in the organization's name on approvals and approval requests. |
-| `joined_at` | `TIMESTAMPTZ` | NOT NULL |
+| `organization_id` | `UUID` | PK, FK → `organizations.id` ON DELETE CASCADE, NOT NULL |
+| `user_id` | `UUID` | PK, FK → `users.id` ON DELETE CASCADE, NOT NULL |
+| `invited_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The org manager who invited. NULL for an org manager a site admin appointed, and once the inviter's account is erased. |
+| `state` | `VARCHAR(20)` | NOT NULL, `ck_organization_members_state_valid`: `'invited'` or `'active'`. |
+| `role` | `VARCHAR(20)` | NOT NULL, CHECK in `('manager', 'member')` (constraint `ck_organization_members_role_valid`). `manager` is an org manager, who holds the membership powers. Every member acts in the organization's name on approvals and approval requests. An `invited` row holds `member`. |
+| `invited_at` | `TIMESTAMPTZ` | nullable. When the invitation was sent. NOT NULL while `invited`. |
+| `joined_at` | `TIMESTAMPTZ` | nullable. When the analyst joined. NOT NULL while `active`. |
 
-Composite PK: `(organization_id, user_id)`, so an analyst holds one role per organization. `ix_organization_members_user_id` on `(user_id)` backs the list of an analyst's organizations.
+Composite PK: `(organization_id, user_id)`, so an analyst holds one row, and one role, per organization. `ck_organization_members_state_stamp` requires `invited_at` while `invited` and `joined_at` while `active`. `ix_organization_members_user_id` on `(user_id)` backs the list of an analyst's organizations and the invitee's lookups. Only `active` rows count as members: the member list, the member count, the org manager rule below and the approval powers read `state = 'active'`.
 
 Every organization keeps at least one live org manager. The service enforces it rather than a constraint: a demotion, a removal or a leave locks the `organizations` row, then refuses to take away the last org manager whose account is not soft-deleted. An admin soft delete or erasure of that last org manager promotes the earliest-joined live member instead (`services/organizations.hand_over_manager_roles`), in the transaction that also hands the erased analyst's events to their co-geolocators; with no live member left, the organization keeps no org manager.
-
----
-
-### `organization_invites`
-
-A pending invitation. Accepting turns the row into an `organization_members` row with the `member` role, and declining or withdrawing deletes it, so a row exists only while the invitee has not answered.
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `id` | `UUID` | PK, default `uuid4()` |
-| `organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, NOT NULL |
-| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The invitee. |
-| `invited_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The org manager who invited. |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL |
-
-`uq_organization_invites_pair` on `(organization_id, user_id)` keeps one pending invite per analyst and organization. `ix_organization_invites_user_id` on `(user_id)` backs the invitee's lookups.
 
 ---
 
@@ -1254,14 +1207,14 @@ The durable queue behind `POST /events/import-archive`. The endpoint stages the 
 
 ### `source_archives`
 
-One row per link an analyst has recorded an archived copy for: the event's `source_url`, its [`event_source_links`](#event_source_links) mirrors, its `detected_from_url`, or an `http(s)` href in the proof body's HTML. A row exists because a copy exists, so there is no queue state and no attempt counter. The capture happens in the analyst's own browser, and the write forms are where the snapshot URL comes back: `source_snapshot_url`, `secondary_snapshot_urls` and, on [`POST /events/{id}/versions`](api.md#post-eventsidversions), `detected_from_snapshot_url`. See [`archival.md`](archival.md) for the flow and the validation.
+One row per link an analyst has recorded an archived copy for: the event's `source_url`, its [`event_source_links`](#event_source_links) mirrors, its `event_detections.from_url`, or an `http(s)` href in the proof body's HTML. A row exists because a copy exists, so there is no queue state and no attempt counter. The capture happens in the analyst's own browser, and the write forms are where the snapshot URL comes back: `source_snapshot_url`, `secondary_snapshot_urls` and, on [`POST /events/{id}/versions`](api.md#post-eventsidversions), `detected_from_snapshot_url`. See [`archival.md`](archival.md) for the flow and the validation.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `event_id` | `UUID` | FK → `events.id`, ON DELETE CASCADE, NOT NULL, indexed |
 | `original_url` | `TEXT` | NOT NULL. The link exactly as stored on the event. It is never normalized, because it is half the row's identity and what the read surface matches against `events.source_url`. |
-| `origin` | `VARCHAR(20)` | NOT NULL, `ck_source_archives_origin_valid`: `'source_url'` (the event's declared footage source), `'secondary_source'` (a row of [`event_source_links`](#event_source_links)), `'detected_from'` (the event's `detected_from_url`, the post a machine detection came from), or `'proof_link'` (an href inside the proof body). A link reachable from several of these is stored once, under the first of them it appears in. |
+| `origin` | `VARCHAR(20)` | NOT NULL, `ck_source_archives_origin_valid`: `'source_url'` (the event's declared footage source), `'secondary_source'` (a row of [`event_source_links`](#event_source_links)), `'detected_from'` (the event's `event_detections.from_url`, the post a machine detection came from), or `'proof_link'` (an href inside the proof body). A link reachable from several of these is stored once, under the first of them it appears in. |
 | `snapshot_url` | `TEXT` | NOT NULL. The archived copy, checked for provider and path shape before it is stored (see [`archival.md`](archival.md)). |
 | `provider` | `VARCHAR(20)` | NOT NULL, `ck_source_archives_provider_valid`: `'wayback'`, `'archive_today'` or `'ghostarchive'`. Inferred from the snapshot's host at write time, and what the read surface names the copy from. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL |
@@ -1287,7 +1240,7 @@ Capture-source and free-form tags share the same mechanics: filtering and many-t
 PostGIS enables native geospatial queries: bounding-box filtering, distance computation, and clustering. GeoAlchemy2 exposes those types directly to SQLAlchemy.
 
 ### Why an `event_geolocators` table and not an id array?
-The table is read from both sides: an event's geolocators, and a user's geolocations on the profile page. A junction table indexes both directions and carries a per-row `created_at`. An id array on `events` would force a GIN scan for the reverse query and store no timestamp.
+The table is read from both sides: an event's geolocators, and a user's geolocations on the profile page. A junction table indexes both directions and carries a per-row state and stamps. An id array on `events` would force a GIN scan for the reverse query and store no state or timestamp.
 
 ### Why full snapshots in `event_versions` and not a per-field change log?
 A version has to be readable on its own: `/events/{id}/v2` renders the whole event as it stood, which a change log answers only by replaying every entry from the beginning. A snapshot answers it with one row, and the fields it stores are exactly the fields an edit can write, so a snapshot plus the live row is a complete history. The cost is bounded: an edit that changes nothing files nothing, and an event stops at 100 versions. What changed between two versions is a diff of adjacent snapshots, computed at read time.
