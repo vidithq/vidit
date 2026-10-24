@@ -31,7 +31,7 @@ flowchart TB
   subgraph sched [Roles without a port, same image]
     direction TB
     worker["`**worker**
-    always on: notification_deliveries, product_update_deliveries, archive_import_jobs, then bot_webhook_events`"]:::shared
+    always on: notification_deliveries, archive_import_jobs, then bot_webhook_events`"]:::shared
     bot["`**bot**
     hourly: run_bot.py reconciles the mentions timeline`"]:::shared
     conf["`**sync-conflicts**
@@ -272,7 +272,7 @@ flowchart LR
   inline["`**auth, archive import, digest, content report**
   sent inline, never capped`"]:::spec
   emit["`**notifications._emit**
-  writes the notification, and a delivery row when the switch is on and the address is verified`"]:::spec
+  writes the notification, and a delivery row when the email switch is on`"]:::spec
   queue[("`**notification_deliveries**
   queued, sending, sent, failed, skipped`")]:::store
   drain["`**notification_delivery.drain**
@@ -289,142 +289,19 @@ flowchart LR
   builders --> layout --> send
 ```
 
-**The layout.** A builder in [`services/email.py`](../backend/app/services/email.py) passes structured content to [`services/email_layout.py`](../backend/app/services/email_layout.py), never markup. The layout renders an HTML part and a plain-text part from that content, so both carry the same words and links. Every link is absolute, built on `FRONTEND_URL`. A bare URL becomes a link only in the action, the closing note and the blocks of a product update email. A URL in the other blocks stays text, since they carry user text such as event titles and report details. The footer of both parts links to Settings and to the legal notice. The brand rules of the HTML part are in [`design.md`](design.md#email).
+**The layout.** A builder in [`services/email.py`](../backend/app/services/email.py) passes structured content to [`services/email_layout.py`](../backend/app/services/email_layout.py), never markup. The layout renders an HTML part and a plain-text part from that content, so both carry the same words and links. Every link is absolute, built on `FRONTEND_URL`. A bare URL becomes a link only in the action, the closing note and the blocks of the registration confirmation email. A URL in the other blocks stays text, since they carry user text such as event titles and report details. The footer of both parts links to Settings and to the legal notice. The brand rules of the HTML part are in [`design.md`](design.md#email).
 
 **The sender.** `EMAIL_PROVIDER=console` prints the headers, the text part and then the HTML part to stdout, so local development needs no provider. `EMAIL_PROVIDER=resend` posts both parts and any headers to Resend. `send` raises `EmailRejectedError` when the provider answers with a refusal, and its parent `EmailSendError` when the outcome is unknown, such as a timeout. Every caller catches the error, so a provider outage never fails the action that sent the email.
 
-**The notification queue.** The transaction that writes a [notification](api.md#notifications) also writes one [`notification_deliveries`](data-model.md#notification_deliveries) row per channel: an `email` row when the recipient's email switch for that kind is on and their address carries `email_verified_at`, and a `push` row as [Web Push](#web-push) describes. The worker's [`drain`](../backend/app/services/notification_delivery.py) runs at the start of each pass, one channel after the other, and hands each row to its channel's sender. For email:
+**The notification queue.** The transaction that writes a [notification](api.md#notifications) also writes one [`notification_deliveries`](data-model.md#notification_deliveries) row when the recipient's email switch for that kind is on. Email is the only delivery channel besides the in-app list, which shows every notification whatever the switch says. The worker's [`drain`](../backend/app/services/notification_delivery.py) runs at the start of each pass and sends each claimed row to the recipient's account address:
 
 1. It marks a row `failed` after an hour in `sending`, and `skipped` after 48 hours in `queued`, so a crash never sends one message twice and a backlog never sends old news.
-2. It stops when the notification emails that may have gone out in the trailing 24 hours reach `NOTIFICATION_EMAIL_DAILY_CAP` (default 50). Those are the rows sent, and the rows claimed in the window and left `sending` or failed stale out of it, since the provider may have counted them; a row failed by refusals does not count. The product update cap counts the same way. It passes over a recipient who reached `NOTIFICATION_EMAIL_DAILY_CAP_PER_USER` (default 10). A row whose notification the recipient deleted keeps counting toward the total cap, with a NULL `notification_id`; the per-user and per-actor counts read through the notification and drop it. Rows over a cap stay queued. Before that, at queue time, the API writes no email row of a kind an analyst sends straight at someone (an invitation, an organization invite, an approval request) once that actor queued `NOTIFICATION_EMAIL_DAILY_CAP_PER_ACTOR` (default 10) such emails in the trailing 24 hours, so one analyst cannot spend the total cap. Fan-out, such as re-approval requests after a new version, is neither capped nor counted.
+2. It stops when the notification emails that may have gone out in the trailing 24 hours reach `NOTIFICATION_EMAIL_DAILY_CAP` (default 50). Those are the rows sent, and the rows claimed in the window and left `sending` or failed stale out of it, since the provider may have counted them; a row failed by refusals does not count. It passes over a recipient who reached `NOTIFICATION_EMAIL_DAILY_CAP_PER_USER` (default 10). A row whose notification the recipient deleted keeps counting toward the total cap, with a NULL `notification_id`; the per-user and per-actor counts read through the notification and drop it. Rows over a cap stay queued. Before that, at queue time, the API writes no email row of a kind an analyst sends straight at someone (an invitation, an organization invite, an approval request) once that actor queued `NOTIFICATION_EMAIL_DAILY_CAP_PER_ACTOR` (default 10) such emails in the trailing 24 hours, so one analyst cannot spend the total cap. Fan-out, such as re-approval requests after a new version, is neither capped nor counted.
 3. It claims the oldest queued row with `FOR UPDATE SKIP LOCKED`, sets it `sending` and commits before the provider call.
-4. It re-reads the recipient and skips the row when the switch is now off, the address is gone or unverified, the account is soft-deleted or inactive, or the filter would hide the notification.
+4. It re-reads the recipient and skips the row when the switch is now off, the account is soft-deleted or inactive, or the filter would hide the notification.
 5. It sets the row `sent` on success. A refusal puts the row back in `queued` for another try after 5 minutes, and the third refusal sets it `failed`. An unknown outcome leaves it `sending` until it goes stale. When writing the outcome fails after a send or an unknown outcome, the row also stays `sending`, never `queued`, so the message is never sent twice.
 
-The caps keep notification email inside the provider's daily quota, 100 emails on the Resend free tier, with room for the auth emails, which are sent inline and never counted. Each notification email links to the item, names the switch that sent it and links to Settings. Its `List-Unsubscribe` and `List-Unsubscribe-Post` headers carry a one-click URL on `API_URL` with a token signed for the recipient and the kind ([`services/unsubscribe_tokens.py`](../backend/app/services/unsubscribe_tokens.py)), which turns that kind off by email.
-
-#### Product update emails
-
-A product update email announces one major release to the analysts who consented. It is not a notification kind: the consent alone governs it, and it has its own queue and its own daily cap.
-
-```mermaid
-flowchart LR
-  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
-  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
-  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
-  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
-
-  subgraph legend [Legend]
-    direction LR
-    l1["`an analyst or admin action`"]:::spec
-    l2["`a service step`"]:::shared
-    l3["`the shared sender`"]:::core
-    l4[("`a store`")]:::store
-    l1 ~~~ l2 ~~~ l3 ~~~ l4
-  end
-
-  signup["`**sign-up switch**
-  confirmation copies it`"]:::spec
-  settings["`**Settings switch**
-  PATCH /users/me/preferences`"]:::spec
-  unsub["`**unsubscribe link or one-click header**
-  signed token, no session`"]:::spec
-  consents[("`**product_update_consents**
-  granted_at, source, withdrawn_at`")]:::store
-  admin["`**admin console**
-  preview, test, send`"]:::spec
-  send["`**product_updates.send**
-  one transaction, label UNIQUE`"]:::shared
-  queue[("`**product_update_deliveries**
-  one row per recipient`")]:::store
-  drain["`**product_updates.drain**
-  in the worker: one batch per pass, daily cap, re-checks consent`"]:::shared
-  sender["`**notification_delivery.deliver**
-  sent, skipped, queued or failed; a raising row counts as a refusal`"]:::core
-
-  signup --> consents
-  settings --> consents
-  unsub --> consents
-  admin --> send
-  consents --> send --> queue --> drain --> sender
-```
-
-**Consent.** [`services/product_update_consent.py`](../backend/app/services/product_update_consent.py) owns the [`product_update_consents`](data-model.md#product_update_consents) record. The sign-up switch, the Settings switch and the unsubscribe link each grant or withdraw it. A grant adds a row only when none is current, and a withdrawal stamps `withdrawn_at`, so no change overwrites an earlier grant.
-
-**The unsubscribe token.** `unsubscribe_token` signs the account ID with an HMAC keyed on `JWT_SECRET` and a purpose prefix ([`services/unsubscribe_tokens.py`](../backend/app/services/unsubscribe_tokens.py), shared with the notification email one-click), so the token cannot stand in for any other credential. It carries no expiry: the link in an old email keeps working. Rotating `JWT_SECRET` voids every link. The email prints the link to the `/unsubscribe` page, which withdraws on a click, so a mail scanner that opens the link withdraws nothing. The `List-Unsubscribe` header names `POST {API_URL}/product-updates/unsubscribe?token=…`, which a mail client calls on its own (`List-Unsubscribe-Post: List-Unsubscribe=One-Click`).
-
-**The send.** [`services/product_updates.py`](../backend/app/services/product_updates.py) records the announcement and writes one [`product_update_deliveries`](data-model.md#product_update_deliveries) row per analyst with a current consent, a verified address and a live active account, all in one transaction. The insert of the announcement waits on the UNIQUE release label, so a second send of the same label finds it taken and queues nothing.
-
-**The drain.** Each worker pass runs `product_updates.drain` after the notification queue:
-
-1. It marks a row `failed` after an hour in `sending`. A queued row never expires, since a large audience takes several days.
-2. It claims at most `PRODUCT_UPDATE_EMAIL_BATCH_SIZE` rows (default 10), so a large send never holds the worker away from its other queues.
-3. It stops when the product update emails sent in the trailing 24 hours reach `PRODUCT_UPDATE_EMAIL_DAILY_CAP` (default 30).
-4. It skips a row whose recipient withdrew consent, lost the verified address or left since the send.
-5. It sends through the same `deliver` as the notification queue, with the same `sending`, retry and stale rules. A row that raises counts as a refusal and the batch goes on.
-
-**The quota.** The boot check in [`config.py`](../backend/app/config.py) refuses a `NOTIFICATION_EMAIL_DAILY_CAP` plus `PRODUCT_UPDATE_EMAIL_DAILY_CAP` at or above `EMAIL_PROVIDER_DAILY_QUOTA` (default 100, the Resend free tier). The remainder carries the auth emails and the admin's test sends, which leave inline and are never counted. The admin console shows the audience and the number of days the send takes at the current cap.
-
-### Web Push
-
-A notification reaches a browser or an installed app through Web Push. Push rows share the notification queue with email and the same claim, retry and stale rules. A push has no daily cap, and one row fans out to every device of the recipient.
-
-```mermaid
-flowchart LR
-  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
-  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
-  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
-  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
-
-  subgraph legend [Legend]
-    direction LR
-    l1["`the browser`"]:::spec
-    l2["`an API or worker step`"]:::shared
-    l3["`the push sender`"]:::core
-    l4[("`a store`")]:::store
-    l1 ~~~ l2 ~~~ l3 ~~~ l4
-  end
-
-  settings["`**Settings: Enable on this device**
-  permission, registers sw.js, subscribes with the VAPID public key`"]:::spec
-  register["`**POST /users/me/push-subscriptions**
-  endpoint allowlist, upsert on endpoint`"]:::shared
-  subs[("`**push_subscriptions**
-  one row per device`")]:::store
-  emit["`**notifications._emit**
-  a push row when the switch is on and a device exists`"]:::shared
-  queue[("`**notification_deliveries**
-  channel push`")]:::store
-  drain["`**notification_delivery.drain**
-  re-checks the switch and the filter`"]:::shared
-  send["`**push.send**
-  encrypts and signs per device, deletes a device on 404 or 410`"]:::core
-  service["`**browser push service**
-  relays the encrypted payload`"]:::spec
-  sw["`**public/sw.js**
-  shows the notification, opens the path on click`"]:::spec
-
-  settings --> register --> subs
-  emit --> queue --> drain --> send
-  subs --> send --> service --> sw
-```
-
-**Registering a device.** The Notifications card in Settings asks the browser for the notification permission, registers [`public/sw.js`](../frontend/public/sw.js), subscribes with the key from `GET /users/me/push-config`, and posts the subscription ([`lib/push.ts`](../frontend/src/lib/push.ts)). The API accepts an endpoint only on a browser push service host, so the worker never posts to an address an analyst picked. On iPhone and iPad, a browser tab has no Push API: push works only for the site added to the Home Screen, and the card says so.
-
-**Revoking a device.** The card lists every device of the account (`GET /users/me/push-subscriptions`) with a Revoke control that deletes it and records the SHA-256 of its endpoint in [`revoked_push_endpoints`](data-model.md#revoked_push_endpoints). Signing out revokes this browser's device and drops its browser subscription before the session ends; the browser subscription goes even when the server call fails. A password change or reset deletes every device of the account in the same transaction that bumps `token_version`, so a device registered under the old password stops receiving pushes, and the card then reloads the list. Opening Settings on a signed-in browser that still holds its subscription registers it again with `resync`, which names the row of this device in the list and restores it after a password change. A revoked device answers 409 `device_revoked` to that `resync`: the browser drops its subscription and the card reads push as off until the analyst enables it again. That registration is also how a subscription the browser renewed (`pushsubscriptionchange`) reaches the server: `sw.js` holds no session to post it.
-
-**The service worker.** `sw.js` handles `push` and `notificationclick` only. It registers no `fetch` handler and opens no cache, so it never serves a page or intercepts a request, and it leaves the Next.js dev server untouched. A click focuses an open Vidit window and navigates it to the payload's path, or opens one. A path that is not an app path opens `/notifications` instead. The `proxy.ts` matcher skips `/sw.js`, so the browser gets the script and not the login page.
-
-**Sending.** For a `push` row, the drain calls [`services/push.send`](../backend/app/services/push.py), which posts to every device of the recipient through `pywebpush`. The library encrypts the payload for the device's keys and signs the request with the VAPID private key. The payload carries a title, a short body and an app path. The push service holds it for 24 hours at most. A 404 or 410 answer deletes that device, and so does a third rejection in a row, a 400 or 403 answer that faults the subscription itself; a rate limit, an oversized payload, a server error or a local error counts toward nothing. An account holds at most 10 devices: registering one more deletes the oldest. The row outcome follows the devices:
-
-1. `sent` when any device's push service accepted the push.
-2. Left `sending` when no device accepted it and a request to one of them failed in transit, since that push may have gone out.
-3. Back to `queued` for a retry when the push services refused it, so a retry never repeats a push a device already shows.
-4. `skipped` when no device is left, or on a development server without VAPID keys.
-
-A device endpoint is a bearer URL. A failure is logged by device id, status and exception class only, never with the endpoint or the exception message.
-
-**Configuration.** `VAPID_PRIVATE_KEY` is the base64url raw P-256 private key, and `VAPID_SUBJECT` a `mailto:` or `https:` contact for the push services. The public key derives from the private key. Set both on the API (it serves the public key) and on the import worker (it sends). With `COOKIE_SECURE=true`, `config.py` refuses to start without both. Outside a deployment, neither turns push off, and `config.py` refuses to start with one alone. `make env` runs [`scripts/ensure_vapid_keys.py`](../backend/scripts/ensure_vapid_keys.py), which writes a development private key and `VAPID_SUBJECT=mailto:dev@example.com` to `backend/.env` when they are absent and never replaces a value already set. Never commit a key.
+The caps keep notification email inside the provider's daily quota. The boot check in [`config.py`](../backend/app/config.py) refuses a `NOTIFICATION_EMAIL_DAILY_CAP` at or above `EMAIL_PROVIDER_DAILY_QUOTA` (default 100, the Resend free tier), which leaves the remainder to the auth emails, which are sent inline and never counted. Each notification email links to the item, names the switch that sent it and links to Settings. Its `List-Unsubscribe` and `List-Unsubscribe-Post` headers carry a one-click URL on `API_URL` with a token signed for the recipient and the kind ([`services/unsubscribe_tokens.py`](../backend/app/services/unsubscribe_tokens.py)), which turns that kind off by email. The token carries no expiry, so the link in an old email keeps working, and rotating `JWT_SECRET` voids every link.
 
 ### Hand-kept mirrors
 
@@ -457,8 +334,6 @@ Every other frontend copy of a backend rule or of the issue tracker is hand-kept
 | `lib/events.ts::REPORT_DETAILS_MAX_LEN`, `VERSION_NOTE_MAX_LEN` | `schemas/report.DETAILS_MAX_LENGTH`, `schemas/event.VERSION_NOTE_MAX_LENGTH` | server refuses typed text |
 | `components/event/CloseEventForm.tsx::CLOSE_REASON_MAX_LEN` | `schemas/event.EventCloseRequest.close_reason` `max_length` | the server refuses typed text |
 | `components/profile/useProfileEdit.ts::BIO_MAX_LEN` | `schemas/user.BIO_MAX_LEN` | server refuses typed text |
-| `lib/xHandle.ts::X_HANDLE_REASON_MAX_LEN` | `schemas/x_handle_request.REASON_MAX_LENGTH` | server refuses typed text |
-| `components/admin/ProductUpdatesPanel.tsx` `PRODUCT_UPDATE_TITLE_MAX_LEN`, `PRODUCT_UPDATE_BODY_MAX_LEN` | `schemas/product_update.py` title and body `max_length` | server refuses typed text |
 | `components/ui/TagPicker.tsx::TAG_NAME_MAX_LEN` | `schemas/tag.py` name `max_length` | server refuses typed text |
 | `lib/collections.ts::COLLECTION_TITLE_MAX_LEN`, `COLLECTION_DESCRIPTION_MAX_LEN` | `models/event.TITLE_MAX_LENGTH`, `schemas/collection.DESCRIPTION_MAX_LENGTH` | server refuses typed text |
 | `lib/proof.tsx::htmlText` | `sanitize.html_text` | description counter disagrees with the server cap |
@@ -469,15 +344,14 @@ Every other frontend copy of a backend rule or of the issue tracker is hand-kept
 | `components/collections/EventPicker.tsx::chronological` | `collections.chronological_key` | the picker orders a collection's events differently from its page |
 | `lib/og.ts::MOSAIC_MAX_TILES` | `collections.COVER_TILES` | a share card draws more tiles than the server sends |
 | `components/event/useEventActions.tsx` credit controls on `geolocated` rows only | `geolocator_credit._require_published` | the Geolocators panel offers an invitation the API refuses (409) |
-| `lib/approvals.ts::canApprove` | `approvals.approve` (published only, never a geolocator, one approval per analyst and version, one standing approval per organization and version) | the Approvals card offers an approval the API refuses (403 or 409); the API's `viewer_can_approve` covers former geolocators, whom the event's credit no longer lists |
-| `lib/approvals.ts::ownApprovalOnLive` | `approvals.approve` (one approval per analyst and version, revoked included) | the Approvals card offers Approve to a reviewer whose revoked approval blocks it, or hides Revoke on an approval that stands |
-| `lib/approvals.ts::organizationApprovalOnLive` and `hooks/useMemberOrganizations.ts` | `approvals._revoker_role` and `organizations.is_organization_member` (any member approves and revokes in the organization's name) | the Approvals card hides **Approve as** or **Revoke as** from a member the API accepts, or offers one the API refuses |
+| `lib/approvals.ts::canApprove` | `approvals.approve` (published only, never a geolocator, one approval per analyst and version, one approval per organization and version) | the Approvals card offers an approval the API refuses (403 or 409); the API's `viewer_can_approve` covers former geolocators, whom the event's credit no longer lists |
+| `lib/approvals.ts::ownApprovalOnLive` | `approvals.approve` (one approval per analyst and version) | the Approvals card offers Approve to a reviewer who already approved the live version, or hides it from one who may approve |
+| `lib/approvals.ts::organizationApprovalOnLive` and `hooks/useMemberOrganizations.ts` | `organizations.is_organization_member` (any member approves in the organization's name) | the Approvals card hides **Approve as** from a member the API accepts, or offers one the API refuses |
 | `lib/approvalRequests.ts::canRequestApproval` | `approval_requests._require_requester` (published only, a geolocator of the event) | the Approval requests card offers a request the API refuses (403 or 409) |
 | `app/page.tsx::ROADMAP` | the [open issues of type Epic](https://github.com/vidithq/vidit/issues?q=is%3Aissue%20state%3Aopen%20type%3AEpic) except Future considerations: title, outcome (the epic's first line) and whether work has started | landing roadmap promises an outcome no epic plans, or leaves out one that an epic plans |
 | `lib/palette.ts::DEFAULT_PALETTE`, `lib/theme.ts::DEFAULT_THEME`, `lib/helpPreference.ts` (help shown when unset) | `schemas/preferences.DISPLAY_DEFAULTS` | first paint on a new device differs from the account's default until the preferences load |
 | `lib/palette.ts::PALETTES`, `lib/theme.ts::isThemeId` and the `data-palette` / `data-theme` blocks in `app/globals.css` | `schemas/preferences.PaletteId`, `ThemeId` (the id types are generated; the lists and CSS are not) | Settings offers no control for a value the API accepts, or the value repaints nothing |
 | the default `orange-*` scale in `app/globals.css`, the `/icon/android-192` route of `app/icon.tsx` | `services/email_layout.py` accent hex and `_LOGO_PATH` | emails wear another accent than the site, or show a broken header image |
-| `public/sw.js` payload fields `title`, `body`, `path` | `push.PushMessage` | push notifications show the fallback title or open `/notifications` |
 | `lib/users.ts::SOCIAL_HOSTS`, `SOCIAL_HANDLE_PATTERN` | `schemas/user.SOCIAL_PROFILE_HOSTS`, `SOCIAL_HANDLE_PATTERNS` | profile links the wrong host or hides an accepted handle |
 | `lib/snapshots.ts::SNAPSHOT_HOSTS` | keys of `source_archive.PROVIDER_HOSTS` | pre-submit check disagrees with the server, and a snapshot host asks before it opens |
 | `lib/snapshots.ts` hosts and capture-path patterns | `source_archive._WAYBACK_REPLAY_RE`, `_ARCHIVE_TODAY_CAPTURE_RE`, `PROVIDER_HOSTS` | mis-paste check silently matches nothing |
@@ -487,11 +361,10 @@ Every other frontend copy of a backend rule or of the issue tracker is hand-kept
 | `@viditbot` in `app/import/page.tsx` and `components/ui/MockPost.tsx` | `config.x_bot_handle` | guide names the wrong handle |
 | the retention periods on `app/privacy/page.tsx` (24 hours, 30 days) | `registration.CONFIRMATION_TOKEN_MINUTES`, `maintenance.AUTH_TOKEN_RETENTION_DAYS` | the privacy page states a period the server does not apply |
 | `lib/approvalRequests.ts::APPROVAL_REQUEST_AUDIENCE_DEFAULT` | `models/user_preferences.APPROVAL_REQUEST_AUDIENCE_DEFAULT` | Settings shows an audience the server does not apply while preferences load |
-| `lib/notifications.ts::NotificationChannel`, `CHANNEL_LABEL` | `models/notification.NotificationChannel` (the preferences schema types channels as plain keys) | Settings offers no switch for a channel the server delivers on |
 | `lib/notifications.ts::NOTIFICATION_KIND_COPY` labels | the `setting` each notification builder passes in `services/email.py` | an email names a switch Settings does not show |
 | `lib/notifications.ts::MAX_READ_IDS` | `schemas/notification.NotificationReadUpdate.ids` (`MAX_PAGE_SIZE`) | marking a long list read is refused with 422 and its rows stay unread |
 | `lib/notifications.ts::unsubscribeTokenKind` (the `<user>.<kind>.<signature>` token shape) | `unsubscribe_tokens.sign`, `verify` | the unsubscribe page reads the wrong kind from a valid link, or rejects one the server signed |
-| the `code` each page branches on: `archive_*` in `components/geolocations/ImportArchivePanel.tsx`, `nothing_changed` in `components/geolocations/edit/EventEditForm.tsx`, `email_pending_confirmation` in `components/auth/RegisterForm.tsx`, `device_revoked` in `lib/push.ts`, `version_mismatch` in `components/event/Approvals.tsx` | the `code` of the matching error classes in `archive_jobs`, `tweet_ingest/archive_zip`, `events/errors`, `registration`, `push` and `approvals` | the page prints a generic error, or skips its recovery step, for a refusal it handles |
+| the `code` each page branches on: `archive_*` in `components/geolocations/ImportArchivePanel.tsx`, `nothing_changed` in `components/geolocations/edit/EventEditForm.tsx`, `email_pending_confirmation` in `components/auth/RegisterForm.tsx`, `version_mismatch` in `components/event/Approvals.tsx` | the `code` of the matching error classes in `archive_jobs`, `tweet_ingest/archive_zip`, `events/errors`, `registration` and `approvals` | the page prints a generic error, or skips its recovery step, for a refusal it handles |
 | the last org manager rule in `components/organizations/OrganizationMembers.tsx` | `organizations._guard_last_manager` | the members list offers Leave or Make member that the server refuses, or hides one it accepts |
 
 ### Migration house style
@@ -545,8 +418,6 @@ Each service has its own `.env` (not committed):
 
 - `backend/.env`: `DATABASE_URL`, `JWT_SECRET`, `STORAGE_BACKEND` (`local` or `s3`), `S3_BUCKET`, `AWS_REGION`, `CLOUDFRONT_DOMAIN`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `CORS_ORIGINS`. Full list in `backend/.env.example`.
 - `frontend/.env.local`: `NEXT_PUBLIC_API_URL`. Full list in `frontend/.env.local.example`.
-
-`make env` sets `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` in `backend/.env`, so push notifications work locally ([Web Push](#web-push)).
 
 Set `REPORT_NOTIFY_EMAIL` in `backend/.env` to receive one email per content report a viewer files. The message names the reason and links to both the admin console and the reported event. Leave it unset to record reports without sending mail. The admin report queue holds every report either way.
 
@@ -712,7 +583,7 @@ The backend image runs every backend role. Its entrypoint, [`backend/entrypoint.
 |---------|------|-----------|--------------------|
 | `api` | The FastAPI server on `$PORT` (default `8000`), with the proxy-header flags in [Particularities](#particularities-non-obvious-behavior-found-during-development). | Always on; serves `/health`. | N/A |
 | `migrate` | `alembic upgrade head`, then exits. | One-shot, before each new `api` release takes traffic. A non-zero exit means the schema did not reach the head: do not start the new release. | Once per deploy |
-| `worker` | The import worker: notification emails, product update emails, archive imports, and bot webhook events ([Scheduler services](#scheduler-services)). | Always on; listens on no port. Two workers are safe. | N/A |
+| `worker` | The import worker: notification emails, archive imports, and bot webhook events ([Scheduler services](#scheduler-services)). | Always on; listens on no port. Two workers are safe. | N/A |
 | `bot` | One reconciliation pass of the mention pipeline ([`ingestion.md`](ingestion.md#the-bot)), then exits. | Scheduled. A missed run is harmless. | Hourly, `0 * * * *` |
 | `sync-conflicts` | One pass of the ongoing-conflicts sync ([`conflicts.md`](conflicts.md)), then exits. | Scheduled. A missed run is harmless. | Once a day |
 
@@ -764,7 +635,7 @@ All three take the API's `DATABASE_URL` and `JWT_SECRET`, because [`config.py`](
 
 Only `migrate` changes the schema, and a host can start these roles before it finishes. Each scheduler entry point calls `wait_for_schema_head` in [`schema_gate.py`](../backend/app/schema_gate.py) before its first pass. It compares the database revision with the alembic script head and polls every 5 seconds while the database is behind. After 10 minutes it reports to Sentry and exits non-zero, and the host's restart policy starts it again. A database at a revision the code does not know, as after a code rollback, passes at once.
 
-**`worker`**, always on. It also takes the storage variables (`STORAGE_BACKEND`, `S3_BUCKET`, `AWS_*`) and email variables (`EMAIL_*`, `RESEND_API_KEY`, `FRONTEND_URL`) the API takes, plus the six `X_*` credentials and the two reply caps, `BOT_MAX_REPLIES_PER_HOUR` and `BOT_MAX_REPLIES_PER_AUTHOR_PER_HOUR`, since it posts the webhook path's bot replies, the two notification email caps, `NOTIFICATION_EMAIL_DAILY_CAP` and `NOTIFICATION_EMAIL_DAILY_CAP_PER_USER`, the push key pair, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT`, and the product update settings `PRODUCT_UPDATE_EMAIL_DAILY_CAP`, `PRODUCT_UPDATE_EMAIL_BATCH_SIZE` and `EMAIL_PROVIDER_DAILY_QUOTA`, and `API_URL`, the base of the one-click unsubscribe URLs, which `config.py` refuses as a localhost URL when `COOKIE_SECURE` is true. `PRODUCT_UPDATE_EMAIL_DAILY_CAP` and `PRODUCT_UPDATE_EMAIL_BATCH_SIZE` are at least 1. What it drains: the [notification queue](#email) first, then one batch of [product update emails](#product-update-emails), then the jobs and mentions in [`ingestion.md`](ingestion.md#archive-import-worker). An email queue that raises is reported to Sentry and skipped for that pass, so it never holds back the jobs and mentions.
+**`worker`**, always on. It also takes the storage variables (`STORAGE_BACKEND`, `S3_BUCKET`, `AWS_*`) and email variables (`EMAIL_*`, `RESEND_API_KEY`, `FRONTEND_URL`) the API takes, plus the six `X_*` credentials and the two reply caps, `BOT_MAX_REPLIES_PER_HOUR` and `BOT_MAX_REPLIES_PER_AUTHOR_PER_HOUR`, since it posts the webhook path's bot replies, the notification email caps, `NOTIFICATION_EMAIL_DAILY_CAP`, `NOTIFICATION_EMAIL_DAILY_CAP_PER_USER` and `NOTIFICATION_EMAIL_DAILY_CAP_PER_ACTOR`, `EMAIL_PROVIDER_DAILY_QUOTA`, and `API_URL`, the base of the one-click unsubscribe URLs, which `config.py` refuses as a localhost URL when `COOKIE_SECURE` is true. What it drains: the [notification queue](#email) first, then the jobs and mentions in [`ingestion.md`](ingestion.md#archive-import-worker). If the email queue raises, the worker reports it to Sentry and skips it for that pass, so it never holds back the jobs and mentions.
 
 **`bot`**, hourly (`0 * * * *`), since the webhook owns latency and the scheduled pass only reconciles. It also takes the six `X_*` credentials, the two `BOT_MAX_REPLIES_*` caps, and `X_WEBHOOK_ENABLED` (see `backend/.env.example`): a bearer token and bot user ID to read, and the four OAuth 1.0a values to post. Without the OAuth values, the bot processes mentions but posts nothing. The process makes one pass, then exits; a failed mentions pull exits non-zero. A missed run is harmless, because the next pass resumes from the ledger. A retry is safe too, but each one pays for another mentions read. What it runs: [`ingestion.md`](ingestion.md#the-bot).
 

@@ -115,8 +115,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/events/{id}/geolocator-invites/decline` | 🔒 | Decline your invitation |
 | DELETE | `/events/{id}/geolocators/{username}` | 🔒 | Remove a co-geolocator (owner), or leave as one |
 | GET | `/events/{id}/approvals` | 🌐 | The approvals of one version (the live one by default), of every version (`all_versions=true`), or one analyst's across versions |
-| POST | `/events/{id}/approvals` | 🔒 | Approve the live version of a published event you are not credited on, as yourself or for an organization you manage |
-| POST | `/events/{id}/approvals/{approval_id}/revoke` | 🔒 | Revoke an approval, with an optional public reason: your own, your organization's as one of its members, or any as a site admin |
+| POST | `/events/{id}/approvals` | 🔒 | Approve the live version of a published event you are not credited on, as yourself or for an organization you are a member of |
 | GET | `/events/{id}/approval-requests` | 🔒 | Open approval requests: all for the event's geolocators, yours and your organizations' otherwise |
 | GET | `/events/{id}/approval-request-targets` | 🔒 | The analysts and organizations you can ask to approve the event now, geolocators only |
 | POST | `/events/{id}/approval-requests` | 🔒 | Ask an analyst or an organization to approve a published event you geolocated |
@@ -146,12 +145,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/users/me/avatar` | 🔒 | Remove your profile picture |
 | GET | `/users/me/preferences` | 🔒 | Your display and notification preferences, each beside its default |
 | PATCH | `/users/me/preferences` | 🔒 | Change some of your preferences |
-| GET | `/users/me/push-config` | 🔒 | The key a browser subscribes to push notifications with |
-| GET | `/users/me/push-subscriptions` | 🔒 | The devices registered for your push notifications, newest first |
-| POST | `/users/me/push-subscriptions` | 🔒 | Register this browser for push notifications |
-| DELETE | `/users/me/push-subscriptions/{id}` | 🔒 | Stop push notifications to one of your devices |
-| GET | `/users/me/x-handle` | 🔒 | The X handle bound to your account, and your change request |
-| PUT | `/users/me/x-handle-request` | 🔒 | Ask an admin to bind a new X handle (replaces your earlier request) |
+| GET | `/users/me/x-handle` | 🔒 | The X handle an admin bound to your account |
 | GET | `/users/me/invite-codes` | 🔒 | The invite codes you minted, newest first, and your daily quota |
 | POST | `/users/me/invite-codes` | 🔒 | Mint a single-use invite code bound to the invitee's X handle |
 | POST | `/users/me/invite-codes/{id}/revoke` | 🔒 | Revoke an active invite code you minted, keeping its row |
@@ -166,8 +160,6 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/notifications/read` | 🔒 | Mark the listed notifications read |
 | DELETE | `/notifications/{id}` | 🔒 | Delete one of your notifications |
 | GET/POST | `/notifications/unsubscribe` | 🌐 | Send to the confirmation page / turn off one kind of notification email, named by a signed token |
-| **Product updates** | | | |
-| POST | `/product-updates/unsubscribe` | 🌐 | Withdraw consent to product update emails, named by a signed token |
 | **Organizations** | | | |
 | GET | `/organizations/{slug}` | 🌐 | An organization's public profile |
 | GET | `/organizations/{slug}/members` | 🌐 | Its members, org managers first |
@@ -205,13 +197,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/admin/collections/{id}` | 🛡️ | Withhold a collection from public view (the takedown alias of the PATCH above) |
 | PATCH | `/admin/users/{id}/x-handle` | 🛡️ | Link / clear the bot-attribution X handle |
 | PATCH | `/admin/users/{id}/invite-minting` | 🛡️ | Turn minting invite codes from Settings on or off for one analyst |
-| GET | `/admin/x-handle-requests` | 🛡️ | Pending X handle change requests, oldest first |
-| POST | `/admin/x-handle-requests/{id}/approve` | 🛡️ | Bind the requested handle and notify the analyst |
-| POST | `/admin/x-handle-requests/{id}/decline` | 🛡️ | Decline a request with a reason and notify the analyst |
-| GET | `/admin/product-updates` | 🛡️ | Every product update sent, newest first, with its delivery progress |
-| POST | `/admin/product-updates/preview` | 🛡️ | Render the announcement and count its recipients, sending nothing |
-| POST | `/admin/product-updates/test` | 🛡️ | Email the announcement to your own address |
-| POST | `/admin/product-updates` | 🛡️ | Send the announcement to the analysts who consented |
+| DELETE | `/admin/approvals/{approval_id}` | 🛡️ | Delete one approval; its reviewer or organization can approve that version again |
 | GET | `/admin/reports` | 🛡️ | The moderation queue: event and collection reports, open ones first |
 | POST | `/admin/reports/{id}/resolve` | 🛡️ | Close one report with a verdict, applying it to what the report names |
 | PATCH | `/admin/events/{id}/moderation` | 🛡️ | Set an event's graphic flag / takedown directly, no report behind it |
@@ -260,7 +246,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST /events/{id}/geolocator-invites`, `DELETE /events/{id}/geolocator-invites/{username}` | 30/hour |
 | `POST /events/{id}/geolocator-invites/accept`, `POST /events/{id}/geolocator-invites/decline`, `DELETE /events/{id}/geolocators/{username}` | 60/min |
 | `GET /events/{id}/approvals` | 120/min |
-| `POST /events/{id}/approvals`, `POST /events/{id}/approvals/{approval_id}/revoke` | 60/min |
+| `POST /events/{id}/approvals` | 60/min |
 | `GET /events/{id}/approval-requests`, `GET /events/{id}/approval-request-targets` | 120/min |
 | `POST /events/{id}/approval-requests` | 30/hour, plus the daily cap in [Approval requests](#approval-requests) |
 | `POST /events/{id}/approval-requests/{request_id}/decline` | 60/min |
@@ -281,11 +267,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST`/`DELETE /users/{username}/follow` | 60/min |
 | `GET /users/me/preferences` | 120/min |
 | `PATCH /users/me/preferences` | 60/min |
-| `GET /users/me/push-config` | 60/min |
-| `GET /users/me/push-subscriptions` | 120/min |
-| `POST /users/me/push-subscriptions`, `DELETE /users/me/push-subscriptions/{id}` | 30/min |
 | `GET /users/me/x-handle` | 120/min |
-| `PUT /users/me/x-handle-request` | 10/hour |
 | `GET /users/me/invite-codes` | 120/min |
 | `POST /users/me/invite-codes` | 30/hour, plus the daily quota in [`POST /users/me/invite-codes`](#post-usersmeinvite-codes) |
 | `POST /users/me/invite-codes/{id}/revoke` | 30/hour |
@@ -303,19 +285,13 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `DELETE /organizations/{slug}/invites/{invite_id}` | 60/min |
 | `POST /organizations/{slug}/invite/accept`, `POST /organizations/{slug}/invite/decline` | 30/min |
 | `PATCH`/`DELETE /organizations/{slug}/members/{username}` | 60/min |
-| **Product updates** | |
-| `POST /product-updates/unsubscribe` | 30/min (anonymous allowed) |
 | **Admin** 🛡️ | |
 | `POST /admin/invite-codes` · `POST /admin/organizations` · `POST /admin/organizations/{slug}/managers` · `DELETE /admin/organizations/{slug}` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
-| `POST /admin/invite-codes/{id}/revoke` · `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `PATCH /admin/users/{id}/invite-minting` · `DELETE /admin/events/{id}` | 60/hour |
+| `POST /admin/invite-codes/{id}/revoke` · `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `PATCH /admin/users/{id}/invite-minting` · `DELETE /admin/events/{id}` · `DELETE /admin/approvals/{approval_id}` | 60/hour |
 | `POST /admin/reports/{id}/resolve` · `PATCH /admin/events/{id}/moderation` · `POST /admin/events/{id}/versions/{version_no}/redact` · `PATCH /admin/collections/{id}/moderation` · `DELETE /admin/collections/{id}` | 60/hour |
-| `POST /admin/x-handle-requests/{id}/approve` · `POST /admin/x-handle-requests/{id}/decline` | 60/hour |
 | `POST /admin/maintenance/reap-*` · `POST /admin/maintenance/send-completion-digests` | 30/hour |
-| `GET /admin/product-updates` | 120/min |
-| `POST /admin/product-updates/preview` | 60/hour |
-| `POST /admin/product-updates/test` · `POST /admin/product-updates` | 10/hour |
 
-The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list, `/admin/organizations` list, `/admin/reports` list, `/admin/x-handle-requests` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: both are HMAC-gated.
+The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list, `/admin/organizations` list, `/admin/reports` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: both are HMAC-gated.
 
 ### Per-user read quota
 
@@ -349,12 +325,9 @@ Stage a registration. Anonymous. **This call creates no `users` row.** The submi
   "username": "kalush",
   "email": "kalush@example.com",
   "password": "••••••••",
-  "invite_code": "abc123",
-  "product_updates": false
+  "invite_code": "abc123"
 }
 ```
-
-`product_updates` is optional and defaults to `false`. `true` records a consent to [product update emails](#product-updates) at the time of this request, and confirmation copies it to the new account with source `sign_up`.
 
 **Response 202:**
 ```json
@@ -484,7 +457,7 @@ Anonymous. Consumes a reset token and sets a new password. Tokens are single-use
 | Status | Meaning |
 |--------|---------|
 | 204 | Password updated |
-| 400 | Token unknown, expired, already consumed, or wrong purpose, one opaque error for all four |
+| 400 | Token unknown, expired or already consumed, one opaque error for all three |
 | 422 | `new_password` outside the [password rules](#password-rules); the token stays unconsumed |
 
 ### `POST /auth/change-password` 🔒
@@ -657,9 +630,9 @@ List one lifecycle view, newest or oldest first, as `EventList` cards (no full p
 | `event_date_from` / `event_date_to` | date (YYYY-MM-DD) | Inclusive event-date range. Malformed values return 422. |
 | `submitted_from` / `submitted_to` | date (YYYY-MM-DD) | Inclusive submission-date range. Malformed values return 422. |
 | `author` | string | Exact, case-insensitive match on the username of any analyst the event credits: its owner or one of its [geolocators](#shared-credit) (pick real handles via [`GET /search/authors`](#get-searchauthors)). Restricted to `[A-Za-z0-9_-]{1,50}`; any other character returns 422. |
-| `approved` | bool | `true` keeps a `geolocated` event whose live version holds a standing approval (not revoked), an analyst's or an organization's. An approval of an earlier version does not count. See [Approvals](#approvals). |
-| `approved_by` | string | Keeps a `geolocated` event that the analyst with this username (exact, case-insensitive) approved as themselves on its live version, with the approval standing. An approval they placed for an organization does not count. Same `[A-Za-z0-9_-]{1,50}` rule as `author`. |
-| `approved_by_org` | string | Keeps a `geolocated` event that the organization with this slug approved on its live version, with the approval standing. Same character rule. |
+| `approved` | bool | `true` keeps a `geolocated` event whose live version holds an approval, an analyst's or an organization's. An approval of an earlier version does not count. See [Approvals](#approvals). |
+| `approved_by` | string | Keeps a `geolocated` event that the analyst with this username (exact, case-insensitive) approved as themselves on its live version. An approval they placed for an organization does not count. Same `[A-Za-z0-9_-]{1,50}` rule as `author`. |
+| `approved_by_org` | string | Keeps a `geolocated` event that the organization with this slug approved on its live version. Same character rule. |
 | `has_coords` | bool | `true` keeps rows with an `event_coords` point (on the `requested` view, a request carrying a location guess); `false` keeps rows without one. Omit it for both. |
 | `sort` | string | `newest` (default) orders by `created_at DESC, id DESC`; `oldest` orders by `created_at ASC, id ASC`. Both orders are total, so a cursor walk serves every row once. Anything else → 422. |
 | `limit` | int | Rows per page. See [Pagination](#pagination). |
@@ -1157,7 +1130,7 @@ Correct a published event. Owner only, and only while `geolocated`. The write fi
 
 **Archived copies.** `source_snapshot_url`, `detected_from_snapshot_url` and `secondary_snapshot_urls` archive a link without changing it. Each lands in the version this call produces, and a save whose only change is a copy files a version like any other. `detected_from_snapshot_url` on a row with no provenance link is `original_url_not_on_event`. See [`archival.md`](archival.md).
 
-**Approvals.** The new version ends every current [approval](#approvals) of the event, and the same transaction writes a `re_approve_requested` notification for each analyst whose approval stood and for each live member of an organization whose approval stood.
+**Approvals.** The new version ends every current [approval](#approvals) of the event, and the same transaction writes a `re_approve_requested` notification for each analyst who approved the superseded version and for each live member of an organization that approved it.
 
 Rules specific to this path:
 
@@ -1335,7 +1308,7 @@ flowchart LR
   the owner removes, a co-geolocator leaves`"]:::spec
   erase["`**DELETE /admin/users/{id}?hard=true**`"]:::spec
   accept["`**accept**
-  deletes the invitation, credits the invitee, calls revoke_approvals_on_join`"]:::core
+  deletes the invitation, credits the invitee, calls delete_approvals_on_join`"]:::core
   handover["`**hand_over_owned_events**
   owner_id moves to the earliest live co-geolocator`"]:::core
   invites[("`**event_geolocator_invites**
@@ -1359,7 +1332,7 @@ flowchart LR
 An event's geolocators are the analysts it credits. The owner is always one of them; any other is an analyst the owner invited who accepted. Credit grants no write right: editing, filing a version, closing and inviting stay with the owner. Every read that lists an analyst's work matches any credited analyst: the profile count and feed, the profile stats, the follow feed, the `author` filter of [`GET /events`](#get-events) and [`GET /search`](#get-search), the author typeahead, and the collection add check.
 
 - **Invitation.** The owner of a `geolocated` event invites an analyst by username. The invitation waits in `event_geolocator_invites`, and the invitee receives a `co_geolocator_invite` [notification](#notifications). An event holds at most 10 live geolocators and pending invitations together, a soft-deleted analyst not counted (`MAX_EVENT_GEOLOCATORS` in [`services/geolocator_credit.py`](../backend/app/services/geolocator_credit.py)).
-- **Answer.** Accepting deletes the invitation and credits the invitee in one transaction, which also revokes the invitee's own [approvals](#approvals) of the event (`revoke_approvals_on_join`) and deletes the open [approval requests](#approval-requests) addressed to them. Declining or a withdrawal deletes the invitation.
+- **Answer.** Accepting deletes the invitation and credits the invitee in one transaction, which also deletes the invitee's [approvals](#approvals) of the event (`delete_approvals_on_join`) and deletes the open [approval requests](#approval-requests) addressed to them. Declining or a withdrawal deletes the invitation.
 - **Removal.** The owner removes a co-geolocator, who receives a `co_geolocator_removed` notification, or a co-geolocator leaves. The owner cannot leave. The removed analyst's collections drop the event in the same transaction, and an `event_geolocator_departures` row records the departure: a former geolocator never [approves](#approvals) the event or receives an [approval request](#approval-requests) for it. The open approval requests the analyst sent about the event are withdrawn (`status` `withdrawn`), since only a geolocator asks for one; they keep counting toward the daily cap.
 - **Erasure.** A hard delete of the owner's account hands the event, unless it is soft-deleted, to the earliest live co-geolocator; see [`DELETE /admin/users/{id}`](#delete-adminusersid).
 
@@ -1472,77 +1445,68 @@ flowchart LR
   approve["`**POST /events/{id}/approvals**
   version_no: the version you read
   organization: the slug you approve for`"]:::spec
-  revokeep["`**POST /events/{id}/approvals/{approval_id}/revoke**
-  the reviewer, a member of the organization or a site admin`"]:::spec
+  admindel["`**DELETE /admin/approvals/{approval_id}**
+  a site admin`"]:::spec
   edit["`**POST /events/{id}/versions**
   any saved version, archive-only included`"]:::spec
   accept["`**POST /events/{id}/geolocator-invites/accept**`"]:::spec
   place["`**approve**
-  locks the event, refuses geolocators, non-admins and a stale version`"]:::core
-  revoke["`**revoke**
-  stamps revoked_at, revoked_as and an optional public reason`"]:::core
+  locks the event, refuses geolocators, non-members and a stale version`"]:::core
+  delete["`**delete_as_admin**
+  deletes the row and writes an approval_deleted admin event`"]:::core
   file["`**file_version**
   the live version moves on`"]:::core
-  join["`**revoke_approvals_on_join**`"]:::core
+  join["`**delete_approvals_on_join**`"]:::core
   rows[("`**event_approvals**
-  one per analyst and version, one standing per organization and version`")]:::store
+  one per analyst and version, one per organization and version`")]:::store
   received["`**approval_received**
-  to the owner, hidden once the approval is revoked`"]:::shared
-  revoked["`**approval_revoked**
-  to the owner`"]:::shared
+  to the owner and the requesters, deleted with the approval`"]:::shared
   again["`**re_approve_requested**
-  to each reviewer, and each member of an organization, whose approval stood`"]:::shared
+  to each reviewer, and each member of an organization, that approved the superseded version`"]:::shared
 
   approve --> place --> rows
   place --> received
-  revokeep --> revoke --> rows
-  revoke --> revoked
+  admindel --> delete --> rows
+  delete -.-> received
   edit --> file --> again
   accept --> join --> rows
+  join -.-> received
 ```
 
-An approval is a dated attestation that one version of a published event holds. It binds to the pair `(event_id, version_no)` and is **current** while that version is the event's live version and nobody revoked it. Saving a new version ends every current approval of the event without changing its row, an archive-only save included. The approval stays readable on the version it covered, and the live version shows none until someone approves it again.
+An approval is a dated attestation that one version of a published event holds. It binds to the pair `(event_id, version_no)` and is **current** while that version is the event's live version. An approval is final: no endpoint revokes it. Saving a new version ends every current approval of the event without changing its row, an archive-only save included. The approval stays readable on the version it covered, and the live version shows none until someone approves it again.
 
 - **Who approves.** Any signed-in analyst except the event's current and former geolocators: its owner, every analyst credited through [shared credit](#shared-credit), and every analyst who left the credit or was removed from it. The analyst who opened a fulfilled request is not a geolocator, so they may approve it. A closed event takes no new approval and keeps the ones it has.
 - **Organization approvals.** Any member of an [organization](#organizations), whatever their role, approves in its name by sending the organization's slug. The approval records the member as its `reviewer`. A member who is or was a geolocator of the event cannot approve it for any organization. An analyst outside the organization cannot approve in its name. A member who leaves or is removed leaves the organization's past approvals as they are.
-- **One standing approval per analyst and version.** An analyst holds at most one standing approval of a version. After revoking their own approval, the reviewer can approve the version again, and the revoked row stays as history beside the new one. A revocation by a site admin, or the one written when the reviewer joined the geolocators, closes the version to them (409 `reapproval_refused`). An organization holds one standing approval per version: after an org manager revokes it, an org manager can approve that version again; after a site admin revokes it, the organization cannot. An analyst's own approval and the one they place for an organization are separate.
-- **Re-approval.** Each new version writes a `re_approve_requested` [notification](#notifications) for every analyst whose approval of the superseded version stood, and for every live member of an organization whose approval of it stood, with the organization on the row. A revoked approval asks nothing.
-- **Revocation.** The reviewer revokes their own approval. Any member of the organization revokes any approval placed in its name, and the organization can approve the version again afterwards; a reviewer who left the organization cannot revoke it. Only a site admin's revocation closes the version to the organization. A site admin revokes any approval, which writes an `approval_revoked` audit row. The reason is optional and public. A revoked approval keeps its row, its version and its reason, and `revoked_as` names the role that revoked it, never the person. The owner receives an `approval_revoked` [notification](#notifications), and the `approval_received` notifications of that approval leave every feed.
-- **Joining the geolocators.** Accepting a [co-geolocator invitation](#post-eventsidgeolocator-invitesaccept) revokes every standing approval the invitee gave the event, on every version and for every organization, with the reason "Joined the geolocators of this event".
+- **One approval per analyst and version.** An analyst approves a version once (409 `already_approved` afterwards). An organization approves a version once, through any of its members. An analyst's own approval and the one they place for an organization are separate.
+- **Re-approval.** Each new version writes a `re_approve_requested` [notification](#notifications) for every analyst who approved the superseded version, and for every live member of an organization that approved it, with the organization on the row.
+- **Deletion by a site admin.** [`DELETE /admin/approvals/{approval_id}`](#delete-adminapprovalsapproval_id) deletes one approval. The `approval_received` notifications that reported it go with it. The reviewer, or the organization, can approve that version again.
+- **Joining the geolocators.** Accepting a [co-geolocator invitation](#post-eventsidgeolocator-invitesaccept) deletes every approval the invitee gave the event, on every version and for every organization.
 
-Every write locks the event row first, so an approval, a revocation and a new version on the same event serialize.
+Every write locks the event row first, so an approval, a deletion and a new version on the same event serialize.
 
 **Approval shape (`ApprovalRead`):**
 ```json
 {
   "id": "uuid",
   "version_no": 2,
-  "verdict": "approve",
   "reviewer": { "id": "uuid", "username": "bo", "avatar_url": null },
   "organization": { "slug": "open-source-watch", "name": "Open Source Watch", "avatar_url": null },
-  "note": "Skyline and road junction match.",
   "created_at": "2026-10-15T09:00:00Z",
-  "current": true,
-  "revoked_at": null,
-  "revoke_reason": null,
-  "revoked_as": null
+  "current": true
 }
 ```
 
 | Field | Meaning |
 |---|---|
-| `verdict` | Always `approve` |
 | `reviewer` | The analyst who approved; for an organization's approval, the member who placed it, or `null` once that account is soft-deleted or erased, since the approval stays the organization's |
 | `organization` | The organization the approval speaks for, `null` for an analyst's own approval |
-| `note` | The reviewer's optional note, at most 280 characters; `null` when none was left |
-| `current` | `true` while `version_no` is the live version of a `geolocated` event and the approval is not revoked; a closed event keeps its approvals, none current |
-| `revoked_at` | `null` until the approval is revoked, then when |
-| `revoke_reason` | The public reason given at revocation; `null` when none was given, and always `null` on an approval that is not revoked |
-| `revoked_as` | `null` until revoked, then the role that revoked it: `reviewer`, `organization_member` (another member of the organization) or `site_admin` |
+| `current` | `true` while `version_no` is the live version of a `geolocated` event; a closed event keeps its approvals, none current |
+
+The web app asks you to confirm before it sends [`POST /events/{id}/approvals`](#post-eventsidapprovals), since the approval is final.
 
 ### `GET /events/{id}/approvals`
 
-The approvals of the event, revoked ones included, ordered by version and then oldest first. At most 500 approvals are returned, the newest ones, so a read of every version keeps the live version's (`MAX_APPROVALS_LISTED` in [`services/approvals.py`](../backend/app/services/approvals.py)); filter by `version_no` or `reviewer` to read past it. An analyst's approval whose reviewer is soft-deleted is left out. An organization's approval stays whatever became of the member who placed it, with `reviewer` set to `null` once that account is soft-deleted or erased. Visibility as [`GET /events/{id}`](#get-eventsid).
+The approvals of the event, ordered by version and then oldest first. At most 500 approvals are returned, the newest ones, so a read of every version keeps the live version's (`MAX_APPROVALS_LISTED` in [`services/approvals.py`](../backend/app/services/approvals.py)); filter by `version_no` or `reviewer` to read past it. An analyst's approval whose reviewer is soft-deleted is left out. An organization's approval stays whatever became of the member who placed it, with `reviewer` set to `null` once that account is soft-deleted or erased. Visibility as [`GET /events/{id}`](#get-eventsid).
 
 **Query params:**
 
@@ -1560,7 +1524,7 @@ The approvals of the event, revoked ones included, ordered by version and then o
 | Field | Meaning |
 |---|---|
 | `items` | The approval shapes |
-| `viewer_can_approve` | `true` when you are signed in, the event is published, and you never held credit on it, so you may approve it as yourself or for an organization you manage. `false` for an anonymous caller, an unpublished event, and a current or former geolocator. Whether you already reviewed the live version reads from `items`. |
+| `viewer_can_approve` | `true` when you are signed in, the event is published, and you never held credit on it, so you may approve it as yourself or for an organization you are a member of. `false` for an anonymous caller, an unpublished event, and a current or former geolocator. Whether you already reviewed the live version reads from `items`. |
 
 **Errors:**
 | Code | Case |
@@ -1571,9 +1535,9 @@ The approvals of the event, revoked ones included, ordered by version and then o
 
 ### `POST /events/{id}/approvals` 🔒
 
-Approve the live version of a published event, as yourself or for an organization you manage.
+Approve the live version of a published event, as yourself or for an organization you are a member of. The approval is final.
 
-**Body:** `{ "version_no": 2, "note": "Skyline and road junction match.", "organization": "open-source-watch" }`. `version_no` is the version you read. `note` is optional, at most 280 characters; a blank note is stored as `null`. `organization` is optional: the slug of an organization you are a member of, to approve in its name.
+**Body:** `{ "version_no": 2, "organization": "open-source-watch" }`. `version_no` is the version you read. `organization` is optional: the slug of an organization you are a member of, to approve in its name. The body rejects unknown fields.
 
 **Response 201:** the new approval. It resolves every open [approval request](#approval-requests) its target received for the event: you, or the organization. The owner, and each geolocator whose request it resolves, receives an `approval_received` notification, with the organization on the row for an organization's approval.
 
@@ -1582,26 +1546,8 @@ Approve the live version of a published event, as yourself or for an organizatio
 |------|------|
 | 403 | `geolocator_cannot_approve`: you are or were a geolocator of the event. `not_organization_member`: you are not a member of `organization` |
 | 404 | `organization_not_found`: no organization has that slug. Also an unknown, soft-deleted or withheld event |
-| 409 | `invalid_state`: the event is not `geolocated`. `version_mismatch`: `version_no` is not the live version; reload the event. `already_approved`: your approval of this version, or the organization's, stands. `reapproval_refused`: a site admin revoked that approval of this version, or it was revoked when you joined the geolocators |
-| 422 | `version_no` missing or below 1, or `note` over 280 characters |
-
----
-
-### `POST /events/{id}/approvals/{approval_id}/revoke` 🔒
-
-Revoke an approval of the event. The reviewer revokes their own; a member revokes any approval placed for their organization; a site admin revokes any, on a withheld event too, which answers 404 to everyone else.
-
-**Body (optional):** `{ "reason": "The shadows point the other way." }`. The body and `reason` are optional; `reason` is at most 2000 characters, surrounding whitespace is stripped, and a blank reason is stored as `null`. A reason is public.
-
-**Response 200:** the revoked approval. The event's owner receives an `approval_revoked` notification, which names the approval's reviewer or organization and never who revoked it.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 403 | `revoke_forbidden`: you are not the reviewer, not a member of the organization the approval speaks for, and not a site admin |
-| 404 | `approval_not_found`: no approval with that id on this event. Also an unknown, soft-deleted or withheld event |
-| 409 | `already_revoked` |
-| 422 | `reason` over 2000 characters |
+| 409 | `invalid_state`: the event is not `geolocated`. `version_mismatch`: `version_no` is not the live version; reload the event. `already_approved`: your approval of this version, or the organization's, exists |
+| 422 | `version_no` missing or below 1, or an unknown field |
 
 ---
 
@@ -1664,7 +1610,7 @@ flowchart LR
 A geolocator of a published event asks an analyst or an [organization](#organizations) to approve its live version. The request lands in the notifications of the analyst, or of every live member of the organization, and stays open until the target approves the event or declines the request, or the requester loses their credit on the event, which withdraws it.
 
 - **Who asks.** A geolocator of the event: its owner or an accepted co-geolocator. The event must be `geolocated`.
-- **Who is asked.** An analyst who can approve the event: not one of its current or former geolocators, whose approval of the live version does not stand and was not revoked by someone else. An organization with a live member outside the event's current and former geolocators, whose approval of the live version does not stand and was not revoked by a site admin.
+- **Who is asked.** An analyst who can approve the event: not one of its current or former geolocators, who have not approved the live version. An organization with a live member outside the event's current and former geolocators, which has not approved the live version.
 - **The audience.** The analyst asked decides who may send them requests, with `approval_request_audience` in [`PATCH /users/me/preferences`](#patch-usersmepreferences). `following`, the default, admits the analysts they follow; following them does not count. `everyone` admits any signed-in analyst. `nobody` admits no one. An organization's org managers set the same value for the organization with [`PATCH /organizations/{slug}`](#patch-organizationsslug), where `following` admits an analyst whom any live org manager follows. A refused request returns 403 `requests_not_accepted` with one message for every audience, so the refusal never tells you which rule the target chose.
 - **Limits.** One open request per requester, target and event. After the target declines, the same requester cannot ask the same target about the same event for 7 days (409 `recently_declined`). A requester sends at most `APPROVAL_REQUEST_DAILY_CAP` requests (default 20) in a trailing 24 hours, resolved ones included, so declining and asking again does not lift the cap.
 - **Resolution.** An approval of the event, on any version, resolves every open request its target received for the event: an analyst's own approval resolves the requests to that analyst, and an organization's approval the requests to the organization. Each requester receives an `approval_received` notification. The analyst asked, or any org manager of the organization asked, declines the request, and the requester receives an `approval_request_declined` notification naming the org manager and the organization. Accepting a [co-geolocator invitation](#post-eventsidgeolocator-invitesaccept) deletes the open requests addressed to the new geolocator.
@@ -1708,7 +1654,7 @@ The open approval requests on the event, oldest first. A geolocator of the event
 
 ### `GET /events/{id}/approval-request-targets` 🔒
 
-The analysts and organizations to suggest for approval of the event, at most 20 of each. Analysts: live, outside the event's current and former geolocators, whose approval of the live version neither stands nor was revoked by someone else, hold no open request from you on it and declined none in the last 7 days, and who follow you and take requests, or whose username is `q` exactly. Organizations: with a live org manager outside the current and former geolocators, without a standing approval of the live version, an open request from you on it or one it declined in the last 7 days, and followed by one of its org managers while it takes requests, or whose slug is `q` exactly; by name. The list never reveals an `everyone` audience: an exact match is listed whatever its audience, and asking it may still return `requests_not_accepted`. When `q` is the exact username of a live analyst, or else the exact slug of an organization, that the list leaves out, `refusal` holds the reason the request would get (a geolocator, already approved, already asked, or declined in the last 7 days); otherwise it is `null`. The audience is never a `refusal`.
+The analysts and organizations to suggest for approval of the event, at most 20 of each. Analysts: live, outside the event's current and former geolocators, who have not approved the live version, hold no open request from you on it and declined none in the last 7 days, and who follow you and take requests, or whose username is `q` exactly. Organizations: with a live org manager outside the current and former geolocators, that have not approved the live version, hold no open request from you on it and declined none in the last 7 days, and are followed by one of its org managers while it takes requests, or whose slug is `q` exactly; by name. The list never reveals an `everyone` audience: an exact match is listed whatever its audience, and asking it may still return `requests_not_accepted`. When `q` is the exact username of a live analyst, or else the exact slug of an organization, that the list leaves out, `refusal` holds the reason the request would get (a geolocator, already approved, already asked, or declined in the last 7 days); otherwise it is `null`. The audience is never a `refusal`.
 
 **Query params:** `q`, up to 50 characters: a case-insensitive substring of the username, prefix matches first, or of the organization's name or slug.
 
@@ -1729,14 +1675,14 @@ Ask an analyst or an organization to approve the live version of the event.
 
 **Body:** `{ "username": "bo" }` for an analyst, or `{ "organization": "open-source-watch" }` for an organization. Exactly one of the two; both or neither is a 422.
 
-**Response 201:** the new request. The analyst asked, or every live member of the organization asked, receives an `approval_request_received` notification, with the organization on the row. Each email counts toward the requester's per-actor daily email cap, so a request to a large organization reaches the remaining members through the notifications list and push alone once the cap is reached.
+**Response 201:** the new request. The analyst asked, or every live member of the organization asked, receives an `approval_request_received` notification, with the organization on the row. Each email counts toward the requester's per-actor daily email cap, so a request to a large organization reaches the remaining members through the notifications list alone once the cap is reached.
 
 **Errors:**
 | Code | Case |
 |------|------|
 | 403 | `not_a_geolocator`: you are not a geolocator of the event. `target_is_geolocator`: the analyst is a geolocator of the event, or every live member of the organization is. `requests_not_accepted`: the target's audience does not admit you |
 | 404 | `user_not_found`: no live analyst with that username. `organization_not_found`: no organization has that slug. Also an unknown, soft-deleted or withheld event |
-| 409 | `invalid_state`: the event is not `geolocated`. `already_approved`: the analyst's or the organization's approval of the live version stands, or a revocation by someone else closed the version to them. `already_requested`: you have an open request to this target on this event. `recently_declined`: this target declined your request on this event less than 7 days ago |
+| 409 | `invalid_state`: the event is not `geolocated`. `already_approved`: the analyst or the organization already approved the live version. `already_requested`: you have an open request to this target on this event. `recently_declined`: this target declined your request on this event less than 7 days ago |
 | 429 | `daily_cap_reached`: you sent the daily cap of requests |
 
 ---
@@ -2276,33 +2222,21 @@ Your display and notification preferences. Each value is the one in effect: your
   "display_defaults": { "palette": "orange", "theme": "dark", "help_tooltips": true },
   "display_stored": { "palette": "rose", "theme": "light", "help_tooltips": null },
   "notifications": [
-    {
-      "kind": "request_fulfilled",
-      "channels": { "email": false, "push": true },
-      "defaults": { "email": true, "push": true }
-    },
-    {
-      "kind": "new_follower",
-      "channels": { "email": false, "push": false },
-      "defaults": { "email": false, "push": false }
-    }
+    { "kind": "request_fulfilled", "email": false, "default": true },
+    { "kind": "new_follower", "email": false, "default": false }
   ],
-  "product_updates": false,
   "approval_request_audience": "following"
 }
 ```
 
-`product_updates` is `true` while you hold a current consent to [product update emails](#product-updates). It has no default to fall back to: consent is never presumed.
-
-`display_stored` holds only the display values your account has saved, `null` where it has none, so a client can tell a saved value from a default. `notifications` lists every registered notification kind, in registry order. `channels` holds the delivery channels besides the in-app notifications list, which is always on and has no switch. With `email` on, Vidit also emails that kind to your verified address. With `push` on, Vidit also sends it as a push notification to every device you registered (see [Notifications](#notifications)).
+`display_stored` holds only the display values your account has saved, `null` where it has none, so a client can tell a saved value from a default. `notifications` lists every registered notification kind, in registry order. `email` says whether Vidit emails that kind to your account address, and `default` is the value you get while you have not moved the switch. The in-app notifications list shows every kind and has no switch (see [Notifications](#notifications)).
 
 | Field | Values |
 |-------|--------|
 | `display.palette` | `orange`, `blue`, `emerald`, `violet`, `rose` |
 | `display.theme` | `dark`, `light` |
 | `display.help_tooltips` | `true` shows the `?` field help |
-| `notifications[].kind` | `request_fulfilled`, `new_follower`, `x_handle_request_approved`, `x_handle_request_declined`, `co_geolocator_invite`, `co_geolocator_removed`, `ownership_transferred`, `organization_invite`, `organization_invite_accepted`, `organization_manager_inherited`, `re_approve_requested`, `approval_received`, `approval_revoked`, `approval_request_received`, `approval_request_declined`, `organization_approval_removed` |
-| `notifications[].channels` | `email`, `push` |
+| `notifications[].kind` | `request_fulfilled`, `new_follower`, `co_geolocator_invite`, `co_geolocator_removed`, `ownership_transferred`, `organization_invite`, `organization_invite_accepted`, `organization_manager_inherited`, `re_approve_requested`, `approval_received`, `approval_request_received`, `approval_request_declined`, `organization_approval_removed` |
 | `approval_request_audience` | Who may send you an [approval request](#approval-requests): `following` (the default), `everyone`, `nobody` |
 
 ---
@@ -2315,185 +2249,36 @@ Change some of your preferences. The first write creates your stored row.
 ```json
 {
   "display": { "theme": "light", "palette": null },
-  "notifications": { "request_fulfilled": { "email": false } },
-  "product_updates": true,
+  "notifications": { "request_fulfilled": false },
   "approval_request_audience": "everyone"
 }
 ```
 
-- `product_updates: true` grants the consent to product update emails with source `settings`, and `false` withdraws it. Granting while a consent is current changes nothing, so the original grant time stays.
 - In `display`, an omitted field keeps its stored value, and `null` clears it so it reads the default again.
-- In `notifications`, each entry sets channels of one kind. A value equal to the kind's default drops your override, so only differences from the defaults are stored, and a later change of a default reaches you if you never moved that switch.
+- In `notifications`, each entry turns the email of one kind on (`true`) or off (`false`). A value equal to the kind's default drops your override, so only differences from the defaults are stored, and a later change of a default reaches you if you never moved that switch.
 - `approval_request_audience` sets who may send you an approval request. Omit it or send `null` to keep the stored value.
 
-The body rejects unknown fields, unknown kinds, unknown channels, and display or audience values outside the table above.
+The body rejects unknown fields, unknown kinds, non-boolean switches, and display or audience values outside the table above.
 
 **Response 200:** the updated preferences, in the shape of [`GET /users/me/preferences`](#get-usersmepreferences).
 
 **Errors:**
 | Code | Case |
 |------|------|
-| 422 | An unknown field, kind, channel, display value or audience |
-
----
-
-### `GET /users/me/push-config` 🔒
-
-The key a browser needs to subscribe to push notifications from this deployment.
-
-**Response 200:**
-```json
-{ "public_key": "BCVx...base64url" }
-```
-
-`public_key` is the VAPID application server key, base64url-encoded. A deployment always has one. It is `null` only on a development server started without VAPID keys.
-
----
-
-### `GET /users/me/push-subscriptions` 🔒
-
-The devices registered for your push notifications, newest first. Each item has the shape of the [`POST /users/me/push-subscriptions`](#post-usersmepush-subscriptions) response, and never carries the endpoint.
-
-A password change or a password reset deletes every device of the account.
-
----
-
-### `POST /users/me/push-subscriptions` 🔒
-
-Register this browser for push notifications. The body is the browser's `PushSubscription.toJSON()`; `expirationTime` is ignored. The `User-Agent` header is stored with the device.
-
-**Body:**
-```json
-{
-  "endpoint": "https://fcm.googleapis.com/fcm/send/...",
-  "expirationTime": null,
-  "keys": { "p256dh": "BNc...", "auth": "tBH..." }
-}
-```
-
-- `endpoint` is an https URL on a browser push service: `fcm.googleapis.com`, `updates.push.services.mozilla.com`, `web.push.apple.com`, or a host under `.push.apple.com` or `.notify.windows.com`.
-- `keys.p256dh` is a base64url uncompressed P-256 public key (65 bytes) and `keys.auth` a base64url 16-byte secret.
-
-`resync: true` marks a registration the page makes by itself: it answers 409 `device_revoked` for a device you revoked, which only an explicit registration (`resync` omitted or false) brings back. Registering an endpoint again refreshes its keys and returns the same `id`. An endpoint registered by another account moves to yours, since one browser holds one subscription. An account holds at most 10 devices: registering one more deletes the oldest.
-
-**Response 201:**
-```json
-{
-  "id": "3f0c...",
-  "user_agent": "Mozilla/5.0 ...",
-  "created_at": "2026-10-15T09:00:00Z",
-  "last_success_at": null
-}
-```
-
-The response never carries the endpoint: anyone who holds it can push to the device.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 409 | `device_revoked`: a `resync` of a device you revoked |
-| 422 | An endpoint off the push services, or malformed keys |
-
----
-
-### `DELETE /users/me/push-subscriptions/{id}` 🔒
-
-Stop push notifications to one of your devices. The device stays revoked: this browser's own `resync` registration of it answers 409 until you enable push on it again.
-
-**Response 204:** no body.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 404 | No device with this id on your account |
+| 422 | An unknown field, kind, non-boolean switch, display value or audience |
 
 ---
 
 ### `GET /users/me/x-handle` 🔒
 
-The X handle bound to your account, which the Vidit bot and the archive import use to credit posts to you, and your change request if you have one. Only an admin writes the bound handle.
+The X handle bound to your account, which the Vidit bot and the archive import use to credit posts to you. Only an admin writes the bound handle, through [`PATCH /admin/users/{id}/x-handle`](#patch-adminusersidx-handle).
 
 **Response 200:**
 ```json
-{
-  "x_handle": "osint_hawk",
-  "request": {
-    "id": "8c0e…",
-    "x_handle": "new_hawk",
-    "reason": "I renamed my X account",
-    "status": "declined",
-    "decline_reason": "Post from the new handle first",
-    "created_at": "2026-10-01T10:00:00Z",
-    "decided_at": "2026-10-02T09:00:00Z"
-  }
-}
+{ "x_handle": "osint_hawk" }
 ```
 
-`x_handle` is `null` when no handle is bound. `request` is `null` when you have no request. `status` is `pending` or `declined`; `decline_reason` and `decided_at` are set exactly when it is `declined`. An approved request leaves no row: its handle is the bound one.
-
----
-
-### `PUT /users/me/x-handle-request` 🔒
-
-Ask an admin to bind a new X handle to your account.
-
-```mermaid
-flowchart LR
-  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
-  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
-  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
-  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
-
-  subgraph legend [Legend]
-    direction LR
-    l1["`an analyst endpoint`"]:::spec
-    l2["`an admin endpoint`"]:::shared
-    l3["`the one write path of the bound handle`"]:::core
-    l4[("`a stored value`")]:::store
-    l1 ~~~ l2 ~~~ l3 ~~~ l4
-  end
-
-  put["`**PUT /users/me/x-handle-request**
-  replaces your earlier request`"]:::spec
-  req[("`**x_handle_requests**
-  one row per analyst`")]:::store
-  approve["`**POST …/approve**
-  deletes the request`"]:::shared
-  decline["`**POST …/decline**
-  the reason stays on the request`"]:::shared
-  write["`**set_user_x_handle**
-  conflict check, audit row`"]:::core
-  handle[("`**users.x_handle**`")]:::store
-  notes[("`**notifications**
-  x_handle_request_approved or _declined`")]:::store
-
-  put --> req
-  req --> approve
-  req --> decline
-  approve --> write
-  write --> handle
-  approve --> notes
-  decline --> notes
-```
-
-You hold at most one request. A new one replaces your earlier request, pending or declined, under a new `id`. An approval binds the handle through the same write path as [`PATCH /admin/users/{id}/x-handle`](#patch-adminusersidx-handle) and deletes the request. A decline keeps the request with the admin's reason, which [`GET /users/me/x-handle`](#get-usersmex-handle) returns until you file another one. Either decision writes a [notification](#notifications).
-
-The request does not check whether another account holds the handle: the admin's approval does, so the endpoint does not reveal who holds which handle.
-
-**Body:**
-```json
-{ "x_handle": "@new_hawk", "reason": "I renamed my X account" }
-```
-
-`x_handle` is normalized like [`PATCH /admin/users/{id}/x-handle`](#patch-adminusersidx-handle). `reason` is optional, at most 500 characters; a blank reason is stored as `null`.
-
-**Response 200:** your handle and the new request, in the shape of [`GET /users/me/x-handle`](#get-usersmex-handle).
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 409 `x_handle_unchanged` | The handle is already bound to your account |
-| 422 | A handle outside `^[a-z0-9_]{1,15}$` after normalization, a reason over 500 characters, or an unknown field |
+`x_handle` is `null` when no handle is bound.
 
 ---
 
@@ -2706,21 +2491,19 @@ flowchart LR
   on a request: request_fulfilled to the analyst who opened it`"]:::spec
   follow["`**POST /users/{username}/follow**
   new_follower to the followed analyst, once per follower`"]:::spec
-  xhandle["`**POST /admin/x-handle-requests/{id}/approve** and **/decline**
-  x_handle_request_approved or _declined to the requester`"]:::spec
   credit["`**geolocator_credit**
   co_geolocator_invite, co_geolocator_removed, ownership_transferred`"]:::spec
   orgs["`**organizations**
   organization_invite, organization_invite_accepted, organization_manager_inherited,
   organization_approval_removed`"]:::spec
   approvals["`**approvals** and **file_version**
-  approval_received, approval_revoked, re_approve_requested`"]:::spec
+  approval_received, re_approve_requested`"]:::spec
   reviews["`**approval_requests**
   approval_request_received, approval_request_declined`"]:::spec
   rows[("`**notifications**
   written in the action's transaction`")]:::store
   visible["`**_visible_rows**
-  hides a row whose event is deleted or hidden, whose actor is soft-deleted, or whose approval is revoked`"]:::core
+  hides a row whose event is deleted or hidden, or whose actor is soft-deleted`"]:::core
   list["`**GET /notifications**
   newest first, each row with its read_at`"]:::shared
   count["`**GET /notifications/unread-count**
@@ -2732,13 +2515,12 @@ flowchart LR
   readat[("`**notifications.read_at**
   per row; NULL is unread`")]:::store
   queue[("`**notification_deliveries**
-  one row per channel to send on`")]:::store
+  at most one row per notification, for the email`")]:::store
   worker["`**notification_delivery.drain**
   re-checks the switch and the filter, sends after the action commits`"]:::core
 
   geolocate --> rows
   follow --> rows
-  xhandle --> rows
   credit --> rows
   orgs --> rows
   approvals --> rows
@@ -2754,18 +2536,14 @@ flowchart LR
   delete --> rows
 ```
 
-An action that concerns another analyst writes a [`notifications`](data-model.md#notifications) row in its own transaction, so a rolled-back action leaves no row. Nobody is notified of their own action. Every read passes the same filter: a row whose event is soft-deleted or taken down, or whose actor is soft-deleted or deactivated, is hidden from the list and the count, including when that happens after the row was written. An `approval_received` row is hidden the same way once the approval it reports is revoked. Read state is per row: `read_at` is NULL until `POST /notifications/read` names the row, which the notifications page does for the unread rows it shows. A row whose action commits after the list was read stays unread, whatever its `created_at`. `DELETE /notifications/{id}` removes one of your rows for good.
+An action that concerns another analyst writes a [`notifications`](data-model.md#notifications) row in its own transaction, so a rolled-back action leaves no row. Nobody is notified of their own action. Every read passes the same filter: a row whose event is soft-deleted or taken down, or whose actor is soft-deleted or deactivated, is hidden from the list and the count, including when that happens after the row was written. Read state is per row: `read_at` is NULL until `POST /notifications/read` names the row, which the notifications page does for the unread rows it shows. A row whose action commits after the list was read stays unread, whatever its `created_at`. `DELETE /notifications/{id}` removes one of your rows for good.
 
-When your email switch for the kind is on and your address is verified, the same transaction queues an email. The worker sends it after the action commits, so a provider failure never fails the action. At send time the worker skips the email if the switch is now off or the filter would hide the row. Notification email has a daily cap, in total and per recipient, and a queued email older than 48 hours is dropped. The emails an analyst sends straight at someone (`co_geolocator_invite`, `organization_invite`, `approval_request_received`) are capped per actor in a trailing 24 hours too: past the cap, the row still reaches the notifications list and push, but queues no email. Fan-out an action sets off, such as re-approval requests after a new version, is neither capped nor counted. The email links to the item and to Settings, and its `List-Unsubscribe` header turns that kind off by email in one click ([`POST /notifications/unsubscribe`](#post-notificationsunsubscribe)). The queue and the caps are in [`engineering.md`](engineering.md#email).
-
-When your push switch for the kind is on and you registered at least one device, the same transaction queues a push. The worker sends it to each of your devices, with a title, a short body and the path a click opens. Push has no daily cap. The delivery path is in [`engineering.md`](engineering.md#web-push).
+When your email switch for the kind is on, the same transaction queues an email to your account address. The in-app list shows every kind whatever the switch says. The worker sends it after the action commits, so a provider failure never fails the action. At send time the worker skips the email if the switch is now off or the filter would hide the row. Notification email has a daily cap, in total and per recipient, and a queued email older than 48 hours is dropped. The emails an analyst sends straight at someone (`co_geolocator_invite`, `organization_invite`, `approval_request_received`) are capped per actor in a trailing 24 hours too: past the cap, the row still reaches the notifications list, but queues no email. Fan-out an action sets off, such as re-approval requests after a new version, is neither capped nor counted. The email links to the item and to Settings, and its `List-Unsubscribe` header turns that kind off by email in one click ([`POST /notifications/unsubscribe`](#post-notificationsunsubscribe)). The queue and the caps are in [`engineering.md`](engineering.md#email).
 
 | Kind | Emitted when | `actor` | `event` | `organization` |
 |------|--------------|---------|---------|----------------|
 | `request_fulfilled` | Another analyst geolocates a request you opened | the fulfiller | the request | null |
 | `new_follower` | An analyst follows you for the first time | the follower | null | null |
-| `x_handle_request_approved` | An admin approves your [X handle request](#put-usersmex-handle-request) | null | null | null |
-| `x_handle_request_declined` | An admin declines your X handle request | null | null | null |
 | `co_geolocator_invite` | The owner of a published event invites you to share its credit, unless an invitation to the same event reached you in the last 7 days | the owner | the event | null |
 | `co_geolocator_removed` | The owner of an event removes you from its geolocators | the owner | the event | null |
 | `ownership_transferred` | An event you share passes to you because its owner's account was removed or erased | null | the event | null |
@@ -2773,11 +2551,10 @@ When your push switch for the kind is on and you registered at least one device,
 | `organization_invite_accepted` | An analyst accepts your organization invite | the new member | null | the organization |
 | `organization_manager_inherited` | You become org manager because the last one's account was removed | null | null | the organization |
 | `re_approve_requested` | The owner saves a new version of an event whose superseded version you, or an organization you are a member of, approved; a member who holds or held credit on the event is not asked | the owner | the event | the organization, or null for your own approval |
-| `approval_received` | An analyst approves your event, or an event whose approval you requested, as themselves or for an organization; hidden once that approval is revoked | the reviewer | the event | the organization, or null |
-| `approval_revoked` | An approval of your event is revoked through [`POST /events/{id}/approvals/{approval_id}/revoke`](#post-eventsidapprovalsapproval_idrevoke); email and push are off by default | the approval's reviewer, or null on an organization's approval whose reviewer's account is erased | the event | the organization, or null |
+| `approval_received` | An analyst approves your event, or an event whose approval you requested, as themselves or for an organization; the row goes when the approval is deleted | the reviewer | the event | the organization, or null |
 | `approval_request_received` | A geolocator asks you, or an organization you are a member of, to approve their event; a member who holds or held credit on the event is not asked | the requester | the event | the organization asked, or null |
 | `approval_request_declined` | The analyst or the organization you asked declines to approve your event | the analyst asked, or the member who declined | the event | the organization asked, or null |
-| `organization_approval_removed` | A site admin deletes an organization whose standing approval your event held; one row per event | null | the event | null; `organization_name` names it |
+| `organization_approval_removed` | A site admin deletes an organization whose approval your event held; one row per event | null | the event | null; `organization_name` names it |
 
 A declined or withdrawn organization invite writes no row. `organization` is `{ "slug", "name", "avatar_url" }`. `organization_name` is set on an `organization_approval_removed` row only, since the organization it names no longer exists.
 
@@ -2833,7 +2610,7 @@ Mark the listed notifications read by setting their `read_at`. Only your own row
 
 ### `DELETE /notifications/{id}` 🔒
 
-Delete one of your notifications. Its `queued` and `skipped` delivery rows go with it, so a queued email or push for it is never sent. A delivery that may have reached the provider (`sending`, `sent` or `failed`) stays with a NULL `notification_id`, so the daily email cap keeps counting it. The row leaves the list and the unread count.
+Delete one of your notifications. Its `queued` and `skipped` delivery rows go with it, so a queued email for it is never sent. A delivery that may have reached the provider (`sending`, `sent` or `failed`) stays with a NULL `notification_id`, so the daily email cap keeps counting it. The row leaves the list and the unread count.
 
 **Response 204:** no body.
 
@@ -2907,7 +2684,7 @@ flowchart LR
 An organization is a collective with its own public profile. [`data-model.md`](data-model.md#organizations) describes the storage. On the wire:
 
 - **Creation:** a site admin creates each organization and names its first org manager, who joins without an invite.
-- **Roles:** `manager` (an org manager) and `member`. The role gates the membership powers: inviting, removing and promoting members, and setting the approval request audience. Every member, whatever the role, acts in the organization's name: placing and revoking its [approvals](#approvals) and answering its [approval requests](#approval-requests).
+- **Roles:** `manager` (an org manager) and `member`. The role gates the membership powers: inviting, removing and promoting members, and setting the approval request audience. Every member, whatever the role, acts in the organization's name: placing its [approvals](#approvals) and answering its [approval requests](#approval-requests).
 - **Approvals and approval requests:** the organization page lists the approvals placed in its name ([`GET /organizations/{slug}/approvals`](#get-organizationsslugapprovals)) and, for its members, the open approval requests addressed to it ([`GET /organizations/{slug}/approval-requests`](#get-organizationsslugapproval-requests) 🔒). Its org managers choose who may send it a request with `approval_request_audience`.
 - **Managers:** an org manager manages their organization: profile edit, pending invites, role changes and removals. A site admin manages any organization the same way. Only an org manager invites.
 - **Entry:** by invitation only. An org manager invites an analyst who follows them and whom they follow, and the invitee accepts or declines.
@@ -2967,7 +2744,7 @@ The members, org managers first, then by join date. Anonymous callers are allowe
 
 ### `GET /organizations/{slug}/approvals`
 
-The approvals placed in the organization's name, newest first, revoked ones included, at most 100 per page. Follow the `Link: rel="next"` cursor for the next page. An approval of an event a public reader cannot see is left out. Every other approval stays whatever became of the org manager who placed it, with `reviewer` set to `null` once that account is soft-deleted or erased. Anonymous callers are allowed.
+The approvals placed in the organization's name, newest first, at most 100 per page. Follow the `Link: rel="next"` cursor for the next page. An approval of an event a public reader cannot see is left out. Every other approval stays whatever became of the org manager who placed it, with `reviewer` set to `null` once that account is soft-deleted or erased. Anonymous callers are allowed.
 
 **Query params:** `limit` (default and maximum 100), `cursor`.
 
@@ -3131,27 +2908,6 @@ A detection, a retraction and a withdrawn request are in neither kind. A soft-de
 **Response headers:** `Link: <…&cursor=…>; rel="next"` when a further page exists.
 
 `status` tells the two kinds apart. `feed_at` is the row's feed timestamp. Rows are ordered by `feed_at DESC, id DESC`, one total order across both kinds, so a walk never repeats or skips a row.
-
----
-
-## Product updates
-
-A product update email announces one major release (`MAJOR.MINOR.0`) to the analysts who consented: at sign-up, in Settings through [`PATCH /users/me/preferences`](#patch-usersmepreferences), and only with a verified address. It is not a [notification](#notifications) kind. An admin sends it from the [admin endpoints](#get-adminproduct-updates) and the worker delivers it under its own daily cap ([`engineering.md`](engineering.md#product-update-emails)).
-
-### `POST /product-updates/unsubscribe`
-
-Withdraw the consent named by a signed token. Anonymous and exempt from the CSRF check: the token is the authorization. Every product update email carries the token twice: in the visible link to the `/unsubscribe` page, and in the `List-Unsubscribe` header, which a mail client posts one-click (`List-Unsubscribe-Post: List-Unsubscribe=One-Click`). The request body is ignored.
-
-**Query params:** `token`, from the email.
-
-The token carries no expiry. It stops working only when `JWT_SECRET` rotates. Idempotent: an account with no current consent answers the same.
-
-**Response 204:** no body.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 400 | `invalid_unsubscribe_token`: the token does not verify |
 
 ---
 
@@ -3377,7 +3133,7 @@ Withhold a collection: the alias of [`PATCH /admin/collections/{id}/moderation`]
 
 ### `PATCH /admin/users/{id}/x-handle` 🛡️
 
-Link or clear the X handle the bot attributes mentions to. Registration also copies an invite-bound handle; this endpoint repairs one that failed to link at redemption. A non-null value is normalized (single leading `@` stripped, lowercased) and must match `^[a-z0-9_]{1,15}$`; `null` clears the link. Audited as `x_handle_linked` or `x_handle_cleared`.
+Link or clear the X handle the bot attributes mentions to. Registration copies an invite-bound handle; this endpoint links any other handle and repairs one that failed to link at redemption. An analyst cannot change their own handle. A non-null value is normalized (single leading `@` stripped, lowercased) and must match `^[a-z0-9_]{1,15}$`; `null` clears the link. Audited as `x_handle_linked` or `x_handle_cleared`.
 
 **Request body:**
 ```json
@@ -3407,56 +3163,16 @@ Turn minting invite codes from Settings ([`POST /users/me/invite-codes`](#post-u
 
 **Response 422:** a missing or non-boolean `enabled`, or an unknown field.
 
-### `GET /admin/x-handle-requests` 🛡️
+### `DELETE /admin/approvals/{approval_id}` 🛡️
 
-Pending [X handle requests](#put-usersmex-handle-request) on live accounts, oldest first. Unpaged: an analyst holds at most one request.
-
-**Response 200:**
-```json
-[
-  {
-    "id": "8c0e…",
-    "user": { "id": "…", "username": "ana", "email": "ana@example.com", "is_admin": false, "x_handle": "osint_hawk", "created_at": "…" },
-    "x_handle": "new_hawk",
-    "reason": "I renamed my X account",
-    "created_at": "2026-10-01T10:00:00Z"
-  }
-]
-```
-
-`user` is the `AdminUserRead` of the requester, so `user.x_handle` is the handle the request replaces.
-
-### `POST /admin/x-handle-requests/{id}/approve` 🛡️
-
-Bind the requested handle to the requester through the write path of [`PATCH /admin/users/{id}/x-handle`](#patch-adminusersidx-handle), with its conflict check and its `x_handle_linked` audit row. In the same transaction, the request is deleted and the requester gets an `x_handle_request_approved` [notification](#notifications). A refused approval changes nothing and leaves the request pending.
-
-**Response 200:** the requester's updated `AdminUserRead`.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 404 `x_handle_request_not_found` | No pending request has that `id`: unknown, replaced by a newer request, or already decided |
-| 404 `user_not_found` | The requester is soft-deleted |
-| 409 `x_handle_conflict` | Another account or an organization holds the handle |
-
-### `POST /admin/x-handle-requests/{id}/decline` 🛡️
-
-Decline a request. The requester reads the reason in Settings and gets an `x_handle_request_declined` [notification](#notifications). Audited as `x_handle_request_declined`.
-
-**Body:**
-```json
-{ "reason": "Post from the new handle first" }
-```
-
-`reason` is required, at most 500 characters, and not blank.
+Delete one approval, an analyst's own or one placed for an organization. An approval is final: its reviewer cannot revoke it, so a site admin deletes one that should not stand. The `approval_received` notifications that reported it go with it, and the reviewer or the organization can approve that version again. The route works on any event, a withheld one included. Audited as `approval_deleted` (target `geolocation_id`, `approval_id`, `reviewer_id`, `organization_id`, `version_no`).
 
 **Response 204:** no body.
 
 **Errors:**
 | Code | Case |
 |------|------|
-| 404 `x_handle_request_not_found` | No pending request has that `id` |
-| 422 | A missing, blank, or over-long reason |
+| 404 | `approval_not_found`: no approval has that id |
 
 ### `POST /admin/organizations` 🛡️
 
@@ -3483,7 +3199,7 @@ Create an organization and name its first org manager, who joins at once without
 
 ### `DELETE /admin/organizations/{slug}` 🛡️
 
-Delete an organization. Site admins only. In one transaction, after locking the organization row, the service deletes the approvals given in its name, the approval requests addressed to it, its pending invites, its memberships and the organization itself; the notifications that name it go with it. The owner of each event that held a standing approval of the organization receives one `organization_approval_removed` notification per event, with email and push off by default. After the commit, the organization's picture is swept from storage. Audited as `organization_deleted` (target `organization_id`, `slug`, `name`, `approvals_removed`, `approval_requests_removed`, `members_removed`). The admin panel asks you to type the slug before it sends the request.
+Delete an organization. Site admins only. In one transaction, after locking the organization row, the service deletes the approvals given in its name, the approval requests addressed to it, its pending invites, its memberships and the organization itself; the notifications that name it go with it. The owner of each event that held an approval of the organization receives one `organization_approval_removed` notification per event, with email off by default. After the commit, the organization's picture is swept from storage. Audited as `organization_deleted` (target `organization_id`, `slug`, `name`, `approvals_removed`, `approval_requests_removed`, `members_removed`). The admin panel asks you to type the slug before it sends the request.
 
 **Response 204:** no body.
 
@@ -3620,92 +3336,6 @@ Email every analyst holding unpublished detections one message with the count an
 ```json
 { "analysts_notified": 4, "detections_pending": 137, "digest_send_failures": 0 }
 ```
-
-### `GET /admin/product-updates` 🛡️
-
-Every [product update](#product-updates) sent, newest first, with its delivery progress.
-
-**Response 200:**
-```json
-{
-  "items": [
-    {
-      "id": "…",
-      "label": "1.4.0",
-      "title": "Collections and approvals",
-      "link_url": "https://vidit.app/about",
-      "created_at": "2026-10-15T09:00:00Z",
-      "recipient_count": 75,
-      "progress": { "queued": 45, "sending": 0, "sent": 28, "failed": 0, "skipped": 2 }
-    }
-  ]
-}
-```
-
-`progress` counts the delivery rows by status. The statuses are in [`data-model.md`](data-model.md#product_update_deliveries).
-
-### `POST /admin/product-updates/preview` 🛡️
-
-Render an announcement as you would receive it, and count the analysts it would reach now.
-
-**Body:**
-```json
-{
-  "label": "1.4.0",
-  "title": "Collections and approvals",
-  "body": "Vidit 1.4 is out.\n\n- Collections\n- Approvals",
-  "link_url": "https://vidit.app/about"
-}
-```
-
-- `label` matches `MAJOR.MINOR.0`, so a patch release is refused.
-- `title` holds 1 to 120 characters and `body` 1 to 5000.
-- In `body`, a blank line starts a paragraph, and a paragraph whose lines all start with `- ` is a list.
-- `link_url` is optional, an http or https URL.
-
-**Response 200:**
-```json
-{
-  "subject": "Vidit 1.4.0: Collections and approvals",
-  "html": "<!doctype html>…",
-  "text": "Collections and approvals\n\n…",
-  "recipients": 75,
-  "daily_cap": 30,
-  "batch_size": 10,
-  "days": 3
-}
-```
-
-`recipients` counts the analysts with a current consent, a verified address and a live active account. `days` is how many trailing-24-hour windows `PRODUCT_UPDATE_EMAIL_DAILY_CAP` needs to send to all of them.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 422 | A label that is not `MAJOR.MINOR.0`, an empty or over-long field, or a link that is not http or https |
-
-### `POST /admin/product-updates/test` 🛡️
-
-Email the announcement to your own address, at once and outside the daily caps. Same body as the preview.
-
-**Response 204:** no body.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 409 | `email_unverified`: your address carries no `email_verified_at` |
-| 502 | `test_send_failed`: the provider did not accept the email |
-
-### `POST /admin/product-updates` 🛡️
-
-Send the announcement. Same body as the preview. One transaction records the announcement, writes one delivery row per analyst the preview counts, and writes an `admin_events` row `product_update_sent` with the label and the recipient count. The worker sends the emails afterwards, at most `PRODUCT_UPDATE_EMAIL_BATCH_SIZE` per pass and `PRODUCT_UPDATE_EMAIL_DAILY_CAP` in any 24 hours. Each label is sent once.
-
-**Response 201:** the announcement, in the shape of one [`GET /admin/product-updates`](#get-adminproduct-updates) item, with every row `queued`.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 409 | `product_update_already_sent`: the label was already sent |
-| 422 | As for the preview |
 
 </details>
 

@@ -2,6 +2,22 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Changed
+
+- Approvals are final: nobody revokes one, Approve asks you to confirm first, and a site admin can delete an approval, after which its reviewer or organization can approve that version again.
+- Joining an event as a co-geolocator deletes your approvals of it instead of marking them revoked.
+- Notification settings are one email switch per kind, and the in-app notification list always shows every kind.
+- A site admin links an X handle to an account; analysts no longer file a request for one.
+
+### Removed
+
+- Push notifications: email and the in-app list are the two ways to get a notification, and the push settings, devices and keys are gone.
+- X handle change requests and the admin queue that answered them.
+- Product update emails, their sign-up and Settings consent, and the admin screen that sent them.
+- The `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `PRODUCT_UPDATE_EMAIL_DAILY_CAP` and `PRODUCT_UPDATE_EMAIL_BATCH_SIZE` settings; `NOTIFICATION_EMAIL_DAILY_CAP` must stay below `EMAIL_PROVIDER_DAILY_QUOTA`.
+
 ## v0.7.4, 2026-10-22
 
 ### Changed

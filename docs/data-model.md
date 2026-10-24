@@ -106,12 +106,11 @@ erDiagram
     users {
         UUID id PK
         VARCHAR username
-        VARCHAR email "nullable, legacy credential-less rows"
-        VARCHAR password_hash "nullable, legacy credential-less rows"
+        VARCHAR email
+        VARCHAR password_hash
         VARCHAR x_handle "nullable, UNIQUE, admin-linked bot-attribution handle"
         BOOLEAN is_active
         BOOLEAN is_admin
-        TIMESTAMPTZ email_verified_at "nullable"
         TIMESTAMPTZ last_seen_at "nullable, throttled activity stamp"
         TIMESTAMPTZ deleted_at "nullable, soft-delete"
         INTEGER token_version "session-invalidation counter"
@@ -141,7 +140,6 @@ erDiagram
         UUID id PK
         UUID user_id FK
         TEXT token_hash
-        TEXT purpose "password_reset"
         TIMESTAMPTZ expires_at
         TIMESTAMPTZ consumed_at "nullable"
         TIMESTAMPTZ created_at
@@ -166,7 +164,6 @@ erDiagram
         VARCHAR password_hash
         UUID invite_code_id FK
         TEXT token_hash UK
-        TIMESTAMPTZ product_updates_consented_at "nullable, consent carried to the account"
         TIMESTAMPTZ expires_at
         TIMESTAMPTZ created_at
     }
@@ -252,13 +249,7 @@ erDiagram
         INT version_no "the version attested"
         UUID reviewer_id FK "the analyst, or the acting member; nullable"
         UUID organization_id FK "nullable, the organization approving"
-        VARCHAR verdict "approve"
-        TEXT note "nullable"
         TIMESTAMPTZ created_at
-        TIMESTAMPTZ revoked_at "nullable"
-        UUID revoked_by_id FK "nullable"
-        TEXT revoke_reason "nullable, public, optional"
-        VARCHAR revoked_as "nullable: reviewer, organization_member, site_admin"
     }
 
     approval_requests {
@@ -285,7 +276,7 @@ erDiagram
         VARCHAR role "source | proof"
         TEXT storage_url
         VARCHAR media_type
-        VARCHAR sha256 "nullable, hex-encoded SHA-256 of uploaded bytes"
+        VARCHAR sha256 "hex-encoded SHA-256 of uploaded bytes"
         TEXT original_filename "nullable, client-supplied filename"
         TIMESTAMPTZ created_at
     }
@@ -385,76 +376,16 @@ erDiagram
     notification_deliveries {
         UUID id PK
         UUID notification_id FK
-        VARCHAR channel "email | push"
         VARCHAR status "queued | sending | sent | failed | skipped"
         INTEGER attempts "provider refusals"
         TIMESTAMPTZ created_at
         TIMESTAMPTZ claimed_at "nullable"
         TIMESTAMPTZ sent_at "nullable"
-    }
-
-    push_subscriptions {
-        UUID id PK
-        UUID user_id FK
-        TEXT endpoint "UNIQUE, bearer URL"
-        VARCHAR p256dh
-        VARCHAR auth
-        VARCHAR user_agent "nullable"
-        TIMESTAMPTZ created_at
-        TIMESTAMPTZ last_success_at "nullable"
-        INT refusals "refusals since the last accepted push"
-    }
-
-    revoked_push_endpoints {
-        UUID user_id FK
-        VARCHAR endpoint_sha256 "hash of a revoked endpoint"
-        TIMESTAMPTZ revoked_at
-    }
-
-    product_update_consents {
-        UUID id PK
-        UUID user_id FK
-        VARCHAR source "sign_up | settings"
-        TIMESTAMPTZ granted_at
-        TIMESTAMPTZ withdrawn_at "nullable, NULL while current"
-    }
-
-    product_updates {
-        UUID id PK
-        VARCHAR label UK "MAJOR.MINOR.0"
-        VARCHAR title
-        TEXT body
-        TEXT link_url "nullable"
-        UUID sent_by FK "nullable"
-        INTEGER recipient_count
-        TIMESTAMPTZ created_at
-    }
-
-    product_update_deliveries {
-        UUID id PK
-        UUID product_update_id FK
-        UUID user_id FK
-        VARCHAR status "queued | sending | sent | failed | skipped"
-        INTEGER attempts "provider refusals"
-        TIMESTAMPTZ created_at
-        TIMESTAMPTZ claimed_at "nullable"
-        TIMESTAMPTZ sent_at "nullable"
-    }
-
-    x_handle_requests {
-        UUID id PK
-        UUID user_id FK "UNIQUE, the requester"
-        VARCHAR x_handle "the handle asked for"
-        TEXT reason "nullable"
-        VARCHAR status "pending | declined"
-        TEXT decline_reason "nullable"
-        TIMESTAMPTZ created_at
-        TIMESTAMPTZ decided_at "nullable"
     }
 
     user_preferences {
         UUID user_id PK
-        JSONB notification_overrides "per-kind, per-channel overrides only"
+        JSONB notification_overrides "per-kind email overrides only"
         JSONB display "palette, theme, help_tooltips"
         VARCHAR approval_request_audience "following, everyone, nobody"
         TIMESTAMPTZ updated_at
@@ -528,7 +459,6 @@ erDiagram
     users ||--o{ event_geolocator_departures : "user_id"
     events ||--o{ event_approvals : "event_id"
     users |o--o{ event_approvals : "reviewer_id"
-    users |o--o{ event_approvals : "revoked_by_id"
     events ||--o{ approval_requests : "event_id"
     users ||--o{ approval_requests : "requester_id"
     users |o--o{ approval_requests : "target_user_id"
@@ -550,13 +480,6 @@ erDiagram
     events |o--o{ notifications : "event_id"
     notifications ||--o{ notification_deliveries : "notification_id"
     users ||--o| user_preferences : "user_id"
-    users ||--o{ push_subscriptions : "user_id"
-    users ||--o{ revoked_push_endpoints : "user_id"
-    users ||--o{ product_update_consents : "user_id"
-    users |o--o{ product_updates : "sent_by"
-    product_updates ||--o{ product_update_deliveries : "product_update_id"
-    users ||--o{ product_update_deliveries : "user_id"
-    users ||--o| x_handle_requests : "user_id"
     organizations |o--o{ notifications : "organization_id"
     event_approvals |o--o{ notifications : "approval_id"
     organizations ||--o{ organization_members : "organization_id"
@@ -583,12 +506,11 @@ In the Constraints column, `default X` is the value the application sets on inse
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `username` | `VARCHAR(50)` | UNIQUE, NOT NULL |
-| `email` | `VARCHAR(255)` | UNIQUE, nullable. NULL only on legacy credential-less rows; every path that creates an account sets it. |
-| `password_hash` | `VARCHAR(255)` | nullable, on the same legacy rows as `email`. |
-| `x_handle` | `VARCHAR(50)` | UNIQUE, nullable. The X handle the bot attributes mentions to (lowercase, no `@`). The system sets it at registration from an invite-bound handle, or an admin links it through `PATCH /admin/users/{id}/x-handle` or by approving an [`x_handle_requests`](#x_handle_requests) row. Analysts cannot self-serve this field, and the bot never creates rows for it. It differs from `external_links["x"]`, a display handle the owner sets and nobody verifies. |
+| `email` | `VARCHAR(255)` | UNIQUE, NOT NULL. [Notification email](#notification_deliveries) goes to this address. |
+| `password_hash` | `VARCHAR(255)` | NOT NULL. |
+| `x_handle` | `VARCHAR(50)` | UNIQUE, nullable. The X handle the bot attributes mentions to (lowercase, no `@`). The system sets it at registration from an invite-bound handle, or an admin links it through `PATCH /admin/users/{id}/x-handle`. Analysts cannot self-serve this field, and the bot never creates rows for it. It differs from `external_links["x"]`, a display handle the owner sets and nobody verifies. |
 | `is_active` | `BOOLEAN` | NOT NULL, default `true` |
 | `is_admin` | `BOOLEAN` | NOT NULL, default `false`. The system flips this to `true` automatically on login or registration if the email matches `ADMIN_EMAILS`. |
-| `email_verified_at` | `TIMESTAMPTZ` | nullable. Written once by the registration confirmation (to `created_at`). Every account the registration flow creates carries it. [Notification email](#notification_deliveries) goes only to an account that carries it, so an older account with NULL here receives none. |
 | `last_seen_at` | `TIMESTAMPTZ` | nullable. The instant of the account's most recent authenticated request. `dependencies.get_current_user` rewrites it once the stored value is older than `LAST_SEEN_THROTTLE` (15 minutes), so a session costs one UPDATE per window. `POST /auth/login` and `POST /auth/confirm-registration` stamp it when they issue cookies. The admin onboarding table reads it as the account's activity, falling back to the newest `login` auth event while it is NULL. |
 | `deleted_at` | `TIMESTAMPTZ` | nullable. A non-NULL value marks the user as soft-deleted: login is rejected, the profile returns 404, and public reads filter the row out. Soft-deleting a user passes every owned event another live analyst is credited on to the earliest of them, then soft-deletes every other event they own with the user's own timestamp. Hard-delete, the GDPR escape hatch, drops the user row, the events only they are credited on, and their contributor rows, and sweeps S3. An owned event with another live geolocator passes to the earliest of them instead, files included, and so does an event the user's soft delete hid (its `deleted_at` equals the user's), which is restored. An event soft-deleted on its own is purged. Because the owner is always among an event's geolocators, hard-delete never leaves a `geolocated` event with zero geolocators. |
 | `token_version` | `INTEGER` | NOT NULL, default `0`. A monotonic session-invalidation counter. The session JWT embeds this value as a `tv` claim, and `get_current_user` returns 401 on a mismatch. The system bumps this counter on logout, password change, password reset, and soft-delete, which invalidates every outstanding JWT for the user at once. A JWT with no `tv` claim also returns 401. |
@@ -615,7 +537,6 @@ Password-reset tokens. Each token is single-use.
 | `id` | `UUID` | PK, default `uuid4()` |
 | `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL |
 | `token_hash` | `TEXT` | UNIQUE, NOT NULL. `sha256(secret)`. The plaintext token exists only in the email link. |
-| `purpose` | `TEXT` | NOT NULL, CHECK in `('password_reset')`. `consume` matches on it, so a token minted for one purpose can never be redeemed for another. |
 | `expires_at` | `TIMESTAMPTZ` | NOT NULL |
 | `consumed_at` | `TIMESTAMPTZ` | nullable. A non-null value means the token was already redeemed. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
@@ -623,10 +544,9 @@ Password-reset tokens. Each token is single-use.
 Indexes:
 
 - `ix_auth_tokens_user_id` on `(user_id)`. Supports cascade delete and per-user revocation lookups.
-- `ix_auth_tokens_user_purpose` on `(user_id, purpose)`. Checks whether a live reset already exists for a user before minting a new one.
 - `ix_auth_tokens_live_expires_at`: partial index on `(expires_at) WHERE consumed_at IS NULL`. Keeps the reaper scan cheap as consumed rows accumulate.
 
-Lifecycle: `mint` creates a token, `consume` redeems it, and `revoke_all_live_for_user` force-revokes prior tokens on a fresh same-purpose mint. Cleanup runs on demand through `POST /admin/maintenance/reap-auth-tokens` (`services/maintenance.py::reap_auth_tokens`). It deletes live-but-expired rows immediately and drops consumed rows older than 30 days.
+Lifecycle: `mint` creates a token, `consume` redeems it, and `revoke_all_live_for_user` force-revokes the user's prior tokens on a fresh mint. Cleanup runs on demand through `POST /admin/maintenance/reap-auth-tokens` (`services/maintenance.py::reap_auth_tokens`). It deletes live-but-expired rows immediately and drops consumed rows older than 30 days.
 
 ---
 
@@ -669,7 +589,6 @@ A sponsor mints at most 5 codes per UTC day (`DAILY_MINT_LIMIT` in [`services/sp
 | `invite_code_id` | `UUID` | FK → `invite_codes.id` ON DELETE CASCADE, NOT NULL. The invite is referenced but **not consumed** until confirmation. |
 | `token_hash` | `TEXT` | UNIQUE, NOT NULL. `sha256(secret)`. The plaintext token exists only in the email link. |
 | `expires_at` | `TIMESTAMPTZ` | NOT NULL. Set to 24 hours after mint. |
-| `product_updates_consented_at` | `TIMESTAMPTZ` | nullable. The time of the request when the sign-up form's product update switch was on, NULL when it was off. Confirmation copies it into a [`product_update_consents`](#product_update_consents) row with `source = 'sign_up'`. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
 Indexes:
@@ -821,7 +740,7 @@ The composite PK's leading `event_id` serves the forward read, who geolocated ev
 
 ### `event_geolocator_invites`
 
-A pending invitation to share an event's credit. The owner of a `geolocated` event writes the row; the invitee answers it through [`/events/{id}/geolocator-invites`](api.md#shared-credit). Accepting deletes the row and inserts the `event_geolocators` row in one transaction; declining or a withdrawal deletes it. A row exists only while the invitation is pending.
+A pending invitation to share an event's credit. The owner of a `geolocated` event writes the row; the invitee answers it through [`/events/{id}/geolocator-invites`](api.md#shared-credit). Accepting deletes the row, inserts the `event_geolocators` row and deletes the invitee's [approvals](#event_approvals) of the event, on every version, in one transaction; declining or a withdrawal deletes it. A row exists only while the invitation is pending.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -857,7 +776,7 @@ Composite PK: `(event_id, user_id)`. Its leading `event_id` serves the eligibili
 
 ### `event_approvals`
 
-An analyst's attestation, or an organization's through any of its members, that one version of a published event holds, written through [`/events/{id}/approvals`](api.md#approvals). A row is current while `version_no` equals `events.version_no` and `revoked_at` is NULL, so a new version ends it without a write and the row stays readable on the version it covered. Revocation stamps the row; nothing deletes it short of the event's, the reviewer's or the organization's hard delete.
+An analyst's attestation, or an organization's through any of its members, that one version of a published event holds, written through [`/events/{id}/approvals`](api.md#approvals). A row is current while `version_no` equals `events.version_no`, so a new version ends it without a write and the row stays readable on the version it covered. An approval is final: no endpoint revokes it. Three paths delete a row: the reviewer accepts a co-geolocator invitation for the event (every version, including the approvals the reviewer placed for an organization), a site admin calls [`DELETE /admin/approvals/{approval_id}`](api.md#delete-adminapprovalsapproval_id), or the event, the reviewer or the organization is hard-deleted. The `approval_received` notifications that reported the row go with it.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -866,21 +785,14 @@ An analyst's attestation, or an organization's through any of its members, that 
 | `version_no` | `INTEGER` | NOT NULL. The live `events.version_no` when the approval was placed. |
 | `reviewer_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The analyst who approved: for an organization's approval, the member who placed it. An erasure deletes the analyst's own approvals first ([`admin.hard_delete_user`](../backend/app/services/admin.py)), so only an organization's approval loses its reviewer; `ck_event_approvals_reviewer` refuses a NULL reviewer on a row without an organization. |
 | `organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, nullable. The organization the approval speaks for; NULL for an analyst's own approval. |
-| `verdict` | `VARCHAR(20)` | NOT NULL, default `'approve'`, CHECK in `('approve')` (constraint `ck_event_approvals_verdict_valid`). `ApprovalVerdict` in [`models/approval.py`](../backend/app/models/approval.py) lists the same values. |
-| `note` | `TEXT` | nullable. The reviewer's note; the API caps it at 280 characters. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
-| `revoked_at` | `TIMESTAMPTZ` | nullable. Set when the reviewer, a member of the organization, a site admin, or a co-geolocator acceptance revokes the approval. |
-| `revoked_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. Who revoked it. |
-| `revoke_reason` | `TEXT` | nullable. The optional public reason. `ck_event_approvals_revoke_reason` keeps it NULL while `revoked_at` is NULL; a revoked approval may carry none. |
-| `revoked_as` | `VARCHAR(20)` | nullable, CHECK in `('reviewer', 'organization_member', 'site_admin')` (constraint `ck_event_approvals_revoked_as_valid`). The role the revoker acted in, stamped at revocation because roles change later. `ck_event_approvals_revoked_as` sets it exactly when `revoked_at` is set. `ApprovalRevoker` in [`models/approval.py`](../backend/app/models/approval.py) lists the same values. |
 
-`uq_event_approvals_analyst`: unique partial index on `(event_id, version_no, reviewer_id) WHERE organization_id IS NULL AND revoked_at IS NULL`. One standing approval per analyst and version. Only the live version takes a new approval, so this also allows one current approval per analyst and event. A revoked row stays as history; whether its reviewer may approve the version again is the service's rule (`services/approvals.closes_review`). The leading `(event_id, version_no)` serves the per-version read.
+`uq_event_approvals_analyst`: unique partial index on `(event_id, version_no, reviewer_id) WHERE organization_id IS NULL`. One approval per analyst and version. Only the live version takes a new approval, so this also allows one current approval per analyst and event. After a site admin deletes the row, the analyst can approve that version again. The leading `(event_id, version_no)` serves the per-version read.
 
-`uq_event_approvals_organization`: unique partial index on `(event_id, version_no, organization_id) WHERE organization_id IS NOT NULL AND revoked_at IS NULL`. One standing approval per organization and version; after a revocation by one of its members, any member can approve the version again. An analyst's own approval and the approval they place for an organization are separate rows.
+`uq_event_approvals_organization`: unique partial index on `(event_id, version_no, organization_id) WHERE organization_id IS NOT NULL`. One approval per organization and version; after a site admin deletes the row, any member can approve the version again. An analyst's own approval and the approval they place for an organization are separate rows.
 
 **Indexes:**
 - `ix_event_approvals_reviewer_id` on `(reviewer_id)`. Backs the delete and the SET NULL when a reviewer's account is erased.
-- `ix_event_approvals_revoked_by_id`: partial index on `(revoked_by_id) WHERE revoked_by_id IS NOT NULL`. Backs the SET NULL when a revoker's account is erased.
 - `ix_event_approvals_organization_created_at`: partial index on `(organization_id, created_at) WHERE organization_id IS NOT NULL`. Serves the organization page's approvals, newest first, and backs the cascade when an organization is deleted.
 
 ---
@@ -1023,12 +935,12 @@ One thing that happened to an analyst, listed at [`GET /notifications`](api.md#n
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The recipient. |
-| `kind` | `VARCHAR(40)` | NOT NULL, CHECK in `('request_fulfilled', 'new_follower', 'x_handle_request_approved', 'x_handle_request_declined', 'co_geolocator_invite', 'co_geolocator_removed', 'ownership_transferred', 'organization_invite', 'organization_invite_accepted', 'organization_manager_inherited', 're_approve_requested', 'approval_received', 'approval_revoked', 'approval_request_received', 'approval_request_declined', 'organization_approval_removed')` (constraint `ck_notifications_kind_valid`). The kind registry `NOTIFICATION_KINDS` in [`models/notification.py`](../backend/app/models/notification.py) lists the same values with their per-channel defaults. |
-| `actor_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, nullable. Who acted: the fulfiller, the follower, the owner who invited or removed you or saved a new version, the reviewer who approved, the reviewer whose approval was revoked, the geolocator who requested an approval, the analyst who declined one, the inviting org manager, or the analyst who accepted an organization invite. NULL on the X handle request outcomes, which name no admin, on `ownership_transferred` and `organization_manager_inherited`, which must not name the erased analyst, and on `organization_approval_removed`, which a site admin's deletion sets off. |
+| `kind` | `VARCHAR(40)` | NOT NULL, CHECK in `('request_fulfilled', 'new_follower', 'co_geolocator_invite', 'co_geolocator_removed', 'ownership_transferred', 'organization_invite', 'organization_invite_accepted', 'organization_manager_inherited', 're_approve_requested', 'approval_received', 'approval_request_received', 'approval_request_declined', 'organization_approval_removed')` (constraint `ck_notifications_kind_valid`). The kind registry `NOTIFICATION_KINDS` in [`models/notification.py`](../backend/app/models/notification.py) lists the same values with their email defaults. |
+| `actor_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, nullable. Who acted: the fulfiller, the follower, the owner who invited or removed you or saved a new version, the reviewer who approved, the geolocator who requested an approval, the analyst who declined one, the inviting org manager, or the analyst who accepted an organization invite. NULL on `ownership_transferred` and `organization_manager_inherited`, which must not name the erased analyst, and on `organization_approval_removed`, which a site admin's deletion of the organization sets off. |
 | `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, nullable. The event the row concerns; NULL for a kind that names none. |
 | `organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, nullable. The organization an `organization_*` row concerns. |
 | `organization_name` | `VARCHAR(100)` | nullable. The name of the deleted organization on an `organization_approval_removed` row, which outlives the organization it names; NULL on every other kind. |
-| `approval_id` | `UUID` | FK → `event_approvals.id` ON DELETE CASCADE, nullable. The approval an `approval_received` row reports; the list and the count hide the row once that approval is revoked. NULL on every other kind. |
+| `approval_id` | `UUID` | FK → `event_approvals.id` ON DELETE CASCADE, nullable. The approval an `approval_received` row reports; the row goes when the approval is deleted. NULL on every other kind. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()`. Orders the list. |
 | `read_at` | `TIMESTAMPTZ` | nullable. Set by `POST /notifications/read` on the rows the notifications page showed; NULL is unread. Read state is per row because `created_at` is stamped at flush: an action that flushes its row and commits after a slow upload would land behind a single read marker already moved past it. |
 
@@ -1037,9 +949,9 @@ Indexes:
 - `ix_notifications_user_created_at` on `(user_id, created_at, id)`. Backs the list's keyset walk.
 - `ix_notifications_user_unread`: partial index on `(user_id) WHERE read_at IS NULL`. Backs the unread count.
 - `ix_notifications_actor_id` on `(actor_id)`, `ix_notifications_event_id` on `(event_id)` and `ix_notifications_organization_id` on `(organization_id)`. Back the cascades when an actor, an event or an organization is hard-deleted.
-- `ix_notifications_approval_id`: partial index on `(approval_id) WHERE approval_id IS NOT NULL`. Backs the revoked-approval filter and the cascade when an approval is deleted.
+- `ix_notifications_approval_id`: partial index on `(approval_id) WHERE approval_id IS NOT NULL`. Backs the cascade when an approval is deleted.
 
-Every foreign key cascades, so a hard-deleted recipient, actor, event, organization or approval takes its rows with it. A soft delete or a takedown keeps the row and hides it at read time: the list and the count skip a row whose event has `deleted_at` or `hidden_at` set, whose actor has `deleted_at` set, or whose approval has `revoked_at` set. Undoing the takedown shows the row again.
+Every foreign key cascades, so a hard-deleted recipient, actor, event, organization or approval takes its rows with it. A soft delete or a takedown keeps the row and hides it at read time: the list and the count skip a row whose event has `deleted_at` or `hidden_at` set, or whose actor has `deleted_at` set. Undoing the takedown shows the row again.
 
 `new_follower` is written once per follower: an unfollow and re-follow finds the earlier row and writes none.
 
@@ -1047,18 +959,17 @@ Every foreign key cascades, so a hard-deleted recipient, actor, event, organizat
 
 ### `notification_deliveries`
 
-The delivery queue for notifications: one row per notification and channel, drained by the always-on worker ([`engineering.md`](engineering.md#email)). The transaction that writes the notification writes this row too, when the recipient's switch for the kind and channel is on and the recipient can receive on the channel: an address that carries `email_verified_at` for `email`, at least one [`push_subscriptions`](#push_subscriptions) row for `push`.
+The delivery queue for notifications: at most one row per notification, drained by the always-on worker ([`engineering.md`](engineering.md#email)). The transaction that writes the notification writes this row too, when the recipient's email switch for the kind is on. The in-app feed shows every notification whatever the switch says.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
-| `notification_id` | `UUID` | FK → `notifications.id` ON DELETE SET NULL, nullable. Deleting a notification deletes its `queued` and `skipped` rows first; the rows that may have reached the provider stay with NULL here, so the daily email cap keeps counting them. |
-| `channel` | `VARCHAR(20)` | NOT NULL, CHECK in `('email', 'push')` (constraint `ck_notification_deliveries_channel_valid`). UNIQUE with `notification_id` (constraint `uq_notification_deliveries_channel`). |
+| `notification_id` | `UUID` | FK → `notifications.id` ON DELETE SET NULL, nullable. Deleting a notification deletes its `queued` and `skipped` rows first; the rows that may have reached the provider stay with NULL here, so the daily email cap keeps counting them. UNIQUE (constraint `uq_notification_deliveries_notification_id`), so a notification has at most one delivery. |
 | `status` | `VARCHAR(10)` | NOT NULL, default `queued`, CHECK in `('queued', 'sending', 'sent', 'failed', 'skipped')` (constraint `ck_notification_deliveries_status_valid`). See the lifecycle below. |
 | `attempts` | `INTEGER` | NOT NULL, default `0`. Provider refusals so far. The third sets `failed`. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()`. The claim order, oldest first. A row still `queued` 48 hours after it becomes `skipped`. |
 | `claimed_at` | `TIMESTAMPTZ` | nullable. The latest claim. A row `sending` for an hour past it becomes `failed`. A refused row waits 5 minutes past it before the next claim. |
-| `sent_at` | `TIMESTAMPTZ` | nullable. When the provider accepted the message. For `push`, when at least one device's push service accepted it. The email daily caps count `sent` email rows by this column. |
+| `sent_at` | `TIMESTAMPTZ` | nullable. When the provider accepted the message. The daily email caps count `sent` rows by this column. |
 
 Indexes:
 
@@ -1071,95 +982,7 @@ Indexes:
 | `sending` | Claimed and committed before the provider call. Never retried: the provider may have accepted it. |
 | `sent` | The provider accepted it |
 | `failed` | Refused three times, or stale in `sending` |
-| `skipped` | Dropped unsent: the switch is off, the address is gone or unverified, no push device is left or a development server has no VAPID keys, the recipient is soft-deleted or inactive, the filter would hide the notification, or the row aged out in the queue |
-
----
-
-### `push_subscriptions`
-
-One browser or installed app an analyst registered for Web Push, through [`POST /users/me/push-subscriptions`](api.md#post-usersmepush-subscriptions). The worker sends each `push` delivery to every row of the recipient ([`engineering.md`](engineering.md#web-push)).
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `id` | `UUID` | PK, default `uuid4()` |
-| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. Indexed (`ix_push_subscriptions_user_id`). |
-| `endpoint` | `TEXT` | NOT NULL, UNIQUE (constraint `uq_push_subscriptions_endpoint`). The push service URL. It is a bearer URL: no log line, error report or API response carries it. A browser that registers again under another account moves the row to that account. |
-| `p256dh` | `VARCHAR(128)` | NOT NULL. The browser's base64url P-256 public key, which the payload is encrypted for. |
-| `auth` | `VARCHAR(64)` | NOT NULL. The browser's base64url 16-byte authentication secret. |
-| `user_agent` | `VARCHAR(512)` | nullable. The `User-Agent` of the registering request. |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
-| `last_success_at` | `TIMESTAMPTZ` | nullable. The last push the push service accepted. |
-| `refusals` | `INTEGER` | NOT NULL, default `0`. Rejections (a 400 or 403 answer) since the last accepted push or registration. |
-
-The worker deletes a row when its push service answers 404 or 410, the answer for a subscription that is gone for good, and at its third rejection in a row (`MAX_REFUSALS` in [`services/push.py`](../backend/app/services/push.py)). An analyst holds at most 10 rows (`MAX_DEVICES_PER_USER`): registering one more deletes the oldest by `created_at`.
-
----
-
-### `revoked_push_endpoints`
-
-A push device its analyst revoked, kept by the SHA-256 of its endpoint so the browser cannot register it again by itself. A registration with `resync` refuses a recorded endpoint; an explicit registration, which enabling push sends, deletes the row ([`services/push.py`](../backend/app/services/push.py)).
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE |
-| `endpoint_sha256` | `VARCHAR(64)` | The hex SHA-256 of the endpoint. The endpoint itself is a bearer URL and is not kept. |
-| `revoked_at` | `TIMESTAMPTZ` | NOT NULL |
-
-Composite PK: `(user_id, endpoint_sha256)`.
-
----
-
-### `product_update_consents`
-
-The consent record for product update emails ([`engineering.md`](engineering.md#product-update-emails)). Each grant is one row. A withdrawal stamps `withdrawn_at`, and a later grant adds a new row, so no change overwrites an earlier grant or withdrawal.
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `id` | `UUID` | PK, default `uuid4()` |
-| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL |
-| `source` | `VARCHAR(10)` | NOT NULL, CHECK in `('sign_up', 'settings')` (constraint `ck_product_update_consents_source_valid`). Where the grant was given. |
-| `granted_at` | `TIMESTAMPTZ` | NOT NULL. For a sign-up grant, the time of the registration request, not of the confirmation. |
-| `withdrawn_at` | `TIMESTAMPTZ` | nullable. Set by the Settings switch or the unsubscribe link. NULL while the grant is current. |
-
-Indexes:
-
-- `uq_product_update_consents_current` UNIQUE on `(user_id)` where `withdrawn_at IS NULL`. At most one current grant per analyst; a grant while one is current writes nothing.
-
----
-
-### `product_updates`
-
-One major release announcement, written when the admin sends it.
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `id` | `UUID` | PK, default `uuid4()` |
-| `label` | `VARCHAR(20)` | UNIQUE, NOT NULL. The release, `MAJOR.MINOR.0`. The UNIQUE constraint sends each label once. |
-| `title` | `VARCHAR(120)` | NOT NULL. The heading; the subject reads `Vidit <label>: <title>`. |
-| `body` | `TEXT` | NOT NULL. Plain text: a blank line starts a paragraph, and a paragraph of lines that start with `- ` is a list. |
-| `link_url` | `TEXT` | nullable. An http or https URL, the email's one action. |
-| `sent_by` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The admin who sent it. |
-| `recipient_count` | `INTEGER` | NOT NULL. The delivery rows the send queued. |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()`. When it was sent. |
-
----
-
-### `product_update_deliveries`
-
-The email queue for product updates: one row per announcement and recipient, written by the send for every analyst with a current consent, a verified address and a live active account. The worker drains it under its own daily cap ([`engineering.md`](engineering.md#product-update-emails)).
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `id` | `UUID` | PK, default `uuid4()` |
-| `product_update_id` | `UUID` | FK → `product_updates.id` ON DELETE CASCADE, NOT NULL. UNIQUE with `user_id` (constraint `uq_product_update_deliveries_user`). |
-| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The recipient. |
-| `status`, `attempts`, `created_at`, `claimed_at`, `sent_at` | | As in [`notification_deliveries`](#notification_deliveries), except that a `queued` row never ages out: a large audience takes several days. The status CHECK is `ck_product_update_deliveries_status_valid`. `skipped` means the recipient withdrew consent, lost the verified address, or left since the send. |
-
-Indexes:
-
-- `ix_product_update_deliveries_user_id` on `(user_id)`. Backs the cascade of a hard-deleted recipient.
-- `ix_product_update_deliveries_queued` on `(created_at)` where `status = 'queued'`. Backs the claim.
-- `ix_product_update_deliveries_sent_at` on `(sent_at)` where `status = 'sent'`. Backs the daily cap count.
+| `skipped` | Dropped unsent: the switch is off, the address is gone, the recipient is soft-deleted or inactive, the filter would hide the notification, or the row aged out in the queue |
 
 ---
 
@@ -1224,31 +1047,12 @@ One analyst's stored preferences, read and written through [`/users/me/preferenc
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `user_id` | `UUID` | PK, FK → `users.id` ON DELETE CASCADE |
-| `notification_overrides` | `JSONB` | NOT NULL, default `'{}'::jsonb`. `{kind: {channel: bool}}`, holding only the values that differ from the kind's default in `NOTIFICATION_KINDS`. A write equal to the default removes the key, so a changed default reaches every analyst who never moved that switch. |
+| `notification_overrides` | `JSONB` | NOT NULL, default `'{}'::jsonb`. `{kind: bool}`, whether the kind is emailed, holding only the values that differ from the kind's default in `NOTIFICATION_KINDS`. A write equal to the default removes the key, so a changed default reaches every analyst who never moved that switch. |
 | `display` | `JSONB` | NOT NULL, default `'{}'::jsonb`. `palette`, `theme` and `help_tooltips`, each present once written. A missing key reads as the default in `schemas/preferences.DISPLAY_DEFAULTS`. |
 | `approval_request_audience` | `VARCHAR(20)` | NOT NULL, default `'following'`, CHECK in `('following', 'everyone', 'nobody')` (constraint `ck_user_preferences_approval_request_audience`). Who may send the analyst an [approval request](#approval_requests). `ApprovalRequestAudience` in [`models/user_preferences.py`](../backend/app/models/user_preferences.py) lists the same values. |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, stamped on every write |
 
 A stored value the API no longer accepts, such as a retired kind or palette, reads as its default.
-
----
-
-### `x_handle_requests`
-
-An analyst's request that an admin bind a new X handle to their account, filed through [`PUT /users/me/x-handle-request`](api.md#put-usersmex-handle-request). An analyst holds at most one row.
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `id` | `UUID` | PK, default `uuid4()`. A new request replaces the row under a new `id`, so an admin decision names the request the admin read. |
-| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, UNIQUE, NOT NULL. The requester. |
-| `x_handle` | `VARCHAR(50)` | NOT NULL. The handle asked for, normalized like `users.x_handle`. |
-| `reason` | `TEXT` | nullable. The requester's note to the admin. The API caps it at 500 characters. |
-| `status` | `VARCHAR(20)` | NOT NULL, CHECK in `('pending', 'declined')` (constraint `ck_x_handle_requests_status_valid`). |
-| `decline_reason` | `TEXT` | nullable. The admin's reason, shown to the requester in Settings. |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
-| `decided_at` | `TIMESTAMPTZ` | nullable. When an admin declined the request. |
-
-`ck_x_handle_requests_decision_stamp` holds `decline_reason` and `decided_at` set exactly when `status` is `declined`. An approval writes `users.x_handle` through `admin.set_user_x_handle` and deletes the row in the same transaction, so no row records an approval; the `x_handle_linked` audit row does.
 
 ---
 
@@ -1313,14 +1117,14 @@ Every uploaded file for an event, source footage and proof-body images alike, sp
 | `role` | `VARCHAR(10)` | NOT NULL, CHECK in `('source', 'proof')` (constraint `ck_media_role_valid`). `'source'` for the footage, at most one per event, enforced by a partial unique index, or `'proof'` for inline images referenced from the proof body, with no per-event limit. |
 | `storage_url` | `TEXT` | NOT NULL. An S3 or CloudFront URL. |
 | `media_type` | `VARCHAR(10)` | NOT NULL, `'image'` or `'video'`. The stored MIME type is not a column: an analyst's upload keeps the accepted type it arrived as, and a machine-imported photo is re-encoded to one format at ingest whichever entry read the post; see [`ingestion.md`](ingestion.md#the-contract). |
-| `sha256` | `VARCHAR(64)` | nullable. Hex-encoded SHA-256 of the uploaded bytes, captured at upload time. A stable content fingerprint that survives storage-class changes and copies, unlike the S3 ETag, which is an MD5 for non-multipart uploads and is not stable across copies. **The hash is computed on the bytes that land on S3, for images after the EXIF strip, so an auditor downloading the public URL can independently verify it.** |
+| `sha256` | `VARCHAR(64)` | NOT NULL. Hex-encoded SHA-256 of the uploaded bytes, captured at upload time. A stable content fingerprint that survives storage-class changes and copies, unlike the S3 ETag, which is an MD5 for non-multipart uploads and is not stable across copies. **The hash is computed on the bytes that land on S3, for images after the EXIF strip, so an auditor downloading the public URL can independently verify it.** |
 | `original_filename` | `TEXT` | nullable. The client-supplied filename, for example `IMG_1234.jpg`. Surfaced on the public read API so investigators can trace evidence back to a source post by filename. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
 `uploaded_ip` and `uploaded_user_agent` are **not stored**: Vidit stores no IP address or User-Agent, for privacy.
 
 **Indexes:**
-- `ix_media_sha256` on `(sha256) WHERE sha256 IS NOT NULL`: a partial index for "find every row with this content hash" audit and dedup queries. Covers only the rows that carry a hash.
+- `ix_media_sha256` on `(sha256)`: backs "find every row with this content hash" audit and dedup queries.
 - unique `uq_media_source_per_event` on `(event_id) WHERE role = 'source'`. Enforces the "at most one source media per event" cap.
 
 Each request and each `geolocated` event requires at least one `source` media row. The `geolocate` transition requires at least one `proof` image. A `requested` event carries the poster's evidence from the start.
