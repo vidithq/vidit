@@ -10,9 +10,8 @@ from app.config import settings
 from app.database import SessionLocal
 from app.dependencies import LAST_SEEN_THROTTLE
 from app.main import app
-from app.models.admin_event import AdminEvent
 from app.models.archive_import_job import ArchiveImportJob
-from app.models.auth_event import EVENT_LOGIN, AuthEvent
+from app.models.audit_log import ACTION_LOGIN, AuditLog
 from app.models.bot_mention import BotMention
 from app.models.event import (
     STATUS_CLOSED,
@@ -63,7 +62,7 @@ def admin_user(db):
     yield user
     # Reap this actor's admin events and redeemed invite codes so the row deletes without FK violations.
     db.expire_all()
-    db.query(AdminEvent).filter(AdminEvent.actor_id == user_id).delete()
+    db.query(AuditLog).filter(AuditLog.actor_id == user_id).delete()
     db.query(InviteCode).filter(InviteCode.used_by_id == user_id).delete()
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
@@ -133,9 +132,9 @@ def test_create_invite_code_writes_admin_event(admin_user, db):
     invite_id = uuid.UUID(response.json()["id"])
 
     event = (
-        db.query(AdminEvent)
-        .filter(AdminEvent.actor_id == admin_user.id, AdminEvent.action == "invite_created")
-        .order_by(AdminEvent.created_at.desc())
+        db.query(AuditLog)
+        .filter(AuditLog.actor_id == admin_user.id, AuditLog.action == "invite_created")
+        .order_by(AuditLog.created_at.desc())
         .first()
     )
     assert event is not None
@@ -157,9 +156,9 @@ def test_create_invite_code_binds_x_handle_stripped_and_lowercased(admin_user, d
     assert invite.x_handle == "invited_analyst"
 
     event = (
-        db.query(AdminEvent)
-        .filter(AdminEvent.actor_id == admin_user.id, AdminEvent.action == "invite_created")
-        .order_by(AdminEvent.created_at.desc())
+        db.query(AuditLog)
+        .filter(AuditLog.actor_id == admin_user.id, AuditLog.action == "invite_created")
+        .order_by(AuditLog.created_at.desc())
         .first()
     )
     assert event is not None
@@ -304,8 +303,8 @@ def test_delete_invite_code_writes_admin_event_carrying_the_code(admin_user, db)
 
     db.expire_all()
     event = (
-        db.query(AdminEvent)
-        .filter(AdminEvent.actor_id == admin_user.id, AdminEvent.action == "invite_deleted")
+        db.query(AuditLog)
+        .filter(AuditLog.actor_id == admin_user.id, AuditLog.action == "invite_deleted")
         .one()
     )
     assert event.target == {"invite_code_id": created["id"], "code": created["code"]}
@@ -388,7 +387,7 @@ def test_list_invite_codes_carries_redeemer_onboarding_stats(admin_user, regular
         source_url="https://example.com/source",
         geolocated_at=datetime.now(UTC),
     )
-    login_event = AuthEvent(user_id=regular_user.id, event=EVENT_LOGIN)
+    login_event = AuditLog(actor_id=regular_user.id, action=ACTION_LOGIN)
     db.add_all([invite, job, mention, detected, geolocated, login_event])
     db.commit()
     try:
@@ -410,7 +409,7 @@ def test_list_invite_codes_carries_redeemer_onboarding_stats(admin_user, regular
         db.query(InviteCode).filter(InviteCode.id == invite.id).delete()
         db.query(ArchiveImportJob).filter(ArchiveImportJob.owner_id == regular_user.id).delete()
         db.query(BotMention).filter(BotMention.id == mention.id).delete()
-        db.query(AuthEvent).filter(AuthEvent.user_id == regular_user.id).delete()
+        db.query(AuditLog).filter(AuditLog.actor_id == regular_user.id).delete()
         regular_user.x_handle = None
         db.commit()
 
@@ -479,11 +478,11 @@ def test_onboarding_row_falls_back_to_the_newest_login_event_when_last_seen_is_n
     """A row predating the column carries no stamp, so the auth log stands in."""
     invite = _redeem(db, regular_user)
     now = datetime.now(UTC)
-    older = AuthEvent(
-        user_id=regular_user.id, event=EVENT_LOGIN, created_at=now - timedelta(days=3)
+    older = AuditLog(
+        actor_id=regular_user.id, action=ACTION_LOGIN, created_at=now - timedelta(days=3)
     )
-    newest = AuthEvent(
-        user_id=regular_user.id, event=EVENT_LOGIN, created_at=now - timedelta(days=1)
+    newest = AuditLog(
+        actor_id=regular_user.id, action=ACTION_LOGIN, created_at=now - timedelta(days=1)
     )
     db.add_all([older, newest])
     db.commit()
@@ -494,7 +493,7 @@ def test_onboarding_row_falls_back_to_the_newest_login_event_when_last_seen_is_n
         assert datetime.fromisoformat(row["redeemer"]["last_seen_at"]) == newest.created_at
     finally:
         db.expire_all()
-        db.query(AuthEvent).filter(AuthEvent.user_id == regular_user.id).delete()
+        db.query(AuditLog).filter(AuditLog.actor_id == regular_user.id).delete()
         db.query(InviteCode).filter(InviteCode.id == invite.id).delete()
         db.commit()
 
@@ -532,9 +531,9 @@ def test_purge_detected_events_sweeps_detections_and_keeps_the_rest(admin_user, 
     assert db.query(User).filter(User.id == regular_user.id).first() is not None
 
     audit = (
-        db.query(AdminEvent)
-        .filter(AdminEvent.actor_id == admin_user.id, AdminEvent.action == "detected_events_purged")
-        .order_by(AdminEvent.created_at.desc())
+        db.query(AuditLog)
+        .filter(AuditLog.actor_id == admin_user.id, AuditLog.action == "detected_events_purged")
+        .order_by(AuditLog.created_at.desc())
         .first()
     )
     assert audit is not None
@@ -635,9 +634,9 @@ def test_set_x_handle_normalizes_and_writes_audit(admin_user, regular_user, db):
     assert refreshed.x_handle == "osint_hawk"
 
     event = (
-        db.query(AdminEvent)
-        .filter(AdminEvent.actor_id == admin_user.id, AdminEvent.action == "x_handle_linked")
-        .order_by(AdminEvent.created_at.desc())
+        db.query(AuditLog)
+        .filter(AuditLog.actor_id == admin_user.id, AuditLog.action == "x_handle_linked")
+        .order_by(AuditLog.created_at.desc())
         .first()
     )
     assert event is not None
@@ -673,9 +672,9 @@ def test_clear_x_handle_with_null(admin_user, regular_user, db):
     assert refreshed.x_handle is None
 
     event = (
-        db.query(AdminEvent)
-        .filter(AdminEvent.actor_id == admin_user.id, AdminEvent.action == "x_handle_cleared")
-        .order_by(AdminEvent.created_at.desc())
+        db.query(AuditLog)
+        .filter(AuditLog.actor_id == admin_user.id, AuditLog.action == "x_handle_cleared")
+        .order_by(AuditLog.created_at.desc())
         .first()
     )
     assert event is not None
@@ -791,12 +790,12 @@ def test_soft_delete_writes_admin_event(admin_user, geolocation, db):
         headers=login_as(client, admin_user),
     )
     event = (
-        db.query(AdminEvent)
+        db.query(AuditLog)
         .filter(
-            AdminEvent.actor_id == admin_user.id,
-            AdminEvent.action == "geolocation_soft_deleted",
+            AuditLog.actor_id == admin_user.id,
+            AuditLog.action == "geolocation_soft_deleted",
         )
-        .order_by(AdminEvent.created_at.desc())
+        .order_by(AuditLog.created_at.desc())
         .first()
     )
     assert event is not None
@@ -823,10 +822,10 @@ def test_soft_delete_is_idempotent(admin_user, geolocation, db):
 
     # One audit row from the mutation.
     events = (
-        db.query(AdminEvent)
+        db.query(AuditLog)
         .filter(
-            AdminEvent.actor_id == admin_user.id,
-            AdminEvent.action == "geolocation_soft_deleted",
+            AuditLog.actor_id == admin_user.id,
+            AuditLog.action == "geolocation_soft_deleted",
         )
         .all()
     )
@@ -876,9 +875,9 @@ def test_hard_delete_drops_row_and_writes_event(admin_user, geolocation, db):
     assert db.query(Event).filter(Event.id == geo_id).first() is None
 
     event = (
-        db.query(AdminEvent)
-        .filter(AdminEvent.action == "geolocation_hard_deleted")
-        .order_by(AdminEvent.created_at.desc())
+        db.query(AuditLog)
+        .filter(AuditLog.action == "geolocation_hard_deleted")
+        .order_by(AuditLog.created_at.desc())
         .first()
     )
     assert event is not None
@@ -1038,12 +1037,12 @@ def test_soft_delete_user_writes_admin_event(admin_user, regular_user, db):
         headers=login_as(client, admin_user),
     )
     event = (
-        db.query(AdminEvent)
+        db.query(AuditLog)
         .filter(
-            AdminEvent.actor_id == admin_user.id,
-            AdminEvent.action == "user_soft_deleted",
+            AuditLog.actor_id == admin_user.id,
+            AuditLog.action == "user_soft_deleted",
         )
-        .order_by(AdminEvent.created_at.desc())
+        .order_by(AuditLog.created_at.desc())
         .first()
     )
     assert event is not None
@@ -1085,9 +1084,9 @@ def test_hard_delete_user_drops_row_and_geolocations(admin_user, regular_user, g
     assert db.query(Event).filter(Event.id == geo_id).first() is None
 
     event = (
-        db.query(AdminEvent)
-        .filter(AdminEvent.action == "user_hard_deleted")
-        .order_by(AdminEvent.created_at.desc())
+        db.query(AuditLog)
+        .filter(AuditLog.action == "user_hard_deleted")
+        .order_by(AuditLog.created_at.desc())
         .first()
     )
     assert event is not None
@@ -1426,12 +1425,12 @@ def test_soft_delete_user_writes_cascade_count_in_admin_event(admin_user, regula
         headers=login_as(client, admin_user),
     )
     event = (
-        db.query(AdminEvent)
+        db.query(AuditLog)
         .filter(
-            AdminEvent.actor_id == admin_user.id,
-            AdminEvent.action == "user_soft_deleted",
+            AuditLog.actor_id == admin_user.id,
+            AuditLog.action == "user_soft_deleted",
         )
-        .order_by(AdminEvent.created_at.desc())
+        .order_by(AuditLog.created_at.desc())
         .first()
     )
     assert event is not None

@@ -186,7 +186,7 @@ class EventVersion(Base):
 
     event = relationship("Event", back_populates="versions")
     # Only the editor is a relationship: the redacting admin is audited in
-    # ``admin_events`` and never rendered.
+    # ``audit_log`` and never rendered.
     edited_by = relationship("User", foreign_keys=[edited_by_id])
 
     __table_args__ = (

@@ -9,8 +9,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from app.models.admin_event import AdminEvent
 from app.models.approval import EventApproval
+from app.models.audit_log import AuditLog
 from app.models.event import STATUS_CLOSED, Event, EventGeolocator
 from app.models.notification import Notification
 from app.models.user import User
@@ -279,8 +279,8 @@ def test_a_site_admin_deletes_an_approval_and_is_audited(db, author, second_user
     db.expire_all()
     assert db.get(EventApproval, uuid.UUID(approval["id"])) is None
     audit = (
-        db.query(AdminEvent)
-        .filter(AdminEvent.actor_id == admin_user.id, AdminEvent.action == "approval_deleted")
+        db.query(AuditLog)
+        .filter(AuditLog.actor_id == admin_user.id, AuditLog.action == "approval_deleted")
         .one()
     )
     assert audit.target["approval_id"] == approval["id"]

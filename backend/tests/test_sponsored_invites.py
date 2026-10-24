@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
-from app.models.admin_event import AdminEvent
+from app.models.audit_log import AuditLog
 from app.models.invite_code import InviteCode
 from app.models.pending_registration import PendingRegistration
 from app.models.user import User
@@ -49,7 +49,7 @@ def user_ids(db):
     ids: list[uuid.UUID] = []
     yield ids
     db.expire_all()
-    db.query(AdminEvent).filter(AdminEvent.actor_id.in_(ids)).delete(synchronize_session=False)
+    db.query(AuditLog).filter(AuditLog.actor_id.in_(ids)).delete(synchronize_session=False)
     codes = db.query(InviteCode.id).filter(InviteCode.created_by_id.in_(ids))
     db.query(PendingRegistration).filter(PendingRegistration.invite_code_id.in_(codes)).delete(
         synchronize_session=False
@@ -127,8 +127,8 @@ def test_mint_binds_normalized_handle_records_sponsor_and_audits(sponsor, db):
     assert invite.expires_at is None
 
     audit = (
-        db.query(AdminEvent)
-        .filter(AdminEvent.actor_id == sponsor.id, AdminEvent.action == "invite_sponsored")
+        db.query(AuditLog)
+        .filter(AuditLog.actor_id == sponsor.id, AuditLog.action == "invite_sponsored")
         .one()
     )
     assert audit.target == {"invite_code_id": body["id"], "x_handle": handle}
@@ -189,8 +189,8 @@ def test_sponsor_revokes_own_active_code_with_an_audit_row(sponsor, db):
     invite = db.query(InviteCode).filter(InviteCode.id == uuid.UUID(minted["id"])).one()
     assert invite.revoked_at is not None
     audit = (
-        db.query(AdminEvent)
-        .filter(AdminEvent.actor_id == sponsor.id, AdminEvent.action == "invite_revoked")
+        db.query(AuditLog)
+        .filter(AuditLog.actor_id == sponsor.id, AuditLog.action == "invite_revoked")
         .one()
     )
     assert audit.target == {"invite_code_id": minted["id"]}
@@ -221,8 +221,8 @@ def test_sponsor_revoke_refuses_a_used_or_revoked_code(sponsor, db):
         assert response.status_code == 409
         assert response.json()["detail"]["code"] == "invite_code_not_active"
     assert (
-        db.query(AdminEvent)
-        .filter(AdminEvent.actor_id == sponsor.id, AdminEvent.action == "invite_revoked")
+        db.query(AuditLog)
+        .filter(AuditLog.actor_id == sponsor.id, AuditLog.action == "invite_revoked")
         .count()
         == 1
     )
@@ -290,9 +290,9 @@ def test_admin_switch_turns_minting_off_and_on(sponsor, admin, db):
 
     actions = [
         row.action
-        for row in db.query(AdminEvent)
-        .filter(AdminEvent.actor_id == admin.id)
-        .order_by(AdminEvent.created_at.asc())
+        for row in db.query(AuditLog)
+        .filter(AuditLog.actor_id == admin.id)
+        .order_by(AuditLog.created_at.asc())
     ]
     assert actions == ["invite_minting_disabled", "invite_minting_enabled"]
 
@@ -302,7 +302,7 @@ def test_admin_switch_is_idempotent_without_a_second_audit_row(sponsor, admin, d
     headers = login_as(client, admin)
     for _ in range(2):
         assert client.patch(path, json={"enabled": False}, headers=headers).status_code == 200
-    assert db.query(AdminEvent).filter(AdminEvent.actor_id == admin.id).count() == 1
+    assert db.query(AuditLog).filter(AuditLog.actor_id == admin.id).count() == 1
 
 
 def test_admin_switch_is_admin_only_and_404s_an_unknown_user(sponsor, admin):

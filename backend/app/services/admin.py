@@ -6,10 +6,9 @@ from sqlalchemy import and_, delete, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.models.admin_event import AdminEvent
 from app.models.approval import EventApproval
 from app.models.archive_import_job import ArchiveImportJob
-from app.models.auth_event import EVENT_LOGIN, AuthEvent
+from app.models.audit_log import ACTION_LOGIN, AuditLog
 from app.models.bot_mention import BotMention
 from app.models.collection import Collection
 from app.models.event import (
@@ -86,8 +85,8 @@ def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInvi
     """Batch the onboarding counters for every redeemer in one pass per source.
 
     Grouped aggregates over ``archive_import_jobs``, ``bot_mentions`` (by lowercased handle),
-    ``events`` and ``auth_events``, so the invite list stays O(1) queries. ``last_seen_at``
-    falls back to the newest ``login`` auth event for rows predating ``users.last_seen_at``.
+    ``events`` and ``audit_log``, so the invite list stays O(1) queries. ``last_seen_at``
+    falls back to the newest ``login`` audit row for rows predating ``users.last_seen_at``.
     """
     if not users:
         return {}
@@ -129,9 +128,9 @@ def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInvi
     }
     logins: dict[uuid.UUID | None, datetime] = {
         user_id: latest
-        for user_id, latest in db.query(AuthEvent.user_id, func.max(AuthEvent.created_at))
-        .filter(AuthEvent.user_id.in_(ids), AuthEvent.event == EVENT_LOGIN)
-        .group_by(AuthEvent.user_id)
+        for user_id, latest in db.query(AuditLog.actor_id, func.max(AuditLog.created_at))
+        .filter(AuditLog.actor_id.in_(ids), AuditLog.action == ACTION_LOGIN)
+        .group_by(AuditLog.actor_id)
         .all()
     }
 
@@ -196,11 +195,11 @@ def log_admin_event(
     actor_id: uuid.UUID,
     action: str,
     target: dict[str, Any] | None = None,
-) -> AdminEvent:
-    """Append a row to ``admin_events``. No commit: the caller owns the transaction."""
-    event = AdminEvent(actor_id=actor_id, action=action, target=target)
-    db.add(event)
-    return event
+) -> AuditLog:
+    """Append a row to ``audit_log``. No commit: the caller owns the transaction."""
+    row = AuditLog(actor_id=actor_id, action=action, target=target)
+    db.add(row)
+    return row
 
 
 def create_invite_code(
@@ -724,7 +723,7 @@ def hard_delete_user(
        step 1. Delete the analyst's own approvals; those they placed for an organization stay
        the organization's, with ``reviewer_id`` set to NULL. Delete the user. ``password_reset_tokens``, their collections (and memberships), their
        invitations and their contributor rows on other people's events cascade-drop;
-       ``admin_events.actor_id`` and ``invite_codes.used_by_id`` flip to NULL (migration
+       ``audit_log.actor_id`` and ``invite_codes.used_by_id`` flip to NULL (migration
        f1a3b5c7d9e0), as does ``invite_codes.created_by_id``, so invite-code rows outlive the
        user as audit trail.
     5. Commit, then sweep S3 (see :func:`services.storage.sweep_keys`).

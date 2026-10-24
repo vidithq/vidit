@@ -15,7 +15,7 @@ from shapely.geometry import Point
 
 from app.database import SessionLocal
 from app.main import app
-from app.models.admin_event import AdminEvent
+from app.models.audit_log import AuditLog
 from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event
 from app.models.password_reset_token import (
     PasswordResetToken,
@@ -58,7 +58,7 @@ def admin_user(db):
     user_id = user.id
     yield user
     db.expire_all()
-    db.query(AdminEvent).filter(AdminEvent.actor_id == user_id).delete()
+    db.query(AuditLog).filter(AuditLog.actor_id == user_id).delete()
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -141,12 +141,12 @@ def test_reap_password_reset_tokens_endpoint_for_admin(admin_user, db):
     assert "old_consumed" in body
 
     event = (
-        db.query(AdminEvent)
+        db.query(AuditLog)
         .filter(
-            AdminEvent.actor_id == admin_user.id,
-            AdminEvent.action == "maintenance_reap_password_reset_tokens",
+            AuditLog.actor_id == admin_user.id,
+            AuditLog.action == "maintenance_reap_password_reset_tokens",
         )
-        .order_by(AdminEvent.created_at.desc())
+        .order_by(AuditLog.created_at.desc())
         .first()
     )
     assert event is not None
@@ -294,12 +294,12 @@ def test_send_completion_digests_endpoint_for_admin(admin_user, db, monkeypatch)
     assert "detections_pending" in body
 
     event = (
-        db.query(AdminEvent)
+        db.query(AuditLog)
         .filter(
-            AdminEvent.actor_id == admin_user.id,
-            AdminEvent.action == "maintenance_send_completion_digests",
+            AuditLog.actor_id == admin_user.id,
+            AuditLog.action == "maintenance_send_completion_digests",
         )
-        .order_by(AdminEvent.created_at.desc())
+        .order_by(AuditLog.created_at.desc())
         .first()
     )
     assert event is not None

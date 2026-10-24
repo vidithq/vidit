@@ -5,7 +5,7 @@ against, ``POST /admin/reports/{id}/resolve`` closes one with a verdict that
 may mutate the target, and ``PATCH /admin/events/{id}/moderation`` moves the
 same two fields with no report behind it. A report names an event or a
 collection, so the queue tests cover both and the verdict tests cover which
-ones each kind takes. Every mutation leaves an ``admin_events`` row, which is
+ones each kind takes. Every mutation leaves an ``audit_log`` row, which is
 what these tests pin alongside the state changes.
 """
 
@@ -20,7 +20,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal
 from app.main import app
-from app.models.admin_event import AdminEvent
+from app.models.audit_log import AuditLog
 from app.models.collection import Collection
 from app.models.content_report import ContentReport
 from app.models.event import Event
@@ -62,7 +62,7 @@ def admin_user(db):
     yield user
     # Reap this actor's audit rows so the user row deletes cleanly.
     db.expire_all()
-    db.query(AdminEvent).filter(AdminEvent.actor_id == user_id).delete()
+    db.query(AuditLog).filter(AuditLog.actor_id == user_id).delete()
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -144,11 +144,11 @@ def _collection_report(db, collection, *, reason: str = "other") -> ContentRepor
     return row
 
 
-def _audit(db, admin_user, action: str) -> AdminEvent | None:
+def _audit(db, admin_user, action: str) -> AuditLog | None:
     return (
-        db.query(AdminEvent)
-        .filter(AdminEvent.actor_id == admin_user.id, AdminEvent.action == action)
-        .order_by(AdminEvent.created_at.desc())
+        db.query(AuditLog)
+        .filter(AuditLog.actor_id == admin_user.id, AuditLog.action == action)
+        .order_by(AuditLog.created_at.desc())
         .first()
     )
 
@@ -417,7 +417,7 @@ def test_moderation_no_op_writes_no_audit_row(db, admin_user, event):
     assert response.status_code == 200, response.text
 
     db.expire_all()
-    assert db.query(AdminEvent).filter(AdminEvent.actor_id == admin_user.id).count() == 0, (
+    assert db.query(AuditLog).filter(AuditLog.actor_id == admin_user.id).count() == 0, (
         "a no-op moderation call wrote an audit row"
     )
 

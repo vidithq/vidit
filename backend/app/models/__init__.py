@@ -1,8 +1,7 @@
-from app.models.admin_event import AdminEvent
 from app.models.approval import EventApproval
 from app.models.approval_request import ApprovalRequest
 from app.models.archive_import_job import ArchiveImportJob
-from app.models.auth_event import AuthEvent
+from app.models.audit_log import AuditLog
 from app.models.bot_mention import BotMention
 from app.models.bot_webhook_event import BotWebhookEvent
 from app.models.collection import Collection, CollectionEvent
@@ -28,9 +27,8 @@ from app.models.user import User
 from app.models.user_preferences import UserPreferences
 
 __all__ = [
-    "AdminEvent",
     "ArchiveImportJob",
-    "AuthEvent",
+    "AuditLog",
     "PasswordResetToken",
     "BotMention",
     "BotWebhookEvent",

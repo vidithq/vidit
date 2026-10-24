@@ -10,16 +10,16 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
-from app.models.auth_event import (
-    EVENT_FAILED_LOGIN,
-    EVENT_LOGIN,
-    EVENT_LOGOUT,
-    EVENT_PASSWORD_RESET_COMPLETED,
-    EVENT_PASSWORD_RESET_REQUESTED,
-    EVENT_REGISTER_CONFIRMED,
-    EVENT_REGISTER_PENDING,
-    EVENT_REGISTER_RESENT,
-    AuthEvent,
+from app.models.audit_log import (
+    ACTION_FAILED_LOGIN,
+    ACTION_LOGIN,
+    ACTION_LOGOUT,
+    ACTION_PASSWORD_RESET_COMPLETED,
+    ACTION_PASSWORD_RESET_REQUESTED,
+    ACTION_REGISTER_CONFIRMED,
+    ACTION_REGISTER_PENDING,
+    ACTION_REGISTER_RESENT,
+    AuditLog,
 )
 from app.models.invite_code import InviteCode
 from app.models.pending_registration import PendingRegistration
@@ -78,11 +78,11 @@ def existing_user(db):
     db.commit()
 
 
-def _events_for(db, *, event: str, since: datetime) -> list[AuthEvent]:
+def _events_for(db, *, action: str, since: datetime) -> list[AuditLog]:
     return (
-        db.query(AuthEvent)
-        .filter(AuthEvent.event == event, AuthEvent.created_at >= since)
-        .order_by(AuthEvent.created_at)
+        db.query(AuditLog)
+        .filter(AuditLog.action == action, AuditLog.created_at >= since)
+        .order_by(AuditLog.created_at)
         .all()
     )
 
@@ -108,12 +108,12 @@ def test_login_success_writes_login_event(client, existing_user, db):
     )
     assert response.status_code == 200
 
-    rows = _events_for(db, event=EVENT_LOGIN, since=cutoff)
-    matching = [r for r in rows if r.user_id == existing_user.id]
+    rows = _events_for(db, action=ACTION_LOGIN, since=cutoff)
+    matching = [r for r in rows if r.actor_id == existing_user.id]
     assert len(matching) == 1
     row = matching[0]
-    assert row.event == EVENT_LOGIN
-    assert row.user_id == existing_user.id
+    assert row.action == ACTION_LOGIN
+    assert row.actor_id == existing_user.id
 
 
 def test_login_wrong_password_writes_failed_login_with_user_id(client, existing_user, db):
@@ -124,8 +124,8 @@ def test_login_wrong_password_writes_failed_login_with_user_id(client, existing_
     )
     assert response.status_code == 401
 
-    rows = _events_for(db, event=EVENT_FAILED_LOGIN, since=cutoff)
-    matching = [r for r in rows if r.user_id == existing_user.id]
+    rows = _events_for(db, action=ACTION_FAILED_LOGIN, since=cutoff)
+    matching = [r for r in rows if r.actor_id == existing_user.id]
     assert len(matching) == 1, "matched user → row carries user_id for forensics"
 
 
@@ -150,8 +150,8 @@ def test_login_unknown_email_writes_failed_login_with_null_user_id(client, db):
     )
     assert response.status_code == 401
 
-    rows = _events_for(db, event=EVENT_FAILED_LOGIN, since=cutoff)
-    null_rows = [r for r in rows if r.user_id is None]
+    rows = _events_for(db, action=ACTION_FAILED_LOGIN, since=cutoff)
+    null_rows = [r for r in rows if r.actor_id is None]
     assert null_rows, "unknown email → at least one NULL-user_id failed_login row"
 
 
@@ -169,8 +169,8 @@ def test_logout_writes_logout_event_with_user_id(client, existing_user, db):
     )
     assert response.status_code == 204
 
-    rows = _events_for(db, event=EVENT_LOGOUT, since=cutoff)
-    assert any(r.user_id == existing_user.id for r in rows)
+    rows = _events_for(db, action=ACTION_LOGOUT, since=cutoff)
+    assert any(r.actor_id == existing_user.id for r in rows)
 
 
 def test_logout_without_session_writes_row_with_null_user_id(client, db):
@@ -179,8 +179,8 @@ def test_logout_without_session_writes_row_with_null_user_id(client, db):
     response = fresh.post("/api/v1/auth/logout")
     assert response.status_code == 204
 
-    rows = _events_for(db, event=EVENT_LOGOUT, since=cutoff)
-    assert any(r.user_id is None for r in rows)
+    rows = _events_for(db, action=ACTION_LOGOUT, since=cutoff)
+    assert any(r.actor_id is None for r in rows)
 
 
 def test_register_pending_writes_event_with_null_user_id(client, fresh_invite, email_silencer, db):
@@ -197,9 +197,9 @@ def test_register_pending_writes_event_with_null_user_id(client, fresh_invite, e
     )
     assert response.status_code == 202
 
-    rows = _events_for(db, event=EVENT_REGISTER_PENDING, since=cutoff)
+    rows = _events_for(db, action=ACTION_REGISTER_PENDING, since=cutoff)
     # No users row exists yet: user_id is NULL.
-    assert any(r.user_id is None for r in rows)
+    assert any(r.actor_id is None for r in rows)
 
 
 def test_confirm_registration_writes_event_with_user_id(
@@ -235,8 +235,8 @@ def test_confirm_registration_writes_event_with_user_id(
     body = confirm_resp.json()
     created_user_id = uuid.UUID(body["id"])
 
-    rows = _events_for(db, event=EVENT_REGISTER_CONFIRMED, since=cutoff)
-    assert any(r.user_id == created_user_id for r in rows)
+    rows = _events_for(db, action=ACTION_REGISTER_CONFIRMED, since=cutoff)
+    assert any(r.actor_id == created_user_id for r in rows)
 
     db.query(User).filter(User.id == created_user_id).delete()
     db.commit()
@@ -250,8 +250,8 @@ def test_forgot_password_writes_event_on_known_email(client, existing_user, emai
     )
     assert response.status_code == 204
 
-    rows = _events_for(db, event=EVENT_PASSWORD_RESET_REQUESTED, since=cutoff)
-    assert any(r.user_id == existing_user.id for r in rows)
+    rows = _events_for(db, action=ACTION_PASSWORD_RESET_REQUESTED, since=cutoff)
+    assert any(r.actor_id == existing_user.id for r in rows)
 
 
 def test_forgot_password_writes_event_on_unknown_email(client, email_silencer, db):
@@ -262,9 +262,9 @@ def test_forgot_password_writes_event_on_unknown_email(client, email_silencer, d
     )
     assert response.status_code == 204
 
-    rows = _events_for(db, event=EVENT_PASSWORD_RESET_REQUESTED, since=cutoff)
+    rows = _events_for(db, action=ACTION_PASSWORD_RESET_REQUESTED, since=cutoff)
     # No-op branch still writes a NULL-user_id row (a rate-of-requests signal).
-    assert any(r.user_id is None for r in rows)
+    assert any(r.actor_id is None for r in rows)
 
 
 def test_resend_confirmation_writes_event_on_matched_pending(
@@ -290,9 +290,9 @@ def test_resend_confirmation_writes_event_on_matched_pending(
     )
     assert response.status_code == 204
 
-    rows = _events_for(db, event=EVENT_REGISTER_RESENT, since=cutoff)
+    rows = _events_for(db, action=ACTION_REGISTER_RESENT, since=cutoff)
     assert len(rows) >= 1
-    assert all(r.user_id is None for r in rows)
+    assert all(r.actor_id is None for r in rows)
 
     db.query(PendingRegistration).filter(PendingRegistration.email == email_addr).delete()
     db.commit()
@@ -307,18 +307,18 @@ def test_resend_confirmation_writes_event_on_unknown_email(client, email_silence
     )
     assert response.status_code == 204
 
-    rows = _events_for(db, event=EVENT_REGISTER_RESENT, since=cutoff)
-    assert any(r.user_id is None for r in rows)
+    rows = _events_for(db, action=ACTION_REGISTER_RESENT, since=cutoff)
+    assert any(r.actor_id is None for r in rows)
 
 
 def test_audit_failure_does_not_break_login_python_layer(client, existing_user, monkeypatch):
     """Failure before the row hits the DB (model ``__init__`` raises) is swallowed."""
 
-    class _ExplodingAuthEvent:
+    class _ExplodingAuditLog:
         def __init__(self, *args, **kwargs):
             raise RuntimeError("simulated python-side failure")
 
-    monkeypatch.setattr("app.services.audit.AuthEvent", _ExplodingAuthEvent)
+    monkeypatch.setattr("app.services.audit.AuditLog", _ExplodingAuditLog)
     response = client.post(
         "/api/v1/auth/login",
         json={"email": existing_user.email, "password": "originalpassword1"},
@@ -332,15 +332,15 @@ def test_audit_failure_does_not_break_login_db_layer(client, existing_user, monk
     Without ``db.begin_nested()`` the failed flush would poison the connection
     and the caller's next commit would raise ``PendingRollbackError``.
     """
-    from app.models.auth_event import AuthEvent as RealAuthEvent
+    from app.models.audit_log import AuditLog as RealAuditLog
 
     bogus_user_id = uuid.uuid4()
 
     def _bogus_factory(**kwargs):
-        kwargs["user_id"] = bogus_user_id  # not in users table → FK fails on flush
-        return RealAuthEvent(**kwargs)
+        kwargs["actor_id"] = bogus_user_id  # not in users table → FK fails on flush
+        return RealAuditLog(**kwargs)
 
-    monkeypatch.setattr("app.services.audit.AuthEvent", _bogus_factory)
+    monkeypatch.setattr("app.services.audit.AuditLog", _bogus_factory)
     response = client.post(
         "/api/v1/auth/login",
         json={"email": existing_user.email, "password": "originalpassword1"},
@@ -465,5 +465,5 @@ def test_password_reset_completed_writes_event(client, existing_user, db, monkey
     )
     assert response.status_code == 204
 
-    rows = _events_for(db, event=EVENT_PASSWORD_RESET_COMPLETED, since=cutoff)
-    assert any(r.user_id == existing_user.id for r in rows)
+    rows = _events_for(db, action=ACTION_PASSWORD_RESET_COMPLETED, since=cutoff)
+    assert any(r.actor_id == existing_user.id for r in rows)

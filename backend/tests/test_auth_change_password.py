@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
-from app.models.auth_event import EVENT_PASSWORD_CHANGED, AuthEvent
+from app.models.audit_log import ACTION_PASSWORD_CHANGED, AuditLog
 from app.models.user import User
 from app.routers import auth as auth_router
 from app.services import auth as auth_service
@@ -67,7 +67,7 @@ def user_factory(db):
     yield _make
 
     for user in created:
-        db.query(AuthEvent).filter(AuthEvent.user_id == user.id).delete()
+        db.query(AuditLog).filter(AuditLog.actor_id == user.id).delete()
         db.query(User).filter(User.id == user.id).delete()
     db.commit()
 
@@ -191,8 +191,8 @@ def test_change_password_writes_audit_event(client, user_factory, db, email_reco
     assert response.status_code == 204
 
     events = (
-        db.query(AuthEvent)
-        .filter(AuthEvent.user_id == user.id, AuthEvent.event == EVENT_PASSWORD_CHANGED)
+        db.query(AuditLog)
+        .filter(AuditLog.actor_id == user.id, AuditLog.action == ACTION_PASSWORD_CHANGED)
         .all()
     )
     assert len(events) == 1
@@ -257,8 +257,8 @@ def test_change_password_swallows_email_send_failure(client, user_factory, monke
     assert ok.status_code == 200
 
     events = (
-        db.query(AuthEvent)
-        .filter(AuthEvent.user_id == user.id, AuthEvent.event == EVENT_PASSWORD_CHANGED)
+        db.query(AuditLog)
+        .filter(AuditLog.actor_id == user.id, AuditLog.action == ACTION_PASSWORD_CHANGED)
         .all()
     )
     assert len(events) == 1

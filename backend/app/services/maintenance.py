@@ -30,7 +30,7 @@ PASSWORD_RESET_TOKEN_RETENTION_DAYS = 30
 def run_logged(
     db: Session, *, actor_id: uuid.UUID, action: str, job: Callable[[Session], dict[str, int]]
 ) -> dict[str, int]:
-    """Run ``job``, record its counts in ``admin_events`` under ``action``, and commit."""
+    """Run ``job``, record its counts in ``audit_log`` under ``action``, and commit."""
     result = job(db)
     log_admin_event(db, actor_id=actor_id, action=action, target=result)
     db.commit()

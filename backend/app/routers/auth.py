@@ -18,16 +18,16 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.dependencies import get_current_user, get_db
-from app.models.auth_event import (
-    EVENT_FAILED_LOGIN,
-    EVENT_LOGIN,
-    EVENT_LOGOUT,
-    EVENT_PASSWORD_CHANGED,
-    EVENT_PASSWORD_RESET_COMPLETED,
-    EVENT_PASSWORD_RESET_REQUESTED,
-    EVENT_REGISTER_CONFIRMED,
-    EVENT_REGISTER_PENDING,
-    EVENT_REGISTER_RESENT,
+from app.models.audit_log import (
+    ACTION_FAILED_LOGIN,
+    ACTION_LOGIN,
+    ACTION_LOGOUT,
+    ACTION_PASSWORD_CHANGED,
+    ACTION_PASSWORD_RESET_COMPLETED,
+    ACTION_PASSWORD_RESET_REQUESTED,
+    ACTION_REGISTER_CONFIRMED,
+    ACTION_REGISTER_PENDING,
+    ACTION_REGISTER_RESENT,
 )
 from app.models.user import User
 from app.ratelimit import limiter
@@ -149,7 +149,7 @@ def register(
 
     audit.log_auth_event(
         db,
-        event=EVENT_REGISTER_PENDING,
+        action=ACTION_REGISTER_PENDING,
     )
     db.commit()
 
@@ -185,7 +185,7 @@ def confirm_registration(
     user.last_seen_at = datetime.now(UTC)
     audit.log_auth_event(
         db,
-        event=EVENT_REGISTER_CONFIRMED,
+        action=ACTION_REGISTER_CONFIRMED,
         user_id=user.id,
     )
     db.commit()
@@ -218,7 +218,7 @@ def resend_confirmation(
     # so the row leaks nothing about which addresses have a pending row.
     audit.log_auth_event(
         db,
-        event=EVENT_REGISTER_RESENT,
+        action=ACTION_REGISTER_RESENT,
         user_id=None,
     )
     db.commit()
@@ -258,7 +258,7 @@ def login(
         # soft-deleted one.
         audit.log_auth_event(
             db,
-            event=EVENT_FAILED_LOGIN,
+            action=ACTION_FAILED_LOGIN,
             user_id=user.id
             if (user is not None and user.deleted_at is None and user.is_active)
             else None,
@@ -273,7 +273,7 @@ def login(
     user.last_seen_at = datetime.now(UTC)
     audit.log_auth_event(
         db,
-        event=EVENT_LOGIN,
+        action=ACTION_LOGIN,
         user_id=user.id,
     )
     db.commit()
@@ -318,7 +318,7 @@ def logout(
 
     audit.log_auth_event(
         db,
-        event=EVENT_LOGOUT,
+        action=ACTION_LOGOUT,
         user_id=user_id,
     )
     db.commit()
@@ -385,7 +385,7 @@ def forgot_password(
     # Audit on both branches; user_id is NULL on the no-op branch so it leaks nothing.
     audit.log_auth_event(
         db,
-        event=EVENT_PASSWORD_RESET_REQUESTED,
+        action=ACTION_PASSWORD_RESET_REQUESTED,
         user_id=user.id if (user is not None and user.deleted_at is None) else None,
     )
     db.commit()
@@ -426,7 +426,7 @@ def reset_password(
     bump_token_version(user)
     audit.log_auth_event(
         db,
-        event=EVENT_PASSWORD_RESET_COMPLETED,
+        action=ACTION_PASSWORD_RESET_COMPLETED,
         user_id=user.id,
     )
     db.commit()
@@ -465,7 +465,7 @@ def change_password(
     bump_token_version(current_user)
     audit.log_auth_event(
         db,
-        event=EVENT_PASSWORD_CHANGED,
+        action=ACTION_PASSWORD_CHANGED,
         user_id=user_id,
     )
     db.commit()

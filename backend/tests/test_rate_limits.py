@@ -23,7 +23,7 @@ from app.main import (
     READ_QUOTA_EXCEEDED_CODE,
     app,
 )
-from app.models.admin_event import AdminEvent
+from app.models.audit_log import AuditLog
 from app.models.invite_code import InviteCode
 from app.models.tag import Tag
 from app.models.user import User
@@ -91,7 +91,7 @@ def admin_user(db):
     # Reap the admin audit rows and invite codes so the user row deletes
     # without FK violations.
     db.expire_all()
-    db.query(AdminEvent).filter(AdminEvent.actor_id == user_id).delete()
+    db.query(AuditLog).filter(AuditLog.actor_id == user_id).delete()
     db.query(InviteCode).filter(InviteCode.used_by_id == user_id).delete()
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()

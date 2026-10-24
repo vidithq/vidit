@@ -13,7 +13,7 @@ as themselves nor for an organization, and neither can a former co-geolocator, r
 An approval is final: nobody revokes it. Two paths delete one. Accepting a co-geolocator
 invitation deletes the invitee's approvals of the event
 (``geolocator_credit.delete_approvals_on_join``), and a site admin deletes any approval
-(:func:`delete_as_admin`), which writes an ``admin_events`` row. A member who leaves or is
+(:func:`delete_as_admin`), which writes an ``audit_log`` row. A member who leaves or is
 removed leaves the organization's past approvals as they are. An approval resolves every open
 approval request its target (the analyst, or the organization) received for the event, and the
 requesters hear of it as the owner does.
@@ -265,7 +265,7 @@ def approve(
 
 
 def delete_as_admin(db: Session, *, approval_id: uuid.UUID, actor: User) -> None:
-    """Delete one approval as a site admin and write an ``admin_events`` row. The notifications
+    """Delete one approval as a site admin and write an ``audit_log`` row. The notifications
     that reported it go with it. 404 ``approval_not_found`` for an unknown id. The caller checks
     that ``actor`` is a site admin."""
     event_id = db.scalar(select(EventApproval.event_id).where(EventApproval.id == approval_id))

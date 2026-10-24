@@ -8,7 +8,7 @@ import pytest
 
 from app.cache import points_cache
 from app.database import SessionLocal
-from app.models.admin_event import AdminEvent
+from app.models.audit_log import AuditLog
 from app.models.conflict import Conflict
 from app.models.content_report import ContentReport
 from app.models.event import Event, EventGeolocator
@@ -83,7 +83,7 @@ def second_user(db):
 
 @pytest.fixture
 def admin_user(db):
-    """Teardown reaps this actor's audited ``admin_events`` rows before the user row."""
+    """Teardown reaps this actor's audited ``audit_log`` rows before the user row."""
     user = User(
         username=f"adm{uuid.uuid4().hex[:8]}",
         email=f"adm-{uuid.uuid4().hex}@example.com",
@@ -95,7 +95,7 @@ def admin_user(db):
     user_id = user.id
     yield user
     db.expire_all()
-    db.query(AdminEvent).filter(AdminEvent.actor_id == user_id).delete(synchronize_session=False)
+    db.query(AuditLog).filter(AuditLog.actor_id == user_id).delete(synchronize_session=False)
     delete_user(db, user_id)
     db.commit()
 

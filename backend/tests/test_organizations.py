@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
-from app.models.admin_event import AdminEvent
+from app.models.audit_log import AuditLog
 from app.models.follow import Follow
 from app.models.notification import Notification
 from app.models.organization import Organization, OrganizationInvite, OrganizationMember
@@ -68,7 +68,7 @@ def make_user(db):
     db.query(Organization).filter(Organization.created_by_id.in_(created)).delete(
         synchronize_session=False
     )
-    db.query(AdminEvent).filter(AdminEvent.actor_id.in_(created)).delete(synchronize_session=False)
+    db.query(AuditLog).filter(AuditLog.actor_id.in_(created)).delete(synchronize_session=False)
     db.query(User).filter(User.id.in_(created)).delete(synchronize_session=False)
     db.commit()
 
@@ -141,7 +141,7 @@ def test_site_admin_creates_an_organization_with_its_first_manager(
     assert org["member_count"] == 1
     member = db.query(OrganizationMember).filter_by(organization_id=uuid.UUID(org["id"])).one()
     assert (member.user_id, member.role) == (org_manager.id, "manager")
-    audit = db.query(AdminEvent).filter_by(actor_id=site_admin.id).one()
+    audit = db.query(AuditLog).filter_by(actor_id=site_admin.id).one()
     assert audit.action == "organization_created"
     assert audit.target["slug"] == org["slug"]
 
@@ -553,7 +553,7 @@ def test_a_site_admin_names_an_org_manager_for_an_organization_left_without_one(
     )
     rows = client.get(_ADMIN_CREATE, headers=headers).json()
     assert next(r for r in rows if r["slug"] == org["slug"])["manager_count"] == 1
-    audit = db.query(AdminEvent).filter_by(action="organization_manager_appointed").all()
+    audit = db.query(AuditLog).filter_by(action="organization_manager_appointed").all()
     assert [a.target["user_id"] for a in audit] == [str(heir.id)]
 
     login_as(client, heir)

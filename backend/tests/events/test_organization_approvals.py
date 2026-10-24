@@ -12,9 +12,9 @@ from datetime import UTC, datetime
 import pytest
 
 from app.config import settings
-from app.models.admin_event import AdminEvent
 from app.models.approval import EventApproval
 from app.models.approval_request import ApprovalRequest
+from app.models.audit_log import AuditLog
 from app.models.event import Event, EventGeolocator
 from app.models.follow import Follow
 from app.models.notification import Notification, NotificationDelivery
@@ -362,8 +362,8 @@ def test_a_site_admin_deletes_an_organization_approval_and_it_approves_again(
     assert response.status_code == 204, response.text
     db.expire_all()
     audit = (
-        db.query(AdminEvent)
-        .filter(AdminEvent.actor_id == admin_user.id, AdminEvent.action == "approval_deleted")
+        db.query(AuditLog)
+        .filter(AuditLog.actor_id == admin_user.id, AuditLog.action == "approval_deleted")
         .one()
     )
     assert audit.target["organization_id"] == str(org.id)
@@ -673,7 +673,7 @@ def test_deleting_an_organization_removes_everything_in_its_name(
 
     [audit] = [
         event
-        for event in db.query(AdminEvent).filter_by(action="organization_deleted").all()
+        for event in db.query(AuditLog).filter_by(action="organization_deleted").all()
         if event.target and event.target.get("slug") == slug
     ]
     assert (audit.actor_id, audit.target["slug"], audit.target["approvals_removed"]) == (

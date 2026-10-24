@@ -78,7 +78,7 @@ class AdminInviteRedeemerRead(BaseModel):
     # Live ``geolocated`` events they own.
     geolocated_count: int
     # Most recent authenticated request (``users.last_seen_at``), falling back
-    # to the newest ``login`` auth event on rows predating it; NULL if neither.
+    # to the newest ``login`` audit row on rows predating it; NULL if neither.
     last_seen_at: datetime | None
 
 
