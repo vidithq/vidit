@@ -107,6 +107,7 @@ const source = (over: Partial<Source> = {}): Source => ({
     kind: "image",
     sha256: "0".repeat(64),
   },
+  warnings: [],
   ...over,
 });
 

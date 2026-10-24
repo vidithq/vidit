@@ -17,13 +17,16 @@ import {
   type Source,
 } from "@/lib/sources";
 
+import { SourceWarnings } from "./SourceWarnings";
+
 /**
  * One source of an event on a reading surface, read like the event's Details card: its file
  * (behind its own graphic gate when this source is flagged) or a *No file* box, then one row
  * each for the title, level, kind (with the file's kind), capture position, capture time, links
  * and tags. A row with no value drops out, except the title, which reads *Untitled*. A context
  * source without a file has no file area at all: a URL alone (an article, a statement) is no gap.
- * A file with no link (a detection's own video) reads as incomplete in place of the links.
+ * A file with no link (a detection's own video) reads as incomplete in place of the links. A
+ * satellite or aircraft source's warnings follow the links.
  *
  * `compact` is the map panel's density: `thumbnail` media and bare rows in a `LIST_TILE`.
  * `wide` is for a block that owns the whole sources area: the file grows and sits left of the
@@ -139,6 +142,7 @@ function SourceRows({
           {INCOMPLETE_SOURCE_NOTE}
         </p>
       )}
+      <SourceWarnings warnings={source.warnings} label={`Warnings of source ${index + 1}`} />
       {source.tags.length > 0 && (
         <DetailRow label="Tags" compact={compact} align="start">
           <DetailPills items={source.tags} compact={compact} />

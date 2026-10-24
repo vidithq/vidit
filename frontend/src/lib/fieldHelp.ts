@@ -21,7 +21,7 @@ export const FIELD_HELP = {
     label: "What is the evidence level?",
   },
   source_kind: {
-    text: "Where the source comes from: what captured it (smartphone, camera, static camera such as CCTV or a webcam, drone, satellite, dashcam, or body / helmet cam), or an article, an official statement or something else. Whether the file is a photo or a video comes from the file itself. Pick Unknown when the source does not say. Required on every source.",
+    text: "Where the source comes from: what captured it (smartphone, camera, static camera such as CCTV or a webcam, drone, aircraft such as a plane or a helicopter (historical aerial photos included), satellite, dashcam, or body / helmet cam), or an article, an official statement or something else. Whether the file is a photo or a video comes from the file itself. Pick Unknown when the source does not say. Required on every source.",
     label: "What is the source kind?",
   },
   source_file: {
@@ -37,7 +37,7 @@ export const FIELD_HELP = {
     label: "What is the capture position?",
   },
   source_links: {
-    text: "Where the file was posted: the original post or channel first, then each mirror of the same file. Not your own geolocation post. Each link takes its post time (UTC) when known. The archive mark beside a link is its archived copy, so the evidence survives the post being deleted: orange opens the stored copy, grey means there is none yet. The form's mark offers the Wayback Machine with the link filled in and accepts a snapshot from the Wayback Machine, archive.today (or any of its mirrors) or Ghostarchive.",
+    text: "Where the file was posted: the original post or channel first, then each mirror of the same file. Not your own geolocation post. Each link takes its post time (UTC) when known. The archive mark beside a link is its archived copy, so the evidence survives the post being deleted: orange opens the stored copy, grey means there is none yet. The form's mark offers the Wayback Machine with the link filled in and accepts a snapshot from the Wayback Machine, archive.today (or any of its mirrors) or Ghostarchive. On a satellite or aircraft source, link the provider's permalink that reopens the same image at its capture date: the form names the provider, how to reopen it and its credit, and warns when a reader could not reopen the image.",
     label: "What are the source links?",
   },
   coordinates: {

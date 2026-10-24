@@ -1,12 +1,18 @@
 import { useState } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi, type Mock } from "vitest";
 
+import { apiFetch } from "@/lib/api";
 import { newSourceDraft, sourceDraftFrom, type SourceDraft } from "@/lib/sources";
 import { source } from "@/test/eventDetail";
 import type { Tag } from "@/types";
 
 import { SourceEditor, type SourceEditorInvalid } from "./SourceEditor";
+
+vi.mock("@/lib/api", async (original) => ({
+  ...(await original<typeof import("@/lib/api")>()),
+  apiFetch: vi.fn(),
+}));
 
 const SNAPSHOT_PLACEHOLDER =
   "Paste a snapshot link (web.archive.org, archive.today, ghostarchive.org)";
@@ -65,6 +71,40 @@ describe("SourceEditor", () => {
     render(<Host initial={newSourceDraft()} />);
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "article" } });
     expect(draftNow().kind).toBe("article");
+  });
+
+  it("shows the provider's reopening help and credit as a satellite link is typed", async () => {
+    vi.useFakeTimers();
+    const earth = "https://earth.google.com/web/@47.09,37.54,50a";
+    (apiFetch as unknown as Mock).mockResolvedValue({
+      links: [
+        {
+          url: earth,
+          provider: {
+            id: "google_earth",
+            name: "Google Earth web",
+            group: "accepted",
+            credit: "Google",
+            help: "Step to the capture day and copy the link.",
+          },
+        },
+      ],
+      warnings: [{ code: "permalink_shape", message: "No imagery date.", url: earth }],
+    });
+    try {
+      render(<Host initial={newSourceDraft()} />);
+      fireEvent.change(screen.getByRole("combobox"), { target: { value: "satellite" } });
+      fireEvent.change(screen.getByLabelText("Source 1 link 1"), { target: { value: earth } });
+      await act(async () => {
+        vi.advanceTimersByTime(500);
+      });
+      expect(apiFetch).toHaveBeenCalledTimes(1);
+      expect(screen.getByText("Step to the capture day and copy the link.")).toBeInTheDocument();
+      expect(screen.getByText("Credit: Google")).toBeInTheDocument();
+      expect(screen.getByText("No imagery date.")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("hides the capture position of a document kind", () => {

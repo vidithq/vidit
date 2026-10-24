@@ -2063,6 +2063,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sources/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Source
+         * @description The imagery provider each link opens, and the warnings the source would carry.
+         *
+         *     Writes nothing. The warnings are the ones ``SourceRead.warnings`` serves once the source is
+         *     saved, so the form shows them while the analyst types.
+         */
+        post: operations["check_source_api_v1_sources_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tags": {
         parameters: {
             query?: never;
@@ -3068,7 +3091,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "smartphone" | "camera" | "static_camera" | "drone" | "satellite" | "dashcam" | "body_cam" | "article" | "official_statement" | "other" | "unknown";
+            kind: "smartphone" | "camera" | "static_camera" | "drone" | "aircraft" | "satellite" | "dashcam" | "body_cam" | "article" | "official_statement" | "other" | "unknown";
         };
         /**
          * BatchCompletionRowRead
@@ -3800,6 +3823,25 @@ export interface components {
             detail?: components["schemas"]["ValidationError"][];
         };
         /**
+         * ImageryProviderRead
+         * @description One imagery provider of ``services/imagery.PROVIDERS``.
+         */
+        ImageryProviderRead: {
+            /** Credit */
+            credit: string;
+            /**
+             * Group
+             * @enum {string}
+             */
+            group: "accepted" | "other" | "aircraft_archive" | "not_reopenable";
+            /** Help */
+            help: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
          * ImportNote
          * @description One thing the import has to say: a stable code plus its sentence.
          *
@@ -4401,6 +4443,44 @@ export interface components {
             /** Username Highlight */
             username_highlight: string;
         };
+        /**
+         * SourceCheck
+         * @description A source as the form holds it, for ``POST /sources/check``.
+         */
+        SourceCheck: {
+            /** Captured At */
+            captured_at?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "satellite" | "aircraft";
+            /** Links */
+            links?: components["schemas"]["SourceCheckLink"][];
+        };
+        /** SourceCheckLink */
+        SourceCheckLink: {
+            /** Snapshot Url */
+            snapshot_url?: string | null;
+            /** Url */
+            url: string;
+        };
+        /**
+         * SourceCheckRead
+         * @description The provider each link opens and the warnings the source would carry.
+         */
+        SourceCheckRead: {
+            /** Links */
+            links: components["schemas"]["SourceLinkCheckRead"][];
+            /** Warnings */
+            warnings: components["schemas"]["SourceWarning"][];
+        };
+        /** SourceLinkCheckRead */
+        SourceLinkCheckRead: {
+            provider: components["schemas"]["ImageryProviderRead"] | null;
+            /** Url */
+            url: string;
+        };
         /** SourceLinkRead */
         SourceLinkRead: {
             archived: components["schemas"]["ArchivedLinkRead"] | null;
@@ -4435,7 +4515,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "smartphone" | "camera" | "static_camera" | "drone" | "satellite" | "dashcam" | "body_cam" | "article" | "official_statement" | "other" | "unknown";
+            kind: "smartphone" | "camera" | "static_camera" | "drone" | "aircraft" | "satellite" | "dashcam" | "body_cam" | "article" | "official_statement" | "other" | "unknown";
             /**
              * Level
              * @enum {string}
@@ -4448,6 +4528,8 @@ export interface components {
             tags: components["schemas"]["TagRead"][];
             /** Title */
             title: string;
+            /** Warnings */
+            warnings: components["schemas"]["SourceWarning"][];
         };
         /**
          * SourceRead
@@ -4468,7 +4550,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "smartphone" | "camera" | "static_camera" | "drone" | "satellite" | "dashcam" | "body_cam" | "article" | "official_statement" | "other" | "unknown";
+            kind: "smartphone" | "camera" | "static_camera" | "drone" | "aircraft" | "satellite" | "dashcam" | "body_cam" | "article" | "official_statement" | "other" | "unknown";
             /**
              * Level
              * @enum {string}
@@ -4481,6 +4563,24 @@ export interface components {
             tags: components["schemas"]["TagRead"][];
             /** Title */
             title: string;
+            /** Warnings */
+            warnings: components["schemas"]["SourceWarning"][];
+        };
+        /**
+         * SourceWarning
+         * @description What keeps a reader from reopening a satellite or aircraft image (``services/imagery``).
+         *     Never blocks a write.
+         */
+        SourceWarning: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "provider_unknown" | "provider_not_reopenable" | "short_link" | "permalink_shape" | "capture_date_missing";
+            /** Message */
+            message: string;
+            /** Url */
+            url: string | null;
         };
         /**
          * SponsoredInviteCodeCreate
@@ -8290,6 +8390,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SourcePickRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_source_api_v1_sources_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceCheck"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceCheckRead"];
                 };
             };
             /** @description Validation Error */

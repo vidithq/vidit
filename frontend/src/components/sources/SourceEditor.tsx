@@ -37,6 +37,8 @@ import {
 } from "@/lib/sources";
 import type { Media, Tag } from "@/types";
 
+import { SourceImageryCheck } from "./SourceImageryCheck";
+
 const LEVEL_OPTIONS = SOURCE_LEVELS.map((value) => ({ value, label: LEVEL_LABELS[value] }));
 
 /** Which of the editor's fields a publish attempt flagged. */
@@ -48,7 +50,8 @@ export interface SourceEditorInvalid {
 /**
  * One source block of an event form: the file (uploaded on its own request as soon as it is
  * picked), the level, the kind, the capture time, the capture position (none on a document
- * kind), the links with their post time and archived copy, the tags and the graphic flag.
+ * kind), the links with their post time and archived copy (and the imagery provider check on a
+ * satellite or aircraft source), the tags and the graphic flag.
  *
  * The editor holds no state of its own: `update` patches the draft in the form's list, and
  * `onPickFile` hands a picked file to the list, which uploads it. `actions` is the header's
@@ -253,6 +256,7 @@ export function SourceEditor({
             )}
           />
         </div>
+        <SourceImageryCheck draft={draft} name={name} />
       </div>
 
       <div className="space-y-1.5">

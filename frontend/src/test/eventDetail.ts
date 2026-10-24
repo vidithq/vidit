@@ -13,6 +13,7 @@ export const source = (overrides: Partial<Source> = {}): Source => ({
   links: [{ url: "https://t.me/channel/12345", posted_at: null, archived: null }],
   tags: [],
   media: null,
+  warnings: [],
   ...overrides,
 });
 

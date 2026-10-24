@@ -136,6 +136,7 @@ export const EVENT: EventDetail = {
         original_filename: "street.png",
         sha256: "0".repeat(64),
       },
+      warnings: [],
     },
   ],
   thumbnail: {

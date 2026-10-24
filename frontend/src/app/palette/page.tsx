@@ -201,6 +201,7 @@ const MOCK_SOURCE: Source = {
     sha256: "0".repeat(64),
     original_filename: "strike.jpg",
   },
+  warnings: [],
 };
 
 // A context source: an article, a URL only and no file.
@@ -215,6 +216,29 @@ const MOCK_CONTEXT_SOURCE: Source = {
   links: [{ url: "https://news.example/article", posted_at: null, archived: null }],
   tags: [],
   media: null,
+};
+
+// Reference imagery whose link no reader can reopen at its date: the provider check's warnings.
+const MOCK_SATELLITE_SOURCE: Source = {
+  ...MOCK_CONTEXT_SOURCE,
+  id: "s3",
+  kind: "satellite",
+  links: [
+    { url: "https://earth.google.com/web/@48.0201,37.7951,50a", posted_at: null, archived: null },
+  ],
+  warnings: [
+    {
+      code: "permalink_shape",
+      message:
+        "Google Earth web: The link carries no imagery date. Turn on historical imagery, step to the capture day, and copy the link again.",
+      url: "https://earth.google.com/web/@48.0201,37.7951,50a",
+    },
+    {
+      code: "capture_date_missing",
+      message: "Give the capture date: a reader needs it to reopen the same image.",
+      url: null,
+    },
+  ],
 };
 
 // A full geolocation, for the detail body + detection card.
@@ -370,6 +394,7 @@ export default function PalettePage() {
   const [paletteSources, setPaletteSources] = useState<SourceDraft[]>(() => [
     sourceDraftFrom(MOCK_SOURCE),
     sourceDraftFrom(MOCK_CONTEXT_SOURCE),
+    sourceDraftFrom(MOCK_SATELLITE_SOURCE),
   ]);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -1821,6 +1846,12 @@ export default function PalettePage() {
             </div>
           </Item>
 
+          <Item name="<SourceWarnings> / <SourceImageryCheck>" usage="The imagery provider check of a satellite or aircraft source (components/sources/). <SourceWarnings> lists a source's warnings, one amber WARNING_CALLOUT line each, led by the host of the link it is about; it blocks nothing and renders nothing without a warning. <SourceBlock> renders it after the links from SourceRead.warnings. <SourceImageryCheck> sits under the links of a <SourceEditor> of kind Satellite or Aircraft: it runs POST /sources/check once typing pauses, names each reopenable provider a link opens with its reopening help and its credit, then lists the same warnings the saved source would carry.">
+            <div className="w-full max-w-md">
+              <SourceBlock source={MOCK_SATELLITE_SOURCE} index={2} alt="Strike on a depot" />
+            </div>
+          </Item>
+
           <Item name="<HorizontalScroller>" usage="A row of same-width items that scrolls sideways (components/ui/HorizontalScroller.tsx): native overflow scrolling with one snap point per item, focusable so the arrow keys scroll it. Two items fit once the row is 32rem wide; below that one fits and the next peeks. With more than one item, the header shows the shown range (1 to 2 of 5) and previous and next ghost icon buttons that scroll by one item, without smoothing under prefers-reduced-motion, and go inert at the ends. The event page's sources row is its consumer.">
             <div className="w-full max-w-2xl">
               <HorizontalScroller
@@ -1836,7 +1867,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SourcesField> / <SourceEditor>" usage="The Sources section of every event form (components/sources/): one <SourceEditor> per source in a LIST_TILE, holding the file slot (MediaManager on <FileManager>; a pick uploads at once through POST /uploads), the level (<SegmentedControl>), the kind (<Select>, required on every source), the capture time (<DateTimeInput>), the capture position (CoordinateInputs, hidden for an article, an official statement or another document), the links (<LinkListInput> with the archive pair and each link's post time), the tags (<TagChips>) and the graphic flag (<Switch>, locked on a flagged stored source). The section adds Add a source (capped at 10), Copy an existing source (<SourcePicker>), and per editor <MergeAction> and Remove.">
+          <Item name="<SourcesField> / <SourceEditor>" usage="The Sources section of every event form (components/sources/): one <SourceEditor> per source in a LIST_TILE, holding the file slot (MediaManager on <FileManager>; a pick uploads at once through POST /uploads), the level (<SegmentedControl>), the kind (<Select>, required on every source), the capture time (<DateTimeInput>), the capture position (CoordinateInputs, hidden for an article, an official statement or another document), the links (<LinkListInput> with the archive pair and each link's post time, then <SourceImageryCheck> on a satellite or aircraft source), the tags (<TagChips>) and the graphic flag (<Switch>, locked on a flagged stored source). The section adds Add a source (capped at 10), Copy an existing source (<SourcePicker>), and per editor <MergeAction> and Remove.">
             <div className="w-full max-w-2xl">
               <SourcesField
                 sources={paletteSources}

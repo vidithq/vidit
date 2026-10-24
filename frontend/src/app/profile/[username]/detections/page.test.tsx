@@ -56,6 +56,7 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
           kind: "image",
           sha256: "0".repeat(64),
         },
+        warnings: [],
       },
     ],
     proof: '<img src="https://cdn.test/p.jpg">',

@@ -49,6 +49,28 @@ describe("SourceBlock", () => {
     ).toBeInTheDocument();
   });
 
+  it("lists a satellite source's warnings under its links, each led by its link's host", () => {
+    const block = renderBlock({
+      kind: "satellite",
+      level: "context",
+      links: [{ url: "https://bit.ly/abc", posted_at: null, archived: null }],
+      warnings: [
+        { code: "short_link", message: "Paste the full link instead.", url: "https://bit.ly/abc" },
+        { code: "capture_date_missing", message: "Give the capture date.", url: null },
+      ],
+    });
+    const list = within(block).getByRole("list", { name: "Warnings of source 1" });
+    expect(within(list).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "bit.ly: Paste the full link instead.",
+      "Give the capture date.",
+    ]);
+  });
+
+  it("shows no warning list without a warning", () => {
+    const block = renderBlock({ kind: "satellite" });
+    expect(within(block).queryByRole("list", { name: /^Warnings/ })).toBeNull();
+  });
+
   it("does not mark a linked source", () => {
     const linked = renderBlock({ media: IMAGE });
     expect(within(linked).queryByText(/^Incomplete/)).toBeNull();

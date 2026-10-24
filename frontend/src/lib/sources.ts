@@ -14,6 +14,12 @@ export type SourcePick = components["schemas"]["SourcePickRead"];
 export type Upload = components["schemas"]["UploadRead"];
 export type SourceLevel = Source["level"];
 export type SourceKind = Source["kind"];
+/** What keeps a reader from reopening a satellite or aircraft image (`services/imagery`). */
+export type SourceWarning = Source["warnings"][number];
+/** `POST /sources/check`: the provider each link opens and the warnings the source would carry. */
+export type SourceCheck = components["schemas"]["SourceCheckRead"];
+export type ImageryProvider = components["schemas"]["ImageryProviderRead"];
+type ImageryKind = components["schemas"]["SourceCheck"]["kind"];
 
 /** Keyed by the generated union, so a level the backend adds fails the type-check. */
 export const LEVEL_LABELS: Record<SourceLevel, string> = {
@@ -31,6 +37,7 @@ export const SOURCE_KIND_LABELS: Record<SourceKind, string> = {
   camera: "Camera",
   static_camera: "Static camera",
   drone: "Drone",
+  aircraft: "Aircraft",
   satellite: "Satellite",
   dashcam: "Dashcam",
   body_cam: "Body / helmet cam",
@@ -48,6 +55,12 @@ const DOCUMENT_KINDS: ReadonlySet<SourceKind | ""> = new Set<SourceKind>([
   "official_statement",
   "other",
 ]);
+
+/** Keyed by the generated union of the kinds the provider check covers. */
+const IMAGERY_KINDS: Record<ImageryKind, true> = { satellite: true, aircraft: true };
+
+/** Whether the imagery provider check covers a source of this kind. */
+export const isImageryKind = (kind: SourceKind | ""): kind is ImageryKind => kind in IMAGERY_KINDS;
 
 /** Whether a source of this kind can carry a capture position. */
 export const hasCapturePosition = (kind: SourceKind | ""): boolean => !DOCUMENT_KINDS.has(kind);
@@ -356,6 +369,20 @@ export function uploadSourceFile(file: File): Promise<Upload> {
   const fd = new FormData();
   fd.append("file", file);
   return apiFetch<Upload>("/uploads", { method: "POST", body: fd });
+}
+
+/** `POST /sources/check` for an editor of an imagery kind: what the source would read once
+ *  saved, from the fields the check reads. */
+export function checkSource(draft: SourceDraft & { kind: ImageryKind }): Promise<SourceCheck> {
+  const { captured_at, links } = sourceCreatePayload(draft);
+  return apiFetch<SourceCheck>("/sources/check", {
+    method: "POST",
+    body: JSON.stringify({
+      kind: draft.kind,
+      captured_at,
+      links: links.map(({ url, snapshot_url }) => ({ url, snapshot_url })),
+    }),
+  });
 }
 
 /** Mirrors the `q` bounds of `GET /sources`; change both. */

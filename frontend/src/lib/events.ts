@@ -313,6 +313,8 @@ function snapshotSource(
     }),
     tags: asList<Source["tags"][number]>(entry.tags),
     media,
+    // A version shows what it said, not what the provider check says today.
+    warnings: [],
   };
 }
 
