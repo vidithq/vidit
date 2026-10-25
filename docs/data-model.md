@@ -66,7 +66,7 @@ flowchart LR
   orgs[("`**organizations**
   an approval, or a request for one, may be placed in its name`")]:::store
   reports[("`**content_reports**
-  any viewer, signed in or not; a row names an event or a collection`")]:::store
+  any viewer, signed in or not; a row names an event, a collection or a site`")]:::store
   shelve["`**PUT /collections/{id}/events/{event_id}**
   a credited analyst puts the row on one of their named shelves`"]:::spec
   shelves[("`**collections** + **collection_events**
@@ -208,7 +208,8 @@ erDiagram
     content_reports {
         UUID id PK
         UUID event_id FK "nullable, NULL once the event is hard-deleted"
-        UUID collection_id FK "nullable, the other target; never set with event_id"
+        UUID collection_id FK "nullable, a second target"
+        UUID site_id FK "nullable, a third target; one target per row"
         VARCHAR reason "illegal_content | graphic_not_flagged | copyright | privacy | other"
         TEXT details "nullable, capped at 2000 chars by the schema"
         UUID reporter_id FK "nullable, anonymous reports leave this NULL"
@@ -259,7 +260,10 @@ erDiagram
 
     sources {
         UUID id PK
-        UUID event_id FK
+        UUID event_id FK "nullable, the event it supports"
+        UUID site_id FK "nullable, the site whose imagery history holds it"
+        UUID author_id FK "nullable, a site image's analyst"
+        TEXT note "nullable, a site image's note"
         VARCHAR title "empty string for none"
         VARCHAR level "direct | indirect | context"
         VARCHAR kind "where the source comes from"
@@ -356,23 +360,29 @@ erDiagram
     sites {
         UUID id PK
         UUID owner_id FK "the creator"
-        VARCHAR name "fixed at create"
-        VARCHAR site_type "fixed at create"
+        VARCHAR name "versioned"
+        VARCHAR kind "versioned"
+        INTEGER version_no "the live record's version"
         TIMESTAMPTZ hidden_at "nullable, admin takedown"
         TIMESTAMPTZ created_at
         TIMESTAMPTZ updated_at
     }
 
-    site_observations {
+    site_versions {
         UUID id PK
         UUID site_id FK
+        INTEGER version_no "the version this row holds"
+        UUID edited_by_id FK "nullable, SET NULL"
+        JSONB snapshot "name and kind as they stood"
+        TIMESTAMPTZ created_at "when the edit happened"
+    }
+
+    site_contours {
+        UUID id PK
+        UUID site_id FK
+        UUID source_id FK "the site image that shows it"
         UUID author_id FK "nullable, SET NULL"
         GEOMETRY zone "POLYGON 4326, GIST"
-        DATE captured_on "imagery capture date"
-        VARCHAR imagery_provider
-        TEXT imagery_url "nullable, required for other"
-        VARCHAR effect
-        TEXT note "nullable"
         TIMESTAMPTZ created_at
     }
 
@@ -487,7 +497,9 @@ erDiagram
     users |o--o{ audit_log : "actor_id"
     users ||--o{ events : "owner_id"
     users |o--o{ events : "requested_by_id"
-    events ||--o{ sources : "event_id"
+    events |o--o{ sources : "event_id"
+    sites |o--o{ sources : "site_id"
+    users |o--o{ sources : "author_id"
     sources ||--o{ source_links : "source_id"
     sources ||--o{ source_tags : "source_id"
     tags ||--o{ source_tags : "tag_id"
@@ -511,14 +523,18 @@ erDiagram
     users |o--o{ event_versions : "redacted_by_id"
     events |o--o{ content_reports : "event_id"
     collections |o--o{ content_reports : "collection_id"
+    sites |o--o{ content_reports : "site_id"
     users |o--o{ content_reports : "reporter_id"
     users |o--o{ content_reports : "resolved_by_id"
     users ||--o{ collections : "owner_id"
     collections ||--o{ collection_events : "collection_id"
     events ||--o{ collection_events : "event_id"
     users ||--o{ sites : "owner_id"
-    sites ||--o{ site_observations : "site_id"
-    users |o--o{ site_observations : "author_id"
+    sites ||--o{ site_versions : "site_id"
+    users |o--o{ site_versions : "edited_by_id"
+    sites ||--o{ site_contours : "site_id"
+    sources ||--o{ site_contours : "source_id"
+    users |o--o{ site_contours : "author_id"
     sites ||--o{ event_site_links : "site_id"
     events ||--o{ event_site_links : "event_id"
     users |o--o{ event_site_links : "linked_by_id"
@@ -894,12 +910,15 @@ A source's file cannot take that route: a correction that drops a source, or rep
 
 ### `sources`
 
-One piece of evidence an event rests on: at most one file, the URLs that file was posted at, and what is known about its capture. An event holds up to 10 sources (`MAX_SOURCES_PER_EVENT` in [`models/source.py`](../backend/app/models/source.py)), and none is the main one. A source belongs to one event. [`api.md`](api.md#sources) states the write contract.
+One piece of evidence: at most one file, the URLs that file was posted at, and what is known about its capture. A source has one owner, an event or a site (`ck_sources_one_owner`). An event's sources are the evidence the event rests on: an event holds up to 10 (`MAX_SOURCES_PER_EVENT` in [`models/source.py`](../backend/app/models/source.py)), and none is the main one. A site's sources are its imagery history, one dated satellite image each (see [Sites](#sites)). [`api.md`](api.md#sources) states the write contract of an event's sources, and [`api.md`](api.md#post-sitesidimages) the one of a site image.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
-| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, NOT NULL, indexed |
+| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, nullable, indexed. The event the source supports; NULL on a site image. |
+| `site_id` | `UUID` | FK → `sites.id` ON DELETE CASCADE, nullable, indexed. The site whose imagery history holds the source; NULL on an event's source. |
+| `author_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The analyst who filed a site image: any signed-in analyst files one. NULL on an event's source, whose analyst is the event's owner, and once that account is erased. |
+| `note` | `TEXT` | nullable. A site image's plain-text note on what the image shows, up to 500 characters at the API. NULL on an event's source. |
 | `title` | `VARCHAR(255)` | NOT NULL, server_default `''`. An optional label; `''` is no title. Searched by `GET /search` through `ix_sources_search_fts`. |
 | `level` | `VARCHAR(10)` | NOT NULL, CHECK in `('direct', 'indirect', 'context')` (constraint `ck_sources_level_valid`). The evidence level: how close the source stands to the act. See the table below. |
 | `kind` | `VARCHAR(20)` | NOT NULL, CHECK in `('smartphone', 'camera', 'static_camera', 'drone', 'aircraft', 'satellite', 'dashcam', 'body_cam', 'article', 'official_statement', 'other', 'unknown')` (constraint `ck_sources_kind_valid`). Where the source comes from, on every source, a file-less one included: what captured it (`camera` is a handheld or press camera, `static_camera` a CCTV or a webcam, `aircraft` a plane or a helicopter, historical aerial photos included) or the kind of document it is. A `satellite` or `aircraft` source is checked against the [imagery providers](imagery.md). Whether its file is a photo or a video is the file's own [`media.kind`](#media). A machine source is `unknown` until a review names it, and `unknown` keeps the choice satisfiable for a source of uncertain provenance. |
@@ -917,8 +936,14 @@ One piece of evidence an event rests on: at most one file, the URLs that file wa
 
 The `kind` and `level` value domains have one home, the `SourceKind` and `SourceLevel` aliases in [`models/source.py`](../backend/app/models/source.py). The column CHECKs, the schemas, the `source_kind` and `level` filters and the generated frontend types derive from them; the frontend owns the display labels.
 
+**Check constraints:**
+- `ck_sources_one_owner`: `num_nonnulls(event_id, site_id) = 1`. A source supports one event or sits in one site's imagery history, never both and never neither.
+- `ck_sources_site_image`: a site image is a `satellite` source of level `context` with a `captured_at`. It shows a state of the site, not an act, so it never supports a publication.
+- `ck_sources_site_fields`: `author_id` and `note` stay NULL on an event's source.
+
 **Indexes:**
 - `ix_sources_event_id` on `(event_id)`. Serves "this event's sources" and the cascade.
+- `ix_sources_site_id` on `(site_id)`. Serves a site's imagery history and the cascade.
 - `ix_sources_search_fts`: GIN index on `to_tsvector('simple', coalesce(title, ''))`. Backs the source-title leg of event search ([`GET /search`](api.md#get-search)), on the same `simple` configuration as `ix_events_search_fts`.
 
 **The order is derived, not stored.** An event's sources read by level (`direct`, then `indirect`, then `context`), then by `captured_at` with unknown last, then by `created_at` and `id` (`models/source.source_order`). There is no position column, so no write reorders a list by hand.
@@ -930,6 +955,8 @@ The `kind` and `level` value domains have one home, the `SourceKind` and `Source
 **A file shared within an event.** A source may name the file of another source of the same event: the write adds a `media` row on the same stored object, and the source takes that source's graphic flag. The stored object stays until no `media` row names it.
 
 **Versioned with the event.** A source is part of what an event says, so an edit to a source on a `geolocated` event files a version like any other edit, and the snapshot keeps each source whole ([`event_versions`](#event_versions)).
+
+**A site image is never edited.** `services/events/sources.file_source` writes it with its links and file, through the same link cleaning, snapshot check and upload intake as an event's source. Every read of an event's source covers only rows with `event_id` set: the event joins, search, tags and profile stats never see a site image.
 
 ---
 
@@ -970,32 +997,33 @@ Composite PK: `(source_id, tag_id)`. `ix_source_tags_tag_id` on `(tag_id)` backs
 
 ### `content_reports`
 
-One viewer's report against one event or one collection. Open to anonymous viewers: a takedown request must not require an account, since the people a piece of footage harms are rarely the people who hold one. Rows accumulate rather than dedupe: several viewers may report the same target, and each report is resolved on its own. A report is never deleted, only resolved, so the table is an audit trail of what was reported and what was decided.
+One viewer's report against one event, one collection or one site. Open to anonymous viewers: a takedown request must not require an account, since the people a piece of footage harms are rarely the people who hold one. Rows accumulate rather than dedupe: several viewers may report the same target, and each report is resolved on its own. A report is never deleted, only resolved, so the table is an audit trail of what was reported and what was decided.
 
-One row names one target, through `event_id` or `collection_id`. Two real foreign keys rather than a `(target_type, target_id)` pair, so the database is what keeps a report pointing at a row that exists and what empties the pointer when that row is destroyed.
+One row names one target, through `event_id`, `collection_id` or `site_id`. Real foreign keys rather than a `(target_type, target_id)` pair, so the database is what keeps a report pointing at a row that exists and what empties the pointer when that row is destroyed.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
-| `event_id` | `UUID` | FK → `events.id` ON DELETE SET NULL, nullable. NULL once the reported event is hard-deleted: the report is the record that a complaint was filed and how it was answered, so it outlives the event. NULL too on a report filed against a collection. An orphaned report accepts only the `dismissed` verdict; every other verdict mutates a row that is gone, and answers 409 `report_target_gone`. |
-| `collection_id` | `UUID` | FK → `collections.id` ON DELETE SET NULL, nullable. The other target, on the same terms as `event_id` above and NULL for a report filed against an event. It empties when the collection is erased, and the report survives that erasure the way it survives an event's. An open report holds back the owner's delete: the collection is only marked [`collections.deleted_at`](#collections) until its last open report is resolved. An account erasure (`collections.owner_id` cascades) does not wait. |
+| `event_id` | `UUID` | FK → `events.id` ON DELETE SET NULL, nullable. NULL once the reported event is hard-deleted: the report is the record that a complaint was filed and how it was answered, so it outlives the event. NULL too on a report filed against a collection or a site. An orphaned report accepts only the `dismissed` verdict; every other verdict mutates a row that is gone, and answers 409 `report_target_gone`. |
+| `collection_id` | `UUID` | FK → `collections.id` ON DELETE SET NULL, nullable. A second target, on the same terms as `event_id` above and NULL for a report filed against anything else. It empties when the collection is erased, and the report survives that erasure the way it survives an event's. An open report holds back the owner's delete: the collection is only marked [`collections.deleted_at`](#collections) until its last open report is resolved. An account erasure (`collections.owner_id` cascades) does not wait. |
+| `site_id` | `UUID` | FK → `sites.id` ON DELETE SET NULL, nullable. A third target, on the same terms as `event_id` above and NULL for a report filed against anything else. It empties when the site goes with its owner's account. |
 | `reason` | `VARCHAR(30)` | NOT NULL, CHECK in `('illegal_content', 'graphic_not_flagged', 'copyright', 'privacy', 'other')`. `illegal_content` is the legal escalation (material whose hosting is itself unlawful); `graphic_not_flagged` says the footage shows death, injury or human remains without its source's `is_graphic` flag; `copyright` and `privacy` are third-party rights claims; `other` keeps the form answerable when none of the four fits, with `details` carrying the story. |
 | `details` | `TEXT` | nullable. The reporter's own words. Bounded to 2000 characters by the schema, not the column, which stays unbounded `TEXT`. |
 | `reporter_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. NULL for an anonymous report, and again once the reporter's account is erased (the report outlives the account, including a GDPR erasure). |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL. The application stamps it on insert; the column carries no server default, so a raw `INSERT` must supply it. |
 | `resolved_at` | `TIMESTAMPTZ` | nullable. Non-NULL exactly when `resolution` is (`ck_content_reports_resolution_stamp`), so `resolved_at IS NULL` is the single-column test for an open report. |
-| `resolution` | `VARCHAR(30)` | nullable, CHECK in `('marked_graphic', 'hidden', 'dismissed')` when set. `marked_graphic` sets `is_graphic` on every source of the event, `hidden` withholds the target from every public read via `events.hidden_at` or `collections.hidden_at`, `dismissed` closes the report and leaves the target untouched. Any verdict on the last open report of a collection its owner deleted then erases that collection. `marked_graphic` is an event verdict only: the flag lives on an event's sources, so a collection report answering it is a 409 `report_verdict_not_applicable` rather than a verdict that changed nothing. There is no re-resolve: a report already carrying a verdict answers a second resolve attempt with 409. |
+| `resolution` | `VARCHAR(30)` | nullable, CHECK in `('marked_graphic', 'hidden', 'dismissed')` when set. `marked_graphic` sets `is_graphic` on every source of the event, `hidden` withholds the target from every public read via `events.hidden_at`, `collections.hidden_at` or `sites.hidden_at`, `dismissed` closes the report and leaves the target untouched. Any verdict on the last open report of a collection its owner deleted then erases that collection. `marked_graphic` is an event verdict only: the flag lives on an event's sources, so a collection or site report answering it is a 409 `report_verdict_not_applicable` rather than a verdict that changed nothing. There is no re-resolve: a report already carrying a verdict answers a second resolve attempt with 409. |
 | `resolved_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The admin who resolved it, NULL until then and again after a GDPR erasure of that admin's account. |
 
 **Check constraints:**
 - `ck_content_reports_reason_valid`: pins the `reason` domain at the database, mirroring the `ContentReportReason` alias so a bad write is rejected by Postgres, not only by the app-layer `Literal`.
 - `ck_content_reports_resolution_valid`: pins the `resolution` domain the same way, mirroring `ContentReportResolution`.
 - `ck_content_reports_resolution_stamp`: `(resolution IS NULL AND resolved_at IS NULL) OR (resolution IS NOT NULL AND resolved_at IS NOT NULL)`. The verdict and its timestamp travel together in both directions: a resolved row can't forget what was decided, and an open row can't carry a stale verdict.
-- `ck_content_reports_one_target`: `num_nonnulls(event_id, collection_id) <= 1`. One report names one thing, so no queue row can describe two at once. The test is "never both" rather than "exactly one" because both columns are `SET NULL`: a report whose target is destroyed ends up naming neither, and that orphan row has to stay legal. Exactly one is set at insert, which the two report routes hold by each naming one target.
+- `ck_content_reports_one_target`: `num_nonnulls(event_id, collection_id, site_id) <= 1`. One report names one thing, so no queue row can describe two at once. The test is "at most one" rather than "exactly one" because every target column is `SET NULL`: a report whose target is destroyed ends up naming none, and that orphan row has to stay legal. Exactly one is set at insert, which the three report routes hold by each naming one target.
 
 **Indexes:**
 - `ix_content_reports_event_id` on `(event_id)`. Backs the FK's ON DELETE SET NULL sweep and a per-event report lookup.
-- `ix_content_reports_collection_id` on `(collection_id)`. The same pair of reads for the other target.
+- `ix_content_reports_collection_id` on `(collection_id)` and `ix_content_reports_site_id` on `(site_id)`. The same pair of reads for the other targets.
 - `ix_content_reports_queue`: expression index on `((resolved_at IS NOT NULL), created_at DESC, id DESC)`. Backs the admin queue's read, open reports first then newest first, with the id breaking ties so the offset walk is total. The index repeats the query's `ORDER BY` expression for expression, so Postgres walks it instead of sorting the table. Change the sort and you change this index.
 
 ---
@@ -1192,7 +1220,7 @@ Both foreign keys cascade, so neither a hard-deleted event nor a hard-deleted co
 
 ### Sites
 
-A site is a durable place, such as a base, a depot or a radar, with a name and a type. Three tables carry it, and every read derives the site's zone, state and corroboration from them.
+A site is a named area of interest that analysts monitor through dated satellite imagery, such as a base, a depot or a radar. Five tables carry it, and every read derives the zone, the last image and the corroboration from them.
 
 ```mermaid
 flowchart LR
@@ -1205,58 +1233,80 @@ flowchart LR
     direction LR
     l1["`a write, append-only`"]:::spec
     l2["`a table`"]:::store
-    l3["`the shared predicates`"]:::core
+    l3["`the shared rules`"]:::core
     l4["`a computed read`"]:::read
     l1 ~~~ l2 ~~~ l3 ~~~ l4
   end
 
   create["`**POST /sites**
-  name, type and the first observation`"]:::spec
-  observe["`**POST /sites/{id}/observations**
-  a dated zone, proven by imagery`"]:::spec
+  name, kind, the first image and its contour`"]:::spec
+  edit["`**PATCH /sites/{id}**
+  the owner renames or retypes`"]:::spec
+  file["`**POST /sites/{id}/images**
+  any analyst files a dated satellite image`"]:::spec
+  draw["`**POST /sites/{id}/contours**
+  the owner draws a zone, citing an image`"]:::spec
   link["`**POST /events/{id}/site-links**
   the event owner links, or changes the effect`"]:::spec
   unlink["`**DELETE /events/{id}/site-links/{site_id}**
   stamps unlinked_at`"]:::spec
 
   sites[("`**sites**
-  name and type, fixed at create`")]:::store
-  observations[("`**site_observations**
-  one zone per captured_on`")]:::store
+  owner, name, kind, version_no, hidden_at`")]:::store
+  versions[("`**site_versions**
+  the superseded name and kind`")]:::store
+  images[("`**sources** with site_id
+  satellite, context, captured_at, links, file`")]:::store
+  contours[("`**site_contours**
+  one zone per drawing, citing an image`")]:::store
   links[("`**event_site_links**
   one row per period a link held one effect`")]:::store
 
+  reopen["`**imagery.can_reopen**
+  a link a reader can reopen, or the image is refused`"]:::core
   zones["`**zones_at**
-  the observation valid on a date`"]:::core
+  the contour of the latest image on or before a date`"]:::core
   live["`**live_links** + **site_linkable_events**
   unlinked_at IS NULL, published and visible`"]:::core
 
   state["`**GET /sites**, **GET /sites/{id}**
-  zone, state, corroboration, linked events`"]:::read
+  zone, last image, corroboration, linked events`"]:::read
   history["`**GET /sites/{id}/history**
   every row, on two clocks`"]:::read
 
   create --> sites
-  create --> observations
-  observe --> observations
+  create --> reopen
+  create --> contours
+  edit --> versions
+  edit --> sites
+  file --> reopen --> images
+  draw --> contours
   link --> links
   unlink --> links
-  observations --> zones --> state
+  images --> zones
+  contours --> zones --> state
+  images --> state
   links --> live --> state
   sites --> history
-  observations --> history
+  versions --> history
+  images --> history
+  contours --> history
   links --> history
 ```
 
-**Nothing about a site is overwritten or deleted.** `site_observations` is append-only, so a correction is a new observation. `event_site_links` is append-only too: an unlink stamps `unlinked_at`, and an effect change closes the live row and opens a new one. The name and the type are fixed at create. Only an erasure removes rows, through the foreign key cascades.
+**Nothing about a site is overwritten.** Images, contours and links are append-only. An edit to the name or the kind files the record it supersedes in `site_versions`. An unlink stamps `unlinked_at`, and an effect change closes the live link and opens a new one. Only an erasure removes rows, through the foreign key cascades.
 
-**The zone valid on a date is computed.** It is the observation with the greatest `(captured_on, created_at)` at or before the date (`services/sites.zones_at`). The current zone is the latest observation. The map read takes the zone valid on `as_of`, and a linked event is measured against the zone valid on its `occurred_date`.
+**A site image is a source.** It is a [`sources`](#sources) row with `site_id` set: a `satellite` source of level `context` with a capture time, its links, their archived copies and an optional file, plus its analyst (`author_id`) and an optional `note`. It states no effect. `services/sites` files it through `services/events/sources.file_source` and refuses it when no link lets a reader reopen it (`services/imagery.can_reopen`): a link to a reopenable [imagery provider](imagery.md), or to an unlisted publication with an archived copy. It then carries the same imagery warnings as an event's satellite source. An image with the same provider (`services/imagery.image_provider`) and the same UTC capture day as one already filed on the site is flagged on the write, not refused.
 
-**State comes from observations only.** The read reports the latest observation's `captured_on`, `imagery_provider` and `effect`. The effect of the most recent linked event is reported beside it as `latest_link_effect` and never changes the observed state. No column stores an active or current flag.
+**The zone valid on a date is computed.** It is the contour whose image has the latest `captured_at` on or before the date, the later contour breaking a tie (`services/sites.zones_at`). The current zone is the one valid now. A site has no zone before the capture day of its earliest contour's image. A linked event is measured against the zone valid on its `occurred_date`: the earliest contour when the event predates them all, and the current one when the event has no date.
 
-**Corroboration is computed.** `corroboration_count` is the number of distinct owners of visible linked events, and a site is corroborated when one of them is not the site owner. Every computed read counts live links to events in `services/event_filters.site_linkable_events` (not soft-deleted, not withheld, `geolocated`), so a closed or withheld event drops out with no write to `event_site_links`.
+**Corroboration is computed.** The corroborating analysts are the distinct authors of the site's images and the analysts who hold a live link from a published, visible event to the site (`linked_by_id`). `corroboration_count` counts them, and a site is corroborated when one of them is not its owner. The map read counts the images captured and the events dated on or before its date; an undated event counts at every date. Approvals never enter a site computation.
 
-**History runs on two clocks.** [`GET /sites/{id}/history`](api.md#get-sitesidhistory) builds one feed from the three tables, with no log table of its own. Each entry carries `recorded_at`, when the fact entered Vidit (`created_at`, `linked_at` or `unlinked_at`), and `fact_date`, when it happened on the ground (`captured_on`, or the linked event's `occurred_date`). Imagery found after the fact keeps its capture date, so the two orders differ.
+**The rest of the state is computed too.** The last image is the latest captured one, with the provider of its links. The latest link effect is the effect of the linked event with the latest `occurred_date`. Both read at the request's date. No column stores an active or current status. Every computed read counts live links to events in `services/event_filters.site_linkable_events` (not soft-deleted, not withheld, `geolocated`), so a closed or withheld event drops out with no write to `event_site_links`.
+
+**History runs on two clocks.** [`GET /sites/{id}/history`](api.md#get-sitesidhistory) builds one feed from the five tables, with no log table of its own. Each entry carries `recorded_at`, when the fact entered Vidit (a row's `created_at`, `linked_at` or `unlinked_at`), and `fact_date`, when it happened on the ground (the capture day of an image or of the image a contour cites, or the linked event's `occurred_date`). Imagery found after the fact keeps its capture date, so the two orders differ.
+
+**A withheld site leaves every public read.** `hidden_at` drops the site out of the map, the event's site links, the suggestions, the overlap check and its own page; an admin still reads it. [`content_reports`](#content_reports) takes a site as its third target.
 
 ---
 
@@ -1265,10 +1315,11 @@ flowchart LR
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
-| `owner_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The analyst who created the site. Cascades like `collections.owner_id`, so an erasure takes the site, its observations and its links with it. |
-| `name` | `VARCHAR(255)` | NOT NULL. The width of `events.title`, from the shared `TITLE_MAX_LENGTH`. Fixed at create. |
-| `site_type` | `VARCHAR(30)` | NOT NULL, CHECK `ck_sites_site_type_valid` in `('airbase', 'military_base', 'depot', 'port', 'air_defence_position', 'artillery_position', 'radar', 'fortification', 'other')`, mirroring the `SiteType` alias in [`models/site.py`](../backend/app/models/site.py). Fixed at create. |
-| `hidden_at` | `TIMESTAMPTZ` | nullable. Takedown: NULL = visible, timestamp = withheld from every read but an admin's detail read. The same axis [`collections.hidden_at`](#collections) carries. No endpoint sets it. |
+| `owner_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The analyst who created the site, the one who edits its record and draws its contours. Cascades like `collections.owner_id`, so an erasure takes the site, its images, contours and links with it; the erasure sweeps the image files first. |
+| `name` | `VARCHAR(255)` | NOT NULL. The width of `events.title`, from the shared `TITLE_MAX_LENGTH`. Versioned. |
+| `kind` | `VARCHAR(30)` | NOT NULL, CHECK `ck_sites_kind_valid` in `('airbase', 'military_base', 'depot', 'port', 'air_defence_position', 'artillery_position', 'radar', 'fortification', 'unknown', 'other')`, mirroring the `SiteKind` alias in [`models/site.py`](../backend/app/models/site.py). Versioned. |
+| `version_no` | `INTEGER` | NOT NULL, default 1. The version the live record is. Each edit files the superseded record in `site_versions` and moves it on. |
+| `hidden_at` | `TIMESTAMPTZ` | nullable. Takedown: NULL = visible, timestamp = withheld from every read but an admin's. The same reversible axis [`collections.hidden_at`](#collections) carries. Set by `PATCH /admin/sites/{id}/moderation` with `hidden: true` or by resolving a site report as `hidden`, cleared by the same PATCH with `hidden: false`. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, SQLAlchemy `onupdate` stamp |
 
@@ -1279,28 +1330,42 @@ A site whose owner is soft-deleted reads as not found, like a collection.
 
 ---
 
-### `site_observations`
+### `site_versions`
 
-One dated zone of a site, proven by imagery a reader can reproduce: a public provider with its capture date, or a public URL.
+One superseded state of a site's record, on the pattern of [`event_versions`](#event_versions): read it as "the snapshots, then the live row". A site at `version_no` 3 carries rows 1 and 2 here.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `site_id` | `UUID` | FK → `sites.id` ON DELETE CASCADE, NOT NULL |
-| `author_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. Any signed-in analyst may add an observation; an erased author leaves the zone in place. |
-| `zone` | `GEOMETRY(POLYGON, 4326)` | NOT NULL. Every vertex passes the event coordinate bounds (`services/events.validate_coordinates`), and the polygon must be valid with a non-zero area. The API caps it at 1000 vertices. |
-| `captured_on` | `DATE` | NOT NULL. The imagery capture date. The API refuses a date after today (UTC). |
-| `imagery_provider` | `VARCHAR(20)` | NOT NULL, CHECK `ck_site_observations_imagery_provider_valid` in `('google_earth', 'sentinel_2', 'landsat', 'other')` |
-| `imagery_url` | `TEXT` | nullable. An `http` or `https` URL, up to 2000 characters at the API. Required when `imagery_provider` is `other` (`ck_site_observations_other_needs_url`). |
-| `effect` | `VARCHAR(30)` | NOT NULL, default `observed_no_change`, CHECK `ck_site_observations_effect_valid` in `('observed_no_change', 'construction_extension', 'no_visible_activity', 'reoccupation', 'other')`. What the imagery shows, never an intention. |
-| `note` | `TEXT` | nullable. Plain text, up to 2000 characters at the API. |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL. The `recorded_at` of the observation's history entry. |
+| `version_no` | `INTEGER` | NOT NULL. The version this row holds. |
+| `edited_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The owner whose edit superseded this version. |
+| `snapshot` | `JSONB` | NOT NULL. `{"name": ..., "kind": ...}` as they stood before the edit. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL. When the edit happened. |
 
-Two observations may share a `captured_on`; `created_at` orders them.
+**Unique constraint:** `uq_site_versions_site_no` on `(site_id, version_no)`. The writer takes the number off the locked site row. An edit that changes nothing files nothing, and a site carries at most 100 versions, the event ceiling (`services/versions.MAX_VERSIONS_PER_EVENT`).
+
+---
+
+### `site_contours`
+
+One zone the site's owner drew, citing the site image that shows it.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `UUID` | PK, default `uuid4()` |
+| `site_id` | `UUID` | FK → `sites.id` ON DELETE CASCADE, NOT NULL |
+| `source_id` | `UUID` | FK → `sources.id` ON DELETE CASCADE, NOT NULL. A site image of the same site; `services/sites.change_contour` checks it. Its `captured_at` is the date the contour holds from. |
+| `author_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The owner who drew it. |
+| `zone` | `GEOMETRY(POLYGON, 4326)` | NOT NULL. Every vertex passes the event coordinate bounds (`services/events.validate_coordinates`), and the polygon must be valid with a non-zero area. The API caps it at 1000 vertices. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL. The `recorded_at` of the contour's history entry. |
+
+The first contour comes with the site and its first image. A later contour may cite an older image: it then holds from that image's capture date, and the current zone stays the contour of the latest image.
 
 **Indexes:**
-- `idx_site_observations_zone`, GeoAlchemy2's default GIST index on `zone`.
-- `ix_site_observations_site_captured` on `(site_id, captured_on, created_at)`. Backs the pick of the zone valid on a date.
+- `idx_site_contours_zone`, GeoAlchemy2's default GIST index on `zone`.
+- `ix_site_contours_site_id` on `(site_id)`. Backs the pick of the zone valid on a date.
+- `ix_site_contours_source_id` on `(source_id)`. Backs the image cascade.
 
 ---
 
@@ -1313,13 +1378,13 @@ One period during which an event was linked to a site with one effect. A link is
 | `id` | `UUID` | PK, default `uuid4()` |
 | `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, NOT NULL |
 | `site_id` | `UUID` | FK → `sites.id` ON DELETE CASCADE, NOT NULL |
-| `effect` | `VARCHAR(20)` | NOT NULL, CHECK `ck_event_site_links_effect_valid` in `('damage', 'destruction', 'other')` |
+| `effect` | `VARCHAR(20)` | NOT NULL, CHECK `ck_event_site_links_effect_valid` in `('damage', 'destruction', 'activity', 'other')`. What the event shows at the site. `activity` is the neutral effect: activity observed, such as a column leaving or a launch. |
 | `linked_at` | `TIMESTAMPTZ` | NOT NULL, server_default `now()` |
-| `linked_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The event owner at link time; event ownership can move. |
+| `linked_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The event owner at link time; event ownership can move. A corroborating analyst of the site while the link is live. |
 | `unlinked_at` | `TIMESTAMPTZ` | nullable. NULL while the link is live. |
 | `unlinked_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The event owner at unlink time. |
 
-Only the event owner links or unlinks, and only a `geolocated`, visible event can be linked. An effect change stamps `unlinked_at` on the live row and inserts a new row whose `linked_at` equals it, in one transaction under the event row lock. The equal pair is how the history tells an effect change from an unlink.
+Only the event owner links or unlinks, and only a `geolocated`, visible event can be linked. An event links to several sites, one live link per site. An effect change stamps `unlinked_at` on the live row and inserts a new row whose `linked_at` equals it, in one transaction under the event row lock. The equal pair is how the history tells an effect change from an unlink.
 
 **Indexes:**
 - `uq_event_site_links_live`, unique on `(event_id, site_id)` WHERE `unlinked_at IS NULL`. One live link per event and site.

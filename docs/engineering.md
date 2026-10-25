@@ -342,7 +342,7 @@ Every other frontend copy of a backend rule or of the issue tracker is hand-kept
 | `lib/proof.tsx::proofImageSrcs`, `proofHasImage` | `sanitize.extract_image_srcs`, `events._require_proof_image` | form calls a proof ready that the server refuses |
 | `lib/conflicts.ts::CONFLICT_OTHER_NAME` | the `Other` conflict row the baseline migration seeds (`alembic/versions/g5i7k9m1o3q5_baseline.py`) | the conflict picker stops offering the escape value |
 | `lib/collections.ts::COLLECTABLE_STATUSES` | `event_filters.collectable_events` | picker offers rows the add verb refuses (409) |
-| `lib/sites.ts::SITE_NAME_MAX_LEN`, `SITE_NOTE_MAX_LEN`, `observationMissing` | `models/event.TITLE_MAX_LENGTH`, `schemas/site.NOTE_MAX_LENGTH`, `schemas/site.SiteObservationCreate` | the site forms accept a value the API refuses |
+| `lib/sites.ts::SITE_NAME_MAX_LEN`, `SITE_NOTE_MAX_LEN`, `observationMissing` | `models/event.TITLE_MAX_LENGTH`, `schemas/site.IMAGE_NOTE_MAX_LENGTH`, `schemas/site.SiteImageCreate` and `imagery.can_reopen` | the site forms accept a value the API refuses |
 | `lib/sites.ts::SITE_MARGIN_KM` | the `margin_m` default of `routers/sites` and `routers/events/sites` | the site page and the link dialog name a distance the reads do not use |
 | `components/sites/EventSitesBlock.tsx` link gate on `geolocated` | `event_filters.site_linkable_events` | the event page offers a link the API refuses (409) |
 | `components/collections/EventPicker.tsx::chronological` | `collections.chronological_key` | the picker orders a collection's events differently from its page |
@@ -386,7 +386,7 @@ Every table, column, constraint and API field follows these rules. The API field
 | Repeated table name | A column does not repeat its table name | `media.kind`, not `media.media_type` |
 | Discriminator | Name it `kind`, never `type` | `media.kind`, `notifications.kind` |
 | Post | Write "post", never "tweet" | `event_detections.from_post_id` |
-| Event source | `source` is reserved for event sources | `sources`, `source_links`, `source_tags`, `media.source_id` |
+| Source | `source` is reserved for a row of `sources`: an event's evidence or a site image | `sources`, `source_links`, `source_tags`, `media.source_id`, `site_contours.source_id` |
 | X handle | `x_handle`, with a prefix when the table holds another handle | `users.x_handle`, `bot_mentions.author_x_handle` |
 | Leading underscore | A column or field name never starts with one | `token_hash` |
 | Creation stamp | Every entity table has `created_at`. A join table has none. | `tags.created_at`, `conflicts.created_at` |
