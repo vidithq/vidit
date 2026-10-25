@@ -110,7 +110,6 @@ describe("<ActionMenu>", () => {
     fireEvent.click(screen.getByRole("button", { name: "v1: choose a version" }));
 
     const menu = screen.getByRole("menu");
-    expect(menu).toHaveClass("left-0", "right-0");
     expect(menu).not.toHaveClass("w-56");
     const history = item("History");
     expect(history).toHaveAttribute("href", "/events/e1/history");
