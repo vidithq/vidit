@@ -59,6 +59,7 @@ import {
   XGlyph,
 } from "@/components/ui/BrandGlyphs";
 import { ConflictChips, TagChips, TagPicker } from "@/components/ui/TagPicker";
+import { FieldLabel } from "@/components/ui/FieldLabel";
 import { EntityCard } from "@/components/ui/EntityCard";
 import { CollectionCover } from "@/components/collections/CollectionCover";
 import { DetectionQueueRow } from "@/components/detections/DetectionQueueRow";
@@ -105,7 +106,8 @@ import { TaxonomyLoadError } from "@/components/geolocations/TaxonomyLoadError";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { SourceBlock, SourceBlocks } from "@/components/sources/SourceBlock";
 import { SourcesField } from "@/components/sources/SourcesField";
-import { sourceDraftFrom, type Source, type SourceDraft } from "@/lib/sources";
+import { SOURCE_FIELDS, sourceDraftFrom, type Source, type SourceDraft } from "@/lib/sources";
+import { EVENT_FIELDS } from "@/lib/events";
 import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { SourceLabel } from "@/components/ui/SourceLabel";
@@ -956,6 +958,17 @@ export default function PalettePage() {
               <label className={`${FORM_LABEL} ${FORM_INVALID_LABEL}`}>
                 Invalid field label
               </label>
+            </div>
+          </Item>
+
+          <Item name="<FieldLabel>" usage="The label row over a form control, the edit side of a field table (EVENT_FIELDS in lib/events.ts, SOURCE_FIELDS in lib/sources.ts) whose read side is <DetailRow>: spread the table entry ({ label, concept }) into either, so a field reads under one name with one ? on the page and in the form. The words, then the ? outside the <label> (so the field's accessible name is the words alone), then trailing (a <CharCounter>, a LockedHint). htmlFor makes the words a <label>; without it they are a span, for a control that names itself (a segmented control, a switch, a file slot). invalid turns the row red with FORM_INVALID_LABEL. Every event form label, the source editor's, and the version note's take it.">
+            <div className="w-full max-w-sm space-y-3">
+              <FieldLabel {...EVENT_FIELDS.occurred_date} htmlFor="palette-field-label" />
+              <FieldLabel {...EVENT_FIELDS.coordinates} invalid />
+              <FieldLabel
+                {...SOURCE_FIELDS.title}
+                trailing={<CharCounter length={12} max={200} />}
+              />
             </div>
           </Item>
 

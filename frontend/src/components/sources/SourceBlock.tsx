@@ -10,7 +10,14 @@ import { LIST_TILE } from "@/components/ui/form-styles";
 import { META_LINE } from "@/components/ui/styles";
 import { cn } from "@/lib/cn";
 import { formatInstant, formatInstantOrDate, safeHostname } from "@/lib/format";
-import { isEvidenceLevel, LEVEL_LABELS, sourceKindLabel, type Source } from "@/lib/sources";
+import {
+  isEvidenceLevel,
+  LEVEL_LABELS,
+  SOURCE_FIELDS,
+  sourceKindLabel,
+  sourceName,
+  type Source,
+} from "@/lib/sources";
 
 import { SourcesRow } from "./SourcesRow";
 import { SourceWarnings } from "./SourceWarnings";
@@ -42,7 +49,7 @@ export function SourceBlock({
   compact?: boolean;
   wide?: boolean;
 }) {
-  const name = `Source ${index + 1}`;
+  const name = sourceName(index);
   const file = source.media === null && !isEvidenceLevel(source.level) ? null : (
     <MediaGallery
       media={source.media ? [source.media] : []}
@@ -83,19 +90,19 @@ function SourceRows({
   const links = source.links;
   return (
     <>
-      {source.title && <DetailRow label="Title" value={source.title} compact={compact} />}
-      <DetailRow label="Level" concept="source_level" compact={compact} align="center">
+      {source.title && <DetailRow {...SOURCE_FIELDS.title} value={source.title} compact={compact} />}
+      <DetailRow {...SOURCE_FIELDS.level} compact={compact} align="center">
         <Pill tone="neutral">{LEVEL_LABELS[source.level]}</Pill>
       </DetailRow>
-      {kind && <DetailRow label="Kind" concept="source_kind" compact={compact} value={kind} />}
+      {kind && <DetailRow {...SOURCE_FIELDS.kind} compact={compact} value={kind} />}
       {links.length > 0 && (
         <DetailRow
-          label={`Links (${links.length})`}
-          concept="source_links"
+          {...SOURCE_FIELDS.links}
+          label={`${SOURCE_FIELDS.links.label} (${links.length})`}
           compact={compact}
           align="start"
         >
-          <ul className="space-y-1.5 text-right" aria-label={`Links of source ${index + 1}`}>
+          <ul className="space-y-1.5 text-right" aria-label={`Links of ${sourceName(index).toLowerCase()}`}>
             {links.map((link, i) => (
               <li key={link.url}>
                 <div className="flex items-center justify-end">
@@ -113,19 +120,17 @@ function SourceRows({
           </ul>
         </DetailRow>
       )}
-      <SourceWarnings warnings={source.warnings} label={`Warnings of source ${index + 1}`} />
+      <SourceWarnings warnings={source.warnings} label={`Warnings of ${sourceName(index).toLowerCase()}`} />
       {source.captured_at && (
         <DetailRow
-          label="Captured"
-          concept="captured_at"
+          {...SOURCE_FIELDS.captured_at}
           compact={compact}
           value={formatInstant(source.captured_at)}
         />
       )}
       {position && (
         <DetailRow
-          label="Capture position"
-          concept="capture_position"
+          {...SOURCE_FIELDS.capture_position}
           compact={compact}
           align="center"
           wrapLabel
@@ -134,7 +139,7 @@ function SourceRows({
         </DetailRow>
       )}
       {source.tags.length > 0 && (
-        <DetailRow label="Tags" compact={compact} align="start">
+        <DetailRow {...SOURCE_FIELDS.tags} compact={compact} align="start">
           <DetailPills items={source.tags} compact={compact} />
         </DetailRow>
       )}

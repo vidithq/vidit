@@ -12,19 +12,15 @@ import {
 } from "@/components/ui/ArchivedCopies";
 import { DateTimeInput } from "@/components/ui/DateTimeInput";
 import { Disclosure } from "@/components/ui/Disclosure";
-import { FieldHelp } from "@/components/ui/FieldHelp";
+import { CharCounter } from "@/components/ui/CharCounter";
+import { FieldLabel } from "@/components/ui/FieldLabel";
 import { Card } from "@/components/ui/Card";
-import {
-  FORM_INVALID_FIELD,
-  FORM_INVALID_LABEL,
-  FORM_LABEL,
-  LABEL_TEXT,
-} from "@/components/ui/form-styles";
+import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 import { Input, Select } from "@/components/ui/Input";
 import { LinkListInput } from "@/components/ui/LinkListInput";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Switch } from "@/components/ui/Switch";
-import { TagChips } from "@/components/ui/TagPicker";
+import { TagsField } from "@/components/ui/TagPicker";
 import { cn } from "@/lib/cn";
 import { LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "@/lib/coordinates";
 import { safeHostname } from "@/lib/format";
@@ -34,7 +30,9 @@ import {
   hasCapturePosition,
   LEVEL_LABELS,
   MAX_LINKS_PER_SOURCE,
+  SOURCE_FIELDS,
   SOURCE_TITLE_MAX_LEN,
+  sourceName,
   SOURCE_URL_MAX_LEN,
   SOURCE_KIND_LABELS,
   SOURCE_KINDS,
@@ -47,10 +45,6 @@ import {
 import type { Media, Tag } from "@/types";
 
 import { SourceImageryCheck } from "./SourceImageryCheck";
-
-// A label and its `?` side by side. The `?` sits outside a `<label>`, so the field's accessible
-// name stays the label's words.
-const LABEL_ROW = "flex items-center gap-1";
 
 const LEVEL_OPTIONS = SOURCE_LEVELS.map((value) => ({ value, label: LEVEL_LABELS[value] }));
 
@@ -105,7 +99,7 @@ export function SourceEditor({
    *  the card is wide enough. */
   wide?: boolean;
 }) {
-  const name = `Source ${index + 1}`;
+  const name = sourceName(index);
   const id = (field: string) => `${draft.key}-${field}`;
   const file = draft.file;
   const hasFile = file !== null && file.state !== "failed";
@@ -129,9 +123,7 @@ export function SourceEditor({
 
   const fileSlot = (
     <div className="space-y-1.5">
-      <span className={cn(LABEL_ROW, LABEL_TEXT)}>
-        File <FieldHelp concept="source_file" />
-      </span>
+      <FieldLabel {...SOURCE_FIELDS.file} />
       <MediaManager
         existing={shown ? [shown] : []}
         onRemoveExisting={() => update({ file: null })}
@@ -156,9 +148,11 @@ export function SourceEditor({
   const essentials = (
     <div className="space-y-4">
       <div className="space-y-1.5">
-        <label htmlFor={id("title")} className={FORM_LABEL}>
-          Title
-        </label>
+        <FieldLabel
+          {...SOURCE_FIELDS.title}
+          htmlFor={id("title")}
+          trailing={<CharCounter length={draft.title.length} max={SOURCE_TITLE_MAX_LEN} />}
+        />
         <Input
           id={id("title")}
           // Named apart from the event's Title field and the other editors' titles.
@@ -171,9 +165,7 @@ export function SourceEditor({
       </div>
 
       <div className="space-y-1.5">
-        <span className={cn(LABEL_ROW, LABEL_TEXT)}>
-          Level <FieldHelp concept="source_level" />
-        </span>
+        <FieldLabel {...SOURCE_FIELDS.level} />
         <SegmentedControl<SourceLevel>
           aria-label={`${name} level`}
           options={LEVEL_OPTIONS}
@@ -184,12 +176,7 @@ export function SourceEditor({
       </div>
 
       <div className="space-y-1.5">
-        <span className={LABEL_ROW}>
-          <label htmlFor={id("kind")} className={cn(LABEL_TEXT, invalid.kind && FORM_INVALID_LABEL)}>
-            Kind
-          </label>
-          <FieldHelp concept="source_kind" />
-        </span>
+        <FieldLabel {...SOURCE_FIELDS.kind} htmlFor={id("kind")} invalid={invalid.kind} />
         <Select
           id={id("kind")}
           value={draft.kind}
@@ -226,9 +213,11 @@ export function SourceEditor({
             placeholder="https://t.me/channel/12345"
             invalid={invalid.link}
             heading={
-              <span className={LABEL_ROW}>
-                Links ({draftUrls(draft).length}) <FieldHelp concept="source_links" />
-              </span>
+              <FieldLabel
+                {...SOURCE_FIELDS.links}
+                label={`${SOURCE_FIELDS.links.label} (${draftUrls(draft).length})`}
+                invalid={invalid.link}
+              />
             }
             columns={[
               {
@@ -277,12 +266,7 @@ export function SourceEditor({
         onToggle={() => setDetailsOpen((open) => !open)}
       >
         <div className="space-y-1.5">
-          <span className={LABEL_ROW}>
-            <label htmlFor={id("captured_at")} className={LABEL_TEXT}>
-              Captured
-            </label>
-            <FieldHelp concept="captured_at" />
-          </span>
+          <FieldLabel {...SOURCE_FIELDS.captured_at} htmlFor={id("captured_at")} />
           <DateTimeInput
             id={id("captured_at")}
             type="datetime-local"
@@ -293,9 +277,7 @@ export function SourceEditor({
 
         {hasCapturePosition(draft.kind) && (
           <div className="space-y-1.5">
-            <span className={cn(LABEL_ROW, LABEL_TEXT)}>
-              Capture position <FieldHelp concept="capture_position" />
-            </span>
+            <FieldLabel {...SOURCE_FIELDS.capture_position} />
             <CoordinateInputs
               idPrefix={id("capture_")}
               required={false}
@@ -314,23 +296,20 @@ export function SourceEditor({
           </div>
         )}
 
-        <div className="space-y-1.5">
-          <span className={FORM_LABEL}>Tags</span>
-          <TagChips
-            tags={tags}
-            setTags={setTags}
-            selected={draft.tagIds}
-            setSelected={(tagIds) => update({ tagIds })}
-            owner={name}
-          />
-        </div>
+        <TagsField
+          tags={tags}
+          setTags={setTags}
+          selected={draft.tagIds}
+          setSelected={(tagIds) => update({ tagIds })}
+          owner={name}
+        />
 
         {/* A `span` label plus the switch's own name: not a labelable field. */}
         <div className="flex items-center justify-between gap-4">
-          <span className={cn(LABEL_ROW, LABEL_TEXT)}>
-            Graphic content <FieldHelp concept="graphic_content" />
-            {draft.graphicLocked && <LockedHint>admin only</LockedHint>}
-          </span>
+          <FieldLabel
+            {...SOURCE_FIELDS.is_graphic}
+            trailing={draft.graphicLocked && <LockedHint>admin only</LockedHint>}
+          />
           <Switch
             on={draft.isGraphic}
             onToggle={() => update({ isGraphic: !draft.isGraphic })}

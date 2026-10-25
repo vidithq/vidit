@@ -1,10 +1,10 @@
 "use client";
 
 import type { EventDetail } from "@/types";
-import { formatDate } from "@/lib/format";
+import { formatDate, hhmm } from "@/lib/format";
 import { formatCoordinates } from "@/lib/coordinates";
 import { conflictLabel } from "@/lib/conflicts";
-import { provenanceLabel } from "@/lib/events";
+import { EVENT_FIELDS, provenanceLabel } from "@/lib/events";
 import { renderProof } from "@/lib/proof";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { StatusBadge } from "@/components/event/StatusBadge";
@@ -52,14 +52,14 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
 
   const rows = (
     <>
-      <DetailRow label="Status" concept="status" compact={compact}>
+      <DetailRow {...EVENT_FIELDS.status} compact={compact}>
         <StatusBadge status={geo.status} />
       </DetailRow>
       {/* The closer's free-text reason and closing day stay publicly visible on a closed row (why a
           request was withdrawn, a detection rejected or a geolocation retracted), on every surface
           that renders one. */}
       {geo.status === "closed" && geo.close_reason && (
-        <DetailRow label="Reason" compact={compact} align="start">
+        <DetailRow {...EVENT_FIELDS.close_reason} compact={compact} align="start">
           <span
             className={`${compact ? "" : "text-sm"} text-neutral-300 whitespace-pre-wrap text-right`}
           >
@@ -68,11 +68,10 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
         </DetailRow>
       )}
       {geo.closed_at && (
-        <DetailRow label="Closed" compact={compact} value={formatDate(geo.closed_at)} />
+        <DetailRow {...EVENT_FIELDS.closed_at} compact={compact} value={formatDate(geo.closed_at)} />
       )}
       <DetailRow
-        label="Event date"
-        concept="occurred_date"
+        {...EVENT_FIELDS.occurred_date}
         compact={compact}
         value={geo.occurred_date ? formatDate(geo.occurred_date) : "Unknown"}
       />
@@ -80,24 +79,22 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
           shadows), so it must show even when the date is "Unknown". Only when set. */}
       {geo.occurred_time && (
         <DetailRow
-          label="Event time"
-          concept="occurred_time"
+          {...EVENT_FIELDS.occurred_time}
           compact={compact}
-          value={`${geo.occurred_time.slice(0, 5)} UTC`}
+          value={`${hhmm(geo.occurred_time)} UTC`}
         />
       )}
       {/* The two dates read as one block: event, then submitted. */}
       <DetailRow
-        label="Added"
-        concept="added"
+        {...EVENT_FIELDS.created_at}
         compact={compact}
         value={formatDate(geo.created_at)}
       />
       {/* The post a machine import read this row from, distinct from the sources (where the footage was posted). */}
       {geo.detected_from_url && (
         <DetailRow
+          {...EVENT_FIELDS.detected_from}
           label={provenanceLabel(!!geo.requested_by)}
-          concept="detected_from"
           compact={compact}
         >
           <span className="flex min-w-0 items-baseline justify-end">
@@ -110,7 +107,7 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
         </DetailRow>
       )}
       {geo.conflicts.length > 0 && (
-        <DetailRow label="Conflict" concept="conflict" compact={compact} align="start">
+        <DetailRow {...EVENT_FIELDS.conflicts} compact={compact} align="start">
           <DetailPills
             items={geo.conflicts.map((c) => ({ id: c.id, name: conflictLabel(c) }))}
             compact={compact}
@@ -118,14 +115,14 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
         </DetailRow>
       )}
       {geo.tags.length > 0 && (
-        <DetailRow label="Tags" compact={compact} align="start">
+        <DetailRow {...EVENT_FIELDS.tags} compact={compact} align="start">
           <DetailPills items={geo.tags} compact={compact} />
         </DetailRow>
       )}
       {/* The trace belongs to the full page. Fulfilment is a lifecycle move on this row, so the
           trace is who opened the request (`requested_by`). */}
       {!compact && geo.requested_by && (
-        <DetailRow label="Requested by" concept="requested_by" compact={compact}>
+        <DetailRow {...EVENT_FIELDS.requested_by} compact={compact}>
           <AuthorByline author={geo.requested_by} prefix={false} className="text-sm" />
         </DetailRow>
       )}
@@ -140,8 +137,7 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
         <div className="space-y-2">
           <SectionEyebrow as="h3" margin="none" {...EVENT_SECTIONS.location} />
           <DetailRow
-            label="Coordinates"
-            concept="coordinates"
+            {...EVENT_FIELDS.coordinates}
             compact
             className="text-sm"
           >

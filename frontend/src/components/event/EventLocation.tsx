@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 
 import type { EventDetail } from "@/types";
+import { EVENT_FIELDS } from "@/lib/events";
 import { CoordinateValue } from "@/components/event/CoordinateActions";
 import type { EventSlot } from "@/components/event/EventLayout";
 import { DetailRow } from "@/components/ui/DetailRow";
@@ -52,8 +53,7 @@ function EventLocation({
           />
         </div>
         <DetailRow
-          label="Coordinates"
-          concept="coordinates"
+          {...EVENT_FIELDS.coordinates}
           align="center"
           wrapLabel
           className="border-t border-neutral-800 bg-neutral-900 rounded-b-lg"

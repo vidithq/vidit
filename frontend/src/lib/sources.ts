@@ -3,6 +3,7 @@ import type { components } from "./api-types";
 import { coordinatePair, LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "./coordinates";
 import type { SourceFloorState } from "./events";
 import { toDatetimeLocalUTC } from "./format";
+import type { FieldName } from "./fieldHelp";
 import type { ArchivedLink, Media } from "@/types";
 
 /** One source of an event, in the event's derived order (level, then capture time). */
@@ -18,6 +19,23 @@ export type SourceWarning = Source["warnings"][number];
 export type SourceCheck = components["schemas"]["SourceCheckRead"];
 export type ImageryProvider = components["schemas"]["ImageryProviderRead"];
 type ImageryKind = components["schemas"]["SourceCheck"]["kind"];
+
+/** Each source field's name and `?`, for the source block's rows and the editor's labels. The
+ *  key order is the order both read in; the block has no file row and no graphic row. */
+export const SOURCE_FIELDS = {
+  file: { label: "File", concept: "source_file" },
+  title: { label: "Title" },
+  level: { label: "Level", concept: "source_level" },
+  kind: { label: "Kind", concept: "source_kind" },
+  links: { label: "Links", concept: "source_links" },
+  captured_at: { label: "Captured", concept: "captured_at" },
+  capture_position: { label: "Capture position", concept: "capture_position" },
+  tags: { label: "Tags" },
+  is_graphic: { label: "Graphic content", concept: "graphic_content" },
+} as const satisfies Record<string, FieldName>;
+
+/** A source's name by its position in the event ("Source 2"). */
+export const sourceName = (index: number): string => `Source ${index + 1}`;
 
 /** Keyed by the generated union, so a level the backend adds fails the type-check. */
 export const LEVEL_LABELS: Record<SourceLevel, string> = {

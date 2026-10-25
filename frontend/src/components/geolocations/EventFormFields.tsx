@@ -11,17 +11,14 @@ import {
 import type { EventLayoutSlots } from "@/components/event/EventLayout";
 
 import { TitleField } from "@/components/geolocations/TitleField";
-import {
-  TaxonomyFields,
-  useTaxonomy,
-  type TaxonomyState,
-} from "@/components/geolocations/TaxonomyFields";
+import { useTaxonomy, type TaxonomyState } from "@/components/geolocations/TaxonomyFields";
 import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
 import { LocationPicker } from "@/components/geolocations/new/LocationPicker";
 import { PROOF_GUIDE_LINK, ProofEditorPanel } from "@/components/geolocations/new/ProofEditorPanel";
 import { SourcesField } from "@/components/sources/SourcesField";
 import { useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { cleanNumber } from "@/lib/coordinates";
+import { hhmm } from "@/lib/format";
 import {
   missingEventFields,
   missingEventRequestFields,
@@ -105,7 +102,7 @@ export function useEventForm(row?: EventDetail | null): EventFormState {
   const [sources, setSources] = useState<SourceDraft[]>(() => seedSources(seed));
   const [eventDate, setEventDate] = useState(seed?.occurred_date ?? "");
   // The time input drops seconds: a value equal to its seed is untouched.
-  const seededEventTime = seed?.occurred_time?.slice(0, 5) ?? "";
+  const seededEventTime = seed?.occurred_time ? hhmm(seed.occurred_time) : "";
   const [eventTime, setEventTime] = useState(seededEventTime);
   const [proof, setProof] = useState<string | null>(seed?.proof ?? null);
   const [proofFiles, setProofFiles] = useState<File[]>([]);
@@ -264,16 +261,13 @@ export function eventFormSlots(
             setEventTime={form.setEventTime}
             detectedFromUrl={showProvenance ? row?.detected_from_url : undefined}
             openedAsRequest={!!row?.requested_by}
-          >
-            <TaxonomyFields
-              taxonomy={form.taxonomy}
-              selectedTagIds={form.selectedTagIds}
-              setSelectedTagIds={form.setSelectedTagIds}
-              selectedConflictIds={form.selectedConflictIds}
-              setSelectedConflictIds={form.setSelectedConflictIds}
-              conflictInvalid={invalidKeys.has("conflict_tag")}
-            />
-          </DetailsFields>
+            taxonomy={form.taxonomy}
+            selectedTagIds={form.selectedTagIds}
+            setSelectedTagIds={form.setSelectedTagIds}
+            selectedConflictIds={form.selectedConflictIds}
+            setSelectedConflictIds={form.setSelectedConflictIds}
+            conflictInvalid={invalidKeys.has("conflict_tag")}
+          />
         ),
         invalid: invalidKeys.has("conflict_tag"),
       },

@@ -4,17 +4,13 @@ import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from
 
 import { apiFetch } from "@/lib/api";
 import { useApiResource } from "@/hooks/useApiResource";
-import { TagPicker } from "@/components/ui/TagPicker";
-import { TaxonomyLoadError } from "@/components/geolocations/TaxonomyLoadError";
 import type { Conflict, Tag } from "@/types";
 
 /**
- * The tag and conflict block the event forms carry: the two taxonomy fetches, the conflicts'
- * retryable failure banner, and the `TagPicker`.
- *
- * `useTaxonomy` owns the fetches and says whether the taxonomy is usable (the forms need the
- * conflicts before the floor can be judged); `TaxonomyFields` renders it. The form keeps the
- * selection state. The source editors read the same tag list.
+ * The two taxonomy fetches the event forms read: `useTaxonomy` owns them and says whether the
+ * taxonomy is usable (the forms need the conflicts before the floor can be judged). The Details
+ * card (`DetailsFields`) renders them; the form keeps the selection state. The source editors
+ * read the same tag list.
  */
 
 export interface TaxonomyState {
@@ -57,37 +53,4 @@ export function useTaxonomy(): TaxonomyState {
         : "Still loading the required Conflict options. Give it a moment and try again.";
 
   return { conflicts, blockedMessage, tags, setTags, reloadConflicts, conflictsError };
-}
-
-export function TaxonomyFields({
-  taxonomy,
-  selectedTagIds,
-  setSelectedTagIds,
-  selectedConflictIds,
-  setSelectedConflictIds,
-  conflictInvalid,
-}: {
-  taxonomy: TaxonomyState;
-  selectedTagIds: string[];
-  setSelectedTagIds: Dispatch<SetStateAction<string[]>>;
-  selectedConflictIds: string[];
-  setSelectedConflictIds: Dispatch<SetStateAction<string[]>>;
-  /** Flag the conflict group blocking publish (red label + outline). */
-  conflictInvalid?: boolean;
-}) {
-  return (
-    <>
-      {taxonomy.conflictsError && <TaxonomyLoadError onRetry={taxonomy.reloadConflicts} />}
-      <TagPicker
-        tags={taxonomy.tags}
-        setTags={taxonomy.setTags}
-        selectedTagIds={selectedTagIds}
-        setSelectedTagIds={setSelectedTagIds}
-        conflicts={taxonomy.conflicts}
-        selectedConflictIds={selectedConflictIds}
-        setSelectedConflictIds={setSelectedConflictIds}
-        conflictInvalid={conflictInvalid}
-      />
-    </>
-  );
 }

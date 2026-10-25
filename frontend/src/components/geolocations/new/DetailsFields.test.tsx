@@ -10,6 +10,18 @@ const baseProps = {
   setEventDate: () => {},
   eventTime: "",
   setEventTime: () => {},
+  taxonomy: {
+    conflicts: [],
+    blockedMessage: null,
+    tags: [],
+    setTags: () => {},
+    reloadConflicts: () => {},
+    conflictsError: null,
+  },
+  selectedTagIds: [],
+  setSelectedTagIds: () => {},
+  selectedConflictIds: [],
+  setSelectedConflictIds: () => {},
 };
 
 // The locked box's muted text colour, the one token the link overrides.

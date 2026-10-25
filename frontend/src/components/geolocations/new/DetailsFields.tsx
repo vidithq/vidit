@@ -1,12 +1,14 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { Dispatch, SetStateAction } from "react";
 
-import { DateTimeInput } from "@/components/ui/DateTimeInput";
-import { FORM_LABEL, LABEL_TEXT } from "@/components/ui/form-styles";
-import { FieldHelp } from "@/components/ui/FieldHelp";
+import type { TaxonomyState } from "@/components/geolocations/TaxonomyFields";
+import { TaxonomyLoadError } from "@/components/geolocations/TaxonomyLoadError";
 import { Card } from "@/components/ui/Card";
-import { provenanceLabel } from "@/lib/events";
+import { DateTimeInput } from "@/components/ui/DateTimeInput";
+import { FieldLabel } from "@/components/ui/FieldLabel";
+import { TagPicker } from "@/components/ui/TagPicker";
+import { EVENT_FIELDS, provenanceLabel } from "@/lib/events";
 import { LockedHint } from "./LockedHint";
 import { LockedUrl } from "./LockedUrl";
 
@@ -21,12 +23,19 @@ interface DetailsFieldsProps {
   detectedFromUrl?: string | null;
   /** The row carries `requested_by`: the link reads "Requested from". */
   openedAsRequest?: boolean;
-  /** The classification fields (conflict, tags), last in the card. */
-  children?: ReactNode;
+  /** The two catalogue fetches (`useTaxonomy`) the conflict and tag fields pick from. */
+  taxonomy: TaxonomyState;
+  selectedTagIds: string[];
+  setSelectedTagIds: Dispatch<SetStateAction<string[]>>;
+  selectedConflictIds: string[];
+  setSelectedConflictIds: Dispatch<SetStateAction<string[]>>;
+  /** Flags the conflict a publish misses (red label and outline). */
+  conflictInvalid?: boolean;
 }
 
 /** The Details card of every event form, in the order of the event page's Details card: when
- *  the event happened, the provenance link of an imported row, then the classification. */
+ *  the event happened, the provenance link of an imported row, then the conflicts and the tags,
+ *  under the conflicts' retryable load error. */
 export function DetailsFields({
   eventDate,
   setEventDate,
@@ -34,7 +43,12 @@ export function DetailsFields({
   setEventTime,
   detectedFromUrl,
   openedAsRequest = false,
-  children,
+  taxonomy,
+  selectedTagIds,
+  setSelectedTagIds,
+  selectedConflictIds,
+  setSelectedConflictIds,
+  conflictInvalid = false,
 }: DetailsFieldsProps) {
   return (
     <Card>
@@ -42,12 +56,7 @@ export function DetailsFields({
       <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4">
         {/* Optional: an empty date reads as "Unknown". */}
         <div className="space-y-1.5">
-          <span className="flex items-center gap-1">
-            <label htmlFor="occurred_date" className={LABEL_TEXT}>
-              Event date
-            </label>
-            <FieldHelp concept="occurred_date" />
-          </span>
+          <FieldLabel {...EVENT_FIELDS.occurred_date} htmlFor="occurred_date" />
           <DateTimeInput
             id="occurred_date"
             type="date"
@@ -56,12 +65,7 @@ export function DetailsFields({
           />
         </div>
         <div className="space-y-1.5">
-          <span className="flex items-center gap-1">
-            <label htmlFor="occurred_time" className={LABEL_TEXT}>
-              Event time
-            </label>
-            <FieldHelp concept="occurred_time" />
-          </span>
+          <FieldLabel {...EVENT_FIELDS.occurred_time} htmlFor="occurred_time" />
           <DateTimeInput
             id="occurred_time"
             type="time"
@@ -74,14 +78,25 @@ export function DetailsFields({
       {/* Always locked and populated, so always the link form. */}
       {detectedFromUrl && (
         <div className="space-y-1.5">
-          <span className={FORM_LABEL}>
-            {provenanceLabel(openedAsRequest)} <FieldHelp concept="detected_from" />
-            <LockedHint>provenance, can&apos;t change</LockedHint>
-          </span>
+          <FieldLabel
+            {...EVENT_FIELDS.detected_from}
+            label={provenanceLabel(openedAsRequest)}
+            trailing={<LockedHint>provenance, can&apos;t change</LockedHint>}
+          />
           <LockedUrl href={detectedFromUrl} />
         </div>
       )}
-      {children}
+      {taxonomy.conflictsError && <TaxonomyLoadError onRetry={taxonomy.reloadConflicts} />}
+      <TagPicker
+        tags={taxonomy.tags}
+        setTags={taxonomy.setTags}
+        selectedTagIds={selectedTagIds}
+        setSelectedTagIds={setSelectedTagIds}
+        conflicts={taxonomy.conflicts}
+        selectedConflictIds={selectedConflictIds}
+        setSelectedConflictIds={setSelectedConflictIds}
+        conflictInvalid={conflictInvalid}
+      />
     </Card>
   );
 }

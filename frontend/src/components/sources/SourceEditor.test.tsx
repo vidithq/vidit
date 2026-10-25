@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, type Mock } from "vitest";
 
 import { apiFetch } from "@/lib/api";
-import { newSourceDraft, sourceDraftFrom, type SourceDraft } from "@/lib/sources";
+import { newSourceDraft, SOURCE_FIELDS, sourceDraftFrom, type SourceDraft } from "@/lib/sources";
 import { source } from "@/test/eventDetail";
 import type { Tag } from "@/types";
 
@@ -198,7 +198,10 @@ describe("SourceEditor", () => {
 
   it("reads in the order of the event page's source block, the rest under More details", () => {
     render(<Host initial={newSourceDraft()} />);
-    const order = ["File", "Title", "Level", "Kind", "Links", "More details"].map(
+    // The table's order up to the links; the rest sits under More details.
+    const labels = Object.values(SOURCE_FIELDS).map(({ label }) => label);
+    const essentials = labels.slice(0, labels.indexOf(SOURCE_FIELDS.links.label) + 1);
+    const order = [...essentials, "More details"].map(
       (text) => screen.getByText(text, { exact: false, selector: "span, label, button" })
     );
     for (let i = 1; i < order.length; i++) {

@@ -15,6 +15,7 @@ import {
   isEvidenceLevel,
   MAX_SOURCES_PER_EVENT,
   newSourceDraft,
+  sourceName,
   uploadError,
   uploadsRunning,
   uploadSourceFile,
@@ -152,7 +153,8 @@ function RemoveSource({ index, onRemove }: { index: number; onRemove: () => void
     timeoutMs: ARM_MS,
     dismissOnOutside: true,
   });
-  const label = armed ? `Confirm removing source ${index + 1}` : `Remove source ${index + 1}`;
+  const name = sourceName(index).toLowerCase();
+  const label = armed ? `Confirm removing ${name}` : `Remove ${name}`;
   return (
     <Button
       ref={controlRef}

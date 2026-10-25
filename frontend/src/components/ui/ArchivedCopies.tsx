@@ -16,7 +16,7 @@ import {
   snapshotProvider,
   WAYBACK_HOST,
 } from "@/lib/snapshots";
-import { SOURCE_URL_MAX_LEN } from "@/lib/sources";
+import { SOURCE_URL_MAX_LEN, sourceName } from "@/lib/sources";
 
 interface ArchivedCopiesProps {
   copy: ArchivedLink | null;
@@ -315,7 +315,7 @@ export function linkDescription(
   linkIndex: number,
   linkCount: number
 ): string {
-  const parts = [`source ${sourceIndex + 1}`];
+  const parts = [sourceName(sourceIndex).toLowerCase()];
   if (linkCount > 1) parts.push(`link ${linkIndex + 1}`);
   parts.push(hostname.trim() || "this link");
   return parts.join(", ");

@@ -152,3 +152,10 @@ export const FIELD_HELP = {
 
 /** A concept key: the single argument every `<FieldHelp>` takes. */
 export type Concept = keyof typeof FIELD_HELP;
+
+/** A field's name and its `?`, as a field table holds them (`EVENT_FIELDS`, `SOURCE_FIELDS`):
+ *  the read side's `DetailRow` and the edit side's `FieldLabel` both take it. */
+export interface FieldName {
+  label: string;
+  concept?: Concept;
+}

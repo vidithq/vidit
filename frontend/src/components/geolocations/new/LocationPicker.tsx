@@ -2,9 +2,8 @@
 
 import { CoordinateInputs } from "@/components/geolocations/CoordinateInputs";
 import { Card } from "@/components/ui/Card";
-import { FieldHelp } from "@/components/ui/FieldHelp";
-import { FORM_INVALID_LABEL, LABEL_TEXT } from "@/components/ui/form-styles";
-import { cn } from "@/lib/cn";
+import { FieldLabel } from "@/components/ui/FieldLabel";
+import { EVENT_FIELDS } from "@/lib/events";
 
 interface LocationPickerProps {
   lat: string;
@@ -21,9 +20,7 @@ export function LocationPicker({ lat, setLat, lng, setLng, invalid = false }: Lo
   return (
     <Card>
       <div className="space-y-1.5">
-        <span className={cn("flex items-center gap-1", LABEL_TEXT, invalid && FORM_INVALID_LABEL)}>
-          Coordinates <FieldHelp concept="coordinates" />
-        </span>
+        <FieldLabel {...EVENT_FIELDS.coordinates} invalid={invalid} />
         <CoordinateInputs lat={lat} setLat={setLat} lng={lng} setLng={setLng} invalid={invalid} />
       </div>
     </Card>

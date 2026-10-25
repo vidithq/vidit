@@ -9,9 +9,8 @@ import { ApiError, apiFetch } from "@/lib/api";
 import { Combobox } from "@/components/ui/Combobox";
 import { Pill } from "@/components/ui/Pill";
 import { Switch } from "@/components/ui/Switch";
-import { FieldHelp } from "@/components/ui/FieldHelp";
-import { FORM_INVALID_LABEL, FORM_LABEL, LABEL_TEXT } from "@/components/ui/form-styles";
-import { cn } from "@/lib/cn";
+import { FieldLabel } from "@/components/ui/FieldLabel";
+import { EVENT_FIELDS } from "@/lib/events";
 
 // Mirrors `schemas/tag.py` `TagCreate.name` (the `String(100)` cap); change both.
 const TAG_NAME_MAX_LEN = 100;
@@ -56,16 +55,42 @@ export function TagPicker({
         />
       )}
 
-      <div className="space-y-1.5">
-        <span className={FORM_LABEL}>Tags</span>
-        <TagChips
-          tags={tags}
-          setTags={setTags}
-          selected={selectedTagIds}
-          setSelected={setSelectedTagIds}
-        />
-      </div>
+      <TagsField
+        tags={tags}
+        setTags={setTags}
+        selected={selectedTagIds}
+        setSelected={setSelectedTagIds}
+      />
     </>
+  );
+}
+
+/** A form's **Tags** field: its label over `<TagChips>`. The Details card and each source editor
+ *  carry it. */
+export function TagsField({
+  tags,
+  setTags,
+  selected,
+  setSelected,
+  owner,
+}: {
+  tags: Tag[];
+  setTags: Dispatch<SetStateAction<Tag[]>>;
+  selected: string[];
+  setSelected: (next: string[]) => void;
+  owner?: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <FieldLabel {...EVENT_FIELDS.tags} />
+      <TagChips
+        tags={tags}
+        setTags={setTags}
+        selected={selected}
+        setSelected={setSelected}
+        owner={owner}
+      />
+    </div>
   );
 }
 
@@ -289,7 +314,7 @@ export function ConflictChips({
         onRemove={(removed) => setSelected(selected.filter((k) => k !== removed))}
       />
       <Combobox
-        aria-label="Conflict"
+        aria-label={EVENT_FIELDS.conflicts.label}
         placeholder="Search conflicts"
         invalid={invalid}
         className={filter ? "max-w-xs" : undefined}
@@ -317,9 +342,7 @@ export function ConflictChips({
   return (
     <div className="space-y-1.5">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-        <span className={cn("flex items-center gap-1", LABEL_TEXT, invalid && FORM_INVALID_LABEL)}>
-          Conflict <FieldHelp concept="conflict" />
-        </span>
+        <FieldLabel {...EVENT_FIELDS.conflicts} invalid={invalid} />
         <button
           type="button"
           role="switch"

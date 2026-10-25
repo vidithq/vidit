@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { SourceBlock, SourceBlocks } from "./SourceBlock";
 import { source } from "@/test/eventDetail";
-import type { Source } from "@/lib/sources";
+import { SOURCE_FIELDS, type Source } from "@/lib/sources";
 
 const ALT = "Strike on a depot";
 
@@ -118,15 +118,13 @@ describe("SourceBlock", () => {
       capture_position: { lat: 48.02, lng: 37.79 },
       tags: [{ id: "t1", name: "armor" }],
     });
-    expect(rowLabels(block)).toEqual([
-      "Title",
-      "Level",
-      "Kind",
-      "Links (1)",
-      "Captured",
-      "Capture position",
-      "Tags",
-    ]);
+    // The table's order, less the file (the lead slot) and the graphic flag (the gate).
+    const { file: _file, is_graphic: _graphic, ...rows } = SOURCE_FIELDS;
+    expect(rowLabels(block)).toEqual(
+      Object.values(rows).map(({ label }) =>
+        label === SOURCE_FIELDS.links.label ? `${label} (1)` : label
+      )
+    );
     expect(within(block).getByText("1 Jun 2026, 09:30 UTC")).toBeInTheDocument();
     expect(within(block).getByText("48.0200, 37.7900")).toBeInTheDocument();
     expect(within(block).getByRole("button", { name: "Copy coordinates" })).toBeInTheDocument();

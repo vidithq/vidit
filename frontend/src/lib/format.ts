@@ -67,6 +67,11 @@ export function formatInstantOrDate(iso: string): string {
   return d.getTime() % DAY_MS === 0 ? formatInstantDate(iso) : formatInstant(iso);
 }
 
+/** A time of day as `HH:MM`: the API serves `HH:MM:SS`, a time input holds `HH:MM`. */
+export function hhmm(time: string): string {
+  return time.slice(0, 5);
+}
+
 /** An ISO instant as the UTC value an `<input type="datetime-local">` expects
  * ("YYYY-MM-DDTHH:MM"); empty on null or unparseable input. */
 export function toDatetimeLocalUTC(iso: string | null): string {

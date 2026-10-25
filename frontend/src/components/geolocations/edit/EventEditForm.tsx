@@ -16,7 +16,8 @@ import {
 import { WRITE_FALLBACK, useEventWrite, writeGroup } from "@/components/geolocations/useEventWrite";
 import { Ban, Save } from "lucide-react";
 
-import { FieldHelp } from "@/components/ui/FieldHelp";
+import { CharCounter } from "@/components/ui/CharCounter";
+import { FieldLabel } from "@/components/ui/FieldLabel";
 import { LABEL_TEXT } from "@/components/ui/form-styles";
 import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import { Button } from "@/components/ui/Button";
@@ -314,12 +315,12 @@ function VersionNotePanel({
   return (
     <>
       <div className="space-y-1.5 px-1">
-        <span className="flex items-center gap-1">
-          <label htmlFor="version_note" className={LABEL_TEXT}>
-            Version note
-          </label>
-          <FieldHelp concept="version_note" />
-        </span>
+        <FieldLabel
+          label="Version note"
+          concept="version_note"
+          htmlFor="version_note"
+          trailing={<CharCounter length={note.length} max={VERSION_NOTE_MAX_LEN} />}
+        />
         <Input
           id="version_note"
           type="text"

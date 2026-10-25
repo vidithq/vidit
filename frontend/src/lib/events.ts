@@ -3,6 +3,7 @@ import type { components, operations } from "@/lib/api-types";
 import { archiveTooLarge } from "./archive";
 import { appendEventFilterParams, type EventFilterParams } from "./search";
 import { cleanNumber, inBounds } from "./coordinates";
+import { hhmm } from "./format";
 import { proofHasImage } from "./proof";
 import { snapshotProvider } from "./snapshots";
 import {
@@ -20,6 +21,7 @@ import type {
   Media,
   TweetImportOutcome,
 } from "@/types";
+import type { FieldName } from "./fieldHelp";
 import { withCursor } from "./pagination";
 import { eventHref } from "./routes";
 
@@ -39,16 +41,33 @@ export interface MissingField {
   label: string;
 }
 
+/** Each event field's name and `?`, for the event page's rows and the forms' labels. The key
+ *  order is the order the page reads them in: the title, the location, then the Details card. */
+export const EVENT_FIELDS = {
+  title: { label: "Title", concept: "title" },
+  coordinates: { label: "Coordinates", concept: "coordinates" },
+  status: { label: "Status", concept: "status" },
+  close_reason: { label: "Reason" },
+  closed_at: { label: "Closed" },
+  occurred_date: { label: "Event date", concept: "occurred_date" },
+  occurred_time: { label: "Event time", concept: "occurred_time" },
+  created_at: { label: "Added", concept: "added" },
+  detected_from: { label: "Detected from", concept: "detected_from" },
+  conflicts: { label: "Conflict", concept: "conflict" },
+  tags: { label: "Tags" },
+  requested_by: { label: "Requested by", concept: "requested_by" },
+} as const satisfies Record<string, FieldName>;
+
 /** One label per field key, read by the validators. */
 export const FIELD_LABELS: Record<MissingFieldKey, string> = {
-  title: "Title",
-  coordinates: "Coordinates",
+  title: EVENT_FIELDS.title.label,
+  coordinates: EVENT_FIELDS.coordinates.label,
   source_file: "Source file",
   source_link: "Source URL",
   source_kind: "Source kind",
   proof: "Proof",
   proof_image: "Proof image",
-  conflict_tag: "Conflict",
+  conflict_tag: EVENT_FIELDS.conflicts.label,
 };
 
 /** Mirrors `models/event.TITLE_MAX_LENGTH`; change both. */
@@ -270,13 +289,13 @@ export function versionLabel(
  *  `services/versions.build_snapshot` files; `archives` is the sources' archived copies, named
  *  apart since a copy is recorded without changing what a source says. */
 const VERSION_FIELD_LABELS = {
-  title: "Title",
+  title: EVENT_FIELDS.title.label,
   sources: "Sources",
-  coords: "Coordinates",
-  occurred_date: "Event date",
-  occurred_time: "Event time",
-  conflicts: "Conflict",
-  tags: "Tags",
+  coords: EVENT_FIELDS.coordinates.label,
+  occurred_date: EVENT_FIELDS.occurred_date.label,
+  occurred_time: EVENT_FIELDS.occurred_time.label,
+  conflicts: EVENT_FIELDS.conflicts.label,
+  tags: EVENT_FIELDS.tags.label,
   archives: "Archived copies",
   proof: "Proof",
 } as const;
@@ -419,7 +438,7 @@ const sameList = (a: readonly string[], b: readonly string[]): boolean =>
 
 /** Same time to the minute: the API serves `HH:MM:SS`, the time input holds `HH:MM`. */
 const sameTime = (a: string | null, b: string | null): boolean =>
-  (a?.slice(0, 5) ?? null) === (b?.slice(0, 5) ?? null);
+  (a === null ? null : hhmm(a)) === (b === null ? null : hhmm(b));
 
 /** Same members in any order (the API serves tags and conflicts unordered). */
 const sameSet = (a: readonly string[], b: readonly string[]): boolean =>
@@ -826,7 +845,7 @@ export function batchCompletionBlockers(geo: {
  *  well as detections; `requested_by` survives fulfilment, so a bot-opened request keeps its label
  *  once someone geolocates it. */
 export function provenanceLabel(openedAsRequest: boolean): string {
-  return openedAsRequest ? "Requested from" : "Detected from";
+  return openedAsRequest ? "Requested from" : EVENT_FIELDS.detected_from.label;
 }
 
 /** `POST /events/{id}/close`: withdraw a request, reject a detection, or retract a
