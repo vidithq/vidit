@@ -1194,7 +1194,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<Dot>" usage="The orange notification dot: the rail's identity row, the profile's detections entry, the map filter panel's in-flight pulse. Position / ring / size via className.">
+          <Item name="<Dot>" usage="The orange notification dot: the rail's identity row, the profile's detections entry, the map filter panel's in-flight pulse, the position dots of a carousel <HorizontalScroller> (grey except the current one). Position / ring / size / colour via className.">
             <Variant label="bare">
               <Dot />
             </Variant>
@@ -1850,7 +1850,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<HorizontalScroller>" usage="A row of same-width items that scrolls sideways (components/ui/HorizontalScroller.tsx): native overflow scrolling with one snap point per item, focusable so the arrow keys scroll it. Two items fit once the row is 32rem wide; below that one fits and the next peeks. With more than one item, the header shows the shown range (1 to 2 of 5) and previous and next ghost icon buttons that scroll by one item, without smoothing under prefers-reduced-motion, and go inert at the ends. The event page's sources row is its consumer.">
+          <Item name="<HorizontalScroller>" usage="A row of same-width items that scrolls sideways (components/ui/HorizontalScroller.tsx): native overflow scrolling with one snap point per item, so a swipe moves it, focusable so the arrow keys scroll it. In the row variant, two items fit once the row is 32rem wide; below that one fits and the next peeks. With more than one item, the header shows the shown range (1 to 2 of 5) and previous and next ghost icon buttons that scroll by one item, without smoothing under prefers-reduced-motion, go inert at the ends, and step on the left and right keys. The carousel variant shows one item at full width, the position (2 / 3) between the buttons, and one dot per item under the row, the current one accent; a dot shows its item. `actions` adds header controls after the buttons at any item count, and a ref's show(index) scrolls an item into view. The event page's sources row is the row consumer; <SourcesField> is the carousel consumer.">
             <div className="w-full max-w-2xl">
               <HorizontalScroller
                 heading={<SectionEyebrow margin="none" title="Sources (3)" />}
@@ -1863,9 +1863,25 @@ export default function PalettePage() {
                 ))}
               </HorizontalScroller>
             </div>
+            <Variant label="carousel">
+              <div className="w-full max-w-md">
+                <HorizontalScroller
+                  variant="carousel"
+                  heading={<SectionEyebrow margin="none" title="Sources" />}
+                  label="Sources"
+                  previousLabel="Previous source"
+                  nextLabel="Next source"
+                  dotLabel={(index) => `Show source ${index + 1}`}
+                >
+                  {[MOCK_SOURCE, MOCK_CONTEXT_SOURCE, MOCK_SATELLITE_SOURCE].map((source, index) => (
+                    <SourceBlock key={index} source={source} index={index} alt="Strike on a depot" />
+                  ))}
+                </HorizontalScroller>
+              </div>
+            </Variant>
           </Item>
 
-          <Item name="<SourcesField> / <SourceEditor>" usage="The Sources section of every event form (components/sources/): one <SourceEditor> per source in a LIST_TILE, holding the file slot (MediaManager on <FileManager>; a pick uploads at once through POST /uploads), the level (<SegmentedControl>), the kind (<Select>, required on every source), the capture time (<DateTimeInput>), the capture position (CoordinateInputs, hidden for an article, an official statement or another document), the links (<LinkListInput> with the archive pair and each link's post time, then <SourceImageryCheck> on a satellite or aircraft source), the tags (<TagChips>) and the graphic flag (<Switch>, locked on a flagged stored source). The section adds Add a source (capped at 10), and per editor Remove.">
+          <Item name="<SourcesField> / <SourceEditor>" usage="The Sources section of every event form (components/sources/): one <SourceEditor> per source in a LIST_TILE, holding the file slot (MediaManager on <FileManager>; a pick uploads at once through POST /uploads), the level (<SegmentedControl>), the kind (<Select>, required on every source), the capture time (<DateTimeInput>), the capture position (CoordinateInputs, hidden for an article, an official statement or another document), the links (<LinkListInput> with the archive pair and each link's post time, then <SourceImageryCheck> on a satellite or aircraft source), the tags (<TagChips>) and the graphic flag (<Switch>, locked on a flagged stored source). The section lays the editors out in a carousel <HorizontalScroller>, one at a time, every editor mounted, with Add a source (capped at 10) in its header; Add a source shows the new editor, Remove (per editor, from two) shows its neighbour, and a publish attempt shows the first editor with a gap.">
             <div className="w-full max-w-2xl">
               <SourcesField
                 sources={paletteSources}

@@ -21,6 +21,11 @@ globalThis.ResizeObserver ??= NoopObserver as unknown as typeof ResizeObserver;
 globalThis.IntersectionObserver ??=
   NoopObserver as unknown as typeof IntersectionObserver;
 
+// jsdom has no `Element.scrollTo`, and no layout to scroll. A no-op lets a
+// component that scrolls a strip on a click run; a test that checks the call
+// assigns its own spy on the element.
+Element.prototype.scrollTo ??= function scrollTo() {};
+
 // jsdom hands back a plain array for a media element's track lists instead of
 // the live `EventTarget` the spec defines, so anything subscribing to track
 // changes throws on `addEventListener`. The video player's controller

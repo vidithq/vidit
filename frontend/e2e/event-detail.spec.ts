@@ -13,6 +13,7 @@ import {
   expectNarrowViewportLayout,
   expectNoHorizontalOverflow,
 } from "./support/narrowLayout";
+import { swipeLeft } from "./support/touch";
 
 /**
  * Golden path 1: someone opens a shared event link and reads the record.
@@ -204,30 +205,13 @@ test.describe("sources row on a touch screen", () => {
     expect(secondBox.x + secondBox.width).toBeGreaterThan(rowRight);
     await expectNoHorizontalOverflow(page);
 
-    // A swipe left scrolls the row by one card, which snaps to the row's edge. The finger is
-    // driven as raw touch points, the input `hasTouch` emulates on every platform: a synthesized
-    // touch scroll gesture needs a touch screen the headless Linux browser does not report.
-    const cdp = await page.context().newCDPSession(page);
-    const startX = Math.round(rowBox.x + rowBox.width * 0.8);
-    const y = Math.round(firstBox.y + 40);
-    const distance = Math.round(firstBox.width * 0.6);
-    await cdp.send("Input.dispatchTouchEvent", {
-      type: "touchStart",
-      touchPoints: [{ x: startX, y }],
-    });
-    for (let step = 1; step <= 10; step++) {
-      await cdp.send("Input.dispatchTouchEvent", {
-        type: "touchMove",
-        touchPoints: [{ x: startX - Math.round((distance * step) / 10), y }],
-      });
-    }
-    // The finger rests before it lifts, so the release carries no fling past the next card.
-    await page.waitForTimeout(200);
-    await cdp.send("Input.dispatchTouchEvent", {
-      type: "touchMove",
-      touchPoints: [{ x: startX - distance, y }],
-    });
-    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    // A swipe left scrolls the row by one card, which snaps to the row's edge.
+    await swipeLeft(
+      page,
+      Math.round(rowBox.x + rowBox.width * 0.8),
+      Math.round(firstBox.y + 40),
+      Math.round(firstBox.width * 0.6),
+    );
     await expect(page.getByText("2 of 4", { exact: true })).toBeVisible();
     await expect
       .poll(async () => Math.abs((await second.boundingBox())!.x - rowBox.x))

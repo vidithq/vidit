@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { MissingFieldKey } from "@/lib/events";
@@ -21,9 +21,11 @@ const seen: { current: SourceDraft[] } = { current: [] };
 function Host({
   initial,
   invalidKeys = new Set(),
+  attempt = 0,
 }: {
   initial: SourceDraft[];
   invalidKeys?: Set<MissingFieldKey>;
+  attempt?: number;
 }) {
   const [sources, setSources] = useState(initial);
   const [tags, setTags] = useState([{ id: "t1", name: "armor" }]);
@@ -37,6 +39,7 @@ function Host({
       tags={tags}
       setTags={setTags}
       invalidKeys={invalidKeys}
+      attempt={attempt}
     />
   );
 }
@@ -49,21 +52,66 @@ const withUrl = (url: string): SourceDraft => {
 describe("SourcesField", () => {
   beforeEach(() => upload.mockReset());
 
-  it("starts with the editors it is given and adds one per click", () => {
+  it("starts with the editors it is given and adds one per click, showing it", () => {
     render(<Host initial={[newSourceDraft()]} />);
     expect(screen.getAllByRole("region", { name: /^Source \d$/ })).toHaveLength(1);
-    // One source: the form needs a source.
+    // One source: the form needs a source, and there is nothing to move between.
     expect(screen.queryByRole("button", { name: /^Remove source \d$/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Next source" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Show source/ })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Add a source" }));
     expect(screen.getAllByRole("region", { name: /^Source \d$/ })).toHaveLength(2);
     expect(screen.getByRole("button", { name: "Remove source 2" })).toBeInTheDocument();
+    expect(screen.getByText("2 / 2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show source 2" })).toHaveAttribute("aria-current", "true");
   });
 
-  it("removes an editor", () => {
+  it("keeps every editor mounted in a track named Sources", () => {
     render(<Host initial={[withUrl("https://a.example/1"), withUrl("https://b.example/2")]} />);
+    const track = screen.getByRole("region", { name: "Sources" });
+    expect(within(track).getAllByRole("region", { name: /^Source \d$/ })).toHaveLength(2);
+    expect(screen.getByText("1 / 2")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next source" }));
+    expect(screen.getByText("2 / 2")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Source 1 link 1" })).toHaveValue("https://a.example/1");
+  });
+
+  it("removes an editor and shows its neighbour", () => {
+    render(
+      <Host
+        initial={[
+          withUrl("https://a.example/1"),
+          withUrl("https://b.example/2"),
+          withUrl("https://c.example/3"),
+        ]}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Show source 3" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove source 3" }));
+    expect(seen.current.map((d) => d.links[0].url)).toEqual([
+      "https://a.example/1",
+      "https://b.example/2",
+    ]);
+    expect(screen.getByText("2 / 2")).toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("button", { name: "Remove source 1" }));
     expect(seen.current.map((d) => d.links[0].url)).toEqual(["https://b.example/2"]);
+  });
+
+  it("shows the first source with a gap on a publish attempt", () => {
+    const complete = { ...withUrl("https://a.example/1"), kind: "drone" as const };
+    const { rerender } = render(<Host initial={[complete, withUrl("https://b.example/2")]} />);
+    expect(screen.getByText("1 / 2")).toBeInTheDocument();
+    rerender(
+      <Host
+        initial={[complete, withUrl("https://b.example/2")]}
+        invalidKeys={new Set(["source_kind"])}
+        attempt={1}
+      />
+    );
+    expect(screen.getByText("2 / 2")).toBeInTheDocument();
   });
 
   it("stops adding at the source cap and says what the cap is", () => {

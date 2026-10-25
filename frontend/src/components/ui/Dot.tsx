@@ -2,7 +2,7 @@ import { cn } from "@/lib/cn";
 
 /**
  * The orange notification dot ("new content awaits" / "live"). Decorative;
- * position, ring and size come via `className` (`cn`, caller wins).
+ * position, ring, size and colour come via `className` (`cn`, caller wins).
  */
 export function Dot({ className = "" }: { className?: string }) {
   return (

@@ -5,19 +5,28 @@ import {
   isValidElement,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useRef,
   useState,
+  type KeyboardEvent,
   type ReactNode,
+  type Ref,
 } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/cn";
 import { Button } from "./Button";
+import { Dot } from "./Dot";
 import { META_LINE } from "./styles";
 
 const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
 
 type Span = { first: number; last: number };
+
+/** What a parent can ask of the scroller: `show` scrolls item `index` into view. */
+export interface HorizontalScrollerHandle {
+  show: (index: number) => void;
+}
 
 // An item counts as shown once half of it is in view, so the card peeking on a phone does not.
 // A zero-width item (no layout yet, or jsdom) is never shown, which keeps the last measured span.
@@ -39,16 +48,22 @@ function shownSpan(strip: HTMLElement): Span | null {
 }
 
 /**
- * A row of same-width items that scrolls sideways, one snap point per item. Two items fit side by
- * side once the row is 32rem wide; below that one fits and the next peeks. With more than one
- * item, the header carries the shown range ("1 to 2 of 5") and previous and next buttons that
- * scroll by one item and go inert at the ends.
+ * A row of same-width items that scrolls sideways, one snap point per item. In the `row` variant,
+ * two items fit side by side once the row is 32rem wide; below that one fits and the next peeks.
+ * With more than one item, the header carries the shown range ("1 to 2 of 5") and previous and
+ * next buttons that scroll by one item and go inert at the ends. The `carousel` variant shows one
+ * item at the row's full width, the position ("2 / 3") between the buttons, and one dot per item
+ * under the row.
  */
 export function HorizontalScroller({
   heading,
   label,
   previousLabel,
   nextLabel,
+  variant = "row",
+  actions,
+  dotLabel = (index) => `Show item ${index + 1}`,
+  ref,
   children,
 }: {
   /** The header's leading node, such as a `<SectionEyebrow>`. */
@@ -58,8 +73,15 @@ export function HorizontalScroller({
   /** The previous button's accessible name, such as *Previous source*. */
   previousLabel: string;
   nextLabel: string;
+  variant?: "row" | "carousel";
+  /** Header controls after the buttons, shown at any item count. */
+  actions?: ReactNode;
+  /** A carousel dot's accessible name, such as *Show source 2*. */
+  dotLabel?: (index: number) => string;
+  ref?: Ref<HorizontalScrollerHandle>;
   children: ReactNode;
 }) {
+  const carousel = variant === "carousel";
   const items = Children.toArray(children);
   const count = items.length;
   const strip = useRef<HTMLDivElement>(null);
@@ -86,46 +108,88 @@ export function HorizontalScroller({
     };
   }, [measure, count]);
 
+  // A removal can leave the last measure past the end until the strip measures again.
+  const first = Math.min(span.first, count - 1);
+  const last = Math.min(span.last, count - 1);
+
   const scrollTo = (index: number) => {
     const el = strip.current;
     const item = el?.children[index] as HTMLElement | undefined;
     if (!el || !item) return;
+    // The carousel names the target at once: a smooth scroll only lands on it later.
+    if (carousel) setSpan({ first: index, last: index });
     const reduce = typeof window.matchMedia === "function" && window.matchMedia(REDUCED_MOTION).matches;
     el.scrollTo({ left: item.offsetLeft, behavior: reduce ? "auto" : "smooth" });
   };
 
-  const range =
-    span.first === span.last
-      ? `${span.first + 1} of ${count}`
-      : `${span.first + 1} to ${span.last + 1} of ${count}`;
+  useImperativeHandle(ref, () => ({ show: scrollTo }));
+
+  const previous = () => {
+    if (first > 0) scrollTo(first - 1);
+  };
+  const next = () => {
+    if (last < count - 1) scrollTo(first + 1);
+  };
+  // Left and right on either button step like the buttons, so a keyboard reader stays on them.
+  const onArrowKey = (e: KeyboardEvent) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    if (e.key === "ArrowLeft") previous();
+    else next();
+  };
+
+  const range = carousel
+    ? `${first + 1} / ${count}`
+    : first === last
+      ? `${first + 1} of ${count}`
+      : `${first + 1} to ${last + 1} of ${count}`;
+  const position = (
+    <span className={cn(META_LINE, "tabular-nums", !carousel && "mr-1")} aria-live="polite">
+      {carousel ? (
+        <>
+          <span aria-hidden="true">{range}</span>
+          <span className="sr-only">{`${first + 1} of ${count}`}</span>
+        </>
+      ) : (
+        range
+      )}
+    </span>
+  );
+  const previousButton = (
+    <Button icon variant="ghost" aria-label={previousLabel} disabled={first === 0} onClick={previous}>
+      <ChevronLeft size={16} />
+    </Button>
+  );
+  const nextButton = (
+    <Button icon variant="ghost" aria-label={nextLabel} disabled={last >= count - 1} onClick={next}>
+      <ChevronRight size={16} />
+    </Button>
+  );
 
   return (
     <div className="@container space-y-3">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         {heading}
-        {count > 1 && (
+        {(count > 1 || actions) && (
           <div className="flex items-center gap-1">
-            <span className={cn(META_LINE, "mr-1 tabular-nums")} aria-live="polite">
-              {range}
-            </span>
-            <Button
-              icon
-              variant="ghost"
-              aria-label={previousLabel}
-              disabled={span.first === 0}
-              onClick={() => scrollTo(span.first - 1)}
-            >
-              <ChevronLeft size={16} />
-            </Button>
-            <Button
-              icon
-              variant="ghost"
-              aria-label={nextLabel}
-              disabled={span.last >= count - 1}
-              onClick={() => scrollTo(span.first + 1)}
-            >
-              <ChevronRight size={16} />
-            </Button>
+            {count > 1 && (
+              <div className="flex items-center gap-1" onKeyDown={onArrowKey}>
+                {carousel ? (
+                  <>
+                    {previousButton}
+                    {position}
+                    {nextButton}
+                  </>
+                ) : (
+                  <>
+                    {position}
+                    {previousButton}
+                    {nextButton}
+                  </>
+                )}
+              </div>
+            )}
+            {actions}
           </div>
         )}
       </div>
@@ -137,17 +201,40 @@ export function HorizontalScroller({
         role="region"
         aria-label={label}
         tabIndex={0}
-        className="relative flex snap-x snap-mandatory gap-3 overflow-x-auto rounded-md pb-2 outline-hidden focus-visible:ring-1 focus-visible:ring-orange-400"
+        className={cn(
+          "relative flex snap-x snap-mandatory gap-3 overflow-x-auto rounded-md outline-hidden focus-visible:ring-1 focus-visible:ring-orange-400",
+          carousel ? "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "pb-2",
+        )}
       >
         {items.map((item, i) => (
           <div
             key={isValidElement(item) && item.key !== null ? item.key : i}
-            className="grid shrink-0 grid-cols-1 basis-[85%] snap-start @lg:basis-[calc(50%-0.375rem)]"
+            className={cn(
+              "grid shrink-0 grid-cols-1 snap-start",
+              carousel ? "basis-full" : "basis-[85%] @lg:basis-[calc(50%-0.375rem)]",
+            )}
           >
             {item}
           </div>
         ))}
       </div>
+      {carousel && count > 1 && (
+        <div className="flex flex-wrap justify-center">
+          {items.map((_, i) => (
+            <Button
+              key={i}
+              icon
+              variant="ghost"
+              className="size-6 sm:size-6"
+              aria-label={dotLabel(i)}
+              aria-current={i === first ? "true" : undefined}
+              onClick={() => scrollTo(i)}
+            >
+              <Dot className={cn("size-2", i !== first && "bg-neutral-600")} />
+            </Button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

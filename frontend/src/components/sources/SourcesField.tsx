@@ -1,11 +1,12 @@
 "use client";
 
-import type { Dispatch, SetStateAction } from "react";
+import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import { Plus, X } from "lucide-react";
 
-import { SourceEditor } from "@/components/sources/SourceEditor";
+import { SourceEditor, type SourceEditorInvalid } from "@/components/sources/SourceEditor";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { HorizontalScroller, type HorizontalScrollerHandle } from "@/components/ui/HorizontalScroller";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { isSnapshotUrl, SNAPSHOT_HINT } from "@/components/ui/ArchivedCopies";
 import { MAX_SOURCES_PER_EVENT, type MissingFieldKey } from "@/lib/events";
@@ -24,8 +25,9 @@ import type { Tag } from "@/types";
 let uploadToken = 0;
 
 /**
- * The **Sources** section every event form carries: one `SourceEditor` per source, **Add a
- * source** (capped at `MAX_SOURCES_PER_EVENT`), and per editor **Remove**.
+ * The **Sources** section every event form carries: a `HorizontalScroller` carousel of one
+ * `SourceEditor` per source, **Add a source** in its header (capped at `MAX_SOURCES_PER_EVENT`),
+ * and per editor **Remove**. Every editor stays mounted, so a hidden one keeps its upload.
  *
  * A picked file uploads at once, on its own request; the editor keeps the staged upload, and the
  * event write names it. A file picked again or removed while its upload runs drops the answer.
@@ -36,6 +38,7 @@ export function SourcesField({
   tags,
   setTags,
   invalidKeys,
+  attempt = 0,
 }: {
   sources: SourceDraft[];
   setSources: Dispatch<SetStateAction<SourceDraft[]>>;
@@ -43,6 +46,8 @@ export function SourcesField({
   setTags: Dispatch<SetStateAction<Tag[]>>;
   /** The keys a publish attempt flagged (`useIncompleteForm`). */
   invalidKeys: ReadonlySet<MissingFieldKey>;
+  /** `useIncompleteForm`'s attempt count: each new one shows the first source with a gap. */
+  attempt?: number;
 }) {
   const atCap = sources.length >= MAX_SOURCES_PER_EVENT;
 
@@ -68,58 +73,110 @@ export function SourcesField({
     }
   };
 
+  const scroller = useRef<HorizontalScrollerHandle>(null);
+  // A source to show once the list renders: the one Add a source appended, the neighbour of a
+  // removed one. A publish attempt that flags a source shows the first one with a gap instead.
+  const reveal = useRef<string | null>(null);
+  const handledAttempt = useRef(attempt);
+  useEffect(() => {
+    let key = reveal.current;
+    reveal.current = null;
+    if (handledAttempt.current !== attempt) {
+      handledAttempt.current = attempt;
+      key = firstGap(sources, invalidKeys) ?? key;
+    }
+    const index = key === null ? -1 : sources.findIndex((d) => d.key === key);
+    if (index >= 0) scroller.current?.show(index);
+  });
+
+  const add = () => {
+    const draft = newSourceDraft();
+    reveal.current = draft.key;
+    setSources((prev) => [...prev, draft]);
+  };
+
+  const remove = (index: number) => {
+    reveal.current = (sources[index + 1] ?? sources[index - 1])?.key ?? null;
+    setSources((prev) => prev.filter((d) => d.key !== sources[index].key));
+  };
+
   const fileMissing = invalidKeys.has("source_file");
 
   return (
     <Card as="section">
-      <SectionHeading title="Sources" concept="sources" invalid={fileMissing} />
-      {fileMissing && (
-        <p className="text-xs text-red-400">Add a file to a direct or indirect source.</p>
-      )}
-
-      {sources.map((draft, index) => (
-        <SourceEditor
-          key={draft.key}
-          draft={draft}
-          index={index}
-          update={update(draft.key)}
-          onPickFile={(file) => void pickFile(draft.key)(file)}
-          tags={tags}
-          setTags={setTags}
-          invalid={{
-            link: invalidKeys.has("source_link") && draftUrls(draft).length === 0,
-            kind: invalidKeys.has("source_kind") && draft.kind === "",
-          }}
-          actions={
-            sources.length > 1 && (
-              <Button
-                variant="ghost"
-                onClick={() => setSources((prev) => prev.filter((d) => d.key !== draft.key))}
-                aria-label={`Remove source ${index + 1}`}
-              >
-                <X size={13} />
-                Remove
-              </Button>
-            )
-          }
-        />
-      ))}
-
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          variant="secondary"
-          disabled={atCap}
-          onClick={() => setSources((prev) => [...prev, newSourceDraft()])}
-        >
-          <Plus size={13} strokeWidth={2} />
-          Add a source
-        </Button>
-        {atCap && (
-          <span className="text-xs text-neutral-500">{MAX_SOURCES_PER_EVENT} maximum.</span>
-        )}
-      </div>
+      <HorizontalScroller
+        ref={scroller}
+        variant="carousel"
+        heading={
+          <div className="space-y-1">
+            <SectionHeading title="Sources" concept="sources" invalid={fileMissing} />
+            {fileMissing && (
+              <p className="text-xs text-red-400">Add a file to a direct or indirect source.</p>
+            )}
+          </div>
+        }
+        label="Sources"
+        previousLabel="Previous source"
+        nextLabel="Next source"
+        dotLabel={(index) => `Show source ${index + 1}`}
+        actions={
+          <>
+            {atCap && (
+              <span className="text-xs text-neutral-500">{MAX_SOURCES_PER_EVENT} maximum.</span>
+            )}
+            <Button variant="secondary" disabled={atCap} onClick={add}>
+              <Plus size={13} strokeWidth={2} />
+              Add a source
+            </Button>
+          </>
+        }
+      >
+        {sources.map((draft, index) => (
+          <SourceEditor
+            key={draft.key}
+            draft={draft}
+            index={index}
+            update={update(draft.key)}
+            onPickFile={(file) => void pickFile(draft.key)(file)}
+            tags={tags}
+            setTags={setTags}
+            invalid={sourceGaps(draft, invalidKeys)}
+            actions={
+              sources.length > 1 && (
+                <Button
+                  variant="ghost"
+                  onClick={() => remove(index)}
+                  aria-label={`Remove source ${index + 1}`}
+                >
+                  <X size={13} />
+                  Remove
+                </Button>
+              )
+            }
+          />
+        ))}
+      </HorizontalScroller>
     </Card>
   );
+}
+
+/** The fields of one editor a publish attempt flagged. */
+function sourceGaps(draft: SourceDraft, invalidKeys: ReadonlySet<MissingFieldKey>): SourceEditorInvalid {
+  return {
+    link: invalidKeys.has("source_link") && draftUrls(draft).length === 0,
+    kind: invalidKeys.has("source_kind") && draft.kind === "",
+  };
+}
+
+/** The first editor a publish attempt flagged: a missing link or kind, else the first direct or
+ *  indirect source when none carries a file. */
+function firstGap(drafts: SourceDraft[], invalidKeys: ReadonlySet<MissingFieldKey>): string | null {
+  const gap =
+    drafts.find((d) => {
+      const { link, kind } = sourceGaps(d, invalidKeys);
+      return link || kind;
+    }) ?? (invalidKeys.has("source_file") ? drafts.find((d) => d.level !== "context") : undefined);
+  return gap?.key ?? null;
 }
 
 /** Whether a pasted archived copy cannot be one (`isSnapshotUrl`): the form refuses it before

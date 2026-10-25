@@ -174,6 +174,7 @@ export function EventFormFields({
         tags={form.taxonomy.tags}
         setTags={form.taxonomy.setTags}
         invalidKeys={invalidKeys}
+        attempt={form.validationAttempt}
       />
 
       <LocationPicker

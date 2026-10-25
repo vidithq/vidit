@@ -2,7 +2,8 @@ import { expect, test } from "@playwright/test";
 
 import { ONE_PIXEL_PNG } from "./support/fixtures";
 import { grantSession, mockApi } from "./support/mockApi";
-import { expectNarrowViewportLayout } from "./support/narrowLayout";
+import { expectNarrowViewportLayout, expectNoHorizontalOverflow } from "./support/narrowLayout";
+import { swipeLeft } from "./support/touch";
 
 /**
  * Golden path 3: the submit page, in each of the two modes it opens in.
@@ -66,6 +67,7 @@ test.describe("submit", () => {
     await page.goto("/submit");
 
     await page.getByRole("button", { name: "Add a source" }).click();
+    await page.getByRole("button", { name: "Show source 1" }).click();
     const first = page.getByRole("region", { name: "Source 1" });
     await first.getByLabel("Kind", { exact: true }).selectOption({ label: "Smartphone" });
     await first.getByLabel("Source 1 link 1", { exact: true }).fill("https://t.me/channel/12345");
@@ -148,5 +150,60 @@ test.describe("submit", () => {
   test("the legacy route redirects here", async ({ page }) => {
     await page.goto("/geolocations/new");
     await expect(page).toHaveURL(/\/submit$/);
+  });
+});
+
+test.describe("source carousel on a touch screen", () => {
+  test.use({ hasTouch: true });
+
+  test("shows one source at a time and moves by a swipe, the arrows or a dot", async ({
+    context,
+    page,
+  }) => {
+    await grantSession(context);
+    await mockApi(page);
+    await page.goto("/submit");
+
+    const track = page.getByRole("region", { name: "Sources", exact: true });
+    const first = page.getByRole("region", { name: "Source 1", exact: true });
+    const second = page.getByRole("region", { name: "Source 2", exact: true });
+    await expect(page.getByRole("button", { name: "Next source" })).toHaveCount(0);
+
+    // Add a source shows the new one, at the track's full width.
+    await page.getByRole("button", { name: "Add a source" }).click();
+    await expect(page.getByText("2 / 2", { exact: true })).toBeVisible();
+    const trackBox = (await track.boundingBox())!;
+    await expect
+      .poll(async () => Math.abs((await second.boundingBox())!.x - trackBox.x))
+      .toBeLessThanOrEqual(1);
+    expect((await second.boundingBox())!.width).toBeGreaterThan(trackBox.width - 1);
+    await expectNoHorizontalOverflow(page);
+
+    await page.getByRole("button", { name: "Previous source" }).tap();
+    await expect(page.getByText("1 / 2", { exact: true })).toBeVisible();
+    await expect
+      .poll(async () => Math.abs((await first.boundingBox())!.x - trackBox.x))
+      .toBeLessThanOrEqual(1);
+
+    const firstBox = (await first.boundingBox())!;
+    await swipeLeft(
+      page,
+      Math.round(trackBox.x + trackBox.width * 0.8),
+      Math.round(firstBox.y + 20),
+      Math.round(firstBox.width * 0.6),
+    );
+    await expect(page.getByText("2 / 2", { exact: true })).toBeVisible();
+    await expect
+      .poll(async () => Math.abs((await second.boundingBox())!.x - trackBox.x))
+      .toBeLessThanOrEqual(1);
+
+    await page.getByRole("button", { name: "Show source 1" }).tap();
+    await expect(page.getByText("1 / 2", { exact: true })).toBeVisible();
+
+    // One source left: no arrows, position or dots.
+    await first.getByRole("button", { name: "Remove source 1", exact: true }).tap();
+    await expect(page.getByRole("region", { name: /^Source \d$/ })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Next source" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Show source/ })).toHaveCount(0);
   });
 });
