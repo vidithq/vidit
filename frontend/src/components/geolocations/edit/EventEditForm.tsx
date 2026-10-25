@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api";
 
 import {
-  EventFormFields,
+  EventFormLayout,
   useEventForm,
 } from "@/components/geolocations/EventFormFields";
 import { PUBLISH_REQS, PublishChecklist } from "@/components/geolocations/PublishChecklist";
@@ -43,7 +43,7 @@ import { sourceFloor, sourcesChanged, sourceWriteError } from "@/lib/sources";
 import { eventHref } from "@/lib/routes";
 import type { EventDetail } from "@/types";
 
-// Ties the rail's actions and version note to the form in the main column.
+// Ties the actions and the version note to the form, which they sit outside of.
 const EDIT_FORM_ID = "event-edit-form";
 
 const CONFIRM_SENTENCE =
@@ -62,14 +62,14 @@ const CONFIRM_SENTENCE =
  * **Save version** (a `geolocated` row): the same fields, and the write files the version it
  * supersedes. An optional note travels with that version. No confirm.
  *
- * Built like the create form: `EventFormFields`, `useEventForm`, `SourcesField`. State is seeded
+ * Built like the create form: `EventFormLayout`, `useEventForm`, `SourcesField`. State is seeded
  * from props (the form mounts after the row loaded), so the proof editor gets its
  * `initialContent` on first paint. Every write names the version the form was loaded at, so a
  * row that moved meanwhile answers a conflict instead of being overwritten.
  *
- * The fields fill the main column. The right rail holds the actions card (the requirements or the
- * version note, the writes, their banners and, for the owner, the close) and, on a published row,
- * the geolocators, whose changes apply on click and never make a version.
+ * The fields fill `EventLayout`'s slots. Its actions slot holds the actions card (the requirements
+ * or the version note, the writes, their banners and, for the owner, the close) and, on a published
+ * row, the geolocators, whose changes apply on click and never make a version.
  *
  * With `queue` set the header gains the position and a Skip, and a finished detection hands over
  * to the next one.
@@ -285,6 +285,98 @@ export function EventEditForm({
         : "Geolocate request"
       : "Publish detection";
 
+  const actions = (
+    <div className="space-y-6">
+      <Card as="section">
+        {/* Optional, never part of the floor. */}
+        {editingPublished && (
+          <div className="space-y-2">
+            <SectionHeading title="Version note" concept="version_note" />
+            <Input
+              id="version_note"
+              form={EDIT_FORM_ID}
+              type="text"
+              value={editNote}
+              maxLength={VERSION_NOTE_MAX_LEN}
+              onChange={(e) => setEditNote(e.target.value)}
+              placeholder="What changed, and why"
+              aria-label="Version note"
+            />
+          </div>
+        )}
+
+        {!editingPublished && (
+          <div className="space-y-2">
+            <SectionEyebrow
+              title="To publish"
+              concept="publish_requirements"
+              margin="none"
+            />
+            <PublishChecklist reqs={PUBLISH_REQS} missing={publishMissingKeys} />
+          </div>
+        )}
+
+        <IncompleteFormNotice
+          key={form.validationAttempt}
+          missing={form.missingFields.map((m) => m.label)}
+        />
+        {actionError && <div className={FORM_ERROR_BANNER}>{actionError}</div>}
+
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="inline-flex items-center gap-1.5">
+            <Button
+              ref={submitButtonRef}
+              type="submit"
+              form={EDIT_FORM_ID}
+              variant="primary"
+              disabled={busy}
+              className={submitArmed ? ARMED_RING : ""}
+              title={submitArmed ? CONFIRM_SENTENCE : undefined}
+            >
+              {/* Labels stack in one grid cell so arming never resizes the button. */}
+              <span className="grid">
+                <span aria-hidden className="col-start-1 row-start-1 invisible">
+                  {widestLabel}
+                </span>
+                <span className="col-start-1 row-start-1">{submitLabel}</span>
+              </span>
+            </Button>
+            {!editingPublished && <FieldHelp concept="action_publish" />}
+          </span>
+          {/* No confirm: the in-place save publishes nothing and files no version. */}
+          {isRequest && isOwner && (
+            <Button variant="secondary" onClick={attemptSaveRequest} disabled={busy}>
+              {saveRequestMutation.loading ? "Saving…" : "Save request"}
+            </Button>
+          )}
+          {/* Announces the armed state to screen readers. */}
+          <span className="sr-only" role="status" aria-live="polite">
+            {submitArmed ? CONFIRM_SENTENCE : ""}
+          </span>
+        </div>
+
+        {isOwner && (
+          <CloseSection
+            eventId={geo.id}
+            status={geo.status}
+            disabled={busy}
+            onClosed={() => {
+              if (geo.status === "detected") refreshDetectionCount();
+              finish();
+            }}
+          />
+        )}
+      </Card>
+
+      {editingPublished && (
+        <Card as="section">
+          <SectionEyebrow title="Geolocators" concept="geolocators" margin="none" />
+          <GeolocatorsPanel event={geo} onChanged={() => onCreditChanged?.()} />
+        </Card>
+      )}
+    </div>
+  );
+
   return (
     <PageShell
       back
@@ -301,104 +393,17 @@ export function EventEditForm({
           </div>
         )
       }
-      rail={
-        <div className="space-y-6">
-          <Card as="section">
-            {/* Optional, never part of the floor. */}
-            {editingPublished && (
-              <div className="space-y-2">
-                <SectionHeading title="Version note" concept="version_note" />
-                <Input
-                  id="version_note"
-                  form={EDIT_FORM_ID}
-                  type="text"
-                  value={editNote}
-                  maxLength={VERSION_NOTE_MAX_LEN}
-                  onChange={(e) => setEditNote(e.target.value)}
-                  placeholder="What changed, and why"
-                  aria-label="Version note"
-                />
-              </div>
-            )}
-
-            {!editingPublished && (
-              <div className="space-y-2">
-                <SectionEyebrow
-                  title="To publish"
-                  concept="publish_requirements"
-                  margin="none"
-                />
-                <PublishChecklist reqs={PUBLISH_REQS} missing={publishMissingKeys} />
-              </div>
-            )}
-
-            <IncompleteFormNotice
-              key={form.validationAttempt}
-              missing={form.missingFields.map((m) => m.label)}
-            />
-            {actionError && <div className={FORM_ERROR_BANNER}>{actionError}</div>}
-
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="inline-flex items-center gap-1.5">
-                <Button
-                  ref={submitButtonRef}
-                  type="submit"
-                  form={EDIT_FORM_ID}
-                  variant="primary"
-                  disabled={busy}
-                  className={submitArmed ? ARMED_RING : ""}
-                  title={submitArmed ? CONFIRM_SENTENCE : undefined}
-                >
-                  {/* Labels stack in one grid cell so arming never resizes the button. */}
-                  <span className="grid">
-                    <span aria-hidden className="col-start-1 row-start-1 invisible">
-                      {widestLabel}
-                    </span>
-                    <span className="col-start-1 row-start-1">{submitLabel}</span>
-                  </span>
-                </Button>
-                {!editingPublished && <FieldHelp concept="action_publish" />}
-              </span>
-              {/* No confirm: the in-place save publishes nothing and files no version. */}
-              {isRequest && isOwner && (
-                <Button variant="secondary" onClick={attemptSaveRequest} disabled={busy}>
-                  {saveRequestMutation.loading ? "Saving…" : "Save request"}
-                </Button>
-              )}
-              {/* Announces the armed state to screen readers. */}
-              <span className="sr-only" role="status" aria-live="polite">
-                {submitArmed ? CONFIRM_SENTENCE : ""}
-              </span>
-            </div>
-
-            {isOwner && (
-              <CloseSection
-                eventId={geo.id}
-                status={geo.status}
-                disabled={busy}
-                onClosed={() => {
-                  if (geo.status === "detected") refreshDetectionCount();
-                  finish();
-                }}
-              />
-            )}
-          </Card>
-
-          {editingPublished && (
-            <Card as="section">
-              <SectionEyebrow title="Geolocators" concept="geolocators" margin="none" />
-              <GeolocatorsPanel event={geo} onChanged={() => onCreditChanged?.()} />
-            </Card>
-          )}
-        </div>
-      }
-      railLabel={editingPublished ? "Actions and geolocators" : "Actions"}
-      narrowRail="below"
+      wide
     >
-      {/* `noValidate`: IncompleteFormNotice owns required-field feedback. */}
-      <form id={EDIT_FORM_ID} onSubmit={attemptSubmit} className="space-y-6" noValidate>
-        <EventFormFields form={form} row={geo} showProvenance />
-      </form>
+      <EventFormLayout
+        form={form}
+        row={geo}
+        showProvenance
+        actions={actions}
+        actionsLabel={editingPublished ? "Actions and geolocators" : "Actions"}
+        // `noValidate`: IncompleteFormNotice owns required-field feedback.
+        formProps={{ id: EDIT_FORM_ID, onSubmit: attemptSubmit, noValidate: true }}
+      />
     </PageShell>
   );
 }

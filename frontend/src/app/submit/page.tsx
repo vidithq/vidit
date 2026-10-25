@@ -24,7 +24,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { XGlyph } from "@/components/ui/BrandGlyphs";
-import { EventFormFields, useEventForm } from "@/components/geolocations/EventFormFields";
+import { EventFormLayout, useEventForm } from "@/components/geolocations/EventFormFields";
 import {
   GEO_EXTRA_REQS,
   PublishChecklist,
@@ -187,58 +187,55 @@ function SubmitForm() {
   const showBulk = mode === "bulk";
   const showXPost = mode === "xpost";
 
-  // The rail holds the conditions and the publish actions, as on the edit page; on a phone it
-  // follows the fields. An import entry hides the form, and the rail with it.
-  const rail =
-    showBulk || showXPost ? null : (
-      <Card as="section">
-        {error && (
-          <div className={FORM_ERROR_BANNER} role="alert">
-            {error}
-          </div>
-        )}
+  // The actions hold the conditions and the publish buttons, as on the edit page; on a phone they
+  // follow the fields.
+  const actions = (
+    <Card as="section">
+      {error && (
+        <div className={FORM_ERROR_BANNER} role="alert">
+          {error}
+        </div>
+      )}
 
-        {/* Two outcomes gated on content: meet the request floor and a request can post; add the
-            extra rows and a geolocation can publish. A click while short flags the gaps red. */}
-        <div className="space-y-2">
-          <SectionEyebrow title="Request" concept="submit_request" margin="none" />
-          <PublishChecklist reqs={REQUEST_REQS} missing={reqMissingKeys} />
-        </div>
-        <div className="space-y-2">
-          <SectionEyebrow title="Geolocation" concept="submit_geolocation_extra" margin="none" />
-          <PublishChecklist reqs={GEO_EXTRA_REQS} missing={geoMissingKeys} />
-        </div>
-        <div className="flex flex-wrap gap-3">
-          <Button
-            type="button"
-            variant="primary"
-            disabled={submitting}
-            className={geoReady ? "" : "opacity-60"}
-            onClick={publishGeolocation}
-          >
-            <MapPin size={14} strokeWidth={2} />
-            {geolocationMutation.loading ? "Publishing…" : "Publish geolocation"}
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={submitting}
-            className={reqReady ? "" : "opacity-60"}
-            onClick={postRequest}
-          >
-            <Megaphone size={14} strokeWidth={2} />
-            {requestMutation.loading ? "Posting…" : "Publish request"}
-          </Button>
-        </div>
-      </Card>
-    );
+      {/* Two outcomes gated on content: meet the request floor and a request can post; add the
+          extra rows and a geolocation can publish. A click while short flags the gaps red. */}
+      <div className="space-y-2">
+        <SectionEyebrow title="Request" concept="submit_request" margin="none" />
+        <PublishChecklist reqs={REQUEST_REQS} missing={reqMissingKeys} />
+      </div>
+      <div className="space-y-2">
+        <SectionEyebrow title="Geolocation" concept="submit_geolocation_extra" margin="none" />
+        <PublishChecklist reqs={GEO_EXTRA_REQS} missing={geoMissingKeys} />
+      </div>
+      <div className="flex flex-wrap gap-3">
+        <Button
+          type="button"
+          variant="primary"
+          disabled={submitting}
+          className={geoReady ? "" : "opacity-60"}
+          onClick={publishGeolocation}
+        >
+          <MapPin size={14} strokeWidth={2} />
+          {geolocationMutation.loading ? "Publishing…" : "Publish geolocation"}
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={submitting}
+          className={reqReady ? "" : "opacity-60"}
+          onClick={postRequest}
+        >
+          <Megaphone size={14} strokeWidth={2} />
+          {requestMutation.loading ? "Posting…" : "Publish request"}
+        </Button>
+      </div>
+    </Card>
+  );
 
   return (
     <PageShell
       title="Submit"
-      rail={rail}
-      railLabel="Actions"
-      narrowRail="below"
+      wide={!showBulk && !showXPost}
       controls={
         // Entry paths. Single and From an X post share the one-event form; bulk swaps in the
         // archive on-ramp.
@@ -294,22 +291,24 @@ function SubmitForm() {
         </div>
       )}
 
-      {/* No `onSubmit` route: publish actions are explicit buttons, and one clicked while its
-          floor is short flags the missing fields red. `noValidate` stops native bubbles. */}
-      <form
-        onSubmit={(e) => e.preventDefault()}
-        className={showBulk || showXPost ? "hidden" : "space-y-6"}
-        noValidate
-      >
-        <EventFormFields form={form} />
-
-        <DuplicateProbe
-          lat={form.lat}
-          lng={form.lng}
-          sourceUrl={form.sources.flatMap(draftUrls)[0] ?? ""}
-          eventDate={form.eventDate}
+      <div className={showBulk || showXPost ? "hidden" : undefined}>
+        <EventFormLayout
+          form={form}
+          actions={actions}
+          actionsLabel="Actions"
+          // No `onSubmit` route: publish actions are explicit buttons, and one clicked while its
+          // floor is short flags the missing fields red. `noValidate` stops native bubbles.
+          formProps={{ onSubmit: (e) => e.preventDefault(), noValidate: true }}
+          afterLocation={
+            <DuplicateProbe
+              lat={form.lat}
+              lng={form.lng}
+              sourceUrl={form.sources.flatMap(draftUrls)[0] ?? ""}
+              eventDate={form.eventDate}
+            />
+          }
         />
-      </form>
+      </div>
     </PageShell>
   );
 }

@@ -1,6 +1,14 @@
 "use client";
 
-import { useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useState,
+  type ComponentProps,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from "react";
+
+import { EventLayout } from "@/components/event/EventLayout";
 
 import { TitleField } from "@/components/geolocations/TitleField";
 import {
@@ -23,8 +31,8 @@ import {
 import type { EventDetail } from "@/types";
 
 /**
- * The editable state behind the field block, built by `useEventForm` and handed whole to
- * `EventFormFields`.
+ * The editable state behind the fields, built by `useEventForm` and handed whole to
+ * `EventFormLayout`.
  */
 export interface EventFormState {
   title: string;
@@ -136,81 +144,106 @@ export function useEventForm(row?: EventDetail | null): EventFormState {
   };
 }
 
-interface EventFormFieldsProps {
+interface EventFormLayoutProps {
   form: EventFormState;
   /** The stored row behind the form (the edited or published event). `null` on a fresh
    *  submit. */
   row?: EventDetail | null;
   /** Show `row`'s provenance link, read-only. */
   showProvenance?: boolean;
+  /** Follows the Location section (the submit form's duplicate probe). */
+  afterLocation?: ReactNode;
+  /** The surface's writes (see `EventLayout`). */
+  actions: ReactNode;
+  actionsLabel: string;
+  /** The `<form>` the fields render in. */
+  formProps: ComponentProps<"form">;
 }
 
 /**
- * The field block every event write fills in, in reading order: title, sources, location,
- * details, classification, proof.
+ * The fields every event write fills in, placed in `EventLayout`'s slots: the title heads the main
+ * column over the sources and the proof; the details (date, time, provenance, then the
+ * classification) and the location fill the side column under the actions.
  *
  * The submit form and the edit form compose it and keep no copy of a field, so labels, help and
  * red outlines stay one thing. Per-surface pieces (readiness list, duplicate probe, version note,
- * confirm step) stay with the caller.
+ * confirm step) come in through `actions` and `afterLocation`.
  */
-export function EventFormFields({
+export function EventFormLayout({
   form,
   row = null,
   showProvenance = false,
-}: EventFormFieldsProps) {
+  afterLocation,
+  actions,
+  actionsLabel,
+  formProps,
+}: EventFormLayoutProps) {
   const { invalidKeys } = form;
 
   return (
-    <>
-      <TitleField
-        value={form.title}
-        onChange={form.setTitle}
-        invalid={invalidKeys.has("title")}
-      />
-
-      <SourcesField
-        sources={form.sources}
-        setSources={form.setSources}
-        tags={form.taxonomy.tags}
-        setTags={form.taxonomy.setTags}
-        invalidKeys={invalidKeys}
-        attempt={form.validationAttempt}
-      />
-
-      <LocationPicker
-        lat={form.lat}
-        setLat={form.setLat}
-        lng={form.lng}
-        setLng={form.setLng}
-        invalid={invalidKeys.has("coordinates")}
-      />
-
-      <DetailsFields
-        eventDate={form.eventDate}
-        setEventDate={form.setEventDate}
-        eventTime={form.eventTime}
-        setEventTime={form.setEventTime}
-        detectedFromUrl={showProvenance ? row?.detected_from_url : undefined}
-        openedAsRequest={!!row?.requested_by}
-      />
-
-      <TaxonomyFields
-        taxonomy={form.taxonomy}
-        selectedTagIds={form.selectedTagIds}
-        setSelectedTagIds={form.setSelectedTagIds}
-        selectedConflictIds={form.selectedConflictIds}
-        setSelectedConflictIds={form.setSelectedConflictIds}
-        conflictInvalid={invalidKeys.has("conflict_tag")}
-      />
-
-      {/* The image floor binds at the publish; a request may stay imageless. */}
-      <ProofEditorPanel
-        proof={form.proof}
-        onChange={form.setProof}
-        proofFiles={form.proofFiles}
-        onProofFilesChange={form.setProofFiles}
-        invalid={invalidKeys.has("proof") || invalidKeys.has("proof_image")}
-      />
-    </>
+    <EventLayout
+      form={formProps}
+      actions={actions}
+      actionsLabel={actionsLabel}
+      header={
+        <TitleField
+          value={form.title}
+          onChange={form.setTitle}
+          invalid={invalidKeys.has("title")}
+        />
+      }
+      sources={
+        <SourcesField
+          sources={form.sources}
+          setSources={form.setSources}
+          tags={form.taxonomy.tags}
+          setTags={form.taxonomy.setTags}
+          invalidKeys={invalidKeys}
+          attempt={form.validationAttempt}
+        />
+      }
+      // The image floor binds at the publish; a request may stay imageless.
+      proof={
+        <ProofEditorPanel
+          proof={form.proof}
+          onChange={form.setProof}
+          proofFiles={form.proofFiles}
+          onProofFilesChange={form.setProofFiles}
+          invalid={invalidKeys.has("proof") || invalidKeys.has("proof_image")}
+        />
+      }
+      details={
+        <>
+          <DetailsFields
+            eventDate={form.eventDate}
+            setEventDate={form.setEventDate}
+            eventTime={form.eventTime}
+            setEventTime={form.setEventTime}
+            detectedFromUrl={showProvenance ? row?.detected_from_url : undefined}
+            openedAsRequest={!!row?.requested_by}
+          />
+          <TaxonomyFields
+            taxonomy={form.taxonomy}
+            selectedTagIds={form.selectedTagIds}
+            setSelectedTagIds={form.setSelectedTagIds}
+            selectedConflictIds={form.selectedConflictIds}
+            setSelectedConflictIds={form.setSelectedConflictIds}
+            conflictInvalid={invalidKeys.has("conflict_tag")}
+          />
+        </>
+      }
+      location={
+        <>
+          <LocationPicker
+            lat={form.lat}
+            setLat={form.setLat}
+            lng={form.lng}
+            setLng={form.setLng}
+            invalid={invalidKeys.has("coordinates")}
+          />
+          {afterLocation}
+        </>
+      }
+    />
   );
 }

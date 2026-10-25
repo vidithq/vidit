@@ -6,7 +6,7 @@ import { expectNarrowViewportLayout } from "./support/narrowLayout";
 
 /**
  * The one edit form: the owner's correction of a published geolocation, and the publish of a
- * request. From `lg` up the actions sit in the right rail; on a phone the rail stacks under the
+ * request. From `lg` up the actions head the side column; on a phone they stack under the
  * fields, so the write is never the first thing on the page.
  */
 test.describe("event edit", () => {
@@ -21,9 +21,10 @@ test.describe("event edit", () => {
     const save = page.getByRole("button", { name: "Save version 2" });
     await expectNarrowViewportLayout(page, save);
 
-    const fields = await page.locator("form#event-edit-form").boundingBox();
+    // The last field block, Location, ends above the actions.
+    const location = await page.getByRole("heading", { name: /^Location/ }).locator("xpath=ancestor::section[1]").boundingBox();
     const saveBox = await save.boundingBox();
-    expect(fields!.y + fields!.height).toBeLessThanOrEqual(saveBox!.y);
+    expect(location!.y + location!.height).toBeLessThanOrEqual(saveBox!.y);
 
     // The close follows the save in the same card, and the geolocators come last.
     const close = page.getByRole("button", { name: "Close this geolocation" });
@@ -32,6 +33,35 @@ test.describe("event edit", () => {
     const geolocators = await page.getByRole("heading", { name: /^Geolocators/ }).boundingBox();
     expect(closeBox!.y + closeBox!.height).toBeLessThanOrEqual(geolocators!.y);
     await expect(page.getByRole("button", { name: "Invite" })).toBeVisible();
+  });
+
+  test("puts the actions top right, over the details and the location, on a wide screen", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`/events/${EVENT_ID}/edit`);
+
+    const rail = page.getByRole("complementary", { name: "Actions and geolocators" });
+    await expect(rail.getByRole("button", { name: "Save version 2" })).toBeVisible();
+    const box = async (name: string) =>
+      (await page.getByRole("heading", { name: new RegExp(`^${name}`) }).boundingBox())!;
+    const railBox = (await rail.boundingBox())!;
+    const title = (await page.getByLabel("Title", { exact: true }).boundingBox())!;
+    const [sources, proof, details, location] = [
+      await box("Sources"),
+      await box("Proof"),
+      await box("Details"),
+      await box("Location"),
+    ];
+    // Main column: title, sources, proof. Side column: actions, details, location.
+    expect(railBox.x).toBeGreaterThan(title.x + title.width);
+    expect(sources.y).toBeGreaterThan(title.y);
+    expect(proof.y).toBeGreaterThan(sources.y);
+    expect(details.x).toBeGreaterThanOrEqual(railBox.x);
+    expect(details.y).toBeGreaterThanOrEqual(railBox.y + railBox.height);
+    expect(location.y).toBeGreaterThan(details.y);
+    // The actions start no lower than the title field.
+    expect(railBox.y).toBeLessThanOrEqual(title.y);
   });
 
   test("publishes a request from the same form, its requirements listed", async ({ page }) => {

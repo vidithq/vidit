@@ -32,6 +32,7 @@ export function PageShell({
   narrowRail,
   headerInColumn = false,
   headerSide,
+  wide = false,
   children,
 }: {
   title: ReactNode;
@@ -56,6 +57,9 @@ export function PageShell({
   /** Heads the side column of a two-column page, beside the header (see `PageColumns`). The frame
    *  is `wide`, and the children lay out their own `PageColumns` under the header. */
   headerSide?: ReactNode;
+  /** Takes the `wide` frame without a rail or a `headerSide`, for a page that lays out its own
+   *  `PageColumns` (an event form). */
+  wide?: boolean;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -133,7 +137,7 @@ export function PageShell({
     // sticky `top` of the back arrow and of a rail beside the header (`PageWithRail`), so neither
     // moves when the page scrolls.
     <PageFrame
-      column={rail || headerSide !== undefined ? "wide" : "reading"}
+      column={rail || headerSide !== undefined || wide ? "wide" : "reading"}
       className="pt-10 max-sm:pt-16 pb-16"
     >
       <div className="relative space-y-6" style={railTop}>
@@ -172,13 +176,16 @@ export function PageShell({
   );
 }
 
+/** The 65:35 split of `PageColumns`, for a grid that places its own cells (`EventLayout`). */
+export const PAGE_COLUMNS_SPLIT = "lg:grid-cols-[minmax(0,65fr)_minmax(0,35fr)]";
+
 /**
  * A main column and a side column, 65:35 from `lg` up. Below `lg` the side column follows the main
  * one. Every `PageColumns` of a page shares the split, so its columns line up from one to the next.
  */
 export function PageColumns({ main, side }: { main: ReactNode; side: ReactNode }) {
   return (
-    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,65fr)_minmax(0,35fr)]">
+    <div className={`grid items-start gap-6 ${PAGE_COLUMNS_SPLIT}`}>
       <div className="min-w-0 space-y-6">{main}</div>
       <div className="min-w-0 space-y-6">{side}</div>
     </div>

@@ -220,12 +220,12 @@ describe("EventDetailBody", () => {
     expect(container.querySelector("video[controls]")).toBeNull();
   });
 
-  it("orders the page as sources, proof, then the side slot above the details", () => {
+  it("orders the page as sources, proof, the details, then the location slot", () => {
     render(
       <EventDetailBody
         geo={geoFixture()}
         variant="page"
-        side={<div data-testid="location-map">map goes here</div>}
+        location={<div data-testid="location-map">map goes here</div>}
       />
     );
     const slot = screen.getByTestId("location-map");
@@ -235,8 +235,8 @@ describe("EventDetailBody", () => {
     // Position is the contract, not mere presence: it is also the stacking order on a narrow screen.
     const follows = (a: Node, b: Node) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING;
     expect(follows(media, proof)).toBeTruthy();
-    expect(follows(proof, slot)).toBeTruthy();
-    expect(follows(slot, details)).toBeTruthy();
+    expect(follows(proof, details)).toBeTruthy();
+    expect(follows(details, slot)).toBeTruthy();
   });
 
   it("lists the conflicts and the event's tags in their own rows", () => {

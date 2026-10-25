@@ -14,7 +14,7 @@ import { SourceBlocks, sourcesScroll } from "@/components/sources/SourceBlock";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { DetailCard, DetailPills, DetailRow } from "@/components/ui/DetailRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { PageColumns } from "@/components/ui/PageShell";
+import { EventLayout } from "@/components/event/EventLayout";
 import { ProofSection } from "@/components/ui/ProofSection";
 
 /** The body's data shape: an `EventDetail` as-is. Every lifecycle state shares it: a coordless
@@ -26,20 +26,19 @@ interface EventDetailBodyProps {
   geo: EventDetailBodyData;
   /**
    * `panel`: map's 380px overlay, one column: stacked sources with `thumbnail` media, bare rows,
-   * the proof last, no request-trace row. `page`: full detail page, in two `PageColumns`: the
-   * sources as a sideways row with `hero` media, then the proof, in the main column; `side` and
-   * the Details card with the request-trace row in the side column.
+   * the proof last, no request-trace row. `page`: full detail page, in `EventLayout`: the sources
+   * as a sideways row with `hero` media, then the proof, in the main column; the Details card with
+   * the request-trace row, then `location`, in the side column.
    */
   variant: "panel" | "page";
-  /** The page variant's side column above Details (the Location module); falsy when it has none,
-   *  so Details heads the column. */
-  side?: ReactNode;
+  /** The page variant's Location module, under Details; falsy when the event has none. */
+  location?: ReactNode;
 }
 
 /** Geolocation markup shared by the map's detail side-panel and the detail pages; `variant` owns
  * the density and layout differences so the field set can't drift. The author is in the header of
  * every surface, so no row repeats it. */
-export function EventDetailBody({ geo, variant, side }: EventDetailBodyProps) {
+export function EventDetailBody({ geo, variant, location }: EventDetailBodyProps) {
   if (variant === "panel") {
     return (
       <>
@@ -50,23 +49,17 @@ export function EventDetailBody({ geo, variant, side }: EventDetailBodyProps) {
     );
   }
   return (
-    <PageColumns
-      main={
-        <>
-          <SourceBlocks sources={geo.sources} alt={geo.title} />
-          <ProofBlock geo={geo} compact={false} />
-        </>
+    <EventLayout
+      sources={<SourceBlocks sources={geo.sources} alt={geo.title} />}
+      proof={<ProofBlock geo={geo} compact={false} />}
+      details={
+        <DetailRows
+          geo={geo}
+          compact={false}
+          besideScroller={sourcesScroll(geo.sources.length)}
+        />
       }
-      side={
-        <>
-          {side}
-          <DetailRows
-            geo={geo}
-            compact={false}
-            besideScroller={!side && sourcesScroll(geo.sources.length)}
-          />
-        </>
-      }
+      location={location}
     />
   );
 }
