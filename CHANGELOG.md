@@ -16,6 +16,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- The admin console finds analysts and events by name, confirms every destructive action in a dialog (revoking an invite code included), groups row actions in a menu, and pages the reports queue with Load more.
 - Approvals are final: nobody revokes one, Approve asks you to confirm first, and a site admin can delete an approval, after which its reviewer or organization can approve that version again.
 - Joining an event as a co-geolocator deletes your approvals of it instead of marking them revoked.
 - Notification settings are one email switch per kind, and the in-app notification list always shows every kind.
