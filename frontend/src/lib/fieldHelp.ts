@@ -24,6 +24,10 @@ export const FIELD_HELP = {
     text: "Where the source comes from: what captured it (smartphone, camera, static camera such as CCTV or a webcam, drone, aircraft such as a plane or a helicopter (historical aerial photos included), satellite, dashcam, or body / helmet cam), or an article, an official statement or something else. Whether the file is a photo or a video comes from the file itself. Pick Unknown when the source does not say. Required on every source.",
     label: "What is the source kind?",
   },
+  graphic_content: {
+    text: "Blurs this source's file behind an age confirmation for viewers. Flag footage showing death, injury or human remains. Once a source is saved flagged, only an admin removes the flag: ask a moderator to review it.",
+    label: "What does the graphic flag do?",
+  },
   source_file: {
     text: "The footage or picture being located, uploaded as soon as you pick it. Not a map screenshot or an annotated export.",
     label: "What is the source file?",
@@ -115,6 +119,10 @@ export const FIELD_HELP = {
   action_publish: {
     text: "Publishes this event with your edits: it becomes a geolocation (a person stands behind it), public, at version 1. The request or detection it was stays readable in its history as version 0, and every later change is kept as a new version. Publishing a request makes you its owner. Give it a full read first, then click Publish twice to confirm.",
     label: "What does Publish do?",
+  },
+  action_submit: {
+    text: "Publish geolocation makes this event public as a geolocation, under your name, at version 1: it needs the coordinates, the proof and the conflict on top of the sources. Publish request makes it public as a request that anyone can geolocate. Click a button twice to confirm.",
+    label: "What do the publish buttons do?",
   },
   geolocate_request: {
     text: "Opens this request in the edit form, its sources filled in. Publishing it answers the request, and you become the owner of the event.",

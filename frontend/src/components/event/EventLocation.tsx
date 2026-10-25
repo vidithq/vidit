@@ -61,6 +61,7 @@ function EventLocation({
           label="Coordinates"
           concept="coordinates"
           align="center"
+          wrapLabel
           className="border-t border-neutral-800 bg-neutral-900 rounded-b-lg"
         >
           <CoordinateValue lat={coords.lat} lng={coords.lng} />

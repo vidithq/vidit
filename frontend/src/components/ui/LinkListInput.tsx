@@ -49,6 +49,11 @@ interface LinkListInputProps<R> {
   max: number;
   /** Singular name of one entry ("Link"), for screen readers. */
   itemLabel: string;
+  /** The add button's text, `Add <itemLabel>` by default. */
+  addText?: string;
+  /** The add button's accessible name, when its text leaves out what the list belongs to. It
+   *  holds the text. */
+  addName?: string;
   placeholder?: string;
   invalid?: boolean;
   /** The list's label: the header of the URL column on a wide list, a label above the
@@ -68,6 +73,8 @@ export function LinkListInput<R>({
   blank,
   max,
   itemLabel,
+  addText,
+  addName,
   placeholder,
   invalid = false,
   heading = "Links",
@@ -167,13 +174,14 @@ export function LinkListInput<R>({
         <Button
           variant="secondary"
           disabled={atCap}
+          aria-label={addName}
           onClick={() => {
             onChange([...rows, blank()]);
             setExpanded([...expandedNow, false]);
           }}
         >
           <Plus size={13} strokeWidth={2} />
-          Add {lower}
+          {addText ?? `Add ${lower}`}
         </Button>
         {atCap && <span className="text-xs text-neutral-500">{max} maximum.</span>}
       </div>

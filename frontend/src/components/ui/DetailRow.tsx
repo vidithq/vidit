@@ -52,7 +52,6 @@ export function DetailRow({
   label,
   concept,
   value,
-  empty,
   children,
   compact = false,
   align = "stretch",
@@ -62,8 +61,6 @@ export function DetailRow({
   label: ReactNode;
   concept?: Concept;
   value?: ReactNode;
-  /** Shown muted in place of an empty `value`, such as *Untitled*. */
-  empty?: string;
   children?: ReactNode;
   compact?: boolean;
   align?: "stretch" | "center" | "start";
@@ -92,7 +89,6 @@ export function DetailRow({
     className,
   );
   const text = compact ? "" : "text-sm";
-  const blank = value === undefined || value === null || value === "";
   return (
     <div className={rowClass}>
       <span
@@ -106,14 +102,8 @@ export function DetailRow({
         {concept && <FieldHelp concept={concept} />}
       </span>
       {children ?? (
-        <span
-          className={cn(
-            text,
-            "text-right [overflow-wrap:anywhere]",
-            blank && empty ? "italic text-neutral-500" : "text-neutral-200",
-          )}
-        >
-          {blank ? empty : value}
+        <span className={cn(text, "text-right text-neutral-200 [overflow-wrap:anywhere]")}>
+          {value}
         </span>
       )}
     </div>

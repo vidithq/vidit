@@ -74,6 +74,8 @@ interface ComboboxProps<T> {
   placeholder?: string;
   maxLength?: number;
   autoFocus?: boolean;
+  /** The red outline of a field a submit flagged. */
+  invalid?: boolean;
   className?: string;
 }
 
@@ -101,6 +103,7 @@ export function Combobox<T>({
   placeholder,
   maxLength,
   autoFocus,
+  invalid = false,
   className,
 }: ComboboxProps<T>) {
   const listId = useId();
@@ -176,6 +179,7 @@ export function Combobox<T>({
         maxLength={maxLength}
         autoComplete="off"
         autoFocus={autoFocus}
+        invalid={invalid}
         className={className}
       />
       {open &&

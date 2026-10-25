@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ComponentProps } from "react";
+import { useState, type ComponentProps, type ReactNode } from "react";
 import Link from "next/link";
 import { Stamp } from "lucide-react";
 
@@ -148,10 +148,15 @@ function approvalStamp(approval: Approval): AvatarStackItem | null {
 export function ApprovalStamps({
   approvals,
   onDeleted,
+  trailing,
+  className,
 }: {
   approvals: Approval[];
   /** Runs after a site admin deleted an approval. */
   onDeleted?: () => void;
+  /** After the last stamp, on its line (the `?`). */
+  trailing?: ReactNode;
+  className?: string;
 }) {
   const { isAdmin } = useAdmin();
   const [deleting, setDeleting] = useState<Approval | null>(null);
@@ -175,6 +180,8 @@ export function ApprovalStamps({
         max={items.length}
         spacing="gap"
         checked
+        trailing={trailing}
+        className={className}
       />
       {deleting && onDeleted && (
         <DeleteApprovalDialog
@@ -190,15 +197,16 @@ export function ApprovalStamps({
   );
 }
 
-/** The stamps with the `approval` help at the row's end. From `lg` up the row aligns
+/** The stamps with the `approval` help on the last stamp's line. From `lg` up every line aligns
  *  right, under the side column's right-aligned controls. Renders nothing for an empty list. */
 export function ApprovedBy(props: ComponentProps<typeof ApprovalStamps>) {
   if (props.approvals.length === 0) return null;
   return (
-    <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-      <ApprovalStamps {...props} />
-      <FieldHelp concept="approval" />
-    </div>
+    <ApprovalStamps
+      {...props}
+      trailing={<FieldHelp concept="approval" />}
+      className="lg:justify-end"
+    />
   );
 }
 

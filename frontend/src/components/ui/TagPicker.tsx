@@ -10,7 +10,7 @@ import { Combobox } from "@/components/ui/Combobox";
 import { Pill } from "@/components/ui/Pill";
 import { Switch } from "@/components/ui/Switch";
 import { FieldHelp } from "@/components/ui/FieldHelp";
-import { FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
+import { FORM_INVALID_LABEL, FORM_LABEL, LABEL_TEXT } from "@/components/ui/form-styles";
 import { cn } from "@/lib/cn";
 
 // Mirrors `schemas/tag.py` `TagCreate.name` (the `String(100)` cap); change both.
@@ -56,7 +56,7 @@ export function TagPicker({
         />
       )}
 
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         <span className={FORM_LABEL}>Tags</span>
         <TagChips
           tags={tags}
@@ -186,7 +186,8 @@ export function TagChips({ tags, selected, setSelected, owner, filter, setTags }
         aria-label={label}
         placeholder={filter ? "Search tags" : "Search or create a tag"}
         maxLength={filter ? undefined : TAG_NAME_MAX_LEN}
-        className="max-w-xs"
+        // A form field spans its card like every other field; the filter panel keeps it narrow.
+        className={filter ? "max-w-xs" : undefined}
         query={query}
         onQueryChange={(next) => {
           setQuery(next);
@@ -282,7 +283,7 @@ export function ConflictChips({
   );
 
   const field = (
-    <div className={cn("space-y-2", invalid && "rounded-md p-2 ring-1 ring-red-500/40")}>
+    <div className="space-y-2">
       <PickedPills
         picked={picked}
         onRemove={(removed) => setSelected(selected.filter((k) => k !== removed))}
@@ -290,7 +291,8 @@ export function ConflictChips({
       <Combobox
         aria-label="Conflict"
         placeholder="Search conflicts"
-        className="max-w-xs"
+        invalid={invalid}
+        className={filter ? "max-w-xs" : undefined}
         query={query}
         onQueryChange={setQuery}
         open={open}
@@ -313,9 +315,9 @@ export function ConflictChips({
   if (filter) return field;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-        <span className={`${FORM_LABEL}${invalid ? ` ${FORM_INVALID_LABEL}` : ""}`}>
+        <span className={cn("flex items-center gap-1", LABEL_TEXT, invalid && FORM_INVALID_LABEL)}>
           Conflict <FieldHelp concept="conflict" />
         </span>
         <button

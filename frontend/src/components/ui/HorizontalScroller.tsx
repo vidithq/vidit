@@ -168,7 +168,9 @@ export function HorizontalScroller({
 
   return (
     <div className="@container space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      {/* At least as tall as the 32px buttons, so a heading beside an actions-only row (one item)
+          keeps the height a column beside it levels with (`SectionEyebrow besideScroller`). */}
+      <div className="flex min-h-8 flex-wrap items-center justify-between gap-2">
         {heading}
         {(count > 1 || actions) && (
           <div className="flex items-center gap-1">

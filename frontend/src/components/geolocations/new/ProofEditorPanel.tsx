@@ -3,8 +3,6 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 
-import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
-import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { TEXT_LINK } from "@/components/ui/styles";
 
@@ -40,16 +38,17 @@ export function ProofEditorPanel({
           Methodology guide
         </Link>
       </div>
-      <Card className={invalid ? FORM_INVALID_FIELD : ""}>
-        {/* The editor reads both seeds once: on a remount, the current `proof` and its staged
-            files restore the draft, inline images included. */}
-        <ProofEditor
-          initialContent={proof}
-          initialProofFiles={proofFiles}
-          onChange={onChange}
-          onProofFilesChange={onProofFilesChange}
-        />
-      </Card>
+      {/* The editor is the card, as the event page's proof is. It reads both seeds once: on a
+          remount, the current `proof` and its staged files restore the draft, inline images
+          included. */}
+      <ProofEditor
+        bare
+        invalid={invalid}
+        initialContent={proof}
+        initialProofFiles={proofFiles}
+        onChange={onChange}
+        onProofFilesChange={onProofFilesChange}
+      />
     </section>
   );
 }

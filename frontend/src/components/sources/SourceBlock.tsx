@@ -17,10 +17,10 @@ import { SourceWarnings } from "./SourceWarnings";
 /**
  * One source of an event on a reading surface, read like the event's Details card: its file
  * (behind its own graphic gate when this source is flagged) or a *No file* box, then one row
- * each for the title, level, kind (with the file's kind), capture position, capture time, links
- * and tags. A row with no value drops out, except the title, which reads *Untitled*. A context
- * source without a file has no file area at all: a URL alone (an article, a statement) is no gap.
- * A satellite or aircraft source's warnings follow the links.
+ * each for the title, level, kind (with the file's kind), links, capture time, capture position
+ * and tags, the order of the editor's fields. A row with no value drops out. A context source
+ * without a file has no file area at all: a URL alone (an article, a statement) is no gap. A
+ * satellite or aircraft source's warnings follow the links.
  *
  * `compact` is the map panel's density: `thumbnail` media and bare rows in a `LIST_TILE`.
  * `wide` is for a block that owns the whole sources area: the file grows and sits left of the
@@ -82,30 +82,11 @@ function SourceRows({
   const links = source.links;
   return (
     <>
-      <DetailRow label="Title" value={source.title} empty="Untitled" compact={compact} />
+      {source.title && <DetailRow label="Title" value={source.title} compact={compact} />}
       <DetailRow label="Level" concept="source_level" compact={compact} align="center">
         <Pill tone="neutral">{LEVEL_LABELS[source.level]}</Pill>
       </DetailRow>
       {kind && <DetailRow label="Kind" concept="source_kind" compact={compact} value={kind} />}
-      {position && (
-        <DetailRow
-          label="Capture position"
-          concept="capture_position"
-          compact={compact}
-          align="center"
-          wrapLabel
-        >
-          <CoordinateValue lat={position.lat} lng={position.lng} compact />
-        </DetailRow>
-      )}
-      {source.captured_at && (
-        <DetailRow
-          label="Captured"
-          concept="captured_at"
-          compact={compact}
-          value={formatInstant(source.captured_at)}
-        />
-      )}
       {links.length > 0 && (
         <DetailRow
           label={`Links (${links.length})`}
@@ -132,6 +113,25 @@ function SourceRows({
         </DetailRow>
       )}
       <SourceWarnings warnings={source.warnings} label={`Warnings of source ${index + 1}`} />
+      {source.captured_at && (
+        <DetailRow
+          label="Captured"
+          concept="captured_at"
+          compact={compact}
+          value={formatInstant(source.captured_at)}
+        />
+      )}
+      {position && (
+        <DetailRow
+          label="Capture position"
+          concept="capture_position"
+          compact={compact}
+          align="center"
+          wrapLabel
+        >
+          <CoordinateValue lat={position.lat} lng={position.lng} compact />
+        </DetailRow>
+      )}
       {source.tags.length > 0 && (
         <DetailRow label="Tags" compact={compact} align="start">
           <DetailPills items={source.tags} compact={compact} />

@@ -152,9 +152,9 @@ describe("EventDetailBody", () => {
     expect(within(first).getByText("1 Jun 2026, 09:30 UTC")).toBeInTheDocument();
     expect(within(first).getByText("48.0200, 37.7900")).toBeInTheDocument();
     expect(within(first).getByText("armor")).toBeInTheDocument();
-    // An untitled source reads Untitled, and a context source without a file shows no file area.
+    // An untitled source has no Title row, and a context source without a file shows no file area.
     const second = block(2);
-    expect(within(second).getByText("Untitled")).toBeInTheDocument();
+    expect(within(second).queryByText("Title")).toBeNull();
     expect(within(second).getByText("Context")).toBeInTheDocument();
     expect(within(second).queryByRole("img")).toBeNull();
     expect(within(second).queryByText("No file")).toBeNull();

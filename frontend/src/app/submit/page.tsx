@@ -10,19 +10,17 @@ import {
   createEventRequest,
   missingEventFields,
   missingEventRequestFields,
-  missingSummary,
   parseGuessCoords,
 } from "@/lib/events";
 import { draftUrls, sourceFloor, sourceWriteError } from "@/lib/sources";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel";
 import { ImportPostPanel } from "@/components/geolocations/ImportPostPanel";
 import { MapPin, Megaphone } from "lucide-react";
-import { Button } from "@/components/ui/Button";
-import { CountBadge } from "@/components/ui/CountBadge";
+import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { IconTile } from "@/components/ui/IconTile";
 import { eventFormSlots, useEventForm } from "@/components/geolocations/EventFormFields";
+import { PublishActions, usePublishAction } from "@/components/geolocations/PublishActions";
 import { EventShell } from "@/components/event/EventShell";
 import { useDraftGeolocatorsByline } from "@/components/event/useGeolocatorsByline";
 import { sourcesBlockWrite } from "@/components/sources/SourcesField";
@@ -89,8 +87,8 @@ function SubmitForm() {
   }, [mode]);
 
   // Every field both publish paths fill, empty. `invalidKeys` drive the in-form red outlines,
-  // set when a publish is clicked while its floor is short. The counts on the publish buttons
-  // are the standing summary, so no notice banner.
+  // set when a publish is clicked while its floor is short, which also lists them in the notice
+  // under the actions.
   const form = useEventForm();
   const { flagIncomplete, clearIncomplete } = form;
   // Above the shells with the draft: the picks survive a trip through the chooser. Only the
@@ -113,7 +111,7 @@ function SubmitForm() {
   );
 
   const geolocationMutation = useMutation(
-    // Required (gated by `geoReady`), strict parse so a coordinate can't read valid one way and
+    // Required (the floor check runs first), strict parse so a coordinate can't read valid one way and
     // invalid the other.
     () =>
       createEvent({
@@ -151,11 +149,6 @@ function SubmitForm() {
     () => missingEventRequestFields({ title: form.title, sources: floor }),
     [form.title, floor]
   );
-  // Readiness drives button emphasis (dimmed while short). The button stays clickable so a
-  // click still flags the gaps red.
-  const geoReady =
-    geoMissing.length === 0 && form.taxonomy.blockedMessage === null;
-  const reqReady = reqMissing.length === 0;
 
   // Both publish handlers clear the shared error banner and prior red outlines before
   // re-validating.
@@ -169,85 +162,80 @@ function SubmitForm() {
   // why. Not a missing field (archives are optional), so it stays out of the counts.
   const blocked = sourcesBlockWrite(form.sources);
 
-  const publishGeolocation = async () => {
-    resetActions();
-    // A pending or failed conflicts load is recoverable, not a missing field:
-    // surface it in the banner (Retry lives above), not the outlines.
-    if (form.taxonomy.blockedMessage !== null) {
-      geolocationMutation.setError(form.taxonomy.blockedMessage);
-      return;
-    }
-    if (blocked) {
-      geolocationMutation.setError(blocked);
-      return;
-    }
-    if (geoMissing.length) {
-      flagIncomplete(geoMissing);
-      return;
-    }
-    await geolocationMutation.run();
-  };
+  // Both publishes are public, so each arms on a first click and writes on the second. Every
+  // check runs on both clicks.
+  const publishGeolocation = usePublishAction({
+    check: () => {
+      resetActions();
+      // A pending or failed conflicts load is recoverable, not a missing field:
+      // surface it in the banner (Retry lives above), not the outlines.
+      if (form.taxonomy.blockedMessage !== null) {
+        geolocationMutation.setError(form.taxonomy.blockedMessage);
+        return false;
+      }
+      if (blocked) {
+        geolocationMutation.setError(blocked);
+        return false;
+      }
+      if (geoMissing.length) {
+        flagIncomplete(geoMissing);
+        return false;
+      }
+      return true;
+    },
+    write: () => void geolocationMutation.run(),
+    confirm: "Click again to publish. The geolocation becomes public at version 1; later changes become versions.",
+  });
 
-  const postRequest = async () => {
-    resetActions();
-    if (blocked) {
-      requestMutation.setError(blocked);
-      return;
-    }
-    if (reqMissing.length) {
-      flagIncomplete(reqMissing);
-      return;
-    }
-    await requestMutation.run();
-  };
+  const publishRequest = usePublishAction({
+    check: () => {
+      resetActions();
+      if (blocked) {
+        requestMutation.setError(blocked);
+        return false;
+      }
+      if (reqMissing.length) {
+        flagIncomplete(reqMissing);
+        return false;
+      }
+      return true;
+    },
+    write: () => void requestMutation.run(),
+    confirm: "Click again to publish. The request becomes public, open for anyone to geolocate.",
+  });
 
   if (authLoading || !user) {
     return <PageLoading />;
   }
 
   // The page's sticky actions: the publish buttons on one line, each counting the conditions it
-  // still misses (a geolocation needs the request floor too), then the banner. The icons give
-  // way below `sm`, so both buttons fit one line at 320px.
+  // still misses (a geolocation needs the request floor too), then the banner.
   const actions = (
-    <aside aria-label="Actions" className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <CountBadge count={geoMissing.length} label={missingSummary(geoMissing)}>
-          {(describedBy) => (
-            <Button
-              type="button"
-              variant="primary"
-              disabled={submitting}
-              className={geoReady ? "" : "opacity-60"}
-              aria-describedby={describedBy}
-              onClick={publishGeolocation}
-            >
-              <MapPin size={14} strokeWidth={2} className="max-sm:hidden" />
-              {geolocationMutation.loading ? "Publishing…" : "Publish geolocation"}
-            </Button>
-          )}
-        </CountBadge>
-        <CountBadge count={reqMissing.length} label={missingSummary(reqMissing)}>
-          {(describedBy) => (
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={submitting}
-              className={reqReady ? "" : "opacity-60"}
-              aria-describedby={describedBy}
-              onClick={postRequest}
-            >
-              <Megaphone size={14} strokeWidth={2} className="max-sm:hidden" />
-              {requestMutation.loading ? "Posting…" : "Publish request"}
-            </Button>
-          )}
-        </CountBadge>
-      </div>
-      {error && (
-        <div className={FORM_ERROR_BANNER} role="alert">
-          {error}
-        </div>
-      )}
-    </aside>
+    <PublishActions
+      disabled={submitting}
+      error={error}
+      help="action_submit"
+      buttons={[
+        {
+          action: publishGeolocation,
+          label: "Publish geolocation",
+          busyLabel: "Publishing…",
+          busy: geolocationMutation.loading,
+          variant: "primary",
+          icon: <MapPin size={14} strokeWidth={2} />,
+          missing: geoMissing,
+        },
+        {
+          action: publishRequest,
+          label: "Publish request",
+          busyLabel: "Publishing…",
+          busy: requestMutation.loading,
+          variant: "secondary",
+          icon: <Megaphone size={14} strokeWidth={2} />,
+          missing: reqMissing,
+        },
+      ]}
+    />
   );
 
   // A path's back arrow returns to the chooser.
@@ -272,7 +260,15 @@ function SubmitForm() {
         titleField={fields.titleField}
         byline={geolocators.byline}
         onBack={backToChooser}
-        actions={{ pinned: actions }}
+        actions={{
+          pinned: actions,
+          below: (
+            <IncompleteFormNotice
+              key={form.validationAttempt}
+              missing={form.missingFields.map((m) => m.label)}
+            />
+          ),
+        }}
         body={{
           ...fields.body,
           // No `onSubmit` route: publish actions are explicit buttons, and one clicked while its

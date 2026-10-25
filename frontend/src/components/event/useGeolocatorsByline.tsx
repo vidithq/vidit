@@ -53,7 +53,9 @@ function picture(
 }
 
 /** The byline on one line: the owner, each co-geolocator and pending invitee as a picture with its
- *  remove disc, then the add button. Nothing opens in the page, so nothing moves. */
+ *  remove disc, then the add button. Nothing opens in the page, so nothing moves. The pictures
+ *  take the page byline's 20px and the add button stays within that line, so the line keeps the
+ *  page byline's height. */
 function BylineRow({
   owner,
   pictures,
@@ -67,7 +69,7 @@ function BylineRow({
     <span className="inline-flex flex-wrap items-center gap-2">
       <AuthorByline author={owner} avatar />
       {/* Every picture shows: the server caps the geolocators and invitations. */}
-      <AvatarStack items={pictures} label="Co-geolocators" spacing="gap" max={Infinity} />
+      <AvatarStack items={pictures} label="Co-geolocators" spacing="gap" size="sm" max={Infinity} />
       {add}
     </span>
   );
@@ -85,7 +87,7 @@ function AddGeolocator({
   note: string;
 }) {
   return (
-    <Popover label={ADD_LABEL} icon={<UserPlus size={14} />}>
+    <Popover label={ADD_LABEL} icon={<UserPlus size={12} />} compact>
       {(close) => {
         // A local pick closes at once; an invitation once it lands.
         const pick = (account: Account) => {

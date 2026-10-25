@@ -14,7 +14,12 @@ import { DateTimeInput } from "@/components/ui/DateTimeInput";
 import { Disclosure } from "@/components/ui/Disclosure";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Card } from "@/components/ui/Card";
-import { FORM_INVALID_FIELD, FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
+import {
+  FORM_INVALID_FIELD,
+  FORM_INVALID_LABEL,
+  FORM_LABEL,
+  LABEL_TEXT,
+} from "@/components/ui/form-styles";
 import { Input, Select } from "@/components/ui/Input";
 import { LinkListInput } from "@/components/ui/LinkListInput";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
@@ -24,6 +29,7 @@ import { cn } from "@/lib/cn";
 import { MAX_LINKS_PER_SOURCE } from "@/lib/events";
 import { safeHostname } from "@/lib/format";
 import {
+  draftUrls,
   hasCapturePosition,
   LEVEL_LABELS,
   SOURCE_KIND_LABELS,
@@ -37,6 +43,10 @@ import {
 import type { Media, Tag } from "@/types";
 
 import { SourceImageryCheck } from "./SourceImageryCheck";
+
+// A label and its `?` side by side. The `?` sits outside a `<label>`, so the field's accessible
+// name stays the label's words.
+const LABEL_ROW = "flex items-center gap-1";
 
 const LEVEL_OPTIONS = SOURCE_LEVELS.map((value) => ({ value, label: LEVEL_LABELS[value] }));
 
@@ -58,7 +68,8 @@ function holdsDetails(draft: SourceDraft): boolean {
  * file (uploaded on its own request as soon as it is picked), the title, the level and the
  * kind, then the links with their post time and archived copy (and the imagery provider check
  * on a satellite or aircraft source). **More details** holds the capture time, the capture
- * position (none on a document kind), the tags and the graphic flag.
+ * position (none on a document kind), the tags and the graphic flag. A `wide` editor (the lone
+ * source) sets the file beside the fields once the card is wide enough.
  *
  * The editor holds no draft state of its own: `update` patches the draft in the form's list,
  * and `onPickFile` hands a picked file to the list, which uploads it. `actions` is the
@@ -73,6 +84,7 @@ export function SourceEditor({
   setTags,
   invalid = {},
   actions,
+  wide = false,
 }: {
   draft: SourceDraft;
   /** Position in the list, for the names ("Source 2"). */
@@ -84,6 +96,9 @@ export function SourceEditor({
   setTags: Dispatch<SetStateAction<Tag[]>>;
   invalid?: SourceEditorInvalid;
   actions?: ReactNode;
+  /** The editor owns the whole section (a lone source): the file sits left of the fields once
+   *  the card is wide enough. */
+  wide?: boolean;
 }) {
   const name = `Source ${index + 1}`;
   const id = (field: string) => `${draft.key}-${field}`;
@@ -106,52 +121,51 @@ export function SourceEditor({
   const describe = (i: number, url: string) =>
     linkDescription(index, safeHostname(url.trim()), i, draft.links.length);
 
-  return (
-    <Card as="section" aria-label={name}>
-      <header className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-medium text-neutral-200">{name}</h3>
-        <div className="flex flex-wrap items-center gap-1">{actions}</div>
-      </header>
+  const fileSlot = (
+    <div className="space-y-1.5">
+      <span className={cn(LABEL_ROW, LABEL_TEXT)}>
+        File <FieldHelp concept="source_file" />
+      </span>
+      <MediaManager
+        existing={shown ? [shown] : []}
+        onRemoveExisting={() => update({ file: null })}
+        staged={pendingFiles}
+        onRemoveStaged={() => update({ file: null })}
+        onAddFiles={hasFile ? undefined : (files) => files[0] && onPickFile(files[0])}
+        isGraphic={draft.graphicLocked}
+      />
+      {file?.state === "uploading" && (
+        <p className="text-xs text-neutral-500" role="status">
+          Uploading {file.file.name}…
+        </p>
+      )}
+      {file?.state === "failed" && (
+        <p className="text-xs text-red-400" role="alert">
+          {file.file.name}: {file.error}
+        </p>
+      )}
+    </div>
+  );
 
-      <div className="space-y-1.5">
-        <span className={FORM_LABEL}>
-          File <FieldHelp concept="source_file" />
-        </span>
-        <MediaManager
-          existing={shown ? [shown] : []}
-          onRemoveExisting={() => update({ file: null })}
-          staged={pendingFiles}
-          onRemoveStaged={() => update({ file: null })}
-          onAddFiles={hasFile ? undefined : (files) => files[0] && onPickFile(files[0])}
-          isGraphic={draft.graphicLocked}
-        />
-        {file?.state === "uploading" && (
-          <p className="text-xs text-neutral-500" role="status">
-            Uploading {file.file.name}…
-          </p>
-        )}
-        {file?.state === "failed" && (
-          <p className="text-xs text-red-400" role="alert">
-            {file.file.name}: {file.error}
-          </p>
-        )}
-      </div>
-
+  const fields = (
+    <div className="space-y-4">
       <div className="space-y-1.5">
         <label htmlFor={id("title")} className={FORM_LABEL}>
-          Source title
+          Title
         </label>
         <Input
           id={id("title")}
+          // Named apart from the event's Title field and the other editors' titles.
+          aria-label={`${name} title`}
           value={draft.title}
           maxLength={255}
           onChange={(e) => update({ title: e.target.value })}
-          placeholder="Optional, for example Drone footage of the strike"
+          placeholder="For example Drone footage of the strike"
         />
       </div>
 
       <div className="space-y-1.5">
-        <span className={FORM_LABEL}>
+        <span className={cn(LABEL_ROW, LABEL_TEXT)}>
           Level <FieldHelp concept="source_level" />
         </span>
         <SegmentedControl<SourceLevel>
@@ -164,12 +178,12 @@ export function SourceEditor({
       </div>
 
       <div className="space-y-1.5">
-        <label
-          htmlFor={id("kind")}
-          className={cn(FORM_LABEL, invalid.kind && FORM_INVALID_LABEL)}
-        >
-          Kind <FieldHelp concept="source_kind" />
-        </label>
+        <span className={LABEL_ROW}>
+          <label htmlFor={id("kind")} className={cn(LABEL_TEXT, invalid.kind && FORM_INVALID_LABEL)}>
+            Kind
+          </label>
+          <FieldHelp concept="source_kind" />
+        </span>
         <Select
           id={id("kind")}
           value={draft.kind}
@@ -196,12 +210,14 @@ export function SourceEditor({
             blank={() => ({ url: "", postedAt: "", snapshotUrl: "", stored: null })}
             max={MAX_LINKS_PER_SOURCE}
             itemLabel={`${name} link`}
+            addText="Add a link"
+            addName={`Add a link to ${name.toLowerCase()}`}
             placeholder="https://t.me/channel/12345"
             invalid={invalid.link}
             heading={
-              <>
-                Links <FieldHelp concept="source_links" />
-              </>
+              <span className={LABEL_ROW}>
+                Links ({draftUrls(draft).length}) <FieldHelp concept="source_links" />
+              </span>
             }
             columns={[
               {
@@ -250,9 +266,12 @@ export function SourceEditor({
         onToggle={() => setDetailsOpen((open) => !open)}
       >
         <div className="space-y-1.5">
-          <label htmlFor={id("captured_at")} className={FORM_LABEL}>
-            Captured (UTC) <FieldHelp concept="captured_at" />
-          </label>
+          <span className={LABEL_ROW}>
+            <label htmlFor={id("captured_at")} className={LABEL_TEXT}>
+              Captured
+            </label>
+            <FieldHelp concept="captured_at" />
+          </span>
           <DateTimeInput
             id={id("captured_at")}
             type="datetime-local"
@@ -263,7 +282,7 @@ export function SourceEditor({
 
         {hasCapturePosition(draft.kind) && (
           <div className="space-y-1.5">
-            <span className={FORM_LABEL}>
+            <span className={cn(LABEL_ROW, LABEL_TEXT)}>
               Capture position <FieldHelp concept="capture_position" />
             </span>
             <CoordinateInputs
@@ -289,18 +308,11 @@ export function SourceEditor({
         </div>
 
         {/* A `span` label plus the switch's own name: not a labelable field. */}
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1">
-            <span className={FORM_LABEL}>
-              Graphic content
-              {draft.graphicLocked && <LockedHint>admin only</LockedHint>}
-            </span>
-            <p className="text-xs text-neutral-500">
-              {draft.graphicLocked
-                ? "This source is flagged. Removing the flag requires an admin, so ask a moderator to review it."
-                : "Blurs this source's file behind an age confirmation for viewers. Flag footage showing death, injury or human remains."}
-            </p>
-          </div>
+        <div className="flex items-center justify-between gap-4">
+          <span className={cn(LABEL_ROW, LABEL_TEXT)}>
+            Graphic content <FieldHelp concept="graphic_content" />
+            {draft.graphicLocked && <LockedHint>admin only</LockedHint>}
+          </span>
           <Switch
             on={draft.isGraphic}
             onToggle={() => update({ isGraphic: !draft.isGraphic })}
@@ -309,6 +321,21 @@ export function SourceEditor({
           />
         </div>
       </Disclosure>
+    </div>
+  );
+
+  return (
+    <Card as="section" aria-label={name} className="@container">
+      <header className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-medium text-neutral-200">{name}</h3>
+        <div className="flex flex-wrap items-center gap-1">{actions}</div>
+      </header>
+      {/* A lone editor reads like the event page's lone source: once the card is 42rem wide the
+          file sits left of the fields, 3:2 (`DetailCard leadBeside`); narrower, it stays on top. */}
+      <div className={cn("grid gap-4", wide && "@2xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] @2xl:gap-5")}>
+        {fileSlot}
+        {fields}
+      </div>
     </Card>
   );
 }

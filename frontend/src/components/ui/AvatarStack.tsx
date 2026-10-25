@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { Check, X } from "lucide-react";
 
@@ -27,7 +28,12 @@ export interface AvatarStackItem {
   muted?: boolean;
 }
 
-const SIZE = "size-7 text-[11px]";
+// `md` is the 28px stamp; `sm` is the 20px picture of a byline, the size `<AuthorByline>` gives
+// its avatars, so a byline line keeps one height whether it lists or manages the geolocators.
+const SIZES = {
+  md: { picture: "size-7 text-[11px]", remove: "size-5 sm:size-5", mark: 12 },
+  sm: { picture: "size-5 text-[10px]", remove: "size-4 sm:size-4", mark: 10 },
+} as const;
 // The page canvas as a ring, so overlapping pictures read as separate discs.
 const RING = "ring-2 ring-neutral-950 outline-hidden focus-visible:ring-orange-400";
 
@@ -38,7 +44,7 @@ const SPACING = { overlap: "gap-y-1 -space-x-1.5", gap: "gap-1.5" } as const;
 // starting 6px into the disc so the picture's centre stays its link. `REMOVE_ROOM` keeps that
 // square clear of the next picture and of the line above.
 const REMOVE = cn(
-  "absolute -right-1.5 -top-1.5 z-30 size-5 sm:size-5 rounded-full bg-neutral-900 text-neutral-400 ring-1 ring-neutral-700 hover:bg-neutral-900 hover:text-red-400",
+  "absolute -right-1.5 -top-1.5 z-30 rounded-full bg-neutral-900 text-neutral-400 ring-1 ring-neutral-700 hover:bg-neutral-900 hover:text-red-400",
   "before:absolute before:content-[''] pointer-coarse:before:-top-4 pointer-coarse:before:bottom-0 pointer-coarse:before:left-1.5 pointer-coarse:before:-right-5.5",
   HOVER_REVEAL,
 );
@@ -63,8 +69,11 @@ export function AvatarStack({
   max = 5,
   spacing = "overlap",
   checked = false,
+  size = "md",
   onOverflow,
   overflowLabel = (hidden) => `${hidden} more`,
+  trailing,
+  className,
 }: {
   items: AvatarStackItem[];
   /** The list's accessible name. */
@@ -73,19 +82,25 @@ export function AvatarStack({
   spacing?: keyof typeof SPACING;
   /** An accent check badge on every picture (the approval stamps). */
   checked?: boolean;
+  size?: keyof typeof SIZES;
   onOverflow?: () => void;
   overflowLabel?: (hidden: number) => string;
+  /** After the last picture, on its line (the approvals' `?`). Use it with `spacing="gap"`. */
+  trailing?: ReactNode;
+  className?: string;
 }) {
   if (items.length === 0) return null;
   const shown = items.slice(0, max);
   const hidden = items.length - shown.length;
+  const dims = SIZES[size];
   const bubble = cn(
-    SIZE,
+    dims.picture,
     "flex items-center justify-center rounded-full bg-neutral-800 text-neutral-300 font-medium",
     RING,
   );
-  return (
-    <ul aria-label={label} className={cn("flex flex-wrap items-center", SPACING[spacing])}>
+  const row = cn("flex flex-wrap items-center", SPACING[spacing], className);
+  const list = (
+    <ul aria-label={label} className={trailing ? "contents" : row}>
       {shown.map((item) => {
         const boxClass = cn(
           "relative flex hover:z-20 focus-visible:z-20",
@@ -99,7 +114,7 @@ export function AvatarStack({
               as="span"
               src={item.avatarUrl}
               username={item.name}
-              size={SIZE}
+              size={dims.picture}
               shape={item.variant === "organization" ? "square" : "circle"}
               decorative
             />
@@ -129,9 +144,9 @@ export function AvatarStack({
                 variant="dangerGhost"
                 aria-label={item.remove.label}
                 onClick={item.remove.onClick}
-                className={REMOVE}
+                className={cn(REMOVE, dims.remove)}
               >
-                <X size={12} />
+                <X size={dims.mark} />
               </Button>
             )}
           </li>
@@ -154,5 +169,14 @@ export function AvatarStack({
         </li>
       )}
     </ul>
+  );
+  if (!trailing) return list;
+  // The list's pictures flow in the row beside `trailing`, so it wraps with the last line rather
+  // than under the whole list, and stays out of the list's items.
+  return (
+    <div className={row}>
+      {list}
+      <span className="flex shrink-0 items-center">{trailing}</span>
+    </div>
   );
 }

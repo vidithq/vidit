@@ -180,7 +180,8 @@ export function ActionMenu({
         aria-controls={open ? menuId : undefined}
         onClick={() => (open ? close(false) : openAt("first"))}
         onKeyDown={onTriggerKeyDown}
-        className={open ? ACCENT_SURFACE : ""}
+        // A text trigger stands as tall as the icon buttons of its row.
+        className={cn(text && "sm:h-8", open && ACCENT_SURFACE)}
       >
         {text}
         {icon}

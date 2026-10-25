@@ -211,6 +211,7 @@ export function eventFormSlots(
           setEventTime={form.setEventTime}
           detectedFromUrl={showProvenance ? row?.detected_from_url : undefined}
           openedAsRequest={!!row?.requested_by}
+          invalid={invalidKeys.has("conflict_tag")}
         >
           <TaxonomyFields
             taxonomy={form.taxonomy}

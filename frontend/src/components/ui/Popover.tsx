@@ -41,11 +41,15 @@ function insidePanel(panel: HTMLElement | null, target: Node): boolean {
 export function Popover({
   label,
   icon,
+  compact = false,
   children,
 }: {
   /** The trigger's accessible name and tooltip, and the panel's name. */
   label: string;
   icon: ReactNode;
+  /** A 24px trigger on a desktop that takes no more height than a 20px line: a byline's. The
+   *  phone keeps its tap floor, its overhang held off the line by the same margins. */
+  compact?: boolean;
   /** The panel's content, handed the close. */
   children: (close: () => void) => ReactNode;
 }) {
@@ -112,7 +116,7 @@ export function Popover({
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         onClick={() => (open ? close(false) : setOpen(true))}
-        className={open ? ACCENT_SURFACE : ""}
+        className={cn(compact && "-my-2 sm:-my-0.5 sm:size-6", open && ACCENT_SURFACE)}
       >
         {icon}
       </Button>

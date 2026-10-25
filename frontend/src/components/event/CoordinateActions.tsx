@@ -75,13 +75,12 @@ export function CoordinateActions({
 }
 
 /**
- * A detail row's coordinate value: the pair, then its two actions. The group is wider than a
- * narrow phone row, so it wraps the actions onto a second line instead of pushing the page
- * sideways; `min-w-0` lets it shrink so the wrap happens, and `justify-end` keeps the wrapped
- * line flush right.
+ * A detail row's coordinate value: the pair, then its two actions, on one line that never wraps.
+ * Its row sets `wrapLabel`, so on a narrow phone row the label wraps first, then the whole line
+ * drops under it, flush right, and the actions stay beside the pair.
  *
- * `compact` fits a narrow card on one line that never wraps: the pair at 4 decimals in small
- * text, then the `small` actions. The copy still carries 6 decimals.
+ * `compact` fits a narrow card: the pair at 4 decimals in small text, then the `small` actions.
+ * The copy still carries 6 decimals.
  */
 export function CoordinateValue({
   lat,
@@ -95,8 +94,8 @@ export function CoordinateValue({
   return (
     <span
       className={cn(
-        "flex items-center justify-end",
-        compact ? "ml-auto shrink-0 gap-x-1 whitespace-nowrap" : "min-w-0 flex-wrap gap-x-2 gap-y-1",
+        "ml-auto flex shrink-0 items-center justify-end whitespace-nowrap",
+        compact ? "gap-x-1" : "gap-x-2",
       )}
     >
       <span className={cn("font-mono text-neutral-200", compact ? "text-xs" : "text-sm")}>

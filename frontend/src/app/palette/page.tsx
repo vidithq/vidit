@@ -1636,7 +1636,7 @@ export default function PalettePage() {
             </Card>
           </Item>
 
-          <Item name="<DetailCard> + <DetailRow> + <DetailPills>" usage="Label / value rows on the event and request detail pages and on each source block. <DetailCard> takes an optional `lead` slot above the rows (a source's file), `leadBeside` to put that slot left of the rows (3:2) once the card is 42rem wide, falling back to the slot on top when narrower, and a `label` that makes it a named region. <DetailRow> takes `empty`, shown muted for an empty value (Untitled), and `wrapLabel`, for a value that holds one line at its full width: the label wraps instead when the row runs short (a source's Capture position). <DetailPills> is a row value made of pills (conflicts, tags), wrapping flush right.">
+          <Item name="<DetailCard> + <DetailRow> + <DetailPills>" usage="Label / value rows on the event and request detail pages and on each source block. <DetailCard> takes an optional `lead` slot above the rows (a source's file), `leadBeside` to put that slot left of the rows (3:2) once the card is 42rem wide, falling back to the slot on top when narrower, and a `label` that makes it a named region. <DetailRow> takes `wrapLabel`, for a value that holds one line at its full width: the label wraps instead when the row runs short (a source's Capture position). <DetailPills> is a row value made of pills (conflicts, tags), wrapping flush right.">
             <div className="w-full max-w-md space-y-4">
               <DetailCard>
                 <DetailRow label="Status" concept="status">
@@ -1646,7 +1646,7 @@ export default function PalettePage() {
                 <DetailRow label="Coordinates" concept="coordinates" value="48.0159, 37.8024" />
               </DetailCard>
               <DetailCard lead={<p className="text-sm text-neutral-500">Lead slot</p>}>
-                <DetailRow label="Title" value="" empty="Untitled" />
+                <DetailRow label="Title" value="Drone footage of the strike" />
                 <DetailRow label="Capture position" align="center" wrapLabel>
                   <CoordinateValue lat={48.0201} lng={37.7951} compact />
                 </DetailRow>

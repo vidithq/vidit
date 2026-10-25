@@ -36,7 +36,7 @@ describe("SourceBlock", () => {
   it("shows the file above the rows", () => {
     const block = renderBlock({ media: IMAGE, kind: "drone" });
     const img = within(block).getByRole("img", { name: ALT });
-    const title = within(block).getByText("Title");
+    const title = within(block).getByText("Level");
     expect(img.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(block).queryByText("No file")).toBeNull();
     expect(within(block).getByText("Drone · photo")).toBeInTheDocument();
@@ -75,8 +75,8 @@ describe("SourceBlock", () => {
     const block = renderBlock({ level: "context", kind: "article" });
     expect(within(block).queryByText("No file")).toBeNull();
     // The card starts with its rows.
-    expect(rowLabels(block)[0]).toBe("Title");
-    expect(block.firstElementChild?.textContent).toContain("Title");
+    expect(rowLabels(block)[0]).toBe("Level");
+    expect(block.firstElementChild?.textContent).toContain("Level");
   });
 
   it("keeps the file area of a context source that has a file", () => {
@@ -92,8 +92,8 @@ describe("SourceBlock", () => {
     expect(within(renderBlock()).queryByText("Kind")).toBeNull();
   });
 
-  it("reads Untitled for an empty title", () => {
-    expect(within(renderBlock()).getByText("Untitled")).toBeInTheDocument();
+  it("drops the Title row for an empty title, like every row without a value", () => {
+    expect(within(renderBlock()).queryByText("Title")).toBeNull();
   });
 
   it("shows the title when set", () => {
@@ -104,9 +104,9 @@ describe("SourceBlock", () => {
     ).toBeInTheDocument();
   });
 
-  it("hides every row without a value, except the title", () => {
+  it("hides every row without a value", () => {
     const block = renderBlock({ links: [] });
-    expect(rowLabels(block)).toEqual(["Title", "Level"]);
+    expect(rowLabels(block)).toEqual(["Level"]);
   });
 
   it("lists the rows in order when every field is set", () => {
@@ -122,9 +122,9 @@ describe("SourceBlock", () => {
       "Title",
       "Level",
       "Kind",
-      "Capture position",
-      "Captured",
       "Links (1)",
+      "Captured",
+      "Capture position",
       "Tags",
     ]);
     expect(within(block).getByText("1 Jun 2026, 09:30 UTC")).toBeInTheDocument();

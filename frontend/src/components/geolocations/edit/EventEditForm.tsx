@@ -6,18 +6,16 @@ import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api";
 
 import { eventFormSlots, useEventForm } from "@/components/geolocations/EventFormFields";
-import { Ellipsis } from "lucide-react";
+import { PublishActions, usePublishAction } from "@/components/geolocations/PublishActions";
+import { Ellipsis, MapPin, Megaphone, Save } from "lucide-react";
 
 import { Card } from "@/components/ui/Card";
 import { ActionMenu } from "@/components/ui/ActionMenu";
-import { SectionHeading } from "@/components/ui/SectionHeading";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { sourcesBlockWrite } from "@/components/sources/SourcesField";
-import { ARMED_RING } from "@/components/ui/styles";
-import { FORM_ERROR_BANNER, LABEL_TEXT } from "@/components/ui/form-styles";
+import { LABEL_TEXT } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
-import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Button } from "@/components/ui/Button";
-import { CountBadge } from "@/components/ui/CountBadge";
 import { CloseEventDialog, closeActionLabel } from "@/components/event/CloseEventDialog";
 import { EventShell } from "@/components/event/EventShell";
 import {
@@ -25,7 +23,6 @@ import {
   useDraftGeolocatorsByline,
 } from "@/components/event/useGeolocatorsByline";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
-import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
 import { Input } from "@/components/ui/Input";
 import { cleanNumber } from "@/lib/coordinates";
@@ -34,7 +31,6 @@ import {
   hasVersionChanges,
   missingEventFields,
   missingEventRequestFields,
-  missingSummary,
   nothingChangedMessage,
   parseGuessCoords,
   saveVersion,
@@ -70,8 +66,9 @@ const CONFIRM_SENTENCE =
  * `initialContent` on first paint. Every write names the version the form was loaded at, so a
  * row that moved meanwhile answers a conflict instead of being overwritten.
  *
- * The fields fill `EventShell`'s zones. The actions block pins the writes, the banners and, for
- * the owner, **More actions** with the close; a published row's version note reads under them.
+ * The fields fill `EventShell`'s zones. The actions block pins the writes (`PublishActions`), the
+ * error banner and, for the owner, **More actions** with the close; the incomplete-form notice and
+ * a published row's version note read under them.
  * The title section's byline manages the geolocators in place: on a published row each change
  * applies on click and never makes a version; on a request or a detection the reader picks the
  * co-geolocators the publish invites.
@@ -131,6 +128,10 @@ export function EventEditForm({
       }),
     [form.title, form.lat, form.lng, form.proof, floor, form.selectedConflictIds]
   );
+  const requestMissing = useMemo(
+    () => missingEventRequestFields({ title: form.title, sources: floor }),
+    [form.title, floor]
+  );
 
   const submitMutation = useMutation(
     () =>
@@ -183,22 +184,6 @@ export function EventEditForm({
     }
   );
 
-  // Publishing is public, so it takes a second click. The button arms in place
-  // and keeps focus, so Enter twice submits too.
-  const {
-    armed: submitArmed,
-    trigger: triggerSubmit,
-    controlRef: submitButtonRef,
-  } = useConfirmAction(
-    () => {
-      void submitMutation.run();
-    },
-    {
-      timeoutMs: ARM_MS,
-      dismissOnOutside: true,
-    }
-  );
-
   const busy = submitMutation.loading || saveRequestMutation.loading;
   const actionError = submitMutation.error ?? saveRequestMutation.error;
 
@@ -220,68 +205,56 @@ export function EventEditForm({
     conflictIds: form.selectedConflictIds,
   });
 
-  // The write enforces the full floor; a publish then asks to confirm. An incomplete form
-  // surfaces the notice instead.
-  const attemptSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    resetActions();
-    // The taxonomy must be loaded before the floor can tell "didn't pick one"
-    // from "still loading".
-    if (form.taxonomy.blockedMessage !== null) {
-      submitMutation.setError(form.taxonomy.blockedMessage);
-      return;
-    }
-    if (publishMissing.length) {
-      form.flagIncomplete(publishMissing);
-      return;
-    }
-    // A running upload or a refused archived copy holds the write.
-    const blocked = sourcesBlockWrite(form.sources);
-    if (blocked) {
-      submitMutation.setError(blocked);
-      return;
-    }
-    // A version writes on the first click; a publish arms and writes on the
-    // second. Every check above runs on both clicks.
-    if (editingPublished) {
-      // The server refuses the same edit with the same words.
-      if (!hasVersionChanges(geo, versionState())) {
-        submitMutation.setError(nothingChangedMessage(geo.version_no));
-        return;
+  // The write enforces the full floor on every click. A version writes on the first click; a
+  // publish is public, so it arms and writes on the second. An incomplete form surfaces the
+  // notice instead.
+  const submit = usePublishAction({
+    check: () => {
+      resetActions();
+      // The taxonomy must be loaded before the floor can tell "didn't pick one"
+      // from "still loading".
+      if (form.taxonomy.blockedMessage !== null) {
+        submitMutation.setError(form.taxonomy.blockedMessage);
+        return false;
       }
-      void submitMutation.run();
-      return;
-    }
-    triggerSubmit();
-  };
+      if (publishMissing.length) {
+        form.flagIncomplete(publishMissing);
+        return false;
+      }
+      // A running upload or a refused archived copy holds the write.
+      const blocked = sourcesBlockWrite(form.sources);
+      if (blocked) {
+        submitMutation.setError(blocked);
+        return false;
+      }
+      // The server refuses the same edit with the same words.
+      if (editingPublished && !hasVersionChanges(geo, versionState())) {
+        submitMutation.setError(nothingChangedMessage(geo.version_no));
+        return false;
+      }
+      return true;
+    },
+    write: () => void submitMutation.run(),
+    confirm: editingPublished ? undefined : CONFIRM_SENTENCE,
+  });
 
-  const attemptSaveRequest = () => {
-    resetActions();
-    const missing = missingEventRequestFields({ title: form.title, sources: floor });
-    if (missing.length) {
-      form.flagIncomplete(missing);
-      return;
-    }
-    const blocked = sourcesBlockWrite(form.sources);
-    if (blocked) {
-      saveRequestMutation.setError(blocked);
-      return;
-    }
-    void saveRequestMutation.run();
-  };
-
-  // The version the save produces (live row N becomes N + 1).
-  const saveLabel = `Save version ${geo.version_no + 1}`;
-  const widestLabel = editingPublished ? saveLabel : "Confirm publish";
-  const submitLabel = editingPublished
-    ? submitMutation.loading
-      ? "Saving…"
-      : saveLabel
-    : submitMutation.loading
-      ? "Publishing…"
-      : submitArmed
-        ? "Confirm publish"
-        : "Publish";
+  // No confirm: the in-place save publishes nothing and files no version.
+  const saveRequest = usePublishAction({
+    check: () => {
+      resetActions();
+      if (requestMissing.length) {
+        form.flagIncomplete(requestMissing);
+        return false;
+      }
+      const blocked = sourcesBlockWrite(form.sources);
+      if (blocked) {
+        saveRequestMutation.setError(blocked);
+        return false;
+      }
+      return true;
+    },
+    write: () => void saveRequestMutation.run(),
+  });
 
   const title = editingPublished
     ? "Edit geolocation"
@@ -292,91 +265,87 @@ export function EventEditForm({
       : "Publish detection";
 
   const actions = (
-    <aside aria-label="Actions" className="space-y-3">
-      {/* The review pass's own chrome. A plain edit has none. */}
-      {queue && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <span className={LABEL_TEXT}>{queue.position}</span>
-          <Button variant="secondary" onClick={queue.onAdvance} disabled={busy}>
-            Skip
-          </Button>
-        </div>
-      )}
-
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="inline-flex items-center gap-1.5">
-          {/* A published row's save needs the same floor, but only a publish counts it. */}
-          <CountBadge
-            count={editingPublished ? 0 : publishMissing.length}
-            label={missingSummary(publishMissing)}
-          >
-            {(describedBy) => (
-              <Button
-                ref={submitButtonRef}
-                type="submit"
-                form={EDIT_FORM_ID}
-                variant="primary"
-                disabled={busy}
-                className={submitArmed ? ARMED_RING : ""}
-                title={submitArmed ? CONFIRM_SENTENCE : undefined}
-                aria-describedby={describedBy}
-              >
-                {/* Labels stack in one grid cell so arming never resizes the button. */}
-                <span className="grid">
-                  <span aria-hidden className="col-start-1 row-start-1 invisible">
-                    {widestLabel}
-                  </span>
-                  <span className="col-start-1 row-start-1">{submitLabel}</span>
-                </span>
-              </Button>
-            )}
-          </CountBadge>
-          {!editingPublished && <FieldHelp concept="action_publish" />}
-        </span>
-        {/* No confirm: the in-place save publishes nothing and files no version. */}
-        {isRequest && isOwner && (
-          <Button variant="secondary" onClick={attemptSaveRequest} disabled={busy}>
-            {saveRequestMutation.loading ? "Saving…" : "Save request"}
-          </Button>
-        )}
-        {isOwner && (
-          <ActionMenu
-            label="More actions"
-            icon={<Ellipsis size={14} />}
-            items={[
+    <PublishActions
+      disabled={busy}
+      error={actionError}
+      help={editingPublished ? undefined : "action_publish"}
+      // The review pass's own chrome. A plain edit has none.
+      lead={
+        queue && (
+          <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
+            <span className={LABEL_TEXT}>{queue.position}</span>
+            <Button variant="secondary" onClick={queue.onAdvance} disabled={busy}>
+              Skip
+            </Button>
+          </div>
+        )
+      }
+      buttons={[
+        editingPublished
+          ? {
+              action: submit,
+              // The version the save produces (live row N becomes N + 1).
+              label: `Save version ${geo.version_no + 1}`,
+              busyLabel: "Saving…",
+              busy: submitMutation.loading,
+              variant: "primary",
+              icon: <Save size={14} strokeWidth={2} />,
+              form: EDIT_FORM_ID,
+            }
+          : {
+              action: submit,
+              label: "Publish",
+              busyLabel: "Publishing…",
+              busy: submitMutation.loading,
+              variant: "primary",
+              icon: <MapPin size={14} strokeWidth={2} />,
+              missing: publishMissing,
+              form: EDIT_FORM_ID,
+            },
+        ...(isRequest && isOwner
+          ? [
               {
-                key: "close",
-                label: closeActionLabel(geo.status),
-                onSelect: () => setClosing(true),
+                action: saveRequest,
+                label: "Save request",
+                busyLabel: "Saving…",
+                busy: saveRequestMutation.loading,
+                variant: "secondary" as const,
+                icon: <Megaphone size={14} strokeWidth={2} />,
+                missing: requestMissing,
               },
-            ]}
-          />
-        )}
-        {/* Announces the armed state to screen readers. */}
-        <span className="sr-only" role="status" aria-live="polite">
-          {submitArmed ? CONFIRM_SENTENCE : ""}
-        </span>
-      </div>
-
-      <IncompleteFormNotice
-        key={form.validationAttempt}
-        missing={form.missingFields.map((m) => m.label)}
-      />
-      {actionError && <div className={FORM_ERROR_BANNER}>{actionError}</div>}
-
-      {closing && (
-        <CloseEventDialog
-          eventId={geo.id}
-          status={geo.status}
-          disabled={busy}
-          onCancel={() => setClosing(false)}
-          onClosed={() => {
-            if (geo.status === "detected") refreshDetectionCount();
-            finish();
-          }}
-        />
-      )}
-    </aside>
+            ]
+          : []),
+      ]}
+      trailing={
+        isOwner && (
+          <>
+            <ActionMenu
+              label="More actions"
+              icon={<Ellipsis size={14} />}
+              items={[
+                {
+                  key: "close",
+                  label: closeActionLabel(geo.status),
+                  onSelect: () => setClosing(true),
+                },
+              ]}
+            />
+            {closing && (
+              <CloseEventDialog
+                eventId={geo.id}
+                status={geo.status}
+                disabled={busy}
+                onCancel={() => setClosing(false)}
+                onClosed={() => {
+                  if (geo.status === "detected") refreshDetectionCount();
+                  finish();
+                }}
+              />
+            )}
+          </>
+        )
+      }
+    />
   );
 
   const fields = eventFormSlots(form, { row: geo, showProvenance: true, formId: EDIT_FORM_ID });
@@ -399,26 +368,45 @@ export function EventEditForm({
         pinned: actions,
         // Optional, never part of the floor. Outside the `<form>`, so it joins it through `form`,
         // and Enter in it still saves.
-        below: editingPublished && (
-          <Card as="section">
-            <SectionHeading title="Version note" concept="version_note" />
-            <Input
-              id="version_note"
-              type="text"
-              form={EDIT_FORM_ID}
-              value={editNote}
-              maxLength={VERSION_NOTE_MAX_LEN}
-              onChange={(e) => setEditNote(e.target.value)}
-              placeholder="What changed, and why"
-              aria-label="Version note"
+        below: (
+          <div className="space-y-4">
+            <IncompleteFormNotice
+              key={form.validationAttempt}
+              missing={form.missingFields.map((m) => m.label)}
             />
-          </Card>
+            {/* Optional, never part of the floor. Outside the `<form>`, so it joins it through
+                `form`, and Enter in it still saves. */}
+            {editingPublished && (
+              <section>
+                <SectionEyebrow title="Version note" concept="version_note" />
+                <Card>
+                  <Input
+                    id="version_note"
+                    type="text"
+                    form={EDIT_FORM_ID}
+                    value={editNote}
+                    maxLength={VERSION_NOTE_MAX_LEN}
+                    onChange={(e) => setEditNote(e.target.value)}
+                    placeholder="What changed, and why"
+                    aria-label="Version note"
+                  />
+                </Card>
+              </section>
+            )}
+          </div>
         ),
       }}
       body={{
         ...fields.body,
         // `noValidate`: IncompleteFormNotice owns required-field feedback.
-        form: { id: EDIT_FORM_ID, onSubmit: attemptSubmit, noValidate: true },
+        form: {
+          id: EDIT_FORM_ID,
+          onSubmit: (e) => {
+            e.preventDefault();
+            submit.attempt();
+          },
+          noValidate: true,
+        },
       }}
     />
   );

@@ -25,8 +25,9 @@ import type { Tag } from "@/types";
 let uploadToken = 0;
 
 /**
- * The **Sources** section every event form carries: a `HorizontalScroller` row of one
- * `SourceEditor` per source, side by side like the event page's, **Add a source** in its header
+ * The **Sources** section every event form carries, under a **Sources (N)** eyebrow: a
+ * `HorizontalScroller` row of one `SourceEditor` per source, side by side like the event page's
+ * (a lone one `wide`, its file beside its fields), **Add a source** in its header
  * (capped at `MAX_SOURCES_PER_EVENT`), and per editor a two-click remove. Every editor stays
  * mounted, so one scrolled out of view keeps its upload.
  *
@@ -110,8 +111,14 @@ export function SourcesField({
       <HorizontalScroller
         ref={scroller}
         heading={
-          <div className="space-y-1">
-            <SectionEyebrow margin="none" title="Sources" concept="sources" invalid={fileMissing} />
+          // The floor's line sits in the header row, so it moves no card down.
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <SectionEyebrow
+              margin="none"
+              title={`Sources (${sources.length})`}
+              concept="sources"
+              invalid={fileMissing}
+            />
             {fileMissing && (
               <p className="text-xs text-red-400">Add a file to a direct or indirect source.</p>
             )}
@@ -143,6 +150,7 @@ export function SourcesField({
             setTags={setTags}
             invalid={sourceGaps(draft, invalidKeys)}
             actions={sources.length > 1 && <RemoveSource index={index} onRemove={() => remove(index)} />}
+            wide={sources.length === 1}
           />
         ))}
       </HorizontalScroller>

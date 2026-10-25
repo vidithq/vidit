@@ -166,11 +166,13 @@ function DetailRows({
             compact
             className="text-sm"
           >
-            <span className="text-neutral-200 font-mono text-xs">
-              {geo.coords
-                ? formatCoordinates(geo.coords.lat, geo.coords.lng)
-                : "—"}
-            </span>
+            {geo.coords ? (
+              <span className="text-neutral-200 font-mono text-xs">
+                {formatCoordinates(geo.coords.lat, geo.coords.lng)}
+              </span>
+            ) : (
+              <span className="text-neutral-200">Unknown</span>
+            )}
           </DetailRow>
         </div>
         <div className="space-y-2">

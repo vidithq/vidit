@@ -170,7 +170,8 @@ describe("SourceEditor", () => {
   it("says nothing of a missing link until a publish attempt flags it", () => {
     render(<Host initial={{ ...newSourceDraft(), file: { state: "stored", media: FILE } }} />);
     expect(screen.queryByText(/^Incomplete/)).toBeNull();
-    expect(screen.getByText("Links").className).not.toContain("text-red-400");
+    // The list heads its rows with the count of its links, red while a publish flags it.
+    expect(screen.getByText("Links (0)").parentElement!.className).not.toContain("text-red-400");
   });
 
   it("archives a link from the archive box in its row, beside its post time", () => {
@@ -197,7 +198,7 @@ describe("SourceEditor", () => {
 
   it("reads in the order of the event page's source block, the rest under More details", () => {
     render(<Host initial={newSourceDraft()} />);
-    const order = ["File", "Source title", "Level", "Kind", "Links", "More details"].map(
+    const order = ["File", "Title", "Level", "Kind", "Links", "More details"].map(
       (text) => screen.getByText(text, { exact: false, selector: "span, label, button" })
     );
     for (let i = 1; i < order.length; i++) {
@@ -213,14 +214,14 @@ describe("SourceEditor", () => {
     expect(screen.queryByRole("switch", { name: "Source 1 graphic content" })).toBeNull();
     expect(screen.queryByRole("combobox", { name: "Source 1 tags" })).toBeNull();
     openDetails();
-    expect(screen.getByLabelText(/^Captured \(UTC\)/, { selector: "input" })).toBeVisible();
+    expect(screen.getByLabelText("Captured", { selector: "input" })).toBeVisible();
     expect(screen.getByRole("switch", { name: "Source 1 graphic content" })).toBeVisible();
   });
 
   it("opens More details on a source that holds one of its fields", () => {
     render(<Host initial={{ ...newSourceDraft(), capturedAt: "2026-01-01T10:00" }} />);
     expect(details()).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByLabelText(/^Captured \(UTC\)/, { selector: "input" })).toHaveValue("2026-01-01T10:00");
+    expect(screen.getByLabelText("Captured", { selector: "input" })).toHaveValue("2026-01-01T10:00");
   });
 
   it("opens the copy a stored link carries, and still offers to replace it", () => {
@@ -253,7 +254,7 @@ describe("SourceEditor", () => {
 
   it("names each link by its position once the source holds several", () => {
     render(<Host initial={newSourceDraft()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Add source 1 link" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add a link to source 1" }));
     expect(screen.getByRole("button", { name: "Archive source 1, link 2, this link" })).toBeInTheDocument();
   });
 
@@ -264,7 +265,7 @@ describe("SourceEditor", () => {
         invalid={{ link: true, kind: true }}
       />
     );
-    expect(screen.getByText("Links").className).toContain("text-red-400");
+    expect(screen.getByText("Links (0)").parentElement!.className).toContain("text-red-400");
     expect(kindField().className).toContain("border-red-500");
   });
 
@@ -294,6 +295,7 @@ describe("SourceEditor", () => {
     expect(toggle).toBeChecked();
     expect(toggle).toBeDisabled();
     expect(screen.getByText("admin only")).toBeInTheDocument();
-    expect(screen.getByText(/Removing the flag requires an admin/)).toBeInTheDocument();
+    // What the flag does, and who removes it, is the `?` beside it.
+    expect(screen.getByRole("button", { name: "What does the graphic flag do?" })).toBeInTheDocument();
   });
 });

@@ -239,8 +239,10 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
       </div>
     );
 
+  // `max-sm:pr-2`: the `?` grows its tap area 8px past its glyph on a phone, which stays inside
+  // the row's right edge.
   const geolocate = tiers.flow && isOpenRequest && (
-    <span className="inline-flex items-center gap-1.5">
+    <span className="inline-flex items-center gap-1.5 max-sm:pr-2">
       <Link href={`/events/${event.id}/edit`} className={buttonClasses("primary")}>
         <MapPin size={14} />
         Geolocate
@@ -274,10 +276,10 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
     ),
     actions: {
       pinned: (controls.length > 0 || geolocate) && (
-        <div className="flex flex-col items-end gap-3">
+        <aside aria-label="Actions" className="flex flex-col items-end gap-3">
           {row("justify-end")}
           {geolocate}
-        </div>
+        </aside>
       ),
       below: (eventApprovals.summary || invited) && (
         <div className="space-y-4">
