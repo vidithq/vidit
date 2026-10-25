@@ -98,7 +98,7 @@ def report_collection(
 
     Same gesture, body and per-IP limit as an event report: open to anonymous
     viewers (``reporter_id`` NULL), a signed-in reporter is recorded. An
-    unknown, withheld or orphaned collection answers 404.
+    unknown, withheld, owner-deleted or orphaned collection answers 404.
     """
     try:
         return reports_service.create_collection_report(
@@ -124,7 +124,7 @@ def get_collection(
     current_user: User | None = Depends(get_current_user_optional),
 ) -> CollectionRead:
     """One collection's header: owner, title, item count and date range.
-    Public; a withheld collection is a 404 for everyone but an admin."""
+    Public; a withheld or owner-deleted collection is a 404 for everyone but an admin."""
     collection = _resolve(db, collection_id, current_user)
     return collections_service.build_collection_read(db, collection)
 
@@ -165,7 +165,11 @@ def delete_collection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
-    """Drop your collection (owner only). Its events stay."""
+    """Drop your collection (owner only). Its events stay.
+
+    Under an open content report the collection is only withheld, from every
+    read but an admin's, until its last open report is resolved, which erases it.
+    """
     collection = _resolve(db, collection_id, current_user)
     collections_service.delete_collection(db, collection=collection, user=current_user)
 

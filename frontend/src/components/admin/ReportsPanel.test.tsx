@@ -70,4 +70,28 @@ describe("<ReportsPanel>", () => {
     );
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
+
+  it("keeps a collection its owner deleted judgeable", async () => {
+    const deleted = {
+      ...report("r1"),
+      event_id: null,
+      collection: {
+        id: "c1",
+        title: "Deleted shelf",
+        owner: { id: "u1", username: "owner", avatar_url: null },
+        deleted_at: "2026-10-02T00:00:00Z",
+      },
+    };
+    api.apiFetchPage.mockResolvedValue({
+      items: { items: [deleted], total: 1, page: 1, per_page: 20 },
+      nextCursor: null,
+    });
+    render(<ReportsPanel />);
+
+    expect(await screen.findByText("Deleted by its owner")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Deleted shelf" })).toBeInTheDocument();
+    expect(screen.queryByText("Reported item deleted")).toBeNull();
+    expect(screen.getByRole("button", { name: "Hide the collection" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
+  });
 });

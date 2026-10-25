@@ -17,13 +17,18 @@ owner's public profile. Two rules hold everywhere in this module:
 
 A collection stores no file: its card mosaic is read off the items at request
 time by :func:`cover_tiles_for`.
+
+An owner's delete erases the collection, unless an open content report names
+it: then :func:`delete_collection` only stamps ``deleted_at``, which every read
+but an admin's treats as gone, and :func:`erase_if_released` erases it once the
+last open report is resolved.
 """
 
 from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
-from datetime import date, datetime, time
+from datetime import UTC, date, datetime, time
 from typing import Any, NamedTuple
 
 from geoalchemy2.functions import ST_X, ST_Y
@@ -32,6 +37,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models.collection import Collection, CollectionEvent
+from app.models.content_report import ContentReport
 from app.models.event import Event
 from app.models.media import Media
 from app.models.source import Source, source_tags
@@ -160,15 +166,21 @@ class CollectionStats(NamedTuple):
 _EMPTY_STATS = CollectionStats(event_count=0, first_date=None, last_date=None)
 
 
-def visible_collections() -> tuple[ColumnElement[bool], ColumnElement[bool]]:
+def visible_collections() -> tuple[ColumnElement[bool], ...]:
     """The predicate pair naming a collection a reader may see.
 
-    Not withheld (``hidden_at``) and owned by a non-deleted account. Every
-    reader surface spreads it (``*visible_collections()``), like
+    Not withheld (``hidden_at``), not deleted by its owner pending a report
+    (``deleted_at``), and owned by a non-deleted account. Every reader surface
+    spreads it (``*visible_collections()``), like
     :func:`services.event_filters.visible_events`. Admins skip it to judge a
-    takedown (:func:`resolve_collection`, ``services/admin.hide_collection``).
+    report or a takedown (:func:`resolve_collection`,
+    ``services/admin.hide_collection``).
     """
-    return Collection.hidden_at.is_(None), Collection.owner.has(User.deleted_at.is_(None))
+    return (
+        Collection.hidden_at.is_(None),
+        Collection.deleted_at.is_(None),
+        Collection.owner.has(User.deleted_at.is_(None)),
+    )
 
 
 def has_showable_item() -> ColumnElement[bool]:
@@ -373,9 +385,11 @@ def build_collection_read(db: Session, collection: Collection) -> CollectionRead
 def resolve_collection(db: Session, *, collection_id: uuid.UUID, viewer: User | None) -> Collection:
     """Fetch a readable collection by id, or raise :class:`CollectionNotFoundError`.
 
-    Readable is :func:`visible_collections`: a withheld collection or one
-    owned by a soft-deleted user reads as not found, except to an admin (the
-    branch ``GET /events/{id}`` takes).
+    Readable is :func:`visible_collections`: a withheld collection, one its
+    owner deleted pending a report, or one owned by a soft-deleted user reads
+    as not found, except to an admin (the branch ``GET /events/{id}`` takes).
+    The owner verbs refuse a deleted one even to an admin
+    (:func:`_ensure_owned_live`).
     """
     query = db.query(Collection).options(joinedload(Collection.owner))
     query = query.filter(Collection.id == collection_id)
@@ -385,6 +399,17 @@ def resolve_collection(db: Session, *, collection_id: uuid.UUID, viewer: User | 
     if collection is None:
         raise CollectionNotFoundError("Collection not found")
     return collection
+
+
+def _ensure_owned_live(collection: Collection, user: User) -> None:
+    """403 unless ``user`` owns ``collection``, then 404 once its owner deleted it.
+
+    The owner's verbs only. An admin reads a deleted collection to judge its
+    report, but nobody writes to it.
+    """
+    ensure_owner(collection, user)
+    if collection.deleted_at is not None:
+        raise CollectionNotFoundError("Collection not found")
 
 
 def _refuse_uncredited(credited: bool) -> None:
@@ -516,7 +541,7 @@ def update_collection_details(
     :func:`create_collection`. Ownership is settled first: a stranger gets a
     403 whatever the body.
     """
-    ensure_owner(collection, user)
+    _ensure_owned_live(collection, user)
     checked = _checked_description(description)
     collection.title = title
     collection.description = checked.html
@@ -526,15 +551,63 @@ def update_collection_details(
     return collection
 
 
+def _has_open_report(db: Session, collection_id: uuid.UUID) -> bool:
+    """Whether an unresolved content report names the collection."""
+    return bool(
+        db.query(
+            select(ContentReport.id)
+            .where(
+                ContentReport.collection_id == collection_id,
+                ContentReport.resolved_at.is_(None),
+            )
+            .exists()
+        ).scalar()
+    )
+
+
 def delete_collection(db: Session, *, collection: Collection, user: User) -> None:
     """Drop ``collection``, leaving every event it held untouched.
 
     403 for anyone but the owner. Membership rows go through the cascade; a
     collection is only a view over the events.
+
+    While an open content report names the collection, the delete only stamps
+    ``deleted_at``: the collection leaves every read but an admin's, so the
+    moderators keep the evidence, and :func:`erase_if_released` erases it when
+    the last open report is resolved.
     """
-    ensure_owner(collection, user)
-    db.delete(collection)
+    _ensure_owned_live(collection, user)
+    # Locked like ``services/reports.resolve_report`` locks it, and both decide on the open
+    # reports after the lock, so whichever runs second sees the other's write: a delete racing
+    # the last verdict either erases at once or is erased by the verdict.
+    locked = (
+        db.query(Collection)
+        .filter(Collection.id == collection.id)
+        .populate_existing()
+        .with_for_update()
+        .first()
+    )
+    if locked is None:
+        return
+    if _has_open_report(db, collection.id):
+        if collection.deleted_at is None:
+            collection.deleted_at = datetime.now(UTC)
+    else:
+        db.delete(collection)
     db.commit()
+
+
+def erase_if_released(db: Session, *, collection: Collection) -> bool:
+    """Erase a collection its owner deleted once no open report names it. No commit.
+
+    Called by ``services/reports.resolve_report`` with the row locked and the
+    verdict flushed, whatever the verdict. Returns whether it erased; a live
+    collection, or one another open report still names, stays.
+    """
+    if collection.deleted_at is None or _has_open_report(db, collection.id):
+        return False
+    db.delete(collection)
+    return True
 
 
 def add_event(db: Session, *, collection: Collection, event_id: uuid.UUID, user: User) -> None:
@@ -551,7 +624,7 @@ def add_event(db: Session, *, collection: Collection, event_id: uuid.UUID, user:
     the collection or event vanished, and answering 204 would claim a shelving
     that did not happen, so it is re-raised (500).
     """
-    ensure_owner(collection, user)
+    _ensure_owned_live(collection, user)
     ensure_collectable(db, event_ids=[event_id], user=user)
 
     try:
@@ -570,7 +643,7 @@ def remove_event(db: Session, *, collection: Collection, event_id: uuid.UUID, us
     403 for anyone but the owner. Eligibility is not re-checked, so an owner
     can always clear a membership whose event has since closed or been withheld.
     """
-    ensure_owner(collection, user)
+    _ensure_owned_live(collection, user)
     row = (
         db.query(CollectionEvent)
         .filter(

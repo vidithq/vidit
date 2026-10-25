@@ -1419,7 +1419,7 @@ One superseded version by its number, the read behind a `/events/{id}/vN` addres
 
 ### `GET /events/{id}/collections` 🔒
 
-Your collections, each saying whether this event is already on it. Only an analyst the event credits, its owner or a [co-geolocator](#shared-credit), may put it on a collection, so anyone else gets a 403. Empty collections are listed; withheld collections are not.
+Your collections, each saying whether this event is already on it. Only an analyst the event credits, its owner or a [co-geolocator](#shared-credit), may put it on a collection, so anyone else gets a 403. Empty collections are listed; withheld collections and collections [pending erasure](#delete-collectionsid) are not.
 
 **Response 200:**
 ```json
@@ -1910,7 +1910,7 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
 - Any active filter empties the users and organizations groups.
 - The collections group reads one filter, `author`, which narrows it to that analyst's collections. Any other active filter empties it. With an empty `q`, `author` lists the analyst's collections newest first.
 - An event hit matches on its title, on a source's title, or on a source URL that contains `q` as a case-insensitive substring, so a pasted link finds the events that cite it. The title highlight and the rank read the event title only.
-- A collection hit matches on its title and `description_text` together. It is the full [`CollectionRead`](#get-collectionsid) and carries no `*_highlight` field. A withheld collection, one whose owner is soft-deleted, and one holding nothing showable are absent.
+- A collection hit matches on its title and `description_text` together. It is the full [`CollectionRead`](#get-collectionsid) and carries no `*_highlight` field. A withheld collection, one [pending erasure](#delete-collectionsid), one whose owner is soft-deleted, and one holding nothing showable are absent.
 - An organization hit matches on its name, slug and bio together. It carries the public fields of the [organization page](#get-organizationsslug) header: no approval request audience and no creator. `member_count` counts live members.
 - Ranking is `ts_rank` descending, then `created_at` descending.
 - Every group excludes soft-deleted rows.
@@ -2112,7 +2112,8 @@ Report a collection for moderation. Same body, `reason` values and anonymous rul
   "collection": {
     "id": "uuid",
     "title": "Zaporizhzhia plant",
-    "owner": { "id": "uuid", "username": "analyst", "avatar_url": "https://…/avatars/…jpg" }
+    "owner": { "id": "uuid", "username": "analyst", "avatar_url": "https://…/avatars/…jpg" },
+    "deleted_at": null
   }
 }
 ```
@@ -2122,7 +2123,7 @@ The report lands in the [`GET /admin/reports`](#get-adminreports) queue. A colle
 **Errors:**
 | Code | Case |
 |------|------|
-| 404 | `collection_not_found`: unknown id, already withheld, or owned by a soft-deleted account, one answer for all three. An admin gets it too |
+| 404 | `collection_not_found`: unknown id, already withheld, pending erasure, or owned by a soft-deleted account, one answer for all four. An admin gets it too |
 
 ---
 
@@ -2163,12 +2164,12 @@ All computed fields are computed per read over the events the collection shows, 
 | `cover` | Zero to four tiles, in item order, skipping graphic items, each the item's card media (an image preferred over a clip). `kind` is `image` or `video`. `role` is `source` for a source's file or `proof` for a proof image; a `proof` `url` has no `_hero` / `_thumb` derivatives, so read it as is |
 | `tags` | The union of the tags of the items and of their sources (`TagRead`), ordered by `name`. A collection carries no tag of its own |
 
-A withheld collection (`hidden_at`, see [`PATCH /admin/collections/{id}/moderation`](#patch-admincollectionsidmoderation)) answers 404 for everyone but an admin, its owner included. So does a collection whose owner is soft-deleted.
+A withheld collection (`hidden_at`, see [`PATCH /admin/collections/{id}/moderation`](#patch-admincollectionsidmoderation)) answers 404 for everyone but an admin, its owner included. So do a collection [pending erasure](#delete-collectionsid) and a collection whose owner is soft-deleted.
 
 **Errors:**
 | Code | Case |
 |------|------|
-| 404 | `collection_not_found`: unknown, withheld, or the owner is soft-deleted |
+| 404 | `collection_not_found`: unknown, withheld, pending erasure, or the owner is soft-deleted |
 
 ---
 
@@ -2193,6 +2194,8 @@ Write your collection's title and description. Owner only. Both fields are requi
 ### `DELETE /collections/{id}` 🔒
 
 Drop your collection and its memberships. Owner only. The events it held are untouched.
+
+While an open [content report](#post-collectionsidreport) names the collection, the delete only marks it pending erasure (`collections.deleted_at`). The response is the same 204. The collection answers 404 at once for everyone but an admin, its owner included, and leaves every list and search. A moderator still reads it in full from the [report queue](#get-adminreports). Resolving the last open report on it, whatever the verdict, erases it. A collection that no open report names is erased at once.
 
 **Response 204:** no body.
 
@@ -2592,7 +2595,7 @@ An analyst's published geolocations: live rows with `status = "geolocated"` that
 
 ### `GET /users/{username}/collections`
 
-One analyst's collections, newest first. A reader gets the collections that show at least one event; the owner gets all of theirs, empty ones included. `total` counts the same set. Withheld collections are in neither. Offset-paged (see [Pagination](#pagination)).
+One analyst's collections, newest first. A reader gets the collections that show at least one event; the owner gets all of theirs, empty ones included. `total` counts the same set. Withheld collections and collections pending erasure are in neither. Offset-paged (see [Pagination](#pagination)).
 
 **Query params:** `page` and `per_page`, see [Pagination](#pagination).
 
@@ -3413,12 +3416,14 @@ The moderation queue: open reports first, then newest first within each group, e
 **Response 200:** `{items, total, page, per_page}`, whose `items` are [`ContentReportRead`](#post-eventsidreport).
 
 - `resolved_at` and `resolution` are both `null` while a report is open and both set once it is resolved. The resolving admin is recorded in `audit_log`, not on the wire.
-- A row names one target. `event_id` carries the event's id. `collection` carries the collection's current title and owner, read at queue time.
-- Both are `null` when the target is gone (a hard-deleted event, or a collection erased with its owner). Such a report takes only `dismissed`.
+- A row names one target. `event_id` carries the event's id. `collection` carries the collection's current title and owner, read at queue time, and `deleted_at`, the time its owner deleted it while a report was open, or `null`. Such a collection takes every verdict a live one takes.
+- Both are `null` when the target is gone (a hard-deleted event, or an erased collection). Such a report takes only `dismissed`.
 
 ### `POST /admin/reports/{id}/resolve` 🛡️
 
 Close one report with a verdict and apply it to the target. A report is resolved once; a second resolve is a 409. Audited as `report_resolved` (target `report_id`, `event_id`, `collection_id`, `resolution`). A verdict that changes the target also appends `event_marked_graphic`, `event_hidden` or `collection_hidden`, as the direct admin verbs do. Invalidates the points cache when the verdict hides an event.
+
+On a collection [pending erasure](#delete-collectionsid), the verdict on the last open report erases the collection after applying, and appends `collection_erased` (target `collection_id`, `title`). The resolved report then carries `collection: null`.
 
 **Request body:**
 ```json

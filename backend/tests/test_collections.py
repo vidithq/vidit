@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal
 from app.main import app
+from app.models.audit_log import AuditLog
 from app.models.collection import Collection, CollectionEvent
 from app.models.content_report import ContentReport
 from app.models.event import (
@@ -1039,6 +1040,219 @@ def test_report_a_collection_rejects_over_long_details(db, cleanup, owner):
         json={"reason": "other", "details": "x" * 2001},
     )
     assert response.status_code == 422
+
+
+@pytest.fixture
+def report_ids(db):
+    """Reports a test files, dropped by id: an erased collection leaves its reports with no
+    ``collection_id`` for ``cleanup`` to find."""
+    ids: list[uuid.UUID] = []
+    yield ids
+    db.expire_all()
+    if ids:
+        db.query(ContentReport).filter(ContentReport.id.in_(ids)).delete(synchronize_session=False)
+        db.commit()
+
+
+def _report(collection: Collection, report_ids: list[uuid.UUID]) -> str:
+    client.cookies.clear()
+    response = client.post(f"/api/v1/collections/{collection.id}/report", json={"reason": "other"})
+    assert response.status_code == 201, response.text
+    report_ids.append(uuid.UUID(response.json()["id"]))
+    return response.json()["id"]
+
+
+def _owner_deletes(collection: Collection, owner: User) -> None:
+    client.cookies.clear()
+    response = client.delete(
+        f"/api/v1/collections/{collection.id}", headers=login_as(client, owner)
+    )
+    assert response.status_code == 204
+    client.cookies.clear()
+
+
+def _resolve(report_id: str, resolution: str, admin: User):
+    client.cookies.clear()
+    response = client.post(
+        f"/api/v1/admin/reports/{report_id}/resolve",
+        json={"resolution": resolution},
+        headers=login_as(client, admin),
+    )
+    client.cookies.clear()
+    return response
+
+
+def _queue_row(report_id: str, admin: User) -> dict:
+    client.cookies.clear()
+    rows = client.get(
+        "/api/v1/admin/reports?page=1&per_page=100", headers=login_as(client, admin)
+    ).json()["items"]
+    client.cookies.clear()
+    return next(row for row in rows if row["id"] == report_id)
+
+
+def test_owner_delete_under_an_open_report_withholds_the_collection(
+    db, cleanup, owner, stranger, admin, report_ids
+):
+    """The owner's delete succeeds, and the collection leaves every read but an admin's."""
+    collection = _make_collection(db, cleanup, owner=owner, title="Reported shelf")
+    event = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 5, 1))
+    _add(db, collection, event)
+    _report(collection, report_ids)
+
+    _owner_deletes(collection, owner)
+
+    db.expire_all()
+    stored = _reload_collection(db, collection.id)
+    assert stored is not None and stored.deleted_at is not None
+    assert stored.hidden_at is None
+
+    path = f"/api/v1/collections/{collection.id}"
+    assert client.get(path).status_code == 404
+    assert client.get(f"{path}/events").status_code == 404
+    assert client.post(f"{path}/report", json={"reason": "other"}).status_code == 404
+    assert client.get(path, headers=login_as(client, stranger)).status_code == 404
+    client.cookies.clear()
+    assert client.get(f"/api/v1/users/{owner.username}/collections").json()["total"] == 0
+    assert (
+        client.get(f"/api/v1/search?type=collection&author={owner.username}").json()["collections"]
+        == []
+    )
+
+    # The owner sees it as deleted too, and can no longer write to it.
+    headers = login_as(client, owner)
+    assert client.get(path).status_code == 404
+    assert client.get(f"/api/v1/users/{owner.username}/collections").json()["total"] == 0
+    assert client.get(f"/api/v1/events/{event.id}/collections").json()["items"] == []
+    patch = {"title": "Renamed", "description": _description("Still here.")}
+    assert client.patch(path, json=patch, headers=headers).status_code == 404
+    assert client.delete(path, headers=headers).status_code == 404
+    assert client.put(f"{path}/events/{event.id}", headers=headers).status_code == 404
+    client.cookies.clear()
+
+    # A moderator still reads it in full.
+    login_as(client, admin)
+    assert client.get(path).json()["event_count"] == 1
+    assert [row["id"] for row in client.get(f"{path}/events").json()] == [str(event.id)]
+    client.cookies.clear()
+
+
+def test_the_queue_names_an_owner_deleted_collection(db, cleanup, owner, admin, report_ids):
+    collection = _make_collection(db, cleanup, owner=owner)
+    live_report = _report(collection, report_ids)
+    assert _queue_row(live_report, admin)["collection"]["deleted_at"] is None
+
+    _owner_deletes(collection, owner)
+
+    reported = _queue_row(live_report, admin)["collection"]
+    assert reported["id"] == str(collection.id)
+    assert reported["title"] == collection.title
+    assert reported["owner"]["username"] == owner.username
+    assert reported["deleted_at"] is not None
+
+
+@pytest.mark.parametrize("resolution", ["dismissed", "hidden"])
+def test_resolving_the_report_erases_the_owner_deleted_collection(
+    db, cleanup, owner, admin, report_ids, resolution
+):
+    collection = _make_collection(db, cleanup, owner=owner)
+    event = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 5, 1))
+    _add(db, collection, event)
+    report_id = _report(collection, report_ids)
+    _owner_deletes(collection, owner)
+    collection_id, title = collection.id, collection.title
+
+    response = _resolve(report_id, resolution, admin)
+    assert response.status_code == 200, response.text
+    assert response.json()["resolution"] == resolution
+    assert response.json()["collection"] is None
+
+    db.expire_all()
+    assert _reload_collection(db, collection_id) is None
+    assert (
+        db.query(CollectionEvent).filter(CollectionEvent.collection_id == collection_id).count()
+        == 0
+    )
+    assert _reload_event(db, event.id) is not None
+    # The report stays, as the record of what was decided.
+    report = db.query(ContentReport).filter(ContentReport.id == report_id).one()
+    assert report.resolution == resolution
+    assert report.collection_id is None
+    erased = (
+        db.query(AuditLog)
+        .filter(AuditLog.actor_id == admin.id, AuditLog.action == "collection_erased")
+        .one()
+    )
+    assert erased.target == {"collection_id": str(collection_id), "title": title}
+
+
+def test_owner_delete_without_an_open_report_erases_at_once(db, cleanup, owner, admin, report_ids):
+    """A resolved report does not hold the collection back."""
+    collection = _make_collection(db, cleanup, owner=owner)
+    report_id = _report(collection, report_ids)
+    assert _resolve(report_id, "dismissed", admin).status_code == 200
+    collection_id = collection.id
+
+    _owner_deletes(collection, owner)
+
+    db.expire_all()
+    assert _reload_collection(db, collection_id) is None
+
+
+def test_an_owner_deleted_collection_waits_for_its_last_open_report(
+    db, cleanup, owner, admin, report_ids
+):
+    collection = _make_collection(db, cleanup, owner=owner)
+    first = _report(collection, report_ids)
+    second = _report(collection, report_ids)
+    _owner_deletes(collection, owner)
+    collection_id = collection.id
+
+    assert _resolve(first, "hidden", admin).status_code == 200
+    db.expire_all()
+    kept = _reload_collection(db, collection_id)
+    assert kept is not None and kept.deleted_at is not None and kept.hidden_at is not None
+    assert _queue_row(second, admin)["collection"]["id"] == str(collection_id)
+
+    assert _resolve(second, "dismissed", admin).status_code == 200
+    db.expire_all()
+    assert _reload_collection(db, collection_id) is None
+
+
+def test_a_live_collection_survives_its_reports_being_resolved(
+    db, cleanup, owner, admin, report_ids
+):
+    collection = _make_collection(db, cleanup, owner=owner)
+    report_id = _report(collection, report_ids)
+
+    assert _resolve(report_id, "dismissed", admin).status_code == 200
+
+    db.expire_all()
+    assert _reload_collection(db, collection.id) is not None
+
+
+def test_erasing_the_owner_erases_a_collection_under_an_open_report(
+    db, cleanup, owner, admin, report_ids
+):
+    """Account erasure takes the collection whatever its reports; each report stays, orphaned,
+    and takes only ``dismissed``."""
+    collection = _make_collection(db, cleanup, owner=owner)
+    report_id = _report(collection, report_ids)
+    _owner_deletes(collection, owner)
+    collection_id = collection.id
+
+    client.cookies.clear()
+    response = client.delete(
+        f"/api/v1/admin/users/{owner.id}?hard=true", headers=login_as(client, admin)
+    )
+    assert response.status_code == 200
+    client.cookies.clear()
+
+    db.expire_all()
+    assert _reload_collection(db, collection_id) is None
+    assert _queue_row(report_id, admin)["collection"] is None
+    assert _resolve(report_id, "hidden", admin).json()["detail"]["code"] == "report_target_gone"
+    assert _resolve(report_id, "dismissed", admin).status_code == 200
 
 
 def test_empty_collections_are_the_owners_view_only(db, cleanup, owner, stranger):
