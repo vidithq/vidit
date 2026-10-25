@@ -15,6 +15,7 @@ import { BioField } from "@/components/profile/BioField";
 import { LinkedAccountsFields } from "@/components/profile/LinkedAccounts";
 import {
   ProfileActions,
+  ProfileEditActions,
   ProfileHeaderEditFields,
   ProfileIdentity,
   ProfileTitle,
@@ -101,22 +102,25 @@ export default function ProfilePage() {
   // icons in the header actions (`ProfileActions`), then the coverage map, Insights, recent submissions,
   // open requests, sign out.
   // The detections entry is the exception: pending work, so it stays above the fold on the owner's profile.
-  // Editing collapses the page to the form alone (bio and linked-accounts inputs contiguous, so Save stays on screen).
+  // Editing collapses the page to the form alone, with Cancel and Save pinned in the sticky actions.
   return (
     <PageShell
       back
       title={<ProfileTitle name={profile.username} edit={edit} />}
       subtitle={edit.editing ? undefined : <ProfileIdentity profile={profile} organizations={organizations} />}
       actions={
-        <ProfileActions links={profile.external_links} canEdit={isOwn} edit={edit}>
-          {!isOwn && (
-            <FollowButton
-              username={profile.username}
-              initialFollowing={profile.is_following}
-            />
-          )}
-        </ProfileActions>
+        !edit.editing && (
+          <ProfileActions links={profile.external_links} canEdit={isOwn} edit={edit}>
+            {!isOwn && (
+              <FollowButton
+                username={profile.username}
+                initialFollowing={profile.is_following}
+              />
+            )}
+          </ProfileActions>
+        )
       }
+      stickyActions={edit.editing ? <ProfileEditActions edit={edit} /> : undefined}
     >
       <ProfileHeaderEditFields name={profile.username} edit={edit} />
 

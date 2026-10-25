@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { CollectionDetailsForm } from "@/components/collections/CollectionDetailsForm";
-import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
+import { PageError, PageLoading } from "@/components/ui/PageShell";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
@@ -66,28 +66,24 @@ function NewCollectionPageBody() {
   if (eventId && !event) return <PageLoading />;
 
   return (
-    <PageShell
-      back
-      backFallback={origin}
+    <CollectionDetailsForm
       title="New collection"
       subtitle={
         eventId
           ? "The collection opens with this event on it."
           : "A named set of your own events, shown on your profile."
       }
-    >
-      <CollectionDetailsForm
-        username={user.username}
-        initialEvents={event ? [pickableFromDetail(event)] : []}
-        submitLabel={eventId ? "Create and add" : "Create collection"}
-        hint="Say what the collection holds. Items order themselves by event date, so there is no order to set."
-        busy={create.loading}
-        error={create.error}
-        onSubmit={(title, description, eventIds) =>
-          void create.run(title, description, eventIds)
-        }
-        onCancel={() => router.push(origin)}
-      />
-    </PageShell>
+      backFallback={origin}
+      username={user.username}
+      initialEvents={event ? [pickableFromDetail(event)] : []}
+      submitLabel={eventId ? "Create and add" : "Create collection"}
+      hint="Say what the collection holds. Items order themselves by event date, so there is no order to set."
+      busy={create.loading}
+      error={create.error}
+      onSubmit={(title, description, eventIds) =>
+        void create.run(title, description, eventIds)
+      }
+      onCancel={() => router.push(origin)}
+    />
   );
 }

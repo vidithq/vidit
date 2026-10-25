@@ -75,7 +75,7 @@ test.describe("collection page", () => {
       page.getByRole("link", { name: "Your geolocations" }),
     );
 
-    // The flag opens a select and a textarea under the header, the only form
+    // The flag opens a dialog holding a select and a textarea, the only form
     // this reading page ever shows: both have to render at the size that
     // keeps mobile Safari from zooming the column in on focus.
     await page.getByRole("button", { name: "Report" }).click();
@@ -130,11 +130,11 @@ test.describe("collection player", () => {
  * The create page, which is the same form before there is a collection.
  *
  * It is the longest form on this surface: two text fields, then the picker's
- * two blocks, whose rows are catalogue cards carrying a thumbnail, a title, a
- * meta line, a status badge and a control. A card row is where a phone column
- * gets pushed open, so what this measures is the whole page against the
- * column, with the add block's own field under the same 16px rule the two
- * above it take.
+ * two blocks: the held events as a carousel of large cards, and the add field,
+ * whose list rows carry a title, a date and a status badge. A row is where a
+ * phone column gets pushed open, so what this measures is the whole page
+ * against the column, with the add block's own field under the same 16px rule
+ * the two above it take.
  */
 test.describe("collection create page", () => {
   test("fits the form and its two blocks on a narrow column", async ({
@@ -156,15 +156,16 @@ test.describe("collection create page", () => {
     ).toBeVisible();
     await expect(page.getByText("Nothing on this collection yet.")).toBeVisible();
 
-    // The add block: its own search field, and a row whose Add control has to
-    // stay inside the column beside the badge and the thumbnail.
-    await expect(
-      page.getByPlaceholder("Search your geolocations by title…"),
-    ).toBeVisible();
-    await expectControlInsideViewport(
-      page,
-      page.getByRole("button", { name: /^Add .* to this collection$/ }).first(),
+    // The add block: its own search field, whose list opens on focus with a
+    // row that has to stay inside the column beside its date and badge.
+    const field = page.getByRole("combobox", { name: "Add events" });
+    await expect(field).toHaveAttribute(
+      "placeholder",
+      "Search your geolocations by title…",
     );
+    await field.focus();
+    await expectControlInsideViewport(page, page.getByRole("option").first());
+    await page.keyboard.press("Escape");
 
     await expectNarrowViewportLayout(
       page,
@@ -178,9 +179,9 @@ test.describe("collection create page", () => {
  *
  * It is the same form over a collection that exists: the title field, the
  * description editor, the picker holding what the collection holds, and the
- * Save / Cancel row below all three cards, which is the shape that breaks on a
- * phone when a field is laid out narrower than the column or renders under
- * the 16px mobile Safari zooms on. Dropping the collection is not on this
+ * Cancel and Save pinned in the page's actions above all three cards, which is
+ * the shape that breaks on a phone when a field is laid out narrower than the
+ * column or renders under the 16px mobile Safari zooms on. Dropping the collection is not on this
  * page; it is the header trash on the collection page itself. The owner is
  * the only reader it has.
  */
@@ -204,7 +205,7 @@ test.describe("collection edit page", () => {
       page.getByRole("button", { name: "Save collection" }),
     );
 
-    // Cancel sits beside it, in the page's own action row below all three cards.
+    // Cancel sits beside it, in the page's sticky actions.
     await expectControlInsideViewport(
       page,
       page.getByRole("button", { name: "Cancel" }),

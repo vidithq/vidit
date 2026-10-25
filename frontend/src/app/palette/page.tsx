@@ -607,7 +607,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<CountBadge>" usage="A red count on a control's top-right corner of what it still lacks: the missing conditions on Publish geolocation and Publish request on submit, and on Publish in the edit form of a request or a detection. The count is a danger <Pill> on a button beside the control, never inside it, and the wrapper keeps 8px clear on the right for its overhang. Its label (2 missing: Title, Conflict) is the badge's accessible name and shows under the control in a <Tooltip tapToShow underParent> on hover or keyboard focus, or on a tap on a touch screen, where the badge's hit area grows to about 36px up and into the control's corner; a tap on the control itself still acts. The control's aria-describedby points at a hidden copy of the label, so it says what is missing. No badge at a count of 0.">
+          <Item name="<CountBadge>" usage="A red count on a control's top-right corner of what it still lacks: the missing conditions on Publish geolocation and Publish request on submit, on Publish in the edit form of a request or a detection, and the fields a collection's Create or Save still refuses. The count is a danger <Pill> on a button beside the control, never inside it, and the wrapper keeps 8px clear on the right for its overhang. Its label (2 missing: Title, Conflict) is the badge's accessible name and shows under the control in a <Tooltip tapToShow underParent> on hover or keyboard focus, or on a tap on a touch screen, where the badge's hit area grows to about 36px up and into the control's corner; a tap on the control itself still acts. The control's aria-describedby points at a hidden copy of the label, so it says what is missing. No badge at a count of 0.">
             <Variant label="hover or tab to the count">
               <CountBadge count={2} label="2 missing: Title, Conflict">
                 {(describedBy) => (
@@ -971,7 +971,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<Combobox>" usage="The keyboard and the list of every typeahead: a role=combobox <Input> over a role=listbox list in a portal fixed to the viewport, painted with TOOLTIP_SURFACE, as wide as the field, scrolling past 15rem and opening above the field when the room below is short. The caller owns the query, the open state, the filtered options and how a row renders; a status string shows as a muted row. ArrowUp and ArrowDown move and wrap, Enter picks the highlighted row or hands the text to onSubmitText, Escape or a blur closes. pillOption shows a row inside a neutral <Pill>, the chip a pick becomes: every conflict and tag row, never the Create row. <AccountPicker>, <ConflictChips>, <TagChips> and the admin event field build on it.">
+          <Item name="<Combobox>" usage="The keyboard and the list of every typeahead: a role=combobox <Input> over a role=listbox list in a portal fixed to the viewport, painted with TOOLTIP_SURFACE, as wide as the field, scrolling past 15rem and opening above the field when the room below is short. The caller owns the query, the open state, the filtered options and how a row renders; a status string shows as a muted row. ArrowUp and ArrowDown move and wrap, Enter picks the highlighted row or hands the text to onSubmitText, Escape or a blur closes. pillOption shows a row inside a neutral <Pill>, the chip a pick becomes: every conflict and tag row, never the Create row. <AccountPicker>, <ConflictChips>, <TagChips>, the admin event field and the collection picker's Add events build on it.">
             <PaletteCombobox />
           </Item>
 
@@ -1565,9 +1565,10 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SectionHeading>" usage="Form section heading (Details, Location, Tags...)">
+          <Item name="<SectionHeading>" usage="Form section heading (Details, Location, Tags...). `concept` adds the section's ?; a section no concept explains (a collection's Details, a profile's Bio) takes the title alone.">
             <SectionHeading title="Sources" concept="sources" />
             <SectionHeading title="Proof" concept="section_proof" />
+            <SectionHeading title="Linked accounts" />
           </Item>
 
           <Item name="<SectionEyebrow>" usage="Detail page + card/panel headings (uppercase eyebrow), and a form's Sources heading, which sits on the page like the event page's. `invalid` turns it red with FORM_INVALID_LABEL, as SectionHeading's does, when a publish attempt flags the section.">
@@ -1715,7 +1716,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<LoadMoreRow>" usage="The one foot of a useCursorList list (requests, feed, version history, invite codes, the admin reports queue): Load more while a next page exists, a spinner while it loads, a failed page's message above Try again, nothing once the walk ends. `infinite` loads the next page as the row nears the viewport and pauses after a failure until the click.">
+          <Item name="<LoadMoreRow>" usage="The one foot of a paged list (requests, feed, version history, invite codes, the admin reports queue, and the detections queue, whose pages are numbered): Load more while a next page exists, a spinner while it loads, a failed page's message above Try again, nothing once the walk ends. `infinite` loads the next page as the row nears the viewport and pauses after a failure until the click.">
             <div className="w-full space-y-4">
               <Variant label="idle">
                 <LoadMoreRow walk={{ hasMore: true, loadingMore: false, loadMore: () => {}, error: null }} />
@@ -1816,27 +1817,19 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<EntityCard variant=compact>: a collection item" usage="One item of a collection, held on its edit page's picker: the same compact card with three differences the props carry. `author` is omitted, so the row drops its byline, because a collection is one analyst's own set and the page header names them once. `action` holds a control that acts on the row rather than opening it (here the picker's remove, red because it is the one thing on the row that takes something away), rendered above the stretched link at the bottom of the badge's column, so it takes its own click, sits in the corner furthest from the title and leaves the rest of the row navigating. The collection's own page reads the same row with no `action`: taking an item off is an edit act, not something the reading page offers. `uniformHeight={false}` drops the catalogue height floor, since every row here carries the same two lines and the floor would print a band of empty space under each of them: the row stands on its media column and the text centres against it.">
+          <Item name="<EntityCard variant=compact>: a collection item" usage="One item of a collection, on its page's Events list (<CollectionItemCard> with onSelect): the same compact card with three differences the props carry. `author` is omitted, so the row drops its byline, because a collection is one analyst's own set and the page header names them once. onSelect swaps the link for a button that moves the player to the row, and `selected` marks the row it stands on. `uniformHeight={false}` drops the catalogue height floor, since every row here carries the same two lines and the floor would print a band of empty space under each of them: the row stands on its media column and the text centres against it. The write pages show a held item as the feed card instead (<CollectionItemCard> without onSelect), one at a time in a carousel <HorizontalScroller>, with a red Remove under it.">
             <div className="w-full max-w-xl">
               <EntityCard
                 variant="compact"
-                detailHref="/events/demo"
                 title={MOCK_CARD_GEO.title}
                 badge={<StatusBadge status="geolocated" />}
                 date={MOCK_CARD_GEO.occurred_date}
                 coords={{ lat: 48.0159, lng: 37.8024 }}
                 tags={MOCK_CARD_GEO.tags}
                 uniformHeight={false}
-                action={
-                  <Button
-                    icon
-                    variant="dangerGhost"
-                    aria-label="Remove from this collection"
-                    title="Remove from collection"
-                  >
-                    <X size={14} />
-                  </Button>
-                }
+                onSelect={() => {}}
+                selected
+                selectLabel={`Read this collection from ${MOCK_CARD_GEO.title}`}
               />
             </div>
           </Item>
@@ -1911,7 +1904,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<HorizontalScroller>" usage="A row of same-width items that scrolls sideways (components/ui/HorizontalScroller.tsx): native overflow scrolling with one snap point per item, so a swipe moves it, focusable so the arrow keys scroll it. In the row variant, two items fit once the row is 32rem wide; below that one fits and the next peeks. With more than one item, the header shows the shown range (1 to 2 of 5) and previous and next ghost icon buttons that scroll by one item, without smoothing under prefers-reduced-motion, go inert at the ends, and step on the left and right keys. The carousel variant shows one item at full width, the position (2 / 3) between the buttons, and one dot per item under the row, the current one accent; a dot shows its item. `actions` adds header controls after the buttons at any item count, and a ref's show(index) scrolls an item into view. The event page's sources row is the row consumer; <SourcesField> is the carousel consumer.">
+          <Item name="<HorizontalScroller>" usage="A row of same-width items that scrolls sideways (components/ui/HorizontalScroller.tsx): native overflow scrolling with one snap point per item, so a swipe moves it, focusable so the arrow keys scroll it. In the row variant, two items fit once the row is 32rem wide; below that one fits and the next peeks. With more than one item, the header shows the shown range (1 to 2 of 5) and previous and next ghost icon buttons that scroll by one item, without smoothing under prefers-reduced-motion, go inert at the ends, and step on the left and right keys. The carousel variant shows one item at full width, the position (2 / 3) between the buttons, and one dot per item under the row, the current one accent; a dot shows its item. `actions` adds header controls after the buttons at any item count, and a ref's show(index) scrolls an item into view. The event page's sources row is the row consumer; <SourcesField> and the collection picker's held events are the carousel consumers.">
             <div className="w-full max-w-2xl">
               <HorizontalScroller
                 heading={<SectionEyebrow margin="none" title="Sources (3)" />}
@@ -1954,7 +1947,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<ConfirmDialog>" usage="The confirmation step before a final action: a centred MediaOverlay dialog with a Card, its title, a body saying what the action does and what cannot be undone, then Cancel (the initial focus, so Enter on open sends nothing) and the primary confirm. Cancel, Escape and a backdrop click close it; the caller owns the request, and `busy` and `error` show it in flight and refused, while `confirmDisabled` holds the confirm until an input the dialog carries is complete. Approve opens it, since an approval is final, and Request approval opens it over the open requests and the picker of whom to ask.">
+          <Item name="<ConfirmDialog>" usage="The confirmation step before a final action: a centred MediaOverlay dialog with a Card, its title, a body saying what the action does and what cannot be undone, then Cancel (the initial focus, so Enter on open sends nothing) and the primary confirm. Cancel, Escape and a backdrop click close it; the caller owns the request, and `busy` and `error` show it in flight and refused, while `confirmDisabled` holds the confirm until an input the dialog carries is complete. Approve opens it, since an approval is final, Request approval opens it over the open requests and the picker of whom to ask, and the report flag opens it over the reason and the details.">
             <Button variant="secondary" onClick={() => setConfirmOpen(true)}>
               Approve
             </Button>

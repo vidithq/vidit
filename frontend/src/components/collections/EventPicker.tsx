@@ -1,16 +1,21 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { Check, Plus, Search, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { X } from "lucide-react";
 
 import { CollectionItemCard } from "@/components/collections/CollectionItemCard";
+import { StatusBadge } from "@/components/event/StatusBadge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { Combobox } from "@/components/ui/Combobox";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Input } from "@/components/ui/Input";
-import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
+import {
+  HorizontalScroller,
+  type HorizontalScrollerHandle,
+} from "@/components/ui/HorizontalScroller";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { errorMessage } from "@/lib/api";
+import { formatDate } from "@/lib/format";
 import {
   eventCountLabel,
   PICKER_ROW_LIMIT,
@@ -43,14 +48,13 @@ function chronological(events: PickableEvent[]): PickableEvent[] {
  *
  * **Two cards.** *Events in this collection* is what the collection holds if
  * saved now (the rows the page opened on, a `?event=` arrival, and everything
- * added since), in the collection page's order. *Add events* is the way in, at
- * most `PICKER_ROW_LIMIT` rows: the analyst's most recent eligible events, or
- * the first matches once something is typed. Neither card writes anything; the
- * page's submit does.
- *
- * **A row is `<CollectionItemCard>`** with its `action` slot: a red cross
- * removes it from the first card; an accent plus adds it on the second. A row
- * already held shows a disabled check instead of dropping out of the results.
+ * added since), in the collection page's order, as a carousel
+ * `<HorizontalScroller>` of large `<CollectionItemCard>` blocks, each with its
+ * own **Remove**. *Add events* is the way in: a `<Combobox>` that lists at most
+ * `PICKER_ROW_LIMIT` rows, the analyst's most recent eligible events, or the
+ * first matches once something is typed. A held row leaves the list, a pick
+ * moves the carousel to it, and the list stays open for the next pick. Neither
+ * card writes anything; the page's submit does.
  *
  * **Two sources, one row.** With nothing typed, the add card reads the
  * analyst's catalogue through `GET /events` (`view=located`, `author=`, the two
@@ -76,7 +80,11 @@ export function EventPicker({
   onRemove: (eventId: string) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
   const typed = query.trim();
+  const scroller = useRef<HorizontalScrollerHandle>(null);
+  // The row the carousel shows once `events` changes: the pick, or a removed row's neighbour.
+  const reveal = useRef<string | null>(null);
 
   const buildPath = useCallback(
     (cursor: string | null) => pickerBrowsePath(username, cursor),
@@ -120,7 +128,24 @@ export function EventPicker({
   );
 
   const held = chronological(events);
-  const heldIds = useMemo(() => new Set(events.map((e) => e.id)), [events]);
+  const heldIds = new Set(events.map((e) => e.id));
+
+  useEffect(() => {
+    const id = reveal.current;
+    reveal.current = null;
+    if (!id) return;
+    const index = chronological(events).findIndex((e) => e.id === id);
+    if (index >= 0) scroller.current?.show(index);
+  }, [events]);
+
+  const add = (event: PickableEvent) => {
+    reveal.current = event.id;
+    onAdd(event);
+  };
+  const remove = (index: number) => {
+    reveal.current = (held[index + 1] ?? held[index - 1])?.id ?? null;
+    onRemove(held[index].id);
+  };
 
   const searching = typed.length > 0;
   const found = answer?.query === typed ? answer : null;
@@ -144,124 +169,100 @@ export function EventPicker({
       ? "Showing your most recent. Search to reach the rest of your catalogue."
       : null;
 
+  const addable = results.filter((row) => !heldIds.has(row.id));
+  const empty = searching
+    ? "Nothing of yours matches those words. Try fewer words, or clear the field to see your most recent."
+    : "No geolocations to put on a collection yet. A collection holds your own geolocated and detected events.";
+  const status = loading
+    ? "Loading your geolocations…"
+    : error
+      ? error
+      : results.length === 0
+        ? empty
+        : addable.length === 0
+          ? `Every event on show is already in this collection. ${refine ?? ""}`.trim()
+          : refine;
+
+  const heldHeading = (
+    <div className="space-y-1">
+      <SectionHeading title="Events in this collection" />
+      <p className="text-xs text-neutral-500">
+        {eventCountLabel(held.length)}, ordered by event date, earliest first.
+      </p>
+    </div>
+  );
+
   return (
     <>
       <Card as="section">
-        <div className="space-y-1">
-          <SectionEyebrow title="Events in this collection" margin="none" />
-          <p className="text-xs text-neutral-500">
-            {eventCountLabel(held.length)}, ordered by event date, earliest
-            first.
-          </p>
-        </div>
-
         {held.length > 0 ? (
-          <div className="space-y-2">
-            {held.map((row) => (
-              <CollectionItemCard
-                key={row.id}
-                item={row}
-                action={
+          <HorizontalScroller
+            ref={scroller}
+            variant="carousel"
+            heading={heldHeading}
+            label="Events in this collection"
+            previousLabel="Previous event"
+            nextLabel="Next event"
+            dotLabel={(index) => `Show event ${index + 1}`}
+          >
+            {held.map((row, index) => (
+              <div key={row.id} className="space-y-2">
+                <CollectionItemCard item={row} />
+                <div className="flex justify-end">
                   <Button
-                    icon
                     variant="dangerGhost"
-                    onClick={() => onRemove(row.id)}
+                    onClick={() => remove(index)}
                     aria-label={`Remove ${row.title} from this collection`}
-                    title="Remove from collection"
                   >
-                    <X size={14} />
+                    <X size={13} />
+                    Remove
                   </Button>
-                }
-              />
+                </div>
+              </div>
             ))}
-          </div>
+          </HorizontalScroller>
         ) : (
-          <EmptyState variant="plain" lead="Nothing on this collection yet.">
-            Add your own geolocations from the search below.
-          </EmptyState>
+          <>
+            {heldHeading}
+            <EmptyState variant="plain" lead="Nothing on this collection yet.">
+              Add your own geolocations from the search below.
+            </EmptyState>
+          </>
         )}
       </Card>
 
       <Card as="section">
         <div className="space-y-1">
-          <SectionEyebrow title="Add events" margin="none" />
+          <SectionHeading title="Add events" />
           <p className="text-xs text-neutral-500">
             Your own geolocated and detected events, {PICKER_ROW_LIMIT} at a
             time.
           </p>
         </div>
 
-        <Input
-          type="search"
-          icon={<Search size={14} />}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          // The field sits in the collection form, where Enter would submit.
-          onKeyDown={(e) => {
-            if (e.key === "Enter") e.preventDefault();
-          }}
+        <Combobox
+          aria-label="Add events"
           placeholder="Search your geolocations by title…"
+          query={query}
+          onQueryChange={setQuery}
+          open={open}
+          onOpenChange={setOpen}
+          options={loading ? [] : addable}
+          optionKey={(row) => row.id}
+          renderOption={(row) => (
+            <>
+              <span className="min-w-0 flex-1 truncate">{row.title}</span>
+              {row.occurred_date && (
+                <span className="shrink-0 text-xs text-neutral-500">
+                  {formatDate(row.occurred_date)}
+                </span>
+              )}
+              <StatusBadge status={row.status} />
+            </>
+          )}
+          onPick={add}
+          status={status}
         />
-
-        {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
-
-        {loading && !error && (
-          <p className="text-sm text-neutral-500">Loading your geolocations…</p>
-        )}
-
-        {!loading && !error && results.length === 0 && (
-          <EmptyState
-            variant="plain"
-            lead={
-              searching
-                ? "Nothing of yours matches those words."
-                : "No geolocations to put on a collection yet."
-            }
-          >
-            {searching
-              ? "Try fewer words, or clear the field to see your most recent."
-              : "A collection holds your own geolocated and detected events."}
-          </EmptyState>
-        )}
-
-        {results.length > 0 && (
-          <div className="space-y-2">
-            {results.map((row) => {
-              const added = heldIds.has(row.id);
-              return (
-                <CollectionItemCard
-                  key={row.id}
-                  item={row}
-                  action={
-                    added ? (
-                      <Button
-                        icon
-                        variant="ghost"
-                        disabled
-                        aria-label="Already in this collection"
-                        title="Already in this collection"
-                      >
-                        <Check size={14} />
-                      </Button>
-                    ) : (
-                      <Button
-                        icon
-                        variant="ghost"
-                        onClick={() => onAdd(row)}
-                        aria-label={`Add ${row.title} to this collection`}
-                        title="Add to collection"
-                      >
-                        <Plus size={14} />
-                      </Button>
-                    )
-                  }
-                />
-              );
-            })}
-          </div>
-        )}
-
-        {refine && <p className="text-xs text-neutral-500">{refine}</p>}
       </Card>
     </>
   );

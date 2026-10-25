@@ -1,21 +1,30 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 
 import { EventPicker } from "@/components/collections/EventPicker";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CharCounter } from "@/components/ui/CharCounter";
+import { CountBadge } from "@/components/ui/CountBadge";
+import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { Input } from "@/components/ui/Input";
-import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
+import { PageShell } from "@/components/ui/PageShell";
+import { SectionHeading } from "@/components/ui/SectionHeading";
+import {
+  FORM_ERROR_BANNER,
+  FORM_INVALID_LABEL,
+  FORM_LABEL,
+} from "@/components/ui/form-styles";
+import { cn } from "@/lib/cn";
 import {
   COLLECTION_DESCRIPTION_MAX_LEN,
   COLLECTION_TITLE_MAX_LEN,
   type CollectionDescription,
   type PickableEvent,
 } from "@/lib/collections";
+import { missingSummary } from "@/lib/events";
 import { htmlText } from "@/lib/proof";
 
 // BlockNote needs the DOM.
@@ -25,18 +34,46 @@ const ProofEditor = dynamic(() => import("@/components/editor/ProofEditor"), {
 
 const EMPTY_DESCRIPTION: CollectionDescription = "";
 
+type CollectionField = "title" | "description";
+
+/** What the submit still refuses, one entry per field: blank, or past its cap. */
+function missingCollectionFields(
+  title: string,
+  descriptionText: string,
+): { key: CollectionField; label: string }[] {
+  const missing: { key: CollectionField; label: string }[] = [];
+  if (!title.trim()) missing.push({ key: "title", label: "Title" });
+  else if (title.length > COLLECTION_TITLE_MAX_LEN) {
+    missing.push({
+      key: "title",
+      label: `Title (${COLLECTION_TITLE_MAX_LEN} characters at most)`,
+    });
+  }
+  if (!descriptionText) missing.push({ key: "description", label: "Description" });
+  else if (descriptionText.length > COLLECTION_DESCRIPTION_MAX_LEN) {
+    missing.push({
+      key: "description",
+      label: `Description (${COLLECTION_DESCRIPTION_MAX_LEN} characters at most)`,
+    });
+  }
+  return missing;
+}
+
 /**
- * The one form behind every collection write (`/collections/new` and
+ * The one page behind every collection write (`/collections/new` and
  * `/collections/{id}/edit`): title, description, and which of the analyst's
- * events it holds. A caller passes the starting values and is handed all three
- * on submit.
+ * events it holds. A caller passes the page's header and the starting values,
+ * and is handed all three on submit.
  *
- * It renders the *Details* card, `<EventPicker>`'s two cards, and the Save /
- * Cancel row past them, all in one `<form>` so Enter submits.
+ * It renders the `PageShell`: **Cancel** and the submit in its sticky actions,
+ * then the *Details* card and `<EventPicker>`'s two cards in one `<form>`. The
+ * submit sits outside the form and joins it through the form's `id`, so Enter
+ * in the title still submits.
  *
- * Title and description are required; the submit refuses a blank or over-long
- * value rather than letting the server refuse typed text. Each carries a
- * `<CharCounter>` that turns red exactly when the submit starts refusing.
+ * Title and description are required. The submit stays clickable and carries a
+ * `<CountBadge>` of what it still refuses (a blank or over-long value). A click
+ * on an incomplete form submits nothing: it lists the gaps in
+ * `IncompleteFormNotice` and turns those fields red until they are filled.
  *
  * **The description is written in `<ProofEditor>`** with `allowImages={false}`
  * (no upload path, and the server drops the node). The form holds the HTML
@@ -48,6 +85,9 @@ const EMPTY_DESCRIPTION: CollectionDescription = "";
  * as ids on submit.
  */
 export function CollectionDetailsForm({
+  title: pageTitle,
+  subtitle,
+  backFallback,
   initialTitle = "",
   initialDescription = EMPTY_DESCRIPTION,
   initialEvents = [],
@@ -59,6 +99,11 @@ export function CollectionDetailsForm({
   busy = false,
   error,
 }: {
+  /** The page's heading. */
+  title: string;
+  subtitle?: ReactNode;
+  /** Where Back lands when the session has nothing to return to. */
+  backFallback: string;
   /** Seed for an edit; empty for a create. */
   initialTitle?: string;
   /** The editor reads it once, at construction. */
@@ -69,7 +114,7 @@ export function CollectionDetailsForm({
   username: string;
   /** A line under the fields (the create page). */
   hint?: string;
-  /** The verb: *Create collection*, *Save details*, *Create and add*. */
+  /** The verb: *Create collection*, *Save collection*, *Create and add*. */
   submitLabel: string;
   onSubmit: (
     title: string,
@@ -84,6 +129,9 @@ export function CollectionDetailsForm({
   const [title, setTitle] = useState(initialTitle);
   const [description, setDescription] = useState(initialDescription);
   const [events, setEvents] = useState<PickableEvent[]>(initialEvents);
+  // Counts blocked submits: 0 shows no flags, and each new attempt replays the notice.
+  const [attempt, setAttempt] = useState(0);
+  const formId = useId();
   const titleId = useId();
   const descriptionId = useId();
 
@@ -102,87 +150,130 @@ export function CollectionDetailsForm({
   const titleOver = title.length > COLLECTION_TITLE_MAX_LEN;
   const descriptionOver =
     descriptionText.length > COLLECTION_DESCRIPTION_MAX_LEN;
-  const ready =
-    title.trim().length > 0 &&
-    descriptionText.length > 0 &&
-    !titleOver &&
-    !descriptionOver;
+  const missing = missingCollectionFields(title, descriptionText);
+  // An over-long value is red as soon as it is typed, like its counter; a blank one after a blocked submit.
+  const flagged = (key: CollectionField) =>
+    attempt > 0 && missing.some((m) => m.key === key);
+  const titleInvalid = titleOver || flagged("title");
+  const descriptionInvalid = descriptionOver || flagged("description");
 
-  return (
-    <form
-      className="space-y-6"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!ready || busy) return;
-        onSubmit(
-          title.trim(),
-          description,
-          events.map((event) => event.id),
-        );
-      }}
-    >
-      <Card as="section">
-        <SectionEyebrow title="Details" margin="none" />
-
-        <div className="space-y-1.5">
-          <span className="flex items-center justify-between gap-2">
-            <label htmlFor={titleId} className={FORM_LABEL}>
-              Title
-            </label>
-            <CharCounter length={title.length} max={COLLECTION_TITLE_MAX_LEN} />
-          </span>
-          <Input
-            id={titleId}
-            value={title}
-            invalid={titleOver}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="e.g. Kupiansk rail corridor: three days of strikes"
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <span className="flex items-center justify-between gap-2">
-            {/* The editor is a contenteditable div, not a form control, so the label
-                names it through `aria-labelledby` on the wrapper. */}
-            <span id={descriptionId} className={FORM_LABEL}>
-              Description
-            </span>
-            <CharCounter
-              length={descriptionText.length}
-              max={COLLECTION_DESCRIPTION_MAX_LEN}
-            />
-          </span>
-          <div role="group" aria-labelledby={descriptionId}>
-            <ProofEditor
-              initialContent={initialDescription}
-              onChange={setDescription}
-              allowImages={false}
-              invalid={descriptionOver}
-            />
-          </div>
-          {hint && (
-            <span className="block text-xs text-neutral-500">{hint}</span>
-          )}
-        </div>
-      </Card>
-
-      <EventPicker
-        username={username}
-        events={events}
-        onAdd={addEvent}
-        onRemove={removeEvent}
-      />
-
-      {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
-
-      <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" variant="primary" disabled={!ready || busy}>
-          {busy ? "Saving…" : submitLabel}
-        </Button>
+  const actions = (
+    <aside aria-label="Actions" className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
         <Button type="button" variant="ghost" disabled={busy} onClick={onCancel}>
           Cancel
         </Button>
+        <CountBadge count={missing.length} label={missingSummary(missing)}>
+          {(describedBy) => (
+            <Button
+              type="submit"
+              form={formId}
+              variant="primary"
+              disabled={busy}
+              aria-describedby={describedBy}
+            >
+              {busy ? "Saving…" : submitLabel}
+            </Button>
+          )}
+        </CountBadge>
       </div>
-    </form>
+      <IncompleteFormNotice
+        key={attempt}
+        missing={attempt > 0 ? missing.map((m) => m.label) : []}
+      />
+      {error && (
+        <div className={FORM_ERROR_BANNER} role="alert">
+          {error}
+        </div>
+      )}
+    </aside>
+  );
+
+  return (
+    <PageShell
+      back
+      backFallback={backFallback}
+      title={pageTitle}
+      subtitle={subtitle}
+      stickyActions={actions}
+    >
+      <form
+        id={formId}
+        className="space-y-6"
+        // `noValidate`: IncompleteFormNotice owns required-field feedback.
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (busy) return;
+          if (missing.length > 0) {
+            setAttempt((n) => n + 1);
+            return;
+          }
+          onSubmit(
+            title.trim(),
+            description,
+            events.map((event) => event.id),
+          );
+        }}
+      >
+        <Card as="section">
+          <SectionHeading title="Details" />
+
+          <div className="space-y-1.5">
+            <span className="flex items-center justify-between gap-2">
+              <label
+                htmlFor={titleId}
+                className={cn(FORM_LABEL, titleInvalid && FORM_INVALID_LABEL)}
+              >
+                Title
+              </label>
+              <CharCounter length={title.length} max={COLLECTION_TITLE_MAX_LEN} />
+            </span>
+            <Input
+              id={titleId}
+              value={title}
+              invalid={titleInvalid}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Kupiansk rail corridor: three days of strikes"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <span className="flex items-center justify-between gap-2">
+              {/* The editor is a contenteditable div, not a form control, so the label
+                  names it through `aria-labelledby` on the wrapper. */}
+              <span
+                id={descriptionId}
+                className={cn(FORM_LABEL, descriptionInvalid && FORM_INVALID_LABEL)}
+              >
+                Description
+              </span>
+              <CharCounter
+                length={descriptionText.length}
+                max={COLLECTION_DESCRIPTION_MAX_LEN}
+              />
+            </span>
+            <div role="group" aria-labelledby={descriptionId}>
+              <ProofEditor
+                initialContent={initialDescription}
+                onChange={setDescription}
+                allowImages={false}
+                invalid={descriptionInvalid}
+              />
+            </div>
+            {hint && (
+              <span className="block text-xs text-neutral-500">{hint}</span>
+            )}
+          </div>
+        </Card>
+
+        <EventPicker
+          username={username}
+          events={events}
+          onAdd={addEvent}
+          onRemove={removeEvent}
+        />
+      </form>
+    </PageShell>
   );
 }

@@ -6,8 +6,8 @@ import type { PickableEvent } from "@/lib/collections";
 import { CollectionItemCard } from "./CollectionItemCard";
 
 /**
- * The picker blocks open the event; the collection page list picks the
- * player's step instead. One gesture either way.
+ * The write pages' held events open the event; the collection page list picks
+ * the player's step instead. One gesture either way.
  */
 const ITEM: PickableEvent = {
   id: "e1",
@@ -49,17 +49,9 @@ describe("CollectionItemCard", () => {
     expect(onSelect).toHaveBeenCalled();
   });
 
-  it("lifts the surface's own control above the row", () => {
-    const onRemove = vi.fn();
+  it("names the event date on the card that opens the event", () => {
+    render(<CollectionItemCard item={ITEM} />);
 
-    render(
-      <CollectionItemCard
-        item={ITEM}
-        action={<button onClick={onRemove}>Remove</button>}
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
-
-    expect(onRemove).toHaveBeenCalled();
+    expect(screen.getByText(/^Event /)).toBeInTheDocument();
   });
 });
