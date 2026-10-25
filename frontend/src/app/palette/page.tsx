@@ -74,6 +74,8 @@ import { ActiveFilterPills } from "@/components/ui/ActiveFilterPills";
 import { ChipBucket } from "@/components/ui/ChipBucket";
 import { FilterSection, chipSummary } from "@/components/ui/FilterSection";
 import { ToggleRow } from "@/components/ui/ToggleRow";
+import { ChoiceRow } from "@/components/ui/ChoiceRow";
+import { SwatchPicker } from "@/components/ui/SwatchPicker";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { Avatar } from "@/components/ui/Avatar";
@@ -635,6 +637,10 @@ export default function PalettePage() {
             <PaletteToggleRow />
           </Item>
 
+          <Item name="<ChoiceRow>" usage="A pick-one preference row, the <ToggleRow> shape for a setting with a few named choices: the label at reading size over a line saying what the setting does, and a <SegmentedControl> named by the label. Beside the text from sm up; below sm the bar drops under it and takes the full column. `className` carries the caller's own divider and spacing. Settings and the organization page both render Accept approval requests from through it.">
+            <PaletteChoiceRow />
+          </Item>
+
           <Item name="<Pill>" usage="One pill for the whole family (status, tag, filter, badge) at one size. `tone` = accent | secondary | neutral | danger, mirroring the <Button> tones (secondary is the accent outline, no fill). A static <span> by default; pass `onClick` and it becomes an interactive chip (a <button> that brightens on hover), the caller driving the tone off its active state. `label` makes a key/value pill, the key muted before the value (`Conflict: Russo-Ukrainian war`), for a field whose name the value alone does not carry; lib/cardTags.ts keys a card's conflicts; a source block keys its kind and drops an Unknown value. className merges via cn (caller wins on a conflicting utility); keep it to orthogonal extras, the size stays one.">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -689,6 +695,10 @@ export default function PalettePage() {
                 onChange={setSegMode}
               />
             </div>
+          </Item>
+
+          <Item name="<SwatchPicker>" usage="Pick-one-colour field: round swatches in an ARIA radiogroup named by `aria-label`. The selected swatch is the one tab stop (the first while none is), the arrow keys move focus and selection together and wrap, Home and End jump to the ends, and a click selects. The selected swatch wears a light ring and the focused one an accent ring. A 36px target below sm, a 24px disc from sm up. Settings → Display uses it for the accent colour.">
+            <PaletteSwatchPicker />
           </Item>
 
           <Item name="<Switch>" usage="The one boolean toggle: settings rows (md), map filter rows (sm). as='span' renders the visual only, for a parent that owns the click (whole-row toggles). disabled reads the state but refuses the toggle, for a value this surface cannot change (the edit form's ratcheted graphic-content flag).">
@@ -874,7 +884,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<IncompleteFormNotice>" usage="Lists all unmet required fields at once (submit / validate / request)">
+          <Item name="<IncompleteFormNotice>" usage="Lists all unmet required fields at once (submit / validate / request, and the sign-in, registration, password and invite forms). Every form sets noValidate; the blank fields come from blankFields and the key set from useIncompleteForm.">
             <div className="w-full max-w-sm">
               <IncompleteFormNotice missing={["Coordinates", "Conflict", "Proof"]} />
             </div>
@@ -2142,6 +2152,43 @@ function PaletteChipBucket() {
       onToggle={(n) =>
         setSelected((prev) => (prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n]))
       }
+    />
+  );
+}
+
+function PaletteChoiceRow() {
+  const [value, setValue] = useState<"following" | "everyone" | "nobody">("following");
+  return (
+    <div className="w-full max-w-lg bg-neutral-900 rounded-lg border border-neutral-700 p-3">
+      <ChoiceRow
+        label="Accept requests from"
+        description="Who can ask you."
+        options={[
+          { value: "following", label: "People I follow" },
+          { value: "everyone", label: "Everyone" },
+          { value: "nobody", label: "Nobody" },
+        ]}
+        value={value}
+        onChange={setValue}
+      />
+    </div>
+  );
+}
+
+function PaletteSwatchPicker() {
+  const [value, setValue] = useState("orange");
+  return (
+    <SwatchPicker
+      aria-label="Preview accent color"
+      options={[
+        { value: "orange", label: "Orange", color: "#f97316" },
+        { value: "blue", label: "Blue", color: "#3b82f6" },
+        { value: "emerald", label: "Emerald", color: "#10b981" },
+        { value: "violet", label: "Violet", color: "#8b5cf6" },
+        { value: "rose", label: "Rose", color: "#f43f5e" },
+      ]}
+      value={value}
+      onChange={setValue}
     />
   );
 }

@@ -16,6 +16,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- Sign-in, registration, password reset, Change password and the invite form list every blank required field at once and outline it, in place of the browser's one-field bubble. The accent colour picker in Settings moves between swatches with the arrow keys.
 - Approvals are final: nobody revokes one, Approve asks you to confirm first, and a site admin can delete an approval, after which its reviewer or organization can approve that version again.
 - Joining an event as a co-geolocator deletes your approvals of it instead of marking them revoked.
 - Notification settings are one email switch per kind, and the in-app notification list always shows every kind.

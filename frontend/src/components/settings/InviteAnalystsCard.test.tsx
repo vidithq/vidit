@@ -12,6 +12,7 @@ vi.mock("@/lib/api", () => ({
     err instanceof Error ? err.message : fallback,
 }));
 
+import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 import { InviteAnalystsCard } from "./InviteAnalystsCard";
 
 const USED: SponsoredInviteCode = {
@@ -163,6 +164,17 @@ describe("InviteAnalystsCard", () => {
 
     expect(await screen.findByText("@osint_hawk")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /@osint_hawk/ })).toBeNull();
+  });
+
+  it("names the blank handle in the notice and does not mint", async () => {
+    api.apiFetch.mockResolvedValue(list());
+    render(<InviteAnalystsCard />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Mint invite code" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Invitee's X handle");
+    expect(screen.getByLabelText("Invitee's X handle")).toHaveClass(...FORM_INVALID_FIELD.split(" "));
+    expect(api.apiFetch.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
   });
 
   it("shows the quota refusal from the server", async () => {

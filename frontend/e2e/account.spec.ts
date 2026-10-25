@@ -65,4 +65,39 @@ test.describe("settings", () => {
     }
     await expectNoHorizontalOverflow(page);
   });
+
+  test("lists every blank password field at once instead of a native bubble", async ({
+    context,
+    page,
+  }) => {
+    await grantSession(context);
+    await mockApi(page);
+    await page.goto("/settings");
+
+    await page.getByLabel("New password", { exact: true }).fill("a-new-password");
+    await page.getByRole("button", { name: "Update password" }).click();
+
+    const notice = page.getByRole("alert").filter({ hasText: "Fill in the required fields" });
+    await expect(notice).toContainText("Current password");
+    await expect(notice).toContainText("Confirm new password");
+    await expect(notice).not.toContainText("New password:");
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test("moves the accent colour with the arrow keys", async ({ context, page }) => {
+    await grantSession(context);
+    await mockApi(page);
+    await page.goto("/settings");
+
+    const swatches = page.getByRole("radiogroup", { name: "Accent color" }).getByRole("radio");
+    const checked = swatches.and(page.locator("[aria-checked=true]"));
+    const first = swatches.first();
+    await first.focus();
+    await page.keyboard.press("ArrowRight");
+
+    await expect(swatches.nth(1)).toBeFocused();
+    await expect(checked).toHaveCount(1);
+    await expect(swatches.nth(1)).toHaveAttribute("aria-checked", "true");
+    await expect(first).toHaveAttribute("aria-checked", "false");
+  });
 });

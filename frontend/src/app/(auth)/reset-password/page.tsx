@@ -13,8 +13,9 @@ import {
   FORM_LABEL_COMPACT,
 } from "@/components/ui/form-styles";
 import { Button } from "@/components/ui/Button";
+import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { Input } from "@/components/ui/Input";
-
+import { blankFields, useIncompleteForm } from "@/hooks/useIncompleteForm";
 
 /** Opened from the email link. The backend returns one opaque 400 for every failure mode; the UI mirrors it with one "invalid link" path. */
 function ResetPasswordInner() {
@@ -24,6 +25,8 @@ function ResetPasswordInner() {
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const incomplete = useIncompleteForm<"password" | "confirm">();
+  const { invalidKeys } = incomplete;
 
   const resetPassword = useMutation(
     () =>
@@ -46,6 +49,16 @@ function ResetPasswordInner() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    const missing = blankFields([
+      { key: "password", label: "New password", value: password },
+      { key: "confirm", label: "Confirm", value: confirm },
+    ]);
+    if (missing.length) {
+      incomplete.flagIncomplete(missing);
+      return;
+    }
+    incomplete.clearIncomplete();
 
     const validationError = validatePasswordChange(password, confirm, "Password");
     if (validationError) {
@@ -84,7 +97,11 @@ function ResetPasswordInner() {
         </Link>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} noValidate className="space-y-4">
+        <IncompleteFormNotice
+          key={incomplete.validationAttempt}
+          missing={incomplete.missingFields.map((m) => m.label)}
+        />
         {error && (
           <div className={FORM_ERROR_BANNER}>
             {error}
@@ -92,14 +109,16 @@ function ResetPasswordInner() {
         )}
 
         <div className="space-y-1">
-          <label htmlFor="password" className={FORM_LABEL_COMPACT}>
+          <label
+            htmlFor="password"
+            className={incomplete.labelClass("password", FORM_LABEL_COMPACT)}
+          >
             New password
           </label>
           <Input
             id="password"
+            invalid={invalidKeys.has("password")}
             type="password"
-            required
-            minLength={PASSWORD_MIN_LENGTH}
             maxLength={PASSWORD_MAX_BYTES}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -107,14 +126,16 @@ function ResetPasswordInner() {
         </div>
 
         <div className="space-y-1">
-          <label htmlFor="confirm" className={FORM_LABEL_COMPACT}>
+          <label
+            htmlFor="confirm"
+            className={incomplete.labelClass("confirm", FORM_LABEL_COMPACT)}
+          >
             Confirm
           </label>
           <Input
             id="confirm"
+            invalid={invalidKeys.has("confirm")}
             type="password"
-            required
-            minLength={PASSWORD_MIN_LENGTH}
             maxLength={PASSWORD_MAX_BYTES}
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
