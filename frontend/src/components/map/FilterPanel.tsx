@@ -102,9 +102,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
     ...buildActiveFilterPills(filters, onPatch),
     ...buildDateWindowPills(dateWindows, clearEventWindow, clearAddedWindow),
   ];
-  // The author narrows the view without a pill (its chip is in the Author section), so the badge
-  // counts it too.
-  const activeFilterCount = activeFilters.length + (filters.author.trim() ? 1 : 0);
+  const activeFilterCount = activeFilters.length;
   const hasActiveFilters = activeFilterCount > 0;
 
   return (

@@ -17,6 +17,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- The author filter shows among the active filter pills, as **By** *username*, so one click removes it like any other filter.
 - On an event page, **Add to collection** and **Geolocators** open their panel over the page, anchored to the button, so nothing on the page moves.
 - Deleting a collection that an open report names withholds it from everyone at once, keeps it in the admin reports queue marked Deleted by its owner, and erases it when its last open report is resolved.
 - Sign-in, registration, password reset, Change password and the invite form list every blank required field at once and outline it, in place of the browser's one-field bubble. The accent colour picker in Settings moves between swatches with the arrow keys.

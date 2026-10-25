@@ -172,15 +172,15 @@ const capitalize = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
 const APPROVED_ONLY = "approved";
 
-/** The removable-pill entries for the common values; surfaces append their date-window entries.
- * The author is not a pill: its chip lives in the Author section. Surfaces count it on top of
- * these entries. */
+/** The removable-pill entries for the common values, one per value; surfaces append their
+ * date-window entries. */
 export function buildActiveFilterPills(
   values: EventFilterValues,
   onPatch: EventFilterPatch
 ): ActiveFilter[] {
   const drop = (key: keyof EventFilterValues, name: string) =>
     onPatch({ [key]: (values[key] as string[]).filter((n) => n !== name) });
+  const author = values.author.trim();
   return [
     ...values.statuses.map((n) => ({
       key: `status:${n}`,
@@ -207,6 +207,9 @@ export function buildActiveFilterPills(
       label: n,
       onRemove: () => drop("tags", n),
     })),
+    ...(author
+      ? [{ key: "author", label: `By ${author}`, onRemove: () => onPatch({ author: "" }) }]
+      : []),
     ...values.mediaTypes.map((n) => ({
       key: `media:${n}`,
       label: capitalize(n),
@@ -261,8 +264,7 @@ export function buildDateWindowPills(
   ];
 }
 
-/** How many filters in the shared vocabulary narrow the view: one per pill, plus the author, which
- * counts though it has no pill, so a filtered surface never reads as unfiltered. */
+/** How many filters in the shared vocabulary narrow the view: one per pill. */
 export function countActiveFilters(
   values: EventFilterValues,
   windows: DateWindows

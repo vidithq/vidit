@@ -153,6 +153,23 @@ describe("the Approvals section", () => {
   });
 });
 
+describe("the author filter", () => {
+  it("has a removable pill like every other value and counts once", () => {
+    const onPatch = vi.fn();
+    const values = { ...EMPTY_EVENT_FILTERS, tags: ["drone"], author: "ana" };
+    expect(countActiveFilters(values, EMPTY_DATE_WINDOWS)).toBe(2);
+    const pills = buildActiveFilterPills(values, onPatch);
+    expect(pills.map((p) => p.label)).toEqual(["drone", "By ana"]);
+    pills[1].onRemove();
+    expect(onPatch).toHaveBeenCalledWith({ author: "" });
+  });
+
+  it("has no pill while the field is blank", () => {
+    const pills = buildActiveFilterPills({ ...EMPTY_EVENT_FILTERS, author: "  " }, vi.fn());
+    expect(pills).toEqual([]);
+  });
+});
+
 describe("the Conflict and Tags search fields", () => {
   const ENDED: Conflict = {
     id: "c2",

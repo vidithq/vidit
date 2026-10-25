@@ -576,7 +576,7 @@ The organization page mounts an invited viewer's **Accept** and **Decline** in t
 - **Clear** empties the draft. Apply then clears the list's filters.
 - **Cancel**, Escape or a tap on the backdrop closes the dialog and drops the draft. While a search field's list is open, Escape closes the list only.
 
-The pills act on the applied filters at every width. The pill row hides from `lg` up while no filter is active, since the button is off the page there.
+The pills act on the applied filters at every width. Every applied value has its pill, the author included (**By** *username*), and counts once in **Filters (N)**. The pill row hides from `lg` up while no filter is active, since the button is off the page there.
 
 #### Phone chrome
 
