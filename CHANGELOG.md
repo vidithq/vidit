@@ -21,6 +21,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - The submit form and the edit form check a write in the same order (the conflict options, then the missing fields in page order, then running uploads) and use the same confirm sentences and error messages.
 - The author filter shows among the active filter pills, as **By** *username*, so one click removes it like any other filter.
 - On an event page, **Add to collection** and **Geolocators** open their panel over the page, anchored to the button, so nothing on the page moves.
+- The event title, the close reason and the report details show a character counter, the source title, URL and archived copy fields stop at the API's cap, an out-of-range capture position is flagged, and a write drops a document source's capture position.
 - Deleting a collection that an open report names withholds it from everyone at once, keeps it in the admin reports queue marked Deleted by its owner, and erases it when its last open report is resolved.
 - Sign-in, registration, password reset, Change password and the invite form outline every blank required field at once and read the list to a screen reader, in place of the browser's one-field bubble. The accent colour picker in Settings moves between swatches with the arrow keys.
 - The admin console finds analysts and events by name, confirms every destructive action in a dialog (revoking an invite code included), groups row actions in a menu, and pages the reports queue with Load more.

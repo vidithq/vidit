@@ -2,17 +2,15 @@
 
 import { useState } from "react";
 
-import { closeEvent } from "@/lib/events";
+import { CLOSE_REASON_MAX_LEN, closeEvent } from "@/lib/events";
 import { useMutation } from "@/hooks/useMutation";
 import type { EventDetail, EventStatus } from "@/types";
 import { FIELD_HELP, type Concept } from "@/lib/fieldHelp";
+import { CharCounter } from "@/components/ui/CharCounter";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Textarea } from "@/components/ui/Input";
 import { FORM_LABEL, FORM_ERROR_BANNER } from "@/components/ui/form-styles";
-
-// Mirrors backend schemas/event.EventCloseRequest.close_reason; change both.
-const CLOSE_REASON_MAX_LEN = 2000;
 
 /**
  * What each row is called, for the one verb that closes all of them. The verb is always *Close*:
@@ -100,11 +98,14 @@ export function CloseEventDialog({
     >
       {help && <p>{FIELD_HELP[help].text}</p>}
       <div className="space-y-1.5">
-        <span className="inline-flex items-center gap-1">
-          <label htmlFor="close_reason" className={FORM_LABEL}>
-            Close reason
-          </label>
-          <FieldHelp concept="close_reason" />
+        <span className="flex items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-1">
+            <label htmlFor="close_reason" className={FORM_LABEL}>
+              Close reason
+            </label>
+            <FieldHelp concept="close_reason" />
+          </span>
+          <CharCounter length={reason.length} max={CLOSE_REASON_MAX_LEN} />
         </span>
         <Textarea
           id="close_reason"

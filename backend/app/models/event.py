@@ -68,7 +68,8 @@ def _initial_version(context: DefaultExecutionContext) -> int:
     return 0 if state in (STATUS_REQUESTED, STATUS_DETECTED) else 1
 
 
-# Field-length ceiling for the create / edit forms.
+# Field-length ceiling for the create / edit forms. Mirrored by
+# ``frontend/src/lib/events.ts::EVENT_TITLE_MAX_LEN``; change both.
 TITLE_MAX_LENGTH = 255
 
 

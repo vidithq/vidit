@@ -1,4 +1,5 @@
 import { parseHttp } from "./format";
+import type { ArchivedLink } from "@/types";
 
 /**
  * Reads the original out of a replay URL so the paste field can warn about an obvious
@@ -25,15 +26,16 @@ export const ARCHIVE_TODAY_HOSTS = [
   "archive.vn",
 ];
 
+/** Mirrors the `ghostarchive` entry of `source_archive.PROVIDER_HOSTS`; change both. */
+export const GHOSTARCHIVE_HOST = "ghostarchive.org";
+
 /** Every host a snapshot may live on. Mirrors the keys of `PROVIDER_HOSTS` in
  *  `services/source_archive.py`; change both. */
-export const SNAPSHOT_HOSTS = [WAYBACK_HOST, ...ARCHIVE_TODAY_HOSTS, "ghostarchive.org"];
+export const SNAPSHOT_HOSTS = [WAYBACK_HOST, ...ARCHIVE_TODAY_HOSTS, GHOSTARCHIVE_HOST];
 
 /** The archive service a stored snapshot URL lives on, read off its host as the server derives
  *  `provider`; null for a host outside `SNAPSHOT_HOSTS`. */
-export function snapshotProvider(
-  snapshot: string
-): "wayback" | "archive_today" | "ghostarchive" | null {
+export function snapshotProvider(snapshot: string): ArchivedLink["provider"] | null {
   let host: string;
   try {
     host = new URL(snapshot).hostname.toLowerCase();
@@ -42,7 +44,7 @@ export function snapshotProvider(
   }
   if (host === WAYBACK_HOST) return "wayback";
   if (ARCHIVE_TODAY_HOSTS.includes(host)) return "archive_today";
-  return host === "ghostarchive.org" ? "ghostarchive" : null;
+  return host === GHOSTARCHIVE_HOST ? "ghostarchive" : null;
 }
 
 /** Wayback replay path `/web/<timestamp>/<original url>`, optional replay modifier included.

@@ -5,7 +5,8 @@ import { CloseEventDialog } from "./CloseEventDialog";
 import { closeEvent } from "@/lib/events";
 import type { EventDetail } from "@/types";
 
-vi.mock("@/lib/events", () => ({
+vi.mock("@/lib/events", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/events")>()),
   closeEvent: vi.fn(),
 }));
 

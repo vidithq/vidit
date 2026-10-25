@@ -98,6 +98,22 @@ def test_an_event_holds_several_sources_in_level_then_capture_order(author, conf
     assert response.json()["thumbnail"]["id"] == read[0]["media"]["id"]
 
 
+def test_a_document_source_drops_its_capture_position(author, conflict):
+    sources = sources_field(
+        source_spec(upload_id=stage_file(author)),
+        source_spec(
+            "https://news.example/report",
+            level="context",
+            kind="article",
+            capture_position={"lat": 48.4, "lng": 34.4},
+        ),
+    )
+    response = _create(author, conflict, sources)
+    assert response.status_code == 201, response.text
+    article = next(s for s in response.json()["sources"] if s["kind"] == "article")
+    assert article["capture_position"] is None
+
+
 def test_one_url_list_holds_the_same_media_posted_in_several_places(author, conflict):
     sources = sources_field(
         source_spec(

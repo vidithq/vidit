@@ -26,12 +26,16 @@ import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Switch } from "@/components/ui/Switch";
 import { TagChips } from "@/components/ui/TagPicker";
 import { cn } from "@/lib/cn";
-import { MAX_LINKS_PER_SOURCE } from "@/lib/events";
+import { LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "@/lib/coordinates";
 import { safeHostname } from "@/lib/format";
 import {
+  capturePositionInvalid,
   draftUrls,
   hasCapturePosition,
   LEVEL_LABELS,
+  MAX_LINKS_PER_SOURCE,
+  SOURCE_TITLE_MAX_LEN,
+  SOURCE_URL_MAX_LEN,
   SOURCE_KIND_LABELS,
   SOURCE_KINDS,
   SOURCE_LEVELS,
@@ -105,6 +109,7 @@ export function SourceEditor({
   const id = (field: string) => `${draft.key}-${field}`;
   const file = draft.file;
   const hasFile = file !== null && file.state !== "failed";
+  const positionInvalid = capturePositionInvalid(draft);
   // Opens on a source that already says more than the essentials; the analyst closes it.
   const [detailsOpen, setDetailsOpen] = useState(() => holdsDetails(draft));
 
@@ -159,7 +164,7 @@ export function SourceEditor({
           // Named apart from the event's Title field and the other editors' titles.
           aria-label={`${name} title`}
           value={draft.title}
-          maxLength={255}
+          maxLength={SOURCE_TITLE_MAX_LEN}
           onChange={(e) => update({ title: e.target.value })}
           placeholder="For example Drone footage of the strike"
         />
@@ -214,6 +219,7 @@ export function SourceEditor({
             withUrl={(link, url) => ({ ...link, url })}
             blank={() => ({ url: "", postedAt: "", snapshotUrl: "", stored: null })}
             max={MAX_LINKS_PER_SOURCE}
+            maxLength={SOURCE_URL_MAX_LEN}
             itemLabel={`${name} link`}
             addText="Add a link"
             addName={`Add a link to ${name.toLowerCase()}`}
@@ -297,7 +303,14 @@ export function SourceEditor({
               setLat={(captureLat) => update({ captureLat })}
               lng={draft.captureLng}
               setLng={(captureLng) => update({ captureLng })}
+              invalid={positionInvalid}
             />
+            {positionInvalid && (
+              <p className="text-xs text-red-400">
+                Enter a latitude from {LAT_MIN} to {LAT_MAX} and a longitude from {LNG_MIN} to{" "}
+                {LNG_MAX}, or clear both. Until then the capture position is not saved.
+              </p>
+            )}
           </div>
         )}
 

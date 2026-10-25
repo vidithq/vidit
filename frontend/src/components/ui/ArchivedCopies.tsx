@@ -10,11 +10,13 @@ import { OutboundLink } from "@/components/ui/OutboundLink";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { WARNING_CALLOUT } from "@/components/ui/styles";
 import {
+  GHOSTARCHIVE_HOST,
   SNAPSHOT_HOSTS,
   snapshotArchivesAnotherLink,
   snapshotProvider,
   WAYBACK_HOST,
 } from "@/lib/snapshots";
+import { SOURCE_URL_MAX_LEN } from "@/lib/sources";
 
 interface ArchivedCopiesProps {
   copy: ArchivedLink | null;
@@ -56,7 +58,7 @@ function savePageUrl(url: string): string {
 }
 
 /** The three services behind those hosts, short enough for the placeholder. */
-const SNAPSHOT_SERVICES = [WAYBACK_HOST, "archive.today", "ghostarchive.org"];
+const SNAPSHOT_SERVICES = [WAYBACK_HOST, "archive.today", GHOSTARCHIVE_HOST];
 
 function hostList(hosts: readonly string[]): string {
   const rest = hosts.slice(0, -1).join(", ");
@@ -71,13 +73,16 @@ const SNAPSHOT_PLACEHOLDER = `Paste a snapshot link (${SNAPSHOT_SERVICES.join(",
 export const SNAPSHOT_HINT = `A snapshot link is an https link on ${hostList(SNAPSHOT_HOSTS)}.`;
 
 /**
- * Whether a pasted value can be a snapshot: `https` on an archive host.
- * The first two checks of `source_archive.validate_snapshot`; the per-provider
- * path shapes stay server side, so true can still be a 400.
+ * Whether a pasted value can be a snapshot: within `SOURCE_URL_MAX_LEN` UTF-8
+ * bytes, `https`, on an archive host. The first three checks of
+ * `source_archive.validate_snapshot`; the per-provider path shapes stay server
+ * side, so true can still be a 400.
  */
 export function isSnapshotUrl(value: string): boolean {
+  const trimmed = value.trim();
+  if (new TextEncoder().encode(trimmed).length > SOURCE_URL_MAX_LEN) return false;
   try {
-    const parsed = new URL(value.trim());
+    const parsed = new URL(trimmed);
     return (
       parsed.protocol === "https:" && SNAPSHOT_HOSTS.includes(parsed.hostname.toLowerCase())
     );
@@ -249,6 +254,7 @@ export function ArchiveSnapshotField({
         aria-label={`Archived copy of ${describes}`}
         type="url"
         variant="compact"
+        maxLength={SOURCE_URL_MAX_LEN}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={SNAPSHOT_PLACEHOLDER}

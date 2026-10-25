@@ -9,9 +9,11 @@ import { HorizontalScroller, type HorizontalScrollerHandle } from "@/components/
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
 import { isSnapshotUrl, SNAPSHOT_HINT } from "@/components/ui/ArchivedCopies";
-import { MAX_SOURCES_PER_EVENT, type MissingFieldKey } from "@/lib/events";
+import type { MissingFieldKey } from "@/lib/events";
 import {
   draftUrls,
+  isEvidenceLevel,
+  MAX_SOURCES_PER_EVENT,
   newSourceDraft,
   uploadError,
   uploadsRunning,
@@ -194,7 +196,7 @@ function firstGap(drafts: SourceDraft[], invalidKeys: ReadonlySet<MissingFieldKe
     drafts.find((d) => {
       const { link, kind } = sourceGaps(d, invalidKeys);
       return link || kind;
-    }) ?? (invalidKeys.has("source_file") ? drafts.find((d) => d.level !== "context") : undefined);
+    }) ?? (invalidKeys.has("source_file") ? drafts.find((d) => isEvidenceLevel(d.level)) : undefined);
   return gap?.key ?? null;
 }
 

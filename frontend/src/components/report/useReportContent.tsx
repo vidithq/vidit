@@ -13,6 +13,7 @@ import {
 } from "@/lib/events";
 import { useMutation } from "@/hooks/useMutation";
 import { Button } from "@/components/ui/Button";
+import { CharCounter } from "@/components/ui/CharCounter";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Select, Textarea } from "@/components/ui/Input";
@@ -172,11 +173,14 @@ export function useReportContent(
         </div>
 
         <div className="space-y-1.5 pt-1">
-          <span className="flex items-center gap-1.5">
-            <label htmlFor="report_details" className={FORM_LABEL}>
-              Details
-            </label>
-            <FieldHelp concept="report_details" />
+          <span className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5">
+              <label htmlFor="report_details" className={FORM_LABEL}>
+                Details
+              </label>
+              <FieldHelp concept="report_details" />
+            </span>
+            <CharCounter length={details.length} max={REPORT_DETAILS_MAX_LEN} />
           </span>
           <Textarea
             id="report_details"

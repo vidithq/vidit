@@ -1,6 +1,6 @@
 import { ApiError, apiFetch } from "./api";
 import type { components } from "./api-types";
-import { cleanNumber } from "./coordinates";
+import { coordinatePair, LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "./coordinates";
 import type { SourceFloorState } from "./events";
 import { toDatetimeLocalUTC } from "./format";
 import type { ArchivedLink, Media } from "@/types";
@@ -29,6 +29,29 @@ export const LEVEL_LABELS: Record<SourceLevel, string> = {
 /** In the order the API serves sources. */
 export const SOURCE_LEVELS = Object.keys(LEVEL_LABELS) as SourceLevel[];
 
+/** Keyed by the generated union. Mirrors `models/source.EVIDENCE_LEVELS`; change both. */
+const EVIDENCE_LEVELS: Record<SourceLevel, boolean> = {
+  direct: true,
+  indirect: true,
+  context: false,
+};
+
+/** Whether a source of this level supports a publication: the evidence floor counts it. */
+export const isEvidenceLevel = (level: SourceLevel): boolean => EVIDENCE_LEVELS[level];
+
+/** Mirrors `models/source.MAX_SOURCES_PER_EVENT`; change both. */
+export const MAX_SOURCES_PER_EVENT = 10;
+
+/** Mirrors `models/source.MAX_LINKS_PER_SOURCE`; change both. */
+export const MAX_LINKS_PER_SOURCE = 10;
+
+/** Mirrors `models/source.SOURCE_TITLE_MAX_LENGTH`; change both. */
+export const SOURCE_TITLE_MAX_LEN = 255;
+
+/** Caps a link's URL and its snapshot URL. Mirrors `models/source.SOURCE_URL_MAX_LENGTH`;
+ *  change both. */
+export const SOURCE_URL_MAX_LEN = 2000;
+
 /** Keyed by the generated union, so a kind the backend adds fails the type-check. */
 export const SOURCE_KIND_LABELS: Record<SourceKind, string> = {
   smartphone: "Smartphone",
@@ -47,8 +70,9 @@ export const SOURCE_KIND_LABELS: Record<SourceKind, string> = {
 
 export const SOURCE_KINDS = Object.keys(SOURCE_KIND_LABELS) as SourceKind[];
 
-/** The kinds that are documents, not captures: they carry no capture position. */
-const DOCUMENT_KINDS: ReadonlySet<SourceKind | ""> = new Set<SourceKind>([
+/** The kinds that are documents, not captures: they carry no capture position. Mirrors
+ *  `models/source.DOCUMENT_SOURCE_KINDS`; change both. */
+const DOCUMENT_SOURCE_KINDS: ReadonlySet<SourceKind | ""> = new Set<SourceKind>([
   "article",
   "official_statement",
   "other",
@@ -61,7 +85,8 @@ const IMAGERY_KINDS: Record<ImageryKind, true> = { satellite: true, aircraft: tr
 export const isImageryKind = (kind: SourceKind | ""): kind is ImageryKind => kind in IMAGERY_KINDS;
 
 /** Whether a source of this kind can carry a capture position. */
-export const hasCapturePosition = (kind: SourceKind | ""): boolean => !DOCUMENT_KINDS.has(kind);
+export const hasCapturePosition = (kind: SourceKind | ""): boolean =>
+  !DOCUMENT_SOURCE_KINDS.has(kind);
 
 /** The first URL of an event's sources, for the one-host labels of a row or card. */
 export function firstSourceUrl(event: { sources: Pick<Source, "links">[] }): string | null {
@@ -80,21 +105,8 @@ export function sourceKindLabel(source: Pick<Source, "kind" | "media">): string 
   return file ? `${kind} · ${file}` : kind;
 }
 
-/** One entry of an event write's `sources` JSON field. Mirrors `schemas/source.SourceCreate`;
- *  change both. */
-export interface SourceCreate {
-  id?: string;
-  title: string;
-  level: SourceLevel;
-  kind: SourceKind;
-  captured_at: string | null;
-  capture_position: { lat: number; lng: number } | null;
-  is_graphic: boolean;
-  links: { url: string; posted_at: string | null; snapshot_url: string | null }[];
-  tag_ids: string[];
-  upload_id?: string;
-  media_id?: string;
-}
+/** One entry of an event write's `sources` JSON field, every field posted. */
+export type SourceCreate = Required<components["schemas"]["SourceCreate"]>;
 
 /** A source file in a form. `stored` names the source's own stored file and posts `media_id`;
  *  `staged` posts `upload_id`. */
@@ -203,9 +215,10 @@ export function sourceDraftFrom(source: Source): SourceDraft {
 /** The draft's file as the write names it, or null for none (an upload still running or a
  *  failed one names none). */
 function fileReference(file: SourceFile | null): Pick<SourceCreate, "upload_id" | "media_id"> {
-  if (file?.state === "stored") return { media_id: file.media.id };
-  if (file?.state === "staged") return { upload_id: file.upload.id };
-  return {};
+  return {
+    media_id: file?.state === "stored" ? file.media.id : null,
+    upload_id: file?.state === "staged" ? file.upload.id : null,
+  };
 }
 
 /** A file that is, or is becoming, the source's: a running upload counts, so the publish counts do
@@ -216,7 +229,7 @@ const holdsFile = (draft: SourceDraft): boolean =>
 /** The editors against the evidence floor (`missingEventFields`). */
 export function sourceFloor(drafts: SourceDraft[]): SourceFloorState {
   return {
-    hasEvidenceFile: drafts.some((d) => d.level !== "context" && holdsFile(d)),
+    hasEvidenceFile: drafts.some((d) => isEvidenceLevel(d.level) && holdsFile(d)),
     missingLink: drafts.some((d) => draftUrls(d).length === 0),
     missingKind: drafts.some((d) => d.kind === ""),
   };
@@ -241,13 +254,19 @@ export function draftUrls(draft: SourceDraft): string[] {
   return [...new Set(draft.links.map((l) => l.url.trim()).filter(Boolean))];
 }
 
+/** Whether the editor holds a capture position that is not a valid pair: half-typed,
+ *  malformed or out of bounds. The write drops it, so the editor flags it. */
+export function capturePositionInvalid(draft: SourceDraft): boolean {
+  if (!hasCapturePosition(draft.kind)) return false;
+  if (draft.captureLat.trim() === "" && draft.captureLng.trim() === "") return false;
+  return coordinatePair(draft.captureLat, draft.captureLng) === null;
+}
+
 /** One editor as the write posts it. A draft with no kind yet posts `unknown`; the form's
  *  floor check holds the write until one is picked. */
 export function sourceCreatePayload(draft: SourceDraft): SourceCreate {
   const file = fileReference(draft.file);
   const kind = draft.kind || "unknown";
-  const lat = hasCapturePosition(kind) ? cleanNumber(draft.captureLat) : null;
-  const lng = hasCapturePosition(kind) ? cleanNumber(draft.captureLng) : null;
   const seen = new Set<string>();
   const links: SourceCreate["links"] = [];
   for (const link of draft.links) {
@@ -262,14 +281,16 @@ export function sourceCreatePayload(draft: SourceDraft): SourceCreate {
     });
   }
   return {
-    ...(draft.id ? { id: draft.id } : {}),
+    id: draft.id,
     title: draft.title.trim(),
     level: draft.level,
     kind,
     captured_at: instant(draft.capturedAt, draft.storedCapturedAt),
-    // Both halves or neither: a half-typed pair is dropped rather than refused. A document
-    // kind posts none.
-    capture_position: lat !== null && lng !== null ? { lat, lng } : null,
+    // A half-typed, malformed or out-of-bounds pair is dropped rather than refused, and the
+    // editor flags it (`capturePositionInvalid`). A document kind posts none.
+    capture_position: hasCapturePosition(kind)
+      ? coordinatePair(draft.captureLat, draft.captureLng)
+      : null,
     is_graphic: draft.isGraphic,
     links,
     tag_ids: draft.tagIds,
@@ -287,7 +308,7 @@ export function sourcesChanged(stored: Source[], drafts: SourceDraft[]): boolean
     const source = draft.id ? byId.get(draft.id) : undefined;
     if (!source) return true;
     const posted = sourceCreatePayload(draft);
-    if (posted.media_id !== source.media?.id || posted.upload_id) return true;
+    if (posted.media_id !== (source.media?.id ?? null) || posted.upload_id) return true;
     if (draft.file?.state === "uploading" || draft.file?.state === "failed") return true;
     const position = source.capture_position;
     const samePosition =
@@ -341,8 +362,9 @@ const SOURCE_ERROR_MESSAGES: Record<string, string> = {
   source_file_required: "Add a file to a direct or indirect source.",
   source_link_required: "Every source needs at least one URL.",
   invalid_source_url: "A source URL is not a valid http or https link.",
-  too_many_sources: "An event holds at most 10 sources.",
-  too_many_source_links: "A source holds at most 10 URLs.",
+  too_many_sources: `An event holds at most ${MAX_SOURCES_PER_EVENT} sources.`,
+  too_many_source_links: `A source holds at most ${MAX_LINKS_PER_SOURCE} URLs.`,
+  invalid_coordinates: `A position is out of range: latitude runs from ${LAT_MIN} to ${LAT_MAX}, longitude from ${LNG_MIN} to ${LNG_MAX}.`,
   source_not_found: "A source changed since this form loaded. Reload the page and try again.",
   source_media_not_found:
     "A source file changed since this form loaded. Reload the page and try again.",
