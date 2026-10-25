@@ -7,15 +7,15 @@ import Link from "next/link";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { ApiError } from "@/lib/api";
-import { PASSWORD_MAX_BYTES, PASSWORD_MIN_LENGTH, validateNewPassword } from "@/lib/auth";
+import { PASSWORD_MAX_BYTES, validateNewPassword } from "@/lib/auth";
 import {
   FORM_ERROR_BANNER,
   FORM_LABEL_COMPACT,
 } from "@/components/ui/form-styles";
 import { Button } from "@/components/ui/Button";
+import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { Input } from "@/components/ui/Input";
-
-
+import { blankFields, useIncompleteForm } from "@/hooks/useIncompleteForm";
 
 interface Props {
   /** Called once the backend accepts the payload (202), with the email the confirmation link goes to. */
@@ -33,6 +33,8 @@ export default function RegisterForm({
   const [password, setPassword] = useState("");
   const [inviteCode, setInviteCode] = useState(initialInviteCode);
   const inviteCodeLocked = initialInviteCode.length > 0;
+  const incomplete = useIncompleteForm<"invite_code" | "username" | "email" | "password">();
+  const { invalidKeys } = incomplete;
 
   const submitRegister = useMutation(
     async () => {
@@ -63,6 +65,18 @@ export default function RegisterForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const missing = blankFields([
+      { key: "invite_code", label: "Invite code", value: inviteCode },
+      { key: "username", label: "Username", value: username },
+      { key: "email", label: "Email", value: email },
+      { key: "password", label: "Password", value: password },
+    ]);
+    if (missing.length) {
+      setError(null);
+      incomplete.flagIncomplete(missing);
+      return;
+    }
+    incomplete.clearIncomplete();
     const validationError = validateNewPassword(password);
     if (validationError) {
       setError(validationError);
@@ -84,7 +98,11 @@ export default function RegisterForm({
         </>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} noValidate className="space-y-4">
+        <IncompleteFormNotice
+          key={incomplete.validationAttempt}
+          missing={incomplete.missingFields.map((m) => m.label)}
+        />
         {error && (
           <div className={FORM_ERROR_BANNER}>
             {error}
@@ -92,13 +110,16 @@ export default function RegisterForm({
         )}
 
         <div className="space-y-1">
-          <label htmlFor="invite_code" className={FORM_LABEL_COMPACT}>
+          <label
+            htmlFor="invite_code"
+            className={incomplete.labelClass("invite_code", FORM_LABEL_COMPACT)}
+          >
             Invite code
           </label>
           <Input
             id="invite_code"
+            invalid={invalidKeys.has("invite_code")}
             type="text"
-            required
             readOnly={inviteCodeLocked}
             value={inviteCode}
             onChange={(e) => setInviteCode(e.target.value)}
@@ -113,40 +134,48 @@ export default function RegisterForm({
         </div>
 
         <div className="space-y-1">
-          <label htmlFor="username" className={FORM_LABEL_COMPACT}>
+          <label
+            htmlFor="username"
+            className={incomplete.labelClass("username", FORM_LABEL_COMPACT)}
+          >
             Username
           </label>
           <Input
             id="username"
+            invalid={invalidKeys.has("username")}
             type="text"
-            required
             value={username}
             onChange={(e) => setUsername(e.target.value)}
           />
         </div>
 
         <div className="space-y-1">
-          <label htmlFor="email" className={FORM_LABEL_COMPACT}>
+          <label
+            htmlFor="email"
+            className={incomplete.labelClass("email", FORM_LABEL_COMPACT)}
+          >
             Email
           </label>
           <Input
             id="email"
+            invalid={invalidKeys.has("email")}
             type="email"
-            required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
         </div>
 
         <div className="space-y-1">
-          <label htmlFor="password" className={FORM_LABEL_COMPACT}>
+          <label
+            htmlFor="password"
+            className={incomplete.labelClass("password", FORM_LABEL_COMPACT)}
+          >
             Password
           </label>
           <Input
             id="password"
+            invalid={invalidKeys.has("password")}
             type="password"
-            required
-            minLength={PASSWORD_MIN_LENGTH}
             maxLength={PASSWORD_MAX_BYTES}
             value={password}
             onChange={(e) => setPassword(e.target.value)}

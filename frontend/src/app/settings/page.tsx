@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { apiFetch } from "@/lib/api";
-import { PASSWORD_MAX_BYTES, PASSWORD_MIN_LENGTH, validatePasswordChange } from "@/lib/auth";
+import { PASSWORD_MAX_BYTES, validatePasswordChange } from "@/lib/auth";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { AccountXHandle } from "@/components/settings/AccountXHandle";
@@ -10,7 +10,9 @@ import { InviteAnalystsCard } from "@/components/settings/InviteAnalystsCard";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { Button, ICON_TAP_STEP } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button";
+import { ChoiceRow } from "@/components/ui/ChoiceRow";
+import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import {
   FORM_ERROR_BANNER,
   FORM_LABEL,
@@ -18,6 +20,7 @@ import {
 } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
 import { ToggleRow } from "@/components/ui/ToggleRow";
+import { blankFields, useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { useHelpHidden } from "@/hooks/useHelpHidden";
 import { usePalette } from "@/hooks/usePalette";
 import { PALETTES } from "@/lib/palette";
@@ -29,7 +32,7 @@ import {
   APPROVAL_REQUEST_AUDIENCE_OPTIONS,
   type ApprovalRequestAudience,
 } from "@/lib/approvalRequests";
-import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { SwatchPicker } from "@/components/ui/SwatchPicker";
 import {
   PREFERENCES_PATH,
   saveDisplay,
@@ -72,19 +75,13 @@ function NotificationsCard() {
       {(error || toggle.error || audience.error) && (
         <div className={FORM_ERROR_BANNER}>{toggle.error ?? audience.error ?? error}</div>
       )}
-      {/* Stacks below `sm`, where the three choices take the full column. */}
-      <div className="flex max-sm:flex-col max-sm:items-stretch items-center justify-between gap-4">
-        <div>
-          <p className="text-sm text-neutral-200">Accept approval requests from</p>
-          <p className="text-xs text-neutral-500">Who can ask you to approve their geolocation.</p>
-        </div>
-        <SegmentedControl
-          aria-label="Accept approval requests from"
-          options={APPROVAL_REQUEST_AUDIENCE_OPTIONS}
-          value={currentAudience}
-          onChange={(value) => void audience.run(value)}
-        />
-      </div>
+      <ChoiceRow
+        label="Accept approval requests from"
+        description="Who can ask you to approve their geolocation."
+        options={APPROVAL_REQUEST_AUDIENCE_OPTIONS}
+        value={currentAudience}
+        onChange={(value) => void audience.run(value)}
+      />
       {rows.map((row) => {
         const copy = NOTIFICATION_KIND_COPY[row.kind];
         return (
@@ -109,6 +106,8 @@ export default function SettingsPage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [success, setSuccess] = useState(false);
+  const incomplete = useIncompleteForm<"current" | "new" | "confirm">();
+  const { invalidKeys } = incomplete;
   const helpHidden = useHelpHidden();
   const palette = usePalette();
   const theme = useTheme();
@@ -148,6 +147,17 @@ export default function SettingsPage() {
     e.preventDefault();
     setError(null);
     setSuccess(false);
+
+    const missing = blankFields([
+      { key: "current", label: "Current password", value: currentPassword },
+      { key: "new", label: "New password", value: newPassword },
+      { key: "confirm", label: "Confirm new password", value: confirmPassword },
+    ]);
+    if (missing.length) {
+      incomplete.flagIncomplete(missing);
+      return;
+    }
+    incomplete.clearIncomplete();
 
     const validationError = validatePasswordChange(newPassword, confirmPassword);
     if (validationError) {
@@ -222,26 +232,12 @@ export default function SettingsPage() {
                 points.
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {PALETTES.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={palette === p.id}
-                  aria-label={p.label}
-                  title={p.label}
-                  onClick={() => display.run({ palette: p.id })}
-                  style={{ backgroundColor: p.swatch }}
-                  // `ICON_TAP_STEP`: the phone floor for small icon controls (the swatch is a 24px disc).
-                  className={`${ICON_TAP_STEP} sm:size-6 rounded-full transition-transform hover:scale-110 ${
-                    palette === p.id
-                      ? "ring-2 ring-neutral-100 ring-offset-2 ring-offset-neutral-900"
-                      : "ring-1 ring-neutral-700"
-                  }`}
-                />
-              ))}
-            </div>
+            <SwatchPicker
+              aria-label="Accent color"
+              options={PALETTES.map((p) => ({ value: p.id, label: p.label, color: p.swatch }))}
+              value={palette}
+              onChange={(id) => display.run({ palette: id })}
+            />
           </div>
         </Card>
 
@@ -255,7 +251,11 @@ export default function SettingsPage() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-3">
+          <form onSubmit={handleSubmit} noValidate className="space-y-3">
+            <IncompleteFormNotice
+              key={incomplete.validationAttempt}
+              missing={incomplete.missingFields.map((m) => m.label)}
+            />
             {error && (
               <div className={FORM_ERROR_BANNER}>
                 {error}
@@ -268,13 +268,16 @@ export default function SettingsPage() {
             )}
 
             <div>
-              <label htmlFor="current-password" className={FORM_LABEL}>
+              <label
+                htmlFor="current-password"
+                className={incomplete.labelClass("current", FORM_LABEL)}
+              >
                 Current password
               </label>
               <Input
                 id="current-password"
+                invalid={invalidKeys.has("current")}
                 type="password"
-                required
                 autoComplete="current-password"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
@@ -283,14 +286,16 @@ export default function SettingsPage() {
             </div>
 
             <div>
-              <label htmlFor="new-password" className={FORM_LABEL}>
+              <label
+                htmlFor="new-password"
+                className={incomplete.labelClass("new", FORM_LABEL)}
+              >
                 New password
               </label>
               <Input
                 id="new-password"
+                invalid={invalidKeys.has("new")}
                 type="password"
-                required
-                minLength={PASSWORD_MIN_LENGTH}
                 maxLength={PASSWORD_MAX_BYTES}
                 autoComplete="new-password"
                 value={newPassword}
@@ -300,14 +305,16 @@ export default function SettingsPage() {
             </div>
 
             <div>
-              <label htmlFor="confirm-password" className={FORM_LABEL}>
+              <label
+                htmlFor="confirm-password"
+                className={incomplete.labelClass("confirm", FORM_LABEL)}
+              >
                 Confirm new password
               </label>
               <Input
                 id="confirm-password"
+                invalid={invalidKeys.has("confirm")}
                 type="password"
-                required
-                minLength={PASSWORD_MIN_LENGTH}
                 maxLength={PASSWORD_MAX_BYTES}
                 autoComplete="new-password"
                 value={confirmPassword}

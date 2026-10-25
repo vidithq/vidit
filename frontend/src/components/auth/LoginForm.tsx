@@ -13,8 +13,9 @@ import {
   FORM_SUCCESS_BANNER,
 } from "@/components/ui/form-styles";
 import { Button } from "@/components/ui/Button";
+import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { Input } from "@/components/ui/Input";
-
+import { blankFields, useIncompleteForm } from "@/hooks/useIncompleteForm";
 
 interface Props {
   onSuccess: () => void;
@@ -27,22 +28,38 @@ export default function LoginForm({ onSuccess }: Props) {
   const justReset = params.get("reset") === "ok";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const incomplete = useIncompleteForm<"email" | "password">();
+  const { invalidKeys } = incomplete;
 
   const submitLogin = useMutation(() => login(email, password), {
     fallback: "Login failed",
     onSuccess: () => onSuccess(),
   });
-  const { error } = submitLogin;
+  const { error, reset } = submitLogin;
   const submitting = submitLogin.loading;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const missing = blankFields([
+      { key: "email", label: "Email", value: email },
+      { key: "password", label: "Password", value: password },
+    ]);
+    if (missing.length) {
+      reset();
+      incomplete.flagIncomplete(missing);
+      return;
+    }
+    incomplete.clearIncomplete();
     await submitLogin.run();
   };
 
   return (
     <AuthCard title="Sign in to Vidit" subtitle="OSINT/GEOINT geolocation platform">
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} noValidate className="space-y-4">
+        <IncompleteFormNotice
+          key={incomplete.validationAttempt}
+          missing={incomplete.missingFields.map((m) => m.label)}
+        />
         {justReset && !error && (
           <div className={FORM_SUCCESS_BANNER}>
             Password reset, sign in with your new password.
@@ -55,13 +72,16 @@ export default function LoginForm({ onSuccess }: Props) {
         )}
 
         <div className="space-y-1">
-          <label htmlFor="email" className={FORM_LABEL_COMPACT}>
+          <label
+            htmlFor="email"
+            className={incomplete.labelClass("email", FORM_LABEL_COMPACT)}
+          >
             Email
           </label>
           <Input
             id="email"
+            invalid={invalidKeys.has("email")}
             type="email"
-            required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
@@ -69,7 +89,10 @@ export default function LoginForm({ onSuccess }: Props) {
 
         <div>
           <div className="flex items-baseline justify-between mb-1">
-            <label htmlFor="password" className={FORM_LABEL_COMPACT}>
+            <label
+              htmlFor="password"
+              className={incomplete.labelClass("password", FORM_LABEL_COMPACT)}
+            >
               Password
             </label>
             <Link
@@ -81,8 +104,8 @@ export default function LoginForm({ onSuccess }: Props) {
           </div>
           <Input
             id="password"
+            invalid={invalidKeys.has("password")}
             type="password"
-            required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
