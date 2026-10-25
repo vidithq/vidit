@@ -93,9 +93,9 @@ logger = logging.getLogger(__name__)
 # (missing archive file, untrusted host, fetch failure).
 MediaFetcher = Callable[[ParsedMedia], Awaitable[tuple[bytes, str] | None]]
 
-# Media reference to prepared bytes (``None`` skips), cached per thread so a multi-coordinate
-# thread prepares identical media once.
-_MediaCache = dict[str, PreparedMedia | None]
+# ``(media reference, with derivatives)`` to prepared bytes (``None`` skips), cached per thread so
+# a multi-coordinate thread prepares identical media once.
+_MediaCache = dict[tuple[str, bool], PreparedMedia | None]
 
 # Coordinate-equality tolerance, matching the dedup rounding in ``extract_coords``.
 _COORD_PLACES = 6
@@ -260,28 +260,33 @@ def _same_coordinate(row: Event, detection: Detection) -> bool:
 
 
 async def _prepared_media(
-    parsed: ParsedMedia, fetch_media: MediaFetcher, cache: _MediaCache
+    parsed: ParsedMedia, role: MediaRole, fetch_media: MediaFetcher, cache: _MediaCache
 ) -> PreparedMedia | None:
     """Fetch, validate and prepare one media, memoised in ``cache``; ``None`` skips it.
 
-    Unusable media (missing file, bad type or size, undecodable) skips rather than failing the
-    detection.
+    Only a source image gets hero and thumbnail derivatives: a proof image renders from its
+    original, like one uploaded through the form. Unusable media (missing file, bad type or size,
+    undecodable) skips rather than failing the detection.
     """
-    if parsed.remote_url in cache:
-        return cache[parsed.remote_url]
+    derivatives = role == "source"
+    cache_key = (parsed.remote_url, derivatives)
+    if cache_key in cache:
+        return cache[cache_key]
     prepared: PreparedMedia | None = None
     fetched = await fetch_media(parsed)
     if fetched is not None:
         data, content_type = fetched
         try:
             validate_bytes(data, content_type)
-            prepared = await asyncio.to_thread(prepare_media, data, content_type)
+            prepared = await asyncio.to_thread(
+                prepare_media, data, content_type, produce_derivatives=derivatives
+            )
         except ValueError:
             # validate_bytes and EvidenceProcessingError both subclass ValueError; a broader
             # catch would hide real bugs as silent media skips.
             logger.warning("Skipping unusable detection media %s", parsed.remote_url)
             prepared = None
-    cache[parsed.remote_url] = prepared
+    cache[cache_key] = prepared
     return prepared
 
 
@@ -322,7 +327,7 @@ async def _resolve_media(
     resolved: list[_ResolvedMedia] = []
     source_filled = False
     for parsed in detection.source_media:
-        prepared = await _prepared_media(parsed, fetch_media, media_cache)
+        prepared = await _prepared_media(parsed, "source", fetch_media, media_cache)
         if prepared is None:
             continue
         resolved.append(_ResolvedMedia("source", prepared, content_sha256(prepared.cleaned)))
@@ -335,7 +340,7 @@ async def _resolve_media(
         # unreadable orphan. Not a miss: nothing could ever store it.
         if parsed.kind != "image":
             continue
-        prepared = await _prepared_media(parsed, fetch_media, media_cache)
+        prepared = await _prepared_media(parsed, "proof", fetch_media, media_cache)
         if prepared is None:
             missing = True
             continue

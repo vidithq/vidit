@@ -32,8 +32,9 @@ from app.models.media import Media
 from app.models.notification import Notification
 from app.models.source import SourceLink
 from app.services import versions as versions_service
+from app.services.sanitize import extract_image_srcs
 from app.services.storage import get_storage
-from tests._fixtures import fake_sha256, stored_path
+from tests._fixtures import fake_sha256, stored_keys, stored_path
 from tests.conftest import login_as
 from tests.events._helpers import (
     _make_geo,
@@ -307,6 +308,29 @@ def test_a_superseded_source_file_outlives_its_row_until_the_last_version_naming
 
     assert _redact(body["id"], 1, admin_user).status_code == 200
     assert not stored_path(key).exists()
+
+
+def test_hard_delete_erases_the_files_only_a_past_version_names(db, author, admin_user, conflict):
+    """A replaced source file and a dropped proof image outlive their edit for version 1; the
+    erasure takes them, with every derivative, and leaves the storage root empty."""
+    body = _publish(author, conflict, sources_field(source_spec(upload_id=stage_file(author))))
+    [first] = body["sources"]
+    sources = sources_field(source_spec(id=first["id"], upload_id=stage_file(author)))
+    response = _save_version(
+        body["id"],
+        author,
+        data=_form(conflict, sources, proof=proof_form_field("proof-2.jpg")),
+        files=[proof_file_part("proof-2.jpg")],
+    )
+    assert response.status_code == 200, response.text
+    [old_proof] = extract_image_srcs(body["proof"])
+    assert {_key(first["media"]["storage_url"]), _key(old_proof)} <= stored_keys()
+
+    response = client.delete(
+        f"/api/v1/admin/events/{body['id']}?hard=true", headers=login_as(client, admin_user)
+    )
+    assert response.status_code == 200, response.text
+    assert stored_keys() == set()
 
 
 # ── Archived copies ──────────────────────────────────────────────────────────

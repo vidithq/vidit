@@ -927,9 +927,9 @@ def test_hard_delete_drops_row_and_writes_event(admin_user, geolocation, db):
     assert event.target["geolocation_id"] == str(geo_id)
 
 
-def test_hard_delete_sweeps_source_image_derivatives(admin_user, geolocation, db, monkeypatch):
-    """GDPR erasure leaves nothing on S3: a source image's ``_hero`` / ``_thumb`` keys reach the
-    sweep too, and a proof image (no derivatives) goes alone."""
+def test_hard_delete_sweeps_image_derivatives(admin_user, geolocation, db, monkeypatch):
+    """GDPR erasure leaves nothing on S3: every image's ``_hero`` / ``_thumb`` keys reach the
+    sweep too, a proof image's included."""
     geo_id = geolocation.id
     stem = uuid.uuid4().hex
     geolocation.sources[0].media = _media(f"uploads/{stem}.png")
@@ -948,6 +948,8 @@ def test_hard_delete_sweeps_source_image_derivatives(admin_user, geolocation, db
         f"uploads/{stem}_hero.jpg",
         f"uploads/{stem}_thumb.jpg",
         f"proof_images/{stem}.jpg",
+        f"proof_images/{stem}_hero.jpg",
+        f"proof_images/{stem}_thumb.jpg",
     }
 
 

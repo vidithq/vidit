@@ -178,7 +178,7 @@ vidit/
 └── .github/workflows/        # see GitHub Actions
 ```
 
-`make test` runs `pytest -n auto --dist worksteal`: the conftest migrates a template database to alembic head and clones one database per xdist worker. Plain `pytest` stays serial on the development database.
+`make test` runs `pytest -n auto --dist worksteal`: the conftest migrates a template database to alembic head and clones one database per xdist worker. Plain `pytest` stays serial on the development database. Stored files never reach `backend/.local-storage`: each test process writes to its own temporary storage root, emptied before every test and removed when the run ends.
 
 ---
 
@@ -638,7 +638,7 @@ A code rollback is the same procedure with the previous tag and no `migrate` ste
 - Add the `archive-imports/` lifecycle rule [`backups.md`](backups.md#media-lifecycle) describes. The worker deletes a staged object at terminal states, but an object that was uploaded and never enqueued has no job row to trigger that delete.
 - Give the API and the worker credentials with object-level permissions on the prefixes the code writes: `uploads/`, `proof/`, `archive-imports/`, `detected/` and `avatars/`. A feature that adds a prefix extends that policy, or every write to it fails with `AccessDenied`, and adds a replication rule for it ([`backups.md`](backups.md#media-replication)).
 
-Every evidence image upload writes **three** sibling objects: the original (after the EXIF strip), `<key>_hero.jpg` (max dimension 1280, JPEG q80) and `<key>_thumb.jpg` (max dimension 400, JPEG q80). An avatar writes **one**: a single stripped 400 px JPEG under `avatars/<user id>/`. Frontend renderers derive the hero and thumbnail URLs through [`frontend/src/lib/mediaUrls.ts`](../frontend/src/lib/mediaUrls.ts), a mirror of `derivative_key()` in [`backend/app/services/storage.py`](../backend/app/services/storage.py).
+Every source image writes **three** sibling objects: the original (after the EXIF strip), `<key>_hero.jpg` (max dimension 1280, JPEG q80) and `<key>_thumb.jpg` (max dimension 400, JPEG q80). A proof image, uploaded or imported, writes **one**: the stripped original, which renders as is. An avatar writes **one**: a single stripped 400 px JPEG under `avatars/<user id>/`. Frontend renderers derive the hero and thumbnail URLs through [`frontend/src/lib/mediaUrls.ts`](../frontend/src/lib/mediaUrls.ts), a mirror of `derivative_key()` in [`backend/app/services/storage.py`](../backend/app/services/storage.py).
 
 **A proxy or CDN in front of the API.** Set `TRUSTED_PROXY_HOPS` to the number of proxies that append to `X-Forwarded-For` ([Particularities](#particularities-non-obvious-behavior-found-during-development)). Do not serve bot challenges on the API host: the frontend server reads the API for share cards and page metadata ([`frontend/src/app/_og/data.ts`](../frontend/src/app/_og/data.ts)), and a challenged read makes every event and profile unfurl as the fallback card.
 

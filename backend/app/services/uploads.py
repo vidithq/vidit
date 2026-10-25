@@ -151,7 +151,7 @@ def take_uploads(
 
 
 def upload_object(upload: Upload) -> StoredObject:
-    return StoredObject(storage_url_of(upload), "source", upload.kind)
+    return StoredObject(storage_url_of(upload), upload.kind)
 
 
 def reap_expired_uploads(db: Session) -> int:
@@ -169,7 +169,7 @@ def reap_expired_uploads(db: Session) -> int:
     storage = get_storage()
     sweep_unreferenced(
         db,
-        [StoredObject(storage.public_url(key), "source", kind) for key, kind in reaped],
+        [StoredObject(storage.public_url(key), kind) for key, kind in reaped],
         context="expired uploads",
     )
     return len(reaped)

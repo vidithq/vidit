@@ -1218,11 +1218,11 @@ flowchart LR
 - `ix_media_storage_url` on `(storage_url)`: backs the reference count below, "every row naming this object".
 - `uq_media_source_id` on `(source_id)`, and the index on `(event_id)`: serve each parent's read and its cascade.
 
-The model reads a row's role off the foreign key that is set (`Media.role`: `source` or `proof`). Only a source image has `_hero` and `_thumb` derivatives, so the sweeps read it, and the API serves it on every `MediaRead` and cover tile for clients to pick a derivative.
+The model reads a row's role off the foreign key that is set (`Media.role`: `source` or `proof`). Only a source image has `_hero` and `_thumb` derivatives, so the API serves the role on every `MediaRead` and cover tile for clients to pick a derivative.
 
 **Two upload paths.** A source file uploads on its own request before the event write, through [`POST /uploads`](api.md#post-uploads), which stores the object and records an [`uploads`](#uploads) row; the event write names that row in a source's `upload_id` and turns it into the source's `media` row. Keeping every request to one file keeps a video within the request size limit. Proof images still travel inside the event write, as `proof_files` matched to the proof body's `placeholder://` srcs, and become rows with `event_id` set in the same transaction.
 
-**Reference counting.** Two sources of one event may share a stored object through two `media` rows, and a readable [version snapshot](#event_versions) may name an object no row holds any more. A write therefore never deletes an object outright: after the commit, `services/evidence_intake.sweep_unreferenced` deletes the objects that no `media` row and no readable version snapshot names. The event and user hard deletes, a redaction, the detection re-import and the upload reaper all go through the same check.
+**Reference counting.** Two sources of one event may share a stored object through two `media` rows, and a readable [version snapshot](#event_versions) may name an object no row holds any more. A write therefore never deletes an object outright: after the commit, `services/evidence_intake.sweep_unreferenced` deletes the objects that no `media` row and no readable version snapshot names. The event and user hard deletes, the detection purge, a redaction, the detection re-import and the upload reaper all go through the same check. A sweep deletes an image's `_hero` and `_thumb` keys with it whatever its role, so an erasure leaves no derivative behind.
 
 ---
 

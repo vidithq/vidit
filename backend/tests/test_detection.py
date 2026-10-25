@@ -26,7 +26,7 @@ from app.models.event import (
 from app.models.media import Media
 from app.models.source import Source, SourceLink
 from app.models.user import User
-from app.services import versions
+from app.services import admin, versions
 from app.services.auth import hash_password
 from app.services.detection import (
     Outcome,
@@ -36,7 +36,7 @@ from app.services.detection import (
     persist_detections,
 )
 from app.services.sanitize import extract_image_srcs, html_text
-from app.services.storage import get_storage
+from app.services.storage import derivative_key, get_storage
 from app.services.tweet_ingest import (
     DUPLICATE_MEDIA,
     SOURCE_DATE_UNKNOWN,
@@ -49,7 +49,7 @@ from app.services.tweet_ingest import (
     Resolution,
 )
 from app.services.tweet_ingest.resolve import LinkSource
-from tests._fixtures import TINY_JPEG, stored_bytes, stored_path
+from tests._fixtures import TINY_JPEG, store_bytes, stored_bytes, stored_keys, stored_path
 
 ARCHIVE = Path(__file__).parent / "data" / "synthetic_archive"
 
@@ -70,7 +70,7 @@ OTHER_JPEG = _blue_jpeg()
 
 
 def _stored_objects(event_id: uuid.UUID) -> set[str]:
-    """Objects under one event's prefix (the storage root is shared across parallel workers)."""
+    """Objects under one event's prefix."""
     prefix = stored_path(f"detected/{event_id}")
     return {str(p.relative_to(prefix)) for p in prefix.rglob("*") if p.is_file()}
 
@@ -931,6 +931,107 @@ async def test_upsert_rewrites_proof_media_and_the_body_that_carries_it(db, owne
     assert new_src != old_src
     rows = db.query(Media).filter(Media.event_id == row.id).all()
     assert [m.storage_url for m in rows] == [new_src]
+
+
+def _key(url: str) -> str:
+    key = get_storage().key_from_url(url)
+    assert key is not None
+    return key
+
+
+def _with_derivatives(key: str) -> set[str]:
+    return {key, derivative_key(key, "hero"), derivative_key(key, "thumb")}
+
+
+async def _import_source_and_proof(db, owner: User, fetch_media=_image_fetcher) -> Event:
+    await _persist(
+        db,
+        owner=owner,
+        detections=[_detection(media=[_img()], proof_media=[_img()])],
+        fetch_media=fetch_media,
+    )
+    db.expire_all()
+    return db.query(Event).filter(Event.owner_id == owner.id).one()
+
+
+def _stored_keys_of(db, row: Event) -> tuple[str, str]:
+    """``(source key, proof key)`` of a row holding one of each."""
+    [source] = _source_media(db, row.id)
+    [proof] = row.media
+    return _key(source.storage_url), _key(proof.storage_url)
+
+
+def _store_proof_derivatives(row: Event) -> None:
+    """Stage hero and thumbnail keys beside each proof image: a sweep must take them whatever
+    wrote them."""
+    for media in row.media:
+        key = _key(media.storage_url)
+        for suffix in ("hero", "thumb"):
+            store_bytes(TINY_JPEG, derivative_key(key, suffix))
+
+
+@pytest.fixture
+def actor(db):
+    user = User(
+        username=f"adm{uuid.uuid4().hex[:8]}",
+        email=f"adm-{uuid.uuid4().hex}@example.com",
+        password_hash=hash_password("password123"),
+        is_admin=True,
+    )
+    db.add(user)
+    db.commit()
+    user_id = user.id
+    yield user
+    db.expire_all()
+    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
+    db.commit()
+
+
+async def test_an_imported_proof_image_is_stored_without_derivatives(db, owner):
+    """Only the source image gets the hero and thumbnail its renders read."""
+    row = await _import_source_and_proof(db, owner)
+
+    source_key, proof_key = _stored_keys_of(db, row)
+    assert stored_keys() == _with_derivatives(source_key) | {proof_key}
+
+
+@pytest.mark.parametrize("erasure", ["event", "user", "purge"])
+async def test_every_erasure_path_leaves_no_stored_object(db, owner, actor, erasure):
+    """Hard delete of the event, of its owner, and the detection purge each sweep every
+    original and every derivative, whatever the media's role."""
+    row = await _import_source_and_proof(db, owner)
+    _store_proof_derivatives(row)
+    source_key, proof_key = _stored_keys_of(db, row)
+    assert stored_keys() == _with_derivatives(source_key) | _with_derivatives(proof_key)
+
+    if erasure == "event":
+        admin.hard_delete_geolocation(db, actor_id=actor.id, geolocation_id=row.id)
+    elif erasure == "user":
+        admin.hard_delete_user(db, actor_id=actor.id, user_id=owner.id)
+    else:
+        admin.purge_detected_events(db, actor_id=actor.id, user_id=owner.id)
+
+    assert stored_keys() == set()
+
+
+async def test_a_re_import_sweeps_every_object_of_the_media_it_replaces(db, owner):
+    row = await _import_source_and_proof(db, owner)
+    _store_proof_derivatives(row)
+
+    async def other_image(_parsed: ParsedMedia) -> tuple[bytes, str]:
+        return OTHER_JPEG, "image/jpeg"
+
+    outcome = await _persist(
+        db,
+        owner=owner,
+        detections=[_detection(media=[_img()], proof_media=[_img()])],
+        fetch_media=other_image,
+    )
+    assert len(outcome.updated) == 1
+
+    db.expire_all()
+    source_key, proof_key = _stored_keys_of(db, _row(db, row.id))
+    assert stored_keys() == _with_derivatives(source_key) | {proof_key}
 
 
 async def test_upsert_matched_through_the_source_url_leg(db, owner):

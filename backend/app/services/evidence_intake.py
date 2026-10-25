@@ -32,7 +32,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.event import Event
-from app.models.media import Media, MediaRole
+from app.models.media import Media
 from app.services import versions
 from app.services.evidence_processing import EvidenceProcessingError
 from app.services.sanitize import (
@@ -90,21 +90,20 @@ EVIDENCE_INTAKE_ERROR_STATUS: dict[str, int] = {
 
 
 class StoredObject(NamedTuple):
-    """One stored file a sweep may delete: its URL, and whether derivatives sit beside it."""
+    """One stored file a sweep may delete: its URL, and its kind (a video has no derivatives)."""
 
     storage_url: str
-    role: MediaRole
     kind: str
 
 
 def media_objects(rows: Iterable[Media]) -> list[StoredObject]:
-    return [StoredObject(m.storage_url, m.role, m.kind) for m in rows]
+    return [StoredObject(m.storage_url, m.kind) for m in rows]
 
 
 def snapshot_objects(entries: Iterable[Mapping[str, Any]]) -> list[StoredObject]:
     """The source files a set of snapshot media fragments name (``versions.media_entry``)."""
     return [
-        StoredObject(entry["storage_url"], "source", str(entry.get("kind", "")))
+        StoredObject(entry["storage_url"], str(entry.get("kind", "")))
         for entry in entries
         if isinstance(entry.get("storage_url"), str)
     ]
@@ -122,14 +121,16 @@ def event_objects(db: Session, event: Event) -> list[StoredObject]:
 def _object_keys(obj: StoredObject) -> list[str]:
     """Every storage key one object owns, derivatives included.
 
-    Hero / thumb derivatives exist only for source images. A foreign URL resolves to no key
-    and is logged and skipped.
+    Every object but a video takes its hero / thumb keys with it, whatever its role or a kind
+    the snapshot lacks: a proof image stored with derivatives must not leave them behind, and
+    deleting a key that does not exist is a no-op on both backends. A foreign URL resolves to no
+    key and is logged and skipped.
     """
     key = get_storage().key_from_url(obj.storage_url)
     if key is None:
         logger.warning("Unrecognised storage_url %s, skipping the delete", obj.storage_url)
         return []
-    if obj.role != "source" or obj.kind != "image":
+    if obj.kind == "video":
         return [key]
     return [key, derivative_key(key, "hero"), derivative_key(key, "thumb")]
 
@@ -289,7 +290,7 @@ def _drop_unreferenced_proof_media(
     for m in list(event.media):
         if m.storage_url in kept_srcs:
             continue
-        removed.append(StoredObject(m.storage_url, "proof", m.kind))
+        removed.append(StoredObject(m.storage_url, m.kind))
         db.delete(m)
     return removed
 

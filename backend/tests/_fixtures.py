@@ -42,6 +42,12 @@ def store_bytes(data: bytes, key: str) -> None:
     path.write_bytes(data)
 
 
+def stored_keys() -> set[str]:
+    """Every key the local storage root holds (emptied before each test, see ``conftest``)."""
+    root = Path(settings.local_storage_dir)
+    return {p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file()}
+
+
 def write_archive_js(dest: Path, entries: list[dict[str, Any]]) -> None:
     """Write ``tweets.js`` under ``dest`` from raw X-export tweet dicts."""
     dest.mkdir(parents=True, exist_ok=True)

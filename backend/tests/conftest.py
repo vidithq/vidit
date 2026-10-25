@@ -10,13 +10,20 @@ Parallel runs (pytest-xdist) get one database per worker: the controller
 migrates a template database to alembic head once, and each worker clones it.
 A serial run uses the DATABASE_URL database as-is. The rewrite below runs at
 import time because ``app.database`` binds its engine at import.
+
+Stored files never reach the developer's ``.local-storage``: each process gets a throwaway
+root before the app import (which mounts the root it reads), removed when the run ends, and
+the autouse :func:`_empty_local_storage` empties it before every test.
 """
 
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
+from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 _XDIST_WORKER = os.environ.get("PYTEST_XDIST_WORKER")
@@ -48,6 +55,9 @@ if _XDIST_WORKER:
     )
     os.environ["DATABASE_URL"] = _worker_db_url(_base, _XDIST_WORKER)
 
+_SESSION_STORAGE_ROOT = tempfile.mkdtemp(prefix="vidit-test-storage-")
+os.environ["LOCAL_STORAGE_DIR"] = _SESSION_STORAGE_ROOT
+
 import functools  # noqa: E402
 
 import bcrypt  # noqa: E402
@@ -59,6 +69,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 # Patched before the app import so DUMMY_PASSWORD_HASH is built at the same cost.
 bcrypt.gensalt = functools.partial(bcrypt.gensalt, 4)
 
+from app.config import settings  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models.user import User  # noqa: E402
 from app.schema_gate import script_directory  # noqa: E402
@@ -148,10 +159,12 @@ def pytest_configure(config: pytest.Config) -> None:
         _create_worker_db(os.environ[_BASE_URL_ENV], _XDIST_WORKER)
     elif getattr(config.option, "numprocesses", None):
         # xdist controller: publish the base URL to workers, refresh the template.
-        from app.config import settings
-
         os.environ[_BASE_URL_ENV] = settings.database_url
         _refresh_template(settings.database_url)
+
+
+def pytest_unconfigure(config: pytest.Config) -> None:
+    shutil.rmtree(_SESSION_STORAGE_ROOT, ignore_errors=True)
 
 
 def login_as(client: TestClient, user: User) -> dict[str, str]:
@@ -190,3 +203,17 @@ def _disable_rate_limiter():
     limiter.enabled = False
     yield
     limiter.enabled = previous
+
+
+@pytest.fixture(autouse=True)
+def _empty_local_storage(monkeypatch) -> None:
+    """Point storage at the process's local root and empty it, so each test starts with no file.
+
+    Emptied, not swapped: the app mounts the root, and serves the dev staging upload into it,
+    from the path it read at import.
+    """
+    root = Path(_SESSION_STORAGE_ROOT)
+    shutil.rmtree(root, ignore_errors=True)
+    root.mkdir()
+    monkeypatch.setattr(settings, "storage_backend", "local")
+    monkeypatch.setattr(settings, "local_storage_dir", str(root))
