@@ -20,8 +20,10 @@ export interface AvatarStackItem {
   /** The picture's own page, which the picture links to. */
   href: string;
   /** A remove control on the picture's top-right corner, revealed on hover or keyboard focus
-   *  (a site admin's delete of an approval stamp). */
+   *  (a site admin's delete of an approval stamp, a co-geolocator taken off a byline). */
   remove?: { label: string; onClick: () => void };
+  /** Faded, for an account not credited yet (a pending co-geolocator invitation). */
+  muted?: boolean;
 }
 
 const SIZE = "size-7 text-[11px]";
@@ -93,6 +95,7 @@ export function AvatarStack({
                 "relative flex hover:z-20 focus-visible:z-20",
                 item.variant === "organization" ? "rounded-md" : "rounded-full",
                 RING,
+                item.muted && "opacity-50",
               )}
             >
               <Avatar

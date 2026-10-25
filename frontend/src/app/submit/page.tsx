@@ -271,7 +271,6 @@ function SubmitForm() {
         title="Submit"
         titleField={fields.titleField}
         byline={geolocators.byline}
-        belowTitle={geolocators.panel}
         onBack={backToChooser}
         actions={{ pinned: actions }}
         body={{

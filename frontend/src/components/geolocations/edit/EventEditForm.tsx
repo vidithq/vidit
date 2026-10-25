@@ -21,8 +21,8 @@ import { CountBadge } from "@/components/ui/CountBadge";
 import { CloseEventDialog, closeActionLabel } from "@/components/event/CloseEventDialog";
 import { EventShell } from "@/components/event/EventShell";
 import {
+  GeolocatorsByline,
   useDraftGeolocatorsByline,
-  useGeolocatorsByline,
 } from "@/components/event/useGeolocatorsByline";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
@@ -72,9 +72,9 @@ const CONFIRM_SENTENCE =
  *
  * The fields fill `EventShell`'s zones. The actions block pins the writes, the banners and, for
  * the owner, **More actions** with the close; a published row's version note reads under them.
- * The title section carries a geolocators byline with the toggle that opens their panel: on a
- * published row those changes apply on click and never make a version; on a request or a
- * detection the reader picks the co-geolocators the publish invites.
+ * The title section's byline manages the geolocators in place: on a published row each change
+ * applies on click and never makes a version; on a request or a detection the reader picks the
+ * co-geolocators the publish invites.
  *
  * With `queue` set the actions gain the position and a Skip, and a finished detection hands over
  * to the next one.
@@ -110,10 +110,8 @@ export function EventEditForm({
   const finish = queue?.onAdvance ?? (() => router.push(redirectTo));
 
   const form = useEventForm(geo);
-  const publishedCredit = useGeolocatorsByline(geo, () => onCreditChanged?.());
   // The publish posts the picks; Save request posts none.
   const draftCredit = useDraftGeolocatorsByline();
-  const credit = editingPublished ? publishedCredit : draftCredit;
 
   // Edit only: a publish files version 0, which keeps no note of its own.
   const [editNote, setEditNote] = useState("");
@@ -387,8 +385,15 @@ export function EventEditForm({
     <EventShell
       title={title}
       titleField={fields.titleField}
-      byline={credit.byline}
-      belowTitle={credit.panel}
+      // Invitations go out on a geolocated row only, or with the publish. Mirrors backend
+      // geolocator_credit._require_published; change both.
+      byline={
+        editingPublished ? (
+          <GeolocatorsByline event={geo} onChanged={() => onCreditChanged?.()} />
+        ) : (
+          draftCredit.byline
+        )
+      }
       backFallback={redirectTo}
       actions={{
         pinned: actions,

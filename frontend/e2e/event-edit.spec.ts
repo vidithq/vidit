@@ -35,19 +35,17 @@ test.describe("event edit", () => {
     await expect(page.getByRole("menuitem", { name: "Close this geolocation" })).toBeVisible();
     await page.keyboard.press("Escape");
 
-    // The version note reads under the actions, over Location. The geolocators open in the title
-    // section, under the title field and its byline.
+    // The version note reads under the actions, over Location. The byline under the title field
+    // ends with the add button, whose picker floats in a popover.
     const note = (await page.getByRole("textbox", { name: "Version note" }).boundingBox())!;
     const location = (await page.getByRole("heading", { name: /^Location/ }).boundingBox())!;
     expect(note.y).toBeLessThan(location.y);
-    const toggle = page.getByRole("button", { name: "Manage geolocators" });
-    await toggle.click();
-    const geolocators = page.getByRole("heading", { name: /^Geolocators/ });
-    const geolocatorsBox = (await geolocators.boundingBox())!;
-    expect((await toggle.boundingBox())!.y).toBeGreaterThan((await title.boundingBox())!.y);
-    expect(geolocatorsBox.y).toBeGreaterThan((await toggle.boundingBox())!.y);
-    await expect(page.getByRole("button", { name: "Invite" })).toBeVisible();
+    const add = page.getByRole("button", { name: "Invite a geolocator" });
+    expect((await add.boundingBox())!.y).toBeGreaterThan((await title.boundingBox())!.y);
+    await add.click();
+    await expect(page.getByRole("dialog", { name: "Invite a geolocator" }).getByRole("combobox")).toBeFocused();
     await expectNoHorizontalOverflow(page);
+    await page.keyboard.press("Escape");
 
     // Scrolled to the details, the save is still on screen, pinned at the top.
     await page.getByRole("heading", { name: /^Details/ }).scrollIntoViewIfNeeded();

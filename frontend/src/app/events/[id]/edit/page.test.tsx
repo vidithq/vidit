@@ -191,15 +191,14 @@ async function publishDetection() {
   fireEvent.click(await screen.findByRole("button", { name: "Confirm publish" }));
 }
 
-/** Open the byline's geolocators card and pick `username` by its exact name. */
-async function pickCoGeolocator(username: string) {
-  const toggle = screen.getByRole("button", { name: "Manage geolocators" });
-  if (toggle.getAttribute("aria-expanded") !== "true") fireEvent.click(toggle);
-  // The field comes back once the previous pick is added.
-  const field = await waitFor(() => screen.getByLabelText("Invite a geolocator"));
+/** Open the byline's add popover and pick `username` by its exact name. */
+function pickCoGeolocator(username: string) {
+  const add = screen.getByRole("button", { name: "Invite a geolocator" });
+  if (add.getAttribute("aria-expanded") !== "true") fireEvent.click(add);
+  const popover = screen.getByRole("dialog", { name: "Invite a geolocator" });
+  const field = within(popover).getByRole("combobox");
   fireEvent.change(field, { target: { value: username } });
   fireEvent.keyDown(field, { key: "Enter" });
-  fireEvent.click(screen.getByRole("button", { name: "Invite" }));
 }
 
 /** True when `later` comes after `earlier` in document order. */
@@ -311,17 +310,12 @@ describe("the detection edit surface", () => {
 
   it("invites the co-geolocators picked in the byline with the publish", async () => {
     render(<EditEventPage />);
-    await pickCoGeolocator("dee");
-    await pickCoGeolocator("eve");
-    // Nothing is sent before the publish, and a pick can be taken back.
-    expect(screen.getByText("dee")).toBeInTheDocument();
-    fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[1]);
-    expect(screen.queryByText("eve")).toBeNull();
-    // Picking yourself or a repeat is refused in the card.
-    await pickCoGeolocator("ana");
-    expect(screen.getByRole("alert")).toHaveTextContent("already a geolocator");
-    await pickCoGeolocator("dee");
-    expect(screen.getByRole("alert")).toHaveTextContent("already invited");
+    pickCoGeolocator("dee");
+    pickCoGeolocator("eve");
+    // The picks join the byline, faded until the publish invites them, and one goes on a click.
+    expect(screen.getByRole("link", { name: "dee, invited when you publish" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Remove eve" }));
+    expect(screen.queryByRole("link", { name: /^eve/ })).toBeNull();
 
     await publishDetection();
     await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
@@ -513,27 +507,21 @@ describe("editing a published geolocation", () => {
     const location = screen.getByRole("heading", { name: /^Location/ });
     expect(follows(note, location)).toBe(true);
     // The title section: the page heading (visually hidden), the Title field in the event title's
-    // place, which joins the form from outside it, then the byline and its geolocators toggle.
+    // place, which joins the form from outside it, then the byline and its add button.
     const pageTitle = screen.getByRole("heading", { level: 1, name: "Edit geolocation" });
     expect(pageTitle).toHaveClass("sr-only");
-    const toggle = screen.getByRole("button", { name: "Manage geolocators" });
+    const add = screen.getByRole("button", { name: "Invite a geolocator" });
     const title = screen.getByRole("textbox", { name: /Title/ });
-    expect(follows(pageTitle, title) && follows(title, toggle)).toBe(true);
+    expect(follows(pageTitle, title) && follows(title, add)).toBe(true);
     const form = document.getElementById("event-edit-form") as HTMLFormElement;
     expect(form.contains(title)).toBe(false);
     expect((title as HTMLInputElement).form).toBe(form);
-    // The panel opens under the byline, outside the edit form, since it holds a form of its own.
-    expect(screen.queryByLabelText("Invite a geolocator")).toBeNull();
-    fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
-    const credit = screen.getByRole("heading", { name: /^Geolocators/ });
-    expect(follows(toggle, credit)).toBe(true);
-    expect(form.contains(credit)).toBe(false);
-    expect(screen.getByLabelText("Invite a geolocator")).toBeInTheDocument();
-    // How shared credit works, changes applying on click with no new version, is the title's help.
-    expect(
-      within(credit).getByRole("button", { name: "How does shared credit work?" })
-    ).toBeInTheDocument();
+    // The picker floats in a popover outside the edit form; nothing opens in the page.
+    fireEvent.click(add);
+    expect(add).toHaveAttribute("aria-expanded", "true");
+    const popover = screen.getByRole("dialog", { name: "Invite a geolocator" });
+    expect(form.contains(popover)).toBe(false);
+    expect(screen.queryByRole("heading", { name: /^Geolocators/ })).toBeNull();
   });
 
   it("closes the geolocation behind its reason, then lands on the event", async () => {
@@ -735,7 +723,7 @@ describe("editing an open request", () => {
   it("overwrites the request and lands back on it", async () => {
     render(<EditEventPage />);
     // Saving the request sends no invitation: only the publish does.
-    await pickCoGeolocator("dee");
+    pickCoGeolocator("dee");
 
     fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), {
       target: { value: "Corrected ask" },

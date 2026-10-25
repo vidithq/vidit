@@ -28,7 +28,8 @@ import {
 
 import type { Conflict, EventDetail, EventStatus, Media, Tag } from "@/types";
 import { PageShell } from "@/components/ui/PageShell";
-import { AccountPicker, type Account } from "@/components/ui/AccountPicker";
+import { AccountPicker, analystAccount, type Account } from "@/components/ui/AccountPicker";
+import { Popover } from "@/components/ui/Popover";
 import { Combobox } from "@/components/ui/Combobox";
 import { ActionMenu } from "@/components/ui/ActionMenu";
 import { CopyButton } from "@/components/ui/CopyButton";
@@ -588,6 +589,23 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
+          <Item name="<Popover>" usage="An icon button that opens a small panel anchored under it (role=dialog, named by label), for a control too small to sit in the page: the account picker behind the event forms' byline add button. The panel floats over the page in a TOOLTIP_SURFACE bubble, 18rem wide, so nothing in the page moves when it opens. It renders in a portal fixed to the viewport, starts at the trigger's left edge, shifts sideways to stay 8px inside the viewport, and follows the trigger on scroll. The trigger is the ghost icon button with label as its aria-label and tooltip, in the active-row paint while open. children is a function handed the close, so a pick can close it; a field with autoFocus takes focus when it opens. Escape closes it and returns focus to the trigger; an outside click closes it, and a click in a list a control in the panel owns (the Combobox list, portaled out) counts as inside.">
+            <Variant label="the byline's add button: an account picker">
+              <Popover label="Invite a geolocator" icon={<UserPlus size={14} />}>
+                {(close) => (
+                  <AccountPicker
+                    aria-label="Invite a geolocator"
+                    options={[analystAccount({ username: "bo" }), analystAccount({ username: "cy" })]}
+                    onSelect={close}
+                    placeholder="Username"
+                    emptyText="No analyst matches."
+                    autoFocus
+                  />
+                )}
+              </Popover>
+            </Variant>
+          </Item>
+
           <Item name="<Tooltip>" usage="The label of an icon-only control in a TOOLTIP_SURFACE bubble, while a mouse rests on it or the keyboard focuses it; a touch never opens it, so a tap leaves nothing standing, except with tapToShow (the AvatarStack pictures, the CountBadge count), where a touch's first tap pins the bubble and the second follows the link. underParent hangs the bubble under the wrapper's parent rather than under the control (a CountBadge's list under the button it counts for). Placement and dismissal (Escape, scroll, resize, an outside click) are usePinnedPopover's. <Button icon> renders its button through TooltipButton, so every icon button gets it with no call-site change: the tip is `title` when it differs from the name (a longer hint) and the aria-label otherwise, and the native title is dropped so no second tooltip appears. An icon link (buttonClasses on a Link or an a) wraps itself in <Tooltip label>, a display: contents span that leaves the layout alone. The bubble is aria-hidden, since the control's accessible name already says it.">
             <Variant label="icon button (hover or tab to it)">
               <Button icon variant="ghost" aria-label="Copy coordinates">
@@ -1023,7 +1041,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<AvatarStack>" usage="A row of 28px pictures: the approval stamps under the event page's actions and the organization logos in a profile header, oldest first, overlapping by default; spacing=gap sets them apart and wraps them onto further lines (the approval stamps). checked puts a 14px check badge in the reader's accent on each picture's bottom-right corner, ringed in the page colour (the approval stamps). An organization (variant=organization) takes the rounded square, an analyst the circle. Each picture is a link to its href (the profile or the organization's page) named by its label, which a <Tooltip tapToShow> shows on hover or keyboard focus, or on a first tap on a touch screen, where the second tap follows the link (who approved which version when, on a stamp; the role on a logo). An item's remove puts a 20px remove disc on the picture's top-right corner, revealed by HOVER_REVEAL on hover or keyboard focus and pinned visible on a touch screen, where its hit area is a 36px square up and right of the disc and the picture takes room for it (a site admin's delete of a stamp). At most max (5 by default) show; the rest fold into a +N bubble, a button when onOverflow is set and plain text otherwise; the approval stamps pass every item, so no count shows. Renders nothing for an empty list.">
+          <Item name="<AvatarStack>" usage="A row of 28px pictures: the approval stamps under the event page's actions and the organization logos in a profile header, oldest first, overlapping by default; spacing=gap sets them apart and wraps them onto further lines (the approval stamps). checked puts a 14px check badge in the reader's accent on each picture's bottom-right corner, ringed in the page colour (the approval stamps). An organization (variant=organization) takes the rounded square, an analyst the circle. Each picture is a link to its href (the profile or the organization's page) named by its label, which a <Tooltip tapToShow> shows on hover or keyboard focus, or on a first tap on a touch screen, where the second tap follows the link (who approved which version when, on a stamp; the role on a logo). An item's remove puts a 20px remove disc on the picture's top-right corner, revealed by HOVER_REVEAL on hover or keyboard focus and pinned visible on a touch screen, where its hit area is a 36px square up and right of the disc and the picture takes room for it (a site admin's delete of a stamp, a co-geolocator taken off the edit form's byline). muted fades a picture to half opacity, for an account not credited yet (a pending co-geolocator invitation). At most max (5 by default) show; the rest fold into a +N bubble, a button when onOverflow is set and plain text otherwise; the approval stamps pass every item, so no count shows. Renders nothing for an empty list.">
             <Variant label="analysts and an organization, max=3 with onOverflow (+N opens the panel)">
               <AvatarStack
                 label="Approved by"
@@ -1052,6 +1070,22 @@ export default function PalettePage() {
                 items={paletteApprovalStamps(PALETTE_APPROVERS.slice(0, 3)).map((stamp) => ({
                   ...stamp,
                   remove: { label: `Delete approval by ${stamp.name}`, onClick: () => {} },
+                }))}
+              />
+            </Variant>
+            <Variant label="muted with remove: pending co-geolocators on an event form's byline">
+              <AvatarStack
+                label="Co-geolocators"
+                spacing="gap"
+                max={Infinity}
+                items={["bo", "cy"].map((name) => ({
+                  key: name,
+                  name,
+                  variant: "analyst" as const,
+                  label: `${name}, invitation pending`,
+                  href: "/palette",
+                  muted: true,
+                  remove: { label: `Withdraw the invitation of ${name}`, onClick: () => {} },
                 }))}
               />
             </Variant>
@@ -1877,7 +1911,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<EventShell>" usage="The one shell of an event (components/event/EventShell.tsx): the event page, a version page, the request page, the edit form and the submit form render it and only fill its three zones. Built on PageShell. The title section heads the main column: Back (the real arrow, in the gutter from lg up, in the menu chip below sm), the title, the byline, then belowTitle. On a form the Title field (titleField) takes the title's place, and the page name stays the h1 for assistive tech only; the byline carries the geolocators with the toggle that opens their panel in belowTitle (on a published edit the panel manages them, on the submit form and a request's or a detection's publish form it picks the co-geolocators the publish invites). The actions block is top right: its pinned row stays at the top right while the page scrolls, and what reads below it scrolls with the page (the approvals and an invitation on the event page, a version's approvals, the version note of a published row's edit). The body is EventLayout (components/event/EventLayout.tsx, the grid on the 65:35 PAGE_COLUMNS_SPLIT): Sources and Proof in the main column, Location then Details in the side column. Panels take the full width between the title section and the body (the panels the actions open, a version's banner). The demo renders the real shell inline, inside its own PageFrame, so it follows the window's breakpoints: narrow the window to see the phone order, where the Back arrow moves to the menu chip. Switch the filling to see which slots each surface uses; Open as a page shows the same skeleton at /palette/event-shell.">
+          <Item name="<EventShell>" usage="The one shell of an event (components/event/EventShell.tsx): the event page, a version page, the request page, the edit form and the submit form render it and only fill its three zones. Built on PageShell. The title section heads the main column: Back (the real arrow, in the gutter from lg up, in the menu chip below sm), then the title and the byline. On a form the Title field (titleField) takes the title's place, and the page name stays the h1 for assistive tech only. The byline is one line: the owner, the co-geolocators and pending invitees as AvatarStack pictures with their remove discs, then a Popover that holds the account picker; on a published edit it manages the geolocators, on the submit form and a request's or a detection's publish form it picks the co-geolocators the publish invites. Nothing opens in the page, so nothing moves. The actions block is top right: its pinned row stays at the top right while the page scrolls, and what reads below it scrolls with the page (the approvals and an invitation on the event page, a version's approvals, the version note of a published row's edit). The body is EventLayout (components/event/EventLayout.tsx, the grid on the 65:35 PAGE_COLUMNS_SPLIT): Sources and Proof in the main column, Location then Details in the side column. Panels take the full width between the title section and the body (the panels the actions open, a version's banner). The demo renders the real shell inline, inside its own PageFrame, so it follows the window's breakpoints: narrow the window to see the phone order, where the Back arrow moves to the menu chip. Switch the filling to see which slots each surface uses; Open as a page shows the same skeleton at /palette/event-shell.">
             <EventShellPreview />
           </Item>
 
@@ -1975,7 +2009,7 @@ export default function PalettePage() {
               <li><span className="font-mono text-neutral-400">BetaBanner</span>: a {"<Pill tone=\"accent\">"} in a <code>position: fixed</code> wrapper, already visible bottom-right from <code>sm</code> up; below <code>sm</code> the same pill rides the nav drawer via {"<BetaBanner inline>"}</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span>: the primary nav, auth/route-driven, always on screen. Two shapes: a fixed rail on the left edge from <code>sm</code> up (glyphs, or glyphs plus labels once expanded), and below <code>sm</code> a floating chip in the top-left corner that opens the same rail as a drawer over the page</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span> chip and drawer: the rail&apos;s own phone shape, rendered by that component rather than a <code>components/ui/</code> primitive, so there is nothing here to reuse. The chip&apos;s open control is a deliberate one-off too: a 44px neutral thumb target, which {"<Button icon>"} does not offer (36px, accent or red)</li>
-              <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page: one container on every app page, its left edge at one x and a max-w-6xl column centred on the screen from lg up, 53rem reading width without a rail and max-w-6xl with one (PageShell&apos;s <code>rail</code>); PageShell&apos;s <code>controls</code> slot puts a view&apos;s segmented control under the title, left-aligned (the feed scope, the Requests sort), or the end of EventShell&apos;s title section (a form&apos;s geolocators panel); PageShell&apos;s <code>titleField</code> puts a form&apos;s Title field in the title&apos;s place and keeps the title as a visually hidden h1 (set by EventShell alone); PageShell&apos;s <code>stickyActions</code> puts the page&apos;s actions at the top right of the header, the header keeping their room, and pins them at the top right of the column once the title scrolls away, on a surface (set by EventShell alone); PageShell&apos;s <code>onBack</code> replaces Back&apos;s history walk (on a /submit path, back to the chooser); PageShell&apos;s <code>headerInColumn</code> puts the header (back, title, byline) at the top of the main column beside the rail, so the rail opens top right (the organization page); PageShell&apos;s <code>headerSide</code> lays the header out in <code>PageColumns</code>, a 65:35 main and side column from lg up, its side heading the side column under the sticky actions, and the body continues in <code>EventLayout</code> on the same split (<code>PAGE_COLUMNS_SPLIT</code>) (set by EventShell alone, see its entry); PageShell&apos;s <code>back</code> arrow parks in the gutter left of the title from lg up and sticks there at the top of the viewport while the page scrolls, level with the rail; <span className="font-mono text-neutral-400">PageCenter</span> (from PageFrame) is the one centred full-screen block, on the same rail inset</li>
+              <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page: one container on every app page, its left edge at one x and a max-w-6xl column centred on the screen from lg up, 53rem reading width without a rail and max-w-6xl with one (PageShell&apos;s <code>rail</code>); PageShell&apos;s <code>controls</code> slot puts a view&apos;s segmented control under the title, left-aligned (the feed scope, the Requests sort),  PageShell&apos;s <code>titleField</code> puts a form&apos;s Title field in the title&apos;s place and keeps the title as a visually hidden h1 (set by EventShell alone); PageShell&apos;s <code>stickyActions</code> puts the page&apos;s actions at the top right of the header, the header keeping their room, and pins them at the top right of the column once the title scrolls away, on a surface (set by EventShell alone); PageShell&apos;s <code>onBack</code> replaces Back&apos;s history walk (on a /submit path, back to the chooser); PageShell&apos;s <code>headerInColumn</code> puts the header (back, title, byline) at the top of the main column beside the rail, so the rail opens top right (the organization page); PageShell&apos;s <code>headerSide</code> lays the header out in <code>PageColumns</code>, a 65:35 main and side column from lg up, its side heading the side column under the sticky actions, and the body continues in <code>EventLayout</code> on the same split (<code>PAGE_COLUMNS_SPLIT</code>) (set by EventShell alone, see its entry); PageShell&apos;s <code>back</code> arrow parks in the gutter left of the title from lg up and sticks there at the top of the viewport while the page scrolls, level with the rail; <span className="font-mono text-neutral-400">PageCenter</span> (from PageFrame) is the one centred full-screen block, on the same rail inset</li>
             </ul>
           </Item>
         </section>

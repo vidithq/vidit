@@ -47,10 +47,7 @@ export function EventShellSkeleton({ filling }: { filling: EventShellFilling }) 
       titleField={
         isEvent ? undefined : <Slot label="Title section: title field" className="h-[38px]" />
       }
-      byline={<Slot label="Title section: byline" className="h-6" />}
-      belowTitle={
-        isEvent ? undefined : <Slot label="Title section: geolocators panel" className="h-20" />
-      }
+      byline={<Slot label="Title section: byline" className="h-7" />}
       onBack={() => {}}
       actions={{
         pinned: <Slot label="Actions block: pinned row" className="h-9 w-56 max-w-full" />,

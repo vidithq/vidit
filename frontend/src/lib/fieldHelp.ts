@@ -96,10 +96,6 @@ export const FIELD_HELP = {
     text: "An invited analyst is credited once they accept. Editing and closing stay with the owner. Invites, withdrawals and removals apply right away and do not create a new version.",
     label: "How does shared credit work?",
   },
-  geolocators_draft: {
-    text: "The analysts you pick are invited when you publish this as a geolocation, and credited once they accept. Publishing or saving a request invites no one. Editing and closing stay with you.",
-    label: "How does shared credit work?",
-  },
   close_geolocation: {
     text: "Closing takes this geolocation back. It stays readable, with your reason beside it.",
     label: "What does closing do?",

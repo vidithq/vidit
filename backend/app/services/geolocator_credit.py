@@ -97,7 +97,8 @@ def live_geolocators(geo: Event) -> list[AuthorRef]:
 
 
 def _require_published(geo: Event) -> None:
-    # Mirrored by the frontend's useEventActions (credit controls on geolocated only); change both.
+    # Mirrored by the frontend's useEventActions and EventEditForm (credit controls on geolocated
+    # only); change both.
     if geo.status != STATUS_GEOLOCATED:
         raise EventNotPublishedError("Only a published geolocation shares its credit")
 

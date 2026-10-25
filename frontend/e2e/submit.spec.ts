@@ -134,28 +134,33 @@ test.describe("submit", () => {
     expect(Math.abs(title.x - eventTitle.x)).toBeLessThanOrEqual(1);
     expect(Math.abs(title.y - eventTitle.y)).toBeLessThan(8);
 
-    // The byline under it is the analyst's, with the toggle that picks the co-geolocators.
-    const toggle = page.getByRole("button", { name: "Manage geolocators" });
-    expect((await toggle.boundingBox())!.y).toBeGreaterThan(title.y + title.height);
-    await toggle.click();
-    const invite = page.getByLabel("Invite a geolocator");
+    // The byline under it is the analyst's, with the add button that picks the co-geolocators. The
+    // picker floats in a popover, so nothing under the title moves.
+    const add = page.getByRole("button", { name: "Invite a geolocator" });
+    expect((await add.boundingBox())!.y).toBeGreaterThan(title.y + title.height);
+    const sources = page.getByRole("heading", { name: /^Sources/ });
+    const sourcesY = (await sources.boundingBox())!.y;
+    await add.click();
+    const invite = page.getByRole("dialog", { name: "Invite a geolocator" }).getByRole("combobox");
     await invite.fill("dee");
     await invite.press("Enter");
-    await page.getByRole("button", { name: "Invite", exact: true }).click();
-    const card = page.getByRole("heading", { name: /^Geolocators/ }).locator("xpath=ancestor::section[1]");
-    await expect(card.getByText("Pending invitations")).toBeVisible();
-    await expect(card.getByRole("link", { name: /dee/ })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Invite a geolocator" })).toHaveCount(0);
+    const picked = page.getByRole("link", { name: "dee, invited when you publish" });
+    await expect(picked).toBeVisible();
+    expect(Math.abs((await picked.boundingBox())!.y - (await add.boundingBox())!.y)).toBeLessThan(8);
+    expect((await sources.boundingBox())!.y).toBe(sourcesY);
   });
 
   test("picks a co-geolocator on a narrow column", async ({ page }) => {
     await page.goto("/submit?mode=single");
 
-    await page.getByRole("button", { name: "Manage geolocators" }).click();
-    const invite = page.getByLabel("Invite a geolocator");
-    await invite.fill("dee");
-    await invite.press("Enter");
-    await page.getByRole("button", { name: "Invite", exact: true }).click();
-    await expectNarrowViewportLayout(page, page.getByRole("button", { name: "Remove", exact: true }));
+    const add = page.getByRole("button", { name: "Invite a geolocator" });
+    await add.click();
+    const popover = page.getByRole("dialog", { name: "Invite a geolocator" });
+    await expectNarrowViewportLayout(page, popover.getByRole("combobox"));
+    await popover.getByRole("combobox").fill("dee");
+    await popover.getByRole("combobox").press("Enter");
+    await expectNarrowViewportLayout(page, page.getByRole("button", { name: "Remove dee" }));
   });
 
   test("holds two source editors on a narrow column", async ({ page }) => {

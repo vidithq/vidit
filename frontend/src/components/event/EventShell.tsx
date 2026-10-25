@@ -20,7 +20,7 @@ export interface EventShellActions {
  * or `EventLayout`, never a page.
  *
  * 1. **Title section**, heading the main column: back, the title (a form's `titleField`, with
- *    `title` as its visually hidden page heading), `byline`, then `belowTitle`.
+ *    `title` as its visually hidden page heading), then `byline`.
  * 2. **Actions block**, top right, heading the side column: `actions.pinned`, pinned while the
  *    page scrolls, then `actions.below`, which scrolls with the page.
  * 3. **Body**: `body` fills the `EventLayout` grid; without it the page stops after the panels (a
@@ -32,7 +32,6 @@ export function EventShell({
   title,
   titleField,
   byline,
-  belowTitle,
   backFallback,
   onBack,
   actions,
@@ -45,8 +44,6 @@ export function EventShell({
    *  through its `form` attribute. */
   titleField?: ReactNode;
   byline?: ReactNode;
-  /** Under the title and the byline: a form's geolocators panel once opened. */
-  belowTitle?: ReactNode;
   /** Where Back lands when the session has nothing to return to (`smartBack`'s fallback). */
   backFallback?: string;
   /** Replaces Back's history walk (a submit path returns to its chooser). */
@@ -68,7 +65,6 @@ export function EventShell({
         title={title}
         titleField={titleField}
         subtitle={byline}
-        controls={belowTitle && <div className="w-full space-y-6">{belowTitle}</div>}
         stickyActions={actions?.pinned}
         headerSide={actions?.below ?? null}
       >
