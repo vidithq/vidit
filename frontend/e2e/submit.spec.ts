@@ -145,7 +145,7 @@ test.describe("submit", () => {
     await invite.fill("dee");
     await invite.press("Enter");
     await expect(page.getByRole("dialog", { name: "Invite a geolocator" })).toHaveCount(0);
-    const picked = page.getByRole("link", { name: "dee, invited when you publish" });
+    const picked = page.getByRole("img", { name: "dee, invited when you publish" });
     await expect(picked).toBeVisible();
     expect(Math.abs((await picked.boundingBox())!.y - (await add.boundingBox())!.y)).toBeLessThan(8);
     expect((await sources.boundingBox())!.y).toBe(sourcesY);

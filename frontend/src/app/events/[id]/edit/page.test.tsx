@@ -313,7 +313,7 @@ describe("the detection edit surface", () => {
     pickCoGeolocator("dee");
     pickCoGeolocator("eve");
     // The picks join the byline, faded until the publish invites them, and one goes on a click.
-    expect(screen.getByRole("link", { name: "dee, invited when you publish" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "dee, invited when you publish" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Remove eve" }));
     expect(screen.queryByRole("link", { name: /^eve/ })).toBeNull();
 
