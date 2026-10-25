@@ -1,17 +1,13 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { cleanNumber } from "@/lib/coordinates";
 import {
   createEvent,
   createEventRequest,
-  FIELD_LABELS,
-  getEvent,
-  geolocateEvent as geolocateEventApi,
   missingEventFields,
   missingEventRequestFields,
   parseGuessCoords,
@@ -19,23 +15,21 @@ import {
 } from "@/lib/events";
 import { draftUrls, sourceFloor, sourceWriteError } from "@/lib/sources";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
-import type { EventDetail } from "@/types";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel";
 import { ImportPostPanel } from "@/components/geolocations/ImportPostPanel";
-import { Archive, Check, Circle, MapPin, Megaphone } from "lucide-react";
-import { TEXT_LINK } from "@/components/ui/styles";
+import { Archive, MapPin, Megaphone } from "lucide-react";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { Pill } from "@/components/ui/Pill";
 import { XGlyph } from "@/components/ui/BrandGlyphs";
+import { EventFormFields, useEventForm } from "@/components/geolocations/EventFormFields";
 import {
-  EventFormFields,
-  seedSources,
-  useEventForm,
-} from "@/components/geolocations/EventFormFields";
+  GEO_EXTRA_REQS,
+  PublishChecklist,
+  REQUEST_REQS,
+} from "@/components/geolocations/PublishChecklist";
 import { sourcesBlockWrite } from "@/components/sources/SourcesField";
 import { DuplicateProbe } from "@/components/geolocations/new/DuplicateProbe";
 import { eventHref } from "@/lib/routes";
@@ -46,60 +40,6 @@ import { eventHref } from "@/lib/routes";
 // content (a placed coordinate plus evidence publishes a geolocation, bare footage posts a
 // request).
 type Mode = "single" | "xpost" | "bulk";
-
-// A publish-floor requirement shown as a tick. `keys` are the `missingEvent*` field keys it
-// covers (proof needs two), so met state derives from the live missing set and the validator
-// stays the one source of truth.
-type Req = { label: string; keys: MissingFieldKey[] };
-
-// The request floor: enough to be actionable by someone else, a subset of the geolocation floor.
-const REQUEST_REQS: Req[] = [
-  { label: FIELD_LABELS.title, keys: ["title"] },
-  { label: FIELD_LABELS.source_file, keys: ["source_file"] },
-  { label: FIELD_LABELS.source_link, keys: ["source_link"] },
-  { label: FIELD_LABELS.source_kind, keys: ["source_kind"] },
-];
-
-// What a full geolocation adds on top of the request floor.
-const GEO_EXTRA_REQS: Req[] = [
-  { label: FIELD_LABELS.coordinates, keys: ["coordinates"] },
-  { label: FIELD_LABELS.proof_image, keys: ["proof", "proof_image"] },
-  { label: FIELD_LABELS.conflict_tag, keys: ["conflict_tag"] },
-];
-
-// The readiness tick-list: one static Pill per requirement (`secondary` tone once met,
-// `neutral` while pending), so it can't be mistaken for a selectable chip.
-function ReqChecklist({
-  reqs,
-  missing,
-}: {
-  reqs: Req[];
-  missing: Set<MissingFieldKey>;
-}) {
-  return (
-    <ul className="flex flex-wrap gap-1.5">
-      {reqs.map((r) => {
-        const met = r.keys.every((k) => !missing.has(k));
-        return (
-          <li key={r.label}>
-            <Pill
-              tone={met ? "secondary" : "neutral"}
-              icon={
-                met ? (
-                  <Check size={12} strokeWidth={2.5} />
-                ) : (
-                  <Circle size={9} strokeWidth={2} />
-                )
-              }
-            >
-              {r.label}
-            </Pill>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
 
 export default function SubmitPage() {
   // `useSearchParams` opts out of static prerender, so Next requires a Suspense boundary.
@@ -114,10 +54,6 @@ function SubmitForm() {
   const { user, loading: authLoading } = useRequireAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const requestIdParam = searchParams.get("request_id");
-
-  const [request, setRequest] = useState<EventDetail | null>(null);
-  const [requestError, setRequestError] = useState<string | null>(null);
 
   // Entry path, seeded to the archive on-ramp from `?import=1` (the onboarding and /import
   // redirect target).
@@ -125,62 +61,11 @@ function SubmitForm() {
     searchParams.get("import") === "1" ? "bulk" : "single"
   );
 
-  // Every field both publish paths fill, empty: the form mounts before a request it may be
-  // fulfilling has loaded, so the effect below seeds what that request carries. `invalidKeys`
-  // drive the in-form red outlines, set when a publish is clicked while its floor is short.
-  // The tick-list is the standing summary, so no notice banner.
+  // Every field both publish paths fill, empty. `invalidKeys` drive the in-form red outlines,
+  // set when a publish is clicked while its floor is short. The tick-list is the standing
+  // summary, so no notice banner.
   const form = useEventForm();
-  const { invalidKeys, flagIncomplete, clearIncomplete } = form;
-  // The pre-fill effect's setters, pulled out as stable functions so the effect doesn't depend
-  // on the state bundle (new every render).
-  const {
-    setTitle,
-    setSources,
-    setEventDate,
-    setEventTime,
-    setProof,
-    setSelectedTagIds,
-    setSelectedConflictIds,
-  } = form;
-
-  // Load the request being fulfilled to pre-fill the form. Its sources stay editable: the
-  // geolocate posts the whole list, each kept source with its id.
-  useEffect(() => {
-    if (!requestIdParam) return;
-    getEvent(requestIdParam)
-      .then((b) => {
-        if (b.status !== "requested") {
-          setRequestError(
-            `This request is ${b.status}, so it can't be fulfilled. Open the request page instead.`
-          );
-          return;
-        }
-        setRequest(b);
-        setTitle(b.title);
-        setSources(seedSources(b));
-        // The form mounts after the request loads, so the editor takes `proof` as its initial
-        // content.
-        setEventDate(b.occurred_date ?? "");
-        setEventTime(b.occurred_time?.slice(0, 5) ?? "");
-        setProof(b.proof ?? null);
-        setSelectedTagIds(b.tags.map((t) => t.id));
-        setSelectedConflictIds(b.conflicts.map((c) => c.id));
-      })
-      .catch((err: Error) => setRequestError(err.message));
-  }, [
-    requestIdParam,
-    setTitle,
-    setSources,
-    setEventDate,
-    setEventTime,
-    setProof,
-    setSelectedTagIds,
-    setSelectedConflictIds,
-  ]);
-
-  const fulfilling = request !== null;
-  // Import is offered only on a fresh create, not while fulfilling a request.
-  const canImport = !fulfilling;
+  const { flagIncomplete, clearIncomplete } = form;
 
   // The two publish paths share one error banner; each mutation clears the other.
   const requestMutation = useMutation(
@@ -198,18 +83,14 @@ function SubmitForm() {
   );
 
   const geolocationMutation = useMutation(
-    (): Promise<{ id: string }> => {
-      // Required (gated by `geoReady`), strict parse so a coordinate can't read valid one way and
-      // invalid the other.
-      const input = {
+    // Required (gated by `geoReady`), strict parse so a coordinate can't read valid one way and
+    // invalid the other.
+    () =>
+      createEvent({
         ...form.shared(),
         lat: cleanNumber(form.lat) ?? NaN,
         lng: cleanNumber(form.lng) ?? NaN,
-      };
-      // Fulfilling is a lifecycle move on the same event: geolocate transfers ownership to the
-      // fulfiller.
-      return request ? geolocateEventApi(request.id, input) : createEvent(input);
-    },
+      }),
     {
       fallback: "Submission failed",
       onError: sourceWriteError,
@@ -301,32 +182,10 @@ function SubmitForm() {
     return <PageLoading />;
   }
 
-  // Request referenced but couldn't load (404 / wrong status / network).
-  if (requestIdParam && requestError) {
-    return (
-      <PageShell title="Geolocate a request">
-        <div className={FORM_ERROR_BANNER}>{requestError}</div>
-        <Link href="/requests" className={`text-sm ${TEXT_LINK}`}>
-          ← Back to requests
-        </Link>
-      </PageShell>
-    );
-  }
-
-  // Request referenced but still loading: block the form until it can pre-fill.
-  if (requestIdParam && !request) {
-    return <PageLoading label="Loading request…" />;
-  }
-
-  // Fulfilment is a distinct entry (its own title, only a geolocation to publish); the
-  // readiness list teaches the floor.
-  const pageTitle = fulfilling ? "Geolocate a request" : "Submit";
-
   // Both import entries swap out the form for their panel: each writes detections server side
   // and leaves through the review queue.
-  const showBulk = canImport && mode === "bulk";
-  const showXPost = canImport && mode === "xpost";
-  const geoFulfilReqs = [...REQUEST_REQS, ...GEO_EXTRA_REQS];
+  const showBulk = mode === "bulk";
+  const showXPost = mode === "xpost";
 
   // The rail holds the conditions and the publish actions, as on the edit page; on a phone it
   // follows the fields. An import entry hides the form, and the rail with it.
@@ -339,79 +198,51 @@ function SubmitForm() {
           </div>
         )}
 
-        {fulfilling ? (
-          // Fulfilment can only become a geolocation: one action, no request path.
-          <>
-            <div className="space-y-2">
-              <SectionEyebrow title="Geolocation" concept="submit_geolocation" margin="none" />
-              <ReqChecklist reqs={geoFulfilReqs} missing={geoMissingKeys} />
-            </div>
-            <Button
-              type="button"
-              variant="primary"
-              disabled={submitting}
-              className={geoReady ? "" : "opacity-60"}
-              onClick={publishGeolocation}
-            >
-              <MapPin size={14} strokeWidth={2} />
-              {geolocationMutation.loading
-                ? "Publishing…"
-                : "Publish geolocation (fulfil request)"}
-            </Button>
-          </>
-        ) : (
-          // Two outcomes gated on content: meet the request floor and a request can post; add the
-          // extra rows and a geolocation can publish. A click while short flags the gaps red.
-          <>
-            <div className="space-y-2">
-              <SectionEyebrow title="Request" concept="submit_request" margin="none" />
-              <ReqChecklist reqs={REQUEST_REQS} missing={reqMissingKeys} />
-            </div>
-            <div className="space-y-2">
-              <SectionEyebrow
-                title="Geolocation"
-                concept="submit_geolocation_extra"
-                margin="none"
-              />
-              <ReqChecklist reqs={GEO_EXTRA_REQS} missing={geoMissingKeys} />
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <Button
-                type="button"
-                variant="primary"
-                disabled={submitting}
-                className={geoReady ? "" : "opacity-60"}
-                onClick={publishGeolocation}
-              >
-                <MapPin size={14} strokeWidth={2} />
-                {geolocationMutation.loading ? "Publishing…" : "Publish geolocation"}
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={submitting}
-                className={reqReady ? "" : "opacity-60"}
-                onClick={postRequest}
-              >
-                <Megaphone size={14} strokeWidth={2} />
-                {requestMutation.loading ? "Posting…" : "Publish request"}
-              </Button>
-            </div>
-          </>
-        )}
+        {/* Two outcomes gated on content: meet the request floor and a request can post; add the
+            extra rows and a geolocation can publish. A click while short flags the gaps red. */}
+        <div className="space-y-2">
+          <SectionEyebrow title="Request" concept="submit_request" margin="none" />
+          <PublishChecklist reqs={REQUEST_REQS} missing={reqMissingKeys} />
+        </div>
+        <div className="space-y-2">
+          <SectionEyebrow title="Geolocation" concept="submit_geolocation_extra" margin="none" />
+          <PublishChecklist reqs={GEO_EXTRA_REQS} missing={geoMissingKeys} />
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <Button
+            type="button"
+            variant="primary"
+            disabled={submitting}
+            className={geoReady ? "" : "opacity-60"}
+            onClick={publishGeolocation}
+          >
+            <MapPin size={14} strokeWidth={2} />
+            {geolocationMutation.loading ? "Publishing…" : "Publish geolocation"}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={submitting}
+            className={reqReady ? "" : "opacity-60"}
+            onClick={postRequest}
+          >
+            <Megaphone size={14} strokeWidth={2} />
+            {requestMutation.loading ? "Posting…" : "Publish request"}
+          </Button>
+        </div>
       </Card>
     );
 
   return (
     <PageShell
-      title={pageTitle}
+      title="Submit"
       rail={rail}
       railLabel="Actions"
       narrowRail="below"
       controls={
-        // Entry paths (fresh create only). Single and From an X post share the one-event form;
-        // bulk swaps in the archive on-ramp.
-        canImport && (
+        // Entry paths. Single and From an X post share the one-event form; bulk swaps in the
+        // archive on-ramp.
+        (
           <SegmentedControl
             aria-label="Submission mode"
             options={[
@@ -470,14 +301,13 @@ function SubmitForm() {
         className={showBulk || showXPost ? "hidden" : "space-y-6"}
         noValidate
       >
-        <EventFormFields form={form} row={request} />
+        <EventFormFields form={form} />
 
         <DuplicateProbe
           lat={form.lat}
           lng={form.lng}
           sourceUrl={form.sources.flatMap(draftUrls)[0] ?? ""}
           eventDate={form.eventDate}
-          skip={fulfilling}
         />
       </form>
     </PageShell>

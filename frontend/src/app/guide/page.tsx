@@ -96,7 +96,7 @@ const STATUSES: { status: EventStatus; note: ReactNode }[] = [
 const DETECTION_STEPS = [
   { title: "An import puts it on the map and in your Detections queue, on your profile." },
   { title: "You check the coordinates, the source, the proof and the date." },
-  { title: "Only you publish it: Submit makes it a geolocation under your name." },
+  { title: "Only you publish it: Publish makes it a geolocation under your name." },
 ];
 
 const OTHERS = [

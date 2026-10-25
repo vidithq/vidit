@@ -5,7 +5,12 @@ import { notFound, useParams, useRouter } from "next/navigation";
 
 import type { EventDetail, EventVersion } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
-import { eventVersionPath, eventVersion, parseVersionSegment } from "@/lib/events";
+import {
+  eventVersionPath,
+  eventVersion,
+  firstVersion,
+  parseVersionSegment,
+} from "@/lib/events";
 import { skipBackRecord } from "@/lib/navigation";
 import { VersionApprovals } from "@/components/event/Approvals";
 import { EventPageBody } from "@/components/event/EventPageBody";
@@ -35,13 +40,14 @@ export default function EventVersionPage() {
   const { data: geo, error } = useApiResource<EventDetail>(
     eventId && number !== null ? `/events/${eventId}` : null
   );
-  // Only versions below the live row are filed.
-  const filed = geo !== null && number !== null && number < geo.version_no;
+  // Only versions below the live row are filed, from the first one the history holds.
+  const first = geo !== null ? firstVersion(geo) : 1;
+  const filed = geo !== null && number !== null && number >= first && number < geo.version_no;
   const { data: row, error: rowError } = useApiResource<EventVersion>(
     filed ? eventVersionPath(eventId, number!) : null
   );
   const { data: producedBy, error: producedByError } = useApiResource<EventVersion>(
-    filed && number! > 1 ? eventVersionPath(eventId, number! - 1) : null
+    filed && number! > first ? eventVersionPath(eventId, number! - 1) : null
   );
 
   const isCurrent = geo !== null && number === geo.version_no;
@@ -55,12 +61,12 @@ export default function EventVersionPage() {
   if (number === null) notFound();
   if (error) return <PageError message={error} />;
   if (!geo) return <PageLoading />;
-  if (number > geo.version_no) notFound();
+  if (number > geo.version_no || number < first) notFound();
   if (isCurrent) return <PageLoading />;
   if (rowError) return <PageError message={rowError} />;
   if (!row) return <PageLoading />;
   // The byline read lands last; if it fails the banner loses its byline, not the page its content.
-  if (number > 1 && !producedBy && !producedByError) return <PageLoading />;
+  if (number > first && !producedBy && !producedByError) return <PageLoading />;
 
   const version = eventVersion(geo, number, { own: row, producedBy });
 
@@ -72,13 +78,14 @@ export default function EventVersionPage() {
       headerSide={
         <div className="space-y-4">
           <div className="flex lg:justify-end">
-            <VersionSelector eventId={geo.id} liveVersion={geo.version_no} selected={number} />
+            <VersionSelector event={geo} selected={number} />
           </div>
-          <VersionApprovals event={geo} versionNo={number} />
+          {/* Version 0 was never published, so nothing approves it. */}
+          {number > 0 && <VersionApprovals event={geo} versionNo={number} />}
         </div>
       }
     >
-      <EventVersionBanner eventId={geo.id} version={version} total={geo.version_no} />
+      <EventVersionBanner event={geo} version={version} />
       {version.view ? (
         <EventPageBody geo={version.view} />
       ) : (

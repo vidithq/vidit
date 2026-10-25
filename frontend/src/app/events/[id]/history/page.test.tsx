@@ -121,6 +121,18 @@ describe("EventHistoryPage", () => {
     expect(within(row(1)).getByText("Published")).toBeTruthy();
   });
 
+  it("ends on the request the event was published from, named so", () => {
+    event = { ...baseEvent(2), version_zero: "request", requested_by: BOB };
+    walk.items = [version(1, snapshot("v1 title")), version(0, snapshot("Asked"))];
+    render(<EventHistoryPage />);
+    expect(screen.getByText("3 versions")).toBeTruthy();
+    const request = screen.getByLabelText("Request").parentElement!;
+    expect(within(request).getByText("Request")).toBeTruthy();
+    expect(within(request).getByText("Requested")).toBeTruthy();
+    expect(within(request).getByText("bob")).toBeTruthy();
+    expect(within(row(1)).getByText("Published")).toBeTruthy();
+  });
+
   it("credits each version to the edit that produced it, with that edit's note", () => {
     render(<EventHistoryPage />);
     // The note filed on version 2 describes the edit that produced version 3.

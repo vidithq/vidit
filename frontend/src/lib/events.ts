@@ -132,10 +132,6 @@ export function parseGuessCoords(
   return { lat, lng };
 }
 
-export function getEvent(id: string): Promise<EventDetail> {
-  return apiFetch<EventDetail>(`/events/${id}`);
-}
-
 /** The fields every event write posts: the whole row state, its sources included. */
 export interface EventWriteInput {
   title: string;
@@ -184,23 +180,20 @@ function postEventForm<T>(path: string, fd: FormData): Promise<T> {
   return apiFetch<T>(path, { method: "POST", body: fd });
 }
 
-/** Give an event a vouched location: `requested` | `detected` → `geolocated`.
- *  `POST /events/{id}/geolocate`. */
-export function geolocateEvent(id: string, input: EventWriteInput): Promise<EventDetail> {
-  return postEventForm(`/events/${id}/geolocate`, eventFormData(input));
-}
-
 /** Mirrors `schemas/event.VERSION_NOTE_MAX_LENGTH`; change both. */
 export const VERSION_NOTE_MAX_LEN = 280;
 
-/** `POST /events/{id}/versions`: owner-only, `geolocated`-only. Files the superseded state as a
- *  version; `note` is the editor's words about the edit, stored on it. */
+/** `POST /events/{id}/versions`: publishes a request or a detection (version 0 becomes version
+ *  1) or corrects a published event, filing the superseded state as a version. `note` is the
+ *  editor's words about the edit, stored on it. `version_no` is the version the form was loaded
+ *  at: a row that moved past it answers 409 `version_mismatch`. */
 export function saveVersion(
   id: string,
-  input: EventWriteInput & { note?: string }
+  input: EventWriteInput & { note?: string; version_no: number }
 ): Promise<EventDetail> {
   const fd = eventFormData(input);
   if (input.note?.trim()) fd.append("note", input.note.trim());
+  fd.append("version_no", String(input.version_no));
   return postEventForm(`/events/${id}/versions`, fd);
 }
 
@@ -235,10 +228,27 @@ export function hasPublishedRecord(
   );
 }
 
-/** Version number of a `vN` segment, or `null` (`v0` and other shapes, so the route 404s). */
+/** Version number of a `vN` segment, or `null` (other shapes, so the route 404s). */
 export function parseVersionSegment(segment: string): number | null {
-  if (!/^v[1-9][0-9]*$/.test(segment)) return null;
+  if (!/^v(0|[1-9][0-9]*)$/.test(segment)) return null;
   return Number(segment.slice(1));
+}
+
+/** The oldest version the event's history holds: 0 when it has a version 0 (the request or the
+ *  detection it was published from), else 1. */
+export function firstVersion(geo: Pick<EventDetail, "version_zero">): number {
+  return geo.version_zero ? 0 : 1;
+}
+
+/** A version's short name: version 0 is the request or the detection, any other `vN`. */
+export function versionLabel(
+  geo: Pick<EventDetail, "version_zero">,
+  number: number
+): string {
+  if (number === 0 && geo.version_zero) {
+    return geo.version_zero === "request" ? "Request" : "Detection";
+  }
+  return `v${number}`;
 }
 
 /** One label per versioned field, in changed-list order. Keyed by the fields
@@ -321,7 +331,7 @@ function snapshotSource(
 /** One filed version as the event shape every surface renders.
  *  Sources are read from the snapshot alone, never the live row, so the changed-field list sees
  *  different values across an edit. Identity (id, owner, status, creation date) comes from the
- *  current row. A conflict resolves to the live row when its id still exists, else the stored
+ *  current row, except version 0, which reads as the open request or detection it was. A conflict resolves to the live row when its id still exists, else the stored
  *  name, so a version survives a rename or delete.
  *  The snapshot is untyped JSON, so every field is read defensively; a redacted `{}` snapshot
  *  maps to the current row's immutables and empty content. */
@@ -365,6 +375,15 @@ export function snapshotToEventView(
         }
     ),
     proof: (snapshot.proof as string | null | undefined) ?? null,
+    // Version 0 is the request or the detection as it stood before the publish.
+    ...(version.version_no === 0 && current.version_zero
+      ? {
+          status: current.version_zero === "request" ? "requested" : "detected",
+          before_closed_status: null,
+          closed_at: null,
+          close_reason: null,
+        }
+      : {}),
   };
 }
 
@@ -497,7 +516,8 @@ export const nothingChangedMessage = (versionNo: number): string =>
   `Nothing changed since version ${versionNo}.`;
 
 export interface EventVersionEntry {
-  /** Which version this is. `1` is the record as it was published. */
+  /** Which version this is. `0` is the request or the detection the event was published from,
+   *  `1` the record as it was published. */
   number: number;
   /** True for the live row, the one `/events/{id}` serves. */
   current: boolean;
@@ -509,8 +529,8 @@ export interface EventVersionEntry {
   /** That editor's own words about the edit, `null` when they left none. */
   note: string | null;
   redacted: boolean;
-  /** Fields changed against the previous version; `null` when not comparable (version 1, or
-   *  a redacted side). */
+  /** Fields changed against the previous version; `null` when not comparable (the first
+   *  version, or a redacted side). */
   changed: string[] | null;
 }
 
@@ -524,9 +544,11 @@ export interface EventVersionEntryRows {
 }
 
 /** One version, described by the edit that produced it. Content comes from row `n`,
- *  authorship from row `n - 1`; version 1 takes the publisher and `geolocated_at` (not
- *  `created_at`, which is when the record was opened). A version above 1 with no producing
- *  row states neither byline nor date rather than crediting the publication. */
+ *  authorship from row `n - 1`. Version 0 was opened, not edited: it takes the requester (or
+ *  the owner, for a detection) and `created_at`. Version 1 without a version 0 takes the
+ *  publisher and `geolocated_at` (not `created_at`, which is when the record was opened). Any
+ *  other version with no producing row states neither byline nor date rather than crediting
+ *  the publication. */
 export function eventVersion(
   current: EventDetail,
   number: number,
@@ -542,12 +564,22 @@ export function eventVersion(
     number,
     current: isCurrent,
     view,
-    editor: producedBy ? producedBy.edited_by : number === 1 ? current.owner : null,
+    editor: producedBy
+      ? producedBy.edited_by
+      : number === 0
+        ? current.version_zero === "request"
+          ? current.requested_by
+          : current.owner
+        : number === 1 && !current.version_zero
+          ? current.owner
+          : null,
     createdAt: producedBy
       ? producedBy.created_at
-      : number === 1
-        ? current.geolocated_at
-        : null,
+      : number === 0
+        ? current.created_at
+        : number === 1 && !current.version_zero
+          ? current.geolocated_at
+          : null,
     note: producedBy?.note ?? null,
     redacted: own?.redacted ?? false,
     changed: view && previous ? changedFields(view, previous) : null,
@@ -564,8 +596,9 @@ export function eventVersions(
 ): EventVersionEntry[] {
   const byNumber = new Map(rows.map((row) => [row.version_no, row]));
   // `+ 1`: while paging, the lowest loaded row is only authorship for the version above, so
-  // stop one above it. A finished walk reaches version 1.
-  const oldest = hasMore && rows.length > 0 ? Math.min(...byNumber.keys()) + 1 : 1;
+  // stop one above it. A finished walk reaches the first version.
+  const first = firstVersion(current);
+  const oldest = hasMore && rows.length > 0 ? Math.min(...byNumber.keys()) + 1 : first;
 
   // Diff base only; the content is the same snapshot.
   const viewOf = (number: number): EventDetail | null =>
@@ -579,7 +612,7 @@ export function eventVersions(
       eventVersion(current, number, {
         own,
         producedBy: byNumber.get(number - 1),
-        previous: number > 1 ? viewOf(number - 1) : null,
+        previous: number > first ? viewOf(number - 1) : null,
       })
     );
   }

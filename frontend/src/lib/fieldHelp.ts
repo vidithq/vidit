@@ -116,9 +116,13 @@ export const FIELD_HELP = {
     text: "The reason stays publicly visible next to the closed badge.",
     label: "Who sees the close reason?",
   },
-  action_submit: {
-    text: "Submits this detection: your edits are saved and it becomes Geolocated (a person stands behind it). It becomes public, and from then on every change you make is kept as a new version, the source link and the source media included. Give it a full read first, then click Submit twice to confirm.",
-    label: "What does Submit do?",
+  action_publish: {
+    text: "Publishes this event with your edits: it becomes a geolocation (a person stands behind it), public, at version 1. The request or detection it was stays readable in its history as version 0, and every later change is kept as a new version. Publishing a request makes you its owner. Give it a full read first, then click Publish twice to confirm.",
+    label: "What does Publish do?",
+  },
+  publish_requirements: {
+    text: "Publishing needs each of these on the event. A tick marks one already in place.",
+    label: "What does publishing need?",
   },
   submit_request: {
     text: "Add these to post a request: other analysts can then locate the footage for you.",
@@ -128,12 +132,8 @@ export const FIELD_HELP = {
     text: "Add these on top of the request fields to publish a full geolocation, with your coordinates and proof.",
     label: "What does a geolocation need?",
   },
-  submit_geolocation: {
-    text: "Add these to publish your geolocation. The request supplies its sources, which you can correct, and you become the owner of the event.",
-    label: "What does the geolocation need?",
-  },
   geolocate_request: {
-    text: "Opens the submit page with this request's sources filled in. Publishing your geolocation answers the request, and you become the owner of the event.",
+    text: "Opens this request in the edit form, its sources filled in. Publishing it answers the request, and you become the owner of the event.",
     label: "What does Geolocate do?",
   },
   approval: {

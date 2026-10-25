@@ -974,7 +974,7 @@ export interface paths {
         };
         /**
          * List Detections
-         * @description The caller's ``detected`` events awaiting a geolocate, newest first.
+         * @description The caller's ``detected`` events awaiting a publish, newest first.
          *
          *     Owner-scoped to ``current_user`` (never a URL username): the Detections
          *     queue. Returns full ``EventRead`` so the queue shows evidence and what each
@@ -1353,34 +1353,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/geolocate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Geolocate Event
-         * @description Give an event a vouched location: ``requested`` | ``detected`` → ``geolocated``.
-         *
-         *     The caller posts the whole form (title, coordinates, dates, proof + images, tags,
-         *     conflicts, sources). On success the row is published as ``geolocated`` and the caller is
-         *     credited as a geolocator; later corrections go through ``save_version``. A detection is
-         *     owner-only (403 otherwise); a ``requested`` event is answerable by anyone and the
-         *     fulfiller becomes its owner (``requested_by`` keeps the poster) and may correct its
-         *     sources. Blocked (400) until the floor is met (a direct or indirect source with its file,
-         *     a proof image, a conflict). Other statuses 409; soft-deleted 404.
-         */
-        post: operations["geolocate_event_api_v1_events__geolocation_id__geolocate_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/events/{geolocation_id}/geolocator-invites": {
         parameters: {
             query?: never;
@@ -1525,13 +1497,13 @@ export interface paths {
          * Update Event Request
          * @description Correct an open request, overwriting it in place (owner-only).
          *
-         *     No version is filed: a version supersedes a vouched claim, and a request is
-         *     a question. The row keeps its id, ``requested_at``, requester and
-         *     provenance, and moves ``updated_at``. Allowed only while ``requested`` (409
-         *     otherwise).
+         *     No version is filed: the request stays version 0 until it is published
+         *     through ``POST /events/{id}/versions``. The row keeps its id,
+         *     ``requested_at``, requester and provenance, and moves ``updated_at``.
+         *     Allowed only while ``requested`` (409 otherwise).
          *
          *     Every create-form field is editable, the coordinate guess included; the
-         *     publication floor stays unenforced until geolocate, but the row must still
+         *     publication floor stays unenforced until the publish, but the row must still
          *     hold a direct or indirect source with its file. Soft-deleted rows read as 404.
          */
         post: operations["update_event_request_api_v1_events__geolocation_id__request_post"];
@@ -1564,17 +1536,24 @@ export interface paths {
         put?: never;
         /**
          * Save Event Version
-         * @description Correct a published event, keeping the version it replaces readable.
+         * @description Publish a request or a detection, or correct a published event, filing a version.
          *
-         *     Owner-only and only while ``geolocated`` (409 otherwise). The pre-edit state
-         *     is filed as an ``event_versions`` row and the event moves to the next
-         *     ``version_no``, in one transaction under a row lock.
+         *     The caller posts the whole form (title, coordinates, dates, proof + images, tags,
+         *     conflicts, sources). The pre-edit state is filed as an ``event_versions`` row and the
+         *     event moves to the next ``version_no``, in one transaction under a row lock.
          *
-         *     The sources are versioned too: the posted list replaces the stored one and
-         *     the filed version keeps what it supersedes, files included. The publication
-         *     floor is re-checked on the post-edit state. A save whose only change is a
-         *     link's archived copy is accepted even at the version ceiling. Soft-deleted
-         *     rows read as 404.
+         *     On a ``requested`` or ``detected`` event (version 0) this publishes: the event becomes
+         *     ``geolocated`` at version 1 and the caller is credited as a geolocator. A detection is
+         *     owner-only (403 otherwise); a request is answerable by anyone, and the fulfiller becomes
+         *     its owner (``requested_by`` keeps the poster). On a ``geolocated`` event it is an
+         *     owner-only correction, refused when nothing changed. Other statuses 409, and 409
+         *     ``version_mismatch`` when ``version_no`` names a version the event has moved past.
+         *
+         *     The sources are versioned too: the posted list replaces the stored one and the filed
+         *     version keeps what it supersedes, files included. The publication floor (coordinates, a
+         *     direct or indirect source with its file, a proof image, a conflict) is checked on the
+         *     post-edit state. A save whose only change is a link's archived copy is accepted even at
+         *     the version ceiling. Soft-deleted rows read as 404.
          */
         post: operations["save_event_version_api_v1_events__geolocation_id__versions_post"];
         delete?: never;
@@ -2031,30 +2010,6 @@ export interface paths {
          *     this is how a partial name becomes a handle. Empty ``q`` returns [].
          */
         get: operations["suggest_authors_api_v1_search_authors_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/sources": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Pick Sources
-         * @description Sources of live events whose title or one of whose URLs contains ``q``, newest first.
-         *
-         *     The form copies a pick into its source list by naming the pick's
-         *     ``media.id`` as ``media_id`` (``SourceCreate``): the copy is a new source
-         *     on the same stored file.
-         */
-        get: operations["pick_sources_api_v1_sources_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2532,7 +2487,7 @@ export interface components {
          *     soft-delete counts that account's pending detections as rejects.
          *
          *     The ``pending_*`` counts profile the live ``detected`` queue (machine rows,
-         *     ``deleted_at IS NULL``): how many miss a piece the geolocate floor demands,
+         *     ``deleted_at IS NULL``): how many miss a piece the publish floor demands,
          *     so a poor extraction run shows before an analyst opens the queue.
          */
         AdminDetectionStatsRead: {
@@ -3096,7 +3051,7 @@ export interface components {
         /**
          * BatchCompletionRowRead
          * @description One row's outcome. ``code`` / ``message`` are NULL when published,
-         *     otherwise the stable error code the single-row geolocate would return.
+         *     otherwise the stable error code the single-row publish would return.
          */
         BatchCompletionRowRead: {
             /** Code */
@@ -3168,32 +3123,6 @@ export interface components {
             /** File */
             file: string;
         };
-        /** Body_geolocate_event_api_v1_events__geolocation_id__geolocate_post */
-        Body_geolocate_event_api_v1_events__geolocation_id__geolocate_post: {
-            /** Conflict Ids */
-            conflict_ids?: string | null;
-            /** Lat */
-            lat: number;
-            /** Lng */
-            lng: number;
-            /** Occurred Date */
-            occurred_date?: string | null;
-            /** Occurred Time */
-            occurred_time?: string | null;
-            /** Proof */
-            proof?: string | null;
-            /** Proof Files */
-            proof_files?: string[] | null;
-            /**
-             * Sources
-             * @description JSON array of SourceCreate: the event's whole source list, which replaces the stored one.
-             */
-            sources: string;
-            /** Tag Ids */
-            tag_ids?: string | null;
-            /** Title */
-            title: string;
-        };
         /** Body_save_event_version_api_v1_events__geolocation_id__versions_post */
         Body_save_event_version_api_v1_events__geolocation_id__versions_post: {
             /** Conflict Ids */
@@ -3221,6 +3150,11 @@ export interface components {
             tag_ids?: string | null;
             /** Title */
             title: string;
+            /**
+             * Version No
+             * @description The version the form was loaded at; a row that moved past it answers 409.
+             */
+            version_no?: number | null;
         };
         /** Body_set_my_avatar_api_v1_users_me_avatar_put */
         Body_set_my_avatar_api_v1_users_me_avatar_put: {
@@ -3675,6 +3609,8 @@ export interface components {
             title: string;
             /** Version No */
             version_no: number;
+            /** Version Zero */
+            version_zero?: ("request" | "detection") | null;
             /**
              * Viewer Invite Pending
              * @default false
@@ -4488,48 +4424,6 @@ export interface components {
             posted_at: string | null;
             /** Url */
             url: string;
-        };
-        /**
-         * SourcePickRead
-         * @description A source the picker found (``GET /sources``), with the event that holds it.
-         */
-        SourcePickRead: {
-            capture_position: components["schemas"]["CoordsRead"] | null;
-            /** Captured At */
-            captured_at: string | null;
-            /**
-             * Event Id
-             * Format: uuid
-             */
-            event_id: string;
-            /** Event Title */
-            event_title: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Is Graphic */
-            is_graphic: boolean;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "smartphone" | "camera" | "static_camera" | "drone" | "aircraft" | "satellite" | "dashcam" | "body_cam" | "article" | "official_statement" | "other" | "unknown";
-            /**
-             * Level
-             * @enum {string}
-             */
-            level: "direct" | "indirect" | "context";
-            /** Links */
-            links: components["schemas"]["SourceLinkRead"][];
-            media: components["schemas"]["MediaRead"] | null;
-            /** Tags */
-            tags: components["schemas"]["TagRead"][];
-            /** Title */
-            title: string;
-            /** Warnings */
-            warnings: components["schemas"]["SourceWarning"][];
         };
         /**
          * SourceRead
@@ -7127,43 +7021,6 @@ export interface operations {
             };
         };
     };
-    geolocate_event_api_v1_events__geolocation_id__geolocate_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                geolocation_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_geolocate_event_api_v1_events__geolocation_id__geolocate_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EventRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_geolocator_invites_api_v1_events__geolocation_id__geolocator_invites_get: {
         parameters: {
             query?: never;
@@ -8355,41 +8212,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthorSuggestions"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    pick_sources_api_v1_sources_get: {
-        parameters: {
-            query: {
-                /** @description A URL or part of a title */
-                q: string;
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SourcePickRead"][];
                 };
             };
             /** @description Validation Error */

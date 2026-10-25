@@ -9,6 +9,7 @@ import {
   eventVersionHref,
   parseVersionSegment,
   snapshotToEventView,
+  versionLabel,
   type EventVersionFormState,
 } from "./events";
 import type { Source } from "./sources";
@@ -153,12 +154,13 @@ const pinned = { title: "v3 title", proof: '<img src="https://m/c.jpg">' };
 
 describe("parseVersionSegment", () => {
   it("reads the number out of a version segment", () => {
+    expect(parseVersionSegment("v0")).toBe(0);
     expect(parseVersionSegment("v1")).toBe(1);
     expect(parseVersionSegment("v42")).toBe(42);
   });
 
   it("refuses anything that is not a version address", () => {
-    for (const segment of ["edit", "history", "v", "v0", "v01", "v-1", "1", "v1x", ""]) {
+    for (const segment of ["edit", "history", "v", "v00", "v01", "v-1", "1", "v1x", ""]) {
       expect(parseVersionSegment(segment)).toBeNull();
     }
   });
@@ -422,6 +424,45 @@ describe("eventVersions", () => {
     // The version above it keeps its byline and loses only its comparison.
     expect(versions[0].editor).toEqual(BOB);
     expect(versions[0].changed).toBeNull();
+  });
+});
+
+describe("version 0", () => {
+  const PUBLISHED: EventDetail = {
+    ...CURRENT,
+    version_no: 2,
+    version_zero: "request",
+    requested_by: BOB,
+  };
+  const rows = [row(1, snapshot({ title: "v1 title" })), row(0, snapshot({ title: "Asked" }))];
+
+  it("names version 0 after what the event was published from", () => {
+    expect(versionLabel(PUBLISHED, 0)).toBe("Request");
+    expect(versionLabel({ version_zero: "detection" }, 0)).toBe("Detection");
+    expect(versionLabel(PUBLISHED, 2)).toBe("v2");
+  });
+
+  it("walks down to version 0, credited to whoever opened it", () => {
+    const versions = eventVersions(PUBLISHED, rows);
+    expect(versions.map((v) => v.number)).toEqual([2, 1, 0]);
+
+    // Version 1 is the publish, filed on version 0: its byline and date come from that row,
+    // and it compares against what was asked.
+    expect(versions[1].editor).toEqual(BOB);
+    expect(versions[1].createdAt).toBe("2026-06-01T00:00:00Z");
+    expect(versions[1].changed).toContain("Title");
+
+    // Version 0 was opened, not edited: the requester and the creation date.
+    expect(versions[2].view?.title).toBe("Asked");
+    expect(versions[2].view?.status).toBe("requested");
+    expect(versions[2].editor).toEqual(BOB);
+    expect(versions[2].createdAt).toBe(PUBLISHED.created_at);
+    expect(versions[2].changed).toBeNull();
+  });
+
+  it("stops at version 1 for a record with no version 0", () => {
+    const versions = eventVersions({ ...CURRENT, version_no: 2 }, [row(1, snapshot())]);
+    expect(versions.map((v) => v.number)).toEqual([2, 1]);
   });
 });
 

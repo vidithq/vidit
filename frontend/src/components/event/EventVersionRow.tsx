@@ -1,18 +1,23 @@
 import Link from "next/link";
 
 import type { EventVersionEntry } from "@/lib/events";
-import { eventVersionHref } from "@/lib/events";
+import { eventVersionHref, versionLabel } from "@/lib/events";
 import { formatDate } from "@/lib/format";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Pill } from "@/components/ui/Pill";
 import { TAPPABLE_HOVER } from "@/components/ui/styles";
 import { eventHref } from "@/lib/routes";
+import type { EventDetail } from "@/types";
 
-/** What this version did to the record, in the event page's words. Version 1 was published, not
- * edited, so it says so; an impossible comparison (a redacted version on either side) says nothing
+/** What this version did to the record, in the event page's words. Version 0 was opened and
+ * version 1 published, not edited, so each says so; an impossible comparison (a redacted version on either side) says nothing
  * rather than claim an empty edit; an edit that moved no versioned field says that, since the row
  * exists and the reader is owed the reason it looks unchanged. */
-function changeSummary(version: EventVersionEntry): string | null {
+function changeSummary(
+  version: EventVersionEntry,
+  versionZero: EventDetail["version_zero"]
+): string | null {
+  if (version.number === 0) return versionZero === "request" ? "Requested" : "Detected";
   if (version.number === 1) return "Published";
   if (version.changed === null) return null;
   return version.changed.length === 0
@@ -21,20 +26,23 @@ function changeSummary(version: EventVersionEntry): string | null {
 }
 
 /**
- * One version in an event's history: its number, what its edit changed, and who made it when. The
+ * One version in an event's history: its name (*Detection* or *Request* for version 0, else *vN*),
+ * what its edit changed, and who made it when. The
  * whole row is one click: a past version opens at its own address, the current one opens the
  * canonical `/events/{id}`. A redacted version keeps its number and byline and loses its content:
  * the row states the redaction where the changed fields would be and still links to the version,
  * which serves the same notice.
  */
 export function EventVersionRow({
-  eventId,
+  event,
   version,
 }: {
-  eventId: string;
+  event: Pick<EventDetail, "id" | "version_zero">;
   version: EventVersionEntry;
 }) {
-  const summary = changeSummary(version);
+  const eventId = event.id;
+  const name = versionLabel(event, version.number);
+  const summary = changeSummary(version, event.version_zero);
   return (
     <div
       className={`group relative flex flex-col gap-1 rounded-md border border-neutral-800 bg-neutral-900 p-2.5 sm:flex-row sm:items-center sm:gap-3 ${TAPPABLE_HOVER}`}
@@ -42,12 +50,12 @@ export function EventVersionRow({
       {/* Stretched link: nothing inside the row competes for the click, so badges and byline sit under it. */}
       <Link
         href={version.current ? eventHref(eventId) : eventVersionHref(eventId, version.number)}
-        aria-label={`Version ${version.number}`}
+        aria-label={version.number === 0 ? name : `Version ${version.number}`}
         className="absolute inset-0 z-10 rounded-[inherit]"
       />
       <span className="flex shrink-0 items-center gap-1.5">
         {/* The number is a neutral label; the accent is for the state beside it. */}
-        <Pill tone="neutral">v{version.number}</Pill>
+        <Pill tone="neutral">{name}</Pill>
         {version.current && <Pill tone="accent">Current</Pill>}
         {version.redacted && <Pill tone="danger">Redacted</Pill>}
       </span>

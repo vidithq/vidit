@@ -211,7 +211,7 @@ describe("the owner's edit", () => {
     expect(rowControls()).toEqual(["Edit", "Share"]);
     expect(screen.getByRole("link", { name: "Geolocate" })).toHaveAttribute(
       "href",
-      "/submit?request_id=e1",
+      "/events/e1/edit",
     );
     expect(screen.queryByRole("heading", { name: "Actions" })).toBeNull();
     expect(row().closest("section")).toBeNull();

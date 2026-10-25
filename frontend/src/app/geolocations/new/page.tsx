@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-/** Legacy route: redirects to `/submit`, preserving the query (`?request_id=`, `?import=1`). */
+/** Legacy route: redirects to `/submit`, preserving the query (`?import=1`). */
 export default async function LegacyNewGeolocationPage({
   searchParams,
 }: {

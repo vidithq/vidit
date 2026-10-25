@@ -167,12 +167,7 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
 
   const controls = [
     tiers.history && hasPublishedRecord(event) && (
-      <VersionSelector
-        key="versions"
-        eventId={event.id}
-        liveVersion={event.version_no}
-        selected={event.version_no}
-      />
+      <VersionSelector key="versions" event={event} selected={event.version_no} />
     ),
     canEdit && (
       // A published record is corrected by adding a version, a request is overwritten: the
@@ -220,7 +215,7 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
 
   const geolocate = tiers.flow && isOpenRequest && (
     <span className="inline-flex items-center gap-1.5">
-      <Link href={`/submit?request_id=${event.id}`} className={buttonClasses("primary")}>
+      <Link href={`/events/${event.id}/edit`} className={buttonClasses("primary")}>
         <MapPin size={14} />
         Geolocate
       </Link>

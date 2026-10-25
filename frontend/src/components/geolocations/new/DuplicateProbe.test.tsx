@@ -69,7 +69,6 @@ const baseProps = {
   lng: "37.0",
   sourceUrl: "https://t.me/channel/1",
   eventDate: "",
-  skip: false,
 };
 
 function renderProbe(overrides: Partial<typeof baseProps> = {}) {
@@ -87,14 +86,6 @@ describe("DuplicateProbe", () => {
 
   it("never probes when both source URL and event date are empty", () => {
     renderProbe({ sourceUrl: "", eventDate: "" });
-    act(() => {
-      vi.advanceTimersByTime(600);
-    });
-    expect(calls).toHaveLength(0);
-  });
-
-  it("never probes in request-fulfilment mode", () => {
-    renderProbe({ skip: true });
     act(() => {
       vi.advanceTimersByTime(600);
     });

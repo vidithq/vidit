@@ -52,25 +52,18 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 
 vi.mock("@/lib/events", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/events")>()),
-  geolocateEvent: vi.fn(),
   saveVersion: vi.fn(),
   updateEventRequest: vi.fn(),
   closeEvent: vi.fn(),
 }));
 
-import {
-  closeEvent,
-  geolocateEvent,
-  saveVersion,
-  updateEventRequest,
-} from "@/lib/events";
+import { closeEvent, saveVersion, updateEventRequest } from "@/lib/events";
 import { ARM_MS } from "@/hooks/useConfirmAction";
 import type { Source } from "@/lib/sources";
 import type { Conflict, EventDetail, Tag } from "@/types";
 
 import EditEventPage from "./page";
 
-const geolocateMock = vi.mocked(geolocateEvent);
 const saveVersionMock = vi.mocked(saveVersion);
 const updateRequestMock = vi.mocked(updateEventRequest);
 const closeMock = vi.mocked(closeEvent);
@@ -119,7 +112,7 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     occurred_date: "2026-06-01",
     occurred_time: null,
     status: "detected",
-    version_no: 1,
+    version_no: 0,
     is_graphic: false,
     close_reason: null,
     before_closed_status: null,
@@ -192,11 +185,11 @@ function fillTheFloor() {
   });
 }
 
-/** Fill the floor, then submit (the first click arms, the second writes). */
-async function submitDetection() {
+/** Fill the floor, then publish (the first click arms, the second writes). */
+async function publishDetection() {
   fillTheFloor();
-  fireEvent.click(screen.getByRole("button", { name: "Submit" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Confirm submit" }));
+  fireEvent.click(screen.getByRole("button", { name: "Publish" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Confirm publish" }));
 }
 
 /** True when `later` comes after `earlier` in document order. */
@@ -215,11 +208,9 @@ function closeDetection(reason: string) {
 
 beforeEach(() => {
   push.mockReset();
-  geolocateMock.mockReset();
   saveVersionMock.mockReset();
   updateRequestMock.mockReset();
   closeMock.mockReset();
-  geolocateMock.mockResolvedValue(detectionFixture({ status: "geolocated" }));
   saveVersionMock.mockResolvedValue(publishedFixture({ version_no: 2 }));
   updateRequestMock.mockResolvedValue(requestFixture());
   row = detectionFixture();
@@ -240,22 +231,22 @@ describe("the detection edit surface", () => {
     expect(screen.queryByText("Requested from")).toBeNull();
   });
 
-  it("renders the form under a bare title, with Submit then Close in the actions rail", () => {
+  it("renders the form under a bare title, with Publish then Close in the actions rail", () => {
     render(<EditEventPage />);
 
     expect(
-      screen.getByRole("heading", { name: "Submit detection" })
+      screen.getByRole("heading", { name: "Publish detection" })
     ).toBeInTheDocument();
     // No description line under the title: the fields say what they are.
-    expect(screen.queryByText(/Submitting publishes the event/)).toBeNull();
+    expect(screen.queryByText(/Publishing makes the event public/)).toBeNull();
     // The rail holds the actions and follows the fields; no Cancel, and no Close in the header.
     const rail = screen.getByRole("complementary", { name: "Actions" });
-    const submit = within(rail).getByRole("button", { name: "Submit" });
+    const submit = within(rail).getByRole("button", { name: "Publish" });
     expect(screen.queryByRole("link", { name: "Cancel" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
     expect(follows(document.getElementById("event-edit-form")!, submit)).toBe(true);
 
-    // Close sits under Submit as a plain button, not behind a disclosure.
+    // Close sits under Publish as a plain button, not behind a disclosure.
     const close = within(rail).getByRole("button", { name: "Close this detection" });
     expect(follows(submit, close)).toBe(true);
     expect(screen.queryByRole("menuitem")).toBeNull();
@@ -279,10 +270,29 @@ describe("the detection edit surface", () => {
     expect(screen.queryByRole("button", { name: "Skip" })).toBeNull();
   });
 
-  it("returns to the queue list after a submit made outside a pass", async () => {
+  it("lists what publishing needs, ticking what the row already holds", () => {
     render(<EditEventPage />);
-    await submitDetection();
-    await waitFor(() => expect(geolocateMock).toHaveBeenCalledTimes(1));
+
+    const rail = screen.getByRole("complementary", { name: "Actions" });
+    // The import left no conflict: that requirement is pending, the title is met.
+    expect(within(rail).getByText("Title")).toBeInTheDocument();
+    expect(within(rail).getByText(/Conflict/)).toBeInTheDocument();
+  });
+
+  it("publishes through the versioned write, naming version 0", async () => {
+    render(<EditEventPage />);
+    await publishDetection();
+    await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
+    const [id, input] = saveVersionMock.mock.calls[0];
+    expect(id).toBe("d1");
+    expect(input.version_no).toBe(0);
+    expect(input.note).toBeUndefined();
+  });
+
+  it("returns to the queue list after a publish made outside a pass", async () => {
+    render(<EditEventPage />);
+    await publishDetection();
+    await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
     await waitFor(() =>
       expect(push).toHaveBeenCalledWith("/profile/ana/detections")
     );
@@ -307,17 +317,17 @@ describe("a review pass over the queue", () => {
   it("skips to the next detection's own URL, flag kept", () => {
     render(<EditEventPage />);
     fireEvent.click(screen.getByRole("button", { name: "Skip" }));
-    expect(geolocateMock).not.toHaveBeenCalled();
+    expect(saveVersionMock).not.toHaveBeenCalled();
     // A real address per detection: a reload keeps the place and Back steps one detection.
     expect(push).toHaveBeenCalledWith("/events/d2/edit?queue=1");
   });
 
-  it("hands over to the next detection after a submit", async () => {
+  it("hands over to the next detection after a publish", async () => {
     render(<EditEventPage />);
-    await submitDetection();
+    await publishDetection();
 
-    await waitFor(() => expect(geolocateMock).toHaveBeenCalledTimes(1));
-    expect(geolocateMock.mock.calls[0][0]).toBe("d1");
+    await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
+    expect(saveVersionMock.mock.calls[0][0]).toBe("d1");
     await waitFor(() =>
       expect(push).toHaveBeenCalledWith("/events/d2/edit?queue=1")
     );
@@ -363,12 +373,12 @@ describe("a review pass over the queue", () => {
   });
 });
 
-describe("the submit confirm", () => {
+describe("the publish confirm", () => {
   /** Render the form, fill the floor, and take the first (arming) click. */
   function armSubmit() {
     render(<EditEventPage />);
     fillTheFloor();
-    const button = screen.getByRole("button", { name: "Submit" });
+    const button = screen.getByRole("button", { name: "Publish" });
     fireEvent.click(button);
     return button;
   }
@@ -377,17 +387,17 @@ describe("the submit confirm", () => {
     const button = armSubmit();
 
     // Same element, renamed: nothing is inserted before it, so the second click lands where the first did.
-    expect(button).toHaveAccessibleName("Confirm submit");
-    expect(screen.getByRole("button", { name: "Confirm submit" })).toBe(button);
+    expect(button).toHaveAccessibleName("Confirm publish");
+    expect(screen.getByRole("button", { name: "Confirm publish" })).toBe(button);
     expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
-    expect(geolocateMock).not.toHaveBeenCalled();
+    expect(saveVersionMock).not.toHaveBeenCalled();
   });
 
   it("announces the armed state and what the next click costs", () => {
     armSubmit();
     // A live region beside the button, not a renamed control, like every copy control.
     const announcement = screen.getByText(
-      "Click again to submit. Submitting publishes the event; later changes become versions."
+      "Click again to publish. Publishing makes the event public as version 1; later changes become versions."
     );
     expect(announcement).toHaveAttribute("role", "status");
     expect(announcement).toHaveAttribute("aria-live", "polite");
@@ -396,16 +406,16 @@ describe("the submit confirm", () => {
   it("writes on the second click", async () => {
     const button = armSubmit();
     fireEvent.click(button);
-    await waitFor(() => expect(geolocateMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
   });
 
   it("disarms on Escape", () => {
     const button = armSubmit();
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(button).toHaveAccessibleName("Submit");
+    expect(button).toHaveAccessibleName("Publish");
     expect(
       screen.queryByText(
-        "Click again to submit. Submitting publishes the event; later changes become versions."
+        "Click again to publish. Publishing makes the event public as version 1; later changes become versions."
       )
     ).toBeNull();
   });
@@ -413,9 +423,9 @@ describe("the submit confirm", () => {
   it("disarms when the next click lands elsewhere", () => {
     const button = armSubmit();
     fireEvent.pointerDown(screen.getByRole("textbox", { name: /Title/ }));
-    expect(button).toHaveAccessibleName("Submit");
+    expect(button).toHaveAccessibleName("Publish");
     // And that click is spent disarming: nothing is written.
-    expect(geolocateMock).not.toHaveBeenCalled();
+    expect(saveVersionMock).not.toHaveBeenCalled();
   });
 
   it("disarms on its own after a few seconds", () => {
@@ -425,7 +435,7 @@ describe("the submit confirm", () => {
       act(() => {
         vi.advanceTimersByTime(ARM_MS);
       });
-      expect(button).toHaveAccessibleName("Submit");
+      expect(button).toHaveAccessibleName("Publish");
     } finally {
       vi.useRealTimers();
     }
@@ -447,7 +457,7 @@ describe("editing a published geolocation", () => {
     expect(screen.queryByText(/no longer be edited/)).toBeNull();
     expect(screen.getByRole("button", { name: "Save version 2" })).toBeInTheDocument();
     // Neither detection verb belongs here: the row is not skippable, and its close is named for the row.
-    expect(screen.queryByRole("button", { name: "Submit" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Publish" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
   });
 
@@ -499,7 +509,7 @@ describe("editing a published geolocation", () => {
     // No arming step: a version is the ordinary way a published event changes.
     fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
     await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
-    expect(geolocateMock).not.toHaveBeenCalled();
+    expect(saveVersionMock.mock.calls[0][1].version_no).toBe(1);
     await waitFor(() => expect(push).toHaveBeenCalledWith("/events/d1"));
   });
 
@@ -614,22 +624,32 @@ describe("editing an open request", () => {
     row = requestFixture();
   });
 
-  it("opens the request form instead of refusing the edit", () => {
+  it("opens the one form with Publish, Save request and Close for its owner", () => {
     render(<EditEventPage />);
 
     expect(
       screen.getByRole("heading", { name: "Edit request" })
     ).toBeInTheDocument();
     expect(screen.queryByText(/no edit form/)).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Save request" })
-    ).toBeInTheDocument();
     const rail = screen.getByRole("complementary", { name: "Actions" });
+    expect(within(rail).getByRole("button", { name: "Publish" })).toBeInTheDocument();
     expect(within(rail).getByRole("button", { name: "Save request" })).toBeInTheDocument();
     expect(within(rail).getByRole("button", { name: "Close this request" })).toBeInTheDocument();
-    // A request files no version and is answered through the submit form, so neither published verb applies.
+    // A request is version 0: nothing to supersede yet.
     expect(screen.queryByRole("button", { name: /Save version/ })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Submit" })).toBeNull();
+  });
+
+  it("publishes the request as version 1 and opens the event", async () => {
+    row = requestFixture({ coords: { lat: 48.5, lng: 37.8 }, proof: '<img src="https://cdn.test/p.jpg">' });
+    render(<EditEventPage />);
+
+    fillTheFloor();
+    fireEvent.click(screen.getByRole("button", { name: "Publish" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm publish" }));
+    await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
+    expect(saveVersionMock.mock.calls[0][1].version_no).toBe(0);
+    expect(updateRequestMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/events/d1"));
   });
 
   it("closes the request from the actions rail, then lands on the request", async () => {
@@ -669,7 +689,6 @@ describe("editing an open request", () => {
       sources: [{ id: "s1", media_id: "m1", links: [{ url: "https://t.me/channel/12345" }] }],
     });
     expect(saveVersionMock).not.toHaveBeenCalled();
-    expect(geolocateMock).not.toHaveBeenCalled();
     await waitFor(() => expect(push).toHaveBeenCalledWith("/requests/d1"));
   });
 
@@ -700,16 +719,16 @@ describe("editing an open request", () => {
     ).toBeInTheDocument();
   });
 
-  it("sends a visitor to the request rather than an edit form", () => {
+  it("lets a visitor publish it, without the owner's save and close", () => {
     auth.user = VISITOR;
     render(<EditEventPage />);
 
-    // Owner-only (403 server-side); the way out names the surface a request reads on.
+    expect(
+      screen.getByRole("heading", { name: "Geolocate request" })
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Publish" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save request" })).toBeNull();
-    expect(screen.getByRole("link", { name: "View this request" })).toHaveAttribute(
-      "href",
-      "/requests/d1"
-    );
+    expect(screen.queryByRole("button", { name: "Close this request" })).toBeNull();
   });
 
   it("holds the request floor before it posts", () => {
@@ -730,6 +749,17 @@ describe("a state with no owner edit", () => {
 
     expect(screen.getByText(/no edit form/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save version 2" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Submit" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Publish" })).toBeNull();
+  });
+
+  it("sends a visitor of someone else's detection to the event", () => {
+    auth.user = VISITOR;
+    render(<EditEventPage />);
+
+    expect(screen.queryByRole("button", { name: "Publish" })).toBeNull();
+    expect(screen.getByRole("link", { name: "View this event" })).toHaveAttribute(
+      "href",
+      "/events/d1"
+    );
   });
 });

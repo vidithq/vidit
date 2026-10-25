@@ -61,16 +61,15 @@ export interface EventFormState {
 }
 
 /** The editors a row seeds: one per stored source, or one blank editor. */
-export function seedSources(row: EventDetail | null): SourceDraft[] {
+function seedSources(row: EventDetail | null): SourceDraft[] {
   return row && row.sources.length > 0 ? row.sources.map(sourceDraftFrom) : [newSourceDraft()];
 }
 
 /**
  * Seed one form's state from the row it edits, or empty for a fresh submit.
  *
- * Seeds are `useState` initialisers, so they apply at mount. The edit surfaces mount after their
- * row loaded (which gives the proof editor its `initialContent`); the submit form seeds empty and
- * drives the setters from its own load effect.
+ * Seeds are `useState` initialisers, so they apply at mount. The edit form mounts after its row
+ * loaded, which gives the proof editor its `initialContent`; the submit form seeds empty.
  */
 export function useEventForm(row?: EventDetail | null): EventFormState {
   const seed = row ?? null;
@@ -139,8 +138,8 @@ export function useEventForm(row?: EventDetail | null): EventFormState {
 
 interface EventFormFieldsProps {
   form: EventFormState;
-  /** The stored row behind the form (edited event, corrected or fulfilled request). `null` on a
-   *  fresh submit. */
+  /** The stored row behind the form (the edited or published event). `null` on a fresh
+   *  submit. */
   row?: EventDetail | null;
   /** Show `row`'s provenance link, read-only. */
   showProvenance?: boolean;
@@ -150,9 +149,9 @@ interface EventFormFieldsProps {
  * The field block every event write fills in, in reading order: title, sources, location,
  * details, classification, proof.
  *
- * The submit form, the open-request edit and the detection / published edit compose it and keep
- * no copy of a field, so labels, help and red outlines stay one thing. Per-surface pieces
- * (readiness list, duplicate probe, version note, confirm step) stay with the caller.
+ * The submit form and the edit form compose it and keep no copy of a field, so labels, help and
+ * red outlines stay one thing. Per-surface pieces (readiness list, duplicate probe, version note,
+ * confirm step) stay with the caller.
  */
 export function EventFormFields({
   form,
@@ -203,7 +202,7 @@ export function EventFormFields({
         conflictInvalid={invalidKeys.has("conflict_tag")}
       />
 
-      {/* The image floor binds at the geolocate; a request may stay imageless. */}
+      {/* The image floor binds at the publish; a request may stay imageless. */}
       <ProofEditorPanel
         proof={form.proof}
         onChange={form.setProof}

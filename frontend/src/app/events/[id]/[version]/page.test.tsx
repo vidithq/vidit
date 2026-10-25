@@ -93,15 +93,17 @@ const snapshot = (title: string): Record<string, unknown> => ({
 });
 
 let rows: Record<number, EventVersion>;
+let current: EventDetail;
 
 function resource(path: string): unknown {
-  if (path === "/events/e1") return EVENT;
+  if (path === "/events/e1") return current;
   const match = path.match(/^\/events\/e1\/versions\/([0-9]+)$/);
   return match ? rows[Number(match[1])] : null;
 }
 
 beforeEach(() => {
   segment = "v2";
+  current = EVENT;
   viewer.id = null;
   replace.mockClear();
   notFound.mockClear();
@@ -141,6 +143,20 @@ describe("EventVersionPage", () => {
     const banner = screen.getByText(/Version 1 of 3/);
     expect(banner.textContent).toContain("published by");
     expect(banner.textContent).toContain("ana");
+  });
+
+  it("names version 0 after the detection the event was published from", () => {
+    current = { ...EVENT, version_zero: "detection" };
+    rows[0] = version(0, snapshot("As imported"));
+    segment = "v0";
+    render(<EventVersionPage />);
+    expect(screen.getByRole("heading", { name: "As imported" })).toBeTruthy();
+    const banner = screen.getByText(/The detection this event was published from/);
+    expect(banner.textContent).toContain("imported by");
+    expect(banner.textContent).toContain("ana");
+    // It reads as the detection it was, and the selector names it so.
+    expect(screen.getByText("Detected")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Detection: choose a version" })).toBeTruthy();
   });
 
   it("serves a redacted version as its banner and a notice, with no content", () => {

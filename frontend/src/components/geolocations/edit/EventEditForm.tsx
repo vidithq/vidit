@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ApiError } from "@/lib/api";
@@ -9,6 +9,7 @@ import {
   EventFormFields,
   useEventForm,
 } from "@/components/geolocations/EventFormFields";
+import { PUBLISH_REQS, PublishChecklist } from "@/components/geolocations/PublishChecklist";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -28,57 +29,71 @@ import { Input } from "@/components/ui/Input";
 import { cleanNumber } from "@/lib/coordinates";
 import {
   VERSION_NOTE_MAX_LEN,
-  geolocateEvent,
   hasVersionChanges,
   missingEventFields,
+  missingEventRequestFields,
   nothingChangedMessage,
+  parseGuessCoords,
   saveVersion,
+  updateEventRequest,
   type EventVersionFormState,
+  type MissingFieldKey,
 } from "@/lib/events";
 import { sourceFloor, sourcesChanged, sourceWriteError } from "@/lib/sources";
+import { eventHref } from "@/lib/routes";
 import type { EventDetail } from "@/types";
 
-// Ties the rail's submit button and version note to the form in the main column.
+// Ties the rail's actions and version note to the form in the main column.
 const EDIT_FORM_ID = "event-edit-form";
 
+const CONFIRM_SENTENCE =
+  "Click again to publish. Publishing makes the event public as version 1; later changes become versions.";
+
 /**
- * Owner edit of one event, in two shapes.
+ * The one edit form of an event, in two shapes, each a write of `POST /events/{id}/versions`.
  *
- * **Submit** (a machine-`detected` row): the owner curates the whole detection
- * and submits it, which applies the form and flips the row to `geolocated` in
- * one atomic multipart request. Only `detected_from_url` is immutable. The
- * write takes a confirm, since publishing makes the event public.
+ * **Publish** (a `requested` or `detected` row, version 0): the whole event is editable and
+ * **Publish** applies the form and makes the row a geolocation at version 1, in one request.
+ * The row as it stood stays readable as version 0. The rail lists the publish requirements, met
+ * or not, and the write takes a confirm, since publishing makes the event public. A detection is
+ * the owner's to publish; a request is anyone's, and its owner may also **Save request**, which
+ * overwrites it in place and leaves it version 0.
  *
- * **Save version** (a `geolocated` row): the same fields, and the write files
- * the version it supersedes instead of overwriting it. An optional note travels
- * with that version. No confirm.
+ * **Save version** (a `geolocated` row): the same fields, and the write files the version it
+ * supersedes. An optional note travels with that version. No confirm.
  *
- * Built like the create form: `EventFormFields`, `useEventForm`, `SourcesField`.
- * State is seeded from props (the form mounts after the row loaded), so the proof
- * editor gets its `initialContent` on first paint.
+ * Built like the create form: `EventFormFields`, `useEventForm`, `SourcesField`. State is seeded
+ * from props (the form mounts after the row loaded), so the proof editor gets its
+ * `initialContent` on first paint. Every write names the version the form was loaded at, so a
+ * row that moved meanwhile answers a conflict instead of being overwritten.
  *
- * The fields fill the main column. The right rail holds the actions card (the
- * version note, the save, its banners and the close) and, on a published row,
+ * The fields fill the main column. The right rail holds the actions card (the requirements or the
+ * version note, the writes, their banners and, for the owner, the close) and, on a published row,
  * the geolocators, whose changes apply on click and never make a version.
  *
- * With `queue` set the header gains the position and a Skip, and a finished
- * detection hands over to the next one.
+ * With `queue` set the header gains the position and a Skip, and a finished detection hands over
+ * to the next one.
  */
 export function EventEditForm({
   geo,
   redirectTo,
+  isOwner,
   queue,
   onCreditChanged,
 }: {
   geo: EventDetail;
+  /** Where a save or a close lands, and the back fallback. A published request opens its event. */
   redirectTo: string;
+  /** Whether the reader owns the row: the close, a request's in-place save and the geolocators
+   *  are the owner's. */
+  isOwner: boolean;
   /** Runs after the owner changes the geolocators, so the page rereads the row. */
   onCreditChanged?: () => void;
   /** Set when this detection is one step of a review pass over the queue. */
   queue?: {
     /** `Detection n of m`. */
     position: string;
-    /** Runs on Skip, and after a submit or a rejection. */
+    /** Runs on Skip, and after a publish or a rejection. */
     onAdvance: () => void;
   };
 }) {
@@ -86,41 +101,79 @@ export function EventEditForm({
   const { refresh: refreshDetectionCount } = useDetectionsCount();
   // Read off the row so the page and the form cannot disagree about the mode.
   const editingPublished = geo.status === "geolocated";
+  const isRequest = geo.status === "requested";
   const finish = queue?.onAdvance ?? (() => router.push(redirectTo));
 
   const form = useEventForm(geo);
 
-  // Edit only: a detection has no superseded version to annotate.
+  // Edit only: a publish files version 0, which keeps no note of its own.
   const [editNote, setEditNote] = useState("");
 
-  // Everything both writes post. Required here (the floor check runs first), so a NaN never
-  // reaches a submit.
-  const buildCommon = () => ({
-    ...form.shared(),
-    lat: cleanNumber(form.lat) ?? NaN,
-    lng: cleanNumber(form.lng) ?? NaN,
-  });
+  // Live, so the requirements tick as the form fills.
+  const floor = useMemo(() => sourceFloor(form.sources), [form.sources]);
+  const publishMissing = useMemo(
+    () =>
+      missingEventFields({
+        title: form.title,
+        lat: form.lat,
+        lng: form.lng,
+        proof: form.proof,
+        sources: floor,
+        hasConflict: form.selectedConflictIds.length > 0,
+      }),
+    [form.title, form.lat, form.lng, form.proof, floor, form.selectedConflictIds]
+  );
+  const publishMissingKeys = useMemo(
+    () => new Set<MissingFieldKey>(publishMissing.map((m) => m.key)),
+    [publishMissing]
+  );
 
   const submitMutation = useMutation(
     () =>
-      editingPublished
-        ? saveVersion(geo.id, { ...buildCommon(), note: editNote })
-        : geolocateEvent(geo.id, buildCommon()),
+      saveVersion(geo.id, {
+        ...form.shared(),
+        // Required (the floor check runs first), so a NaN never reaches a submit.
+        lat: cleanNumber(form.lat) ?? NaN,
+        lng: cleanNumber(form.lng) ?? NaN,
+        version_no: geo.version_no,
+        ...(editingPublished ? { note: editNote } : {}),
+      }),
     {
-      fallback: editingPublished ? "Couldn't save this version." : "Couldn't submit.",
+      fallback: editingPublished ? "Couldn't save this version." : "Couldn't publish.",
       // The row may have moved under an open form, so `nothing_changed` prints
       // the server's sentence (it names the version actually compared against);
-      // the loaded number is only the fallback. `version_limit` keeps the
-      // server's message, which carries the ceiling.
+      // the loaded number is only the fallback. `version_limit` and
+      // `version_mismatch` keep the server's message.
       onError: (err) =>
         err instanceof ApiError && err.code === "nothing_changed"
           ? err.message || nothingChangedMessage(geo.version_no)
           : sourceWriteError(err),
       onSuccess: () => {
-        // The badge counts `detected` rows, which only submit changes.
-        if (!editingPublished) refreshDetectionCount();
-        finish();
+        if (editingPublished) {
+          finish();
+          return;
+        }
+        // The badge counts `detected` rows, which a publish removes.
+        if (!isRequest) refreshDetectionCount();
+        // A published request opens as the event it now is.
+        if (isRequest) router.push(eventHref(geo.id));
+        else finish();
       },
+    }
+  );
+
+  // The requester's in-place save of an open request: no version, and the request floor only.
+  const saveRequestMutation = useMutation(
+    () =>
+      updateEventRequest(geo.id, {
+        ...form.shared(),
+        // Both-or-neither parse, so a half-typed pair is dropped, not a 400.
+        ...parseGuessCoords(form.lat, form.lng),
+      }),
+    {
+      fallback: "Couldn't save this request.",
+      onError: sourceWriteError,
+      onSuccess: () => router.push(redirectTo),
     }
   );
 
@@ -140,8 +193,14 @@ export function EventEditForm({
     }
   );
 
-  const busy = submitMutation.loading;
-  const actionError = submitMutation.error;
+  const busy = submitMutation.loading || saveRequestMutation.loading;
+  const actionError = submitMutation.error ?? saveRequestMutation.error;
+
+  const resetActions = () => {
+    submitMutation.reset();
+    saveRequestMutation.reset();
+    form.clearIncomplete();
+  };
 
   const versionState = (): EventVersionFormState => ({
     title: form.title,
@@ -155,28 +214,19 @@ export function EventEditForm({
     conflictIds: form.selectedConflictIds,
   });
 
-  // Submit enforces the full floor, then asks to confirm; an incomplete
-  // detection surfaces the notice instead.
+  // The write enforces the full floor; a publish then asks to confirm. An incomplete form
+  // surfaces the notice instead.
   const attemptSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    submitMutation.reset();
-    form.clearIncomplete();
+    resetActions();
     // The taxonomy must be loaded before the floor can tell "didn't pick one"
     // from "still loading".
     if (form.taxonomy.blockedMessage !== null) {
       submitMutation.setError(form.taxonomy.blockedMessage);
       return;
     }
-    const missing = missingEventFields({
-      title: form.title,
-      lat: form.lat,
-      lng: form.lng,
-      proof: form.proof,
-      sources: sourceFloor(form.sources),
-      hasConflict: form.selectedConflictIds.length > 0,
-    });
-    if (missing.length) {
-      form.flagIncomplete(missing);
+    if (publishMissing.length) {
+      form.flagIncomplete(publishMissing);
       return;
     }
     // A running upload or a refused archived copy holds the write.
@@ -185,7 +235,7 @@ export function EventEditForm({
       submitMutation.setError(blocked);
       return;
     }
-    // A version writes on the first click; a submit arms and writes on the
+    // A version writes on the first click; a publish arms and writes on the
     // second. Every check above runs on both clicks.
     if (editingPublished) {
       // The server refuses the same edit with the same words.
@@ -199,27 +249,47 @@ export function EventEditForm({
     triggerSubmit();
   };
 
-  const CONFIRM_SENTENCE =
-    "Click again to submit. Submitting publishes the event; later changes become versions.";
+  const attemptSaveRequest = () => {
+    resetActions();
+    const missing = missingEventRequestFields({ title: form.title, sources: floor });
+    if (missing.length) {
+      form.flagIncomplete(missing);
+      return;
+    }
+    const blocked = sourcesBlockWrite(form.sources);
+    if (blocked) {
+      saveRequestMutation.setError(blocked);
+      return;
+    }
+    void saveRequestMutation.run();
+  };
+
   // The version the save produces (live row N becomes N + 1).
-  const nextVersion = geo.version_no + 1;
-  const saveLabel = `Save version ${nextVersion}`;
-  const widestLabel = editingPublished ? saveLabel : "Confirm submit";
+  const saveLabel = `Save version ${geo.version_no + 1}`;
+  const widestLabel = editingPublished ? saveLabel : "Confirm publish";
   const submitLabel = editingPublished
-    ? busy
+    ? submitMutation.loading
       ? "Saving…"
       : saveLabel
-    : busy
-      ? "Submitting…"
+    : submitMutation.loading
+      ? "Publishing…"
       : submitArmed
-        ? "Confirm submit"
-        : "Submit";
+        ? "Confirm publish"
+        : "Publish";
+
+  const title = editingPublished
+    ? "Edit geolocation"
+    : isRequest
+      ? isOwner
+        ? "Edit request"
+        : "Geolocate request"
+      : "Publish detection";
 
   return (
     <PageShell
       back
       backFallback={redirectTo}
-      title={editingPublished ? "Edit geolocation" : "Submit detection"}
+      title={title}
       actions={
         // The review pass's own chrome. A plain edit has none.
         queue && (
@@ -251,6 +321,17 @@ export function EventEditForm({
               </div>
             )}
 
+            {!editingPublished && (
+              <div className="space-y-2">
+                <SectionEyebrow
+                  title="To publish"
+                  concept="publish_requirements"
+                  margin="none"
+                />
+                <PublishChecklist reqs={PUBLISH_REQS} missing={publishMissingKeys} />
+              </div>
+            )}
+
             <IncompleteFormNotice
               key={form.validationAttempt}
               missing={form.missingFields.map((m) => m.label)}
@@ -276,23 +357,31 @@ export function EventEditForm({
                     <span className="col-start-1 row-start-1">{submitLabel}</span>
                   </span>
                 </Button>
-                {!editingPublished && <FieldHelp concept="action_submit" />}
+                {!editingPublished && <FieldHelp concept="action_publish" />}
               </span>
+              {/* No confirm: the in-place save publishes nothing and files no version. */}
+              {isRequest && isOwner && (
+                <Button variant="secondary" onClick={attemptSaveRequest} disabled={busy}>
+                  {saveRequestMutation.loading ? "Saving…" : "Save request"}
+                </Button>
+              )}
               {/* Announces the armed state to screen readers. */}
               <span className="sr-only" role="status" aria-live="polite">
                 {submitArmed ? CONFIRM_SENTENCE : ""}
               </span>
             </div>
 
-            <CloseSection
-              eventId={geo.id}
-              status={geo.status}
-              disabled={busy}
-              onClosed={() => {
-                if (!editingPublished) refreshDetectionCount();
-                finish();
-              }}
-            />
+            {isOwner && (
+              <CloseSection
+                eventId={geo.id}
+                status={geo.status}
+                disabled={busy}
+                onClosed={() => {
+                  if (geo.status === "detected") refreshDetectionCount();
+                  finish();
+                }}
+              />
+            )}
           </Card>
 
           {editingPublished && (

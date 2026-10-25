@@ -3,7 +3,6 @@ import { describe, expect, it, vi, beforeEach, type Mock } from "vitest";
 import {
   createEvent,
   createEventRequest,
-  geolocateEvent,
   parseGuessCoords,
   saveVersion,
   updateEventRequest,
@@ -122,8 +121,7 @@ describe("the event write endpoints", () => {
     ["create", () => createEvent(input), "/events"],
     ["request", () => createEventRequest(input), "/events/requests"],
     ["request edit", () => updateEventRequest("e1", input), "/events/e1/request"],
-    ["geolocate", () => geolocateEvent("e1", input), "/events/e1/geolocate"],
-    ["version", () => saveVersion("e1", input), "/events/e1/versions"],
+    ["version", () => saveVersion("e1", { ...input, version_no: 0 }), "/events/e1/versions"],
   ])("%s posts to its endpoint", async (_name, write, path) => {
     await write();
     expect(lastCall()[0]).toBe(path);
@@ -131,9 +129,14 @@ describe("the event write endpoints", () => {
   });
 
   it("carries a trimmed version note, and none when blank", async () => {
-    await saveVersion("e1", { ...input, note: "  moved the pin  " });
+    await saveVersion("e1", { ...input, version_no: 1, note: "  moved the pin  " });
     expect(lastBody().get("note")).toBe("moved the pin");
-    await saveVersion("e1", { ...input, note: "   " });
+    await saveVersion("e1", { ...input, version_no: 1, note: "   " });
     expect(lastBody().has("note")).toBe(false);
+  });
+
+  it("names the version the form was loaded at", async () => {
+    await saveVersion("e1", { ...input, version_no: 0 });
+    expect(lastBody().get("version_no")).toBe("0");
   });
 });

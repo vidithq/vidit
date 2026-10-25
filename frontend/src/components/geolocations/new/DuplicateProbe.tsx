@@ -20,9 +20,6 @@ interface DuplicateProbeProps {
   lng: string;
   sourceUrl: string;
   eventDate: string;
-  /** Fulfilment mode skips the probe: the locked source URL would re-surface the
-   *  request itself. */
-  skip: boolean;
 }
 
 /**
@@ -36,14 +33,11 @@ export function DuplicateProbe({
   lng,
   sourceUrl,
   eventDate,
-  skip,
 }: DuplicateProbeProps) {
   const [hits, setHits] = useState<PossibleDuplicate[]>([]);
 
-  // Null when this edit can't be probed: fulfilment mode, missing or out-of-range
-  // coords (the always-on proximity leg), or no source URL and no event date.
+  // Null when this edit can't be probed: missing or out-of-range coords (the always-on proximity leg), or no source URL and no event date.
   const query = useMemo(() => {
-    if (skip) return null;
     const latNum = parseFloat(lat);
     const lngNum = parseFloat(lng);
     if (
@@ -64,7 +58,7 @@ export function DuplicateProbe({
     if (sourceUrl) params.set("source_url", sourceUrl);
     if (eventDate) params.set("occurred_date", eventDate);
     return params.toString();
-  }, [lat, lng, sourceUrl, eventDate, skip]);
+  }, [lat, lng, sourceUrl, eventDate]);
 
   // Not debounced: an unprobeable edit drops the warning on the keystroke.
   useEffect(() => {
