@@ -3,20 +3,15 @@
 import { useState, type Dispatch, type SetStateAction } from "react";
 import { Plus, X } from "lucide-react";
 import type { Conflict, Tag } from "@/types";
-import {
-  CONFLICT_OTHER_NAME,
-  conflictLabel,
-  sortConflicts,
-} from "@/lib/conflicts";
+import { CONFLICT_OTHER_NAME, conflictLabel, sortConflicts } from "@/lib/conflicts";
 import { useMutation } from "@/hooks/useMutation";
 import { ApiError, apiFetch } from "@/lib/api";
-import { Input } from "@/components/ui/Input";
 import { Combobox } from "@/components/ui/Combobox";
 import { Pill } from "@/components/ui/Pill";
 import { Switch } from "@/components/ui/Switch";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
-import { pluralNoun } from "@/lib/format";
+import { cn } from "@/lib/cn";
 
 // Mirrors `schemas/tag.py` `TagCreate.name` (the `String(100)` cap); change both.
 const TAG_NAME_MAX_LEN = 100;
@@ -37,8 +32,8 @@ interface TagPickerProps {
 }
 
 /**
- * The classification fields of the event forms, for the Details card: conflict, a multi-select
- * typeahead over the conflicts referential, then the tags as `<TagChips>`.
+ * The classification fields of the event forms, for the Details card: the conflicts, then the
+ * tags as `<TagChips>`.
  */
 export function TagPicker({
   tags,
@@ -50,23 +45,15 @@ export function TagPicker({
   setSelectedConflictIds,
   conflictInvalid = false,
 }: TagPickerProps) {
-  const invalidChips = "rounded-md p-2 ring-1 ring-red-500/40";
-
   return (
     <>
       {conflicts.length > 0 && (
-        <div className="space-y-2">
-          <span className={`${FORM_LABEL}${conflictInvalid ? ` ${FORM_INVALID_LABEL}` : ""}`}>
-            Conflict <FieldHelp concept="conflict" />
-          </span>
-          <div className={conflictInvalid ? invalidChips : undefined}>
-            <ConflictTypeahead
-              conflicts={conflicts}
-              selectedIds={selectedConflictIds}
-              setSelectedIds={setSelectedConflictIds}
-            />
-          </div>
-        </div>
+        <ConflictChips
+          conflicts={conflicts}
+          selectedIds={selectedConflictIds}
+          setSelectedIds={setSelectedConflictIds}
+          invalid={conflictInvalid}
+        />
       )}
 
       <div className="space-y-2">
@@ -183,9 +170,10 @@ export function TagChips({
         onOpenChange={setOpen}
         options={options}
         optionKey={tagOptionKey}
+        pillOption={(option) => "tag" in option}
         renderOption={(option) =>
           "tag" in option ? (
-            <span className="min-w-0 truncate">{option.tag.name}</span>
+            option.tag.name
           ) : (
             <>
               <Plus size={14} aria-hidden className="shrink-0 text-neutral-500" />
@@ -210,80 +198,51 @@ export function TagChips({
   );
 }
 
-// Cap on the visible results; the empty-input default sits far under it.
-const CONFLICTS_PREVIEW = 30;
-
 /**
- * Multi-select typeahead over the conflicts referential, filtering client-side.
- * Empty input shows the major-tier ongoing conflicts with "Other" pinned last
- * and a hint counting the rest. Searching covers all ongoing conflicts; the
- * "Include ended conflicts" switch adds ended ones. Results sort by tier then
- * name (`sortConflicts`). Selected conflicts render as deselectable accent
- * pills above the input.
- *
- * Exported for surfaces that pick conflicts without the classification card
- * (the detections review flow); alongside tags, use `<TagPicker>`.
+ * The conflicts picked from the referential, filtered client-side: the picks as removable chips
+ * over a combobox that lists the ongoing conflicts matching the typed text, by tier then name
+ * (`sortConflicts`), with "Other" pinned last and offered whatever its state. The "Include ended
+ * conflicts" switch adds the ended ones. A pick stays on show when the switch drops its state.
+ * The switch sits on the label row, out of the way of a list that opens below the field.
  */
-export function ConflictTypeahead({
+function ConflictChips({
   conflicts,
   selectedIds,
   setSelectedIds,
+  invalid,
 }: {
   conflicts: Conflict[];
   selectedIds: string[];
   setSelectedIds: Dispatch<SetStateAction<string[]>>;
+  /** Flags the conflict blocking publish (red label and outline). */
+  invalid: boolean;
 }) {
   const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
   const [includeEnded, setIncludeEnded] = useState(false);
 
-  const toggle = (id: string) =>
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
+  const select = (id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    setQuery("");
+  };
 
-  // A selection survives the filters (an ended pick stays deselectable).
   const selected = conflicts.filter((c) => selectedIds.includes(c.id));
-
-  const q = query.trim().toLowerCase();
-  const searchable = conflicts.filter(
-    (c) => !selectedIds.includes(c.id) && (includeEnded || c.is_ongoing)
+  const needle = query.trim().toLowerCase();
+  const options = sortConflicts(
+    conflicts.filter(
+      (c) =>
+        !selectedIds.includes(c.id) &&
+        (includeEnded || c.is_ongoing || c.name === CONFLICT_OTHER_NAME) &&
+        c.name.toLowerCase().includes(needle)
+    )
   );
-  // Empty input: major ongoing conflicts plus the "Other" escape row, matched by
-  // name alone so it is always offered.
-  const matches = sortConflicts(
-    q === ""
-      ? conflicts.filter(
-          (c) =>
-            !selectedIds.includes(c.id) &&
-            (c.name === CONFLICT_OTHER_NAME || (c.is_ongoing && c.tier === "major"))
-        )
-      : searchable.filter((c) => c.name.toLowerCase().includes(q))
-  );
-  const visible = matches.slice(0, CONFLICTS_PREVIEW);
-  const overflow = matches.length - visible.length;
-  // Lets the switch show an effect before any keystroke.
-  const searchableBeyondDefault = searchable.length - matches.length;
 
   return (
     <div className="space-y-2">
-      {selected.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {selected.map((c) => (
-            <Pill key={c.id} tone="accent" onClick={() => toggle(c.id)}>
-              {conflictLabel(c)}
-            </Pill>
-          ))}
-        </div>
-      )}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <Input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search conflicts"
-          aria-label="Search conflicts"
-          className="flex-1 min-w-40 max-w-xs"
-        />
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+        <span className={`${FORM_LABEL}${invalid ? ` ${FORM_INVALID_LABEL}` : ""}`}>
+          Conflict <FieldHelp concept="conflict" />
+        </span>
         <button
           type="button"
           role="switch"
@@ -295,32 +254,44 @@ export function ConflictTypeahead({
           Include ended conflicts
         </button>
       </div>
-      {visible.length > 0 ? (
-        <div className="flex flex-wrap gap-2">
-          {visible.map((c) => (
-            <Pill key={c.id} tone="neutral" onClick={() => toggle(c.id)}>
-              {conflictLabel(c)}
-            </Pill>
-          ))}
-        </div>
-      ) : (
-        <p className="text-xs text-neutral-500">
-          No conflicts match
-          {includeEnded ? "." : "; try including ended conflicts."}
-        </p>
-      )}
-      {overflow > 0 && (
-        <p className="text-xs text-neutral-500">
-          {overflow} more. Type to narrow the list.
-        </p>
-      )}
-      {/* Not alongside the empty-state message. */}
-      {q === "" && visible.length > 0 && searchableBeyondDefault > 0 && (
-        <p className="text-xs text-neutral-500">
-          {searchableBeyondDefault} more{includeEnded ? "" : " ongoing"}{" "}
-          {pluralNoun(searchableBeyondDefault, "conflict")}, type to search.
-        </p>
-      )}
+      <div className={cn("space-y-2", invalid && "rounded-md p-2 ring-1 ring-red-500/40")}>
+        {selected.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {selected.map((c) => (
+              <Pill
+                key={c.id}
+                tone="accent"
+                onClick={() => setSelectedIds((prev) => prev.filter((id) => id !== c.id))}
+              >
+                <span className="sr-only">Remove {conflictLabel(c)}</span>
+                <span aria-hidden>{conflictLabel(c)}</span>
+                <X size={12} aria-hidden />
+              </Pill>
+            ))}
+          </div>
+        )}
+        <Combobox
+          aria-label="Conflict"
+          placeholder="Search conflicts"
+          className="max-w-xs"
+          query={query}
+          onQueryChange={setQuery}
+          open={open}
+          onOpenChange={setOpen}
+          options={options}
+          optionKey={(c) => c.id}
+          renderOption={conflictLabel}
+          pillOption={() => true}
+          onPick={(c) => select(c.id)}
+          status={
+            options.length > 0
+              ? null
+              : includeEnded
+                ? "No conflicts match."
+                : "No conflicts match; try including ended conflicts."
+          }
+        />
+      </div>
     </div>
   );
 }

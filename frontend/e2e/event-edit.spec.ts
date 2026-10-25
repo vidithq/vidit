@@ -112,5 +112,11 @@ test.describe("event edit", () => {
     await count.hover();
     await expect(page.getByText(/^\d+ missing: .*Conflict$/).and(page.locator(":visible"))).toBeVisible();
     await expectNarrowViewportLayout(page, publish);
+
+    // A pick from the conflict field takes Conflict off the count.
+    await page.getByRole("combobox", { name: "Conflict" }).fill("russian");
+    await page.getByRole("listbox", { name: "Conflict" }).getByRole("option", { name: /^Russian invasion/ }).click();
+    await expect(page.getByRole("button", { name: /^Remove Russian invasion/ })).toBeVisible();
+    await expect(publish).not.toHaveAccessibleDescription(/Conflict/);
   });
 });

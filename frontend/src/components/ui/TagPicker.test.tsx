@@ -71,73 +71,45 @@ function Host({
   );
 }
 
-const searchInput = () => screen.getByLabelText("Search conflicts");
+const conflictField = () => screen.getByRole("combobox", { name: "Conflict" });
 const endedSwitch = () =>
   screen.getByRole("switch", { name: /include ended conflicts/i });
+const optionNames = () => screen.queryAllByRole("option").map((o) => o.textContent);
 
-describe("TagPicker conflict typeahead", () => {
-  it("defaults to major ongoing conflicts plus Other pinned last", () => {
+describe("TagPicker conflicts", () => {
+  it("shows no conflict until the field takes focus", () => {
     render(<Host />);
-    expect(
-      screen.getByText("Russian invasion of Ukraine (2022-present)")
-    ).toBeInTheDocument();
-    expect(screen.getByText("Other")).toBeInTheDocument();
-    expect(screen.queryByText(/Sudanese civil war/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Falklands War/)).not.toBeInTheDocument();
-    const pills = screen
-      .getAllByRole("button")
-      .map((b) => b.textContent)
-      .filter((t) => t === "Other" || t?.includes("(2022-present)"));
-    expect(pills[pills.length - 1]).toBe("Other");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Russian invasion of Ukraine/)).not.toBeInTheDocument();
   });
 
-  it("offers the Other escape in the default list even when not flagged ongoing", () => {
+  it("lists the ongoing conflicts on focus by tier then name, Other last", () => {
+    render(<Host />);
+    fireEvent.focus(conflictField());
+    expect(optionNames()).toEqual([
+      "Russian invasion of Ukraine (2022-present)",
+      "Sudanese civil war (2023-present)",
+      "Other",
+    ]);
+  });
+
+  it("offers Other even when not flagged ongoing", () => {
     const flippedOther = [
       conflict({ id: "c1", name: "Major war", tier: "major" }),
       conflict({ id: "c5", name: "Other", is_ongoing: false }),
     ];
     render(<Host conflicts={flippedOther} />);
-    expect(screen.getByText("Other")).toBeInTheDocument();
-  });
-
-  it("suppresses the type-to-search hint when the default list is empty", () => {
-    // The empty state renders alone, never with the "type to search" hint.
-    const noDefaults = [
-      conflict({ id: "n1", name: "Minor ongoing war", tier: "minor" }),
-    ];
-    render(<Host conflicts={noDefaults} />);
-    expect(screen.getByText(/No conflicts match/)).toBeInTheDocument();
-    expect(screen.queryByText(/type to search/)).not.toBeInTheDocument();
-  });
-
-  it("counts the rest of the searchable set and reacts to the switch", () => {
-    render(<Host />);
-    // 3 ongoing, 2 shown by default (the major + Other): 1 left.
-    expect(
-      screen.getByText("1 more ongoing conflict, type to search.")
-    ).toBeInTheDocument();
-    fireEvent.click(endedSwitch());
-    expect(
-      screen.getByText("3 more conflicts, type to search.")
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Russian invasion of Ukraine (2022-present)")
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/Falklands War/)).not.toBeInTheDocument();
+    fireEvent.change(conflictField(), { target: { value: "oth" } });
+    expect(optionNames()).toEqual(["Other"]);
   });
 
   it("filters by case-insensitive substring", () => {
     render(<Host />);
-    fireEvent.change(searchInput(), { target: { value: "sudan" } });
-    expect(
-      screen.getByText("Sudanese civil war (2023-present)")
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText(/Russian invasion of Ukraine/)
-    ).not.toBeInTheDocument();
+    fireEvent.change(conflictField(), { target: { value: "SUDAN" } });
+    expect(optionNames()).toEqual(["Sudanese civil war (2023-present)"]);
   });
 
-  it("sorts search results by tier then name, Other always last", () => {
+  it("sorts the matches by tier then name, Other always last", () => {
     const withTiers = [
       conflict({ id: "s1", name: "War B", tier: "conflict" }),
       conflict({ id: "s2", name: "War A", tier: "conflict" }),
@@ -146,24 +118,21 @@ describe("TagPicker conflict typeahead", () => {
       conflict({ id: "s5", name: "Other" }),
     ];
     render(<Host conflicts={withTiers} />);
-    fireEvent.change(searchInput(), { target: { value: "r" } });
-    const names = screen
-      .getAllByRole("button")
-      .map((b) => b.textContent)
-      .filter((t) => t === "Other" || t?.startsWith("War"));
-    expect(names).toEqual(["War C", "War D", "War A", "War B", "Other"]);
+    fireEvent.change(conflictField(), { target: { value: "r" } });
+    expect(optionNames()).toEqual(["War C", "War D", "War A", "War B", "Other"]);
   });
 
-  it("keeps ended conflicts out of the search until the switch is on", () => {
+  it("keeps ended conflicts out of the list until the switch is on", () => {
     render(<Host />);
-    fireEvent.change(searchInput(), { target: { value: "falklands" } });
-    expect(screen.queryByText(/Falklands War/)).not.toBeInTheDocument();
-    expect(
-      screen.getByText(/No conflicts match; try including ended conflicts\./)
-    ).toBeInTheDocument();
+    fireEvent.change(conflictField(), { target: { value: "falklands" } });
+    expect(optionNames()).toEqual([]);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "No conflicts match; try including ended conflicts."
+    );
 
     fireEvent.click(endedSwitch());
-    expect(screen.getByText("Falklands War (1982)")).toBeInTheDocument();
+    fireEvent.focus(conflictField());
+    expect(optionNames()).toEqual(["Falklands War (1982)"]);
   });
 
   it("skips the year suffix when the start year is unknown or already in the name", () => {
@@ -177,44 +146,35 @@ describe("TagPicker conflict typeahead", () => {
       }),
     ];
     render(<Host conflicts={guards} />);
-    expect(screen.getByText("Unrest in Nowhere")).toBeInTheDocument();
-    expect(
-      screen.getByText("Haitian crisis (2018–present)")
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText(/\(2018–present\) \(2018/)
-    ).not.toBeInTheDocument();
+    fireEvent.focus(conflictField());
+    expect(optionNames()).toEqual(["Haitian crisis (2018–present)", "Unrest in Nowhere"]);
   });
 
-  it("selects and deselects conflicts as pills", () => {
+  it("picks with the arrows and Enter, and removes a pick through its chip", () => {
     render(<Host />);
-    fireEvent.change(searchInput(), { target: { value: "sudan" } });
-    fireEvent.click(screen.getByText("Sudanese civil war (2023-present)"));
-    expect(
-      screen.getAllByText("Sudanese civil war (2023-present)")
-    ).toHaveLength(1);
+    fireEvent.change(conflictField(), { target: { value: "war" } });
+    fireEvent.keyDown(conflictField(), { key: "ArrowDown" });
+    expect(screen.getByRole("option", { selected: true })).toHaveTextContent(
+      "Sudanese civil war (2023-present)"
+    );
+    fireEvent.keyDown(conflictField(), { key: "Enter" });
 
-    fireEvent.click(endedSwitch());
-    fireEvent.change(searchInput(), { target: { value: "falklands" } });
-    fireEvent.click(screen.getByText("Falklands War (1982)"));
-    fireEvent.click(endedSwitch());
-    fireEvent.change(searchInput(), { target: { value: "" } });
-    expect(screen.getByText("Falklands War (1982)")).toBeInTheDocument();
+    const chip = screen.getByRole("button", { name: "Remove Sudanese civil war (2023-present)" });
+    expect(conflictField()).toHaveValue("");
+    expect(optionNames()).not.toContain("Sudanese civil war (2023-present)");
 
-    fireEvent.click(screen.getByText("Falklands War (1982)"));
-    expect(screen.queryByText("Falklands War (1982)")).not.toBeInTheDocument();
+    fireEvent.click(chip);
+    expect(chip).not.toBeInTheDocument();
+    expect(optionNames()).toContain("Sudanese civil war (2023-present)");
   });
 
-  it("caps the visible list and hints to type when it overflows", () => {
-    const many = Array.from({ length: 40 }, (_, i) =>
-      conflict({ id: `m${i}`, name: `Conflict ${String(i).padStart(2, "0")}` })
-    );
-    render(<Host conflicts={many} />);
-    fireEvent.change(searchInput(), { target: { value: "conflict" } });
-    expect(screen.getByText("Conflict 00")).toBeInTheDocument();
-    expect(screen.getByText("Conflict 29")).toBeInTheDocument();
-    expect(screen.queryByText("Conflict 30")).not.toBeInTheDocument();
-    expect(screen.getByText(/10 more\. Type to narrow/)).toBeInTheDocument();
+  it("keeps an ended pick on show once the switch is off", () => {
+    render(<Host />);
+    fireEvent.click(endedSwitch());
+    fireEvent.change(conflictField(), { target: { value: "falklands" } });
+    fireEvent.click(screen.getByRole("option", { name: "Falklands War (1982)" }));
+    fireEvent.click(endedSwitch());
+    expect(screen.getByRole("button", { name: "Remove Falklands War (1982)" })).toBeInTheDocument();
   });
 });
 
@@ -225,7 +185,6 @@ const TAGS: Tag[] = [
 ];
 
 const tagField = () => screen.getByRole("combobox", { name: "Tags" });
-const optionNames = () => screen.getAllByRole("option").map((o) => o.textContent);
 
 describe("TagPicker tags", () => {
   it("suggests the tags matching the typed text, case-insensitive", () => {

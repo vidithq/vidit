@@ -887,7 +887,7 @@ export default function PalettePage() {
             </span>
           </Item>
 
-          <Item name="<TagPicker>" usage="The classification fields of every event form, last in its Details card: the conflict typeahead (ongoing by default, ended behind the switch), then the tags as <TagChips>. <TagChips> shows the picked tags as accent chips that remove on click, over a <Combobox> that suggests the other tags of the one catalogue whose name holds the typed text (case-insensitive) and, when no tag bears the exact typed name, ends the list with Create &quot;name&quot;, which creates the tag and picks it. The list stays open after a pick. Each source editor renders <TagChips> alone, named for its source (Source 1 tags).">
+          <Item name="<TagPicker>" usage="The classification fields of every event form, last in its Details card: the conflicts, then the tags as <TagChips>. The conflict field shows the picked conflicts as accent chips that remove on click, over a <Combobox> named Conflict that lists nothing at rest and, on focus or typing, the ongoing conflicts whose name holds the typed text (case-insensitive), by tier then name, with Other pinned last and always offered. The Include ended conflicts switch on the label row adds the ended ones. <TagChips> shows the picked tags as accent chips that remove on click, over a <Combobox> that suggests the other tags of the one catalogue whose name holds the typed text (case-insensitive) and, when no tag bears the exact typed name, ends the list with Create &quot;name&quot;, which creates the tag and picks it. The list stays open after a pick. Each source editor renders <TagChips> alone, named for its source (Source 1 tags).">
             <div className="w-full max-w-2xl space-y-4">
               <TagPicker
                 tags={tpTags}
@@ -901,7 +901,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<Combobox>" usage="The keyboard and the list of every typeahead: a role=combobox <Input> over a role=listbox list in a portal fixed to the viewport, painted with TOOLTIP_SURFACE, as wide as the field, scrolling past 15rem and opening above the field when the room below is short. The caller owns the query, the open state, the filtered options and how a row renders; a status string shows as a muted row. ArrowUp and ArrowDown move and wrap, Enter picks the highlighted row or hands the text to onSubmitText, Escape or a blur closes. <AccountPicker> and <TagChips> build on it.">
+          <Item name="<Combobox>" usage="The keyboard and the list of every typeahead: a role=combobox <Input> over a role=listbox list in a portal fixed to the viewport, painted with TOOLTIP_SURFACE, as wide as the field, scrolling past 15rem and opening above the field when the room below is short. The caller owns the query, the open state, the filtered options and how a row renders; a status string shows as a muted row. ArrowUp and ArrowDown move and wrap, Enter picks the highlighted row or hands the text to onSubmitText, Escape or a blur closes. pillOption shows a row inside a neutral <Pill>, the chip a pick becomes: every conflict and tag row, never the Create row. <AccountPicker>, the <TagPicker> conflict field and <TagChips> build on it.">
             <PaletteCombobox />
           </Item>
 

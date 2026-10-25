@@ -16,6 +16,7 @@ import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/cn";
 import { Input } from "./Input";
+import { Pill } from "./Pill";
 import { TOOLTIP_SURFACE } from "./styles";
 
 const ROW =
@@ -56,6 +57,8 @@ interface ComboboxProps<T> {
   options: T[];
   optionKey: (option: T) => string;
   renderOption: (option: T) => ReactNode;
+  /** Shows the row inside a neutral `<Pill>`, the chip a pick becomes. */
+  pillOption?: (option: T) => boolean;
   onPick: (option: T) => void;
   query: string;
   onQueryChange: (query: string) => void;
@@ -84,6 +87,7 @@ export function Combobox<T>({
   options,
   optionKey,
   renderOption,
+  pillOption,
   onPick,
   query,
   onQueryChange,
@@ -194,7 +198,11 @@ export function Combobox<T>({
                   onMouseEnter={() => setActive({ query, index })}
                   className={cn(ROW, index === activeIndex && "bg-neutral-700")}
                 >
-                  {renderOption(option)}
+                  {pillOption?.(option) ? (
+                    <Pill className="min-w-0">{renderOption(option)}</Pill>
+                  ) : (
+                    renderOption(option)
+                  )}
                 </li>
               ))}
             </ul>

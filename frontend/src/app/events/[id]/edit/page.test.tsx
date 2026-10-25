@@ -177,9 +177,8 @@ function resource(path: string) {
 
 /** Make the two picks a review makes: the conflict, and the kind the import left unknown. */
 function fillTheFloor() {
-  fireEvent.click(
-    screen.getByRole("button", { name: /Russian invasion of Ukraine/ })
-  );
+  fireEvent.focus(screen.getByRole("combobox", { name: "Conflict" }));
+  fireEvent.click(screen.getByRole("option", { name: /Russian invasion of Ukraine/ }));
   fireEvent.change(screen.getByRole("combobox", { name: /Kind/ }), {
     target: { value: "drone" },
   });

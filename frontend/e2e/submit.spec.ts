@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
 
 import { API_BASE_URL } from "./support/environment";
-import { ONE_PIXEL_PNG } from "./support/fixtures";
-import { grantSession, mockApi } from "./support/mockApi";
+import { CONFLICTS, ONE_PIXEL_PNG } from "./support/fixtures";
+import { answerWith, grantSession, mockApi } from "./support/mockApi";
 import { expectNarrowViewportLayout, expectNoHorizontalOverflow } from "./support/narrowLayout";
 import { swipeLeft } from "./support/touch";
 
@@ -247,6 +247,50 @@ test.describe("submit", () => {
       const box = (await first.getByRole("button", { name, exact: true }).boundingBox())!;
       expect(box.height, name).toBeGreaterThanOrEqual(36);
     }
+  });
+
+  test("picks, changes and removes a conflict through the search field", async ({ page }) => {
+    const unlisted = { wikidata_id: null, start_year: null, end_year: null, tier: null };
+    await answerWith(page, "/conflicts", [
+      ...CONFLICTS,
+      { ...unlisted, id: "44444444-4444-4444-8444-444444444442", name: "Other", is_ongoing: true },
+      {
+        ...unlisted,
+        id: "44444444-4444-4444-8444-444444444443",
+        name: "Falklands War",
+        start_year: 1982,
+        end_year: 1982,
+        is_ongoing: false,
+      },
+    ]);
+    await page.goto("/submit?mode=single");
+    const publish = page.getByRole("button", { name: "Publish geolocation" });
+    await expect(publish).toHaveAccessibleDescription(/Conflict$/);
+
+    // At rest the field lists nothing; focus lists the ongoing conflicts, Other last.
+    const field = page.getByRole("combobox", { name: "Conflict" });
+    const list = page.getByRole("listbox", { name: "Conflict" });
+    await expect(list).toHaveCount(0);
+    await field.focus();
+    await expect(list.getByRole("option")).toHaveText(["Russian invasion of Ukraine (2022-present)", "Other"]);
+    await expectNoHorizontalOverflow(page);
+    await list.getByRole("option", { name: "Russian invasion of Ukraine (2022-present)" }).click();
+    const chip = page.getByRole("button", { name: "Remove Russian invasion of Ukraine (2022-present)" });
+    await expect(chip).toBeVisible();
+    await expect(publish).not.toHaveAccessibleDescription(/Conflict/);
+
+    // The switch adds the ended conflicts; the arrows and Enter pick one.
+    await page.getByRole("switch", { name: "Include ended conflicts" }).click();
+    await field.fill("falk");
+    await expect(list.getByRole("option")).toHaveText(["Falklands War (1982)"]);
+    await field.press("Enter");
+    await expect(page.getByRole("button", { name: "Remove Falklands War (1982)" })).toBeVisible();
+
+    // The chips remove the picks, and the conflict is missing again.
+    await chip.click();
+    await page.getByRole("button", { name: "Remove Falklands War (1982)" }).click();
+    await expect(publish).toHaveAccessibleDescription(/Conflict$/);
+    await expectNoHorizontalOverflow(page);
   });
 
   test("picks, creates and removes tags through the search fields", async ({ page }) => {
