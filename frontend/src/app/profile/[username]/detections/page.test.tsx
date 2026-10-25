@@ -124,13 +124,18 @@ describe("DetectionsPage queue filter", () => {
 
   it("restarts the walk at page 1 when the filter changes", () => {
     // A filter change resets the page: keeping it could land past the end of the filtered set.
-    useApiResource.mockReturnValue({
-      data: payload({ total: 40, page: 1, ready_total: 12, incomplete_total: 28 }),
+    useApiResource.mockImplementation((path: string | null) => ({
+      data: payload({
+        items: [detectionFixture({ id: path?.includes("page=2") ? "d2" : "d1" })],
+        total: 40,
+        ready_total: 12,
+        incomplete_total: 28,
+      }),
       error: null,
-    });
+    }));
     render(<DetectionsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
     expect(useApiResource).toHaveBeenLastCalledWith(
       "/events/detections?page=2&per_page=10&readiness=all"
     );
@@ -139,6 +144,55 @@ describe("DetectionsPage queue filter", () => {
     expect(useApiResource).toHaveBeenLastCalledWith(
       "/events/detections?page=1&per_page=10&readiness=ready"
     );
+  });
+
+  it("appends the next page under the rows already loaded", () => {
+    useApiResource.mockImplementation((path: string | null) => ({
+      data: payload({
+        items: [
+          detectionFixture(
+            path?.includes("page=2")
+              ? { id: "d2", title: "Strike near Avdiivka" }
+              : { id: "d1" },
+          ),
+        ],
+        total: 2,
+        per_page: 1,
+      }),
+      error: null,
+    }));
+    render(<DetectionsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+
+    expect(screen.getByText("Strike near Bakhmut")).toBeInTheDocument();
+    expect(screen.getByText("Strike near Avdiivka")).toBeInTheDocument();
+    // The walk ends with the last row.
+    expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+  });
+
+  it("keeps the loaded rows when a later page fails, and retries it", () => {
+    const refetch = vi.fn();
+    useApiResource.mockImplementation((path: string | null) =>
+      path?.includes("page=2")
+        ? { data: null, error: "Server error", refetch }
+        : { data: payload({ total: 20 }), error: null, refetch },
+    );
+    render(<DetectionsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+
+    expect(screen.getByText("Strike near Bakhmut")).toBeInTheDocument();
+    expect(screen.getByText("Server error")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(refetch).toHaveBeenCalled();
+  });
+
+  it("states a failed queue read in the error banner", () => {
+    useApiResource.mockReturnValue({ data: null, error: "Server error", refetch: vi.fn() });
+    render(<DetectionsPage />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Server error");
   });
 
   it("states the whole queue's split under every filter", () => {
@@ -153,7 +207,7 @@ describe("DetectionsPage queue filter", () => {
     expect(screen.queryByText(/on this page/)).not.toBeInTheDocument();
   });
 
-  it("pages over the filtered total, and names it", () => {
+  it("counts the loaded rows against the filtered total, and names it", () => {
     useApiResource.mockReturnValue({
       data: payload({ total: 12, ready_total: 12, incomplete_total: 28 }),
       error: null,
@@ -161,8 +215,7 @@ describe("DetectionsPage queue filter", () => {
     render(<DetectionsPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Ready" }));
-    // 12 ready rows at 10 a page: two pages.
-    expect(screen.getByText(/Page 1 of 2 · 12 ready/)).toBeInTheDocument();
+    expect(screen.getByText("1 of 12 ready")).toBeInTheDocument();
   });
 
   it("says which set came back empty, without blaming the page", () => {
