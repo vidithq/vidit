@@ -92,7 +92,9 @@ def _serialize_event(db: Session, geo: Event) -> EventRead:
     """Build the read model for a just-mutated row, re-projecting the point
     the way ``GET /{id}`` does so the shapes match."""
     lat, lng = db.query(ST_Y(Event.coords), ST_X(Event.coords)).filter(Event.id == geo.id).one()
-    return build_event_read(geo, lat=lat, lng=lng)
+    read = build_event_read(geo, lat=lat, lng=lng)
+    read.version_zero = versions_service.version_zero(db, geo)
+    return read
 
 
 # Ahead of the ``/{geolocation_id}`` reads: the extra path segment means the
@@ -164,6 +166,7 @@ def get_event(
 
     geo, lat, lng = row
     read = build_event_read(geo, lat=lat, lng=lng)
+    read.version_zero = versions_service.version_zero(db, geo)
     if current_user is not None:
         read.viewer_invite_pending = has_pending_invite(
             db, event_id=geo.id, user_id=current_user.id

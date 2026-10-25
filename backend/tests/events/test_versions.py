@@ -407,6 +407,11 @@ def test_save_version_is_owner_only(db, author, second_user, conflict):
     assert db.get(Event, geo.id).version_no == 1
 
 
+def test_a_row_created_published_has_no_version_0(db, author, conflict):
+    geo = _published(db, author, conflict)
+    assert client.get(f"/api/v1/events/{geo.id}").json()["version_zero"] is None
+
+
 def test_save_version_refuses_a_closed_row(db, author, conflict):
     """A closed row takes no write: 409."""
     geo = _make_geo(
@@ -435,11 +440,13 @@ def _unpublished(db, author, conflict, status):
 def test_publishing_a_detection_files_it_as_version_0(db, author, conflict):
     """The publish is an edit: the detection's state is filed as version 0, the row is v1."""
     geo = _unpublished(db, author, conflict, STATUS_DETECTED)
+    assert client.get(f"/api/v1/events/{geo.id}").json()["version_zero"] == "detection"
     response = _save_version(geo.id, author, data=_form(conflict, _kept(geo), version_no="0"))
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["status"] == STATUS_GEOLOCATED
     assert body["version_no"] == 1
+    assert body["version_zero"] == "detection"
     assert body["title"] == "Corrected title"
     assert [g["id"] for g in body["geolocators"]] == [str(author.id)]
 
@@ -488,6 +495,7 @@ def test_fulfilling_a_request_files_it_as_version_0(db, author, second_user, con
     geo = _unpublished(db, author, conflict, STATUS_REQUESTED)
     geo.requested_by_id = author.id
     db.commit()
+    assert client.get(f"/api/v1/events/{geo.id}").json()["version_zero"] == "request"
     response = _save_version(geo.id, second_user, data=_form(conflict, _kept(geo)))
     assert response.status_code == 200, response.text
     body = response.json()
@@ -495,6 +503,7 @@ def test_fulfilling_a_request_files_it_as_version_0(db, author, second_user, con
     assert body["version_no"] == 1
     assert body["owner"]["id"] == str(second_user.id)
     assert body["requested_by"]["id"] == str(author.id)
+    assert body["version_zero"] == "request"
 
     filed = _filed(db, geo.id)
     assert filed.version_no == 0

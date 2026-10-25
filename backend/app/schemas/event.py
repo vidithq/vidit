@@ -9,6 +9,7 @@ from app.models.event import (
     BeforeClosedStatus,
     DetectedVia,
     EventStatus,
+    VersionZero,
 )
 from app.models.source import SourceKind
 from app.schemas import UsernameRef
@@ -213,8 +214,8 @@ class EventRead(BaseModel):
     is_graphic: bool
     # See ``models.event.STATUS_*``.
     status: EventStatus
-    # Version this payload is: 1 until edited, then incremented per edit. Only a
-    # ``geolocated`` row can move past 1 (``save_version``).
+    # Version this payload is: 0 while a request or a detection, 1 once published, then one
+    # higher per edit (``save_version``).
     version_no: int
     # NULL while open.
     close_reason: str | None
@@ -239,6 +240,10 @@ class EventRead(BaseModel):
     # True on ``GET /events/{id}`` when the signed-in reader holds a pending invitation to share
     # the credit; false for anyone else and on write responses, which only the owner reads.
     viewer_invite_pending: bool = False
+    # On ``GET /events/{id}`` and the write responses: what version 0 is, the request or the
+    # detection the event was published from (or still is). NULL when the history has no
+    # version 0, and on list reads.
+    version_zero: VersionZero | None = None
 
     model_config = {"from_attributes": True}
 

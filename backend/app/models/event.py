@@ -51,6 +51,10 @@ STATUS_CLOSED: EventStatus = "closed"
 # feed and the map (``services/event_filters.view_predicate``).
 BeforeClosedStatus = Literal["requested", "detected", "geolocated"]
 
+# What version 0 of an event is: the request or the detection it was published from, or the
+# open row itself (``services/versions.version_zero``).
+VersionZero = Literal["request", "detection"]
+
 # Which ingest entry produced a machine detection. Stamped once by
 # ``detection.persist_detections``; NULL on older rows. Pinned by
 # ``ck_event_detections_via_valid``.

@@ -37,10 +37,11 @@ from typing import Any, cast
 
 from geoalchemy2.shape import to_shape
 from shapely.geometry import Point
+from sqlalchemy import exists
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.conflict import Conflict
-from app.models.event import Event, EventVersion
+from app.models.event import Event, EventVersion, VersionZero
 from app.models.media import Media
 from app.models.source import Source
 from app.models.tag import Tag
@@ -298,6 +299,23 @@ def referenced_source_media(db: Session, event_id: uuid.UUID) -> list[dict[str, 
         for source in _fragments(db, event_id, "sources")
         if isinstance(source.get("media"), dict)
     ]
+
+
+def version_zero(db: Session, geo: Event) -> VersionZero | None:
+    """What the event's version 0 is, or ``None`` when its history has none.
+
+    An unpublished row is version 0 itself. A published row has one when it was published
+    from a request or a detection; a row created published, or published before the publish
+    filed version 0, starts at version 1.
+    """
+    if (
+        geo.version_no > 0
+        and not db.query(
+            exists().where(EventVersion.event_id == geo.id, EventVersion.version_no == 0)
+        ).scalar()
+    ):
+        return None
+    return "request" if geo.requested_at is not None else "detection"
 
 
 def count_versions(db: Session, event_id: uuid.UUID) -> int:
