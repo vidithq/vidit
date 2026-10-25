@@ -7,6 +7,10 @@ import { FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
 import { coordinatePair, parsePastedCoordinates } from "@/lib/coordinates";
 
+// Half the field's side padding and tight tracking, so a 6-decimal value shows
+// whole beside the actions in the forms' side column and on a 375px phone.
+const FIELD_PADDING = "font-mono tracking-tight px-1.5";
+
 interface CoordinateInputsProps {
   lat: string;
   setLat: (v: string) => void;
@@ -46,55 +50,49 @@ export function CoordinateInputs({
   // The actions grey out while the pair is half-typed or out of bounds.
   const pair = coordinatePair(lat, lng);
 
+  const label = `${FORM_LABEL}${invalid ? ` ${FORM_INVALID_LABEL}` : ""}`;
+
   return (
-    // The pair's actions ride in the longitude field's trailing adornment, 80px
-    // on a phone and 72px from `sm` up, so two columns would leave a 9-character
-    // value no room in a narrow box (a phone, the forms' side column): one
-    // column until the box is 28rem wide.
-    <div className="@container">
-      <div className="grid grid-cols-1 @md:grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <label
-            htmlFor={latId}
-            className={`${FORM_LABEL}${invalid ? ` ${FORM_INVALID_LABEL}` : ""}`}
-          >
-            Latitude
-          </label>
-          <Input
-            id={latId}
-            type="text"
-            required={required}
-            value={lat}
-            onChange={(e) => setLat(e.target.value)}
-            onPaste={onPastePair}
-            placeholder="48.015883"
-            className="font-mono"
-            invalid={invalid}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <label
-            htmlFor={lngId}
-            className={`${FORM_LABEL}${invalid ? ` ${FORM_INVALID_LABEL}` : ""}`}
-          >
-            Longitude
-          </label>
-          <Input
-            id={lngId}
-            type="text"
-            required={required}
-            value={lng}
-            onChange={(e) => setLng(e.target.value)}
-            onPaste={onPastePair}
-            placeholder="37.802411"
-            className="font-mono"
-            invalid={invalid}
-            // Always mounted so nothing shifts when the pair becomes valid.
-            trailing={
-              <CoordinateActions lat={pair?.lat ?? null} lng={pair?.lng ?? null} />
-            }
-          />
-        </div>
+    // One line at every width, the narrowest source editor at 320px included:
+    // two shrinking columns, then the actions, which take only their own width.
+    // The fields sit on the second grid row so the actions centre on them, not on
+    // the labels.
+    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-1.5">
+      <label htmlFor={latId} className={label}>
+        Latitude
+      </label>
+      <label htmlFor={lngId} className={label}>
+        Longitude
+      </label>
+      <div className="row-start-2">
+        <Input
+          id={latId}
+          type="text"
+          required={required}
+          value={lat}
+          onChange={(e) => setLat(e.target.value)}
+          onPaste={onPastePair}
+          placeholder="48.015883"
+          className={FIELD_PADDING}
+          invalid={invalid}
+        />
+      </div>
+      <div className="row-start-2">
+        <Input
+          id={lngId}
+          type="text"
+          required={required}
+          value={lng}
+          onChange={(e) => setLng(e.target.value)}
+          onPaste={onPastePair}
+          placeholder="37.802411"
+          className={FIELD_PADDING}
+          invalid={invalid}
+        />
+      </div>
+      {/* Always mounted so nothing shifts when the pair becomes valid. */}
+      <div className="row-start-2 self-center">
+        <CoordinateActions lat={pair?.lat ?? null} lng={pair?.lng ?? null} />
       </div>
     </div>
   );

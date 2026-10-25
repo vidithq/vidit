@@ -17,15 +17,15 @@ const SMALL_SHAPE = "sm:size-6";
 
 /**
  * The two things anyone does with a coordinate pair: check it against satellite imagery, or take
- * it away. One home so `CoordinateInputs` (the longitude field's trailing adornment) and the event
- * page's coordinates row can't drift. The clipboard gets the page's 6-decimal rendering, which
- * pastes back into the inputs as a pair.
+ * it away. One home so `CoordinateInputs` (after its two fields) and the event page's coordinates
+ * row can't drift. The clipboard gets the page's 6-decimal rendering, which pastes back into the
+ * inputs as a pair.
  *
- * Two ghost icon buttons, the site's one icon control, a hair apart so the hover plates read as
- * two controls.
+ * Two outlined icon buttons, each its own box, the look of an action that stands beside a field on
+ * the same line.
  *
  * A null pair (half-typed or out of bounds) keeps both controls in place and disabled, so the
- * field never jumps and grey says the point isn't usable yet. The map link becomes a button then:
+ * line never jumps and grey says the point isn't usable yet. The map link becomes a button then:
  * a disabled anchor isn't a thing.
  *
  * `small` is the 24px desktop square (the phone keeps its tap floor), for a dense row. Its
@@ -46,13 +46,13 @@ export function CoordinateActions({
   const mark = small ? 12 : 14;
 
   return (
-    <span className={cn("inline-flex items-center gap-0.5", small && "-my-1.5")}>
+    <span className={cn("inline-flex items-center gap-1", small && "-my-1.5")}>
       {point ? (
         <Tooltip label={MAP_LINK}>
           <OutboundLink
             href={mapsUrl(point.lat, point.lng)}
             aria-label={MAP_LINK}
-            className={buttonClasses("ghost", { icon: true, className: shape })}
+            className={buttonClasses("secondary", { icon: true, className: shape })}
           >
             <ExternalLink size={mark} />
           </OutboundLink>
@@ -60,7 +60,7 @@ export function CoordinateActions({
       ) : (
         <Button
           icon
-          variant="ghost"
+          variant="secondary"
           disabled
           aria-label={NO_MAP_LINK}
           title={NO_MAP_LINK}
@@ -123,6 +123,7 @@ function CopyCoordinates({
       label="Copy coordinates"
       announce="Coordinates copied"
       icon={<Copy size={mark} />}
+      variant="secondary"
       className={className}
       copied={copied}
       // Nothing to write while the pair is incomplete: the control is grey and inert.

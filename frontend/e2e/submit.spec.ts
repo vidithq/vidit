@@ -249,6 +249,55 @@ test.describe("submit", () => {
     }
   });
 
+  // Both pairs share `CoordinateInputs`: the Location card's subject point and a source's capture
+  // position, the narrowest box the pair renders in. Each width keeps the two fields and the two
+  // actions on one line, the side column of a wide screen included. From 375px up a 6-decimal value
+  // shows whole; at 320px the 16px field text and the 36px tap squares leave room for about 6
+  // characters, and the rest scrolls inside the field.
+  for (const width of [null, 1024]) {
+    test(`keeps each coordinate pair and its actions on one line${width ? ` at ${width}px` : ""}`, async ({
+      page,
+    }) => {
+      if (width) await page.setViewportSize({ width, height: 900 });
+      await page.goto("/submit?mode=single");
+      const source = page.getByRole("region", { name: "Source 1" });
+      await source.getByLabel("Kind", { exact: true }).selectOption({ label: "Smartphone" });
+      const location = page.getByRole("heading", { name: /^Location/ }).locator("xpath=ancestor::section[1]");
+
+      for (const box of [location, source]) {
+        const lat = box.getByLabel("Latitude", { exact: true });
+        const lng = box.getByLabel("Longitude", { exact: true });
+        await lat.fill("48.015883");
+        await lng.fill("37.802411");
+        const items = [
+          lat,
+          lng,
+          box.getByRole("link", { name: "View on Maps" }),
+          box.getByRole("button", { name: "Copy coordinates" }),
+        ];
+        const card = (await box.boundingBox())!;
+        const boxes = [];
+        for (const item of items) boxes.push((await item.boundingBox())!);
+        const middle = (b: { y: number; height: number }) => b.y + b.height / 2;
+        for (let i = 1; i < boxes.length; i++) {
+          expect(Math.abs(middle(boxes[i]) - middle(boxes[0])), `item ${i + 1} on the fields' line`).toBeLessThan(1);
+          expect(boxes[i].x, `item ${i + 1} after item ${i}`).toBeGreaterThanOrEqual(boxes[i - 1].x + boxes[i - 1].width);
+        }
+        expect(boxes[0].x).toBeGreaterThanOrEqual(card.x);
+        expect(boxes[3].x + boxes[3].width).toBeLessThanOrEqual(card.x + card.width + 0.5);
+        // The labels stay above their fields.
+        const latLabel = (await box.getByText("Latitude", { exact: true }).boundingBox())!;
+        expect(latLabel.y + latLabel.height).toBeLessThanOrEqual(boxes[0].y);
+        if (page.viewportSize()!.width >= 375) {
+          for (const field of [lat, lng]) {
+            expect(await field.evaluate((el) => el.scrollWidth <= el.clientWidth), "the value shows whole").toBe(true);
+          }
+        }
+      }
+      await expectNoHorizontalOverflow(page);
+    });
+  }
+
   test("picks, changes and removes a conflict through the search field", async ({ page }) => {
     const unlisted = { wikidata_id: null, start_year: null, end_year: null, tier: null };
     await answerWith(page, "/conflicts", [
