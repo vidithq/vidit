@@ -25,6 +25,7 @@ export function CopyButton({
   onClick,
   disabled,
   className,
+  variant = "ghost",
 }: {
   /** The control's accessible name and tooltip. */
   label: string;
@@ -36,12 +37,14 @@ export function CopyButton({
   onClick: () => void;
   disabled?: boolean;
   className?: string;
+  /** `secondary` boxes the control, for an action that stands beside a field rather than in it. */
+  variant?: "ghost" | "secondary";
 }) {
   return (
     <>
       <Button
         icon
-        variant="ghost"
+        variant={variant}
         aria-label={label}
         disabled={disabled}
         onClick={onClick}
