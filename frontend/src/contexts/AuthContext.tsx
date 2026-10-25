@@ -43,11 +43,18 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUserState] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [sessionEnded, setSessionEnded] = useState(false);
   // Bumped on every login/logout so a late pre-login /me response can't overwrite newer state.
   const stateVersion = useRef(0);
+  // Read by the session listener: set with the user, not from an effect, so a rejection landing
+  // between the commit and its effects never reads a stale value.
+  const signedIn = useRef(false);
+  const setUser = useCallback((next: User | null) => {
+    signedIn.current = next !== null;
+    setUserState(next);
+  }, []);
   // Self-reference for the retry branch: `react-hooks` v7 flags a raw `fetchUser(false)` inside
   // its own `useCallback` as a TDZ access, so the call goes through a ref (assigned after,
   // read 500ms later).
@@ -83,7 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (isAuthFailure) setUser(null);
       setLoading(false);
     }
-  }, []);
+  }, [setUser]);
 
   useEffect(() => {
     // Assigned in an effect: `react-hooks` v7 forbids ref writes during render.
@@ -98,10 +105,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // many calls failed together. A 401 there too ends the session: the reader is signed out and
   // told so. Anything else (the user back, a 5xx, a network error) leaves the state alone, so a
   // backend hiccup never signs anyone out.
-  const signedIn = useRef(false);
-  useEffect(() => {
-    signedIn.current = user !== null;
-  }, [user]);
   const rechecking = useRef(false);
   useEffect(
     () =>
@@ -127,7 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             rechecking.current = false;
           });
       }),
-    [],
+    [setUser],
   );
 
   const login = async (email: string, password: string) => {
