@@ -65,6 +65,10 @@ Every request passes the middleware chain, then the guards its route declares, t
 
 **Transport security.** Every response carries `Strict-Transport-Security: max-age=15768000`, except a 500 from an unhandled server error. The header carries no `includeSubDomains` or `preload` directives.
 
+**Compression.** A response body of 1,000 bytes or more is gzipped at level 6 when the request's `Accept-Encoding` names `gzip`.
+
+**CORS preflight.** A preflight answer carries `Access-Control-Max-Age: 86400`, so a browser reuses it for as long as its own cap allows. A `GET` that sets no header outside the CORS safelist is a simple request and needs no preflight. The frontend client ([`apiFetch`](../frontend/src/lib/api.ts)) sends `Content-Type` only with a JSON body, and `X-CSRF-Token` only on a state-changing method, so its reads go out without a preflight.
+
 **Request id.** Every response carries an `X-Request-ID` header, a 500 included. Send your own `X-Request-ID` of 1 to 64 characters from `A-Z`, `a-z`, `0-9`, `.`, `_`, and `-`, with at least one letter or digit, and the response echoes it. The API replaces any other value with an id of its own. The backend logs every line of the request under that id, so quote it when you report a failed request.
 
 **Auth audit log.** Each `/auth/*` endpoint writes an [`audit_log`](data-model.md#audit_log) row as a best-effort side effect. An audit failure never breaks the auth flow.
@@ -107,6 +111,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/events/{id}/versions/{version_no}` | 🌐 | One superseded version, by its number |
 | POST | `/events/{id}/close` | 🔒 | Withdraw, reject or retract an event, owner only (→ `closed`) |
 | GET | `/events/detections` | 🔒 | Your `detected` events awaiting a publish (paginated, filterable on readiness) |
+| GET | `/events/detections/count` | 🔒 | How many `detected` events await your publish |
 | GET | `/events/{id}/collections` | 🔒 | Your collections, each saying whether this event is on it (credited analysts only) |
 | GET | `/events/{id}/geolocator-invites` | 🔒 | Pending invitations to share the event's credit: all for the owner, yours otherwise |
 | POST | `/events/{id}/geolocator-invites` | 🔒 | Invite an analyst to share a published event's credit, owner only |
@@ -230,7 +235,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST /auth/reset-password` | 10/hour |
 | `POST /auth/change-password` | 10/hour (keyed per session) |
 | **Events** | |
-| `GET /events`, `GET /events/{id}`, `GET /events/{id}/versions`, `GET /events/{id}/versions/{version_no}`, `GET /events/detections` | 120/min |
+| `GET /events`, `GET /events/{id}`, `GET /events/{id}/versions`, `GET /events/{id}/versions/{version_no}`, `GET /events/detections`, `GET /events/detections/count` | 120/min |
 | `GET /events/points` | 60/min |
 | `GET /events/possible-duplicates` | 60/min |
 | `POST /events/import-from-tweet` | 30/min |
@@ -297,9 +302,9 @@ The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/u
 
 ### Per-user read quota
 
-**1000/hour per account.** One bucket is shared across these 23 read paths, not one bucket per endpoint:
+**1000/hour per account.** One bucket is shared across these 24 read paths, not one bucket per endpoint:
 
-`GET /events` · `/events/{id}` · `/events/{id}/versions` · `/events/{id}/versions/{version_no}` · `/events/{id}/approvals` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/users/{username}/collections` · `/users/{username}/organizations` · `/organizations/{slug}` · `/organizations/{slug}/members` · `/organizations/{slug}/approvals` · `/collections/{id}` · `/collections/{id}/events` · `/feed`
+`GET /events` · `/events/{id}` · `/events/{id}/versions` · `/events/{id}/versions/{version_no}` · `/events/{id}/approvals` · `/events/points` · `/events/detections` · `/events/detections/count` · `/events/possible-duplicates` · `/search` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/users/{username}/collections` · `/users/{username}/organizations` · `/organizations/{slug}` · `/organizations/{slug}/members` · `/organizations/{slug}/approvals` · `/collections/{id}` · `/collections/{id}/events` · `/feed`
 
 - The key is `User.id`, read from the signature-verified session cookie.
 - The backend evaluates the per-IP table limit first, so a request the table rejects costs the account nothing.
@@ -863,7 +868,7 @@ List one lifecycle view, newest or oldest first, as `EventList` cards (no full p
 
 Compact `[id, lat, lng, occurred_date, added_date, detected]` tuples for client-side clustering, with no joins and no pagination. `occurred_date` and `added_date` are ISO `YYYY-MM-DD` (`added_date` is the `created_at` calendar day); `occurred_date` is `null` when unknown. `detected` is `1` for a machine-detected row and `0` for a `geolocated` one. Located rows only, so `requested` events never appear.
 
-`bbox` is **required**, and nothing caps its area. Unlike on `GET /events`, an empty `?bbox=` is a rejection here, not an omitted filter. The server snaps `bbox` outward onto a fixed 0.05° grid before keying and querying, so two viewports inside one cell share a cache entry and get the payload of the snapped box, which contains the box requested. Results are cached in memory for 60 s per snapped `bbox` and filter combination; the response carries `X-Cache: HIT|MISS` and `Cache-Control: public, max-age=30`.
+`bbox` is **required**, and nothing caps its area. Unlike on `GET /events`, an empty `?bbox=` is a rejection here, not an omitted filter. The server snaps `bbox` outward onto a fixed 0.05° grid before keying and querying, so two viewports inside one cell share a cache entry and get the payload of the snapped box, which contains the box requested. Results are cached in memory for 60 s per snapped `bbox` and filter combination; the response carries `X-Cache: HIT|MISS` and `Cache-Control: public, max-age=30`. An entry keeps the gzipped body next to the raw one, so a hit is sent without compressing it again.
 
 **Query params:**
 
@@ -1215,6 +1220,17 @@ Your queue of machine-`detected` events awaiting a publish, newest first. Scoped
 | Code | Case |
 |------|------|
 | 422 | `readiness` outside `all` / `ready` / `incomplete`, or out-of-range paging |
+
+---
+
+### `GET /events/detections/count` 🔒
+
+How many `detected` events await your publish: the `total` of [`GET /events/detections`](#get-eventsdetections) with `readiness=all`, in one count and without the rows. The sidebar badge reads it.
+
+**Response 200:**
+```json
+{ "count": 248 }
+```
 
 ---
 
