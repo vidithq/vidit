@@ -221,15 +221,16 @@ export function EventFormLayout({
             setEventTime={form.setEventTime}
             detectedFromUrl={showProvenance ? row?.detected_from_url : undefined}
             openedAsRequest={!!row?.requested_by}
-          />
-          <TaxonomyFields
-            taxonomy={form.taxonomy}
-            selectedTagIds={form.selectedTagIds}
-            setSelectedTagIds={form.setSelectedTagIds}
-            selectedConflictIds={form.selectedConflictIds}
-            setSelectedConflictIds={form.setSelectedConflictIds}
-            conflictInvalid={invalidKeys.has("conflict_tag")}
-          />
+          >
+            <TaxonomyFields
+              taxonomy={form.taxonomy}
+              selectedTagIds={form.selectedTagIds}
+              setSelectedTagIds={form.setSelectedTagIds}
+              selectedConflictIds={form.selectedConflictIds}
+              setSelectedConflictIds={form.setSelectedConflictIds}
+              conflictInvalid={invalidKeys.has("conflict_tag")}
+            />
+          </DetailsFields>
         </>
       }
       location={

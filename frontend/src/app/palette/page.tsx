@@ -887,8 +887,8 @@ export default function PalettePage() {
             </span>
           </Item>
 
-          <Item name="<TagPicker>" usage="The Classification section of every event form: the conflict typeahead (ongoing by default, ended behind the switch), then the tags as <TagChips> (toggle chips over the one tag catalogue, plus an inline field that creates a tag and selects it). Each source editor renders <TagChips> alone, named for its source.">
-            <div className="w-full max-w-2xl">
+          <Item name="<TagPicker>" usage="The classification fields of every event form, last in its Details card: the conflict typeahead (ongoing by default, ended behind the switch), then the tags as <TagChips> (toggle chips over the one tag catalogue, plus an inline field that creates a tag and selects it). Each source editor renders <TagChips> alone, named for its source.">
+            <div className="w-full max-w-2xl space-y-4">
               <TagPicker
                 tags={tpTags}
                 setTags={setTpTags}

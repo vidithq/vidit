@@ -72,7 +72,7 @@ export function SourceEditor({
   index: number;
   update: (patch: Partial<SourceDraft>) => void;
   onPickFile: (file: File) => void;
-  /** The tag catalogue the event's Classification also reads. */
+  /** The tag catalogue the event's Details card also reads. */
   tags: Tag[];
   setTags: Dispatch<SetStateAction<Tag[]>>;
   invalid?: SourceEditorInvalid;

@@ -15,8 +15,6 @@ import { Pill } from "@/components/ui/Pill";
 import { Switch } from "@/components/ui/Switch";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
-import { Card } from "@/components/ui/Card";
-import { SectionHeading } from "@/components/ui/SectionHeading";
 import { pluralNoun } from "@/lib/format";
 
 // Mirrors `schemas/tag.py` `TagCreate.name` (the `String(100)` cap); change both.
@@ -38,8 +36,8 @@ interface TagPickerProps {
 }
 
 /**
- * Shared classification section for the event forms. Conflict is a multi-select typeahead over
- * the conflicts referential; tags are `<TagChips>`.
+ * The classification fields of the event forms, for the Details card: conflict, a multi-select
+ * typeahead over the conflicts referential, then the tags as `<TagChips>`.
  */
 export function TagPicker({
   tags,
@@ -54,9 +52,7 @@ export function TagPicker({
   const invalidChips = "rounded-md p-2 ring-1 ring-red-500/40";
 
   return (
-    <Card as="section">
-      <SectionHeading title="Classification" concept="section_classification" />
-
+    <>
       {conflicts.length > 0 && (
         <div className="space-y-2">
           <span className={`${FORM_LABEL}${conflictInvalid ? ` ${FORM_INVALID_LABEL}` : ""}`}>
@@ -81,13 +77,13 @@ export function TagPicker({
           setSelectedTagIds={setSelectedTagIds}
         />
       </div>
-    </Card>
+    </>
   );
 }
 
 /**
  * The tag catalogue as toggle chips, plus an inline field that creates a tag and selects it.
- * One catalogue serves events and sources, so the event's Classification and each source
+ * One catalogue serves events and sources, so the event's Details card and each source
  * editor render the same chips.
  */
 export function TagChips({

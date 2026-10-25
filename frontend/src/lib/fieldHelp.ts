@@ -77,12 +77,8 @@ export const FIELD_HELP = {
     label: "What does importing do?",
   },
   section_details: {
-    text: "When the event happened, as a date and a time of day (UTC), each optional.",
+    text: "When the event happened, as a date and a time of day (UTC), each optional. The conflict classifies the event; add tags so others can find it.",
     label: "What goes in Details?",
-  },
-  section_classification: {
-    text: "The conflict classifies the event; add tags so others can find it.",
-    label: "What goes in Classification?",
   },
   section_proof: {
     text: "Your annotated cross-reference between the source media and satellite imagery, showing how the location was matched so others can audit it. On a request it's the partial reasoning so far, since the match isn't finished yet.",

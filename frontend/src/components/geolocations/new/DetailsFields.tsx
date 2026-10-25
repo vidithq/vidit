@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 import { DateTimeInput } from "@/components/ui/DateTimeInput";
 import { FORM_LABEL } from "@/components/ui/form-styles";
 import { FieldHelp } from "@/components/ui/FieldHelp";
@@ -20,10 +22,13 @@ interface DetailsFieldsProps {
   detectedFromUrl?: string | null;
   /** The row carries `requested_by`: the link reads "Requested from". */
   openedAsRequest?: boolean;
+  /** The classification fields (conflict, tags), last in the card. */
+  children?: ReactNode;
 }
 
-/** The "Details" section, mirroring the detail page's Details block: when the event happened,
- *  and the provenance link of an imported row. Shared by every event form. */
+/** The "Details" section, mirroring the detail page's Details block in its order: when the event
+ *  happened, the provenance link of an imported row, then the classification. Shared by every
+ *  event form. */
 export function DetailsFields({
   eventDate,
   setEventDate,
@@ -31,6 +36,7 @@ export function DetailsFields({
   setEventTime,
   detectedFromUrl,
   openedAsRequest = false,
+  children,
 }: DetailsFieldsProps) {
   return (
     <Card as="section">
@@ -75,6 +81,7 @@ export function DetailsFields({
           <LockedUrl href={detectedFromUrl} />
         </div>
       )}
+      {children}
     </Card>
   );
 }
