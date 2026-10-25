@@ -133,7 +133,7 @@ export function DetailSidePanel({
             </p>
           </div>
 
-          <EventDetailBody geo={detail} variant="panel" />
+          <EventDetailBody geo={detail} />
         </div>
       ) : null}
 

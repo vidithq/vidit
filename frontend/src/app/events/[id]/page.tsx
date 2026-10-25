@@ -5,9 +5,11 @@ import { useParams } from "next/navigation";
 import type { EventDetail } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { AuthorByline } from "@/components/ui/AuthorByline";
-import { EventPageBody } from "@/components/event/EventPageBody";
+import { eventPageSlots } from "@/components/event/EventDetailBody";
+import { eventLocation } from "@/components/event/EventLocation";
+import { EventShell } from "@/components/event/EventShell";
 import { useEventActions } from "@/components/event/useEventActions";
-import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
+import { PageError, PageLoading } from "@/components/ui/PageShell";
 import { creditProps } from "@/lib/geolocatorCredit";
 
 export default function EventPage() {
@@ -32,15 +34,13 @@ export default function EventPage() {
   if (!geo) return <PageLoading />;
 
   return (
-    <PageShell
-      back
+    <EventShell
       title={geo.title}
-      subtitle={<AuthorByline {...creditProps(geo)} coAuthorsAs="avatars" avatar />}
-      stickyActions={actions}
-      headerSide={side}
-    >
-      {panels}
-      <EventPageBody geo={geo} />
-    </PageShell>
+      byline={<AuthorByline {...creditProps(geo)} coAuthorsAs="avatars" avatar />}
+      actions={actions}
+      sideTop={side}
+      panels={panels}
+      body={eventPageSlots(geo, eventLocation(geo))}
+    />
   );
 }

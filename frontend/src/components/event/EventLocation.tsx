@@ -4,7 +4,6 @@ import dynamic from "next/dynamic";
 
 import type { EventDetail } from "@/types";
 import { CoordinateValue } from "@/components/event/CoordinateActions";
-import { EventDetailBody } from "@/components/event/EventDetailBody";
 import { sourcesScroll } from "@/components/sources/SourceBlock";
 import { DetailRow } from "@/components/ui/DetailRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -12,15 +11,14 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
 
 /**
- * The full-page render of one event: the shared `EventDetailBody`, with the page's Location module
- * above Details in its side column. It takes a view, not an id, so the same markup renders the live
- * row on `/events/{id}` and a filed version on `/events/{id}/vN` (fed by `snapshotToEventView`). The body writes nothing, so a version page needs no gate: the chrome
- * above carries every control that acts on the record, and the approvals.
+ * The Location slot of the event and version pages: the map with its coordinates row, or null for
+ * a coordless event (a `requested` row served by id). It takes a view, not an id, so the live row
+ * and a filed version (fed by `snapshotToEventView`) render the same module.
  */
-export function EventPageBody({ geo }: { geo: EventDetail }) {
-  // A coordless event (a `requested` row served by id) has no point, so no Location module.
-  const location = geo.coords ? <EventLocation geo={geo} coords={geo.coords} besideScroller={sourcesScroll(geo.sources.length)} /> : null;
-  return <EventDetailBody geo={geo} variant="page" location={location} />;
+export function eventLocation(geo: EventDetail) {
+  return geo.coords ? (
+    <EventLocation geo={geo} coords={geo.coords} besideScroller={sourcesScroll(geo.sources.length)} />
+  ) : null;
 }
 
 /** The Location module: the map with its coordinates row fused to its foot. */

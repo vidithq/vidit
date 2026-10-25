@@ -13,12 +13,14 @@ import {
 } from "@/lib/events";
 import { skipBackRecord } from "@/lib/navigation";
 import { VersionApprovals } from "@/components/event/Approvals";
-import { EventPageBody } from "@/components/event/EventPageBody";
+import { eventPageSlots } from "@/components/event/EventDetailBody";
+import { eventLocation } from "@/components/event/EventLocation";
+import { EventShell } from "@/components/event/EventShell";
 import { EventVersionBanner } from "@/components/event/EventVersionBanner";
 import { VersionSelector } from "@/components/event/VersionSelector";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
+import { PageError, PageLoading } from "@/components/ui/PageShell";
 import { creditProps } from "@/lib/geolocatorCredit";
 import { eventHref } from "@/lib/routes";
 
@@ -72,23 +74,24 @@ export default function EventVersionPage() {
   const version = eventVersion(geo, number, { own: row, producedBy });
 
   return (
-    <PageShell
-      back
+    <EventShell
       title={version.view?.title ?? geo.title}
-      subtitle={<AuthorByline {...creditProps(geo)} coAuthorsAs="avatars" avatar />}
-      stickyActions={<VersionSelector event={geo} selected={number} />}
+      byline={<AuthorByline {...creditProps(geo)} coAuthorsAs="avatars" avatar />}
+      actions={<VersionSelector event={geo} selected={number} />}
       // Version 0 was never published, so nothing approves it.
-      headerSide={number > 0 ? <VersionApprovals event={geo} versionNo={number} /> : null}
-    >
-      <EventVersionBanner event={geo} version={version} />
-      {version.view ? (
-        <EventPageBody geo={version.view} />
-      ) : (
-        <EmptyState>
-          An administrator redacted this version, so its content is no longer
-          served. The version keeps its number and its place in the history.
-        </EmptyState>
-      )}
-    </PageShell>
+      sideTop={number > 0 ? <VersionApprovals event={geo} versionNo={number} /> : null}
+      panels={
+        <>
+          <EventVersionBanner event={geo} version={version} />
+          {!version.view && (
+            <EmptyState>
+              An administrator redacted this version, so its content is no longer
+              served. The version keeps its number and its place in the history.
+            </EmptyState>
+          )}
+        </>
+      }
+      body={version.view ? eventPageSlots(version.view, eventLocation(version.view)) : undefined}
+    />
   );
 }

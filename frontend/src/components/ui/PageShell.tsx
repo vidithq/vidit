@@ -35,7 +35,6 @@ export function PageShell({
   narrowRail,
   headerInColumn = false,
   headerSide,
-  wide = false,
   children,
 }: {
   title: ReactNode;
@@ -65,11 +64,9 @@ export function PageShell({
    *  first block sits top right level with the title. Below `lg` the header comes before the rail. */
   headerInColumn?: boolean;
   /** Heads the side column of a two-column page, beside the header (see `PageColumns`). The frame
-   *  is `wide`, and the children lay out their own `PageColumns` under the header. */
+   *  is `wide`, and the children lay out their own `PageColumns` under the header. `EventShell`
+   *  sets it, `null` for an empty side. */
   headerSide?: ReactNode;
-  /** Takes the `wide` frame without a rail or a `headerSide`, for a page that lays out its own
-   *  `PageColumns` (an event form). */
-  wide?: boolean;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -192,7 +189,7 @@ export function PageShell({
     // sticky `top` of the back arrow and of a rail beside the header (`PageWithRail`), so neither
     // moves when the page scrolls.
     <PageFrame
-      column={rail || headerSide !== undefined || wide ? "wide" : "reading"}
+      column={rail || headerSide !== undefined ? "wide" : "reading"}
       className="pt-10 max-sm:pt-16 pb-16"
     >
       <div className="relative space-y-6" style={railTop}>

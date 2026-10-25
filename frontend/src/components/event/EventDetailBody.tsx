@@ -14,7 +14,7 @@ import { SourceBlocks, sourcesScroll } from "@/components/sources/SourceBlock";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { DetailCard, DetailPills, DetailRow } from "@/components/ui/DetailRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { EventLayout } from "@/components/event/EventLayout";
+import type { EventLayoutSlots } from "@/components/event/EventLayout";
 import { ProofSection } from "@/components/ui/ProofSection";
 
 /** The body's data shape: an `EventDetail` as-is. Every lifecycle state shares it: a coordless
@@ -22,46 +22,37 @@ import { ProofSection } from "@/components/ui/ProofSection";
  * spots drop out. */
 export type EventDetailBodyData = EventDetail;
 
-interface EventDetailBodyProps {
-  geo: EventDetailBodyData;
-  /**
-   * `panel`: map's 380px overlay, one column: stacked sources with `thumbnail` media, bare rows,
-   * the proof last, no request-trace row. `page`: full detail page, in `EventLayout`: the sources
-   * as a sideways row with `hero` media, then the proof, in the main column; `location`, then the
-   * Details card with the request-trace row, in the side column.
-   */
-  variant: "panel" | "page";
-  /** The page variant's Location module, above Details; falsy when the event has none. */
-  location?: ReactNode;
+/** The map panel's body: one column, stacked sources with `thumbnail` media, bare rows, the proof
+ * last, no request-trace row. The author is in the panel's header, so no row repeats it. */
+export function EventDetailBody({ geo }: { geo: EventDetailBodyData }) {
+  return (
+    <>
+      <SourceBlocks sources={geo.sources} alt={geo.title} compact />
+      <DetailRows geo={geo} compact />
+      <ProofBlock geo={geo} compact />
+    </>
+  );
 }
 
-/** Geolocation markup shared by the map's detail side-panel and the detail pages; `variant` owns
- * the density and layout differences so the field set can't drift. The author is in the header of
- * every surface, so no row repeats it. */
-export function EventDetailBody({ geo, variant, location }: EventDetailBodyProps) {
-  if (variant === "panel") {
-    return (
-      <>
-        <SourceBlocks sources={geo.sources} alt={geo.title} compact />
-        <DetailRows geo={geo} compact />
-        <ProofBlock geo={geo} compact />
-      </>
-    );
-  }
-  return (
-    <EventLayout
-      sources={<SourceBlocks sources={geo.sources} alt={geo.title} />}
-      proof={<ProofBlock geo={geo} compact={false} />}
-      details={
-        <DetailRows
-          geo={geo}
-          compact={false}
-          besideScroller={sourcesScroll(geo.sources.length) && !location}
-        />
-      }
-      location={location}
-    />
-  );
+/**
+ * The same fields as `EventDetailBody`, for `EventShell`'s body on the event, version and request
+ * pages: the sources as a sideways row with `hero` media, then the proof, in the main column;
+ * `location`, then the Details card with the request-trace row, in the side column. One home for
+ * the field set, so the panel and the pages can't drift.
+ */
+export function eventPageSlots(geo: EventDetailBodyData, location?: ReactNode): EventLayoutSlots {
+  return {
+    sources: <SourceBlocks sources={geo.sources} alt={geo.title} />,
+    proof: <ProofBlock geo={geo} compact={false} />,
+    details: (
+      <DetailRows
+        geo={geo}
+        compact={false}
+        besideScroller={sourcesScroll(geo.sources.length) && !location}
+      />
+    ),
+    location,
+  };
 }
 
 function DetailRows({

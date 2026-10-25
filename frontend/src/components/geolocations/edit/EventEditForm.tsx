@@ -5,13 +5,9 @@ import { useRouter } from "next/navigation";
 
 import { ApiError } from "@/lib/api";
 
-import {
-  EventFormLayout,
-  useEventForm,
-} from "@/components/geolocations/EventFormFields";
+import { eventFormSlots, useEventForm } from "@/components/geolocations/EventFormFields";
 import { Ellipsis } from "lucide-react";
 
-import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { ActionMenu } from "@/components/ui/ActionMenu";
@@ -24,6 +20,7 @@ import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Button } from "@/components/ui/Button";
 import { CountBadge } from "@/components/ui/CountBadge";
 import { CloseEventDialog, closeActionLabel } from "@/components/event/CloseEventDialog";
+import { EventShell } from "@/components/event/EventShell";
 import { GeolocatorsPanel } from "@/components/event/GeolocatorCredit";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
@@ -65,15 +62,15 @@ const CONFIRM_SENTENCE =
  * **Save version** (a `geolocated` row): the same fields, and the write files the version it
  * supersedes. An optional note travels with that version. No confirm.
  *
- * Built like the create form: `EventFormLayout`, `useEventForm`, `SourcesField`. State is seeded
+ * Built like the create form: `EventShell`, `eventFormSlots`, `useEventForm`. State is seeded
  * from props (the form mounts after the row loaded), so the proof editor gets its
  * `initialContent` on first paint. Every write names the version the form was loaded at, so a
  * row that moved meanwhile answers a conflict instead of being overwritten.
  *
- * The fields fill `EventLayout`'s slots. The page's sticky actions hold the writes, the
- * banners and, for the owner, **More actions** with the close. A
- * published row's version note heads the side column, and its geolocators, whose changes apply on
- * click and never make a version, follow the Details card.
+ * The fields fill `EventShell`'s body slots. The shell's sticky actions hold the writes, the
+ * banners and, for the owner, **More actions** with the close. A published row's version note
+ * heads the side column under them (`sideTop`), and its geolocators, whose changes apply on click
+ * and never make a version, follow the Details card.
  *
  * With `queue` set the actions gain the position and a Skip, and a finished detection hands over
  * to the next one.
@@ -375,39 +372,40 @@ export function EventEditForm({
   );
 
   return (
-    <PageShell back backFallback={redirectTo} title={title} stickyActions={actions} wide>
-      <EventFormLayout
-        form={form}
-        row={geo}
-        showProvenance
-        // Optional, never part of the floor.
-        beforeLocation={
-          editingPublished && (
-            <Card as="section">
-              <SectionHeading title="Version note" concept="version_note" />
-              <Input
-                id="version_note"
-                type="text"
-                value={editNote}
-                maxLength={VERSION_NOTE_MAX_LEN}
-                onChange={(e) => setEditNote(e.target.value)}
-                placeholder="What changed, and why"
-                aria-label="Version note"
-              />
-            </Card>
-          )
-        }
-        afterDetails={
-          editingPublished && (
-            <Card as="section">
-              <SectionEyebrow title="Geolocators" concept="geolocators" margin="none" />
-              <GeolocatorsPanel event={geo} onChanged={() => onCreditChanged?.()} />
-            </Card>
-          )
-        }
+    <EventShell
+      title={title}
+      backFallback={redirectTo}
+      actions={actions}
+      // Optional, never part of the floor. Outside the `<form>`, so it joins it through `form`,
+      // and Enter in it still saves.
+      sideTop={
+        editingPublished && (
+          <Card as="section">
+            <SectionHeading title="Version note" concept="version_note" />
+            <Input
+              id="version_note"
+              type="text"
+              form={EDIT_FORM_ID}
+              value={editNote}
+              maxLength={VERSION_NOTE_MAX_LEN}
+              onChange={(e) => setEditNote(e.target.value)}
+              placeholder="What changed, and why"
+              aria-label="Version note"
+            />
+          </Card>
+        )
+      }
+      body={{
+        ...eventFormSlots(form, { row: geo, showProvenance: true }),
+        afterDetails: editingPublished && (
+          <Card as="section">
+            <SectionEyebrow title="Geolocators" concept="geolocators" margin="none" />
+            <GeolocatorsPanel event={geo} onChanged={() => onCreditChanged?.()} />
+          </Card>
+        ),
         // `noValidate`: IncompleteFormNotice owns required-field feedback.
-        formProps={{ id: EDIT_FORM_ID, onSubmit: attemptSubmit, noValidate: true }}
-      />
-    </PageShell>
+        form: { id: EDIT_FORM_ID, onSubmit: attemptSubmit, noValidate: true },
+      }}
+    />
   );
 }

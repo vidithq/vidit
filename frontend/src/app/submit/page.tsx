@@ -22,7 +22,8 @@ import { MapPin, Megaphone } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { CountBadge } from "@/components/ui/CountBadge";
 import { IconTile } from "@/components/ui/IconTile";
-import { EventFormLayout, useEventForm } from "@/components/geolocations/EventFormFields";
+import { eventFormSlots, useEventForm } from "@/components/geolocations/EventFormFields";
+import { EventShell } from "@/components/event/EventShell";
 import { sourcesBlockWrite } from "@/components/sources/SourcesField";
 import { DuplicateProbe } from "@/components/geolocations/new/DuplicateProbe";
 import { IMPORT_GLYPH } from "@/lib/importEntries";
@@ -199,10 +200,6 @@ function SubmitForm() {
     return <PageLoading />;
   }
 
-  // Both import entries swap out the form for their panel: each writes detections server side
-  // and leaves through the review queue.
-  const showForm = mode === "single";
-
   // The page's sticky actions: the publish buttons on one line, each counting the conditions it
   // still misses (a geolocation needs the request floor too), then the banner. The icons give
   // way below `sm`, so both buttons fit one line at 320px.
@@ -248,15 +245,40 @@ function SubmitForm() {
     </aside>
   );
 
+  // A path's back arrow returns to the chooser.
+  const backToChooser = () => (fromChooser.current ? router.back() : router.push(submitHref()));
+
+  // The draft lives in `form`, above both shells, so it survives a trip through the chooser: the
+  // fields reseed from it when the form opens again.
+  if (mode === "single") {
+    return (
+      <EventShell
+        title="Submit"
+        onBack={backToChooser}
+        actions={actions}
+        body={{
+          ...eventFormSlots(form, {
+            afterLocation: (
+              <DuplicateProbe
+                lat={form.lat}
+                lng={form.lng}
+                sourceUrl={form.sources.flatMap(draftUrls)[0] ?? ""}
+                eventDate={form.eventDate}
+              />
+            ),
+          }),
+          // No `onSubmit` route: publish actions are explicit buttons, and one clicked while its
+          // floor is short flags the missing fields red. `noValidate` stops native bubbles.
+          form: { onSubmit: (e) => e.preventDefault(), noValidate: true },
+        }}
+      />
+    );
+  }
+
+  // Both import entries take the chooser's shell: each writes detections server side and leaves
+  // through the review queue.
   return (
-    <PageShell
-      title="Submit"
-      wide={showForm}
-      // A path's back arrow returns to the chooser.
-      back={mode !== null}
-      onBack={() => (fromChooser.current ? router.back() : router.push(submitHref()))}
-      stickyActions={showForm ? actions : undefined}
-    >
+    <PageShell title="Submit" back={mode !== null} onBack={backToChooser}>
       {mode === null && (
         <div role="group" aria-label="Submission mode" className="grid gap-4 sm:grid-cols-3">
           {MODES.map(({ mode, icon, title, note }) => (
@@ -268,25 +290,6 @@ function SubmitForm() {
       {mode === "xpost" && <ImportPostPanel />}
 
       {mode === "bulk" && <ImportArchivePanel username={user.username} />}
-
-      {/* Stays mounted (hidden) on the other paths, so its draft survives a trip through the
-          chooser. */}
-      <div className={showForm ? undefined : "hidden"}>
-        <EventFormLayout
-          form={form}
-          // No `onSubmit` route: publish actions are explicit buttons, and one clicked while its
-          // floor is short flags the missing fields red. `noValidate` stops native bubbles.
-          formProps={{ onSubmit: (e) => e.preventDefault(), noValidate: true }}
-          afterLocation={
-            <DuplicateProbe
-              lat={form.lat}
-              lng={form.lng}
-              sourceUrl={form.sources.flatMap(draftUrls)[0] ?? ""}
-              eventDate={form.eventDate}
-            />
-          }
-        />
-      </div>
     </PageShell>
   );
 }

@@ -1,7 +1,10 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { EventDetailBody } from "./EventDetailBody";
+import type { ReactNode } from "react";
+
+import { EventDetailBody, eventPageSlots } from "./EventDetailBody";
+import { EventLayout } from "./EventLayout";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import type { Source } from "@/lib/sources";
 import { source } from "@/test/eventDetail";
@@ -100,11 +103,16 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   };
 }
 
+// The event page's body, as `EventShell` lays it out.
+function PageBody({ geo, location }: { geo: EventDetail; location?: ReactNode }) {
+  return <EventLayout {...eventPageSlots(geo, location)} />;
+}
+
 const block = (n: number) => screen.getByRole("region", { name: `Source ${n}` });
 
 describe("EventDetailBody", () => {
-  it("panel variant: thumbnail media, section headings, no request/author rows", () => {
-    render(<EventDetailBody geo={geoFixture()} variant="panel" />);
+  it("panel: thumbnail media, section headings, no request/author rows", () => {
+    render(<EventDetailBody geo={geoFixture()} />);
     const img = screen.getByRole("img", { name: TITLE });
     // Derive the expected URL from the component's helper, decoded to survive next/image's loader encoding.
     expect(decodeURIComponent(img.getAttribute("src") ?? "")).toContain(
@@ -123,8 +131,8 @@ describe("EventDetailBody", () => {
     expect(screen.getByText("Anchor points match the imagery.")).toBeInTheDocument();
   });
 
-  it("page variant: hero media and the requested-by row, no author row", () => {
-    render(<EventDetailBody geo={geoFixture()} variant="page" />);
+  it("page: hero media and the requested-by row, no author row", () => {
+    render(<PageBody geo={geoFixture()} />);
     const img = screen.getByRole("img", { name: TITLE });
     expect(decodeURIComponent(img.getAttribute("src") ?? "")).toContain(
       displayUrlsFor(IMAGE).hero
@@ -136,7 +144,7 @@ describe("EventDetailBody", () => {
   });
 
   it("renders one block per source, in the order served", () => {
-    render(<EventDetailBody geo={geoFixture()} variant="page" />);
+    render(<PageBody geo={geoFixture()} />);
     const first = block(1);
     expect(within(first).getByText("Drone footage of the strike")).toBeInTheDocument();
     expect(within(first).getByText("Direct")).toBeInTheDocument();
@@ -154,9 +162,8 @@ describe("EventDetailBody", () => {
 
   it("reads each source's kind, with its file's kind when it has one", () => {
     render(
-      <EventDetailBody
+      <PageBody
         geo={geoFixture({ sources: [{ ...FOOTAGE, kind: "unknown" }, ARTICLE] })}
-        variant="page"
       />
     );
     expect(within(block(1)).getByText("Photo")).toBeInTheDocument();
@@ -164,7 +171,7 @@ describe("EventDetailBody", () => {
   });
 
   it("lists each link with its post date and its archived copy, named by source and link", () => {
-    render(<EventDetailBody geo={geoFixture()} variant="page" />);
+    render(<PageBody geo={geoFixture()} />);
     const first = block(1);
     expect(within(first).getByRole("link", { name: "t.me" })).toHaveAttribute(
       "href",
@@ -191,7 +198,7 @@ describe("EventDetailBody", () => {
       is_graphic: true,
       media: { ...IMAGE, id: "m2", storage_url: "/local-storage/other.jpg" },
     };
-    render(<EventDetailBody geo={geoFixture({ sources: [FOOTAGE, clip] })} variant="page" />);
+    render(<PageBody geo={geoFixture({ sources: [FOOTAGE, clip] })} />);
     expect(within(block(1)).queryByRole("button", { name: /Show graphic/ })).toBeNull();
     expect(
       within(block(2)).getByRole("button", { name: "Show graphic content (18 or older)" })
@@ -199,7 +206,7 @@ describe("EventDetailBody", () => {
   });
 
   it("says so when the event has no source yet", () => {
-    render(<EventDetailBody geo={geoFixture({ sources: [], proof: null })} variant="panel" />);
+    render(<EventDetailBody geo={geoFixture({ sources: [], proof: null })} />);
     expect(screen.getByText("No source yet")).toBeInTheDocument();
     expect(screen.getByText("No proof provided")).toBeInTheDocument();
   });
@@ -212,7 +219,6 @@ describe("EventDetailBody", () => {
             { ...FOOTAGE, media: { ...IMAGE, id: "m2", storage_url: "/local-storage/clip.mp4", kind: "video" } },
           ],
         })}
-        variant="panel"
       />
     );
     // A clip plays in `VideoPlayer`, so the tile is the player's controller, not a bare native element.
@@ -222,9 +228,8 @@ describe("EventDetailBody", () => {
 
   it("orders the page as sources, proof, the location slot, then the details", () => {
     render(
-      <EventDetailBody
+      <PageBody
         geo={geoFixture()}
-        variant="page"
         location={<div data-testid="location-map">map goes here</div>}
       />
     );
@@ -242,9 +247,8 @@ describe("EventDetailBody", () => {
   it("lists the conflicts and the event's tags in their own rows", () => {
     render(
       // The footage source carries a Tags row of its own; the article source does not.
-      <EventDetailBody
+      <PageBody
         geo={geoFixture({ tags: [{ id: "t3", name: "night" }], sources: [ARTICLE] })}
-        variant="page"
       />
     );
     expect(screen.getByText("Conflict")).toBeInTheDocument();
@@ -253,7 +257,7 @@ describe("EventDetailBody", () => {
   });
 
   it("geolocated geo shows the Geolocated status, not detected markers", () => {
-    render(<EventDetailBody geo={geoFixture()} variant="page" />);
+    render(<PageBody geo={geoFixture()} />);
     expect(screen.getByText("Status")).toBeInTheDocument();
     expect(screen.getByText("Geolocated")).toBeInTheDocument();
     expect(screen.queryByText("Detected")).not.toBeInTheDocument();
@@ -262,14 +266,13 @@ describe("EventDetailBody", () => {
 
   it("detected geo shows the badge, status row, and provenance link", () => {
     render(
-      <EventDetailBody
+      <PageBody
         geo={geoFixture({
           status: "detected",
           detected_from_url: "https://x.com/ana/status/123",
           // A detection is nobody's request: the two provenance stamps never share a row outside a fixture.
           requested_by: null,
         })}
-        variant="page"
       />
     );
     expect(screen.getByText("Status")).toBeInTheDocument();
@@ -288,11 +291,10 @@ describe("EventDetailBody", () => {
     ).toBeInTheDocument();
   });
 
-  it("page variant without a requested-by trace omits the row", () => {
+  it("page without a requested-by trace omits the row", () => {
     render(
-      <EventDetailBody
+      <PageBody
         geo={geoFixture({ requested_by: null })}
-        variant="page"
       />
     );
     expect(screen.queryByText("Requested by")).not.toBeInTheDocument();
@@ -300,7 +302,7 @@ describe("EventDetailBody", () => {
 
   it("shows the closer's reason on a closed row, beside the status badge", () => {
     render(
-      <EventDetailBody
+      <PageBody
         geo={geoFixture({
           status: "closed",
           before_closed_status: "requested",
@@ -308,7 +310,6 @@ describe("EventDetailBody", () => {
           closed_at: "2026-06-05T12:00:00Z",
           coords: null,
         })}
-        variant="page"
       />
     );
     expect(screen.getByText("Reason")).toBeInTheDocument();
@@ -327,14 +328,13 @@ describe("EventDetailBody", () => {
   // the claim was taken back.
   it("marks a retracted geolocation as closed, with the reason and the day", () => {
     render(
-      <EventDetailBody
+      <PageBody
         geo={geoFixture({
           status: "closed",
           before_closed_status: "geolocated",
           close_reason: "Wrong village: the footage is from Vovchansk.",
           closed_at: "2026-06-05T12:00:00Z",
         })}
-        variant="page"
       />
     );
     expect(screen.getByText("Reason")).toBeInTheDocument();
@@ -347,13 +347,12 @@ describe("EventDetailBody", () => {
 
   it("omits the Reason row when a closed row has no reason", () => {
     render(
-      <EventDetailBody
+      <PageBody
         geo={geoFixture({
           status: "closed",
           before_closed_status: "detected",
           close_reason: null,
         })}
-        variant="page"
       />
     );
     expect(screen.queryByText("Reason")).not.toBeInTheDocument();
@@ -361,9 +360,8 @@ describe("EventDetailBody", () => {
 
   it("puts the event time on its own row, date-only in Event date", () => {
     render(
-      <EventDetailBody
+      <PageBody
         geo={geoFixture({ occurred_date: "2026-06-01", occurred_time: "14:30:00", sources: [ARTICLE] })}
-        variant="page"
       />
     );
     expect(screen.getByText("Event time")).toBeInTheDocument();
@@ -374,9 +372,8 @@ describe("EventDetailBody", () => {
   it("surfaces a standalone event time even when the date is unknown", () => {
     // The relaxed request path: an approximate hour (sun position) with no day.
     render(
-      <EventDetailBody
+      <PageBody
         geo={geoFixture({ occurred_date: null, occurred_time: "14:30:00" })}
-        variant="page"
       />
     );
     expect(screen.getByText("Event time")).toBeInTheDocument();
@@ -386,13 +383,13 @@ describe("EventDetailBody", () => {
   });
 
   it("omits the Event time row when no time is set", () => {
-    render(<EventDetailBody geo={geoFixture({ occurred_time: null })} variant="page" />);
+    render(<PageBody geo={geoFixture({ occurred_time: null })} />);
     expect(screen.queryByText("Event time")).not.toBeInTheDocument();
   });
 
   it("a request opened from a post reads Requested from, not Detected from", () => {
     render(
-      <EventDetailBody
+      <PageBody
         geo={geoFixture({
           status: "requested",
           coords: null,
@@ -400,7 +397,6 @@ describe("EventDetailBody", () => {
           detected_from_url: "https://x.com/ana/status/123",
           detected_via: "bot",
         })}
-        variant="page"
       />
     );
     expect(screen.getByText("Requested from")).toBeInTheDocument();
