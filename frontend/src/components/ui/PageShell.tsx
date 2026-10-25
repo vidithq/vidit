@@ -26,6 +26,7 @@ export function PageShell({
   subtitle,
   back = false,
   backFallback,
+  onBack,
   actions,
   stickyActions,
   controls,
@@ -43,6 +44,9 @@ export function PageShell({
   /** Where Back lands when the session has nothing to return to. Forwards to
    *  `smartBack`'s `fallback` (`/` when unset). */
   backFallback?: string;
+  /** Replaces Back's `smartBack`, for a page whose back target is a state of the page itself
+   *  (the submit chooser). */
+  onBack?: () => void;
   actions?: ReactNode;
   /** The page's actions, at the top right of the header. While the page scrolls the title goes
    *  and they stay pinned at the top right of the column. They come before the title in the DOM
@@ -69,7 +73,7 @@ export function PageShell({
   children: ReactNode;
 }) {
   const router = useRouter();
-  const handleBack = () => smartBack(router, backFallback);
+  const handleBack = onBack ?? (() => smartBack(router, backFallback));
   // The chip's back slot, published by `Sidebar`. Null until the chip exists.
   const phoneBackSlot = useSyncExternalStore(
     subscribePhoneBackSlot,

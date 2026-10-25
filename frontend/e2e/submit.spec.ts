@@ -150,18 +150,30 @@ test.describe("submit", () => {
     await expect(page).toHaveURL(/\/submit$/);
     await expect(cards).toHaveCount(3);
 
-    // The link under the title returns to the chooser from any path.
-    await page.goto("/submit?mode=bulk");
-    await page.getByRole("link", { name: "Other ways to submit" }).click();
+    // The back arrow returns to the chooser: back through the history from a path the chooser
+    // opened, and straight to it from a path opened by its address.
+    await modes.getByRole("link", { name: /^Bulk import/ }).click();
+    await expect(page).toHaveURL(/\/submit\?mode=bulk$/);
+    await page.getByRole("button", { name: "Back" }).click();
     await expect(page).toHaveURL(/\/submit$/);
     await expect(cards).toHaveCount(3);
+    await expect(page.getByRole("button", { name: "Back" })).toHaveCount(0);
+    // That Back was a step through the history, so Forward reopens the path.
+    await page.goForward();
+    await expect(page).toHaveURL(/\/submit\?mode=bulk$/);
+
+    await page.goto("/submit?mode=bulk");
+    await page.getByRole("button", { name: "Back" }).click();
+    await expect(page).toHaveURL(/\/submit$/);
+    await expect(cards).toHaveCount(3);
+    await expect(page.getByRole("link", { name: "Other ways to submit" })).toHaveCount(0);
   });
 
   test("keeps the form's draft through a trip to the chooser", async ({ page }) => {
     await page.goto("/submit?mode=single");
 
     await page.getByLabel("Title", { exact: true }).fill("Strike on a depot");
-    await page.getByRole("link", { name: "Other ways to submit" }).click();
+    await page.getByRole("button", { name: "Back" }).click();
     await page.getByRole("group", { name: "Submission mode" }).getByRole("link", { name: /^Single event/ }).click();
     await expect(page.getByLabel("Title", { exact: true })).toHaveValue("Strike on a depot");
   });
@@ -170,7 +182,7 @@ test.describe("submit", () => {
     await page.goto("/submit?import=1");
 
     await expect(page.getByRole("group", { name: "Submission mode" })).toHaveCount(0);
-    await expectNarrowViewportLayout(page, page.getByRole("link", { name: "Other ways to submit" }));
+    await expectNarrowViewportLayout(page, page.getByRole("button", { name: "Back" }));
     await expect(page.getByText("Upload it here")).toBeVisible();
   });
 

@@ -1,7 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, type ReactNode } from "react";
-import Link from "next/link";
+import { Suspense, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
@@ -19,8 +18,8 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel";
 import { ImportPostPanel } from "@/components/geolocations/ImportPostPanel";
-import { ArrowLeft, MapPin, Megaphone } from "lucide-react";
-import { Button, buttonClasses } from "@/components/ui/Button";
+import { MapPin, Megaphone } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 import { IconTile } from "@/components/ui/IconTile";
 import { EventFormLayout, useEventForm } from "@/components/geolocations/EventFormFields";
 import {
@@ -82,6 +81,14 @@ function SubmitForm() {
   const searchParams = useSearchParams();
 
   const mode = modeFrom(searchParams);
+  // Whether the entry under this one in the history is the chooser: the path was opened from it
+  // on this page. Back then walks back to it, and otherwise opens it.
+  const fromChooser = useRef(false);
+  const lastMode = useRef(mode);
+  useEffect(() => {
+    fromChooser.current = mode !== null && lastMode.current === null;
+    lastMode.current = mode;
+  }, [mode]);
 
   // Every field both publish paths fill, empty. `invalidKeys` drive the in-form red outlines,
   // set when a publish is clicked while its floor is short. The tick-list is the standing
@@ -259,15 +266,10 @@ function SubmitForm() {
     <PageShell
       title="Submit"
       wide={showForm}
+      // A path's back arrow returns to the chooser.
+      back={mode !== null}
+      onBack={() => (fromChooser.current ? router.back() : router.push(submitHref()))}
       stickyActions={showForm ? actions : undefined}
-      controls={
-        mode !== null && (
-          <Link href={submitHref()} className={buttonClasses("ghost", { className: "-ml-2" })}>
-            <ArrowLeft size={14} strokeWidth={2} />
-            Other ways to submit
-          </Link>
-        )
-      }
     >
       {mode === null && (
         <div role="group" aria-label="Submission mode" className="grid gap-4 sm:grid-cols-3">
