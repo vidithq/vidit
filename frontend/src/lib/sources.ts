@@ -229,10 +229,6 @@ export function uploadsRunning(drafts: SourceDraft[]): boolean {
 
 export const UPLOADS_RUNNING_MESSAGE = "Wait for the source files to finish uploading.";
 
-/** What a source with a file and no link says: a detection may hold one, the publish rule needs
- *  a link on every source. */
-export const INCOMPLETE_SOURCE_NOTE = "Incomplete: add a link before publishing";
-
 /** A `datetime-local` value as the API reads it (UTC), or the stored instant when the input
  *  still holds what it was seeded with, so an untouched field keeps its seconds. */
 function instant(input: string, stored: string | null): string | null {

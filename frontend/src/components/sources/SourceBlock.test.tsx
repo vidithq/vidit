@@ -42,13 +42,6 @@ describe("SourceBlock", () => {
     expect(within(block).getByText("Drone · photo")).toBeInTheDocument();
   });
 
-  it("marks a source with a file and no link as incomplete", () => {
-    const block = renderBlock({ media: IMAGE, links: [] });
-    expect(
-      within(block).getByText("Incomplete: add a link before publishing")
-    ).toBeInTheDocument();
-  });
-
   it("lists a satellite source's warnings under its links, each led by its link's host", () => {
     const block = renderBlock({
       kind: "satellite",
@@ -69,11 +62,6 @@ describe("SourceBlock", () => {
   it("shows no warning list without a warning", () => {
     const block = renderBlock({ kind: "satellite" });
     expect(within(block).queryByRole("list", { name: /^Warnings/ })).toBeNull();
-  });
-
-  it("does not mark a linked source", () => {
-    const linked = renderBlock({ media: IMAGE });
-    expect(within(linked).queryByText(/^Incomplete/)).toBeNull();
   });
 
   it("shows a No file box and the kind alone without a file", () => {

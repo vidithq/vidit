@@ -167,18 +167,10 @@ describe("SourceEditor", () => {
     expect(draftNow().kind).toBe("drone");
   });
 
-  it("marks a source with a file and no link as incomplete until a link is typed", () => {
+  it("says nothing of a missing link until a publish attempt flags it", () => {
     render(<Host initial={{ ...newSourceDraft(), file: { state: "stored", media: FILE } }} />);
-    expect(screen.getByText("Incomplete: add a link before publishing")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Source 1 link 1"), {
-      target: { value: "https://t.me/c/1" },
-    });
-    expect(screen.queryByText("Incomplete: add a link before publishing")).toBeNull();
-  });
-
-  it("does not mark a source without a file as incomplete", () => {
-    render(<Host initial={newSourceDraft()} />);
-    expect(screen.queryByText("Incomplete: add a link before publishing")).toBeNull();
+    expect(screen.queryByText(/^Incomplete/)).toBeNull();
+    expect(screen.getByText("Links").className).not.toContain("text-red-400");
   });
 
   it("archives a link from the archive box in its row, beside its post time", () => {
