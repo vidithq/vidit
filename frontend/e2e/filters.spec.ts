@@ -1,12 +1,31 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { CONFLICTS, REQUESTED_EVENT } from "./support/fixtures";
+import { CONFLICTS, REQUESTED_EVENT, TAGS } from "./support/fixtures";
 import { grantSession, mockApi } from "./support/mockApi";
 import {
   expectControlInsideViewport,
   expectNarrowViewportLayout,
   expectNoHorizontalOverflow,
 } from "./support/narrowLayout";
+
+type Pick = (page: Page, panel: Locator) => Promise<void>;
+
+const pickChip =
+  (name: string): Pick =>
+  (_page, panel) =>
+    panel.getByRole("button", { name, exact: true }).click();
+
+// The list renders in a portal on the body, outside the panel.
+const pickConflict: Pick = async (page, panel) => {
+  await panel.getByRole("combobox", { name: "Conflict" }).fill("russian");
+  await page
+    .getByRole("listbox", { name: "Conflict" })
+    .getByRole("option", { name: new RegExp(`^${CONFLICTS[0].name}`) })
+    .click();
+  await expect(
+    panel.getByRole("button", { name: new RegExp(`^Remove ${CONFLICTS[0].name}`) }),
+  ).toBeVisible();
+};
 
 /**
  * The filter rail on the three lists that carry it. From `lg` up the panel is a
@@ -20,7 +39,7 @@ const PAGES = [
     path: "/feed",
     signedIn: true,
     section: "Kind",
-    chip: "Requests",
+    pick: pickChip("Requests"),
     listed: REQUESTED_EVENT.title,
   },
   {
@@ -28,7 +47,7 @@ const PAGES = [
     path: "/requests",
     signedIn: false,
     section: "Conflict",
-    chip: CONFLICTS[0].name,
+    pick: pickConflict,
     listed: REQUESTED_EVENT.title,
   },
   {
@@ -36,7 +55,7 @@ const PAGES = [
     path: "/search?type=event",
     signedIn: false,
     section: "Conflict",
-    chip: CONFLICTS[0].name,
+    pick: pickConflict,
     listed: null,
   },
 ];
@@ -60,7 +79,7 @@ for (const target of PAGES) {
       const dialog = page.getByRole("dialog", { name: "Filters" });
       await expect(dialog).toBeVisible();
       await dialog.getByRole("button", { name: `Toggle ${target.section}` }).click();
-      await dialog.getByRole("button", { name: target.chip, exact: true }).click();
+      await target.pick(page, dialog);
       await expectNoHorizontalOverflow(page);
       await expectControlInsideViewport(page, dialog.getByRole("button", { name: "Clear" }));
       const apply = dialog.getByRole("button", { name: "Apply" });
@@ -95,3 +114,19 @@ for (const target of PAGES) {
     });
   });
 }
+
+test("picks and removes a tag through the search field, in the URL", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await open(page, "/search?type=event", false);
+
+  const rail = page.getByRole("complementary", { name: "Filters" });
+  await rail.getByRole("button", { name: "Toggle Tags" }).click();
+  await rail.getByRole("combobox", { name: "Tags" }).fill("dro");
+  const list = page.getByRole("listbox", { name: "Tags" });
+  await expect(list.getByRole("option")).toHaveText([TAGS[0].name]);
+  await list.getByRole("option", { name: TAGS[0].name }).click();
+  await expect(page).toHaveURL(new RegExp(`[?&]tag=${TAGS[0].name}(&|$)`));
+
+  await rail.getByRole("button", { name: `Remove ${TAGS[0].name}` }).click();
+  await expect(page).not.toHaveURL(/[?&]tag=/);
+});

@@ -37,6 +37,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - Submit opens on three cards, Single event, From an X post and Bulk import, in place of the mode switch; the chosen path stays in the address, and the back arrow returns to the cards ([#693](https://github.com/vidithq/vidit/pull/693)).
 - Tags are picked through a search field in the Details card and in each source: it suggests the matching tags as you type and offers to create a missing one, in place of the full tag list ([#693](https://github.com/vidithq/vidit/pull/693)).
 - Latitude and Longitude sit on one line at every width, followed by the map and copy actions as separate buttons, in the Location card and in each source's capture position ([#693](https://github.com/vidithq/vidit/pull/693)).
+- The Conflict and Tags filters of the map, search, the Requests board and the feed are search fields that suggest the conflicts and tags in use as you type, in place of the full list of chips ([#693](https://github.com/vidithq/vidit/pull/693)).
 
 ### Removed
 

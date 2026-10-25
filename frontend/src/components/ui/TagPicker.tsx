@@ -50,8 +50,8 @@ export function TagPicker({
       {conflicts.length > 0 && (
         <ConflictChips
           conflicts={conflicts}
-          selectedIds={selectedConflictIds}
-          setSelectedIds={setSelectedConflictIds}
+          selected={selectedConflictIds}
+          setSelected={setSelectedConflictIds}
           invalid={conflictInvalid}
         />
       )}
@@ -61,8 +61,8 @@ export function TagPicker({
         <TagChips
           tags={tags}
           setTags={setTags}
-          selectedTagIds={selectedTagIds}
-          setSelectedTagIds={setSelectedTagIds}
+          selected={selectedTagIds}
+          setSelected={setSelectedTagIds}
         />
       </div>
     </>
@@ -91,37 +91,50 @@ function PickedPills({
   );
 }
 
+/** A filter's picks: every value it holds, one its catalogue lacks (a crafted URL) shown as is. */
+function filterPicks<T extends { name: string }>(
+  names: string[],
+  catalogue: T[],
+  label: (item: T) => string,
+) {
+  return names.map((n) => {
+    const known = catalogue.find((item) => item.name === n);
+    return { id: n, label: known ? label(known) : n };
+  });
+}
+
 type TagOption = { tag: Tag } | { create: string };
 
 const tagOptionKey = (option: TagOption) =>
   "tag" in option ? option.tag.id : `create:${option.create}`;
 
-/**
- * The tags picked from the one catalogue that serves events and sources: the picks as removable
- * chips over a combobox that suggests the other tags matching the typed text and, when no tag
- * bears that exact name, offers to create it. The event's Details card and each source editor
- * render it.
- */
-export function TagChips({
-  tags,
-  setTags,
-  selectedTagIds,
-  setSelectedTagIds,
-  owner,
-}: {
+type TagChipsProps = {
   tags: Tag[];
-  setTags: Dispatch<SetStateAction<Tag[]>>;
-  selectedTagIds: string[];
-  setSelectedTagIds: (next: string[]) => void;
+  /** Tag ids on a form, tag names on a filter. */
+  selected: string[];
+  setSelected: (next: string[]) => void;
   /** Names whose tags these are ("Source 2"), so several pickers on one page read apart. */
   owner?: string;
-}) {
+} & (
+  | { filter?: false; setTags: Dispatch<SetStateAction<Tag[]>> }
+  /** Picks by name from the catalogue it is given, with no Create row. */
+  | { filter: true; setTags?: never }
+);
+
+/**
+ * The tags picked from the one catalogue that serves events and sources: the picks as removable
+ * chips over a combobox that suggests the other tags matching the typed text and, on a form, when
+ * no tag bears that exact name, offers to create it. The event's Details card, each source editor
+ * and the event filter panel render it.
+ */
+export function TagChips({ tags, selected, setSelected, owner, filter, setTags }: TagChipsProps) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const name = query.trim();
+  const key = (tag: Tag) => (filter ? tag.name : tag.id);
 
   const select = (tag: Tag) => {
-    if (!selectedTagIds.includes(tag.id)) setSelectedTagIds([...selectedTagIds, tag.id]);
+    if (!selected.includes(key(tag))) setSelected([...selected, key(tag)]);
     setQuery("");
   };
 
@@ -142,19 +155,21 @@ export function TagChips({
         return "Could not create tag.";
       },
       onSuccess: (created) => {
-        setTags((prev) => (prev.some((t) => t.id === created.id) ? prev : [...prev, created]));
+        setTags?.((prev) => (prev.some((t) => t.id === created.id) ? prev : [...prev, created]));
         select(created);
       },
     }
   );
 
-  const selected = tags.filter((t) => selectedTagIds.includes(t.id));
+  const picked = filter
+    ? filterPicks(selected, tags, (t) => t.name)
+    : tags.filter((t) => selected.includes(t.id)).map((t) => ({ id: t.id, label: t.name }));
   const needle = name.toLowerCase();
   const matches = tags.filter(
-    (t) => !selectedTagIds.includes(t.id) && t.name.toLowerCase().includes(needle)
+    (t) => !selected.includes(key(t)) && t.name.toLowerCase().includes(needle)
   );
   // Exact and case-sensitive, like the backend uniqueness rule.
-  const canCreate = name !== "" && !tags.some((t) => t.name === name);
+  const canCreate = !filter && name !== "" && !tags.some((t) => t.name === name);
   const options: TagOption[] = [
     ...matches.map((tag) => ({ tag })),
     ...(canCreate ? [{ create: name }] : []),
@@ -164,13 +179,13 @@ export function TagChips({
   return (
     <div className="space-y-2">
       <PickedPills
-        picked={selected.map((t) => ({ id: t.id, label: t.name }))}
-        onRemove={(removed) => setSelectedTagIds(selectedTagIds.filter((id) => id !== removed))}
+        picked={picked}
+        onRemove={(removed) => setSelected(selected.filter((k) => k !== removed))}
       />
       <Combobox
         aria-label={label}
-        placeholder="Search or create a tag"
-        maxLength={TAG_NAME_MAX_LEN}
+        placeholder={filter ? "Search tags" : "Search or create a tag"}
+        maxLength={filter ? undefined : TAG_NAME_MAX_LEN}
         className="max-w-xs"
         query={query}
         onQueryChange={(next) => {
@@ -199,9 +214,11 @@ export function TagChips({
         status={
           options.length > 0
             ? null
-            : name === ""
-              ? "Type a name to create a tag."
-              : "Already selected."
+            : filter
+              ? "No tags match."
+              : name === ""
+                ? "Type a name to create a tag."
+                : "Already selected."
         }
       />
       {create.error && <p className="text-xs text-red-400">{create.error}</p>}
@@ -210,43 +227,90 @@ export function TagChips({
 }
 
 /**
- * The conflicts picked from the referential, filtered client-side: the picks as removable chips
- * over a combobox that lists the ongoing conflicts matching the typed text, by tier then name
- * (`sortConflicts`), with "Other" pinned last and offered whatever its state. The "Include ended
- * conflicts" switch adds the ended ones. A pick stays on show when the switch drops its state.
- * The switch sits on the label row, out of the way of a list that opens below the field.
+ * The conflicts picked from a catalogue filtered client-side: the picks as removable chips over a
+ * combobox that lists the conflicts matching the typed text, by tier then name
+ * (`sortConflicts`), with "Other" pinned last.
+ *
+ * On a form the catalogue is the referential and the field draws its own label. The list holds
+ * the ongoing conflicts and "Other" whatever its state; the "Include ended conflicts" switch adds
+ * the ended ones. A pick stays on show when the switch drops its state. The switch sits on the
+ * label row, out of the way of a list that opens below the field.
+ *
+ * On a filter the catalogue is the conflicts in use, every one offered, and the filter panel draws
+ * the section title.
  */
-function ConflictChips({
+export function ConflictChips({
   conflicts,
-  selectedIds,
-  setSelectedIds,
-  invalid,
+  selected,
+  setSelected,
+  invalid = false,
+  filter = false,
 }: {
   conflicts: Conflict[];
-  selectedIds: string[];
-  setSelectedIds: Dispatch<SetStateAction<string[]>>;
+  /** Conflict ids on a form, conflict names on a filter. */
+  selected: string[];
+  setSelected: (next: string[]) => void;
   /** Flags the conflict blocking publish (red label and outline). */
-  invalid: boolean;
+  invalid?: boolean;
+  /** Picks by name, with no label row and no switch. */
+  filter?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [includeEnded, setIncludeEnded] = useState(false);
+  const key = (c: Conflict) => (filter ? c.name : c.id);
+  const offersEnded = filter || includeEnded;
 
-  const select = (id: string) => {
-    setSelectedIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+  const select = (c: Conflict) => {
+    if (!selected.includes(key(c))) setSelected([...selected, key(c)]);
     setQuery("");
   };
 
-  const selected = conflicts.filter((c) => selectedIds.includes(c.id));
+  const picked = filter
+    ? filterPicks(selected, conflicts, conflictLabel)
+    : conflicts
+        .filter((c) => selected.includes(c.id))
+        .map((c) => ({ id: c.id, label: conflictLabel(c) }));
   const needle = query.trim().toLowerCase();
   const options = sortConflicts(
     conflicts.filter(
       (c) =>
-        !selectedIds.includes(c.id) &&
-        (includeEnded || c.is_ongoing || c.name === CONFLICT_OTHER_NAME) &&
+        !selected.includes(key(c)) &&
+        (offersEnded || c.is_ongoing || c.name === CONFLICT_OTHER_NAME) &&
         c.name.toLowerCase().includes(needle)
     )
   );
+
+  const field = (
+    <div className={cn("space-y-2", invalid && "rounded-md p-2 ring-1 ring-red-500/40")}>
+      <PickedPills
+        picked={picked}
+        onRemove={(removed) => setSelected(selected.filter((k) => k !== removed))}
+      />
+      <Combobox
+        aria-label="Conflict"
+        placeholder="Search conflicts"
+        className="max-w-xs"
+        query={query}
+        onQueryChange={setQuery}
+        open={open}
+        onOpenChange={setOpen}
+        options={options}
+        optionKey={(c) => c.id}
+        renderOption={conflictLabel}
+        pillOption={() => true}
+        onPick={select}
+        status={
+          options.length > 0
+            ? null
+            : offersEnded
+              ? "No conflicts match."
+              : "No conflicts match; try including ended conflicts."
+        }
+      />
+    </div>
+  );
+  if (filter) return field;
 
   return (
     <div className="space-y-2">
@@ -265,33 +329,7 @@ function ConflictChips({
           Include ended conflicts
         </button>
       </div>
-      <div className={cn("space-y-2", invalid && "rounded-md p-2 ring-1 ring-red-500/40")}>
-        <PickedPills
-          picked={selected.map((c) => ({ id: c.id, label: conflictLabel(c) }))}
-          onRemove={(removed) => setSelectedIds((prev) => prev.filter((id) => id !== removed))}
-        />
-        <Combobox
-          aria-label="Conflict"
-          placeholder="Search conflicts"
-          className="max-w-xs"
-          query={query}
-          onQueryChange={setQuery}
-          open={open}
-          onOpenChange={setOpen}
-          options={options}
-          optionKey={(c) => c.id}
-          renderOption={conflictLabel}
-          pillOption={() => true}
-          onPick={(c) => select(c.id)}
-          status={
-            options.length > 0
-              ? null
-              : includeEnded
-                ? "No conflicts match."
-                : "No conflicts match; try including ended conflicts."
-          }
-        />
-      </div>
+      {field}
     </div>
   );
 }

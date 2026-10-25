@@ -1,7 +1,7 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { MediaLightbox } from "./MediaLightbox";
+import { MediaLightbox, MediaOverlay } from "./MediaLightbox";
 import type { Media } from "@/types";
 
 const IMAGE: Media = {
@@ -82,6 +82,23 @@ describe("MediaLightbox", () => {
     });
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves Escape to a control inside that takes it", () => {
+    const onClose = vi.fn();
+    render(
+      <MediaOverlay variant="dialog" label="Filters" onClose={onClose}>
+        <input
+          aria-label="Field"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") e.preventDefault();
+          }}
+        />
+      </MediaOverlay>,
+    );
+
+    fireEvent.keyDown(screen.getByLabelText("Field"), { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("takes the keyboard on open and hands it back on close", () => {

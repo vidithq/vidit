@@ -152,3 +152,67 @@ describe("the Approvals section", () => {
     expect(screen.queryByRole("button", { name: "Approvals" })).not.toBeInTheDocument();
   });
 });
+
+describe("the Conflict and Tags search fields", () => {
+  const ENDED: Conflict = {
+    id: "c2",
+    name: "Gulf War",
+    wikidata_id: null,
+    start_year: 1990,
+    end_year: 1991,
+    is_ongoing: false,
+    tier: null,
+  };
+  const options = () => screen.queryAllByRole("option").map((o) => o.textContent);
+
+  it("offers every conflict in use, ended ones included, and patches the picked name", () => {
+    const onPatch = vi.fn();
+    render(
+      <EventFilterSections
+        tags={TAGS}
+        conflicts={[...CONFLICTS, ENDED]}
+        values={{ ...EMPTY_EVENT_FILTERS, conflicts: ["Russian invasion of Ukraine"] }}
+        onPatch={onPatch}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Remove Russian invasion of Ukraine (2022-present)" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    fireEvent.focus(screen.getByRole("combobox", { name: "Conflict" }));
+    expect(options()).toEqual(["Gulf War (1990-1991)"]);
+    fireEvent.click(screen.getByRole("option", { name: "Gulf War (1990-1991)" }));
+    expect(onPatch).toHaveBeenCalledWith({
+      conflicts: ["Russian invasion of Ukraine", "Gulf War"],
+    });
+  });
+
+  it("searches the tags in use by name, with no Create row", () => {
+    const onPatch = vi.fn();
+    render(
+      <EventFilterSections
+        tags={[...TAGS, { id: "t2", name: "Artillery" }]}
+        conflicts={CONFLICTS}
+        values={{ ...EMPTY_EVENT_FILTERS, tags: ["Drone"] }}
+        onPatch={onPatch}
+      />,
+    );
+
+    const field = screen.getByRole("combobox", { name: "Tags" });
+    fireEvent.change(field, { target: { value: "zz" } });
+    expect(options()).toEqual([]);
+    expect(screen.getByRole("status")).toHaveTextContent("No tags match.");
+    fireEvent.change(field, { target: { value: "art" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(onPatch).toHaveBeenCalledWith({ tags: ["Drone", "Artillery"] });
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove Drone" }));
+    expect(onPatch).toHaveBeenCalledWith({ tags: [] });
+  });
+
+  it("keeps a picked name its catalogue lacks on show", () => {
+    renderPanel({ ...EMPTY_EVENT_FILTERS, tags: ["Retired tag"] });
+    expect(screen.getByRole("button", { name: "Remove Retired tag" })).toBeInTheDocument();
+  });
+});

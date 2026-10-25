@@ -45,7 +45,7 @@ import {
   GitHubGlyph,
   XGlyph,
 } from "@/components/ui/BrandGlyphs";
-import { TagPicker } from "@/components/ui/TagPicker";
+import { ConflictChips, TagChips, TagPicker } from "@/components/ui/TagPicker";
 import { EntityCard } from "@/components/ui/EntityCard";
 import { CollectionCover } from "@/components/collections/CollectionCover";
 import { DetectionQueueRow } from "@/components/detections/DetectionQueueRow";
@@ -635,8 +635,12 @@ export default function PalettePage() {
             <PaletteFilterSection />
           </Item>
 
-          <Item name="<ChipBucket>" usage="A multi-select chip bucket for one filter family (conflicts, source kinds, levels, tags, media types): every option a <Pill>, selected ones filled accent, click toggles membership. Any-match within the bucket; combining buckets is AND on the server.">
+          <Item name="<ChipBucket>" usage="A multi-select chip bucket for one small fixed filter family (status, source kind, level, media, location guess, Approved only, the feed's Kind): every option a <Pill>, selected ones filled accent, click toggles membership. Any-match within the bucket; combining buckets is AND on the server. An open catalogue (conflicts, tags) takes the filter search fields instead.">
             <PaletteChipBucket />
+          </Item>
+
+          <Item name="<ConflictChips filter> / <TagChips filter>" usage="The Conflict and Tags sections of the shared filter panel: the event form's search fields in filter mode. Each picks by name, the value the URL carries, from the panel's own catalogue of values in use (GET /conflicts?used=true, GET /tags), shows the picks as accent chips that remove on click, and keeps a picked name its catalogue lacks on show. The conflict field offers every conflict in use, ended ones included, with no label row and no switch; the tag field has no Create row and never calls POST /tags.">
+            <PaletteFilterSearchFields />
           </Item>
 
           <Item name="<ToggleRow>" usage="An on/off row: the whole row is the switch (role + click), the <Switch> rendering as its visual span, and it takes the phone tap step. `description` picks the shape: without one the row is the filter toggle, a micro uppercase label on a divided list; with one it is a settings preference, the label at reading size over a line saying what the preference does. The accessible name is the label alone (aria-labelledby on it), never the paragraph under it. `className` carries the caller's own divider and spacing. `disabled` reads the state but refuses the toggle, dimmed, with a `description` saying why (the feed's Show detections while a kind chip is selected). Settings lists one described row per notification kind, its Email switch.">
@@ -927,7 +931,7 @@ export default function PalettePage() {
             </span>
           </Item>
 
-          <Item name="<TagPicker>" usage="The classification fields of every event form, last in its Details card: the conflicts, then the tags as <TagChips>. The conflict field shows the picked conflicts as accent chips that remove on click, over a <Combobox> named Conflict that lists nothing at rest and, on focus or typing, the ongoing conflicts whose name holds the typed text (case-insensitive), by tier then name, with Other pinned last and always offered. The Include ended conflicts switch on the label row adds the ended ones. <TagChips> shows the picked tags as accent chips that remove on click, over a <Combobox> that suggests the other tags of the one catalogue whose name holds the typed text (case-insensitive) and, when no tag bears the exact typed name, ends the list with Create &quot;name&quot;, which creates the tag and picks it. The list stays open after a pick. Each source editor renders <TagChips> alone, named for its source (Source 1 tags).">
+          <Item name="<TagPicker>" usage="The classification fields of every event form, last in its Details card: the conflicts, then the tags as <TagChips>. The conflict field shows the picked conflicts as accent chips that remove on click, over a <Combobox> named Conflict that lists nothing at rest and, on focus or typing, the ongoing conflicts whose name holds the typed text (case-insensitive), by tier then name, with Other pinned last and always offered. The Include ended conflicts switch on the label row adds the ended ones. <TagChips> shows the picked tags as accent chips that remove on click, over a <Combobox> that suggests the other tags of the one catalogue whose name holds the typed text (case-insensitive) and, when no tag bears the exact typed name, ends the list with Create &quot;name&quot;, which creates the tag and picks it. The list stays open after a pick. Each source editor renders <TagChips> alone, named for its source (Source 1 tags). The conflict field is <ConflictChips>; with filter, both fields serve the filter panel (see the filter search fields).">
             <div className="w-full max-w-2xl space-y-4">
               <TagPicker
                 tags={tpTags}
@@ -941,7 +945,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<Combobox>" usage="The keyboard and the list of every typeahead: a role=combobox <Input> over a role=listbox list in a portal fixed to the viewport, painted with TOOLTIP_SURFACE, as wide as the field, scrolling past 15rem and opening above the field when the room below is short. The caller owns the query, the open state, the filtered options and how a row renders; a status string shows as a muted row. ArrowUp and ArrowDown move and wrap, Enter picks the highlighted row or hands the text to onSubmitText, Escape or a blur closes. pillOption shows a row inside a neutral <Pill>, the chip a pick becomes: every conflict and tag row, never the Create row. <AccountPicker>, the <TagPicker> conflict field and <TagChips> build on it.">
+          <Item name="<Combobox>" usage="The keyboard and the list of every typeahead: a role=combobox <Input> over a role=listbox list in a portal fixed to the viewport, painted with TOOLTIP_SURFACE, as wide as the field, scrolling past 15rem and opening above the field when the room below is short. The caller owns the query, the open state, the filtered options and how a row renders; a status string shows as a muted row. ArrowUp and ArrowDown move and wrap, Enter picks the highlighted row or hands the text to onSubmitText, Escape or a blur closes. pillOption shows a row inside a neutral <Pill>, the chip a pick becomes: every conflict and tag row, never the Create row. <AccountPicker>, <ConflictChips> and <TagChips> build on it.">
             <PaletteCombobox />
           </Item>
 
@@ -2210,6 +2214,22 @@ function PaletteChoiceRow() {
         value={value}
         onChange={setValue}
       />
+    </div>
+  );
+}
+
+function PaletteFilterSearchFields() {
+  const [conflicts, setConflicts] = useState<string[]>(["Russian invasion of Ukraine"]);
+  const [tags, setTags] = useState<string[]>([]);
+  return (
+    <div className="w-72 space-y-4 bg-neutral-900 rounded-lg border border-neutral-700 p-3">
+      <ConflictChips
+        filter
+        conflicts={MOCK_CONFLICTS}
+        selected={conflicts}
+        setSelected={setConflicts}
+      />
+      <TagChips filter tags={MOCK_TAGS} selected={tags} setSelected={setTags} />
     </div>
   );
 }
