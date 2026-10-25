@@ -12,12 +12,13 @@ import {
 import { collectionHref } from "@/lib/collections";
 import { REPORT_REASON_LABELS, type ContentReport } from "@/lib/events";
 import { formatInstant } from "@/lib/format";
-import { useApiResource } from "@/hooks/useApiResource";
-import { useConfirmAction } from "@/hooks/useConfirmAction";
+import { useCursorList } from "@/hooks/useCursorList";
 import { useMutation } from "@/hooks/useMutation";
 import { AuthorByline } from "@/components/ui/AuthorByline";
-import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER, LIST_TILE } from "@/components/ui/form-styles";
@@ -33,7 +34,7 @@ import { eventHref } from "@/lib/routes";
  * the title and owner it came back with, since a collection is a name, not a recognisable id.
  *
  * Each open row carries the verdicts its target can take. `hidden` withholds the target from every
- * public read, so it takes the two-click confirm the event actions panel uses. `Mark graphic` is
+ * public read, so it opens a `ConfirmDialog`, as on the event actions panel. `Mark graphic` is
  * event-only (the flag is an event column): a collection row doesn't offer it and the API answers
  * 409 `report_verdict_not_applicable`. Both are recoverable, the event through the event actions
  * panel beside this one and the collection through the admin takedown.
@@ -61,13 +62,17 @@ function ReportRow({
   report: ContentReport;
   onResolved: () => void;
 }) {
+  const [confirmingHide, setConfirmingHide] = useState(false);
   const resolveMutation = useMutation(
     (resolution: ContentReportResolution) => resolveReport(report.id, resolution),
-    { fallback: "Resolve failed", onSuccess: onResolved }
+    {
+      fallback: "Resolve failed",
+      onSuccess: () => {
+        setConfirmingHide(false);
+        onResolved();
+      },
+    }
   );
-  const confirmHide = useConfirmAction(() => {
-    void resolveMutation.run("hidden");
-  });
 
   const open = report.resolved_at === null;
   const busy = resolveMutation.loading;
@@ -75,6 +80,7 @@ function ReportRow({
   const collection = report.collection;
   const isEvent = report.event_id !== null;
   const targetGone = !isEvent && collection === null;
+  const noun = isEvent ? "event" : "collection";
 
   return (
     <li className={`${LIST_TILE} space-y-2`}>
@@ -113,7 +119,7 @@ function ReportRow({
         </p>
       )}
 
-      {resolveMutation.error && (
+      {resolveMutation.error && !confirmingHide && (
         <div className={FORM_ERROR_BANNER} role="alert">
           {resolveMutation.error}
         </div>
@@ -125,64 +131,72 @@ function ReportRow({
             <Button
               variant="secondary"
               disabled={busy}
-              onClick={() => {
-                confirmHide.cancel();
-                void resolveMutation.run("marked_graphic");
-              }}
+              onClick={() => void resolveMutation.run("marked_graphic")}
             >
               Mark graphic
             </Button>
           )}
           {!targetGone && (
-            <>
-              <Button
-                variant="danger"
-                disabled={busy}
-                className={confirmHide.armed ? DANGER_CONFIRM : ""}
-                onClick={() => confirmHide.trigger()}
-              >
-                {confirmHide.armed
-                  ? "Confirm"
-                  : `Hide the ${isEvent ? "event" : "collection"}`}
-              </Button>
-              {confirmHide.armed && (
-                <Button variant="ghost" onClick={() => confirmHide.cancel()}>
-                  Cancel
-                </Button>
-              )}
-            </>
+            <Button
+              variant="danger"
+              disabled={busy}
+              onClick={() => {
+                resolveMutation.reset();
+                setConfirmingHide(true);
+              }}
+            >
+              Hide the {noun}
+            </Button>
           )}
           <Button
             variant="ghost"
             disabled={busy}
-            onClick={() => {
-              confirmHide.cancel();
-              void resolveMutation.run("dismissed");
-            }}
+            onClick={() => void resolveMutation.run("dismissed")}
           >
             Dismiss
           </Button>
-          {confirmHide.armed && (
-            <span className="text-xs text-amber-400/90">
-              Hiding drops the {isEvent ? "event" : "collection"} from every
-              public read until it is restored.
-            </span>
-          )}
         </div>
+      )}
+
+      {confirmingHide && (
+        <ConfirmDialog
+          title={`Hide the ${noun}?`}
+          confirmLabel={`Hide the ${noun}`}
+          busyLabel="Hiding…"
+          busy={busy}
+          error={resolveMutation.error}
+          onConfirm={() => void resolveMutation.run("hidden")}
+          onCancel={() => {
+            setConfirmingHide(false);
+            resolveMutation.reset();
+          }}
+        >
+          <p>
+            Hiding drops the {noun} from every public read until it is restored, and resolves the
+            report as Hidden.
+          </p>
+        </ConfirmDialog>
       )}
     </li>
   );
 }
 
-export function ReportsPanel() {
-  const [page, setPage] = useState(1);
-  const { data, error, loading, refetch } = useApiResource<ContentReportList>(
-    reportsPath(page, PER_PAGE)
-  );
+// `/admin/reports` is offset-paged, so the walk's cursor is the next page number.
+const reportsPage = (cursor: string | null) =>
+  reportsPath(cursor === null ? 1 : Number(cursor), PER_PAGE);
+const reportRows = (list: ContentReportList) => list.items;
+const nextReportsPage = ({ items: list }: { items: ContentReportList }) =>
+  list.page * list.per_page < list.total ? String(list.page + 1) : null;
 
-  const reports = data?.items ?? [];
-  const total = data?.total ?? 0;
-  const hasMore = page * PER_PAGE < total;
+export function ReportsPanel() {
+  const walk = useCursorList<ContentReport, ContentReportList>(
+    reportsPage,
+    reportRows,
+    nextReportsPage
+  );
+  const { items: reports, loading, reload } = walk;
+  // A failed later page shows in the load-more row; only a failed first page leaves no rows.
+  const error = reports.length === 0 ? walk.error : null;
 
   return (
     <Card as="section">
@@ -198,9 +212,7 @@ export function ReportsPanel() {
       </header>
 
       {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
-      {loading && !error && (
-        <div className="text-xs text-neutral-500 py-2">Loading…</div>
-      )}
+      {loading && <div className="text-xs text-neutral-500 py-2">Loading…</div>}
 
       {!loading && !error && reports.length === 0 && (
         <p className="text-xs text-neutral-500 py-2">No reports yet.</p>
@@ -209,32 +221,14 @@ export function ReportsPanel() {
       {reports.length > 0 && (
         <ul className="space-y-2">
           {reports.map((report) => (
-            <ReportRow key={report.id} report={report} onResolved={refetch} />
+            // A verdict moves its row out of the open group and shifts every offset after it, so
+            // the walk restarts.
+            <ReportRow key={report.id} report={report} onResolved={reload} />
           ))}
         </ul>
       )}
 
-      {(page > 1 || hasMore) && (
-        <div className="flex items-center gap-3 text-xs text-neutral-500">
-          <Button
-            variant="ghost"
-            disabled={page === 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-          >
-            Previous
-          </Button>
-          <span>
-            Page {page} of {Math.max(1, Math.ceil(total / PER_PAGE))}
-          </span>
-          <Button
-            variant="ghost"
-            disabled={!hasMore}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            Next
-          </Button>
-        </div>
-      )}
+      <LoadMoreRow walk={walk} />
     </Card>
   );
 }
