@@ -6,6 +6,7 @@ import "./globals.css";
 import { Providers } from "./providers";
 import Sidebar from "@/components/Sidebar";
 import BetaBanner from "@/components/BetaBanner";
+import SessionEndedNotice from "@/components/SessionEndedNotice";
 
 const montserrat = Montserrat({
   subsets: ["latin", "cyrillic"],
@@ -53,6 +54,7 @@ export default function RootLayout({
         <Providers>
           <Sidebar />
           <BetaBanner />
+          <SessionEndedNotice />
           {children}
         </Providers>
         {/* Cookieless aggregate analytics (no consent banner needed); no-op outside Vercel. Data flows once the operator enables the toggles (see docs/engineering.md). */}

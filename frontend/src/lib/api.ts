@@ -1,5 +1,6 @@
 import { CSRF_HEADER, readCsrfToken } from "./auth";
 import { nextCursor } from "./pagination";
+import { reportSessionRejected } from "./session";
 
 const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL;
 if (!configuredApiUrl) {
@@ -15,6 +16,10 @@ if (!configuredApiUrl) {
 export const API_URL: string = configuredApiUrl;
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+// A 401 from these says nothing about a held session: a wrong password, or the session probe
+// `AuthProvider` reads itself. Any other 401 means the session cookie no longer holds.
+const SESSION_PROBES = new Set(["/auth/login", "/auth/me"]);
 
 /** Thrown by `apiFetch` for any non-2xx. `status` separates a real auth failure (401/403)
  * from a transient one (5xx, network), so a backend hiccup doesn't bounce to `/login`.
@@ -96,6 +101,8 @@ async function send(path: string, options?: RequestInit): Promise<Response> {
   if (!res.ok) {
     const body = await res.json().catch(() => null);
     const parsed = parseApiError(body, res.status);
+    // A 403 is a refusal to a live session: only a 401 ends it.
+    if (res.status === 401 && !SESSION_PROBES.has(path.split("?")[0])) reportSessionRejected();
     throw new ApiError(parsed.message, res.status, parsed.code);
   }
   return res;

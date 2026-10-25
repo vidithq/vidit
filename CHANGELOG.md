@@ -63,6 +63,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
+- A browser whose session the server no longer accepts shows the reader as signed out, with *Your session ended. Sign in again.*, instead of failing every signed-in action with no explanation.
 - Version 0 of an event credits who opened the request or the detection, as its history does, not the current owner ([#693](https://github.com/vidithq/vidit/pull/693)).
 - A proof image pasted before publishing no longer loads a broken address as the form closes ([#693](https://github.com/vidithq/vidit/pull/693)).
 - One unread notification and one pending detection read in the singular, and the organization bio placeholder speaks of the organization ([#693](https://github.com/vidithq/vidit/pull/693)).

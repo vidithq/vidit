@@ -15,6 +15,7 @@ import { ApiError, apiFetch } from "@/lib/api";
 import { hasSessionCookie } from "@/lib/auth";
 import { hardNavigate } from "@/lib/navigation";
 import { clearDisplay } from "@/lib/preferences";
+import { onSessionRejected } from "@/lib/session";
 
 type RegisterResponse = components["schemas"]["RegisterResponse"];
 
@@ -33,6 +34,10 @@ interface AuthContextType {
   logout: () => Promise<void>;
   /** Re-pull the user from /auth/me (used by /confirm-registration after the session cookie is set). */
   refresh: () => Promise<void>;
+  /** True once a signed-in session was rejected by the server and the reader moved to signed
+   *  out, until they sign in again or dismiss the notice. */
+  sessionEnded: boolean;
+  dismissSessionEnded: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -40,6 +45,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sessionEnded, setSessionEnded] = useState(false);
   // Bumped on every login/logout so a late pre-login /me response can't overwrite newer state.
   const stateVersion = useRef(0);
   // Self-reference for the retry branch: `react-hooks` v7 flags a raw `fetchUser(false)` inside
@@ -88,6 +94,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fetchUser();
   }, [fetchUser]);
 
+  // A 401 on any call that needs the session (`lib/session.ts`) re-reads /auth/me once, however
+  // many calls failed together. A 401 there too ends the session: the reader is signed out and
+  // told so. Anything else (the user back, a 5xx, a network error) leaves the state alone, so a
+  // backend hiccup never signs anyone out.
+  const signedIn = useRef(false);
+  useEffect(() => {
+    signedIn.current = user !== null;
+  }, [user]);
+  const rechecking = useRef(false);
+  useEffect(
+    () =>
+      onSessionRejected(() => {
+        if (!signedIn.current || rechecking.current) return;
+        rechecking.current = true;
+        const version = stateVersion.current;
+        apiFetch<User>("/auth/me")
+          .then(
+            (me) => {
+              if (version === stateVersion.current) setUser(me);
+            },
+            (err) => {
+              if (version !== stateVersion.current) return;
+              if (err instanceof ApiError && err.status === 401) {
+                stateVersion.current += 1;
+                setUser(null);
+                setSessionEnded(true);
+              }
+            },
+          )
+          .finally(() => {
+            rechecking.current = false;
+          });
+      }),
+    [],
+  );
+
   const login = async (email: string, password: string) => {
     const me = await apiFetch<User>("/auth/login", {
       method: "POST",
@@ -95,6 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     stateVersion.current += 1;
     setUser(me);
+    setSessionEnded(false);
   };
 
   const register = async (
@@ -128,7 +171,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, login, register, logout, refresh: fetchUser }}
+      value={{
+        user,
+        loading,
+        login,
+        register,
+        logout,
+        refresh: fetchUser,
+        sessionEnded,
+        dismissSessionEnded: () => setSessionEnded(false),
+      }}
     >
       {children}
     </AuthContext.Provider>
