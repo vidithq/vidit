@@ -10,6 +10,7 @@ import { cn } from "@/lib/cn";
 import { allApprovalsPath, type ApprovalList } from "@/lib/approvals";
 import { COLLECTABLE_STATUSES, CollectionIcon } from "@/lib/collections";
 import { hasPublishedRecord } from "@/lib/events";
+import { eventEditHref } from "@/lib/routes";
 import { AddToCollectionPanel } from "@/components/collections/AddToCollectionPanel";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { FieldHelp } from "@/components/ui/FieldHelp";
@@ -138,7 +139,7 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
         label={event.status === "geolocated" ? "Edit (saves a new version)" : "Edit"}
       >
         <Link
-          href={`/events/${event.id}/edit`}
+          href={eventEditHref(event.id)}
           className={buttonClasses("ghost", { icon: true })}
           aria-label="Edit"
         >
@@ -194,7 +195,7 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
   // the row's right edge.
   const geolocate = tiers.flow && isOpenRequest && (
     <span className="inline-flex items-center gap-1.5 max-sm:pr-2">
-      <Link href={`/events/${event.id}/edit`} className={buttonClasses("primary")}>
+      <Link href={eventEditHref(event.id)} className={buttonClasses("primary")}>
         <MapPin size={14} />
         Geolocate
       </Link>
@@ -206,10 +207,10 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
     panels: canReport && report.panel,
     actions: {
       pinned: (controls.length > 0 || geolocate) && (
-        <aside aria-label="Actions" className="flex flex-col items-end gap-3">
+        <div className="flex flex-col items-end gap-3">
           {row("justify-end")}
           {geolocate}
-        </aside>
+        </div>
       ),
       below: (eventApprovals.summary || invited) && (
         <div className="space-y-4">

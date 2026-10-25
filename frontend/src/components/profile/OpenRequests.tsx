@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { EntityCard } from "@/components/ui/EntityCard";
 import { buttonClasses } from "@/components/ui/Button";
+import { requestHref } from "@/lib/routes";
 import { profileSearchHref } from "@/lib/search";
 import type { PublicProfile } from "@/lib/users";
 import type { EventListItem } from "@/types";
@@ -56,7 +57,7 @@ export function OpenRequests({
             key={entry.id}
             variant="compact"
             author={{ username: profile.username }}
-            detailHref={`/requests/${entry.id}`}
+            detailHref={requestHref(entry.id)}
             title={entry.title}
             badge={entry.status ? <StatusBadge status={entry.status} /> : undefined}
             media={entry.media ?? undefined}

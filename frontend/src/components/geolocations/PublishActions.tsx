@@ -174,7 +174,7 @@ export function PublishActions({
 }) {
   const armed = buttons.find((b) => b.action.armed);
   return (
-    <aside aria-label="Actions" className="space-y-3">
+    <div className="space-y-3">
       {lead}
       <div className="flex items-center justify-end gap-2">
         {buttons.map((b) => {
@@ -247,6 +247,6 @@ export function PublishActions({
           {error}
         </div>
       )}
-    </aside>
+    </div>
   );
 }

@@ -4,7 +4,8 @@ import { MediaThumb } from "@/components/ui/EntityCard";
 import { Pill } from "@/components/ui/Pill";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { TAPPABLE_HOVER } from "@/components/ui/styles";
-import { batchCompletionBlockers, detectionEditPath } from "@/lib/events";
+import { batchCompletionBlockers } from "@/lib/events";
+import { eventEditHref } from "@/lib/routes";
 import { formatDate } from "@/lib/format";
 import { firstSourceUrl } from "@/lib/sources";
 import type { DetectedVia, EventDetail } from "@/types";
@@ -49,7 +50,7 @@ export function DetectionQueueRow({ detection }: { detection: EventDetail }) {
       {/* Stretched link, the catalogue row click model. It opens the detection inside a review pass
           starting where it was clicked: reaching a detection through the queue is reviewing the queue. */}
       <Link
-        href={detectionEditPath(detection.id, true)}
+        href={eventEditHref(detection.id, true)}
         aria-label={detection.title}
         className="absolute inset-0 z-10 rounded-[inherit]"
       />

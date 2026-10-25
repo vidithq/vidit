@@ -10,12 +10,16 @@ import { useApiResource } from "@/hooks/useApiResource";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import {
   detectionsReviewPath,
-  detectionEditPath,
-  QUEUE_PARAM,
   type PaginatedEventDetails,
 } from "@/lib/events";
 import type { EventDetail } from "@/types";
-import { detectionsQueueHref, eventHref } from "@/lib/routes";
+import {
+  detectionsQueueHref,
+  eventEditHref,
+  eventHref,
+  QUEUE_PARAM,
+  requestHref,
+} from "@/lib/routes";
 
 /**
  * The edit of one event, `EventEditForm` in every shape: publishing a request
@@ -78,7 +82,7 @@ export default function EditEventPage() {
 
   // An open request publishes to its event page; its in-place save and its close return to it.
   if (geo.status === "requested") {
-    return <EventEditForm geo={geo} redirectTo={`/requests/${geo.id}`} isOwner={isOwner} />;
+    return <EventEditForm geo={geo} redirectTo={requestHref(geo.id)} isOwner={isOwner} />;
   }
 
   // What is left is `closed`, which no write reopens.
@@ -114,7 +118,7 @@ export default function EditEventPage() {
       ? {
           position: `Detection ${index + 1} of ${queueData?.total ?? items.length}`,
           onAdvance: () =>
-            router.push(next ? detectionEditPath(next.id, true) : doneHref),
+            router.push(next ? eventEditHref(next.id, true) : doneHref),
         }
       : undefined;
 

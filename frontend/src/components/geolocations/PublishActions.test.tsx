@@ -81,12 +81,10 @@ describe("PublishActions", () => {
     expect(button.className).toContain("opacity-60");
   });
 
-  it("holds the line in one landmark, the icon from lg up, the banner as an alert", () => {
+  it("shows the icon from lg up and the banner as an alert", () => {
     render(<Host write={vi.fn()} error="Couldn't publish." />);
-    const actions = screen.getByRole("complementary", { name: "Actions" });
     expect(screen.getByTestId("icon").parentElement!.className).toContain("max-lg:hidden");
     expect(screen.getByRole("button", { name: "What does Publish do?" })).toBeInTheDocument();
-    expect(actions).toContainElement(screen.getByRole("alert"));
     expect(screen.getByRole("alert")).toHaveTextContent("Couldn't publish.");
   });
 });

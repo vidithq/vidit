@@ -103,14 +103,6 @@ export function detectionsReviewPath(): string {
   return detectionsPath(1, DETECTIONS_REVIEW_QUEUE);
 }
 
-/** Marks an edit URL as a step of a review pass; every hop carries it so the walk
- *  survives a reload and Back. */
-export const QUEUE_PARAM = "queue";
-
-export function detectionEditPath(id: string, inQueue = false): string {
-  return `/events/${id}/edit${inQueue ? `?${QUEUE_PARAM}=1` : ""}`;
-}
-
 /** Read views over the `events` table. Mirrors `event_filters.VIEWS`; see
  *  `docs/data-model.md`. */
 export type EventView = "located" | "requested";
@@ -248,7 +240,7 @@ export function eventVersionHref(id: string, versionNo: number): string {
 }
 
 export function eventHistoryHref(id: string): string {
-  return `/events/${id}/history`;
+  return `${eventHref(id)}/history`;
 }
 
 /** Whether the row was ever published, retraction included. Asking this instead of

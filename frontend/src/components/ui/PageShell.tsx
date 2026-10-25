@@ -51,9 +51,9 @@ export function PageShell({
    *  (the submit chooser). */
   onBack?: () => void;
   actions?: ReactNode;
-  /** The page's actions, at the top right of the header. While the page scrolls the title goes
-   *  and they stay pinned at the top right of the column. They come before the title in the DOM
-   *  and the tab order. */
+  /** The page's actions, at the top right of the header, in an `aside` named *Actions*. While
+   *  the page scrolls the title goes and they stay pinned at the top right of the column. They
+   *  come before the title in the DOM and the tab order. */
   stickyActions?: ReactNode;
   /** The view controls under the title, left-aligned (a scope or sort `SegmentedControl`, a
    *  mode picker), with any companion control pushed to the row's right end. `EventShell` ends
@@ -120,7 +120,7 @@ export function PageShell({
   // cluster's measured size, where they rest. The sentinel marks that resting top, so the cluster
   // knows when it has left it and needs a surface over the content scrolling under it.
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const stickyRef = useRef<HTMLDivElement>(null);
+  const stickyRef = useRef<HTMLElement>(null);
   const [stickySize, setStickySize] = useState<{ width: number; height: number }>();
   const [stuck, setStuck] = useState(false);
   useEffect(() => {
@@ -232,7 +232,10 @@ export function PageShell({
                     : "border-transparent",
                 )}
               >
-                <div ref={stickyRef}>{stickyActions}</div>
+                {/* The one landmark of a page's actions, so no caller spells it. */}
+                <aside ref={stickyRef} aria-label="Actions">
+                  {stickyActions}
+                </aside>
               </div>
             </div>
           </>

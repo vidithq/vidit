@@ -33,7 +33,7 @@ import { creditProps } from "@/lib/geolocatorCredit";
 import type { PublicProfile } from "@/lib/users";
 import type { components, operations } from "@/lib/api-types";
 import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
-import { eventHref } from "@/lib/routes";
+import { eventHref, requestHref } from "@/lib/routes";
 
 type FeedItem = components["schemas"]["FeedItemRead"];
 type FeedQuery = NonNullable<
@@ -96,7 +96,7 @@ const ENTERED_LABEL: Partial<Record<FeedItem["status"], string>> = {
 
 function itemHref(item: FeedItem): string {
   return item.status === "requested"
-    ? `/requests/${item.id}`
+    ? requestHref(item.id)
     : eventHref(item.id);
 }
 

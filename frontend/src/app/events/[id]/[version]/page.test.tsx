@@ -129,6 +129,10 @@ describe("EventVersionPage", () => {
 
   it("shows the version on screen as selected in the header's version selector", () => {
     render(<EventVersionPage />);
+    // The pinned selector reads in the page's Actions landmark, like every surface's writes.
+    expect(screen.getByRole("complementary", { name: "Actions" })).toContainElement(
+      screen.getByRole("button", { name: "v2: choose a version" })
+    );
     fireEvent.click(screen.getByRole("button", { name: "v2: choose a version" }));
     const current = screen.getByRole("menuitem", { name: "v2" });
     expect(current.getAttribute("aria-current")).toBe("page");

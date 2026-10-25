@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { ApiError } from "@/lib/api";
 
-import { eventFormSlots, useEventForm } from "@/components/geolocations/EventFormFields";
+import { EventFormShell, useEventForm } from "@/components/geolocations/EventFormFields";
 import {
   PUBLISH_CONFIRM,
   PublishActions,
@@ -19,10 +19,8 @@ import { Ban, Save } from "lucide-react";
 import { CharCounter } from "@/components/ui/CharCounter";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { LABEL_TEXT } from "@/components/ui/form-styles";
-import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import { Button } from "@/components/ui/Button";
 import { CloseEventDialog, closeActionLabel } from "@/components/event/CloseEventDialog";
-import { EventShell } from "@/components/event/EventShell";
 import {
   GeolocatorsByline,
   useDraftGeolocatorsByline,
@@ -258,12 +256,10 @@ export function EventEditForm({
     />
   );
 
-  const fields = eventFormSlots(form, { row: geo, showProvenance: true, formId: EDIT_FORM_ID });
-
   return (
-    <EventShell
+    <EventFormShell
+      form={form}
       title={title}
-      titleField={fields.titleField}
       // Invitations go out on a geolocated row only, or with the publish. Mirrors backend
       // geolocator_credit._require_published; change both.
       byline={
@@ -274,27 +270,10 @@ export function EventEditForm({
         )
       }
       backFallback={redirectTo}
-      actions={{
-        pinned: actions,
-        below: (
-          <IncompleteFormAnnouncer
-            attempt={form.validationAttempt}
-            missing={form.missingFields.map((m) => m.label)}
-          />
-        ),
-      }}
-      body={{
-        ...fields.body,
-        // `noValidate`: the red outlines and IncompleteFormAnnouncer own required-field feedback.
-        form: {
-          id: EDIT_FORM_ID,
-          onSubmit: (e) => {
-            e.preventDefault();
-            submit.action.attempt();
-          },
-          noValidate: true,
-        },
-      }}
+      actions={actions}
+      formId={EDIT_FORM_ID}
+      onSubmit={submit.action.attempt}
+      fields={{ row: geo, showProvenance: true }}
     />
   );
 }

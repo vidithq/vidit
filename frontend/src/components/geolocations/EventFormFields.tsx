@@ -9,6 +9,8 @@ import {
 } from "react";
 
 import type { EventLayoutSlots } from "@/components/event/EventLayout";
+import { EventShell } from "@/components/event/EventShell";
+import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 
 import { TitleField } from "@/components/geolocations/TitleField";
 import { useTaxonomy, type TaxonomyState } from "@/components/geolocations/TaxonomyFields";
@@ -187,6 +189,81 @@ export function useEventForm(row?: EventDetail | null): EventFormState {
   };
 }
 
+/** Where the fields come from and what follows them, past the form state. */
+interface EventFormFieldsOptions {
+  /** The stored row behind the form (the edited or published event). `null` on a fresh
+   *  submit. */
+  row?: EventDetail | null;
+  /** Show `row`'s provenance link, read-only. */
+  showProvenance?: boolean;
+  /** Follows the Location card (the submit form's duplicate probe). */
+  afterLocation?: ReactNode;
+}
+
+/**
+ * An event form on `EventShell`, as both event forms render it: the fields of `eventFormSlots`
+ * in the shell's zones, the writes pinned with the hidden `IncompleteFormAnnouncer` under them,
+ * and the body's `<form>`. The form is `noValidate`, since the red outlines and the announcer
+ * own the required-field feedback; a submit (Enter in a field, a submit button outside the form
+ * that joins it through `formId`) runs `onSubmit`, or nothing when the writes are explicit
+ * buttons.
+ */
+export function EventFormShell({
+  form,
+  title,
+  byline,
+  backFallback,
+  onBack,
+  actions,
+  formId,
+  onSubmit,
+  fields,
+}: {
+  form: EventFormState;
+  /** The page name: a visually hidden `h1` and the browser tab's title. */
+  title: string;
+  byline: ReactNode;
+  backFallback?: string;
+  onBack?: () => void;
+  /** The writes, pinned top right. */
+  actions: ReactNode;
+  /** The `<form>`'s id, which the Title field and a submit button join from outside it. */
+  formId?: string;
+  onSubmit?: () => void;
+  fields?: EventFormFieldsOptions;
+}) {
+  const { titleField, body } = eventFormSlots(form, { ...fields, formId });
+  return (
+    <EventShell
+      title={title}
+      titleField={titleField}
+      byline={byline}
+      backFallback={backFallback}
+      onBack={onBack}
+      actions={{
+        pinned: actions,
+        below: (
+          <IncompleteFormAnnouncer
+            attempt={form.validationAttempt}
+            missing={form.missingFields.map((m) => m.label)}
+          />
+        ),
+      }}
+      body={{
+        ...body,
+        form: {
+          id: formId,
+          onSubmit: (e) => {
+            e.preventDefault();
+            onSubmit?.();
+          },
+          noValidate: true,
+        },
+      }}
+    />
+  );
+}
+
 /**
  * The fields every event write fills in, as `EventShell`'s zones: the Title field closes the title
  * section; in the body the sources and the proof fill the main column, and the location, then the
@@ -196,24 +273,17 @@ export function useEventForm(row?: EventDetail | null): EventFormState {
  * red outlines stay one thing. Per-surface blocks (the version note, the geolocators) are the
  * shell's own; the writes are its pinned actions.
  */
-export function eventFormSlots(
+function eventFormSlots(
   form: EventFormState,
   {
     row = null,
     showProvenance = false,
     afterLocation,
     formId,
-  }: {
-    /** The stored row behind the form (the edited or published event). `null` on a fresh
-     *  submit. */
-    row?: EventDetail | null;
-    /** Show `row`'s provenance link, read-only. */
-    showProvenance?: boolean;
-    /** Follows the Location section (the submit form's duplicate probe). */
-    afterLocation?: ReactNode;
+  }: EventFormFieldsOptions & {
     /** The body `<form>`'s id, which the Title field joins from the title section. */
     formId?: string;
-  } = {},
+  },
 ): { titleField: ReactNode; body: Omit<EventLayoutSlots, "form"> } {
   const { invalidKeys } = form;
   const proofInvalid = invalidKeys.has("proof") || invalidKeys.has("proof_image");

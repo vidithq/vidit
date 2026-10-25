@@ -158,7 +158,7 @@ export function CollectionDetailsForm({
   const descriptionInvalid = descriptionOver || flagged("description");
 
   const actions = (
-    <aside aria-label="Actions" className="space-y-3">
+    <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" variant="ghost" disabled={busy} onClick={onCancel}>
           Cancel
@@ -186,7 +186,7 @@ export function CollectionDetailsForm({
           {error}
         </div>
       )}
-    </aside>
+    </div>
   );
 
   return (

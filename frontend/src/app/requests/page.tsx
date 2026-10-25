@@ -27,7 +27,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { buttonClasses } from "@/components/ui/Button";
-import { submitHref } from "@/lib/routes";
+import { requestHref, submitHref } from "@/lib/routes";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
 
@@ -151,7 +151,7 @@ export default function RequestsPage() {
               <EntityCard
                 key={r.id}
                 variant="compact"
-                detailHref={`/requests/${r.id}`}
+                detailHref={requestHref(r.id)}
                 title={r.title}
                 badge={<StatusBadge status={r.status} />}
                 media={r.media ?? undefined}

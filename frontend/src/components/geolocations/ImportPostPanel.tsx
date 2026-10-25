@@ -11,7 +11,8 @@ import { FORM_ERROR_BANNER, FORM_SUCCESS_BANNER } from "@/components/ui/form-sty
 import { TEXT_LINK, WARNING_CALLOUT } from "@/components/ui/styles";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { useMutation } from "@/hooks/useMutation";
-import { detectionEditPath, importFromPost } from "@/lib/events";
+import { importFromPost } from "@/lib/events";
+import { eventEditHref } from "@/lib/routes";
 import type { TweetImportOutcome } from "@/types";
 import { countLabel } from "@/lib/format";
 
@@ -78,7 +79,7 @@ export function ImportPostPanel() {
       refreshDetectionCount();
       const detectionId = firstDetectionId(result);
       if (detectionId !== undefined && result.warnings.length === 0 && result.created.length > 0) {
-        router.push(detectionEditPath(detectionId, true));
+        router.push(eventEditHref(detectionId, true));
         return;
       }
       setOutcome(result);
@@ -145,7 +146,7 @@ export function ImportPostPanel() {
             </ul>
           )}
           {detectionId !== undefined && (
-            <Link href={detectionEditPath(detectionId, true)} className={buttonClasses("primary")}>
+            <Link href={eventEditHref(detectionId, true)} className={buttonClasses("primary")}>
               Review the detection
             </Link>
           )}

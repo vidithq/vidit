@@ -9,9 +9,8 @@ import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel";
 import { ImportPostPanel } from "@/components/geolocations/ImportPostPanel";
 import { MapPin } from "lucide-react";
-import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import { IconTile } from "@/components/ui/IconTile";
-import { eventFormSlots, useEventForm } from "@/components/geolocations/EventFormFields";
+import { EventFormShell, useEventForm } from "@/components/geolocations/EventFormFields";
 import {
   PUBLISHING_LABEL,
   PUBLISH_CONFIRM,
@@ -21,11 +20,10 @@ import {
   requestWriteButton,
 } from "@/components/geolocations/PublishActions";
 import { WRITE_FALLBACK, useEventWrite, writeGroup } from "@/components/geolocations/useEventWrite";
-import { EventShell } from "@/components/event/EventShell";
 import { useDraftGeolocatorsByline } from "@/components/event/useGeolocatorsByline";
 import { DuplicateProbe } from "@/components/geolocations/new/DuplicateProbe";
 import { IMPORT_GLYPH } from "@/lib/importEntries";
-import { eventHref, submitHref, type SubmitMode } from "@/lib/routes";
+import { eventHref, requestHref, submitHref, type SubmitMode } from "@/lib/routes";
 
 // Three entry paths, differing only in where the work starts: `single` is one event by hand,
 // `xpost` reads one of your own X posts into a detection you review, `bulk` backfills an
@@ -106,7 +104,7 @@ function SubmitForm() {
     floor: "request",
     post: () => createEventRequest(form.requestInput()),
     fallback: WRITE_FALLBACK.publish,
-    onSuccess: (created) => router.push(`/requests/${created.id}`),
+    onSuccess: (created) => router.push(requestHref(created.id)),
     confirm: REQUEST_CONFIRM,
     resetAll: () => writes.reset(),
   });
@@ -138,36 +136,24 @@ function SubmitForm() {
   // The draft lives in `form`, above both shells, so it survives a trip through the chooser: the
   // fields reseed from it when the form opens again.
   if (mode === "single") {
-    const fields = eventFormSlots(form, {
-      afterLocation: (
-        <DuplicateProbe
-          lat={form.lat}
-          lng={form.lng}
-          sourceUrl={form.sources.flatMap(draftUrls)[0] ?? ""}
-          eventDate={form.eventDate}
-        />
-      ),
-    });
+    // No `onSubmit`: the publishes are explicit buttons, and one clicked while its floor is short
+    // flags the missing fields red.
     return (
-      <EventShell
+      <EventFormShell
+        form={form}
         title="Submit"
-        titleField={fields.titleField}
         byline={geolocators.byline}
         onBack={backToChooser}
-        actions={{
-          pinned: actions,
-          below: (
-            <IncompleteFormAnnouncer
-              attempt={form.validationAttempt}
-              missing={form.missingFields.map((m) => m.label)}
+        actions={actions}
+        fields={{
+          afterLocation: (
+            <DuplicateProbe
+              lat={form.lat}
+              lng={form.lng}
+              sourceUrl={form.sources.flatMap(draftUrls)[0] ?? ""}
+              eventDate={form.eventDate}
             />
           ),
-        }}
-        body={{
-          ...fields.body,
-          // No `onSubmit` route: publish actions are explicit buttons, and one clicked while its
-          // floor is short flags the missing fields red. `noValidate` stops native bubbles.
-          form: { onSubmit: (e) => e.preventDefault(), noValidate: true },
         }}
       />
     );

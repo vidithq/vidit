@@ -160,7 +160,7 @@ export function ProfileActions({
  * page passes them as `PageShell`'s `stickyActions`, so they stay pinned while the fields scroll. */
 export function ProfileEditActions({ edit }: { edit: ProfileEditState }) {
   return (
-    <aside aria-label="Actions" className="space-y-3">
+    <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="ghost" onClick={edit.cancelEditing} disabled={edit.saving}>
           Cancel
@@ -178,7 +178,7 @@ export function ProfileEditActions({ edit }: { edit: ProfileEditState }) {
           {edit.saveError}
         </div>
       )}
-    </aside>
+    </div>
   );
 }
 

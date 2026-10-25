@@ -15,13 +15,12 @@ import { skipBackRecord } from "@/lib/navigation";
 import { VersionApprovals } from "@/components/event/Approvals";
 import { eventPageSlots } from "@/components/event/EventDetailBody";
 import { eventLocation } from "@/components/event/EventLocation";
+import { EventByline } from "@/components/event/EventReadPage";
 import { EventShell } from "@/components/event/EventShell";
 import { EventVersionBanner } from "@/components/event/EventVersionBanner";
 import { VersionSelector } from "@/components/event/VersionSelector";
-import { AuthorByline } from "@/components/ui/AuthorByline";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageError, PageLoading } from "@/components/ui/PageShell";
-import { creditProps } from "@/lib/geolocatorCredit";
 import { eventHref } from "@/lib/routes";
 
 /**
@@ -79,11 +78,9 @@ export default function EventVersionPage() {
       byline={
         // Version 0 is the request or the detection, credited like its history row: to who opened
         // it, before anyone published it or joined it as a geolocator.
-        number === 0 && version.editor ? (
-          <AuthorByline author={version.editor} avatar />
-        ) : (
-          <AuthorByline {...creditProps(geo)} coAuthorsAs="avatars" avatar />
-        )
+        <EventByline
+          event={number === 0 && version.editor ? { owner: version.editor, geolocators: [] } : geo}
+        />
       }
       actions={{
         pinned: <VersionSelector event={geo} selected={number} />,

@@ -1,55 +1,12 @@
 "use client";
 
-import { useParams } from "next/navigation";
-import { useApiResource } from "@/hooks/useApiResource";
-import { AuthorByline } from "@/components/ui/AuthorByline";
-import { eventPageSlots } from "@/components/event/EventDetailBody";
-import { EventShell } from "@/components/event/EventShell";
-import { useEventActions } from "@/components/event/useEventActions";
-import type { EventDetail } from "@/types";
-import { PageError, PageLoading } from "@/components/ui/PageShell";
+import { EventReadPage } from "@/components/event/EventReadPage";
 
 /**
  * A request is a `requested` event (see `docs/data-model.md`, `events`) served by
- * `GET /events/{id}`; renders the shared `EventShell` and the event page's fields, with
- * the actions (`useEventActions`: Edit, Share, Report, then Geolocate) as the
- * page's actions block, top right. The owner closes it from the
- * edit page.
+ * `GET /events/{id}`, read on the event page's shell with the request's actions (Edit, Share,
+ * Report, then Geolocate). The owner closes it from the edit page.
  */
 export default function RequestDetailPage() {
-  const params = useParams();
-  const requestId = typeof params.id === "string" ? params.id : "";
-  const {
-    data: request,
-    error,
-    refetch,
-  } = useApiResource<EventDetail>(
-    requestId ? `/events/${requestId}` : null
-  );
-  // Called before the early returns.
-  const { panels, actions } = useEventActions({
-    event: request,
-    surface: "request",
-    onChanged: refetch,
-  });
-
-  if (error) {
-    return (
-      <PageError message={error} />
-    );
-  }
-  if (!request) {
-    return <PageLoading />;
-  }
-
-  return (
-    <EventShell
-      title={request.title}
-      byline={<AuthorByline author={request.owner} avatar />}
-      actions={actions}
-      panels={panels}
-      // No coordinates: no Location module, and the missing rows drop out.
-      body={eventPageSlots(request)}
-    />
-  );
+  return <EventReadPage surface="request" />;
 }
