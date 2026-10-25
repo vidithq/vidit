@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { API_BASE_URL } from "./support/environment";
 import { ONE_PIXEL_PNG } from "./support/fixtures";
 import { grantSession, mockApi } from "./support/mockApi";
 import { expectNarrowViewportLayout, expectNoHorizontalOverflow } from "./support/narrowLayout";
@@ -246,6 +247,43 @@ test.describe("submit", () => {
       const box = (await first.getByRole("button", { name, exact: true }).boundingBox())!;
       expect(box.height, name).toBeGreaterThanOrEqual(36);
     }
+  });
+
+  test("picks, creates and removes tags through the search fields", async ({ page }) => {
+    await page.route(`${API_BASE_URL}/tags`, (route) =>
+      route.request().method() === "POST"
+        ? route.fulfill({
+            status: 201,
+            contentType: "application/json",
+            body: JSON.stringify({ id: "33333333-3333-4333-8333-333333333339", name: "Rubble" }),
+          })
+        : route.fallback(),
+    );
+    await page.goto("/submit?mode=single");
+
+    // The Details card: the arrows and Enter pick a suggestion.
+    const details = page.getByRole("combobox", { name: "Tags", exact: true });
+    await details.fill("dro");
+    await expect(page.getByRole("listbox", { name: "Tags", exact: true }).getByRole("option")).toHaveText([
+      "Drone",
+      'Create "dro"',
+    ]);
+    await details.press("Enter");
+    await expect(page.getByRole("button", { name: "Remove Drone" })).toBeVisible();
+    await expect(details).toHaveValue("");
+
+    // A source: a click creates the typed tag and picks it, a chip click removes it.
+    const source = page.getByRole("region", { name: "Source 1" });
+    const field = source.getByRole("combobox", { name: "Source 1 tags" });
+    await field.fill("Rubble");
+    const list = page.getByRole("listbox", { name: "Source 1 tags" });
+    await expect(list).toBeInViewport({ ratio: 1 });
+    await list.getByRole("option", { name: 'Create "Rubble"' }).click();
+    const chip = source.getByRole("button", { name: "Remove Rubble" });
+    await expect(chip).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    await chip.click();
+    await expect(chip).toHaveCount(0);
   });
 
   // A source's capture time is the longest value a form here asks for, and it

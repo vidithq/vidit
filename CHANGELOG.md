@@ -34,6 +34,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - Profile stats count events per source kind, the source hosts read each event's first source URL, and `GET /tags` lists the tags on live events or their sources.
 - The event page, the edit form and the submit form share one layout: the sources and the proof on the left, the location and one Details card on the right, and the actions top right, pinned while the page scrolls ([#693](https://github.com/vidithq/vidit/pull/693)).
 - Submit opens on three cards, Single event, From an X post and Bulk import, in place of the mode switch; the chosen path stays in the address, and the back arrow returns to the cards ([#693](https://github.com/vidithq/vidit/pull/693)).
+- Tags are picked through a search field in the Details card and in each source: it suggests the matching tags as you type and offers to create a missing one, in place of the full tag list ([#693](https://github.com/vidithq/vidit/pull/693)).
 
 ### Removed
 

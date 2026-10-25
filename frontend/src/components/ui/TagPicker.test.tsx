@@ -1,13 +1,14 @@
-import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi, type Mock } from "vitest";
 import { useState } from "react";
 
 import { TagPicker } from "./TagPicker";
+import { ApiError, apiFetch } from "@/lib/api";
 import type { Conflict, Tag } from "@/types";
 
-vi.mock("@/lib/api", () => ({
+vi.mock("@/lib/api", async (original) => ({
+  ...(await original<typeof import("@/lib/api")>()),
   apiFetch: vi.fn(),
-  ApiError: class extends Error {},
 }));
 
 function conflict(overrides: Partial<Conflict> & Pick<Conflict, "id" | "name">): Conflict {
@@ -47,8 +48,14 @@ const CONFLICTS: Conflict[] = [
 ];
 
 // Stateful host so pill clicks round-trip through the selection state.
-function Host({ conflicts = CONFLICTS }: { conflicts?: Conflict[] }) {
-  const [tags, setTags] = useState<Tag[]>([]);
+function Host({
+  conflicts = CONFLICTS,
+  initialTags = [],
+}: {
+  conflicts?: Conflict[];
+  initialTags?: Tag[];
+}) {
+  const [tags, setTags] = useState<Tag[]>(initialTags);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [selectedConflictIds, setSelectedConflictIds] = useState<string[]>([]);
   return (
@@ -208,5 +215,87 @@ describe("TagPicker conflict typeahead", () => {
     expect(screen.getByText("Conflict 29")).toBeInTheDocument();
     expect(screen.queryByText("Conflict 30")).not.toBeInTheDocument();
     expect(screen.getByText(/10 more\. Type to narrow/)).toBeInTheDocument();
+  });
+});
+
+const TAGS: Tag[] = [
+  { id: "t1", name: "armor" },
+  { id: "t2", name: "Artillery" },
+  { id: "t3", name: "drone" },
+];
+
+const tagField = () => screen.getByRole("combobox", { name: "Tags" });
+const optionNames = () => screen.getAllByRole("option").map((o) => o.textContent);
+
+describe("TagPicker tags", () => {
+  it("suggests the tags matching the typed text, case-insensitive", () => {
+    render(<Host initialTags={TAGS} />);
+    fireEvent.change(tagField(), { target: { value: "AR" } });
+    expect(optionNames()).toEqual(["armor", "Artillery", 'Create "AR"']);
+  });
+
+  it("picks with the arrows and Enter, then leaves the pick out of the suggestions", () => {
+    render(<Host initialTags={TAGS} />);
+    fireEvent.change(tagField(), { target: { value: "ar" } });
+    fireEvent.keyDown(tagField(), { key: "ArrowDown" });
+    const active = screen.getByRole("option", { selected: true });
+    expect(active).toHaveTextContent("Artillery");
+    expect(tagField()).toHaveAttribute("aria-activedescendant", active.id);
+    fireEvent.keyDown(tagField(), { key: "Enter" });
+
+    expect(screen.getByRole("button", { name: "Remove Artillery" })).toBeInTheDocument();
+    expect(tagField()).toHaveValue("");
+    expect(optionNames()).toEqual(["armor", "drone"]);
+  });
+
+  it("removes a pick through its chip", () => {
+    render(<Host initialTags={TAGS} />);
+    fireEvent.focus(tagField());
+    fireEvent.click(screen.getByRole("option", { name: "drone" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove drone" }));
+    expect(screen.queryByRole("button", { name: "Remove drone" })).not.toBeInTheDocument();
+    expect(optionNames()).toContain("drone");
+  });
+
+  it("closes on Escape", () => {
+    render(<Host initialTags={TAGS} />);
+    fireEvent.focus(tagField());
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    fireEvent.keyDown(tagField(), { key: "Escape" });
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
+  it("offers no creation when a tag bears the exact name", () => {
+    render(<Host initialTags={TAGS} />);
+    fireEvent.change(tagField(), { target: { value: " drone " } });
+    expect(optionNames()).toEqual(["drone"]);
+  });
+
+  it("creates a tag from the typed text and selects it", async () => {
+    (apiFetch as unknown as Mock).mockResolvedValueOnce({ id: "t9", name: "armour" });
+    render(<Host initialTags={TAGS} />);
+    fireEvent.change(tagField(), { target: { value: "armour" } });
+    fireEvent.click(screen.getByRole("option", { name: 'Create "armour"' }));
+
+    expect(apiFetch).toHaveBeenCalledWith("/tags", {
+      method: "POST",
+      body: JSON.stringify({ name: "armour" }),
+    });
+    expect(await screen.findByRole("button", { name: "Remove armour" })).toBeInTheDocument();
+    expect(tagField()).toHaveValue("");
+  });
+
+  it("keeps the typed text and says so when the tag already exists", async () => {
+    (apiFetch as unknown as Mock).mockRejectedValueOnce(new ApiError("Conflict", 409));
+    render(<Host initialTags={TAGS} />);
+    fireEvent.change(tagField(), { target: { value: "hidden" } });
+    fireEvent.keyDown(tagField(), { key: "Enter" });
+
+    expect(await screen.findByText("That tag already exists.")).toBeInTheDocument();
+    expect(tagField()).toHaveValue("hidden");
+    fireEvent.change(tagField(), { target: { value: "hidde" } });
+    await waitFor(() =>
+      expect(screen.queryByText("That tag already exists.")).not.toBeInTheDocument()
+    );
   });
 });

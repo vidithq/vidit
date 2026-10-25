@@ -53,6 +53,8 @@ function Host({
   );
 }
 
+const kindField = () => screen.getByRole("combobox", { name: /^Kind/ });
+
 const draftNow = (): SourceDraft =>
   JSON.parse(screen.getByTestId("draft").textContent ?? "{}") as SourceDraft;
 
@@ -63,13 +65,13 @@ describe("SourceEditor", () => {
     expect(screen.getByRole("button", { name: "Direct" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByLabelText("Source 1 link 1")).toHaveValue("");
     // Every source names its kind, with or without a file: none is picked yet.
-    expect(screen.getByRole("combobox")).toHaveValue("");
-    expect(screen.getByRole("combobox")).toBeEnabled();
+    expect(kindField()).toHaveValue("");
+    expect(kindField()).toBeEnabled();
   });
 
   it("names the kind of a source without a file", () => {
     render(<Host initial={newSourceDraft()} />);
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "article" } });
+    fireEvent.change(kindField(), { target: { value: "article" } });
     expect(draftNow().kind).toBe("article");
   });
 
@@ -93,7 +95,7 @@ describe("SourceEditor", () => {
     });
     try {
       render(<Host initial={newSourceDraft()} />);
-      fireEvent.change(screen.getByRole("combobox"), { target: { value: "satellite" } });
+      fireEvent.change(kindField(), { target: { value: "satellite" } });
       fireEvent.change(screen.getByLabelText("Source 1 link 1"), { target: { value: earth } });
       await act(async () => {
         vi.advanceTimersByTime(500);
@@ -111,10 +113,10 @@ describe("SourceEditor", () => {
     render(<Host initial={newSourceDraft()} />);
     expect(screen.getByText("Capture position")).toBeInTheDocument();
     for (const kind of ["article", "official_statement", "other"]) {
-      fireEvent.change(screen.getByRole("combobox"), { target: { value: kind } });
+      fireEvent.change(kindField(), { target: { value: kind } });
       expect(screen.queryByText("Capture position")).toBeNull();
     }
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "drone" } });
+    fireEvent.change(kindField(), { target: { value: "drone" } });
     expect(screen.getByText("Capture position")).toBeInTheDocument();
   });
 
@@ -228,13 +230,17 @@ describe("SourceEditor", () => {
       />
     );
     expect(screen.getByText("Links").className).toContain("text-red-400");
-    expect(screen.getByRole("combobox").className).toContain("border-red-500");
+    expect(kindField().className).toContain("border-red-500");
   });
 
-  it("toggles a tag of the shared catalogue onto this source", () => {
+  it("picks a tag of the shared catalogue for this source and removes it", () => {
     render(<Host initial={newSourceDraft()} />);
-    fireEvent.click(screen.getByRole("button", { name: "armor" }));
+    const field = screen.getByRole("combobox", { name: "Source 1 tags" });
+    fireEvent.change(field, { target: { value: "arm" } });
+    fireEvent.click(screen.getByRole("option", { name: "armor" }));
     expect(draftNow().tagIds).toEqual(["t1"]);
+    fireEvent.click(screen.getByRole("button", { name: "Remove armor" }));
+    expect(draftNow().tagIds).toEqual([]);
   });
 
   it("offers the graphic switch on a new source", () => {

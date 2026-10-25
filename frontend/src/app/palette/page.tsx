@@ -29,6 +29,7 @@ import {
 import type { Conflict, EventDetail, EventStatus, Media, Tag } from "@/types";
 import { PageShell } from "@/components/ui/PageShell";
 import { AccountPicker, type Account } from "@/components/ui/AccountPicker";
+import { Combobox } from "@/components/ui/Combobox";
 import { ActionMenu } from "@/components/ui/ActionMenu";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { CountBadge } from "@/components/ui/CountBadge";
@@ -384,7 +385,12 @@ export default function PalettePage() {
   const [segSel, setSegSel] = useState<"single" | "bulk">("single");
   const [segMode, setSegMode] = useState<"soft" | "hard">("soft");
   const [swOn, setSwOn] = useState(true);
-  const [tpTags, setTpTags] = useState<Tag[]>([{ id: "f1", name: "donetsk" }]);
+  const [tpTags, setTpTags] = useState<Tag[]>([
+    { id: "f1", name: "donetsk" },
+    { id: "f2", name: "armor" },
+    { id: "f3", name: "drone" },
+    { id: "f4", name: "artillery" },
+  ]);
   const [tpSelected, setTpSelected] = useState<string[]>([]);
   const [tpConflictSel, setTpConflictSel] = useState<string[]>([]);
   const [links, setLinks] = useState<string[]>(["https://t.me/channel/12345"]);
@@ -881,7 +887,7 @@ export default function PalettePage() {
             </span>
           </Item>
 
-          <Item name="<TagPicker>" usage="The classification fields of every event form, last in its Details card: the conflict typeahead (ongoing by default, ended behind the switch), then the tags as <TagChips> (toggle chips over the one tag catalogue, plus an inline field that creates a tag and selects it). Each source editor renders <TagChips> alone, named for its source.">
+          <Item name="<TagPicker>" usage="The classification fields of every event form, last in its Details card: the conflict typeahead (ongoing by default, ended behind the switch), then the tags as <TagChips>. <TagChips> shows the picked tags as accent chips that remove on click, over a <Combobox> that suggests the other tags of the one catalogue whose name holds the typed text (case-insensitive) and, when no tag bears the exact typed name, ends the list with Create &quot;name&quot;, which creates the tag and picks it. The list stays open after a pick. Each source editor renders <TagChips> alone, named for its source (Source 1 tags).">
             <div className="w-full max-w-2xl space-y-4">
               <TagPicker
                 tags={tpTags}
@@ -893,6 +899,10 @@ export default function PalettePage() {
                 setSelectedConflictIds={setTpConflictSel}
               />
             </div>
+          </Item>
+
+          <Item name="<Combobox>" usage="The keyboard and the list of every typeahead: a role=combobox <Input> over a role=listbox list in a portal fixed to the viewport, painted with TOOLTIP_SURFACE, as wide as the field, scrolling past 15rem and opening above the field when the room below is short. The caller owns the query, the open state, the filtered options and how a row renders; a status string shows as a muted row. ArrowUp and ArrowDown move and wrap, Enter picks the highlighted row or hands the text to onSubmitText, Escape or a blur closes. <AccountPicker> and <TagChips> build on it.">
+            <PaletteCombobox />
           </Item>
 
           <Item name="<AccountPicker>" usage="The one way to pick an analyst or an organization: a combobox field (role=combobox over a role=listbox) whose rows show the picture (a circle for an analyst, a rounded square for an organization), the name and, for an organization, its slug muted. `options` filters a local list by name and handle; `search` runs the caller's request 250ms after typing stops, once the query holds `minQueryLength` characters, and a `note` it returns (why an exact match is left out) shows as a muted row. Loading, a failed search and `emptyText` are muted rows too. ArrowUp and ArrowDown move and wrap, Enter takes the highlighted row or hands the typed text to `onSubmitText` when no row is up (an exact username), Escape, Tab or an outside click closes. With `selected`, the pick shows as an accent chip that `onClear` removes; without it, the field empties after each pick. The list spans the field's width and scrolls past 15rem. It renders in a portal fixed to the viewport, so a card or a scrolling rail never clips it, and it opens above the field when the room below is shorter than 15rem and the room above is larger. Consumers: the approval request, the search Author filter, the co-geolocator invite, the organization invite and the admin org manager fields.">
@@ -2021,6 +2031,38 @@ const PALETTE_ACCOUNTS: Account[] = [
   { kind: "analyst", username: "bo-demo" },
   { kind: "organization", slug: "open-source-watch", name: "Open Source Watch" },
 ];
+
+const PALETTE_CITIES = ["Kharkiv", "Kherson", "Kyiv", "Lviv", "Odesa"];
+
+function PaletteCombobox() {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [picked, setPicked] = useState<string | null>(null);
+  const needle = query.trim().toLowerCase();
+  const options = PALETTE_CITIES.filter((city) => city.toLowerCase().includes(needle));
+  return (
+    <div className="w-full max-w-xs space-y-2">
+      <Combobox
+        aria-label="Pick a city"
+        placeholder="Search cities"
+        query={query}
+        onQueryChange={setQuery}
+        open={open}
+        onOpenChange={setOpen}
+        options={options}
+        optionKey={(city) => city}
+        renderOption={(city) => city}
+        onPick={(city) => {
+          setPicked(city);
+          setQuery("");
+          setOpen(false);
+        }}
+        status={options.length === 0 ? "No city matches" : null}
+      />
+      <p className="text-xs text-neutral-500">Picked: {picked ?? "none"}</p>
+    </div>
+  );
+}
 
 function PaletteAccountPicker() {
   const [picked, setPicked] = useState<Account | null>(null);
