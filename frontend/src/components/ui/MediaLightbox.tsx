@@ -152,6 +152,8 @@ export function MediaOverlay({
       if (e.key === "Escape") {
         // Fullscreen owns this press; the browser is already exiting it.
         if (document.fullscreenElement) return;
+        // A control inside took this press: an open combobox list closes alone.
+        if (e.defaultPrevented) return;
         onClose();
         return;
       }
