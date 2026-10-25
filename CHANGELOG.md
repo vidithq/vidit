@@ -6,7 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
-- Sites: you can map an area of interest such as a base or a depot, keep its dated satellite imagery history, link your published events to it with their effect, follow its history on its own page, report it, and show sites as a layer on the map ([#644](https://github.com/vidithq/vidit/pull/644)).
+- Sites: map an area of interest such as a depot with its dated satellite images and contours, link your events to it with their effect, and read its history on its page; sites show on the map, count corroborating analysts and can be reported ([#644](https://github.com/vidithq/vidit/pull/644)).
 
 ## v0.8.0, 2026-10-25
 
