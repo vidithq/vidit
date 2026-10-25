@@ -212,10 +212,9 @@ describe("NewCollectionPage", () => {
       screen.getByText("0 events, ordered by event date, earliest first."),
     ).toBeInTheDocument();
 
+    fireEvent.focus(screen.getByRole("combobox", { name: "Add events" }));
     fireEvent.click(
-      screen.getByRole("button", {
-        name: "Add Strike on the rail junction to this collection",
-      }),
+      screen.getByRole("option", { name: /^Strike on the rail junction/ }),
     );
     // The row moved onto the block above, which is what the create writes.
     expect(
@@ -248,10 +247,10 @@ describe("NewCollectionPage", () => {
     fireEvent.change(screen.getByLabelText("Title"), {
       target: { value: "March strikes" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Create collection" }));
 
-    expect(
-      screen.getByRole("button", { name: "Create collection" }),
-    ).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent("Description");
+    expect(createCollection).not.toHaveBeenCalled();
   });
 
   it("cancels back to the profile the section that offers it lives on", () => {

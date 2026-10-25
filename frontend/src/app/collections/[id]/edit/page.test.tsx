@@ -229,11 +229,8 @@ describe("EditCollectionPage", () => {
         name: "Remove Strike e3 from this collection",
       }),
     );
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Add Strike on the depot to this collection",
-      }),
-    );
+    fireEvent.focus(screen.getByRole("combobox", { name: "Add events" }));
+    fireEvent.click(screen.getByRole("option", { name: /^Strike on the depot/ }));
     fireEvent.click(screen.getByRole("button", { name: "Save collection" }));
 
     await waitFor(() => expect(push).toHaveBeenCalledWith("/collections/c1"));
