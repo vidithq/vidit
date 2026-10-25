@@ -2,11 +2,11 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { Check, X } from "lucide-react";
+import { Check } from "lucide-react";
 
 import { cn } from "@/lib/cn";
 import { Avatar } from "./Avatar";
-import { Button } from "./Button";
+import { RemoveButton } from "./RemoveButton";
 import { HOVER_REVEAL } from "./styles";
 import { Tooltip } from "./Tooltip";
 
@@ -22,8 +22,9 @@ export interface AvatarStackItem {
    *  (a co-geolocator picked on a form, whose username may be typed text). */
   href?: string;
   /** A remove control on the picture's top-right corner, revealed on hover or keyboard focus
-   *  (a site admin's delete of an approval stamp, a co-geolocator taken off a byline). */
-  remove?: { label: string; onClick: () => void };
+   *  (a site admin's delete of an approval stamp, a co-geolocator taken off a byline). `confirms`
+   *  when the click opens a confirmation: the control shows a trash, else a cross. */
+  remove?: { label: string; onClick: () => void; confirms?: boolean };
   /** Faded, for an account not credited yet (a pending co-geolocator invitation). */
   muted?: boolean;
 }
@@ -47,7 +48,7 @@ const SPACING = { overlap: "gap-y-1 -space-x-1.5", gap: "gap-1.5" } as const;
 // starting 6px into the disc so the picture's centre stays its link. `REMOVE_ROOM` keeps that
 // square clear of the next picture and of the line above.
 const REMOVE = cn(
-  "absolute -right-1.5 -top-1.5 z-30 rounded-full bg-neutral-900 text-neutral-400 ring-1 ring-neutral-700 hover:bg-neutral-900 hover:text-red-400",
+  "absolute -right-1.5 -top-1.5 z-30 rounded-full bg-neutral-900 ring-1 ring-neutral-700 hover:bg-neutral-900",
   "before:absolute before:content-[''] pointer-coarse:before:-top-4 pointer-coarse:before:bottom-0 pointer-coarse:before:left-1.5 pointer-coarse:before:-right-5.5",
   HOVER_REVEAL,
 );
@@ -143,15 +144,13 @@ export function AvatarStack({
               )}
             </Tooltip>
             {item.remove && (
-              <Button
-                icon
-                variant="dangerGhost"
-                aria-label={item.remove.label}
+              <RemoveButton
+                label={item.remove.label}
+                confirms={item.remove.confirms}
                 onClick={item.remove.onClick}
+                iconSize={dims.mark}
                 className={cn(REMOVE, dims.remove)}
-              >
-                <X size={dims.mark} />
-              </Button>
+              />
             )}
           </li>
         );

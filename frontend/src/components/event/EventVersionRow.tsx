@@ -1,7 +1,8 @@
 import Link from "next/link";
 
 import type { EventVersionEntry } from "@/lib/events";
-import { eventVersionHref, versionLabel } from "@/lib/events";
+import { eventVersionHref, versionLabel, VERSION_ZERO_META } from "@/lib/events";
+import { EVENT_STATUS_META } from "@/components/event/StatusBadge";
 import { formatDate } from "@/lib/format";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Pill } from "@/components/ui/Pill";
@@ -17,7 +18,9 @@ function changeSummary(
   version: EventVersionEntry,
   versionZero: EventDetail["version_zero"]
 ): string | null {
-  if (version.number === 0) return versionZero === "request" ? "Requested" : "Detected";
+  if (version.number === 0) {
+    return versionZero ? EVENT_STATUS_META[VERSION_ZERO_META[versionZero].status].label : null;
+  }
   if (version.number === 1) return "Published";
   if (version.changed === null) return null;
   return version.changed.length === 0

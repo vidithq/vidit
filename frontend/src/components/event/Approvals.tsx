@@ -168,7 +168,11 @@ export function ApprovalStamps({
     return [
       {
         ...stamp,
-        remove: { label: `Delete approval by ${approvalSigner(a)}`, onClick: () => setDeleting(a) },
+        remove: {
+          label: `Delete approval by ${approvalSigner(a)}`,
+          onClick: () => setDeleting(a),
+          confirms: true,
+        },
       },
     ];
   });

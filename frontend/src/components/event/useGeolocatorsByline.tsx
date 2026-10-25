@@ -187,6 +187,7 @@ export function GeolocatorsByline({
       picture(person, person.username, {
         label: `Remove ${person.username}`,
         onClick: () => ask({ kind: "remove", username: person.username }),
+        confirms: true,
       }),
     ),
     ...(invites.data ?? []).map(({ user }) =>
@@ -196,6 +197,7 @@ export function GeolocatorsByline({
         {
           label: `Withdraw the invitation of ${user.username}`,
           onClick: () => ask({ kind: "withdraw", username: user.username }),
+          confirms: true,
         },
         true,
       ),

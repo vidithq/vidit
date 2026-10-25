@@ -11,6 +11,7 @@ import {
 
 import type { Conflict, Tag } from "@/types";
 import { CARD_FRAME } from "@/components/ui/Card";
+import { EVENT_STATUS_META } from "@/components/event/StatusBadge";
 import type { ActiveFilter } from "@/components/ui/ActiveFilterPills";
 import { FORM_LABEL } from "@/components/ui/form-styles";
 import { ChipBucket } from "@/components/ui/ChipBucket";
@@ -157,13 +158,18 @@ const MEDIA_TYPES: ReadonlyArray<[string, string]> = [
 /** The lifecycle statuses this panel offers (Event.status values), in the backend vocabulary's
  * order. Hand-kept mirror of `event_filters.STATUSES` (see AGENTS.md): every status but `closed`,
  * whose retracted rows carry their own surfaces and which the chip could only empty. A search
- * reaches requested rows (the profile's open-requests block links into them). Exported so the
- * search page can gate crafted-URL values to the same vocabulary. */
-export const STATUS_FILTER_OPTIONS: ReadonlyArray<[string, string]> = [
-  ["requested", "Requested"],
-  ["detected", "Detected"],
-  ["geolocated", "Geolocated"],
-];
+ * reaches requested rows (the profile's open-requests block links into them). */
+const FILTER_STATUSES = [
+  "requested",
+  "detected",
+  "geolocated",
+] as const;
+
+/** The status filter's options, each labelled like the status badge (`EVENT_STATUS_META`).
+ *  Exported so the search page can gate crafted-URL values to the same vocabulary. */
+export const STATUS_FILTER_OPTIONS: ReadonlyArray<[string, string]> = FILTER_STATUSES.map(
+  (status) => [status, EVENT_STATUS_META[status].label],
+);
 
 // Value to chip label, shared by the pill row and the section summary.
 const STATUS_FILTER_LABELS: Record<string, string> = Object.fromEntries(STATUS_FILTER_OPTIONS);

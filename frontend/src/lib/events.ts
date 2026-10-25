@@ -17,6 +17,7 @@ import type {
   ArchiveImportJob,
   ArchiveImportPresign,
   EventDetail,
+  EventStatus,
   EventVersion,
   Media,
   TweetImportOutcome,
@@ -266,14 +267,22 @@ export function firstVersion(geo: Pick<EventDetail, "version_zero">): number {
   return geo.version_zero ? 0 : 1;
 }
 
+/** What version 0 was: its name (the selector, the history, the banner), the status it reads
+ *  with, the verb of its banner, and the field of the row that opened it, whom it credits. */
+export const VERSION_ZERO_META: Record<
+  NonNullable<EventDetail["version_zero"]>,
+  { label: string; status: EventStatus; verb: string; credit: "requested_by" | "owner" }
+> = {
+  request: { label: "Request", status: "requested", verb: "asked", credit: "requested_by" },
+  detection: { label: "Detection", status: "detected", verb: "imported", credit: "owner" },
+};
+
 /** A version's short name: version 0 is the request or the detection, any other `vN`. */
 export function versionLabel(
   geo: Pick<EventDetail, "version_zero">,
   number: number
 ): string {
-  if (number === 0 && geo.version_zero) {
-    return geo.version_zero === "request" ? "Request" : "Detection";
-  }
+  if (number === 0 && geo.version_zero) return VERSION_ZERO_META[geo.version_zero].label;
   return `v${number}`;
 }
 
@@ -404,7 +413,7 @@ export function snapshotToEventView(
     // Version 0 is the request or the detection as it stood before the publish.
     ...(version.version_no === 0 && current.version_zero
       ? {
-          status: current.version_zero === "request" ? "requested" : "detected",
+          status: VERSION_ZERO_META[current.version_zero].status,
           before_closed_status: null,
           closed_at: null,
           close_reason: null,
@@ -593,9 +602,7 @@ export function eventVersion(
     editor: producedBy
       ? producedBy.edited_by
       : number === 0
-        ? current.version_zero === "request"
-          ? current.requested_by
-          : current.owner
+        ? current[current.version_zero ? VERSION_ZERO_META[current.version_zero].credit : "owner"]
         : number === 1 && !current.version_zero
           ? current.owner
           : null,

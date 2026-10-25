@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 
 import { SourceEditor, type SourceEditorInvalid } from "@/components/sources/SourceEditor";
 import { SourcesRow } from "@/components/sources/SourcesRow";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
+import { RemoveButton } from "@/components/ui/RemoveButton";
 import type { HorizontalScrollerHandle } from "@/components/ui/HorizontalScroller";
 import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
 import { isSnapshotUrl, SNAPSHOT_HINT } from "@/components/ui/ArchivedCopies";
@@ -156,16 +157,13 @@ function RemoveSource({ index, onRemove }: { index: number; onRemove: () => void
   const name = sourceName(index).toLowerCase();
   const label = armed ? `Confirm removing ${name}` : `Remove ${name}`;
   return (
-    <Button
+    <RemoveButton
       ref={controlRef}
-      icon
-      variant="dangerGhost"
+      confirms
+      label={label}
       className={armed ? DANGER_CONFIRM : ""}
       onClick={trigger}
-      aria-label={label}
-    >
-      <Trash2 size={14} />
-    </Button>
+    />
   );
 }
 

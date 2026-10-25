@@ -115,8 +115,7 @@ def test_coordinate_bounds_match() -> None:
 
 
 def test_status_filter_options_match() -> None:
-    block = _block("components/filters/EventFilterSections.tsx", "STATUS_FILTER_OPTIONS")
-    offered = re.findall(r'\["(\w+)",', block)
+    offered = _strings("components/filters/EventFilterSections.tsx", "FILTER_STATUSES")
     declared = [status for status in get_args(EventStatus) if status != STATUS_CLOSED]
     assert offered == declared
     assert set(offered) == STATUSES - {STATUS_CLOSED}

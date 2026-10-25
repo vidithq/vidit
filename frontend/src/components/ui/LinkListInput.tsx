@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, type CSSProperties, type ReactNode } from "react";
-import { Plus, X } from "lucide-react";
+import { Plus } from "lucide-react";
 
 import { Button } from "./Button";
+import { RemoveButton } from "./RemoveButton";
 import { cn } from "@/lib/cn";
 
 import { FORM_INVALID_LABEL, LABEL_TEXT } from "./form-styles";
@@ -153,19 +154,14 @@ export function LinkListInput<R>({
                   ))}
                 </div>
               )}
-              <Button
-                variant="dangerGhost"
-                icon
-                aria-label={`Remove ${lower} ${i + 1}`}
-                title={`Remove ${lower} ${i + 1}`}
+              <RemoveButton
+                label={`Remove ${lower} ${i + 1}`}
                 className="col-start-2 row-start-1 @xl:col-start-auto @xl:row-start-auto"
                 onClick={() => {
                   onChange(rows.filter((_, idx) => idx !== i));
                   setExpanded(expandedNow.filter((_, idx) => idx !== i));
                 }}
-              >
-                <X size={14} />
-              </Button>
+              />
               {expandedNow[i] && expansion && (
                 <div className="col-span-full">{expansion(slot(i))}</div>
               )}

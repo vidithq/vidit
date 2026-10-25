@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { versionLabel, type EventVersionEntry } from "@/lib/events";
+import { versionLabel, VERSION_ZERO_META, type EventVersionEntry } from "@/lib/events";
 import { formatDate } from "@/lib/format";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { TEXT_LINK, WARNING_CALLOUT } from "@/components/ui/styles";
@@ -26,10 +26,8 @@ export function EventVersionBanner({
 }) {
   const eventId = event.id;
   const verb =
-    version.number === 0
-      ? event.version_zero === "request"
-        ? "asked"
-        : "imported"
+    version.number === 0 && event.version_zero
+      ? VERSION_ZERO_META[event.version_zero].verb
       : version.number === 1
         ? "published"
         : "edited";

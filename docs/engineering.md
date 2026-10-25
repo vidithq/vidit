@@ -315,7 +315,7 @@ Every other frontend copy of a backend rule or of the issue tracker is hand-kept
 | `lib/proofImages.ts` | `sanitize.PROOF_PLACEHOLDER_PREFIX`, `storage.safe_original_filename` | proof images lose their upload binding |
 | `lib/proof.tsx::LOCAL_STORAGE_URL_PREFIX` | `storage.LOCAL_STORAGE_URL_PREFIX` | a development proof image fails the image source check |
 | `lib/search.ts::AUTHOR_FILTER_RE` | `event_filters.AUTHOR_FILTER_PATTERN` | author filter parses differently |
-| `components/filters/EventFilterSections.tsx` media options, `STATUS_FILTER_OPTIONS` | `event_filters.MEDIA_TYPES`; `STATUSES` minus `closed`, in declared order | filter offers a value the API refuses |
+| `components/filters/EventFilterSections.tsx` media options, `FILTER_STATUSES` | `event_filters.MEDIA_TYPES`; `STATUSES` minus `closed`, in declared order | filter offers a value the API refuses |
 | `components/profile/RecentSubmissions.tsx` link `status=geolocated` | `event_filters.published_events()` | *Show more* expands a different set than the preview |
 | `components/collections/CollectionsSection.tsx` link `type=collection` | the filter `search.search_collections` reads, including the `author` exception | *Show more* lands on an empty group |
 | `lib/archive.ts` keep-allowlist, root discovery, `MAX_UPLOAD_BYTES` | `tweet_ingest/archive_zip.py` | client trims files the server needs, or uploads an export it refuses |

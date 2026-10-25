@@ -14,12 +14,13 @@ import {
   requestWriteButton,
 } from "@/components/geolocations/PublishActions";
 import { WRITE_FALLBACK, useEventWrite, writeGroup } from "@/components/geolocations/useEventWrite";
-import { Ban, Save } from "lucide-react";
+import { Save } from "lucide-react";
 
 import { CharCounter } from "@/components/ui/CharCounter";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { LABEL_TEXT } from "@/components/ui/form-styles";
 import { Button } from "@/components/ui/Button";
+import { RemoveButton } from "@/components/ui/RemoveButton";
 import { CloseEventDialog, closeActionLabel } from "@/components/event/CloseEventDialog";
 import {
   GeolocatorsByline,
@@ -229,15 +230,13 @@ export function EventEditForm({
       trailing={
         isOwner && (
           <>
-            {/* The close is destructive, so it shows as itself, red, beside the write. */}
-            <Button
-              icon
-              variant="dangerGhost"
-              aria-label={closeActionLabel(geo.status)}
+            {/* The close is destructive and asks first, so it shows as a red trash beside the
+                write. */}
+            <RemoveButton
+              confirms
+              label={closeActionLabel(geo.status)}
               onClick={() => setClosing(true)}
-            >
-              <Ban size={14} />
-            </Button>
+            />
             {closing && (
               <CloseEventDialog
                 eventId={geo.id}

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Plus, Upload, X } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 
 import { ICON_TAP_STEP } from "@/components/ui/Button";
+import { RemoveButton } from "@/components/ui/RemoveButton";
 import { GraphicContentGate } from "@/components/ui/GraphicContentGate";
 import { MediaOverlay } from "@/components/ui/MediaLightbox";
 
@@ -72,18 +73,15 @@ export function FileManager({
     if (files.length > 0) onAddFiles?.(multiple ? files : files.slice(0, 1));
   };
 
+  // Instant, so a cross. The 24px circle sits in a tile corner, where a near miss opens the
+  // lightbox, hence the phone floor.
   const removeButton = (onClick: () => void, label: string) => (
-    <button
-      type="button"
+    <RemoveButton
+      label={label}
       onClick={onClick}
-      aria-label={label}
-      title={label}
-      // The 24px circle sits in a tile corner, where a near miss opens the
-      // lightbox, hence the phone floor.
-      className={`absolute top-1 right-1 flex ${ICON_TAP_STEP} sm:size-6 items-center justify-center rounded-full bg-neutral-950/80 text-neutral-300 transition-colors hover:bg-neutral-950 hover:text-red-400`}
-    >
-      <X size={13} />
-    </button>
+      iconSize={13}
+      className={`absolute top-1 right-1 ${ICON_TAP_STEP} sm:size-6 rounded-full bg-neutral-950/80 hover:bg-neutral-950`}
+    />
   );
 
   const tileBody = (it: FileManagerItem) => {
