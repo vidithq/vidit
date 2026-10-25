@@ -1,19 +1,21 @@
 import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ProofImage } from "./ProofImage";
 
 describe("ProofImage", () => {
-  it("opens the shared viewer from the picture itself", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("opens the shared viewer from the picture itself", async () => {
     render(<ProofImage src="https://cdn.example/anchor.png" alt="Anchor points" />);
     expect(screen.queryByRole("dialog")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "View image: Anchor points" }));
-    expect(screen.getByRole("dialog")).toHaveAttribute("aria-label", "Anchor points");
+    expect(await screen.findByRole("dialog")).toHaveAttribute("aria-label", "Anchor points");
   });
 
   // The gallery tiles' floating cluster, so a proof frame is saveable without leaving the page.
-  it("floats a download and an expand, revealed on hover", () => {
+  it("floats a download and an expand, revealed on hover", async () => {
     const { container } = render(
       <ProofImage src="https://cdn.example/anchor.png" alt="Anchor points" />,
     );
@@ -26,6 +28,22 @@ describe("ProofImage", () => {
     expect(container.querySelector(".group")).not.toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Expand image" }));
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("shows a media-host picture through the optimizer, capped at 1920 px, and nothing else", () => {
+    vi.stubEnv("NEXT_PUBLIC_MEDIA_HOST", "cdn.example");
+    render(<ProofImage src="https://cdn.example/anchor.png" alt="On the host" />);
+    render(<ProofImage src="https://elsewhere.example/anchor.png" alt="Off the host" />);
+
+    const onHost = screen.getByRole("img", { name: "On the host" });
+    expect(onHost.getAttribute("src")).toBe(
+      `/_next/image?url=${encodeURIComponent("https://cdn.example/anchor.png")}&w=1920&q=75`,
+    );
+    expect(onHost).not.toHaveAttribute("srcset");
+    expect(screen.getByRole("img", { name: "Off the host" })).toHaveAttribute(
+      "src",
+      "https://elsewhere.example/anchor.png",
+    );
   });
 });

@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { getImageProps } from "next/image";
 import { Expand } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
 import { GraphicContentGate } from "@/components/ui/GraphicContentGate";
 import { MediaDownloadButton } from "@/components/ui/MediaDownloadButton";
-import { MediaLightbox } from "@/components/ui/MediaLightbox";
 import { FLOATING_CONTROL, HOVER_REVEAL } from "@/components/ui/styles";
 
 /**
@@ -31,6 +31,13 @@ import { FLOATING_CONTROL, HOVER_REVEAL } from "@/components/ui/styles";
  * The viewer portals to `document.body` ([`MediaLightbox`](../ui/MediaLightbox.tsx)), so a
  * transformed or scrolling ancestor can't clip it.
  */
+// Loaded on the first open: `lib/proof.tsx` reaches every route through `lib/events.ts`, and a
+// static import would put the lightbox's video player in the shared bundle.
+const MediaLightbox = dynamic(
+  () => import("@/components/ui/MediaLightbox").then((m) => m.MediaLightbox),
+  { ssr: false },
+);
+
 // Two optimizer widths cover a body column up to 960 CSS px at 2x.
 const PROOF_SLOT_PX = 960;
 
