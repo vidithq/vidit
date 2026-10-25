@@ -207,7 +207,7 @@ export function EventPicker({
           >
             {held.map((row, index) => (
               <div key={row.id} className="space-y-2">
-                <CollectionItemCard item={row} large />
+                <CollectionItemCard item={row} />
                 <div className="flex justify-end">
                   <Button
                     variant="dangerGhost"

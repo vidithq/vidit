@@ -123,17 +123,6 @@ interface EntityCardBaseProps {
   tags?: { id: string; name: string; label?: string }[];
 }
 
-// The row control hangs in the compact row's badge column. The feed card has no
-// such column, so the type refuses the prop there.
-type VariantProps =
-  | {
-      variant?: "compact";
-      /** A control that acts on this row rather than opening it. Renders above
-       *  the stretched link, at the bottom of the badge's column. */
-      action?: ReactNode;
-    }
-  | { variant: "feed"; action?: undefined };
-
 // A card carries one gesture: `detailHref` for the link, `onSelect` for the
 // button.
 type SelectableProps =
@@ -148,8 +137,7 @@ type SelectableProps =
 
 type EntityCardProps = EntityCardBaseProps &
   TitleProps &
-  SelectableProps &
-  VariantProps;
+  SelectableProps & { variant?: "compact" | "feed" };
 
 function formatCoord(lat: number, lng: number): string {
   const latDir = lat >= 0 ? "N" : "S";
@@ -178,7 +166,6 @@ export function EntityCard({
   isGraphic = false,
   author,
   coAuthors = [],
-  action,
   onSelect,
   selectLabel,
   selected = false,
@@ -304,15 +291,7 @@ export function EntityCard({
           </div>
           {tagRow}
         </div>
-        {(badge || action) && (
-          // The badge is inert; the action is lifted above the stretched link
-          // (`relative z-20`) and sits at the bottom right, the far corner from
-          // the row's own destination.
-          <div className="shrink-0 flex items-start justify-between gap-1.5 sm:flex-col sm:items-end">
-            {badge}
-            {action && <div className="relative z-20">{action}</div>}
-          </div>
-        )}
+        {badge && <div className="shrink-0">{badge}</div>}
       </div>
     </div>
   );
