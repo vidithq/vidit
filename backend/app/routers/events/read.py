@@ -17,6 +17,7 @@ from sqlalchemy import ColumnElement, func, not_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.cache import points_cache
+from app.compression import precompress, precompressed_response
 from app.dependencies import get_current_user, get_db
 from app.models.event import (
     STATUS_DETECTED,
@@ -144,7 +145,8 @@ def list_points(
     are ISO ``YYYY-MM-DD`` (``added_date`` is the ``created_at`` day);
     ``occurred_date`` is ``null`` when unknown. ``detected`` is a 1/0 flag, not a
     status string, to keep the payload small. Cached in memory for 60s per
-    snapped bbox + filter combination (:func:`snap_bbox`).
+    snapped bbox + filter combination (:func:`snap_bbox`), gzipped once at the
+    miss so a hit costs no compression.
     """
     validate_media_types(media)
     validate_source_filters(source_kind, level)
@@ -168,12 +170,10 @@ def list_points(
         approved_by_org=approved_by_org,
     )
 
-    cached_bytes = points_cache.get(cache_key)
-    if cached_bytes is not None:
-        return Response(
-            content=cached_bytes,
-            media_type="application/json",
-            headers={"Cache-Control": "public, max-age=30", "X-Cache": "HIT"},
+    cached = points_cache.get(cache_key)
+    if cached is not None:
+        return precompressed_response(
+            request, cached, {"Cache-Control": "public, max-age=30", "X-Cache": "HIT"}
         )
 
     q = db.query(
@@ -222,13 +222,11 @@ def list_points(
         for r in rows
     ]
 
-    json_bytes = orjson.dumps(result)
-    points_cache.set(cache_key, json_bytes)
+    body = precompress(orjson.dumps(result))
+    points_cache.set(cache_key, body)
 
-    return Response(
-        content=json_bytes,
-        media_type="application/json",
-        headers={"Cache-Control": "public, max-age=30", "X-Cache": "MISS"},
+    return precompressed_response(
+        request, body, {"Cache-Control": "public, max-age=30", "X-Cache": "MISS"}
     )
 
 

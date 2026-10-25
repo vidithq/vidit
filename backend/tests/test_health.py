@@ -100,6 +100,21 @@ def test_413_response_carries_cors_headers():
     assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"
 
 
+def test_preflight_is_cached_for_a_day():
+    """A browser reuses a preflight for ``Access-Control-Max-Age`` seconds, so a
+    write to the same URL skips the extra round trip."""
+    response = client.options(
+        "/api/v1/collections",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type,x-csrf-token",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers.get("access-control-max-age") == "86400"
+
+
 def test_chunked_oversized_body_returns_413():
     """A chunked body with no ``Content-Length`` 413s once its running total crosses the cap."""
     from app.main import _MAX_REQUEST_BODY_BYTES

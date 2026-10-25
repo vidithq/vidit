@@ -15,6 +15,7 @@ from pydantic.json_schema import models_json_schema
 from slowapi.errors import RateLimitExceeded
 from starlette.types import ASGIApp
 
+from app.compression import GZIP_LEVEL, GZIP_MINIMUM_SIZE
 from app.config import settings
 from app.database import bound_lock_waits
 from app.middleware.csrf import CSRFMiddleware
@@ -131,7 +132,7 @@ async def validation_error_handler(_request: Request, exc: RequestValidationErro
     return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errors)})
 
 
-app.add_middleware(GZipMiddleware, minimum_size=1000)
+app.add_middleware(GZipMiddleware, minimum_size=GZIP_MINIMUM_SIZE, compresslevel=GZIP_LEVEL)
 
 
 # Body-size cap (HTTP layer). Starlette buffers the whole multipart body
@@ -220,6 +221,9 @@ app.add_middleware(
     # `Retry-After` (429 backoff), `Link` (next-page cursor of capped lists)
     # and `X-Request-ID` (bug reports).
     expose_headers=["Retry-After", "Link", REQUEST_ID_HEADER],
+    # A day; browsers cap it lower (Chromium at 2 h). Starlette's default
+    # (600 s) made each writing browser preflight a URL again every 10 minutes.
+    max_age=86400,
 )
 
 

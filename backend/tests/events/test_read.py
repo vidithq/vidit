@@ -358,6 +358,24 @@ def test_points_cache_hits_across_one_grid_cell(db, author):
     assert first.content == second.content
 
 
+def test_points_cache_serves_one_gzip_body_and_the_raw_one(db, author):
+    """A hit sends the bytes gzipped at the miss; a client without gzip gets the raw JSON."""
+    made = {str(_make_geo(db, author=author, lat=48.0 + i / 100, lng=34.0).id) for i in range(20)}
+    url = f"/api/v1/events/points?bbox={WORLD_BBOX}"
+
+    miss = client.get(url, headers={"Accept-Encoding": "gzip"})
+    hit = client.get(url, headers={"Accept-Encoding": "gzip"})
+    raw = client.get(url, headers={"Accept-Encoding": "identity"})
+
+    assert [r.headers["x-cache"] for r in (miss, hit, raw)] == ["MISS", "HIT", "HIT"]
+    assert miss.headers["content-encoding"] == "gzip"
+    assert hit.headers["content-encoding"] == "gzip"
+    assert "content-encoding" not in raw.headers
+    assert all(r.headers["vary"] == "Accept-Encoding" for r in (miss, hit, raw))
+    assert miss.json() == hit.json() == raw.json()
+    assert made <= {row[0] for row in raw.json()}
+
+
 def test_points_cache_key_covers_bbox():
     """The builder itself separates two boxes under an identical filter set."""
     from app.routers.events.read import _build_points_cache_key
