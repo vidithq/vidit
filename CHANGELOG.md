@@ -35,6 +35,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - The event page, the edit form and the submit form share one layout: sources and proof on the left, location and one Details card on the right, the actions top right, pinned while the page scrolls, over the approvals or a version note ([#693](https://github.com/vidithq/vidit/pull/693)).
 - Submit opens on three cards, Single event, From an X post and Bulk import, in place of the mode switch; the chosen path stays in the address, and the back arrow returns to the cards ([#693](https://github.com/vidithq/vidit/pull/693)).
 - Tags are picked through a search field in the Details card and in each source: it suggests the matching tags as you type and offers to create a missing one, in place of the full tag list ([#693](https://github.com/vidithq/vidit/pull/693)).
+- The collection forms and the profile and organization edit modes pin Save and Cancel at the top right. A collection's submit counts and flags its missing fields, events join it from a search list, a report opens in a dialog, and removing or leaving a geolocator takes a second click.
 
 ### Removed
 
