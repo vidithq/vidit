@@ -20,12 +20,12 @@ flowchart LR
 
   links["`**a source's links**
   every URL of every source block in the event form`"]:::shared
-  mark["`**ArchiveAdornment**
-  the mark inside the field holding the URL`"]:::spec
+  mark["`**ArchiveBox**
+  the archive box in the row holding the URL`"]:::spec
   save["`**web.archive.org/save/&lt;link&gt;**
   opened prefilled, in the analyst's own browser; another provider is opened by hand`"]:::spec
   paste["`**ArchiveSnapshotField**
-  the snapshot pasted back under that field`"]:::spec
+  the snapshot pasted back under that row`"]:::spec
   post["`**the event write**
   sources[].links[].snapshot_url, beside the URL it archives`"]:::shared
   check["`**validate_snapshot**
@@ -54,7 +54,7 @@ Each paragraph below takes one region of the diagram: why the capture runs in th
 
 **On a published event, recording a copy is a tracked change.** Which of a `geolocated` record's links are archived is part of what that record says, so the edit carrying the paste files the superseded version as an [`event_versions`](data-model.md#event_versions) row and moves `version_no` on. Each version's snapshot carries every link's `snapshot_url` and `archived_at`, so `/events/{id}/vN` renders the copies as they stood. A re-paste of the copy a link already carries moves nothing and files nothing, and keeps its `archived_at`: the comparison folds the two URLs through `same_snapshot`, dropping the scheme, the host case, a leading `www.` and a trailing slash, so a spelling picked up in a browser is not read as a correction. A save whose only change is a link's copy is exempt from the [version ceiling](data-model.md#event_versions), so an original that dies while the row sits at 100 versions stays archivable. Below publication (`requested`, `detected`) nothing is versioned, so the copy is stored on its own.
 
-**Archival starts at the submit form, not after publication.** A link is most archivable while the analyst still has it open, so every URL field of every source block carries the archive affordance ([`design.md`](design.md#source-blocks) describes the UI). Each pasted snapshot runs `validate_snapshot` and lands on its link row in the same transaction as the event. A rejected paste writes nothing: the analyst fixes it and submits the same form again. The field is optional and sits in no publish floor.
+**Archival starts at the submit form, not after publication.** A link is most archivable while the analyst still has it open, so every link row of every source block carries the archive box ([`design.md`](design.md#source-blocks) describes the UI). Each pasted snapshot runs `validate_snapshot` and lands on its link row in the same transaction as the event. A rejected paste writes nothing: the analyst fixes it and submits the same form again. The field is optional and sits in no publish floor.
 
 **A copy stays on the link it was pasted with.** The copy is a column of the link row, so no write can leave a copy describing a link the event no longer declares. A write that drops a link, or the source holding it, drops its copy with it, and on a published event the version that write files keeps the copy readable. A link whose URL changes is a new link and starts without a copy unless the same write pastes one.
 

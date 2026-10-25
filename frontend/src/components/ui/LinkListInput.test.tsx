@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -90,16 +91,65 @@ describe("LinkListInput", () => {
         blank={() => ({ url: "", postedAt: "" })}
         rows={[{ url: "https://a.example/1", postedAt: "2026-01-01T10:00" }]}
         onChange={onChange}
-        detail={({ row }) => <span>posted {row.postedAt}</span>}
+        columns={[
+          {
+            header: "Posted",
+            width: "13rem",
+            cell: ({ index, row, update }) => (
+              <input
+                aria-label={`Posted ${index + 1}`}
+                value={row.postedAt}
+                onChange={(e) => update({ ...row, postedAt: e.target.value })}
+              />
+            ),
+          },
+        ]}
       />
     );
-    expect(screen.getByText("posted 2026-01-01T10:00")).toBeInTheDocument();
+    expect(screen.getByLabelText("Posted 1")).toHaveValue("2026-01-01T10:00");
     fireEvent.change(screen.getByLabelText("Link 1"), {
       target: { value: "https://b.example/2" },
     });
-    expect(onChange).toHaveBeenCalledWith([
+    expect(onChange).toHaveBeenLastCalledWith([
       { url: "https://b.example/2", postedAt: "2026-01-01T10:00" },
     ]);
+    fireEvent.change(screen.getByLabelText("Posted 1"), {
+      target: { value: "2026-02-02T08:00" },
+    });
+    expect(onChange).toHaveBeenLastCalledWith([
+      { url: "https://a.example/1", postedAt: "2026-02-02T08:00" },
+    ]);
+  });
+
+  it("keeps a row's open line with its row when a row above it is removed", () => {
+    function Host() {
+      const [rows, setRows] = useState(["https://a.example/1", "https://b.example/2"]);
+      return (
+        <LinkListInput
+          {...props}
+          rows={rows}
+          onChange={setRows}
+          columns={[
+            {
+              header: "Archive",
+              width: "auto",
+              cell: ({ index, toggle }) => (
+                <button type="button" onClick={toggle}>
+                  Open {index + 1}
+                </button>
+              ),
+            },
+          ]}
+          expansion={({ row }) => <p>line of {row}</p>}
+        />
+      );
+    }
+    render(<Host />);
+    expect(screen.queryByText(/^line of/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Open 2" }));
+    expect(screen.getByText("line of https://b.example/2")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Remove link 1" }));
+    expect(screen.getByText("line of https://b.example/2")).toBeInTheDocument();
   });
 
   it("disables add at the cap and says what the cap is", () => {

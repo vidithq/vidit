@@ -39,6 +39,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - Tags are picked through a search field in the Details card and in each source: it suggests the matching tags as you type and offers to create a missing one, in place of the full tag list ([#693](https://github.com/vidithq/vidit/pull/693)).
 - Latitude and Longitude sit on one line at every width, followed by the map and copy actions as separate buttons, in the Location card and in each source's capture position ([#693](https://github.com/vidithq/vidit/pull/693)).
 - The Conflict and Tags filters of the map, search, the Requests board and the feed are search fields that suggest the conflicts and tags in use as you type, in place of the full list of chips ([#693](https://github.com/vidithq/vidit/pull/693)).
+- A source in the event form reads like the event page's: each link is one row with its post time and archive box, the capture time, position, tags and graphic flag sit under More details, and a missing link shows only after a publish attempt ([#693](https://github.com/vidithq/vidit/pull/693)).
 
 ### Removed
 

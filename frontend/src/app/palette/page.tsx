@@ -97,7 +97,7 @@ import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import {
-  ArchiveAdornment,
+  ArchiveBox,
   ArchivedCopies,
   ArchiveSnapshotField,
   linkDescription,
@@ -120,6 +120,7 @@ import { Button, buttonClasses, DANGER_CONFIRM } from "@/components/ui/Button";
 import { CoordinateActions, CoordinateValue } from "@/components/event/CoordinateActions";
 import { CoordinateInputs } from "@/components/geolocations/CoordinateInputs";
 import { DateTimeInput } from "@/components/ui/DateTimeInput";
+import { Disclosure } from "@/components/ui/Disclosure";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Switch } from "@/components/ui/Switch";
 import { ProofSection } from "@/components/ui/ProofSection";
@@ -735,7 +736,7 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Forms" />
 
-          <Item name="<Input> (+ FORM_INVALID_FIELD, FieldAdornment, TRAILING_ROOM, LOCKED_FIELD)" usage="The one form field: variant (default / compact / locked) + invalid + icon + trailing. `<Input invalid>` is sugar over the FORM_INVALID_FIELD red-outline token; the same raw token flags non-input surfaces too (media dropzone, proof editor, section cards). `icon` overlays a leading icon at the leading edge, inert. `trailing` is the field's own action slot at the other edge, centred on the field's height and taking the pointer: the picker of a <DateTimeInput>, the archive mark of a URL field. Each one is a ghost icon button, the site's one icon control, set a hair apart so two hover plates read as two controls; the field is one height across the three variants so that 32px square sits inside any of them with a 3px gutter, and the text padding grows by TRAILING_ROOM so a long value never runs under them, both figures stepping together on a phone. FIELD_TEXT is the one field type size, 16px below `sm` and 14px above, run by all three variants and by <Select> and <Textarea>, since Mobile Safari zooms a page in on a field under 16px and never zooms back out. `trailingFromSm` is for a field too narrow on a phone to hold both its value and a 36px mark (the instant field at 320px): the slot renders from `sm` up only and the field takes its room there only, so what the mark acts on has to stay reachable without it, the way a date field falls back to a tap opening the engine's picker. FieldAdornment + TRAILING_ROOM are exported for the one field that is not an input: <LockedUrl> renders a frozen value as an anchor in LOCKED_FIELD, the locked variant's box without its not-allowed cursor, and clears the same adornment by the same amount. Native props + className pass through.">
+          <Item name="<Input> (+ FORM_INVALID_FIELD, FieldAdornment, TRAILING_ROOM, LOCKED_FIELD)" usage="The one form field: variant (default / compact / locked) + invalid + icon + trailing. `<Input invalid>` is sugar over the FORM_INVALID_FIELD red-outline token; the same raw token flags non-input surfaces too (media dropzone, proof editor, section cards). `icon` overlays a leading icon at the leading edge, inert. `trailing` is the field's own action slot at the other edge, centred on the field's height and taking the pointer: the picker of a <DateTimeInput>, the Wayback Machine door of a snapshot field. Each one is a ghost icon button, the site's one icon control, set a hair apart so two hover plates read as two controls; the field is one height across the three variants so that 32px square sits inside any of them with a 3px gutter, and the text padding grows by TRAILING_ROOM so a long value never runs under them, both figures stepping together on a phone. FIELD_TEXT is the one field type size, 16px below `sm` and 14px above, run by all three variants and by <Select> and <Textarea>, since Mobile Safari zooms a page in on a field under 16px and never zooms back out. `trailingFromSm` is for a field too narrow on a phone to hold both its value and a 36px mark (the instant field at 320px): the slot renders from `sm` up only and the field takes its room there only, so what the mark acts on has to stay reachable without it, the way a date field falls back to a tap opening the engine's picker. FieldAdornment + TRAILING_ROOM are exported for the one field that is not an input: <LockedUrl> renders a frozen value as an anchor in LOCKED_FIELD, the locked variant's box without its not-allowed cursor, and clears the same adornment by the same amount. Native props + className pass through.">
             <div className="w-full max-w-sm space-y-2">
               <Variant label="default">
                 <Input placeholder="Type here..." />
@@ -835,9 +836,9 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<LinkListInput>" usage="An ordered list of URL fields with a remove per row and one add button: each source editor's Links. A row is the caller's own value, read and written through `urlOf` / `withUrl`, so what else it carries (a post time, an archived copy) moves with it through adds and removals. `max` mirrors the server cap and disables add at the ceiling. Blank rows are the caller's to drop at assembly. `trailing` puts a mark inside the row's URL field, `detail` a line always under it, and `expansion` a line under it while the row is toggled open: on a source editor that is the <ArchiveAdornment> mark, the post time, and the <ArchiveSnapshotField> paste line. Every row starts closed. Below `sm` the URL field takes the whole row and the remove control drops under its right end.">
-            <div className="w-full max-w-sm space-y-4">
-              <Variant label="editable (max 3 here)">
+          <Item name="<LinkListInput>" usage="An ordered list of links, one row each, with one add button: each source editor's Links. A row is the URL field, the caller's `columns`, then the remove control, so the control sits at the end of the row it removes. A row is the caller's own value, read and written through `urlOf` / `withUrl`, so what else it carries (a post time, an archived copy) moves with it through adds and removals. `max` mirrors the server cap and disables add at the ceiling. Blank rows are the caller's to drop at assembly. Each column names its header and its grid track; `expansion` is a line across the row while the row is toggled open, and every row starts closed. On a source editor the columns are the post time and the <ArchiveBox>, and the expansion is the <ArchiveSnapshotField> paste line. The list is its own container: from `@xl` (36rem) the rows share one grid under a header line, so each column keeps one width down the list. Narrower, each row is a small card: the URL with the remove control at the card's top right, the columns wrapping under it.">
+            <div className="w-full space-y-4">
+              <Variant label="with a post time and an archive box per row (a wide list)">
                 <LinkListInput<string>
                   rows={links}
                   onChange={setLinks}
@@ -847,26 +848,33 @@ export default function PalettePage() {
                   max={3}
                   itemLabel="Link"
                   placeholder="https://x.com/user/status/12345"
-                />
-              </Variant>
-              <Variant label="with an archive mark and a paste line per row">
-                <LinkListInput<string>
-                  rows={links}
-                  onChange={setLinks}
-                  urlOf={(url) => url}
-                  withUrl={(_, url) => url}
-                  blank={() => ""}
-                  max={3}
-                  itemLabel="Link"
-                  placeholder="https://x.com/user/status/12345"
-                  trailing={({ index, row, expanded, toggle }) => (
-                    <ArchiveAdornment
-                      describes={linkDescription(0, safeHostname(row), index, links.length)}
-                      copy={null}
-                      expanded={expanded}
-                      onToggle={toggle}
-                    />
-                  )}
+                  columns={[
+                    {
+                      header: "Posted (UTC)",
+                      width: "13rem",
+                      cell: ({ index }) => (
+                        <DateTimeInput
+                          type="datetime-local"
+                          variant="compact"
+                          aria-label={`Posted (UTC), link ${index + 1}`}
+                          value=""
+                          onChange={() => {}}
+                        />
+                      ),
+                    },
+                    {
+                      header: "Archive",
+                      width: "auto",
+                      cell: ({ index, row, expanded, toggle }) => (
+                        <ArchiveBox
+                          describes={linkDescription(0, safeHostname(row), index, links.length)}
+                          snapshot={index === 0 ? "https://archive.ph/abcde" : ""}
+                          expanded={expanded}
+                          onToggle={toggle}
+                        />
+                      ),
+                    },
+                  ]}
                   expansion={({ index, row }) => (
                     <ArchiveSnapshotField
                       link={row}
@@ -877,7 +885,25 @@ export default function PalettePage() {
                   )}
                 />
               </Variant>
+              <Variant label="URLs only, in a narrow column: each row a card (max 3 here)">
+                <div className="max-w-sm">
+                  <LinkListInput<string>
+                    rows={links}
+                    onChange={setLinks}
+                    urlOf={(url) => url}
+                    withUrl={(_, url) => url}
+                    blank={() => ""}
+                    max={3}
+                    itemLabel="Link"
+                    placeholder="https://x.com/user/status/12345"
+                  />
+                </div>
+              </Variant>
             </div>
+          </Item>
+
+          <Item name="<Disclosure>" usage="A ghost toggle, a chevron and a label, that shows or hides a block of secondary fields under it: a source editor's **More details** (capture time, capture position, tags, graphic flag). The parent owns `open` and `onToggle`, so it decides the first state (a source editor opens it when a field inside holds a value). The block stays mounted while closed (`hidden`), so a field keeps what it holds; `aria-expanded` and `aria-controls` tie the toggle to it.">
+            <PaletteDisclosure />
           </Item>
 
           <Item name="FORM_LABEL (+ _COMPACT, LABEL_TEXT, FORM_INVALID_LABEL)" usage="Field labels, kept separate from <Input>. LABEL_TEXT is the bare 11px uppercase text (FORM_LABEL minus block) for block hosts: table head rows, group headings, the error-digest label. FORM_INVALID_LABEL is FORM_INVALID_FIELD's label-side companion: every required field appends it to its own label (or SectionHeading's title) alongside the input's FORM_INVALID_FIELD outline, so the two always turn red together.">
@@ -1116,7 +1142,7 @@ export default function PalettePage() {
 
           <Item
             name="<ArchivedCopies>"
-            usage="The archived copy beside each link of a source block, on the event detail surfaces. One copy per link, from whichever service produced it, so the affordance is a single lucide mark: the Archive box, one mark for archiving in every state and for every provider, never the services' own logos. Provider identity lives in the accessible name of the stored copy, never in the shape. It is one ghost icon button in exactly two states, and colour says which: accent where a copy exists and the mark opens it, grey and disabled where none does, for every reader including the event's owner. Recording a copy is an edit, so it happens on the forms through <ArchiveAdornment> + <ArchiveSnapshotField> and files a version; nothing here writes. The mark carries no `?` of its own: the source_links concept explains it once, so a source with ten links shows one explanation rather than ten. It sits `self-center` because those rows align their text on the baseline, where the square hangs low. Every mark looks alike across the page, so the accessible name carries the state and the target both: linkDescription(source, host, link, total) leads with the source's position, adds the link's position whenever the source holds more than one (two links on one host would otherwise share a name) and falls back to a literal for a URL with no host."
+            usage="The archived copy beside each link of a source block, on the event detail surfaces. One copy per link, from whichever service produced it, so the affordance is a single lucide mark: the Archive box, one mark for archiving in every state and for every provider, never the services' own logos. Provider identity lives in the accessible name of the stored copy, never in the shape. It is one ghost icon button in exactly two states, and colour says which: accent where a copy exists and the mark opens it, grey and disabled where none does, for every reader including the event's owner. Recording a copy is an edit, so it happens on the forms through <ArchiveBox> + <ArchiveSnapshotField> and files a version; nothing here writes. The mark carries no `?` of its own: the source_links concept explains it once, so a source with ten links shows one explanation rather than ten. It sits `self-center` because those rows align their text on the baseline, where the square hangs low. Every mark looks alike across the page, so the accessible name carries the state and the target both: linkDescription(source, host, link, total) leads with the source's position, adds the link's position whenever the source holds more than one (two links on one host would otherwise share a name) and falls back to a literal for a URL with no host."
           >
             <Variant label="a stored copy named for the Wayback Machine (a source's one link)">
               <span className="text-sm text-neutral-300">
@@ -1153,50 +1179,30 @@ export default function PalettePage() {
           </Item>
 
           <Item
-            name="<ArchiveAdornment>"
-            usage="The archive mark a link on a form carries, inside the URL field itself (<Input trailing>). One mark per link, where the link is typed, so archiving is not a block under the field. On a form it is never grey: whatever state the link is in there is something to do with it. No copy yet is the ArchiveRestore mark, which opens the paste line under the field; a link that already has one carries the Archive mark opening the stored copy (the same mark and name the event page shows) with ArchiveRestore beside it, since one link holds one copy and a wrong paste has to be replaceable. Every name folds in `describes`, because a form carries several of these and they look alike. Nothing is written here: the paste travels with the form."
+            name="<ArchiveBox>"
+            usage="One link's archive box on a form, in the link's row after its post time (a <LinkListInput> column). On a form it is never grey: whatever state the link is in there is something to do with it. No copy yet is the Archive button with the ArchiveRestore mark, which opens the paste line under the row. A copy (the stored one, or a pasted snapshot on an allowed host) shows as itself: the Archive mark and the service's name, opening the copy under the accessible name the event page gives it, with ArchiveRestore beside it, since one link holds one copy and a wrong paste has to be replaceable. Every name folds in `describes`, because a form carries several of these and they look alike. Nothing is written here: the paste travels with the form."
           >
-            <Variant label="no copy yet: the mark opens the paste line">
-              <div className="w-full max-w-sm">
-                <Input
-                  type="url"
-                  defaultValue="https://t.me/channel/12345"
-                  trailing={
-                    <ArchiveAdornment
-                      describes={linkDescription(0, "t.me", 0, 1)}
-                      copy={null}
-                      expanded={false}
-                      onToggle={() => {}}
-                    />
-                  }
-                />
-              </div>
+            <Variant label="no copy yet: Archive opens the paste line">
+              <ArchiveBox
+                describes={linkDescription(0, "t.me", 0, 1)}
+                snapshot=""
+                expanded={false}
+                onToggle={() => {}}
+              />
             </Variant>
-            <Variant label="a copy exists: it opens, and the second mark replaces it">
-              <div className="w-full max-w-sm">
-                <Input
-                  type="url"
-                  defaultValue="https://t.me/channel/12345"
-                  trailing={
-                    <ArchiveAdornment
-                      describes={linkDescription(0, "t.me", 0, 1)}
-                      copy={{
-                        url: "https://archive.ph/abcde",
-                        provider: "archive_today",
-                        archived_at: "2026-06-01T12:00:00Z",
-                      }}
-                      expanded={false}
-                      onToggle={() => {}}
-                    />
-                  }
-                />
-              </div>
+            <Variant label="a copy exists: it opens, and the mark beside it replaces it">
+              <ArchiveBox
+                describes={linkDescription(0, "t.me", 0, 1)}
+                snapshot="https://archive.ph/abcde"
+                expanded={false}
+                onToggle={() => {}}
+              />
             </Variant>
           </Item>
 
           <Item
             name="<ArchiveSnapshotField>"
-            usage="The line the mark opens, directly under the URL field it archives: one field and nothing else. No label, no optional marker, no sentence, because the placeholder states the whole contract and names the three archiving services behind SNAPSHOT_HOSTS. The trailing mark opens web.archive.org/save/<link> for the value currently typed above, so archiving a corrected URL is a re-click; it is the one place on a form a mark goes grey, since a link that does not parse has no page to open. isSnapshotUrl / SNAPSHOT_HINT are the client-side check (https + an allowed archive host) and the one sentence explaining it, reused by the forms to refuse a publish before the upload. Under the field, at most one more line: a red refusal for a value that cannot be a snapshot, or an amber WARNING_CALLOUT naming both URLs when the paste reads as a copy of a different link (snapshotArchivesAnotherLink). The warning blocks nothing, which is why its comparison may be loose; the server checks where a snapshot lives, never what it captured. Nothing is written here: the paste travels with the form as the link's `snapshot_url`."
+            usage="The line <ArchiveBox> opens, across the row of the link it archives: one field and nothing else. No label, no optional marker, no sentence, because the placeholder states the whole contract and names the three archiving services behind SNAPSHOT_HOSTS. The trailing mark opens web.archive.org/save/<link> for the value currently typed above, so archiving a corrected URL is a re-click; it is the one place on a form a mark goes grey, since a link that does not parse has no page to open. isSnapshotUrl / SNAPSHOT_HINT are the client-side check (https + an allowed archive host) and the one sentence explaining it, reused by the forms to refuse a publish before the upload. Under the field, at most one more line: a red refusal for a value that cannot be a snapshot, or an amber WARNING_CALLOUT naming both URLs when the paste reads as a copy of a different link (snapshotArchivesAnotherLink). The warning blocks nothing, which is why its comparison may be loose; the server checks where a snapshot lives, never what it captured. Nothing is written here: the paste travels with the form as the link's `snapshot_url`."
           >
             <div className="w-full max-w-sm space-y-2">
               <Variant label="a link is typed: the door is live">
@@ -1564,9 +1570,12 @@ export default function PalettePage() {
             <SectionHeading title="Proof" concept="section_proof" />
           </Item>
 
-          <Item name="<SectionEyebrow>" usage="Detail page + card/panel headings (uppercase eyebrow)">
+          <Item name="<SectionEyebrow>" usage="Detail page + card/panel headings (uppercase eyebrow), and a form's Sources heading, which sits on the page like the event page's. `invalid` turns it red with FORM_INVALID_LABEL, as SectionHeading's does, when a publish attempt flags the section.">
             <Variant label="as=h2 (page)">
               <SectionEyebrow title="Details" concept="section_details" />
+            </Variant>
+            <Variant label="invalid (a form's Sources, flagged)">
+              <SectionEyebrow title="Sources" concept="sources" invalid />
             </Variant>
             <Variant label="no concept">
               <SectionEyebrow title="Geolocators" />
@@ -1581,7 +1590,7 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Containers & states" />
 
-          <Item name="<Card>" usage="Panels: settings, admin, profile, form sections. One rhythm (space-y-4) for all.">
+          <Item name="<Card>" usage="Panels: settings, admin, profile, form sections, each source editor. One rhythm (space-y-4) for all. `aria-label` names a `section` card as a region (Source N).">
             <Card className="w-48">
               <p className="text-xs text-neutral-300">Content</p>
               <p className="text-xs text-neutral-500">Second line</p>
@@ -1933,7 +1942,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<SourcesField> / <SourceEditor>" usage="The Sources section of every event form (components/sources/): one <SourceEditor> per source in a LIST_TILE, holding the file slot (MediaManager on <FileManager>; a pick uploads at once through POST /uploads), the level (<SegmentedControl>), the kind (<Select>, required on every source), the capture time (<DateTimeInput>), the capture position (CoordinateInputs, hidden for an article, an official statement or another document), the links (<LinkListInput> with the archive pair and each link's post time, then <SourceImageryCheck> on a satellite or aircraft source), the tags (<TagChips>) and the graphic flag (<Switch>, locked on a flagged stored source). The section lays the editors out in a carousel <HorizontalScroller>, one at a time, every editor mounted, with Add a source (capped at 10) in its header; Add a source shows the new editor, Remove (per editor, from two) shows its neighbour, and a publish attempt shows the first editor with a gap.">
+          <Item name="<SourcesField> / <SourceEditor>" usage="The Sources section of every event form (components/sources/): one <SourceEditor> per source, each a <Card>, in the order of the event page's source block: the file slot (MediaManager on <FileManager>; a pick uploads at once through POST /uploads), the title, the level (<SegmentedControl>) and the kind (<Select>, required on every source), the links (<LinkListInput>, one row per link with its post time and <ArchiveBox>, then <SourceImageryCheck> on a satellite or aircraft source), then More details (<Disclosure>, open when a field inside holds a value): the capture time (<DateTimeInput>), the capture position (CoordinateInputs, hidden for an article, an official statement or another document), the tags (<TagChips>) and the graphic flag (<Switch>, locked on a flagged stored source). The section has no card of its own: its <SectionEyebrow> header row sits on the page like the event page's. It lays the editors out in a carousel <HorizontalScroller>, one at a time, every editor mounted, with Add a source (capped at 10) in its header; Add a source shows the new editor, Remove (per editor, from two) shows its neighbour, and a publish attempt shows the first editor with a gap.">
             <div className="w-full max-w-2xl">
               <SourcesField
                 sources={paletteSources}
@@ -2158,6 +2167,27 @@ function PaletteAccountPicker() {
           />
         </Card>
       </Variant>
+    </div>
+  );
+}
+
+function PaletteDisclosure() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="w-full max-w-sm">
+      <Disclosure label="More details" open={open} onToggle={() => setOpen((o) => !o)}>
+        <div className="space-y-1.5">
+          <label htmlFor="palette-disclosure-captured" className={FORM_LABEL}>
+            Captured (UTC)
+          </label>
+          <DateTimeInput
+            id="palette-disclosure-captured"
+            type="datetime-local"
+            value=""
+            onChange={() => {}}
+          />
+        </div>
+      </Disclosure>
     </div>
   );
 }

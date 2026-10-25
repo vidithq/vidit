@@ -7,15 +7,10 @@ import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { LIST_TILE } from "@/components/ui/form-styles";
-import { META_LINE, WARNING_CALLOUT } from "@/components/ui/styles";
+import { META_LINE } from "@/components/ui/styles";
 import { cn } from "@/lib/cn";
 import { formatInstant, formatInstantOrDate, safeHostname } from "@/lib/format";
-import {
-  INCOMPLETE_SOURCE_NOTE,
-  LEVEL_LABELS,
-  sourceKindLabel,
-  type Source,
-} from "@/lib/sources";
+import { LEVEL_LABELS, sourceKindLabel, type Source } from "@/lib/sources";
 
 import { SourceWarnings } from "./SourceWarnings";
 
@@ -25,8 +20,7 @@ import { SourceWarnings } from "./SourceWarnings";
  * each for the title, level, kind (with the file's kind), capture position, capture time, links
  * and tags. A row with no value drops out, except the title, which reads *Untitled*. A context
  * source without a file has no file area at all: a URL alone (an article, a statement) is no gap.
- * A file with no link (a detection's own video) reads as incomplete in place of the links. A
- * satellite or aircraft source's warnings follow the links.
+ * A satellite or aircraft source's warnings follow the links.
  *
  * `compact` is the map panel's density: `thumbnail` media and bare rows in a `LIST_TILE`.
  * `wide` is for a block that owns the whole sources area: the file grows and sits left of the
@@ -136,11 +130,6 @@ function SourceRows({
             ))}
           </ul>
         </DetailRow>
-      )}
-      {links.length === 0 && source.media !== null && (
-        <p className={cn("rounded-md px-3 py-2 text-xs", WARNING_CALLOUT)}>
-          {INCOMPLETE_SOURCE_NOTE}
-        </p>
       )}
       <SourceWarnings warnings={source.warnings} label={`Warnings of source ${index + 1}`} />
       {source.tags.length > 0 && (

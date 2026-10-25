@@ -1,16 +1,18 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { Plus, X } from "lucide-react";
 
 import { Button } from "./Button";
+import { LABEL_TEXT } from "./form-styles";
 import { Input } from "./Input";
 
-// An ordered list of URL fields: one <Input> per row, a remove button on each,
-// one add button. It owns the list mechanics (append, edit, remove, the cap, and
-// keeping each row's open line aligned with its row). A row is the caller's own
-// value; the list reads and writes its URL through `urlOf` / `withUrl`, so
-// whatever else a row carries (a post time, an archived copy) moves with it.
+// An ordered list of links, one row each: the URL field, the caller's own fields
+// (`columns`), and a remove control at the end, plus one add button. It owns the
+// list mechanics (append, edit, remove, the cap, and keeping each row's open line
+// aligned with its row). A row is the caller's own value; the list reads and
+// writes its URL through `urlOf` / `withUrl`, so whatever else a row carries (a
+// post time, an archived copy) moves with it.
 //
 // Blank rows stay in state while typing; callers drop them from the payload.
 
@@ -21,6 +23,17 @@ export interface LinkListRow<R> {
   update: (next: R) => void;
   expanded: boolean;
   toggle: () => void;
+}
+
+/** One field of a row after its URL. */
+export interface LinkListColumn<R> {
+  /** Above the first row on a wide list; a narrow card shows no headers. */
+  header: string;
+  /** The grid track on a wide list (`13rem`, `auto`). In a narrow card a fixed
+   *  track is the cell's minimum width and the cell takes the room left; an
+   *  `auto` cell keeps its content's width. */
+  width: string;
+  cell: (row: LinkListRow<R>) => ReactNode;
 }
 
 interface LinkListInputProps<R> {
@@ -36,12 +49,10 @@ interface LinkListInputProps<R> {
   itemLabel: string;
   placeholder?: string;
   invalid?: boolean;
-  /** The row's `<Input trailing>`, typically a toggle mark. */
-  trailing?: (row: LinkListRow<R>) => ReactNode;
-  /** Under the row while it is expanded (`toggle`). */
+  /** After the URL, each under its own header; the URL's header reads *URL*. */
+  columns?: LinkListColumn<R>[];
+  /** Under the row while it is expanded (`toggle`), across the whole row. */
   expansion?: (row: LinkListRow<R>) => ReactNode;
-  /** Under the row, always. */
-  detail?: (row: LinkListRow<R>) => ReactNode;
 }
 
 export function LinkListInput<R>({
@@ -54,9 +65,8 @@ export function LinkListInput<R>({
   itemLabel,
   placeholder,
   invalid = false,
-  trailing,
+  columns = [],
   expansion,
-  detail,
 }: LinkListInputProps<R>) {
   const atCap = rows.length >= max;
   const lower = itemLabel.toLowerCase();
@@ -73,17 +83,36 @@ export function LinkListInput<R>({
     toggle: () => setExpanded(expandedNow.map((on, idx) => (idx === i ? !on : on))),
   });
 
+  // One track list for the header and every row: each row is a subgrid of the list, so
+  // a column keeps one width down the list whatever its cells hold.
+  const tracks = {
+    "--link-tracks": ["minmax(0,1fr)", ...columns.map((c) => c.width), "auto"].join(" "),
+  } as CSSProperties;
+
   return (
     <div className="space-y-2">
-      {rows.map((row, i) => (
-        // Index key: rows have no identity (a URL is edited per character and may
-        // repeat while typing), and every field is controlled.
-        <div key={i} className="space-y-1.5">
-          {/* Below `sm` the URL takes the whole row and the remove control drops under its
-              right end: beside it, a 320px field kept about 9 characters of the URL in view. */}
-          <div className="flex max-sm:flex-col max-sm:items-end items-center gap-2">
-            {/* `flex-1` sizes this wrapper: an adorned `<Input>` has its own wrapper. */}
-            <div className="flex-1 min-w-0 max-sm:self-stretch">
+      {/* The list is its own container: the form column, not the screen, decides whether a
+          row fits on one line. Below `@xl` (36rem) each row is a card: the URL and its remove
+          control on top, the columns wrapping under it. */}
+      <div className="@container">
+        <div style={tracks} className="flex flex-col gap-2 @xl:grid @xl:grid-cols-(--link-tracks) @xl:items-center">
+          {columns.length > 0 && rows.length > 0 && (
+            <div aria-hidden className="hidden @xl:col-span-full @xl:grid @xl:grid-cols-subgrid">
+              <span className={LABEL_TEXT}>URL</span>
+              {columns.map((column) => (
+                <span key={column.header} className={LABEL_TEXT}>
+                  {column.header}
+                </span>
+              ))}
+            </div>
+          )}
+          {rows.map((row, i) => (
+            // Index key: rows have no identity (a URL is edited per character and may
+            // repeat while typing), and every field is controlled.
+            <div
+              key={i}
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md border border-neutral-800 p-2 @xl:col-span-full @xl:grid-cols-subgrid @xl:border-0 @xl:p-0"
+            >
               <Input
                 type="url"
                 value={urlOf(row)}
@@ -91,26 +120,41 @@ export function LinkListInput<R>({
                 placeholder={placeholder}
                 aria-label={`${itemLabel} ${i + 1}`}
                 invalid={invalid && urlOf(row).trim() === ""}
-                trailing={trailing?.(slot(i))}
               />
+              {columns.length > 0 && (
+                // A card's second line; on a wide list the cells sit in the row's own tracks.
+                <div className="col-span-2 row-start-2 flex flex-wrap items-center gap-2 @xl:contents">
+                  {columns.map((column) => (
+                    <div
+                      key={column.header}
+                      className="min-w-0"
+                      style={column.width === "auto" ? undefined : { flex: `1 0 ${column.width}` }}
+                    >
+                      {column.cell(slot(i))}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <Button
+                variant="ghost"
+                icon
+                aria-label={`Remove ${lower} ${i + 1}`}
+                title={`Remove ${lower} ${i + 1}`}
+                className="col-start-2 row-start-1 @xl:col-start-auto @xl:row-start-auto"
+                onClick={() => {
+                  onChange(rows.filter((_, idx) => idx !== i));
+                  setExpanded(expandedNow.filter((_, idx) => idx !== i));
+                }}
+              >
+                <X size={14} />
+              </Button>
+              {expandedNow[i] && expansion && (
+                <div className="col-span-full">{expansion(slot(i))}</div>
+              )}
             </div>
-            <Button
-              variant="ghost"
-              icon
-              aria-label={`Remove ${lower} ${i + 1}`}
-              title={`Remove ${lower} ${i + 1}`}
-              onClick={() => {
-                onChange(rows.filter((_, idx) => idx !== i));
-                setExpanded(expandedNow.filter((_, idx) => idx !== i));
-              }}
-            >
-              <X size={14} />
-            </Button>
-          </div>
-          {detail?.(slot(i))}
-          {expandedNow[i] && expansion?.(slot(i))}
+          ))}
         </div>
-      ))}
+      </div>
 
       <div className="flex items-center gap-2">
         <Button

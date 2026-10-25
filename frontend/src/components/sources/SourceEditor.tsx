@@ -1,31 +1,30 @@
 "use client";
 
-import { useMemo, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 
 import { CoordinateInputs } from "@/components/geolocations/CoordinateInputs";
 import { MediaManager } from "@/components/geolocations/MediaManager";
 import { LockedHint } from "@/components/geolocations/new/LockedHint";
 import {
-  ArchiveAdornment,
+  ArchiveBox,
   ArchiveSnapshotField,
   linkDescription,
 } from "@/components/ui/ArchivedCopies";
 import { DateTimeInput } from "@/components/ui/DateTimeInput";
+import { Disclosure } from "@/components/ui/Disclosure";
 import { FieldHelp } from "@/components/ui/FieldHelp";
-import { FORM_INVALID_FIELD, FORM_INVALID_LABEL, FORM_LABEL, LIST_TILE } from "@/components/ui/form-styles";
+import { Card } from "@/components/ui/Card";
+import { FORM_INVALID_FIELD, FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
 import { Input, Select } from "@/components/ui/Input";
 import { LinkListInput } from "@/components/ui/LinkListInput";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Switch } from "@/components/ui/Switch";
 import { TagChips } from "@/components/ui/TagPicker";
-import { WARNING_CALLOUT } from "@/components/ui/styles";
 import { cn } from "@/lib/cn";
 import { MAX_LINKS_PER_SOURCE } from "@/lib/events";
 import { safeHostname } from "@/lib/format";
 import {
-  draftUrls,
   hasCapturePosition,
-  INCOMPLETE_SOURCE_NOTE,
   LEVEL_LABELS,
   SOURCE_KIND_LABELS,
   SOURCE_KINDS,
@@ -47,15 +46,23 @@ export interface SourceEditorInvalid {
   kind?: boolean;
 }
 
+/** Whether a field under **More details** holds a value. */
+function holdsDetails(draft: SourceDraft): boolean {
+  const position =
+    hasCapturePosition(draft.kind) && (draft.captureLat.trim() !== "" || draft.captureLng.trim() !== "");
+  return draft.capturedAt !== "" || position || draft.tagIds.length > 0 || draft.isGraphic;
+}
+
 /**
- * One source block of an event form: the file (uploaded on its own request as soon as it is
- * picked), the level, the kind, the capture time, the capture position (none on a document
- * kind), the links with their post time and archived copy (and the imagery provider check on a
- * satellite or aircraft source), the tags and the graphic flag.
+ * One source block of an event form, in the order the event page's source block reads: the
+ * file (uploaded on its own request as soon as it is picked), the title, the level and the
+ * kind, then the links with their post time and archived copy (and the imagery provider check
+ * on a satellite or aircraft source). **More details** holds the capture time, the capture
+ * position (none on a document kind), the tags and the graphic flag.
  *
- * The editor holds no state of its own: `update` patches the draft in the form's list, and
- * `onPickFile` hands a picked file to the list, which uploads it. `actions` is the header's
- * slot for the list's controls (remove).
+ * The editor holds no draft state of its own: `update` patches the draft in the form's list,
+ * and `onPickFile` hands a picked file to the list, which uploads it. `actions` is the
+ * header's slot for the list's controls (remove).
  */
 export function SourceEditor({
   draft,
@@ -82,6 +89,8 @@ export function SourceEditor({
   const id = (field: string) => `${draft.key}-${field}`;
   const file = draft.file;
   const hasFile = file !== null && file.state !== "failed";
+  // Opens on a source that already says more than the essentials; the analyst closes it.
+  const [detailsOpen, setDetailsOpen] = useState(() => holdsDetails(draft));
 
   // A picked file previews from its object URL until the staged copy answers.
   const pending = file?.state === "uploading" ? file.file : null;
@@ -98,26 +107,11 @@ export function SourceEditor({
     linkDescription(index, safeHostname(url.trim()), i, draft.links.length);
 
   return (
-    // The tile sits inside the Sources card's padding: on a phone its own side padding narrows,
-    // so a filled capture time still clears its calendar mark at 320px.
-    <section aria-label={name} className={cn(LIST_TILE, "space-y-4 max-sm:px-2")}>
+    <Card as="section" aria-label={name}>
       <header className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-medium text-neutral-200">{name}</h3>
         <div className="flex flex-wrap items-center gap-1">{actions}</div>
       </header>
-
-      <div className="space-y-1.5">
-        <label htmlFor={id("title")} className={FORM_LABEL}>
-          Source title
-        </label>
-        <Input
-          id={id("title")}
-          value={draft.title}
-          maxLength={255}
-          onChange={(e) => update({ title: e.target.value })}
-          placeholder="Optional, for example Drone footage of the strike"
-        />
-      </div>
 
       <div className="space-y-1.5">
         <span className={FORM_LABEL}>
@@ -141,6 +135,19 @@ export function SourceEditor({
             {file.file.name}: {file.error}
           </p>
         )}
+      </div>
+
+      <div className="space-y-1.5">
+        <label htmlFor={id("title")} className={FORM_LABEL}>
+          Source title
+        </label>
+        <Input
+          id={id("title")}
+          value={draft.title}
+          maxLength={255}
+          onChange={(e) => update({ title: e.target.value })}
+          placeholder="Optional, for example Drone footage of the strike"
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -181,42 +188,9 @@ export function SourceEditor({
       </div>
 
       <div className="space-y-1.5">
-        <label htmlFor={id("captured_at")} className={FORM_LABEL}>
-          Captured (UTC) <FieldHelp concept="captured_at" />
-        </label>
-        <DateTimeInput
-          id={id("captured_at")}
-          type="datetime-local"
-          value={draft.capturedAt}
-          onChange={(e) => update({ capturedAt: e.target.value })}
-        />
-      </div>
-
-      {hasCapturePosition(draft.kind) && (
-        <div className="space-y-1.5">
-          <span className={FORM_LABEL}>
-            Capture position <FieldHelp concept="capture_position" />
-          </span>
-          <CoordinateInputs
-            idPrefix={id("capture_")}
-            required={false}
-            lat={draft.captureLat}
-            setLat={(captureLat) => update({ captureLat })}
-            lng={draft.captureLng}
-            setLng={(captureLng) => update({ captureLng })}
-          />
-        </div>
-      )}
-
-      <div className="space-y-1.5">
         <span className={cn(FORM_LABEL, invalid.link && FORM_INVALID_LABEL)}>
           Links <FieldHelp concept="source_links" />
         </span>
-        {hasFile && draftUrls(draft).length === 0 && (
-          <p className={cn("rounded-md px-3 py-2 text-xs", WARNING_CALLOUT)}>
-            {INCOMPLETE_SOURCE_NOTE}
-          </p>
-        )}
         <div className={invalid.link && draft.links.length === 0 ? FORM_INVALID_FIELD : undefined}>
           <LinkListInput<LinkDraft>
             rows={draft.links}
@@ -228,24 +202,34 @@ export function SourceEditor({
             itemLabel={`${name} link`}
             placeholder="https://t.me/channel/12345"
             invalid={invalid.link}
-            trailing={({ index: i, row, expanded, toggle }) => (
-              <ArchiveAdornment
-                describes={describe(i, row.url)}
-                copy={row.stored?.url === row.url.trim() ? row.stored.archived : null}
-                expanded={expanded}
-                onToggle={toggle}
-              />
-            )}
-            detail={({ index: i, row, update: updateLink }) => (
-              <DateTimeInput
-                type="datetime-local"
-                variant="compact"
-                aria-label={`Posted (UTC), ${describe(i, row.url)}`}
-                title="When the file was posted at this link (UTC)"
-                value={row.postedAt}
-                onChange={(e) => updateLink({ ...row, postedAt: e.target.value })}
-              />
-            )}
+            columns={[
+              {
+                header: "Posted (UTC)",
+                width: "13rem",
+                cell: ({ index: i, row, update: updateLink }) => (
+                  <DateTimeInput
+                    type="datetime-local"
+                    variant="compact"
+                    aria-label={`Posted (UTC), ${describe(i, row.url)}`}
+                    title="When the file was posted at this link (UTC)"
+                    value={row.postedAt}
+                    onChange={(e) => updateLink({ ...row, postedAt: e.target.value })}
+                  />
+                ),
+              },
+              {
+                header: "Archive",
+                width: "auto",
+                cell: ({ index: i, row, expanded, toggle }) => (
+                  <ArchiveBox
+                    describes={describe(i, row.url)}
+                    snapshot={row.snapshotUrl}
+                    expanded={expanded}
+                    onToggle={toggle}
+                  />
+                ),
+              },
+            ]}
             expansion={({ index: i, row, update: updateLink }) => (
               <ArchiveSnapshotField
                 link={row.url}
@@ -259,37 +243,71 @@ export function SourceEditor({
         <SourceImageryCheck draft={draft} name={name} />
       </div>
 
-      <div className="space-y-1.5">
-        <span className={FORM_LABEL}>Tags</span>
-        <TagChips
-          tags={tags}
-          setTags={setTags}
-          selected={draft.tagIds}
-          setSelected={(tagIds) => update({ tagIds })}
-          owner={name}
-        />
-      </div>
-
-      {/* A `span` label plus the switch's own name: not a labelable field. */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-1">
-          <span className={FORM_LABEL}>
-            Graphic content
-            {draft.graphicLocked && <LockedHint>admin only</LockedHint>}
-          </span>
-          <p className="text-xs text-neutral-500">
-            {draft.graphicLocked
-              ? "This source is flagged. Removing the flag requires an admin, so ask a moderator to review it."
-              : "Blurs this source's file behind an age confirmation for viewers. Flag footage showing death, injury or human remains."}
-          </p>
+      <Disclosure
+        label="More details"
+        open={detailsOpen}
+        onToggle={() => setDetailsOpen((open) => !open)}
+      >
+        <div className="space-y-1.5">
+          <label htmlFor={id("captured_at")} className={FORM_LABEL}>
+            Captured (UTC) <FieldHelp concept="captured_at" />
+          </label>
+          <DateTimeInput
+            id={id("captured_at")}
+            type="datetime-local"
+            value={draft.capturedAt}
+            onChange={(e) => update({ capturedAt: e.target.value })}
+          />
         </div>
-        <Switch
-          on={draft.isGraphic}
-          onToggle={() => update({ isGraphic: !draft.isGraphic })}
-          disabled={draft.graphicLocked}
-          aria-label={`${name} graphic content`}
-        />
-      </div>
-    </section>
+
+        {hasCapturePosition(draft.kind) && (
+          <div className="space-y-1.5">
+            <span className={FORM_LABEL}>
+              Capture position <FieldHelp concept="capture_position" />
+            </span>
+            <CoordinateInputs
+              idPrefix={id("capture_")}
+              required={false}
+              lat={draft.captureLat}
+              setLat={(captureLat) => update({ captureLat })}
+              lng={draft.captureLng}
+              setLng={(captureLng) => update({ captureLng })}
+            />
+          </div>
+        )}
+
+        <div className="space-y-1.5">
+          <span className={FORM_LABEL}>Tags</span>
+          <TagChips
+            tags={tags}
+            setTags={setTags}
+            selected={draft.tagIds}
+            setSelected={(tagIds) => update({ tagIds })}
+            owner={name}
+          />
+        </div>
+
+        {/* A `span` label plus the switch's own name: not a labelable field. */}
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-1">
+            <span className={FORM_LABEL}>
+              Graphic content
+              {draft.graphicLocked && <LockedHint>admin only</LockedHint>}
+            </span>
+            <p className="text-xs text-neutral-500">
+              {draft.graphicLocked
+                ? "This source is flagged. Removing the flag requires an admin, so ask a moderator to review it."
+                : "Blurs this source's file behind an age confirmation for viewers. Flag footage showing death, injury or human remains."}
+            </p>
+          </div>
+          <Switch
+            on={draft.isGraphic}
+            onToggle={() => update({ isGraphic: !draft.isGraphic })}
+            disabled={draft.graphicLocked}
+            aria-label={`${name} graphic content`}
+          />
+        </div>
+      </Disclosure>
+    </Card>
   );
 }

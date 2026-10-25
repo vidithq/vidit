@@ -5,9 +5,8 @@ import { Plus, X } from "lucide-react";
 
 import { SourceEditor, type SourceEditorInvalid } from "@/components/sources/SourceEditor";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 import { HorizontalScroller, type HorizontalScrollerHandle } from "@/components/ui/HorizontalScroller";
-import { SectionHeading } from "@/components/ui/SectionHeading";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { isSnapshotUrl, SNAPSHOT_HINT } from "@/components/ui/ArchivedCopies";
 import { MAX_SOURCES_PER_EVENT, type MissingFieldKey } from "@/lib/events";
 import {
@@ -103,13 +102,15 @@ export function SourcesField({
   const fileMissing = invalidKeys.has("source_file");
 
   return (
-    <Card as="section">
+    // No card of its own: the heading row sits on the page like the event page's Sources
+    // eyebrow, and each editor is the card.
+    <section>
       <HorizontalScroller
         ref={scroller}
         variant="carousel"
         heading={
           <div className="space-y-1">
-            <SectionHeading title="Sources" concept="sources" invalid={fileMissing} />
+            <SectionEyebrow margin="none" title="Sources" concept="sources" invalid={fileMissing} />
             {fileMissing && (
               <p className="text-xs text-red-400">Add a file to a direct or indirect source.</p>
             )}
@@ -156,7 +157,7 @@ export function SourcesField({
           />
         ))}
       </HorizontalScroller>
-    </Card>
+    </section>
   );
 }
 
