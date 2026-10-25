@@ -69,6 +69,28 @@ export function TagPicker({
   );
 }
 
+/** The picks of a catalogue field, each a chip that removes it, over the field's search. */
+function PickedPills({
+  picked,
+  onRemove,
+}: {
+  picked: { id: string; label: string }[];
+  onRemove: (id: string) => void;
+}) {
+  if (picked.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-2">
+      {picked.map(({ id, label }) => (
+        <Pill key={id} tone="accent" onClick={() => onRemove(id)}>
+          <span className="sr-only">Remove {label}</span>
+          <span aria-hidden>{label}</span>
+          <X size={12} aria-hidden />
+        </Pill>
+      ))}
+    </div>
+  );
+}
+
 type TagOption = { tag: Tag } | { create: string };
 
 const tagOptionKey = (option: TagOption) =>
@@ -141,21 +163,10 @@ export function TagChips({
 
   return (
     <div className="space-y-2">
-      {selected.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {selected.map((tag) => (
-            <Pill
-              key={tag.id}
-              tone="accent"
-              onClick={() => setSelectedTagIds(selectedTagIds.filter((id) => id !== tag.id))}
-            >
-              <span className="sr-only">Remove {tag.name}</span>
-              <span aria-hidden>{tag.name}</span>
-              <X size={12} aria-hidden />
-            </Pill>
-          ))}
-        </div>
-      )}
+      <PickedPills
+        picked={selected.map((t) => ({ id: t.id, label: t.name }))}
+        onRemove={(removed) => setSelectedTagIds(selectedTagIds.filter((id) => id !== removed))}
+      />
       <Combobox
         aria-label={label}
         placeholder="Search or create a tag"
@@ -255,21 +266,10 @@ function ConflictChips({
         </button>
       </div>
       <div className={cn("space-y-2", invalid && "rounded-md p-2 ring-1 ring-red-500/40")}>
-        {selected.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {selected.map((c) => (
-              <Pill
-                key={c.id}
-                tone="accent"
-                onClick={() => setSelectedIds((prev) => prev.filter((id) => id !== c.id))}
-              >
-                <span className="sr-only">Remove {conflictLabel(c)}</span>
-                <span aria-hidden>{conflictLabel(c)}</span>
-                <X size={12} aria-hidden />
-              </Pill>
-            ))}
-          </div>
-        )}
+        <PickedPills
+          picked={selected.map((c) => ({ id: c.id, label: conflictLabel(c) }))}
+          onRemove={(removed) => setSelectedIds((prev) => prev.filter((id) => id !== removed))}
+        />
         <Combobox
           aria-label="Conflict"
           placeholder="Search conflicts"
