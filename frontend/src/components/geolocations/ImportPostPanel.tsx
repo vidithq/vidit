@@ -111,6 +111,7 @@ export function ImportPostPanel() {
         <div className="flex max-sm:flex-col gap-2">
           <Input
             type="url"
+            aria-label="X post URL"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://x.com/handle/status/…"
