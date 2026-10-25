@@ -89,7 +89,6 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { MergeAction } from "@/components/ui/MergeAction";
 import { SourceBlock, SourceBlocks } from "@/components/sources/SourceBlock";
 import { SourcesField } from "@/components/sources/SourcesField";
-import { SourcePicker } from "@/components/sources/SourcePicker";
 import { sourceDraftFrom, type Source, type SourceDraft } from "@/lib/sources";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { FieldHelp } from "@/components/ui/FieldHelp";
@@ -1867,7 +1866,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SourcesField> / <SourceEditor>" usage="The Sources section of every event form (components/sources/): one <SourceEditor> per source in a LIST_TILE, holding the file slot (MediaManager on <FileManager>; a pick uploads at once through POST /uploads), the level (<SegmentedControl>), the kind (<Select>, required on every source), the capture time (<DateTimeInput>), the capture position (CoordinateInputs, hidden for an article, an official statement or another document), the links (<LinkListInput> with the archive pair and each link's post time, then <SourceImageryCheck> on a satellite or aircraft source), the tags (<TagChips>) and the graphic flag (<Switch>, locked on a flagged stored source). The section adds Add a source (capped at 10), Copy an existing source (<SourcePicker>), and per editor <MergeAction> and Remove.">
+          <Item name="<SourcesField> / <SourceEditor>" usage="The Sources section of every event form (components/sources/): one <SourceEditor> per source in a LIST_TILE, holding the file slot (MediaManager on <FileManager>; a pick uploads at once through POST /uploads), the level (<SegmentedControl>), the kind (<Select>, required on every source), the capture time (<DateTimeInput>), the capture position (CoordinateInputs, hidden for an article, an official statement or another document), the links (<LinkListInput> with the archive pair and each link's post time, then <SourceImageryCheck> on a satellite or aircraft source), the tags (<TagChips>) and the graphic flag (<Switch>, locked on a flagged stored source). The section adds Add a source (capped at 10), and per editor <MergeAction> and Remove.">
             <div className="w-full max-w-2xl">
               <SourcesField
                 sources={paletteSources}
@@ -1876,12 +1875,6 @@ export default function PalettePage() {
                 setTags={setTpTags}
                 invalidKeys={new Set()}
               />
-            </div>
-          </Item>
-
-          <Item name="<SourcePicker>" usage="Copy an existing source (components/sources/SourcePicker.tsx): a search over GET /sources by URL or title, at least 3 characters, and one Copy per hit naming its title or host, its level, and the event that holds it. A pick fills a new editor, whose write copies the file onto this event.">
-            <div className="w-full max-w-xl">
-              <SourcePicker onPick={() => {}} onClose={() => {}} />
             </div>
           </Item>
 

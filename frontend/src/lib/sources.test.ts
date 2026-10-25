@@ -7,7 +7,6 @@ import {
   newSourceDraft,
   sourceCreatePayload,
   sourceDraftFrom,
-  sourceDraftFromPick,
   sourceFloor,
   sourcesChanged,
   sourceWriteError,
@@ -109,20 +108,6 @@ describe("sourceCreatePayload", () => {
   it("posts no capture position for a document kind", () => {
     const draft = { ...sourceDraftFrom(STORED), kind: "article" as const };
     expect(sourceCreatePayload(draft).capture_position).toBeNull();
-  });
-});
-
-describe("sourceDraftFromPick", () => {
-  it("makes a new source that copies the pick's file and keeps its archived copies", () => {
-    const pick = { ...STORED, is_graphic: true, event_id: "e9", event_title: "Elsewhere" };
-    const draft = sourceDraftFromPick(pick);
-    const posted = sourceCreatePayload(draft);
-    expect(posted.id).toBeUndefined();
-    expect(posted.media_id).toBe("m1");
-    expect(posted.is_graphic).toBe(true);
-    expect(posted.links[0].snapshot_url).toBe("https://archive.ph/abcde");
-    // A new source's flag is not the stored one's to lock.
-    expect(draft.graphicLocked).toBe(false);
   });
 });
 

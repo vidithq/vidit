@@ -70,7 +70,6 @@ describe("SourcesField", () => {
   it("stops adding at the source cap and says what the cap is", () => {
     render(<Host initial={Array.from({ length: 10 }, () => newSourceDraft())} />);
     expect(screen.getByRole("button", { name: "Add a source" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Copy an existing source" })).toBeDisabled();
     expect(screen.getByText("10 maximum.")).toBeInTheDocument();
   });
 

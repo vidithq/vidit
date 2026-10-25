@@ -61,7 +61,7 @@ test.describe("submit", () => {
     await expectNarrowViewportLayout(page, createDetection);
   });
 
-  test("fits the source editors, their merge and the source picker into 320px", async ({ page }) => {
+  test("fits the source editors and their merge into 320px", async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 568 });
     await page.goto("/submit");
 
@@ -70,8 +70,6 @@ test.describe("submit", () => {
     await first.getByLabel("Kind", { exact: true }).selectOption({ label: "Smartphone" });
     await first.getByLabel("Source 1 link 1", { exact: true }).fill("https://t.me/channel/12345");
     await first.getByRole("button", { name: "Merge Source 1" }).click();
-    await page.getByRole("button", { name: "Copy an existing source" }).click();
-    await expect(page.getByPlaceholder("Paste a URL or type part of a title")).toBeVisible();
     await expectNarrowViewportLayout(page, page.getByRole("button", { name: "Add a source" }));
 
     // Every control of the editor stays inside its tile, the merge pick included.

@@ -8,8 +8,6 @@ import type { ArchivedLink, Media } from "@/types";
 /** One source of an event, in the event's derived order (level, then capture time). */
 export type Source = components["schemas"]["SourceRead"];
 export type SourceLink = components["schemas"]["SourceLinkRead"];
-/** A source the picker found (`GET /sources`), with the event that holds it. */
-export type SourcePick = components["schemas"]["SourcePickRead"];
 /** A staged source file (`POST /uploads`), referenced by a source's `upload_id`. */
 export type Upload = components["schemas"]["UploadRead"];
 export type SourceLevel = Source["level"];
@@ -98,8 +96,8 @@ export interface SourceCreate {
   media_id?: string;
 }
 
-/** A source file in a form. `stored` names a file that already exists (this source's own, or
- *  another source's, which the write copies) and posts `media_id`; `staged` posts `upload_id`. */
+/** A source file in a form. `stored` names the source's own stored file and posts `media_id`;
+ *  `staged` posts `upload_id`. */
 export type SourceFile =
   | { state: "stored"; media: Media }
   | { state: "uploading"; file: File; token: number }
@@ -199,22 +197,6 @@ export function sourceDraftFrom(source: Source): SourceDraft {
     graphicLocked: source.is_graphic,
     links: source.links.length > 0 ? linkDraftsOf(source.links) : [blankLink()],
     file: source.media ? { state: "stored", media: source.media } : null,
-  };
-}
-
-/** A new editor filled from a source the picker found: its file is copied by the write (its
- *  `media_id`), and the copy takes its graphic flag. */
-export function sourceDraftFromPick(pick: SourcePick): SourceDraft {
-  return {
-    ...sourceDraftFrom(pick),
-    key: nextKey(),
-    id: null,
-    // A copy is a new source: its links are new rows that carry the pick's archived copies.
-    links:
-      pick.links.length > 0
-        ? linkDraftsOf(pick.links).map((link) => ({ ...link, stored: null }))
-        : [blankLink()],
-    graphicLocked: false,
   };
 }
 
@@ -385,14 +367,6 @@ export function checkSource(draft: SourceDraft & { kind: ImageryKind }): Promise
   });
 }
 
-/** Mirrors the `q` bounds of `GET /sources`; change both. */
-export const SOURCE_PICKER_MIN_QUERY = 3;
-
-/** `GET /sources`: existing sources whose title or one of whose URLs contains `q`. */
-export function searchSources(q: string): Promise<SourcePick[]> {
-  return apiFetch<SourcePick[]>(`/sources?q=${encodeURIComponent(q.trim())}&limit=10`);
-}
-
 /** The form sentence for each source error code an event write can answer. Mirrors the codes of
  *  backend `services/events/errors` and `services/uploads`; change both. */
 const SOURCE_ERROR_MESSAGES: Record<string, string> = {
@@ -404,7 +378,7 @@ const SOURCE_ERROR_MESSAGES: Record<string, string> = {
   too_many_source_links: "A source holds at most 10 URLs.",
   source_not_found: "A source changed since this form loaded. Reload the page and try again.",
   source_media_not_found:
-    "A copied source file is no longer available. Remove that source or pick another.",
+    "A source file changed since this form loaded. Reload the page and try again.",
   upload_not_found: "A source file upload was not found. Remove the file and upload it again.",
   upload_expired: "A source file upload expired. Remove the file and upload it again.",
   too_many_uploads:

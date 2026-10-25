@@ -4,7 +4,6 @@ import { useState, type Dispatch, type SetStateAction } from "react";
 import { Plus, X } from "lucide-react";
 
 import { SourceEditor } from "@/components/sources/SourceEditor";
-import { SourcePicker } from "@/components/sources/SourcePicker";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { MergeAction } from "@/components/ui/MergeAction";
@@ -16,7 +15,6 @@ import {
   draftUrls,
   mergeSourceDrafts,
   newSourceDraft,
-  sourceDraftFromPick,
   uploadError,
   uploadsRunning,
   uploadSourceFile,
@@ -30,8 +28,8 @@ let uploadToken = 0;
 
 /**
  * The **Sources** section every event form carries: one `SourceEditor` per source, **Add a
- * source** (capped at `MAX_SOURCES_PER_EVENT`), **Copy an existing source** through the picker,
- * and per editor **Merge** (into another editor of the list) and **Remove**.
+ * source** (capped at `MAX_SOURCES_PER_EVENT`), and per editor **Merge** (into another editor of
+ * the list) and **Remove**.
  *
  * A picked file uploads at once, on its own request; the editor keeps the staged upload, and the
  * event write names it. A file picked again or removed while its upload runs drops the answer.
@@ -50,7 +48,6 @@ export function SourcesField({
   /** The keys a publish attempt flagged (`useIncompleteForm`). */
   invalidKeys: ReadonlySet<MissingFieldKey>;
 }) {
-  const [picking, setPicking] = useState(false);
   const [mergeNotice, setMergeNotice] = useState<string | null>(null);
   const atCap = sources.length >= MAX_SOURCES_PER_EVENT;
   const label = (i: number) => `Source ${i + 1}`;
@@ -143,17 +140,6 @@ export function SourcesField({
         />
       ))}
 
-      {picking && (
-        <SourcePicker
-          disabled={atCap}
-          onClose={() => setPicking(false)}
-          onPick={(pick) => {
-            setSources((prev) => [...prev, sourceDraftFromPick(pick)]);
-            setPicking(false);
-          }}
-        />
-      )}
-
       <div className="flex flex-wrap items-center gap-2">
         <Button
           variant="secondary"
@@ -163,11 +149,6 @@ export function SourcesField({
           <Plus size={13} strokeWidth={2} />
           Add a source
         </Button>
-        {!picking && (
-          <Button variant="ghost" disabled={atCap} onClick={() => setPicking(true)}>
-            Copy an existing source
-          </Button>
-        )}
         {atCap && (
           <span className="text-xs text-neutral-500">{MAX_SOURCES_PER_EVENT} maximum.</span>
         )}
