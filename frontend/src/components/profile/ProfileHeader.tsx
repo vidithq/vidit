@@ -119,12 +119,11 @@ export function IdentityLines({ bio: rawBio, segments }: { bio: string | null; s
 }
 
 /** The header action cluster: the icon row (linked accounts, then Edit profile when `canEdit`),
- * and `children` (Follow on someone else's profile) or the save pair while editing. The marks sit right of
- * the title, where pages keep controls that act on their subject: ghost icon buttons throughout,
- * Edit profile included. `gap-1.5` matches the event page's action cluster; the cluster's `gap-2`
- * separates the row from the far-right button. It wraps and right-aligns, so on a phone marks and
- * button break onto separate lines. Editing drops the row: the inputs below are the links, and the
- * page is already in edit mode. */
+ * and `children` (Follow on someone else's profile). The marks sit right of the title, where pages
+ * keep controls that act on their subject: ghost icon buttons throughout, Edit profile included.
+ * `gap-1.5` matches the event page's action cluster; the cluster's `gap-2` separates the row from
+ * the far-right button. It wraps and right-aligns, so on a phone marks and button break onto
+ * separate lines. Edit mode renders `ProfileEditActions` in its place. */
 export function ProfileActions({
   links,
   canEdit,
@@ -138,50 +137,54 @@ export function ProfileActions({
 }) {
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
-      {!edit.editing && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <LinkedAccountsLine links={links} />
-          {canEdit && (
-            <Button
-              icon
-              variant="ghost"
-              onClick={edit.startEditing}
-              aria-label="Edit profile"
-              title="Edit profile"
-            >
-              <Pencil size={14} />
-            </Button>
-          )}
-        </div>
-      )}
-      {edit.editing
-        ? canEdit && (
-            <>
-              <Button
-                variant="ghost"
-                onClick={edit.cancelEditing}
-                disabled={edit.saving}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                onClick={edit.saveEdits}
-                disabled={edit.saving || edit.bioOver}
-              >
-                {edit.saving ? "Saving…" : "Save"}
-              </Button>
-            </>
-          )
-        : children}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <LinkedAccountsLine links={links} />
+        {canEdit && (
+          <Button
+            icon
+            variant="ghost"
+            onClick={edit.startEditing}
+            aria-label="Edit profile"
+            title="Edit profile"
+          >
+            <Pencil size={14} />
+          </Button>
+        )}
+      </div>
+      {children}
     </div>
   );
 }
 
-/** Edit-mode fields that belong to the header rather than a section card: the avatar picker and
- * the save-error banner. Nothing in view mode. The picker is the shared `FileManager` in
- * single-file image mode: its remove control drops the picture, and its drop zone returns once
- * none is staged. */
+/** The edit mode's sticky actions: **Cancel** and **Save** on one line, then the save error. The
+ * page passes them as `PageShell`'s `stickyActions`, so they stay pinned while the fields scroll. */
+export function ProfileEditActions({ edit }: { edit: ProfileEditState }) {
+  return (
+    <aside aria-label="Actions" className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="ghost" onClick={edit.cancelEditing} disabled={edit.saving}>
+          Cancel
+        </Button>
+        <Button
+          variant="primary"
+          onClick={edit.saveEdits}
+          disabled={edit.saving || edit.bioOver}
+        >
+          {edit.saving ? "Saving…" : "Save"}
+        </Button>
+      </div>
+      {edit.saveError && (
+        <div className={FORM_ERROR_BANNER} role="alert">
+          {edit.saveError}
+        </div>
+      )}
+    </aside>
+  );
+}
+
+/** The edit-mode field that belongs to the header rather than a section card: the avatar picker.
+ * Nothing in view mode. The picker is the shared `FileManager` in single-file image mode: its
+ * remove control drops the picture, and its drop zone returns once none is staged. */
 export function ProfileHeaderEditFields({
   name,
   edit,
@@ -189,7 +192,7 @@ export function ProfileHeaderEditFields({
   name: string;
   edit: ProfileEditState;
 }) {
-  if (!edit.editing && !edit.saveError) return null;
+  if (!edit.editing) return null;
 
   // The same derivation the title reads. A staged file always renders as a tile, url or not: what
   // Save uploads must be what the picker shows.
@@ -229,36 +232,28 @@ export function ProfileHeaderEditFields({
         : null;
 
   return (
-    <>
-      {edit.editing && (
-        <div className="max-w-sm">
-          <span className={FORM_LABEL}>Profile picture</span>
-          <div className="mt-1">
-            <FileManager
-              items={
-                item
-                  ? [
-                      {
-                        ...item,
-                        onRemove: edit.removeShownAvatar,
-                        removeLabel: "Remove profile picture",
-                      },
-                    ]
-                  : []
-              }
-              onAddFiles={(files) => edit.setDraftAvatarFile(files[0] ?? null)}
-              accept={ACCEPTED_IMAGE_MIME}
-              addLabel="Add a picture"
-              addHint="JPEG, PNG or WebP. Stored on Vidit and resized."
-              layout="stack"
-            />
-          </div>
-        </div>
-      )}
-
-      {edit.saveError && (
-        <div className={FORM_ERROR_BANNER}>{edit.saveError}</div>
-      )}
-    </>
+    <div className="max-w-sm">
+      <span className={FORM_LABEL}>Profile picture</span>
+      <div className="mt-1">
+        <FileManager
+          items={
+            item
+              ? [
+                  {
+                    ...item,
+                    onRemove: edit.removeShownAvatar,
+                    removeLabel: "Remove profile picture",
+                  },
+                ]
+              : []
+          }
+          onAddFiles={(files) => edit.setDraftAvatarFile(files[0] ?? null)}
+          accept={ACCEPTED_IMAGE_MIME}
+          addLabel="Add a picture"
+          addHint="JPEG, PNG or WebP. Stored on Vidit and resized."
+          layout="stack"
+        />
+      </div>
+    </div>
   );
 }

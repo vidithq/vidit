@@ -20,6 +20,7 @@ import { LinkedAccountsFields } from "@/components/profile/LinkedAccounts";
 import {
   IdentityLines,
   ProfileActions,
+  ProfileEditActions,
   ProfileHeaderEditFields,
   ProfileTitle,
 } from "@/components/profile/ProfileHeader";
@@ -79,8 +80,11 @@ export default function OrganizationPage() {
       title={<ProfileTitle name={org.name} edit={edit} />}
       subtitle={edit.editing ? undefined : <IdentityLines bio={org.bio} segments={segments} />}
       actions={
-        <ProfileActions links={org.external_links} canEdit={org.viewer_can_manage} edit={edit} />
+        !edit.editing && (
+          <ProfileActions links={org.external_links} canEdit={org.viewer_can_manage} edit={edit} />
+        )
       }
+      stickyActions={edit.editing ? <ProfileEditActions edit={edit} /> : undefined}
       rail={
         org.viewer_invited && !edit.editing ? (
           <Card as="section">

@@ -520,6 +520,12 @@ describe("public profile edit mode", () => {
     ).toBeTruthy();
     // One place to read a linked account per mode: buttons give way to inputs.
     expect(screen.queryByRole("link", { name: /X \/ Twitter/ })).toBeNull();
+    expect(screen.getByLabelText("X / Twitter")).toHaveValue(PROFILE.external_links.x);
+    // Cancel and Save are the page's sticky actions, in place of the header cluster.
+    const actions = screen.getByRole("complementary", { name: "Actions" });
+    expect(within(actions).getByRole("button", { name: "Save" })).toBeInTheDocument();
+    expect(within(actions).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit profile" })).toBeNull();
     // The saved bio is not printed under the handle: the identity block drops out.
     expect(container.querySelector("h1 + div")).toBeNull();
   });
