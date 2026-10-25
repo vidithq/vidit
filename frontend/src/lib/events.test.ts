@@ -9,107 +9,99 @@ import {
   type EventFieldsState,
 } from "./events";
 
+const FULL_FLOOR = { hasEvidenceFile: true, missingLink: false, missingKind: false };
+
 // A fully-complete detection; each test knocks one field out. The proof carries an image node
 // (`proofHasImage`).
 const complete: EventFieldsState = {
   title: "Strike on depot",
   lat: "48.5",
   lng: "37.8",
-  sourceUrl: "https://t.me/c/1",
-  sourcePostedAt: "2026-01-01T00:00",
   proof: '<img src="https://x/y.jpg">',
-  mediaCount: 2,
-  hasConflictTag: true,
-  hasCaptureSourceTag: true,
+  sources: FULL_FLOOR,
+  hasConflict: true,
 };
 
-const labels = (s: EventFieldsState, opts?: Parameters<typeof missingEventFields>[1]) =>
-  missingEventFields(s, opts).map((m) => m.label);
+const labels = (s: EventFieldsState) => missingEventFields(s).map((m) => m.label);
 
 describe("missingEventFields", () => {
   it("returns nothing when every required field is present", () => {
     expect(labels(complete)).toEqual([]);
   });
 
-  it("lists every miss at once for an empty detection", () => {
+  it("lists every miss at once for an empty detection, in page order", () => {
     expect(
       labels({
         title: "",
         lat: "",
         lng: "",
-        sourceUrl: "",
-        sourcePostedAt: "",
         proof: null,
-        mediaCount: 0,
-        hasConflictTag: false,
-        hasCaptureSourceTag: false,
+        sources: { hasEvidenceFile: false, missingLink: true, missingKind: true },
+        hasConflict: false,
       })
     ).toEqual([
       "Title",
-      "Coordinates",
+      "Source file",
       "Source URL",
-      "Source post time",
+      "Source kind",
       "Proof",
-      "Source media",
+      "Coordinates",
       "Conflict",
-      "Capture source tag",
     ]);
   });
 
   it("flags out-of-range coordinates as Coordinates", () => {
-    expect(labels({ ...complete, lat: "999", lng: "37.8" })).toEqual([
-      "Coordinates",
-    ]);
+    expect(labels({ ...complete, lat: "999", lng: "37.8" })).toEqual(["Coordinates"]);
   });
 
   it("requires an image in the proof, not just text", () => {
-    expect(
-      labels({
-        ...complete,
-        proof: "<p></p>",
-      })
-    ).toEqual(["Proof image"]);
+    expect(labels({ ...complete, proof: "<p></p>" })).toEqual(["Proof image"]);
   });
 
   it("reports a missing proof as Proof, not Proof image", () => {
     expect(labels({ ...complete, proof: null })).toEqual(["Proof"]);
   });
 
-  it("skips the source-media floor when media isn't required (request fulfilment)", () => {
-    expect(labels({ ...complete, mediaCount: 0 }, { requireMedia: false })).toEqual(
-      []
-    );
-  });
-
-  it("skips the tag floor when tags aren't required (partial detection save)", () => {
-    expect(
-      labels(
-        { ...complete, hasConflictTag: false, hasCaptureSourceTag: false },
-        { requireTags: false }
-      )
-    ).toEqual([]);
-  });
-
   it("exposes a key per miss for the in-form highlight", () => {
     expect(
-      missingEventFields({ ...complete, title: "", mediaCount: 0 }).map(
-        (m) => m.key
-      )
-    ).toEqual(["title", "source_media"]);
+      missingEventFields({
+        ...complete,
+        title: "",
+        sources: { ...FULL_FLOOR, hasEvidenceFile: false },
+      }).map((m) => m.key)
+    ).toEqual(["title", "source_file"]);
   });
 
   it("treats a blank-string title as missing", () => {
     expect(labels({ ...complete, title: "   " })).toEqual(["Title"]);
   });
+
+  it("opens on the request floor", () => {
+    const state: EventFieldsState = {
+      ...complete,
+      title: "",
+      proof: null,
+      sources: { hasEvidenceFile: false, missingLink: true, missingKind: false },
+    };
+    const request = missingEventRequestFields(state);
+    expect(missingEventFields(state).slice(0, request.length)).toEqual(request);
+  });
 });
 
 describe("batchCompletionBlockers", () => {
-  // A detection as the import leaves it, missing only the capture source the batch supplies.
+  const FILE = {
+    id: "m1",
+    role: "source" as const,
+    kind: "image" as const,
+    sha256: "0",
+    storage_url: "https://cdn/x.jpg",
+  };
+  const LINK = { url: "https://x.com/a/status/1", posted_at: null, archived: null };
+  // A detection as the import leaves it, missing only the source kind and conflict the batch supplies.
   const importedDetection = {
-    event_coords: { lat: 48.5, lng: 37.8 },
-    source_url: "https://x.com/a/status/1",
+    coords: { lat: 48.5, lng: 37.8 },
     proof: '<img src="https://x/y.jpg">',
-    media: [{ role: "source" as const }],
+    sources: [{ level: "direct" as const, links: [LINK], media: FILE }],
   };
 
   it("clears a detection the import filled", () => {
@@ -117,42 +109,28 @@ describe("batchCompletionBlockers", () => {
   });
 
   it("flags the row whose thread carried no annotation image", () => {
-    expect(
-      batchCompletionBlockers({
-        ...importedDetection,
-        proof: "<p></p>",
-      })
-    ).toEqual(["Proof image"]);
+    expect(batchCompletionBlockers({ ...importedDetection, proof: "<p></p>" })).toEqual([
+      "Proof image",
+    ]);
   });
 
-  it("counts only source media, never a proof image, as the footage", () => {
-    // The floor wants the footage the geolocation is OF: annotation images alone carry media rows
-    // and still miss it.
+  it("counts a context source's file as no footage", () => {
     expect(
       batchCompletionBlockers({
         ...importedDetection,
-        media: [{ role: "proof" as const }],
+        sources: [{ level: "context", links: [LINK], media: FILE }],
       })
-    ).toEqual(["Source media"]);
+    ).toEqual(["Source file"]);
   });
 
   it("lists every miss at once, in floor order", () => {
     expect(
       batchCompletionBlockers({
-        event_coords: null,
-        source_url: null,
+        coords: null,
         proof: null,
-        media: [],
+        sources: [{ level: "direct", links: [], media: null }],
       })
-    ).toEqual(["Source URL", "Coordinates", "Source media", "Proof image"]);
-  });
-
-  it("ignores what a batch never writes (title, source post time)", () => {
-    // The batch posts no fields, so title and post time belong to the submit form: a detection
-    // missing them still publishes.
-    expect(batchCompletionBlockers({ ...importedDetection, source_url: "  " })).toEqual([
-      "Source URL",
-    ]);
+    ).toEqual(["Coordinates", "Proof image", "Source URL", "Source file"]);
   });
 
   // Mirrors `backend/tests/events/_readiness_cases.py`, shape for shape; change both. The
@@ -166,31 +144,32 @@ describe("batchCompletionBlockers", () => {
     // The server counts srcs, not tags, and text can name the tag.
     const proofImageWithoutSrc = '<img alt="src=&quot;x&quot;"><p>&lt;img src="y"&gt;</p>';
     const proofImageWithSrcInAValue = '<img alt="x src=">';
-    const readyDetection = { ...importedDetection, proof: proofWithImage };
+    const withFile = { level: "direct" as const, links: [LINK], media: FILE };
+    const ready = { ...importedDetection, proof: proofWithImage };
+    const mirror = { level: "direct" as const, links: [{ ...LINK, url: "https://t.me/c/2" }], media: null };
 
     const cases: [string, Parameters<typeof batchCompletionBlockers>[0], boolean][] = [
-      ["ready", readyDetection, true],
-      ["ready_with_a_nested_proof_image", { ...readyDetection, proof: proofImageNested }, true],
-      ["no_source_url", { ...readyDetection, source_url: null }, false],
-      ["blank_source_url", { ...readyDetection, source_url: " \t\n " }, false],
-      ["no_coordinates", { ...readyDetection, event_coords: null }, false],
-      ["no_source_media", { ...readyDetection, media: [] }, false],
-      ["no_proof_image", { ...readyDetection, proof: proofTextOnly }, false],
-      ["proof_image_without_a_src", { ...readyDetection, proof: proofImageWithoutSrc }, false],
+      ["ready", ready, true],
+      ["ready_with_a_nested_proof_image", { ...ready, proof: proofImageNested }, true],
+      ["ready_on_an_indirect_source", { ...ready, sources: [{ ...withFile, level: "indirect" }] }, true],
+      ["ready_beside_a_source_without_a_file", { ...ready, sources: [withFile, mirror] }, true],
+      ["a_source_without_a_url", { ...ready, sources: [{ ...withFile, links: [] }] }, false],
+      ["no_source", { ...ready, sources: [] }, false],
+      ["no_source_file", { ...ready, sources: [{ ...withFile, media: null }] }, false],
       [
-        "proof_image_with_src_inside_a_value",
-        { ...readyDetection, proof: proofImageWithSrcInAValue },
+        "only_a_context_source_has_the_file",
+        { ...ready, sources: [{ ...withFile, level: "context" }] },
         false,
       ],
-      [
-        "missing_everything_but_the_title",
-        { event_coords: null, source_url: null, proof: proofTextOnly, media: [] },
-        false,
-      ],
+      ["no_coordinates", { ...ready, coords: null }, false],
+      ["no_proof_image", { ...ready, proof: proofTextOnly }, false],
+      ["proof_image_without_a_src", { ...ready, proof: proofImageWithoutSrc }, false],
+      ["proof_image_with_src_inside_a_value", { ...ready, proof: proofImageWithSrcInAValue }, false],
+      ["missing_everything_but_the_title", { coords: null, proof: proofTextOnly, sources: [] }, false],
     ];
 
-    it.each(cases)("%s", (_name, detection, ready) => {
-      expect(batchCompletionBlockers(detection).length === 0).toBe(ready);
+    it.each(cases)("%s", (_name, detection, isReady) => {
+      expect(batchCompletionBlockers(detection).length === 0).toBe(isReady);
     });
   });
 });
@@ -199,32 +178,21 @@ describe("missingEventRequestFields", () => {
   const requestLabels = (s: Parameters<typeof missingEventRequestFields>[0]) =>
     missingEventRequestFields(s).map((m) => m.label);
 
-  it("returns nothing when title, source, and media are present", () => {
-    expect(
-      requestLabels({
-        title: "Unplaced footage",
-        sourceUrl: "https://t.me/c/1",
-        sourcePostedAt: "2026-01-01T00:00",
-        mediaCount: 1,
-      })
-    ).toEqual([]);
+  it("returns nothing when the title and a source with a file and a URL are present", () => {
+    expect(requestLabels({ title: "Unplaced footage", sources: FULL_FLOOR })).toEqual([]);
   });
 
-  it("lists the request floor (no coords / dates / proof / tags) at once", () => {
+  it("lists the request floor (no coords, proof or conflict) at once", () => {
     expect(
-      requestLabels({ title: "", sourceUrl: "", sourcePostedAt: "", mediaCount: 0 })
-    ).toEqual(["Title", "Source URL", "Source post time", "Source media"]);
+      requestLabels({
+        title: "",
+        sources: { hasEvidenceFile: false, missingLink: true, missingKind: true },
+      })
+    ).toEqual(["Title", "Source file", "Source URL", "Source kind"]);
   });
 
   it("treats a blank-string title as missing", () => {
-    expect(
-      requestLabels({
-        title: "   ",
-        sourceUrl: "https://t.me/c/1",
-        sourcePostedAt: "2026-01-01T00:00",
-        mediaCount: 1,
-      })
-    ).toEqual(["Title"]);
+    expect(requestLabels({ title: "   ", sources: FULL_FLOOR })).toEqual(["Title"]);
   });
 });
 

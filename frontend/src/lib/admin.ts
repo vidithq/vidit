@@ -7,7 +7,7 @@ import { withCursor } from "./pagination";
  *  ``sponsor`` is the analyst who minted it from Settings, null for an admin-minted code. */
 export type InviteCode = components["schemas"]["AdminInviteCodeRead"];
 
-export type CreateInviteCodeBody = components["schemas"]["AdminInviteCodeCreate"];
+type CreateInviteCodeBody = components["schemas"]["AdminInviteCodeCreate"];
 
 /** `GET /admin/invite-codes` for one page; a path because the console reads it through
  *  `useCursorList`. */

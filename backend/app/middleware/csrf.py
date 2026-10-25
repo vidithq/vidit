@@ -25,9 +25,8 @@ from app.services.auth_cookies import (
 # user can't clear from JS would otherwise demand a token they can never
 # supply, locking them out of logging back in. Recovery and registration follow
 # the same logic and carry their own anti-abuse (per-IP limits, single-use
-# tokens, no-op on unknown email). The product update and notification email
-# unsubscribes are authorised by their signed token alone, and a mail client
-# posts them one-click.
+# tokens, no-op on unknown email). The notification email unsubscribe is
+# authorised by its signed token alone, and a mail client posts it one-click.
 CSRF_EXEMPT_PATHS = frozenset(
     {
         "/api/v1/auth/login",
@@ -36,7 +35,6 @@ CSRF_EXEMPT_PATHS = frozenset(
         "/api/v1/auth/resend-confirmation",
         "/api/v1/auth/forgot-password",
         "/api/v1/auth/reset-password",
-        "/api/v1/product-updates/unsubscribe",
         "/api/v1/notifications/unsubscribe",
     }
 )

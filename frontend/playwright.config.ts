@@ -41,8 +41,8 @@ export default defineConfig({
   },
   // Desktop Chrome at phone widths, not a device profile: what is measured is
   // the CSS the width selects, so no touch emulation, no mobile user agent and
-  // no device pixel ratio. A spec that needs a finger (the map's coarse-pointer
-  // hit slop) belongs in a project that emulates one.
+  // no device pixel ratio. A spec that needs a finger (a swipe, a tap on an
+  // approval stamp) sets `hasTouch` in its own `test.use`.
   projects: VIEWPORTS.map(({ name, width, height }) => ({
     name,
     use: { ...devices["Desktop Chrome"], viewport: { width, height } },

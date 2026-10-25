@@ -30,9 +30,6 @@ case "$role" in
     worker)
         exec python scripts/run_import_worker.py
         ;;
-    bot)
-        exec python scripts/run_bot.py
-        ;;
     sync-conflicts)
         exec python scripts/sync_conflicts.py
         ;;

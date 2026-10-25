@@ -62,8 +62,8 @@ def test_get_without_a_row_returns_the_defaults(db, user):
     assert body["display_defaults"] == _DEFAULT_DISPLAY
     assert body["display_stored"] == _NOTHING_STORED
     assert body["notifications"] == [
-        {"kind": kind, "channels": defaults, "defaults": defaults}
-        for kind, defaults in NOTIFICATION_KINDS.items()
+        {"kind": kind, "email": default, "default": default}
+        for kind, default in NOTIFICATION_KINDS.items()
     ]
     assert body["approval_request_audience"] == "following"
     assert _stored(db, user) is None
@@ -76,8 +76,9 @@ def test_patch_creates_the_row_and_stores_only_overrides(db, user):
         headers=headers,
         json={
             "notifications": {
-                "request_fulfilled": {"email": False},
-                "new_follower": {"email": False, "push": True},
+                "request_fulfilled": False,
+                "new_follower": False,
+                "co_geolocator_removed": True,
             },
             "display": {"theme": "light"},
         },
@@ -86,14 +87,16 @@ def test_patch_creates_the_row_and_stores_only_overrides(db, user):
     body = response.json()
     assert body["display"] == {**_DEFAULT_DISPLAY, "theme": "light"}
     assert body["display_stored"] == {**_NOTHING_STORED, "theme": "light"}
-    assert body["notifications"][0]["channels"] == {"email": False, "push": True}
-    assert body["notifications"][1]["channels"] == {"email": False, "push": True}
+    emailed = {n["kind"]: n["email"] for n in body["notifications"]}
+    assert emailed["request_fulfilled"] is False
+    assert emailed["new_follower"] is False
+    assert emailed["co_geolocator_removed"] is True
 
     row = _stored(db, user)
     assert row is not None
     assert row.notification_overrides == {
-        "request_fulfilled": {"email": False},
-        "new_follower": {"push": True},
+        "request_fulfilled": False,
+        "co_geolocator_removed": True,
     }
     assert row.display == {"theme": "light"}
 
@@ -103,8 +106,8 @@ def test_patch_creates_the_row_and_stores_only_overrides(db, user):
         headers=headers,
         json={
             "notifications": {
-                "request_fulfilled": {"email": True},
-                "new_follower": {"push": False},
+                "request_fulfilled": True,
+                "co_geolocator_removed": False,
             }
         },
     )
@@ -125,9 +128,9 @@ def test_patch_null_clears_a_display_value(db, user):
 @pytest.mark.parametrize(
     "body",
     [
-        {"notifications": {"not_a_kind": {"email": True}}},
-        {"notifications": {"request_fulfilled": {"sms": True}}},
-        {"notifications": {"request_fulfilled": {"email": "yes please"}}},
+        {"notifications": {"not_a_kind": True}},
+        {"notifications": {"request_fulfilled": {"email": True}}},
+        {"notifications": {"request_fulfilled": "yes please"}},
         {"display": {"palette": "chartreuse"}},
         {"display": {"theme": "sepia"}},
         {"display": {"font": "serif"}},
@@ -145,7 +148,7 @@ def test_stale_stored_values_read_as_defaults(db, user):
     db.add(
         UserPreferences(
             user_id=user.id,
-            notification_overrides={"retired_kind": {"email": True}, "new_follower": {"x": 1}},
+            notification_overrides={"retired_kind": True, "new_follower": {"email": True}},
             display={"palette": "chartreuse", "theme": "light", "font": "serif"},
         )
     )
@@ -155,7 +158,7 @@ def test_stale_stored_values_read_as_defaults(db, user):
     assert body["display"] == {**_DEFAULT_DISPLAY, "theme": "light"}
     assert body["display_stored"] == {**_NOTHING_STORED, "theme": "light"}
     assert [n["kind"] for n in body["notifications"]] == list(NOTIFICATION_KINDS)
-    assert body["notifications"][1]["channels"] == {"email": False, "push": False}
+    assert body["notifications"][1]["email"] is False
 
 
 def test_preferences_require_a_session():

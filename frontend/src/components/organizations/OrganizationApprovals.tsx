@@ -7,7 +7,6 @@ import { useCursorList } from "@/hooks/useCursorList";
 import { formatDate } from "@/lib/format";
 import {
   organizationApprovalsPath,
-  revokedByLabel,
   type OrganizationApproval,
 } from "@/lib/approvals";
 import { ApprovalState } from "@/components/event/Approvals";
@@ -20,7 +19,7 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { eventHref } from "@/lib/routes";
 
 /** One approval as a row to its event: the acting org manager's picture, the event title, then the
- *  version, who placed it and when, its state and, once revoked, by which role and why. */
+ *  version, who placed it and when, and its state. */
 function ApprovalLinkRow({ event, approval }: OrganizationApproval) {
   const reviewer = approval.reviewer;
   return (
@@ -40,12 +39,6 @@ function ApprovalLinkRow({ event, approval }: OrganizationApproval) {
             {reviewer ? ` · by ${reviewer.username}` : ""} on {formatDate(approval.created_at)}
           </span>
           <ApprovalState approval={approval} />
-          {approval.revoked_at && (
-            <span className="basis-full [overflow-wrap:anywhere]">
-              {revokedByLabel(approval)} on {formatDate(approval.revoked_at)}
-              {approval.revoke_reason ? `: ${approval.revoke_reason}` : "."}
-            </span>
-          )}
         </>
       }
       href={eventHref(event.id)}

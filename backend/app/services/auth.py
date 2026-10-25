@@ -123,7 +123,7 @@ def consume_invite_code(db: Session, invite: InviteCode, user_id: uuid.UUID) -> 
     Returns ``True`` on success, ``False`` if another path redeemed it since validation. The
     atomic ``UPDATE ... WHERE used_at IS NULL ... RETURNING`` is the race safety: a
     read-modify-write let two concurrent confirms create two users on one code under READ
-    COMMITTED. Mirrors ``auth_tokens.consume``.
+    COMMITTED. Mirrors ``password_reset_tokens.consume``.
 
     Doesn't commit, so the user insert and the redemption land atomically.
     """
@@ -134,7 +134,7 @@ def consume_invite_code(db: Session, invite: InviteCode, user_id: uuid.UUID) -> 
             InviteCode.revoked_at.is_(None),
             InviteCode.used_at.is_(None),
         )
-        .values(used_by=user_id, used_at=datetime.now(UTC))
+        .values(used_by_id=user_id, used_at=datetime.now(UTC))
         .returning(InviteCode.id)
     )
     if db.execute(stmt).scalar_one_or_none() is None:
@@ -156,8 +156,7 @@ def maybe_promote_admin(user: User) -> bool:
     """
     if user.is_admin:
         return False
-    # A credential-less legacy row (no email) can't match the admin list.
-    if user.email is None or user.email.lower() not in settings.admin_emails_list:
+    if user.email.lower() not in settings.admin_emails_list:
         return False
     user.is_admin = True
     return True

@@ -11,10 +11,10 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
-from app.models.admin_event import AdminEvent
+from app.models.audit_log import AuditLog
 from app.models.follow import Follow
 from app.models.notification import Notification
-from app.models.organization import Organization, OrganizationInvite, OrganizationMember
+from app.models.organization import Organization, OrganizationMember
 from app.models.user import User
 from app.services.auth import hash_password
 from tests._fixtures import TINY_JPEG
@@ -68,7 +68,7 @@ def make_user(db):
     db.query(Organization).filter(Organization.created_by_id.in_(created)).delete(
         synchronize_session=False
     )
-    db.query(AdminEvent).filter(AdminEvent.actor_id.in_(created)).delete(synchronize_session=False)
+    db.query(AuditLog).filter(AuditLog.actor_id.in_(created)).delete(synchronize_session=False)
     db.query(User).filter(User.id.in_(created)).delete(synchronize_session=False)
     db.commit()
 
@@ -141,7 +141,7 @@ def test_site_admin_creates_an_organization_with_its_first_manager(
     assert org["member_count"] == 1
     member = db.query(OrganizationMember).filter_by(organization_id=uuid.UUID(org["id"])).one()
     assert (member.user_id, member.role) == (org_manager.id, "manager")
-    audit = db.query(AdminEvent).filter_by(actor_id=site_admin.id).one()
+    audit = db.query(AuditLog).filter_by(actor_id=site_admin.id).one()
     assert audit.action == "organization_created"
     assert audit.target["slug"] == org["slug"]
 
@@ -320,7 +320,7 @@ def test_accept_joins_and_notifies_both_sides(db, org, org_manager, make_user):
     assert client.post(f"{_org(org['slug'])}/invite/accept", headers=headers).status_code == 204
     page = client.get(_org(org["slug"])).json()
     assert (page["viewer_role"], page["viewer_invited"]) == ("member", False)
-    assert db.query(OrganizationInvite).filter_by(user_id=invitee.id).count() == 0
+    assert db.get(OrganizationMember, (uuid.UUID(org["id"]), invitee.id)).state == "active"
 
     accepted = (
         db.query(Notification)
@@ -339,7 +339,6 @@ def test_decline_drops_the_invite_silently(db, org, org_manager, make_user):
     assert _invite(org_manager, org["slug"], invitee).status_code == 201
     headers = login_as(client, invitee)
     assert client.post(f"{_org(org['slug'])}/invite/decline", headers=headers).status_code == 204
-    assert db.query(OrganizationInvite).filter_by(user_id=invitee.id).count() == 0
     assert db.query(OrganizationMember).filter_by(user_id=invitee.id).count() == 0
     assert db.query(Notification).filter_by(user_id=org_manager.id).count() == 0
 
@@ -347,9 +346,10 @@ def test_decline_drops_the_invite_silently(db, org, org_manager, make_user):
 def test_org_manager_cancels_an_invite(db, org, org_manager, make_user):
     invitee = make_user()
     _follow_both(db, org_manager, invitee)
-    invite_id = _invite(org_manager, org["slug"], invitee).json()["id"]
+    invited = _invite(org_manager, org["slug"], invitee).json()
+    assert invited["user"]["username"] == invitee.username and "invited_at" in invited
     headers = login_as(client, org_manager)
-    path = f"{_org(org['slug'])}/invites/{invite_id}"
+    path = f"{_org(org['slug'])}/invites/{invitee.username}"
     assert client.delete(path, headers=headers).status_code == 204
     assert client.delete(path, headers=headers).status_code == 404
 
@@ -553,7 +553,7 @@ def test_a_site_admin_names_an_org_manager_for_an_organization_left_without_one(
     )
     rows = client.get(_ADMIN_CREATE, headers=headers).json()
     assert next(r for r in rows if r["slug"] == org["slug"])["manager_count"] == 1
-    audit = db.query(AdminEvent).filter_by(action="organization_manager_appointed").all()
+    audit = db.query(AuditLog).filter_by(action="organization_manager_appointed").all()
     assert [a.target["user_id"] for a in audit] == [str(heir.id)]
 
     login_as(client, heir)

@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/api/v1/admin/approvals/{approval_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Approval
+         * @description Delete one approval, as themselves or for an organization, and write it to the admin log.
+         */
+        delete: operations["delete_approval_api_v1_admin_approvals__approval_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/collections/{collection_id}": {
         parameters: {
             query?: never;
@@ -214,7 +234,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/maintenance/reap-auth-tokens": {
+    "/api/v1/admin/maintenance/reap-password-reset-tokens": {
         parameters: {
             query?: never;
             header?: never;
@@ -224,10 +244,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Maintenance Reap Auth Tokens
-         * @description Drop expired and old-consumed auth_tokens rows.
+         * Maintenance Reap Password Reset Tokens
+         * @description Drop expired and old-consumed password_reset_tokens rows.
          */
-        post: operations["maintenance_reap_auth_tokens_api_v1_admin_maintenance_reap_auth_tokens_post"];
+        post: operations["maintenance_reap_password_reset_tokens_api_v1_admin_maintenance_reap_password_reset_tokens_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -289,7 +309,7 @@ export interface paths {
         };
         /**
          * Admin Me
-         * @description Route-guard probe: 200 + ``{is_admin: true}`` for admins, 403 otherwise.
+         * @description Whether the signed-in analyst is a site admin.
          */
         get: operations["admin_me_api_v1_admin_me_get"];
         put?: never;
@@ -358,73 +378,6 @@ export interface paths {
          * @description Make a live analyst an org manager of the organization, joining it if needed, with audit.
          */
         post: operations["appoint_organization_manager_api_v1_admin_organizations__slug__managers_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/product-updates": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Product Updates
-         * @description Every announcement sent, newest first, with its delivery progress.
-         */
-        get: operations["list_product_updates_api_v1_admin_product_updates_get"];
-        put?: never;
-        /**
-         * Send Product Update
-         * @description Send the announcement: queue one email per consenting verified analyst.
-         *
-         *     The worker sends them under the product update daily cap. 409 when the
-         *     release label was already announced.
-         */
-        post: operations["send_product_update_api_v1_admin_product_updates_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/product-updates/preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Preview Product Update
-         * @description Render the announcement as you would receive it and count its audience.
-         */
-        post: operations["preview_product_update_api_v1_admin_product_updates_preview_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/product-updates/test": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Send Test Product Update
-         * @description Email the announcement to your own verified address only.
-         */
-        post: operations["send_test_product_update_api_v1_admin_product_updates_test_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -586,67 +539,6 @@ export interface paths {
          *     write path for ``users.x_handle``.
          */
         patch: operations["set_user_x_handle_api_v1_admin_users__user_id__x_handle_patch"];
-        trace?: never;
-    };
-    "/api/v1/admin/x-handle-requests": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List X Handle Requests
-         * @description Pending X handle change requests on live accounts, oldest first.
-         */
-        get: operations["list_x_handle_requests_api_v1_admin_x_handle_requests_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/x-handle-requests/{request_id}/approve": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Approve X Handle Request
-         * @description Bind the requested handle through the X handle write path and notify
-         *     the analyst. 409 when another account holds the handle.
-         */
-        post: operations["approve_x_handle_request_api_v1_admin_x_handle_requests__request_id__approve_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/x-handle-requests/{request_id}/decline": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Decline X Handle Request
-         * @description Decline a request with a reason the analyst reads in Settings.
-         */
-        post: operations["decline_x_handle_request_api_v1_admin_x_handle_requests__request_id__decline_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/api/v1/auth/change-password": {
@@ -869,7 +761,7 @@ export interface paths {
         /**
          * Get Collection
          * @description One collection's header: owner, title, item count and date range.
-         *     Public; a withheld collection is a 404 for everyone but an admin.
+         *     Public; a withheld or owner-deleted collection is a 404 for everyone but an admin.
          */
         get: operations["get_collection_api_v1_collections__collection_id__get"];
         put?: never;
@@ -877,6 +769,9 @@ export interface paths {
         /**
          * Delete Collection
          * @description Drop your collection (owner only). Its events stay.
+         *
+         *     Under an open content report the collection is only withheld, from every
+         *     read but an admin's, until its last open report is resolved, which erases it.
          */
         delete: operations["delete_collection_api_v1_collections__collection_id__delete"];
         options?: never;
@@ -902,7 +797,7 @@ export interface paths {
          * List Collection Events
          * @description The collection's items in the order the events happened.
          *
-         *     Ordered ascending by ``event_date``, ``event_time``, ``created_at``, ``id``;
+         *     Ordered ascending by ``occurred_date``, ``occurred_time``, ``created_at``, ``id``;
          *     a missing date or hour sorts last. Capped at 100 rows; follow the
          *     ``Link: rel="next"`` cursor, sent exactly when the next page holds a row.
          */
@@ -958,8 +853,8 @@ export interface paths {
          * @description Report a collection for moderation.
          *
          *     Same gesture, body and per-IP limit as an event report: open to anonymous
-         *     viewers (``reporter_user_id`` NULL), a signed-in reporter is recorded. An
-         *     unknown, withheld or orphaned collection answers 404.
+         *     viewers (``reporter_id`` NULL), a signed-in reporter is recorded. An
+         *     unknown, withheld, owner-deleted or orphaned collection answers 404.
          */
         post: operations["report_collection_api_v1_collections__collection_id__report_post"];
         delete?: never;
@@ -1029,12 +924,10 @@ export interface paths {
          * @description Direct geolocate: create an event born ``geolocated``.
          *
          *     Parses the form into clean types; business rules and IO live in
-         *     ``services/events.create_with_evidence``.
-         *
-         *     ``source_snapshot_url`` and ``secondary_snapshot_urls`` record archived
-         *     copies in the same write (``services/source_archive``); a paste that is
-         *     not a snapshot of its link is a 400 with the failing check's code and no
-         *     event is created.
+         *     ``services/events.create_with_evidence``. A pasted archived copy that is not
+         *     a snapshot is a 400 with the failing check's code and no event is created. Each
+         *     analyst in ``geolocator_invites`` is invited to share the credit, refused as
+         *     ``POST /events/{id}/geolocator-invites`` refuses, and a refusal creates no event.
          */
         post: operations["create_event_api_v1_events_post"];
         delete?: never;
@@ -1057,11 +950,12 @@ export interface paths {
          * @description Publish the selected detections: ``detected`` → ``geolocated``.
          *
          *     JSON, not multipart: nothing uploads. The detections keep their imported
-         *     evidence; the call supplies the conflict set and one ``capture_source`` tag
-         *     per row.
+         *     evidence; the call supplies the conflict set and one source kind per row,
+         *     which goes onto every source that carries a file.
          *
          *     Each row commits on its own: one that fails the floor (no proof image,
-         *     source media, coordinates or source URL) rolls back alone, stays a
+         *     coordinates, direct or indirect source file, or a source without a URL)
+         *     rolls back alone, stays a
          *     detection and gets its reason in ``rows[]``. Publishing credits the caller
          *     as geolocator, as the single-row transition does.
          *
@@ -1085,7 +979,7 @@ export interface paths {
         };
         /**
          * List Detections
-         * @description The caller's ``detected`` events awaiting a geolocate, newest first.
+         * @description The caller's ``detected`` events awaiting a publish, newest first.
          *
          *     Owner-scoped to ``current_user`` (never a URL username): the Detections
          *     queue. Returns full ``EventRead`` so the queue shows evidence and what each
@@ -1220,14 +1114,14 @@ export interface paths {
         /**
          * List Points
          * @description Return the map's events inside ``bbox`` as a compact array:
-         *     ``[[id, lat, lng, event_date, added_date, detected], ...]``.
+         *     ``[[id, lat, lng, occurred_date, added_date, detected], ...]``.
          *
          *     No joins, built for client-side clustering. ``bbox``
          *     (``south,west,north,east``) is required and bounds the payload by area; a
          *     missing or malformed value is a 422 (:func:`parse_bbox`). Live
          *     ``geolocated`` / ``detected`` rows with a subject coordinate only. Dates
          *     are ISO ``YYYY-MM-DD`` (``added_date`` is the ``created_at`` day);
-         *     ``event_date`` is ``null`` when unknown. ``detected`` is a 1/0 flag, not a
+         *     ``occurred_date`` is ``null`` when unknown. ``detected`` is a 1/0 flag, not a
          *     status string, to keep the payload small. Cached in memory for 60s per
          *     snapped bbox + filter combination (:func:`snap_bbox`).
          */
@@ -1254,8 +1148,8 @@ export interface paths {
          *     Returns geolocations that might be the same event as the one being
          *     submitted; never blocks the submit.
          *
-         *     Match rule: within ~500m of (lat, lng) AND (same source host OR same
-         *     event_date). Coordinate-less rows never match. Authenticated-only so the
+         *     Match rule: within ~500m of (lat, lng) AND (a source URL on the same host
+         *     OR same occurred_date). ``source_url`` is one URL the form holds. Coordinate-less rows never match. Authenticated-only so the
          *     proximity probe isn't exposed to anonymous scraping.
          *
          *     A half-typed source URL disables the host leg and an unparseable date the
@@ -1286,8 +1180,8 @@ export interface paths {
          * Create Event Request
          * @description Open a request (a ``requested`` event).
          *
-         *     One source media file is required: the evidence the poster has must be on
-         *     the row from the start. Business rules and IO live in
+         *     The footage the poster has must be on the row from the start: a direct or
+         *     indirect source with its file. Business rules and IO live in
          *     ``services/events.create_request``.
          */
         post: operations["create_event_request_api_v1_events_requests_post"];
@@ -1412,27 +1306,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/approvals/{approval_id}/revoke": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Revoke Approval
-         * @description Revoke an approval: your own, your organization's as one of its members, or any as a site
-         *     admin.
-         */
-        post: operations["revoke_approval_api_v1_events__geolocation_id__approvals__approval_id__revoke_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/events/{geolocation_id}/close": {
         parameters: {
             query?: never;
@@ -1479,42 +1352,6 @@ export interface paths {
         get: operations["list_event_collections_api_v1_events__geolocation_id__collections_get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/events/{geolocation_id}/geolocate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Geolocate Event
-         * @description Give an event a vouched location: ``requested`` | ``detected`` → ``geolocated``.
-         *
-         *     The caller posts the whole form (title, coordinates, source URL, dates,
-         *     graphic flag, proof + images, tags, source media via ``files`` /
-         *     ``remove_media_ids``). On success the row is published as ``geolocated`` and
-         *     the caller is credited as a geolocator; later corrections go through
-         *     ``save_version``. A detection is owner-only (403 otherwise); a ``requested``
-         *     event is answerable by anyone and the fulfiller becomes its owner
-         *     (``requested_by`` keeps the poster). Blocked (400) until the evidence floor
-         *     is met (one source media, a proof image, a conflict, the ``capture_source``
-         *     tag). Other statuses 409; soft-deleted 404.
-         *
-         *     ``source_snapshot_url`` and ``secondary_snapshot_urls`` record archived
-         *     copies in the same write, on the checks every archived-copy field runs (a
-         *     paste that is not a snapshot of its link is a 400 and nothing is written).
-         *     Changing the source URL without pasting a new snapshot leaves no archived
-         *     source rather than the old one's copy.
-         */
-        post: operations["geolocate_event_api_v1_events__geolocation_id__geolocate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1641,7 +1478,7 @@ export interface paths {
          *
          *     Open to anonymous viewers: the people footage harms rarely hold an account
          *     here. A signed-in reporter is recorded; an anonymous one leaves
-         *     ``reporter_user_id`` NULL. The per-IP limit is the abuse floor.
+         *     ``reporter_id`` NULL. The per-IP limit is the abuse floor.
          *
          *     An unknown, soft-deleted or already-withheld event answers 404.
          */
@@ -1665,15 +1502,14 @@ export interface paths {
          * Update Event Request
          * @description Correct an open request, overwriting it in place (owner-only).
          *
-         *     No version is filed: a version supersedes a vouched claim, and a request is
-         *     a question. The row keeps its id, ``requested_at``, requester and
-         *     provenance columns, and moves ``updated_at``. Allowed only while
-         *     ``requested`` (409 otherwise).
+         *     No version is filed: the request stays version 0 until it is published
+         *     through ``POST /events/{id}/versions``. The row keeps its id,
+         *     ``requested_at``, requester and provenance, and moves ``updated_at``.
+         *     Allowed only while ``requested`` (409 otherwise).
          *
-         *     Every create-form field is editable, the coordinate guess and camera point
-         *     included; the curated floor stays unenforced until geolocate. Source media
-         *     moves on the ``remove_media_ids`` + ``files`` pair under the one-source cap
-         *     and the row must still carry footage. Soft-deleted rows read as 404.
+         *     Every create-form field is editable, the coordinate guess included; the
+         *     publication floor stays unenforced until the publish, but the row must still
+         *     hold a direct or indirect source with its file. Soft-deleted rows read as 404.
          */
         post: operations["update_event_request_api_v1_events__geolocation_id__request_post"];
         delete?: never;
@@ -1705,21 +1541,27 @@ export interface paths {
         put?: never;
         /**
          * Save Event Version
-         * @description Correct a published event, keeping the version it replaces readable.
+         * @description Publish a request or a detection, or correct a published event, filing a version.
          *
-         *     Owner-only and only while ``geolocated`` (409 otherwise). The pre-edit state
-         *     is filed as an ``event_versions`` row and the event moves to the next
-         *     ``version_no``, in one transaction under a row lock.
+         *     The caller posts the whole form (title, coordinates, dates, proof + images, tags,
+         *     conflicts, sources). The pre-edit state is filed as an ``event_versions`` row and the
+         *     event moves to the next ``version_no``, in one transaction under a row lock.
          *
-         *     The evidence anchor is versioned too: ``source_url`` and the source media
-         *     (``remove_media_ids`` + ``files``, one-source cap) are editable, and the
-         *     filed version keeps what it supersedes. The published evidence floor is
-         *     re-checked on the post-edit state. Soft-deleted rows read as 404.
+         *     On a ``requested`` or ``detected`` event (version 0) this publishes: the event becomes
+         *     ``geolocated`` at version 1 and the caller is credited as a geolocator. A detection is
+         *     owner-only (403 otherwise); a request is answerable by anyone, and the fulfiller becomes
+         *     its owner (``requested_by`` keeps the poster). A publish invites each analyst in
+         *     ``geolocator_invites`` to share the credit, refused as
+         *     ``POST /events/{id}/geolocator-invites`` refuses, and a refusal publishes nothing; a
+         *     ``geolocated`` event takes none (409). On a ``geolocated`` event it is an
+         *     owner-only correction, refused when nothing changed. Other statuses 409, and 409
+         *     ``version_mismatch`` when ``version_no`` names a version the event has moved past.
          *
-         *     Archived copies are recorded here too: ``source_snapshot_url``,
-         *     ``detected_from_snapshot_url`` and ``secondary_snapshot_urls`` archive a link
-         *     without changing it and land in the produced version. A save whose only
-         *     change is a copy is accepted even at the version ceiling.
+         *     The sources are versioned too: the posted list replaces the stored one and the filed
+         *     version keeps what it supersedes, files included. The publication floor (coordinates, a
+         *     direct or indirect source with its file, a proof image, a conflict) is checked on the
+         *     post-edit state. A save whose only change is a link's archived copy is accepted even at
+         *     the version ceiling. Soft-deleted rows read as 404.
          */
         post: operations["save_event_version_api_v1_events__geolocation_id__versions_post"];
         delete?: never;
@@ -1762,12 +1604,13 @@ export interface paths {
         };
         /**
          * Get Feed
-         * @description Published geolocations and open requests, newest first.
+         * @description Published geolocations, open requests and machine detections, newest first.
          *
          *     ``scope=following`` (default) keeps the geolocations credited to analysts
-         *     the current user follows and the requests they own, and is empty when they
-         *     follow nobody; ``scope=all`` keeps every row. ``kind``, ``conflict``,
-         *     ``capture_source``, ``tag``, ``approved``, ``approved_by`` and
+         *     the current user follows and the requests and detections they own, and is
+         *     empty when they follow nobody; ``scope=all`` keeps every row. ``kind``
+         *     (``geolocation``, ``request``, ``detected``; all three when omitted), ``conflict``,
+         *     ``source_kind``, ``level``, ``tag``, ``approved``, ``approved_by`` and
          *     ``approved_by_org`` narrow the rows as on ``GET /events``. Cursor-paged, capped at 100 rows; the
          *     ``Link: rel="next"`` cursor is present exactly when a next page holds a row.
          */
@@ -1948,8 +1791,7 @@ export interface paths {
         };
         /**
          * List Organization Approvals
-         * @description The approvals placed in the organization's name, newest first, revoked ones included,
-         *     capped at 100 per page (``Link: rel="next"`` cursor).
+         * @description The approvals placed in the organization's name, newest first, capped at 100 per page (``Link: rel="next"`` cursor).
          */
         get: operations["list_organization_approvals_api_v1_organizations__slug__approvals_get"];
         put?: never;
@@ -2068,7 +1910,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/organizations/{slug}/invites/{invite_id}": {
+    "/api/v1/organizations/{slug}/invites/{username}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2082,7 +1924,7 @@ export interface paths {
          * Cancel Organization Invite
          * @description Withdraw a pending invite. Org managers and site admins only.
          */
-        delete: operations["cancel_organization_invite_api_v1_organizations__slug__invites__invite_id__delete"];
+        delete: operations["cancel_organization_invite_api_v1_organizations__slug__invites__username__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2130,30 +1972,6 @@ export interface paths {
          * @description Change a member's role. Org managers and site admins only; the last org manager keeps the role.
          */
         patch: operations["update_organization_member_api_v1_organizations__slug__members__username__patch"];
-        trace?: never;
-    };
-    "/api/v1/product-updates/unsubscribe": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Unsubscribe
-         * @description Withdraw the consent to product update emails named by a signed token.
-         *
-         *     Needs no session, so it answers the unsubscribe page and the one-click
-         *     ``List-Unsubscribe-Post`` of a mail client alike. Idempotent; 400 on a
-         *     token that does not verify.
-         */
-        post: operations["unsubscribe_api_v1_product_updates_unsubscribe_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/api/v1/search": {
@@ -2208,6 +2026,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sources/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Source
+         * @description The imagery provider each link opens, and the warnings the source would carry.
+         *
+         *     Writes nothing. The warnings are the ones ``SourceRead.warnings`` serves once the source is
+         *     saved, so the form shows them while the analyst types.
+         */
+        post: operations["check_source_api_v1_sources_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tags": {
         parameters: {
             query?: never;
@@ -2217,22 +2058,48 @@ export interface paths {
         };
         /**
          * List Tags
-         * @description Return tags referenced by at least one *live* geolocation, so the map
+         * @description Return tags referenced by at least one *live* event or one of its sources, so the map
          *     filter shows no chips that match nothing.
          *
-         *     ``curated=true`` instead returns the full curated ``capture_source``
-         *     taxonomy regardless of usage: the submit form needs every option in this
-         *     required bucket, even for the first analyst to tag it.
-         *
          *     Bounded by ``REFERENTIAL_MAX_ROWS``, not the 100-row list cap: pickers and
-         *     the filter panel hydrate the vocabulary whole and filter client-side. The
-         *     ceiling bounds ``free``-category growth; a response landing on it is
-         *     logged because the payload can't say it was cut.
+         *     the filter panel hydrate the vocabulary whole and filter client-side. A
+         *     response landing on the ceiling is logged because the payload can't say it
+         *     was cut.
          */
         get: operations["list_tags_api_v1_tags_get"];
         put?: never;
-        /** Create Tag */
+        /**
+         * Create Tag
+         * @description Create a free tag, or return the one already named so (200).
+         *
+         *     The lookup covers every tag, orphans included, because ``GET /tags`` hides
+         *     orphans and a 409 would leave the form no way out.
+         */
         post: operations["create_tag_api_v1_tags_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Upload
+         * @description Stage one source file; a source of a later event write names it by ``id``.
+         *
+         *     The file is validated (type, size) and stored now, and the row expires
+         *     after 24 hours unless a write takes it. 400 on an invalid file, 429 past
+         *     the per-account ceiling of staged files.
+         */
+        post: operations["create_upload_api_v1_uploads_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2359,70 +2226,6 @@ export interface paths {
         patch: operations["update_my_preferences_api_v1_users_me_preferences_patch"];
         trace?: never;
     };
-    "/api/v1/users/me/push-config": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Push Config
-         * @description The key a browser subscribes to push with; null on a development server without VAPID keys.
-         */
-        get: operations["get_push_config_api_v1_users_me_push_config_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/users/me/push-subscriptions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Push Subscriptions
-         * @description The devices registered for your push notifications, newest first.
-         */
-        get: operations["list_push_subscriptions_api_v1_users_me_push_subscriptions_get"];
-        put?: never;
-        /**
-         * Register Push Subscription
-         * @description Register this browser for push notifications; registering again refreshes it.
-         */
-        post: operations["register_push_subscription_api_v1_users_me_push_subscriptions_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/users/me/push-subscriptions/{subscription_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Delete Push Subscription
-         * @description Stop push notifications to one of your devices.
-         */
-        delete: operations["delete_push_subscription_api_v1_users_me_push_subscriptions__subscription_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/users/me/x-handle": {
         parameters: {
             query?: never;
@@ -2432,30 +2235,10 @@ export interface paths {
         };
         /**
          * Get My X Handle
-         * @description The X handle bound to your account, and your change request if any.
+         * @description The X handle bound to your account. Only an admin links or changes it.
          */
         get: operations["get_my_x_handle_api_v1_users_me_x_handle_get"];
         put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/users/me/x-handle-request": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Put My X Handle Request
-         * @description Ask an admin to bind a new X handle; replaces your earlier request.
-         */
-        put: operations["put_my_x_handle_request_api_v1_users_me_x_handle_request_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2522,7 +2305,7 @@ export interface paths {
          *     profile counts the same set. The wider live total is ``total_events`` on
          *     :func:`get_user_stats`.
          *
-         *     Offset-paged: the profile orders by ``event_date``, which is nullable and
+         *     Offset-paged: the profile orders by ``occurred_date``, which is nullable and
          *     editable, so it cannot key a cursor.
          */
         get: operations["get_user_geolocations_api_v1_users__username__events_get"];
@@ -2694,7 +2477,7 @@ export interface components {
          * @description Quality signal on the machine-extraction pipeline (admin-only).
          *
          *     A machine detection is a row imported from X and never a request:
-         *     ``detected_from_url`` set and ``requested_at`` NULL. The second column
+         *     an ``event_detections`` row and ``requested_at`` NULL. The second column
          *     keeps a bot-opened request out of the cohort for life, since the stamp is
          *     never cleared, even after a fulfiller geolocates it.
          *
@@ -2712,7 +2495,7 @@ export interface components {
          *     soft-delete counts that account's pending detections as rejects.
          *
          *     The ``pending_*`` counts profile the live ``detected`` queue (machine rows,
-         *     ``deleted_at IS NULL``): how many miss a piece the geolocate floor demands,
+         *     ``deleted_at IS NULL``): how many miss a piece the publish floor demands,
          *     so a poor extraction run shows before an analyst opens the queue.
          */
         AdminDetectionStatsRead: {
@@ -2779,9 +2562,9 @@ export interface components {
          * AdminEventModerationUpdate
          * @description Body for ``PATCH /admin/events/{id}/moderation``.
          *
-         *     Two independent optional axes: ``is_graphic`` overrides the author's
-         *     declaration, ``hidden`` withholds or restores the event. ``None`` leaves
-         *     that axis as is.
+         *     Two independent optional axes: ``is_graphic`` overrides the authors'
+         *     declaration on every source of the event, ``hidden`` withholds or restores
+         *     the event. ``None`` leaves that axis as is.
          */
         AdminEventModerationUpdate: {
             /** Hidden */
@@ -2793,7 +2576,7 @@ export interface components {
          * AdminInviteCodeCreate
          * @description Body for `POST /admin/invite-codes`.
          *
-         *     Every code is single-use, so the audit trail (`used_by`, `used_at`) is
+         *     Every code is single-use, so the audit trail (`used_by_id`, `used_at`) is
          *     unambiguous. ``x_handle`` optionally binds the code to an X handle that
          *     redemption copies onto the new account (same normalization as
          *     `PATCH /admin/users/{id}/x-handle`).
@@ -2856,10 +2639,10 @@ export interface components {
             email: string | null;
             /** Geolocated Count */
             geolocated_count: number;
-            /** Invite Minting Enabled */
-            invite_minting_enabled: boolean;
             /** Is Admin */
             is_admin: boolean;
+            /** Is Invite Minting Enabled */
+            is_invite_minting_enabled: boolean;
             /** Last Seen At */
             last_seen_at: string | null;
             /**
@@ -3001,10 +2784,10 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Invite Minting Enabled */
-            invite_minting_enabled: boolean;
             /** Is Admin */
             is_admin: boolean;
+            /** Is Invite Minting Enabled */
+            is_invite_minting_enabled: boolean;
             sponsor: components["schemas"]["AuthorRef"] | null;
             /** Username */
             username: string;
@@ -3012,36 +2795,11 @@ export interface components {
             x_handle: string | null;
         };
         /**
-         * AdminXHandleRequestRead
-         * @description One pending request as the admin queue lists it, beside the account
-         *     whose bound handle it would replace.
-         */
-        AdminXHandleRequestRead: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Reason */
-            reason: string | null;
-            user: components["schemas"]["AdminUserRead"];
-            /** X Handle */
-            x_handle: string;
-        };
-        /**
          * ApprovalCreate
-         * @description Body of ``POST /events/{id}/approvals``: the version you read, an optional note, and the
-         *     slug of the organization you approve for as one of its members (your own approval without
-         *     it).
+         * @description Body of ``POST /events/{id}/approvals``: the version you read, and the slug of the
+         *     organization you approve for as one of its members (your own approval without it).
          */
         ApprovalCreate: {
-            /** Note */
-            note?: string | null;
             /** Organization */
             organization?: string | null;
             /** Version No */
@@ -3068,9 +2826,8 @@ export interface components {
          *     ``reviewer`` the member who placed it; null for an analyst's own review.
          *     ``reviewer`` is null on an organization's review once the account of the
          *     member who placed it is erased: the review stays the organization's.
-         *     ``current`` is true while the review covers the live version and is not
-         *     revoked. ``revoked_as`` says who revoked it: the reviewer, another member of
-         *     the organization, or a site admin.
+         *     ``current`` is true while the review covers the live version of a published
+         *     event.
          */
         ApprovalRead: {
             /**
@@ -3085,21 +2842,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Note */
-            note: string | null;
             organization: components["schemas"]["OrganizationRef"] | null;
             reviewer: components["schemas"]["AuthorRef"] | null;
-            /** Revoke Reason */
-            revoke_reason: string | null;
-            /** Revoked As */
-            revoked_as: ("reviewer" | "organization_member" | "site_admin") | null;
-            /** Revoked At */
-            revoked_at: string | null;
-            /**
-             * Verdict
-             * @constant
-             */
-            verdict: "approve";
             /** Version No */
             version_no: number;
         };
@@ -3164,22 +2908,13 @@ export interface components {
             refusal: string | null;
         };
         /**
-         * ApprovalRevoke
-         * @description Optional body of ``POST /events/{id}/approvals/{approval_id}/revoke``: a public reason,
-         *     stored as null when blank.
-         */
-        ApprovalRevoke: {
-            /** Reason */
-            reason?: string | null;
-        };
-        /**
          * ArchiveImportEnqueue
-         * @description Body of the JSON enqueue. ``post_estimate`` is a cosmetic volume hint
-         *     (the worker stamps the exact ``progress_total``).
+         * @description Body of the JSON enqueue. ``estimated_post_count`` is a cosmetic volume hint
+         *     (the worker stamps the exact ``detection_count``).
          */
         ArchiveImportEnqueue: {
-            /** Post Estimate */
-            post_estimate?: number | null;
+            /** Estimated Post Count */
+            estimated_post_count?: number | null;
             /** Upload Key */
             upload_key: string;
         };
@@ -3202,8 +2937,12 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Detection Count */
+            detection_count: number | null;
             /** Error */
             error: string | null;
+            /** Estimated Post Count */
+            estimated_post_count: number | null;
             /** Failed */
             failed: number;
             /**
@@ -3211,12 +2950,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Post Estimate */
-            post_estimate: number | null;
-            /** Progress Done */
-            progress_done: number;
-            /** Progress Total */
-            progress_total: number | null;
+            /** Processed Detection Count */
+            processed_detection_count: number;
             /** Skipped */
             skipped: number;
             /**
@@ -3238,12 +2973,14 @@ export interface components {
         };
         /**
          * ArchivedLinkRead
-         * @description One link's archived copy: where it lives, and who holds it.
-         *
-         *     ``null`` on the carrying field means no copy is recorded. An object so the
-         *     read surface can pick an icon from ``provider``.
+         * @description One link's archived copy.
          */
         ArchivedLinkRead: {
+            /**
+             * Archived At
+             * Format: date-time
+             */
+            archived_at: string;
             /**
              * Provider
              * @enum {string}
@@ -3283,7 +3020,7 @@ export interface components {
          * BatchCompletionCreate
          * @description Body of ``POST /events/batch-complete``.
          *
-         *     One conflict set for the whole selection; the capture source varies per row.
+         *     One conflict set for the whole selection; the source kind varies per row.
          */
         BatchCompletionCreate: {
             /** Conflict Ids */
@@ -3305,24 +3042,24 @@ export interface components {
         };
         /**
          * BatchCompletionRowCreate
-         * @description One detection in a batch completion and its chosen capture source.
+         * @description One detection in a batch completion and the kind of its sources that carry a file.
          */
         BatchCompletionRowCreate: {
-            /**
-             * Capture Source Tag Id
-             * Format: uuid
-             */
-            capture_source_tag_id: string;
             /**
              * Event Id
              * Format: uuid
              */
             event_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "smartphone" | "camera" | "static_camera" | "drone" | "aircraft" | "satellite" | "dashcam" | "body_cam" | "article" | "official_statement" | "other" | "unknown";
         };
         /**
          * BatchCompletionRowRead
          * @description One row's outcome. ``code`` / ``message`` are NULL when published,
-         *     otherwise the stable error code the single-row geolocate would return.
+         *     otherwise the stable error code the single-row publish would return.
          */
         BatchCompletionRowRead: {
             /** Code */
@@ -3339,47 +3076,30 @@ export interface components {
         };
         /** Body_create_event_api_v1_events_post */
         Body_create_event_api_v1_events_post: {
-            /** Capture Source Lat */
-            capture_source_lat?: number | null;
-            /** Capture Source Lng */
-            capture_source_lng?: number | null;
             /** Conflict Ids */
             conflict_ids?: string | null;
-            /** Event Date */
-            event_date?: string | null;
-            /** Event Time */
-            event_time?: string | null;
-            /** File */
-            file: string;
             /**
-             * Is Graphic
-             * @default false
+             * Geolocator Invites
+             * @description JSON array of GeolocatorInviteCreate: the analysts invited to share the credit once the event is published, in the same transaction.
              */
-            is_graphic: boolean;
+            geolocator_invites?: string | null;
             /** Lat */
             lat: number;
             /** Lng */
             lng: number;
+            /** Occurred Date */
+            occurred_date?: string | null;
+            /** Occurred Time */
+            occurred_time?: string | null;
             /** Proof */
             proof?: string | null;
             /** Proof Files */
             proof_files?: string[] | null;
             /**
-             * Secondary Snapshot Urls
-             * @default []
+             * Sources
+             * @description JSON array of SourceCreate: the event's whole source list, which replaces the stored one.
              */
-            secondary_snapshot_urls: string[];
-            /**
-             * Secondary Source Urls
-             * @default []
-             */
-            secondary_source_urls: string[];
-            /** Source Posted At */
-            source_posted_at: string;
-            /** Source Snapshot Url */
-            source_snapshot_url?: string | null;
-            /** Source Url */
-            source_url: string;
+            sources: string;
             /** Tag Ids */
             tag_ids?: string | null;
             /** Title */
@@ -3387,155 +3107,72 @@ export interface components {
         };
         /** Body_create_event_request_api_v1_events_requests_post */
         Body_create_event_request_api_v1_events_requests_post: {
-            /** Capture Source Lat */
-            capture_source_lat?: number | null;
-            /** Capture Source Lng */
-            capture_source_lng?: number | null;
             /** Conflict Ids */
             conflict_ids?: string | null;
-            /** Event Date */
-            event_date?: string | null;
-            /** Event Time */
-            event_time?: string | null;
-            /** File */
-            file: string;
-            /**
-             * Is Graphic
-             * @default false
-             */
-            is_graphic: boolean;
             /** Lat */
             lat?: number | null;
             /** Lng */
             lng?: number | null;
+            /** Occurred Date */
+            occurred_date?: string | null;
+            /** Occurred Time */
+            occurred_time?: string | null;
             /** Proof */
             proof?: string | null;
             /** Proof Files */
             proof_files?: string[] | null;
             /**
-             * Secondary Snapshot Urls
-             * @default []
+             * Sources
+             * @description JSON array of SourceCreate: the event's whole source list, which replaces the stored one.
              */
-            secondary_snapshot_urls: string[];
-            /**
-             * Secondary Source Urls
-             * @default []
-             */
-            secondary_source_urls: string[];
-            /** Source Posted At */
-            source_posted_at: string;
-            /** Source Snapshot Url */
-            source_snapshot_url?: string | null;
-            /** Source Url */
-            source_url: string;
+            sources: string;
             /** Tag Ids */
             tag_ids?: string | null;
             /** Title */
             title: string;
         };
-        /** Body_geolocate_event_api_v1_events__geolocation_id__geolocate_post */
-        Body_geolocate_event_api_v1_events__geolocation_id__geolocate_post: {
-            /** Capture Source Lat */
-            capture_source_lat?: number | null;
-            /** Capture Source Lng */
-            capture_source_lng?: number | null;
-            /** Conflict Ids */
-            conflict_ids?: string | null;
-            /** Event Date */
-            event_date?: string | null;
-            /** Event Time */
-            event_time?: string | null;
-            /** Files */
-            files?: string[] | null;
-            /**
-             * Is Graphic
-             * @default false
-             */
-            is_graphic: boolean;
-            /** Lat */
-            lat: number;
-            /** Lng */
-            lng: number;
-            /** Proof */
-            proof?: string | null;
-            /** Proof Files */
-            proof_files?: string[] | null;
-            /** Remove Media Ids */
-            remove_media_ids?: string | null;
-            /**
-             * Secondary Snapshot Urls
-             * @default []
-             */
-            secondary_snapshot_urls: string[];
-            /**
-             * Secondary Source Urls
-             * @default []
-             */
-            secondary_source_urls: string[];
-            /** Source Posted At */
-            source_posted_at: string;
-            /** Source Snapshot Url */
-            source_snapshot_url?: string | null;
-            /** Source Url */
-            source_url: string;
-            /** Tag Ids */
-            tag_ids?: string | null;
-            /** Title */
-            title: string;
+        /** Body_create_upload_api_v1_uploads_post */
+        Body_create_upload_api_v1_uploads_post: {
+            /** File */
+            file: string;
         };
         /** Body_save_event_version_api_v1_events__geolocation_id__versions_post */
         Body_save_event_version_api_v1_events__geolocation_id__versions_post: {
-            /** Capture Source Lat */
-            capture_source_lat?: number | null;
-            /** Capture Source Lng */
-            capture_source_lng?: number | null;
             /** Conflict Ids */
             conflict_ids?: string | null;
-            /** Detected From Snapshot Url */
-            detected_from_snapshot_url?: string | null;
-            /** Event Date */
-            event_date?: string | null;
-            /** Event Time */
-            event_time?: string | null;
-            /** Files */
-            files?: string[] | null;
             /**
-             * Is Graphic
-             * @default false
+             * Geolocator Invites
+             * @description JSON array of GeolocatorInviteCreate: the analysts invited to share the credit once the event is published, in the same transaction.
              */
-            is_graphic: boolean;
+            geolocator_invites?: string | null;
             /** Lat */
             lat: number;
             /** Lng */
             lng: number;
             /** Note */
             note?: string | null;
+            /** Occurred Date */
+            occurred_date?: string | null;
+            /** Occurred Time */
+            occurred_time?: string | null;
             /** Proof */
             proof?: string | null;
             /** Proof Files */
             proof_files?: string[] | null;
-            /** Remove Media Ids */
-            remove_media_ids?: string | null;
             /**
-             * Secondary Snapshot Urls
-             * @default []
+             * Sources
+             * @description JSON array of SourceCreate: the event's whole source list, which replaces the stored one.
              */
-            secondary_snapshot_urls: string[];
-            /**
-             * Secondary Source Urls
-             * @default []
-             */
-            secondary_source_urls: string[];
-            /** Source Posted At */
-            source_posted_at?: string | null;
-            /** Source Snapshot Url */
-            source_snapshot_url?: string | null;
-            /** Source Url */
-            source_url?: string | null;
+            sources: string;
             /** Tag Ids */
             tag_ids?: string | null;
             /** Title */
             title: string;
+            /**
+             * Version No
+             * @description The version the form was loaded at; a row that moved past it answers 409.
+             */
+            version_no?: number | null;
         };
         /** Body_set_my_avatar_api_v1_users_me_avatar_put */
         Body_set_my_avatar_api_v1_users_me_avatar_put: {
@@ -3549,49 +3186,25 @@ export interface components {
         };
         /** Body_update_event_request_api_v1_events__geolocation_id__request_post */
         Body_update_event_request_api_v1_events__geolocation_id__request_post: {
-            /** Capture Source Lat */
-            capture_source_lat?: number | null;
-            /** Capture Source Lng */
-            capture_source_lng?: number | null;
             /** Conflict Ids */
             conflict_ids?: string | null;
-            /** Event Date */
-            event_date?: string | null;
-            /** Event Time */
-            event_time?: string | null;
-            /** Files */
-            files?: string[] | null;
-            /**
-             * Is Graphic
-             * @default false
-             */
-            is_graphic: boolean;
             /** Lat */
             lat?: number | null;
             /** Lng */
             lng?: number | null;
+            /** Occurred Date */
+            occurred_date?: string | null;
+            /** Occurred Time */
+            occurred_time?: string | null;
             /** Proof */
             proof?: string | null;
             /** Proof Files */
             proof_files?: string[] | null;
-            /** Remove Media Ids */
-            remove_media_ids?: string | null;
             /**
-             * Secondary Snapshot Urls
-             * @default []
+             * Sources
+             * @description JSON array of SourceCreate: the event's whole source list, which replaces the stored one.
              */
-            secondary_snapshot_urls: string[];
-            /**
-             * Secondary Source Urls
-             * @default []
-             */
-            secondary_source_urls: string[];
-            /** Source Posted At */
-            source_posted_at?: string | null;
-            /** Source Snapshot Url */
-            source_snapshot_url?: string | null;
-            /** Source Url */
-            source_url: string;
+            sources: string;
             /** Tag Ids */
             tag_ids?: string | null;
             /** Title */
@@ -3612,20 +3225,20 @@ export interface components {
          * CollectionCoverTile
          * @description One tile of a collection's mosaic and what kind of file it is.
          *
-         *     ``url`` is the media of one held item. ``media_type``
-         *     (``models/media.MediaType``) lets a client pick the element that renders
+         *     ``url`` is the media of one held item. ``kind``
+         *     (``models/media.MediaKind``) lets a client pick the element that renders
          *     it (most source media are clips, and an ``<img>`` on one paints an empty
          *     band). ``role`` (``models/media.MediaRole``) says whether the picture has
-         *     display derivatives: only a ``source`` image does
-         *     (``services/storage.upload_file``); a ``proof`` image has no ``_hero`` /
+         *     display derivatives: only a source's image does
+         *     (``services/storage.upload_source_file``); a ``proof`` image has no ``_hero`` /
          *     ``_thumb`` sibling.
          */
         CollectionCoverTile: {
             /**
-             * Media Type
+             * Kind
              * @enum {string}
              */
-            media_type: "image" | "video";
+            kind: "image" | "video";
             /**
              * Role
              * @enum {string}
@@ -3712,15 +3325,15 @@ export interface components {
          *     over the events the collection may show
          *     (``services/event_filters.collectable_events``), so a closed, taken-down or
          *     soft-deleted row leaves them without a write. The dates are the min and max
-         *     ``event_date`` and are null for an empty or undated collection.
+         *     ``occurred_date`` and are null for an empty or undated collection.
          *
          *     ``cover`` is the card's mosaic: zero to four tiles, computed at read time
          *     (``services/collections.cover_tiles_for``), empty when no item has showable
          *     media. Each tile carries url, kind and role together (see
          *     :class:`CollectionCoverTile`).
          *
-         *     ``tags`` is the union of the tags of the events the collection may show,
-         *     ordered by category then name (``services/collections.tags_for``), derived
+         *     ``tags`` is the union of the tags of the events the collection may show
+         *     and their sources, ordered by name (``services/collections.tags_for``), derived
          *     and never stored; empty when nothing is tagged.
          */
         CollectionRead: {
@@ -3777,7 +3390,7 @@ export interface components {
          * @description One row of the conflicts referential on the wire.
          *
          *     ``last_seen_at`` and ``source`` are sync internals and stay off it.
-         *     ``ongoing`` drives the picker default; ``start_year`` / ``end_year``
+         *     ``is_ongoing`` drives the picker default; ``start_year`` / ``end_year``
          *     disambiguate same-named entries; ``tier`` (NULL when unknown) ranks ongoing
          *     conflicts.
          */
@@ -3789,10 +3402,10 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Is Ongoing */
+            is_ongoing: boolean;
             /** Name */
             name: string;
-            /** Ongoing */
-            ongoing: boolean;
             /** Start Year */
             start_year: number | null;
             /** Tier */
@@ -3837,7 +3450,7 @@ export interface components {
          * ContentReportRead
          * @description One report as the admin queue reads it.
          *
-         *     ``resolved_at`` / ``resolution`` / ``resolved_by`` are all NULL while open
+         *     ``resolved_at`` / ``resolution`` / ``resolved_by_id`` are all NULL while open
          *     and all set once resolved, so ``resolved_at is None`` is the open test.
          *
          *     A row names one target: ``event_id`` or ``collection``. Both are NULL once
@@ -3864,8 +3477,8 @@ export interface components {
              * @enum {string}
              */
             reason: "illegal_content" | "graphic_not_flagged" | "copyright" | "privacy" | "other";
-            /** Reporter User Id */
-            reporter_user_id: string | null;
+            /** Reporter Id */
+            reporter_id: string | null;
             /** Resolution */
             resolution: ("marked_graphic" | "hidden" | "dismissed") | null;
             /** Resolved At */
@@ -3884,8 +3497,18 @@ export interface components {
             resolution: "marked_graphic" | "hidden" | "dismissed";
         };
         /**
+         * CoordsCreate
+         * @description One WGS84 point as a write takes it; the service checks the ranges.
+         */
+        CoordsCreate: {
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
+        };
+        /**
          * CoordsRead
-         * @description One WGS84 point on the wire, nested so a payload can carry two points.
+         * @description One WGS84 point on the wire, nested so a payload can carry several points.
          */
         CoordsRead: {
             /** Lat */
@@ -3935,9 +3558,7 @@ export interface components {
             before_closed_status: ("requested" | "detected" | "geolocated") | null;
             /** Conflicts */
             conflicts: components["schemas"]["ConflictRead"][];
-            event_coords: components["schemas"]["CoordsRead"] | null;
-            /** Event Date */
-            event_date: string | null;
+            coords: components["schemas"]["CoordsRead"] | null;
             /** Geolocators */
             geolocators: components["schemas"]["AuthorRef"][];
             /**
@@ -3948,6 +3569,8 @@ export interface components {
             /** Is Graphic */
             is_graphic: boolean;
             media: components["schemas"]["MediaRead"] | null;
+            /** Occurred Date */
+            occurred_date: string | null;
             owner: components["schemas"]["AuthorRef"];
             /** Requested At */
             requested_at: string | null;
@@ -3963,19 +3586,15 @@ export interface components {
         };
         /** EventRead */
         EventRead: {
-            archived_detected_from: components["schemas"]["ArchivedLinkRead"] | null;
-            /** Archived Secondary Sources */
-            archived_secondary_sources: (components["schemas"]["ArchivedLinkRead"] | null)[];
-            archived_source: components["schemas"]["ArchivedLinkRead"] | null;
             /** Before Closed Status */
             before_closed_status: ("requested" | "detected" | "geolocated") | null;
-            capture_source_coords: components["schemas"]["CoordsRead"] | null;
             /** Close Reason */
             close_reason: string | null;
             /** Closed At */
             closed_at: string | null;
             /** Conflicts */
             conflicts: components["schemas"]["ConflictRead"][];
+            coords: components["schemas"]["CoordsRead"] | null;
             /**
              * Created At
              * Format: date-time
@@ -3985,11 +3604,6 @@ export interface components {
             detected_from_url: string | null;
             /** Detected Via */
             detected_via: ("bot" | "paste" | "archive") | null;
-            event_coords: components["schemas"]["CoordsRead"] | null;
-            /** Event Date */
-            event_date: string | null;
-            /** Event Time */
-            event_time: string | null;
             /** Geolocated At */
             geolocated_at: string | null;
             /** Geolocators */
@@ -4001,18 +3615,16 @@ export interface components {
             id: string;
             /** Is Graphic */
             is_graphic: boolean;
-            /** Media */
-            media: components["schemas"]["MediaRead"][];
+            /** Occurred Date */
+            occurred_date: string | null;
+            /** Occurred Time */
+            occurred_time: string | null;
             owner: components["schemas"]["AuthorRef"];
             /** Proof */
             proof: string | null;
             requested_by: components["schemas"]["AuthorRef"] | null;
-            /** Secondary Source Urls */
-            secondary_source_urls: string[];
-            /** Source Posted At */
-            source_posted_at: string | null;
-            /** Source Url */
-            source_url: string | null;
+            /** Sources */
+            sources: components["schemas"]["SourceRead"][];
             /**
              * Status
              * @enum {string}
@@ -4025,6 +3637,8 @@ export interface components {
             title: string;
             /** Version No */
             version_no: number;
+            /** Version Zero */
+            version_zero?: ("request" | "detection") | null;
             /**
              * Viewer Invite Pending
              * @default false
@@ -4049,9 +3663,9 @@ export interface components {
          *
          *     ``version_no`` is the version this row holds: an event at version 3
          *     answers with snapshots 2 and 1. ``snapshot`` carries the editable fields as
-         *     they stood (``services/versions.build_snapshot``), including the evidence
-         *     anchor and the source media as the shape ``EventRead`` serves, since the
-         *     row itself is gone after a correction.
+         *     they stood (``services/versions.build_snapshot``), including each source
+         *     with its links, tags and file as the shape ``SourceRead`` serves, since a
+         *     source an edit drops is gone with its row.
          */
         EventVersionRead: {
             /**
@@ -4108,9 +3722,7 @@ export interface components {
             before_closed_status: ("requested" | "detected" | "geolocated") | null;
             /** Conflicts */
             conflicts: components["schemas"]["ConflictRead"][];
-            event_coords: components["schemas"]["CoordsRead"] | null;
-            /** Event Date */
-            event_date: string | null;
+            coords: components["schemas"]["CoordsRead"] | null;
             /**
              * Feed At
              * Format: date-time
@@ -4126,6 +3738,8 @@ export interface components {
             /** Is Graphic */
             is_graphic: boolean;
             media: components["schemas"]["MediaRead"] | null;
+            /** Occurred Date */
+            occurred_date: string | null;
             owner: components["schemas"]["AuthorRef"];
             /** Requested At */
             requested_at: string | null;
@@ -4149,7 +3763,8 @@ export interface components {
         };
         /**
          * GeolocatorInviteCreate
-         * @description Body of ``POST /events/{id}/geolocator-invites``: who to invite.
+         * @description Who to invite: the body of ``POST /events/{id}/geolocator-invites``, and one entry of the
+         *     ``geolocator_invites`` field of the two publishing writes.
          */
         GeolocatorInviteCreate: {
             /** Username */
@@ -4161,16 +3776,35 @@ export interface components {
          */
         GeolocatorInviteRead: {
             /**
-             * Created At
+             * Invited At
              * Format: date-time
              */
-            created_at: string;
+            invited_at: string;
             user: components["schemas"]["AuthorRef"];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * ImageryProviderRead
+         * @description One imagery provider of ``services/imagery.PROVIDERS``.
+         */
+        ImageryProviderRead: {
+            /** Credit */
+            credit: string;
+            /**
+             * Group
+             * @enum {string}
+             */
+            group: "accepted" | "other" | "aircraft_archive" | "not_reopenable";
+            /** Help */
+            help: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
         };
         /**
          * ImportNote
@@ -4205,10 +3839,10 @@ export interface components {
              */
             id: string;
             /**
-             * Media Type
+             * Kind
              * @enum {string}
              */
-            media_type: "image" | "video";
+            kind: "image" | "video";
             /** Original Filename */
             original_filename?: string | null;
             /**
@@ -4217,7 +3851,7 @@ export interface components {
              */
             role: "source" | "proof";
             /** Sha256 */
-            sha256?: string | null;
+            sha256: string;
             /** Storage Url */
             storage_url: string;
         };
@@ -4231,21 +3865,20 @@ export interface components {
             /** Title */
             title: string;
         };
-        /** NotificationPreferenceRead */
+        /**
+         * NotificationPreferenceRead
+         * @description Whether ``kind`` is emailed, beside its default. The in-app feed shows every kind.
+         */
         NotificationPreferenceRead: {
-            /** Channels */
-            channels: {
-                [key: string]: boolean;
-            };
-            /** Defaults */
-            defaults: {
-                [key: string]: boolean;
-            };
+            /** Default */
+            default: boolean;
+            /** Email */
+            email: boolean;
             /**
              * Kind
              * @enum {string}
              */
-            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_manager_inherited" | "re_approve_requested" | "approval_received" | "approval_revoked" | "approval_request_received" | "approval_request_declined" | "organization_approval_removed";
+            kind: "request_fulfilled" | "new_follower" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_manager_inherited" | "re_approve_requested" | "approval_received" | "approval_request_received" | "approval_request_declined" | "organization_approval_removed";
         };
         /**
          * NotificationRead
@@ -4275,7 +3908,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_manager_inherited" | "re_approve_requested" | "approval_received" | "approval_revoked" | "approval_request_received" | "approval_request_declined" | "organization_approval_removed";
+            kind: "request_fulfilled" | "new_follower" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_manager_inherited" | "re_approve_requested" | "approval_received" | "approval_request_received" | "approval_request_declined" | "organization_approval_removed";
             organization: components["schemas"]["OrganizationRef"] | null;
             /** Organization Name */
             organization_name?: string | null;
@@ -4350,15 +3983,10 @@ export interface components {
          */
         OrganizationInviteRead: {
             /**
-             * Created At
+             * Invited At
              * Format: date-time
              */
-            created_at: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
+            invited_at: string;
             invited_by: components["schemas"]["AuthorRef"] | null;
             user: components["schemas"]["AuthorRef"];
         };
@@ -4536,19 +4164,19 @@ export interface components {
          * @description Soft-warning hit on the submit form's possible-duplicate probe.
          */
         PossibleDuplicateRead: {
+            coords: components["schemas"]["CoordsRead"];
             /** Distance M */
             distance_m: number;
-            event_coords: components["schemas"]["CoordsRead"];
-            /** Event Date */
-            event_date: string | null;
             /**
              * Id
              * Format: uuid
              */
             id: string;
+            /** Occurred Date */
+            occurred_date: string | null;
             owner: components["schemas"]["AuthorRef"];
-            /** Source Url */
-            source_url: string | null;
+            /** Source Urls */
+            source_urls: string[];
             /** Title */
             title: string;
         };
@@ -4566,155 +4194,6 @@ export interface components {
             /** Url */
             url: string;
         };
-        /**
-         * ProductUpdateCreate
-         * @description An announcement as the admin composes it. ``body`` is plain text: a blank
-         *     line starts a paragraph, and a paragraph whose lines all start with ``- ``
-         *     is a list.
-         */
-        ProductUpdateCreate: {
-            /** Body */
-            body: string;
-            /** Label */
-            label: string;
-            /** Link Url */
-            link_url?: string | null;
-            /** Title */
-            title: string;
-        };
-        /**
-         * ProductUpdateList
-         * @description Every announcement sent, newest first.
-         */
-        ProductUpdateList: {
-            /** Items */
-            items: components["schemas"]["ProductUpdateRead"][];
-        };
-        /**
-         * ProductUpdatePreview
-         * @description The email as a recipient gets it, and the audience it would go to now.
-         *     ``days`` is how many trailing-24-hour windows the daily cap needs.
-         */
-        ProductUpdatePreview: {
-            /** Batch Size */
-            batch_size: number;
-            /** Daily Cap */
-            daily_cap: number;
-            /** Days */
-            days: number;
-            /** Html */
-            html: string;
-            /** Recipients */
-            recipients: number;
-            /** Subject */
-            subject: string;
-            /** Text */
-            text: string;
-        };
-        /** ProductUpdateProgress */
-        ProductUpdateProgress: {
-            /**
-             * Failed
-             * @default 0
-             */
-            failed: number;
-            /**
-             * Queued
-             * @default 0
-             */
-            queued: number;
-            /**
-             * Sending
-             * @default 0
-             */
-            sending: number;
-            /**
-             * Sent
-             * @default 0
-             */
-            sent: number;
-            /**
-             * Skipped
-             * @default 0
-             */
-            skipped: number;
-        };
-        /** ProductUpdateRead */
-        ProductUpdateRead: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Label */
-            label: string;
-            /** Link Url */
-            link_url: string | null;
-            progress: components["schemas"]["ProductUpdateProgress"];
-            /** Recipient Count */
-            recipient_count: number;
-            /** Title */
-            title: string;
-        };
-        /**
-         * PushConfigRead
-         * @description ``public_key`` is the VAPID application server key, null when this
-         *     deployment does not send push.
-         */
-        PushConfigRead: {
-            /** Public Key */
-            public_key: string | null;
-        };
-        /**
-         * PushSubscriptionCreate
-         * @description Body for ``POST /users/me/push-subscriptions``: the browser's
-         *     ``PushSubscription.toJSON()``. Its ``expirationTime`` is ignored. ``resync``
-         *     marks a registration the page makes by itself, which a revoked device
-         *     cannot pass; enabling push leaves it false.
-         */
-        PushSubscriptionCreate: {
-            /** Endpoint */
-            endpoint: string;
-            keys: components["schemas"]["PushSubscriptionKeys"];
-            /**
-             * Resync
-             * @default false
-             */
-            resync: boolean;
-        };
-        /** PushSubscriptionKeys */
-        PushSubscriptionKeys: {
-            /** Auth */
-            auth: string;
-            /** P256Dh */
-            p256dh: string;
-        };
-        /**
-         * PushSubscriptionRead
-         * @description One registered device. The endpoint is a bearer secret and is never
-         *     returned.
-         */
-        PushSubscriptionRead: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Last Success At */
-            last_success_at: string | null;
-            /** User Agent */
-            user_agent: string | null;
-        };
         /** RegisterRequest */
         RegisterRequest: {
             /**
@@ -4726,11 +4205,6 @@ export interface components {
             invite_code: string;
             /** Password */
             password: string;
-            /**
-             * Product Updates
-             * @default false
-             */
-            product_updates: boolean;
             /** Username */
             username: string;
         };
@@ -4758,6 +4232,8 @@ export interface components {
          *     renamed collection shows its current name.
          */
         ReportedCollection: {
+            /** Deleted At */
+            deleted_at: string | null;
             /**
              * Id
              * Format: uuid
@@ -4788,8 +4264,6 @@ export interface components {
         };
         /** SearchEventHit */
         SearchEventHit: {
-            /** Event Date */
-            event_date: string | null;
             /** Geolocators */
             geolocators: components["schemas"]["AuthorRef"][];
             /**
@@ -4805,6 +4279,8 @@ export interface components {
             lng: number;
             /** Media */
             media: components["schemas"]["MediaRead"][];
+            /** Occurred Date */
+            occurred_date: string | null;
             owner: components["schemas"]["AuthorRef"];
             /**
              * Status
@@ -4861,8 +4337,8 @@ export interface components {
             /** Media */
             media: components["schemas"]["MediaRead"][];
             owner: components["schemas"]["AuthorRef"];
-            /** Source Url */
-            source_url: string | null;
+            /** Source Urls */
+            source_urls: string[];
             /**
              * Status
              * @enum {string}
@@ -4935,6 +4411,181 @@ export interface components {
             username_highlight: string;
         };
         /**
+         * SourceCheck
+         * @description A source as the form holds it, for ``POST /sources/check``.
+         */
+        SourceCheck: {
+            /** Captured At */
+            captured_at?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "satellite" | "aircraft";
+            /** Links */
+            links?: components["schemas"]["SourceCheckLink"][];
+        };
+        /** SourceCheckLink */
+        SourceCheckLink: {
+            /** Snapshot Url */
+            snapshot_url?: string | null;
+            /** Url */
+            url: string;
+        };
+        /**
+         * SourceCheckRead
+         * @description The provider each link opens and the warnings the source would carry.
+         */
+        SourceCheckRead: {
+            /** Links */
+            links: components["schemas"]["SourceLinkCheckRead"][];
+            /** Warnings */
+            warnings: components["schemas"]["SourceWarning"][];
+        };
+        /**
+         * SourceCreate
+         * @description One source block of an event form.
+         *
+         *     A write posts the event's whole list and the stored sources follow it. ``id`` names a
+         *     stored source of this event to update in place; a source without one is created, and a
+         *     stored source the list leaves out is deleted.
+         *
+         *     The file is one of ``upload_id`` (a staged file from ``POST /uploads``) and ``media_id``
+         *     (a stored file of this event: this source's own keeps it, another source's is copied onto
+         *     this one as a new media row on the same stored object). Neither means no file.
+         */
+        SourceCreate: {
+            /** @default null */
+            capture_position: components["schemas"]["CoordsCreate"] | null;
+            /**
+             * Captured At
+             * @default null
+             */
+            captured_at: string | null;
+            /**
+             * Id
+             * @default null
+             */
+            id: string | null;
+            /**
+             * Is Graphic
+             * @default false
+             */
+            is_graphic: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "smartphone" | "camera" | "static_camera" | "drone" | "aircraft" | "satellite" | "dashcam" | "body_cam" | "article" | "official_statement" | "other" | "unknown";
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "direct" | "indirect" | "context";
+            /** Links */
+            links?: components["schemas"]["SourceLinkCreate"][];
+            /**
+             * Media Id
+             * @default null
+             */
+            media_id: string | null;
+            /** Tag Ids */
+            tag_ids?: string[];
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            /**
+             * Upload Id
+             * @default null
+             */
+            upload_id: string | null;
+        };
+        /** SourceLinkCheckRead */
+        SourceLinkCheckRead: {
+            provider: components["schemas"]["ImageryProviderRead"] | null;
+            /** Url */
+            url: string;
+        };
+        /**
+         * SourceLinkCreate
+         * @description One URL of a source as the event form posts it.
+         */
+        SourceLinkCreate: {
+            /**
+             * Posted At
+             * @default null
+             */
+            posted_at: string | null;
+            /**
+             * Snapshot Url
+             * @default null
+             */
+            snapshot_url: string | null;
+            /** Url */
+            url: string;
+        };
+        /** SourceLinkRead */
+        SourceLinkRead: {
+            archived: components["schemas"]["ArchivedLinkRead"] | null;
+            /** Posted At */
+            posted_at: string | null;
+            /** Url */
+            url: string;
+        };
+        /**
+         * SourceRead
+         * @description One source of an event, in the event's derived source order.
+         */
+        SourceRead: {
+            capture_position: components["schemas"]["CoordsRead"] | null;
+            /** Captured At */
+            captured_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Graphic */
+            is_graphic: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "smartphone" | "camera" | "static_camera" | "drone" | "aircraft" | "satellite" | "dashcam" | "body_cam" | "article" | "official_statement" | "other" | "unknown";
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "direct" | "indirect" | "context";
+            /** Links */
+            links: components["schemas"]["SourceLinkRead"][];
+            media: components["schemas"]["MediaRead"] | null;
+            /** Tags */
+            tags: components["schemas"]["TagRead"][];
+            /** Title */
+            title: string;
+            /** Warnings */
+            warnings: components["schemas"]["SourceWarning"][];
+        };
+        /**
+         * SourceWarning
+         * @description What keeps a reader from reopening a satellite or aircraft image (``services/imagery``).
+         *     Never blocks a write.
+         */
+        SourceWarning: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "provider_unknown" | "provider_not_reopenable" | "short_link" | "permalink_shape" | "capture_date_missing";
+            /** Message */
+            message: string;
+            /** Url */
+            url: string | null;
+        };
+        /**
          * SponsoredInviteCodeCreate
          * @description Body for `POST /users/me/invite-codes`: the invitee's X handle, which
          *     the code binds. Same normalization as `POST /admin/invite-codes`.
@@ -4995,7 +4646,7 @@ export interface components {
         };
         /**
          * TagCount
-         * @description One (name, count) entry for a conflict, capture-source or source-host tally.
+         * @description One (name, count) entry for a conflict, source-kind or source-host tally.
          */
         TagCount: {
             /** Count */
@@ -5005,18 +4656,11 @@ export interface components {
         };
         /** TagCreate */
         TagCreate: {
-            /** Category */
-            category: string;
             /** Name */
             name: string;
         };
         /** TagRead */
         TagRead: {
-            /**
-             * Category
-             * @enum {string}
-             */
-            category: "capture_source" | "free";
             /**
              * Id
              * Format: uuid
@@ -5065,6 +4709,33 @@ export interface components {
             url: string;
         };
         /**
+         * UploadRead
+         * @description A staged source file, referenced by a source's ``upload_id`` until ``expires_at``.
+         */
+        UploadRead: {
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "image" | "video";
+            /** Original Filename */
+            original_filename: string | null;
+            /** Sha256 */
+            sha256: string;
+            /** Storage Url */
+            storage_url: string;
+        };
+        /**
          * UserInviteMintingUpdate
          * @description Body for `PATCH /admin/users/{id}/invite-minting`.
          */
@@ -5075,13 +4746,11 @@ export interface components {
         /**
          * UserPreferencesRead
          * @description Effective values, each beside the default it falls back to.
-         *     ``display_stored`` holds only the display values the account has saved
-         *     (``null`` where it has none), so a client can tell a saved value from a
-         *     default. ``notifications`` lists every registered kind in registry order.
-         *     ``product_updates`` is whether a consent to product update emails is
-         *     current; it has no default to fall back to, since consent is never
-         *     presumed. ``approval_request_audience`` is who may send you an approval
-         *     request.
+         *         ``display_stored`` holds only the display values the account has saved
+         *         (``null`` where it has none), so a client can tell a saved value from a
+         *         default. ``notifications`` lists every registered kind in registry order.
+         *     ``approval_request_audience`` is who may send you an approval
+         *         request.
          */
         UserPreferencesRead: {
             /**
@@ -5094,15 +4763,12 @@ export interface components {
             display_stored: components["schemas"]["DisplayPreferencesUpdate"];
             /** Notifications */
             notifications: components["schemas"]["NotificationPreferenceRead"][];
-            /** Product Updates */
-            product_updates: boolean;
         };
         /**
          * UserPreferencesUpdate
          * @description Body for ``PATCH /users/me/preferences``. Each ``notifications`` entry
-         *     sets channels of one kind; a value equal to the default drops the
-         *     override. ``product_updates`` grants or withdraws the consent to product
-         *     update emails from Settings.
+         *     turns the email of one kind on or off; a value equal to the default drops
+         *     the override.
          */
         UserPreferencesUpdate: {
             /** Approval Request Audience */
@@ -5110,12 +4776,8 @@ export interface components {
             display?: components["schemas"]["DisplayPreferencesUpdate"] | null;
             /** Notifications */
             notifications?: {
-                [key: string]: {
-                    [key: string]: boolean;
-                };
+                [key: string]: boolean;
             } | null;
-            /** Product Updates */
-            product_updates?: boolean | null;
         };
         /**
          * UserProfile
@@ -5198,19 +4860,20 @@ export interface components {
          *     ``total_events``; every other field describes it. ``requested`` and
          *     ``closed`` rows take part in no aggregate.
          *
-         *     ``source_hosts`` breaks the set down by ``source_url`` host (lowercased,
-         *     leading ``www.`` removed): top hosts, with ``other_hosts_count`` the tail
-         *     and ``no_source_count`` the events with no readable host. The three sum to
-         *     ``total_events``.
+         *     ``source_kinds`` counts the events per kind their sources name, ``unknown`` left out (an
+         *     event with sources of two kinds counts under both).
          *
-         *     ``activity`` counts ``event_date`` per calendar month over the analyst's
+         *     ``source_hosts`` breaks the set down by the host of each event's first
+         *     source URL (lowercased, leading ``www.`` removed): top hosts, with
+         *     ``other_hosts_count`` the tail and ``no_source_count`` the events with no
+         *     readable host. The three sum to ``total_events``.
+         *
+         *     ``activity`` counts ``occurred_date`` per calendar month over the analyst's
          *     span, earliest first, zero-filled, empty when no event carries a date.
          */
         UserStatsRead: {
             /** Activity */
             activity: components["schemas"]["ActivityBucket"][];
-            /** Capture Sources */
-            capture_sources: components["schemas"]["TagCount"][];
             /** Detected Count */
             detected_count: number;
             /** Geolocated Count */
@@ -5223,6 +4886,8 @@ export interface components {
             other_hosts_count: number;
             /** Source Hosts */
             source_hosts: components["schemas"]["TagCount"][];
+            /** Source Kinds */
+            source_kinds: components["schemas"]["TagCount"][];
             /** Top Conflicts */
             top_conflicts: components["schemas"]["TagCount"][];
             /** Total Events */
@@ -5269,62 +4934,11 @@ export interface components {
         };
         /**
          * XHandleRead
-         * @description Body of ``GET /users/me/x-handle``: the bound handle and the request
-         *     waiting on it, if any.
+         * @description Body of ``GET /users/me/x-handle``.
          */
         XHandleRead: {
-            request: components["schemas"]["XHandleRequestRead"] | null;
             /** X Handle */
             x_handle: string | null;
-        };
-        /**
-         * XHandleRequestCreate
-         * @description Body for ``PUT /users/me/x-handle-request``.
-         */
-        XHandleRequestCreate: {
-            /** Reason */
-            reason?: string | null;
-            /** X Handle */
-            x_handle: string;
-        };
-        /**
-         * XHandleRequestDecline
-         * @description Body for ``POST /admin/x-handle-requests/{id}/decline``. The reason
-         *     reaches the requester in Settings.
-         */
-        XHandleRequestDecline: {
-            /** Reason */
-            reason: string;
-        };
-        /**
-         * XHandleRequestRead
-         * @description The requester's view of their request. ``decline_reason`` and
-         *     ``decided_at`` are set exactly when ``status`` is ``declined``.
-         */
-        XHandleRequestRead: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Decided At */
-            decided_at: string | null;
-            /** Decline Reason */
-            decline_reason: string | null;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Reason */
-            reason: string | null;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "pending" | "declined";
-            /** X Handle */
-            x_handle: string;
         };
     };
     responses: never;
@@ -5335,6 +4949,37 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    delete_approval_api_v1_admin_approvals__approval_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approval_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     hide_collection_admin_api_v1_admin_collections__collection_id__delete: {
         parameters: {
             query?: never;
@@ -5676,7 +5321,7 @@ export interface operations {
             };
         };
     };
-    maintenance_reap_auth_tokens_api_v1_admin_maintenance_reap_auth_tokens_post: {
+    maintenance_reap_password_reset_tokens_api_v1_admin_maintenance_reap_password_reset_tokens_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -5934,140 +5579,6 @@ export interface operations {
             };
         };
     };
-    list_product_updates_api_v1_admin_product_updates_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProductUpdateList"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    send_product_update_api_v1_admin_product_updates_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProductUpdateCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProductUpdateRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    preview_product_update_api_v1_admin_product_updates_preview_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProductUpdateCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProductUpdatePreview"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    send_test_product_update_api_v1_admin_product_updates_test_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProductUpdateCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_reports_api_v1_admin_reports_get: {
         parameters: {
             query?: {
@@ -6302,105 +5813,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AdminUserRead"];
                 };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_x_handle_requests_api_v1_admin_x_handle_requests_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminXHandleRequestRead"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    approve_x_handle_request_api_v1_admin_x_handle_requests__request_id__approve_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                request_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminUserRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    decline_x_handle_request_api_v1_admin_x_handle_requests__request_id__decline_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                request_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["XHandleRequestDecline"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -6998,11 +6410,12 @@ export interface operations {
                 view?: string;
                 status?: string[] | null;
                 conflict?: string[] | null;
-                capture_source?: string[] | null;
+                source_kind?: string[] | null;
+                level?: string[] | null;
                 tag?: string[] | null;
                 bbox?: string | null;
-                event_date_from?: string | null;
-                event_date_to?: string | null;
+                occurred_date_from?: string | null;
+                occurred_date_to?: string | null;
                 submitted_from?: string | null;
                 submitted_to?: string | null;
                 author?: string | null;
@@ -7288,10 +6701,11 @@ export interface operations {
                 /** @description south,west,north,east, four floats */
                 bbox: string;
                 conflict?: string[] | null;
-                capture_source?: string[] | null;
+                source_kind?: string[] | null;
+                level?: string[] | null;
                 tag?: string[] | null;
-                event_date_from?: string | null;
-                event_date_to?: string | null;
+                occurred_date_from?: string | null;
+                occurred_date_to?: string | null;
                 submitted_from?: string | null;
                 submitted_to?: string | null;
                 author?: string | null;
@@ -7332,7 +6746,7 @@ export interface operations {
                 lat: number;
                 lng: number;
                 source_url?: string | null;
-                event_date?: string | null;
+                occurred_date?: string | null;
             };
             header?: never;
             path?: never;
@@ -7646,44 +7060,6 @@ export interface operations {
             };
         };
     };
-    revoke_approval_api_v1_events__geolocation_id__approvals__approval_id__revoke_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                geolocation_id: string;
-                approval_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["ApprovalRevoke"] | null;
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApprovalRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     close_event_api_v1_events__geolocation_id__close_post: {
         parameters: {
             query?: never;
@@ -7741,43 +7117,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CollectionMembershipList"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    geolocate_event_api_v1_events__geolocation_id__geolocate_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                geolocation_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_geolocate_event_api_v1_events__geolocation_id__geolocate_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EventRead"];
                 };
             };
             /** @description Validation Error */
@@ -8176,9 +7515,10 @@ export interface operations {
                 limit?: number;
                 /** @description Opaque cursor from a Link: rel=next header */
                 cursor?: string | null;
-                kind?: ("geolocation" | "request")[] | null;
+                kind?: ("geolocation" | "request" | "detected")[] | null;
                 conflict?: string[] | null;
-                capture_source?: string[] | null;
+                source_kind?: string[] | null;
+                level?: string[] | null;
                 tag?: string[] | null;
                 approved?: boolean;
                 approved_by?: string | null;
@@ -8775,13 +8115,13 @@ export interface operations {
             };
         };
     };
-    cancel_organization_invite_api_v1_organizations__slug__invites__invite_id__delete: {
+    cancel_organization_invite_api_v1_organizations__slug__invites__username__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 slug: string;
-                invite_id: string;
+                username: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8908,35 +8248,6 @@ export interface operations {
             };
         };
     };
-    unsubscribe_api_v1_product_updates_unsubscribe_post: {
-        parameters: {
-            query: {
-                token: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     search_api_v1_search_get: {
         parameters: {
             query?: {
@@ -8948,10 +8259,11 @@ export interface operations {
                 limit?: number;
                 status?: string[] | null;
                 conflict?: string[] | null;
-                capture_source?: string[] | null;
+                source_kind?: string[] | null;
+                level?: string[] | null;
                 tag?: string[] | null;
-                event_date_from?: string | null;
-                event_date_to?: string | null;
+                occurred_date_from?: string | null;
+                occurred_date_to?: string | null;
                 submitted_from?: string | null;
                 submitted_to?: string | null;
                 /** @description Scope the event groups to this owner username (exact, case-insensitive) */
@@ -9022,12 +8334,44 @@ export interface operations {
             };
         };
     };
+    check_source_api_v1_sources_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceCheck"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceCheckRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_tags_api_v1_tags_get: {
         parameters: {
-            query?: {
-                category?: string | null;
-                curated?: boolean;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -9041,15 +8385,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TagRead"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -9076,6 +8411,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TagRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_upload_api_v1_uploads_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_create_upload_api_v1_uploads_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadRead"];
                 };
             };
             /** @description Validation Error */
@@ -9355,134 +8725,6 @@ export interface operations {
             };
         };
     };
-    get_push_config_api_v1_users_me_push_config_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PushConfigRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_push_subscriptions_api_v1_users_me_push_subscriptions_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PushSubscriptionRead"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    register_push_subscription_api_v1_users_me_push_subscriptions_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PushSubscriptionCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PushSubscriptionRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_push_subscription_api_v1_users_me_push_subscriptions__subscription_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                subscription_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     get_my_x_handle_api_v1_users_me_x_handle_get: {
         parameters: {
             query?: never;
@@ -9493,41 +8735,6 @@ export interface operations {
             };
         };
         requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["XHandleRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    put_my_x_handle_request_api_v1_users_me_x_handle_request_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["XHandleRequestCreate"];
-            };
-        };
         responses: {
             /** @description Successful Response */
             200: {

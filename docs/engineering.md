@@ -31,9 +31,7 @@ flowchart TB
   subgraph sched [Roles without a port, same image]
     direction TB
     worker["`**worker**
-    always on: notification_deliveries, product_update_deliveries, archive_import_jobs, then bot_webhook_events`"]:::shared
-    bot["`**bot**
-    hourly: run_bot.py reconciles the mentions timeline`"]:::shared
+    always on: notification_deliveries, archive_import_jobs, bot_mentions; hourly bot catch-up and upload reaper`"]:::shared
     conf["`**sync-conflicts**
     daily: sync_conflicts.py`"]:::shared
   end
@@ -49,13 +47,12 @@ flowchart TB
   api --> db
   api --> s3
   worker --> db
-  bot --> db
   conf --> db
   worker --> s3
   db -- "daily dump" --> bak
 ```
 
-Each region of the diagram has a section below. What each piece is and why it was picked is [the tech stack](#tech-stack); the code they all run is [the repository layout](#repository-layout-monorepo), [the backend conventions](#backend-conventions) and [the frontend conventions](#frontend-conventions); the roles are [backend roles](#backend-roles), and the three without a port are [scheduler services](#scheduler-services); what an instance runs and configures is [deployment](#deployment), and the backup storage is [`backups.md`](backups.md). The path a change takes to reach an instance is [CI/CD](#cicd). [Local environment](#local-environment) is the same shape on one machine, with a Docker container standing in for the database and `LocalStorage` for the buckets.
+Each region of the diagram has a section below. What each piece is and why it was picked is [the tech stack](#tech-stack); the code they all run is [the repository layout](#repository-layout-monorepo), [the backend conventions](#backend-conventions) and [the frontend conventions](#frontend-conventions); the roles are [backend roles](#backend-roles), and the two without a port are [scheduler services](#scheduler-services); what an instance runs and configures is [deployment](#deployment), and the backup storage is [`backups.md`](backups.md). The path a change takes to reach an instance is [CI/CD](#cicd). [Local environment](#local-environment) is the same shape on one machine, with a Docker container standing in for the database and `LocalStorage` for the buckets.
 
 ---
 
@@ -118,7 +115,7 @@ Every image is decoded and re-encoded before it is stored: [`evidence_processing
 | Icons | **lucide-react** |
 | Linting | **ESLint 9** (flat config in [`frontend/eslint.config.mjs`](../frontend/eslint.config.mjs), importing `eslint-config-next/core-web-vitals`). `npm run lint` invokes `eslint` directly. |
 | Tests | **Vitest + Testing Library** (jsdom, config in [`frontend/vitest.config.mts`](../frontend/vitest.config.mts)). Colocated `*.test.ts(x)` under `src/`; `npm test` runs once, `npm run test:watch` watches. `NEXT_PUBLIC_API_URL` is stubbed in the config so importing `lib/api.ts` doesn't trip its boot guard. Layout is not testable there (jsdom has no layout engine): `npm run test:e2e` runs the Playwright suite that measures it, after `npx playwright install chromium` once. See [Narrow-viewport smoke tests](#narrow-viewport-smoke-tests). |
-| API types | **`openapi-typescript`**: [`frontend/src/lib/api-types.ts`](../frontend/src/lib/api-types.ts) is **generated** from the backend OpenAPI spec (`make gen-api-types` dumps `app.openapi()` → `openapi-typescript`). [`types/index.ts`](../frontend/src/types/index.ts) derives its enums (`EventStatus`, `TagCategory`, `MediaType`) from it, so a backend schema change that isn't regenerated is a `tsc` failure, not a runtime surprise. The `api-types` CI job regenerates + `git diff --exit-code`, failing on drift. Don't hand-edit `api-types.ts`. |
+| API types | **`openapi-typescript`**: [`frontend/src/lib/api-types.ts`](../frontend/src/lib/api-types.ts) is **generated** from the backend OpenAPI spec (`make gen-api-types` dumps `app.openapi()` → `openapi-typescript`). [`types/index.ts`](../frontend/src/types/index.ts) derives its enums (`EventStatus`, `MediaType`, the source kind and level) from it, so a backend schema change that isn't regenerated is a `tsc` failure, not a runtime surprise. The `api-types` CI job regenerates + `git diff --exit-code`, failing on drift. Don't hand-edit `api-types.ts`. |
 
 MapLibre GL JS is open source (BSD-3-Clause). It uses vector tiles and supports client-side clustering. CARTO Dark Matter tiles are free for non-commercial use and match the dark theme.
 
@@ -136,7 +133,7 @@ An instance needs these pieces. [Deployment](#deployment) describes how to run t
 | Piece | Requirement |
 |-------|-------------|
 | Container host | Runs the backend image in each of its [roles](#backend-roles): `api` behind HTTPS, `worker` always on, and `migrate` once per release. |
-| Scheduler | Starts the `bot` role hourly and the `sync-conflicts` role daily. |
+| Scheduler | Starts the `sync-conflicts` role daily. |
 | Database | **PostgreSQL 16** with **PostGIS 3**, reachable from every role. |
 | Object storage | An S3-compatible bucket for media, with versioning and Object Lock, and a CDN in front of it. A second bucket in another region holds the media replica, and off-host storage holds the database dumps ([`backups.md`](backups.md)). |
 | Frontend host | Builds and serves the Next.js app in `frontend/`. |
@@ -181,7 +178,7 @@ vidit/
 └── .github/workflows/        # see GitHub Actions
 ```
 
-`make test` runs `pytest -n auto --dist worksteal`: the conftest migrates a template database to alembic head and clones one database per xdist worker. Plain `pytest` stays serial on the development database.
+`make test` runs `pytest -n auto --dist worksteal`: the conftest migrates a template database to alembic head and clones one database per xdist worker. Plain `pytest` stays serial on the development database. Stored files never reach `backend/.local-storage`: each test process writes to its own temporary storage root, emptied before every test and removed when the run ends.
 
 ---
 
@@ -247,7 +244,7 @@ The API runs as one uvicorn process with one event loop (the `CMD` in [`backend/
 
 The API process caps every lock wait at `LOCK_TIMEOUT_MS`, 5 seconds. [`main.py`](../backend/app/main.py) calls `bound_lock_waits` from [`database.py`](../backend/app/database.py) at import, and from then on every connection the engine opens sets the Postgres `lock_timeout` in its startup options. A statement that waits longer for a lock fails, and `get_db` answers the request with a `409` carrying the typed envelope `{"code": "lock_timeout", …}`. The cap protects the API's threadpool: a request queued on a lock holds a worker thread for as long as it waits.
 
-The cap applies to the API process only. The import worker, the bot cron, and the conflict-sync cron open their sessions from the same engine but never import `main.py`, so their statements wait for the lock: each service runs on its own compute with no shared threadpool, and waiting costs it nothing. Migrations open their own engine in [`alembic/env.py`](../backend/alembic/env.py) and wait too.
+The cap applies to the API process only. The import worker and the conflict-sync cron open their sessions from the same engine but never import `main.py`, so their statements wait for the lock: each service runs on its own compute with no shared threadpool, and waiting costs it nothing. Migrations open their own engine in [`alembic/env.py`](../backend/alembic/env.py) and wait too.
 
 ### Email
 
@@ -272,9 +269,9 @@ flowchart LR
   inline["`**auth, archive import, digest, content report**
   sent inline, never capped`"]:::spec
   emit["`**notifications._emit**
-  writes the notification, and a delivery row when the switch is on and the address is verified`"]:::spec
+  writes the notification, and a delivery row when the email switch is on`"]:::spec
   queue[("`**notification_deliveries**
-  queued, sending, sent, failed, skipped`")]:::store
+  queued, running, done, failed, skipped`")]:::store
   drain["`**notification_delivery.drain**
   in the worker: caps, re-checks, claims oldest first`"]:::shared
   builders["`**email.py builders**
@@ -289,148 +286,25 @@ flowchart LR
   builders --> layout --> send
 ```
 
-**The layout.** A builder in [`services/email.py`](../backend/app/services/email.py) passes structured content to [`services/email_layout.py`](../backend/app/services/email_layout.py), never markup. The layout renders an HTML part and a plain-text part from that content, so both carry the same words and links. Every link is absolute, built on `FRONTEND_URL`. A bare URL becomes a link only in the action, the closing note and the blocks of a product update email. A URL in the other blocks stays text, since they carry user text such as event titles and report details. The footer of both parts links to Settings and to the legal notice. The brand rules of the HTML part are in [`design.md`](design.md#email).
+**The layout.** A builder in [`services/email.py`](../backend/app/services/email.py) passes structured content to [`services/email_layout.py`](../backend/app/services/email_layout.py), never markup. The layout renders an HTML part and a plain-text part from that content, so both carry the same words and links. Every link is absolute, built on `FRONTEND_URL`. A bare URL becomes a link only in the action, the closing note and the blocks of the registration confirmation email. A URL in the other blocks stays text, since they carry user text such as event titles and report details. The footer of both parts links to Settings and to the legal notice. The brand rules of the HTML part are in [`design.md`](design.md#email).
 
 **The sender.** `EMAIL_PROVIDER=console` prints the headers, the text part and then the HTML part to stdout, so local development needs no provider. `EMAIL_PROVIDER=resend` posts both parts and any headers to Resend. `send` raises `EmailRejectedError` when the provider answers with a refusal, and its parent `EmailSendError` when the outcome is unknown, such as a timeout. Every caller catches the error, so a provider outage never fails the action that sent the email.
 
-**The notification queue.** The transaction that writes a [notification](api.md#notifications) also writes one [`notification_deliveries`](data-model.md#notification_deliveries) row per channel: an `email` row when the recipient's email switch for that kind is on and their address carries `email_verified_at`, and a `push` row as [Web Push](#web-push) describes. The worker's [`drain`](../backend/app/services/notification_delivery.py) runs at the start of each pass, one channel after the other, and hands each row to its channel's sender. For email:
+**The notification queue.** The transaction that writes a [notification](api.md#notifications) also writes one [`notification_deliveries`](data-model.md#notification_deliveries) row when the recipient's email switch for that kind is on. Email is the only delivery channel besides the in-app list, which shows every notification whatever the switch says. The worker's [`drain`](../backend/app/services/notification_delivery.py) runs at the start of each pass and sends each claimed row to the recipient's account address:
 
-1. It marks a row `failed` after an hour in `sending`, and `skipped` after 48 hours in `queued`, so a crash never sends one message twice and a backlog never sends old news.
-2. It stops when the notification emails that may have gone out in the trailing 24 hours reach `NOTIFICATION_EMAIL_DAILY_CAP` (default 50). Those are the rows sent, and the rows claimed in the window and left `sending` or failed stale out of it, since the provider may have counted them; a row failed by refusals does not count. The product update cap counts the same way. It passes over a recipient who reached `NOTIFICATION_EMAIL_DAILY_CAP_PER_USER` (default 10). A row whose notification the recipient deleted keeps counting toward the total cap, with a NULL `notification_id`; the per-user and per-actor counts read through the notification and drop it. Rows over a cap stay queued. Before that, at queue time, the API writes no email row of a kind an analyst sends straight at someone (an invitation, an organization invite, an approval request) once that actor queued `NOTIFICATION_EMAIL_DAILY_CAP_PER_ACTOR` (default 10) such emails in the trailing 24 hours, so one analyst cannot spend the total cap. Fan-out, such as re-approval requests after a new version, is neither capped nor counted.
-3. It claims the oldest queued row with `FOR UPDATE SKIP LOCKED`, sets it `sending` and commits before the provider call.
-4. It re-reads the recipient and skips the row when the switch is now off, the address is gone or unverified, the account is soft-deleted or inactive, or the filter would hide the notification.
-5. It sets the row `sent` on success. A refusal puts the row back in `queued` for another try after 5 minutes, and the third refusal sets it `failed`. An unknown outcome leaves it `sending` until it goes stale. When writing the outcome fails after a send or an unknown outcome, the row also stays `sending`, never `queued`, so the message is never sent twice.
+1. It marks a row `failed` after an hour in `running`, and `skipped` after 48 hours in `queued`, so a crash never sends one message twice and a backlog never sends old news.
+2. It stops when the notification emails that may have gone out in the trailing 24 hours reach `NOTIFICATION_EMAIL_DAILY_CAP` (default 50). Those are the `done` rows, and the rows claimed in the window and left `running` or failed stale out of it, since the provider may have counted them; a row failed by refusals does not count. It passes over a recipient who reached `NOTIFICATION_EMAIL_DAILY_CAP_PER_USER` (default 10). A row whose notification the recipient deleted keeps counting toward the total cap, with a NULL `notification_id`; the per-user and per-actor counts read through the notification and drop it. Rows over a cap stay queued. Before that, at queue time, the API writes no email row of a kind an analyst sends straight at someone (an invitation, an organization invite, an approval request) once that actor queued `NOTIFICATION_EMAIL_DAILY_CAP_PER_ACTOR` (default 10) such emails in the trailing 24 hours, so one analyst cannot spend the total cap. Fan-out, such as re-approval requests after a new version, is neither capped nor counted.
+3. It claims the oldest queued row with `FOR UPDATE SKIP LOCKED`, sets it `running` and commits before the provider call.
+4. It re-reads the recipient and skips the row when the switch is now off, the account is soft-deleted or inactive, or the filter would hide the notification.
+5. It sets the row `done` on success. A refusal puts the row back in `queued` for another try after 5 minutes, and the third refusal sets it `failed`. An unknown outcome leaves it `running` until it goes stale. When writing the outcome fails after a send or an unknown outcome, the row also stays `running`, never `queued`, so the message is never sent twice.
 
-The caps keep notification email inside the provider's daily quota, 100 emails on the Resend free tier, with room for the auth emails, which are sent inline and never counted. Each notification email links to the item, names the switch that sent it and links to Settings. Its `List-Unsubscribe` and `List-Unsubscribe-Post` headers carry a one-click URL on `API_URL` with a token signed for the recipient and the kind ([`services/unsubscribe_tokens.py`](../backend/app/services/unsubscribe_tokens.py)), which turns that kind off by email.
-
-#### Product update emails
-
-A product update email announces one major release to the analysts who consented. It is not a notification kind: the consent alone governs it, and it has its own queue and its own daily cap.
-
-```mermaid
-flowchart LR
-  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
-  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
-  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
-  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
-
-  subgraph legend [Legend]
-    direction LR
-    l1["`an analyst or admin action`"]:::spec
-    l2["`a service step`"]:::shared
-    l3["`the shared sender`"]:::core
-    l4[("`a store`")]:::store
-    l1 ~~~ l2 ~~~ l3 ~~~ l4
-  end
-
-  signup["`**sign-up switch**
-  confirmation copies it`"]:::spec
-  settings["`**Settings switch**
-  PATCH /users/me/preferences`"]:::spec
-  unsub["`**unsubscribe link or one-click header**
-  signed token, no session`"]:::spec
-  consents[("`**product_update_consents**
-  granted_at, source, withdrawn_at`")]:::store
-  admin["`**admin console**
-  preview, test, send`"]:::spec
-  send["`**product_updates.send**
-  one transaction, label UNIQUE`"]:::shared
-  queue[("`**product_update_deliveries**
-  one row per recipient`")]:::store
-  drain["`**product_updates.drain**
-  in the worker: one batch per pass, daily cap, re-checks consent`"]:::shared
-  sender["`**notification_delivery.deliver**
-  sent, skipped, queued or failed; a raising row counts as a refusal`"]:::core
-
-  signup --> consents
-  settings --> consents
-  unsub --> consents
-  admin --> send
-  consents --> send --> queue --> drain --> sender
-```
-
-**Consent.** [`services/product_update_consent.py`](../backend/app/services/product_update_consent.py) owns the [`product_update_consents`](data-model.md#product_update_consents) record. The sign-up switch, the Settings switch and the unsubscribe link each grant or withdraw it. A grant adds a row only when none is current, and a withdrawal stamps `withdrawn_at`, so no change overwrites an earlier grant.
-
-**The unsubscribe token.** `unsubscribe_token` signs the account ID with an HMAC keyed on `JWT_SECRET` and a purpose prefix ([`services/unsubscribe_tokens.py`](../backend/app/services/unsubscribe_tokens.py), shared with the notification email one-click), so the token cannot stand in for any other credential. It carries no expiry: the link in an old email keeps working. Rotating `JWT_SECRET` voids every link. The email prints the link to the `/unsubscribe` page, which withdraws on a click, so a mail scanner that opens the link withdraws nothing. The `List-Unsubscribe` header names `POST {API_URL}/product-updates/unsubscribe?token=…`, which a mail client calls on its own (`List-Unsubscribe-Post: List-Unsubscribe=One-Click`).
-
-**The send.** [`services/product_updates.py`](../backend/app/services/product_updates.py) records the announcement and writes one [`product_update_deliveries`](data-model.md#product_update_deliveries) row per analyst with a current consent, a verified address and a live active account, all in one transaction. The insert of the announcement waits on the UNIQUE release label, so a second send of the same label finds it taken and queues nothing.
-
-**The drain.** Each worker pass runs `product_updates.drain` after the notification queue:
-
-1. It marks a row `failed` after an hour in `sending`. A queued row never expires, since a large audience takes several days.
-2. It claims at most `PRODUCT_UPDATE_EMAIL_BATCH_SIZE` rows (default 10), so a large send never holds the worker away from its other queues.
-3. It stops when the product update emails sent in the trailing 24 hours reach `PRODUCT_UPDATE_EMAIL_DAILY_CAP` (default 30).
-4. It skips a row whose recipient withdrew consent, lost the verified address or left since the send.
-5. It sends through the same `deliver` as the notification queue, with the same `sending`, retry and stale rules. A row that raises counts as a refusal and the batch goes on.
-
-**The quota.** The boot check in [`config.py`](../backend/app/config.py) refuses a `NOTIFICATION_EMAIL_DAILY_CAP` plus `PRODUCT_UPDATE_EMAIL_DAILY_CAP` at or above `EMAIL_PROVIDER_DAILY_QUOTA` (default 100, the Resend free tier). The remainder carries the auth emails and the admin's test sends, which leave inline and are never counted. The admin console shows the audience and the number of days the send takes at the current cap.
-
-### Web Push
-
-A notification reaches a browser or an installed app through Web Push. Push rows share the notification queue with email and the same claim, retry and stale rules. A push has no daily cap, and one row fans out to every device of the recipient.
-
-```mermaid
-flowchart LR
-  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
-  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
-  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
-  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
-
-  subgraph legend [Legend]
-    direction LR
-    l1["`the browser`"]:::spec
-    l2["`an API or worker step`"]:::shared
-    l3["`the push sender`"]:::core
-    l4[("`a store`")]:::store
-    l1 ~~~ l2 ~~~ l3 ~~~ l4
-  end
-
-  settings["`**Settings: Enable on this device**
-  permission, registers sw.js, subscribes with the VAPID public key`"]:::spec
-  register["`**POST /users/me/push-subscriptions**
-  endpoint allowlist, upsert on endpoint`"]:::shared
-  subs[("`**push_subscriptions**
-  one row per device`")]:::store
-  emit["`**notifications._emit**
-  a push row when the switch is on and a device exists`"]:::shared
-  queue[("`**notification_deliveries**
-  channel push`")]:::store
-  drain["`**notification_delivery.drain**
-  re-checks the switch and the filter`"]:::shared
-  send["`**push.send**
-  encrypts and signs per device, deletes a device on 404 or 410`"]:::core
-  service["`**browser push service**
-  relays the encrypted payload`"]:::spec
-  sw["`**public/sw.js**
-  shows the notification, opens the path on click`"]:::spec
-
-  settings --> register --> subs
-  emit --> queue --> drain --> send
-  subs --> send --> service --> sw
-```
-
-**Registering a device.** The Notifications card in Settings asks the browser for the notification permission, registers [`public/sw.js`](../frontend/public/sw.js), subscribes with the key from `GET /users/me/push-config`, and posts the subscription ([`lib/push.ts`](../frontend/src/lib/push.ts)). The API accepts an endpoint only on a browser push service host, so the worker never posts to an address an analyst picked. On iPhone and iPad, a browser tab has no Push API: push works only for the site added to the Home Screen, and the card says so.
-
-**Revoking a device.** The card lists every device of the account (`GET /users/me/push-subscriptions`) with a Revoke control that deletes it and records the SHA-256 of its endpoint in [`revoked_push_endpoints`](data-model.md#revoked_push_endpoints). Signing out revokes this browser's device and drops its browser subscription before the session ends; the browser subscription goes even when the server call fails. A password change or reset deletes every device of the account in the same transaction that bumps `token_version`, so a device registered under the old password stops receiving pushes, and the card then reloads the list. Opening Settings on a signed-in browser that still holds its subscription registers it again with `resync`, which names the row of this device in the list and restores it after a password change. A revoked device answers 409 `device_revoked` to that `resync`: the browser drops its subscription and the card reads push as off until the analyst enables it again. That registration is also how a subscription the browser renewed (`pushsubscriptionchange`) reaches the server: `sw.js` holds no session to post it.
-
-**The service worker.** `sw.js` handles `push` and `notificationclick` only. It registers no `fetch` handler and opens no cache, so it never serves a page or intercepts a request, and it leaves the Next.js dev server untouched. A click focuses an open Vidit window and navigates it to the payload's path, or opens one. A path that is not an app path opens `/notifications` instead. The `proxy.ts` matcher skips `/sw.js`, so the browser gets the script and not the login page.
-
-**Sending.** For a `push` row, the drain calls [`services/push.send`](../backend/app/services/push.py), which posts to every device of the recipient through `pywebpush`. The library encrypts the payload for the device's keys and signs the request with the VAPID private key. The payload carries a title, a short body and an app path. The push service holds it for 24 hours at most. A 404 or 410 answer deletes that device, and so does a third rejection in a row, a 400 or 403 answer that faults the subscription itself; a rate limit, an oversized payload, a server error or a local error counts toward nothing. An account holds at most 10 devices: registering one more deletes the oldest. The row outcome follows the devices:
-
-1. `sent` when any device's push service accepted the push.
-2. Left `sending` when no device accepted it and a request to one of them failed in transit, since that push may have gone out.
-3. Back to `queued` for a retry when the push services refused it, so a retry never repeats a push a device already shows.
-4. `skipped` when no device is left, or on a development server without VAPID keys.
-
-A device endpoint is a bearer URL. A failure is logged by device id, status and exception class only, never with the endpoint or the exception message.
-
-**Configuration.** `VAPID_PRIVATE_KEY` is the base64url raw P-256 private key, and `VAPID_SUBJECT` a `mailto:` or `https:` contact for the push services. The public key derives from the private key. Set both on the API (it serves the public key) and on the import worker (it sends). With `COOKIE_SECURE=true`, `config.py` refuses to start without both. Outside a deployment, neither turns push off, and `config.py` refuses to start with one alone. `make env` runs [`scripts/ensure_vapid_keys.py`](../backend/scripts/ensure_vapid_keys.py), which writes a development private key and `VAPID_SUBJECT=mailto:dev@example.com` to `backend/.env` when they are absent and never replaces a value already set. Never commit a key.
+The caps keep notification email inside the provider's daily quota. The boot check in [`config.py`](../backend/app/config.py) refuses a `NOTIFICATION_EMAIL_DAILY_CAP` at or above `EMAIL_PROVIDER_DAILY_QUOTA` (default 100, the Resend free tier), which leaves the remainder to the auth emails, which are sent inline and never counted. Each notification email links to the item, names the switch that sent it and links to Settings. Its `List-Unsubscribe` and `List-Unsubscribe-Post` headers carry a one-click URL on `API_URL` with a token signed for the recipient and the kind ([`services/unsubscribe_tokens.py`](../backend/app/services/unsubscribe_tokens.py)), which turns that kind off by email. The token carries no expiry, so the link in an old email keeps working, and rotating `JWT_SECRET` voids every link.
 
 ### Hand-kept mirrors
 
-Each validation rule has one backend home: the upload MIME allowlist in `services/storage.py` (the EXIF-strip set derives from the image allowlist), coordinate bounds in `services/events.validate_coordinates`, and password length in `schemas/auth.NewPassword` (`PASSWORD_MIN_LENGTH` characters, `PASSWORD_MAX_BYTES` UTF-8 bytes, the bcrypt input limit). Frontend enum types are generated from the OpenAPI spec into `lib/api-types.ts`.
+Each validation rule has one backend home: the upload MIME allowlist in `services/storage.py` (the EXIF-strip set derives from the image allowlist), coordinate bounds in `services/events.validate_coordinates`, and password length in `schemas/auth.NewPassword` (`PASSWORD_MIN_LENGTH` characters, `PASSWORD_MAX_BYTES` UTF-8 bytes, the bcrypt input limit). Frontend enum types are generated from the OpenAPI spec into `lib/api-types.ts`. So is `SourceCreate`, the entry of the event writes' `sources` JSON form field: no route names it, so `main._FORM_FIELD_MODELS` adds it to the spec's components.
 
-Every other frontend copy of a backend rule or of the issue tracker is hand-kept and listed below. Change both sides in the same PR. Frontend paths are under `frontend/src/`; backend modules are under `backend/app/`.
+Every other frontend copy of a backend rule or of the issue tracker is hand-kept and listed below. Change both sides in the same PR. Frontend paths are under `frontend/src/`; backend modules are under `backend/app/`. [`backend/tests/test_frontend_mirrors.py`](../backend/tests/test_frontend_mirrors.py) reads the value mirrors (the caps, the evidence levels, the document kinds, the snapshot hosts, the coordinate bounds and the status filter list) out of the frontend files and fails when one differs from its backend value.
 
 | Frontend | Backend source | Drift breaks |
 |---|---|---|
@@ -441,58 +315,79 @@ Every other frontend copy of a backend rule or of the issue tracker is hand-kept
 | `lib/proofImages.ts` | `sanitize.PROOF_PLACEHOLDER_PREFIX`, `storage.safe_original_filename` | proof images lose their upload binding |
 | `lib/proof.tsx::LOCAL_STORAGE_URL_PREFIX` | `storage.LOCAL_STORAGE_URL_PREFIX` | a development proof image fails the image source check |
 | `lib/search.ts::AUTHOR_FILTER_RE` | `event_filters.AUTHOR_FILTER_PATTERN` | author filter parses differently |
-| `components/filters/EventFilterSections.tsx` media options, `STATUS_FILTER_OPTIONS` | `event_filters.MEDIA_TYPES`; `STATUSES` minus `closed`, in declared order | filter offers a value the API refuses |
+| `components/filters/EventFilterSections.tsx` media options, `FILTER_STATUSES` | `event_filters.MEDIA_TYPES`; `STATUSES` minus `closed`, in declared order | filter offers a value the API refuses |
 | `components/profile/RecentSubmissions.tsx` link `status=geolocated` | `event_filters.published_events()` | *Show more* expands a different set than the preview |
 | `components/collections/CollectionsSection.tsx` link `type=collection` | the filter `search.search_collections` reads, including the `author` exception | *Show more* lands on an empty group |
 | `lib/archive.ts` keep-allowlist, root discovery, `MAX_UPLOAD_BYTES` | `tweet_ingest/archive_zip.py` | client trims files the server needs, or uploads an export it refuses |
-| `lib/mediaUrls.ts::displayUrlsFor` | `storage.derivative_key` (`_hero`, `_thumb`); `upload_proof_image(produce_derivatives=False)` | a proof image requests a derivative that does not exist (403) |
+| `lib/mediaUrls.ts::displayUrlsFor` | `storage.derivative_key` (`_hero`, `_thumb`) | a source image requests a derivative that does not exist (403) |
 | `lib/viewport.ts` | `event_filters.parse_bbox` field order and bounds | map bbox is refused or filters the wrong area |
 | `lib/pagination.ts` | `pagination.next_link` `Link` header shape | paging stops after page one |
-| `lib/events.ts::MAX_SECONDARY_SOURCE_LINKS` | `models/event.MAX_SECONDARY_SOURCE_LINKS` | form allows a link the API refuses |
-| `lib/events.ts::batchCompletionBlockers` | `events/batch._publish_detection`, `events.detection_ready_predicate` | queue labels a row ready that the server refuses |
-| `lib/events.ts::missingEventFields`, `missingEventRequestFields` | `events/rules._require_submission_floor`, `_require_submission_media`, `_require_proof_image` and the request checks in `events/request.py` | the form calls a submission ready that the server refuses, or blocks one it accepts |
+| `lib/sources.ts::MAX_SOURCES_PER_EVENT` (the event form's source list) | `models/source.MAX_SOURCES_PER_EVENT` | form offers a source the API refuses (`too_many_sources`) |
+| `lib/sources.ts::MAX_LINKS_PER_SOURCE` (each source editor's link list) | `models/source.MAX_LINKS_PER_SOURCE` | form offers a URL the API refuses (`too_many_source_links`) |
+| `lib/sources.ts::SOURCE_TITLE_MAX_LEN`, `SOURCE_URL_MAX_LEN` (the source title, each URL and each archived copy; `components/ui/ArchivedCopies.tsx::isSnapshotUrl` counts a copy in UTF-8 bytes) | `models/source.SOURCE_TITLE_MAX_LENGTH`, `SOURCE_URL_MAX_LENGTH`, `source_archive.SNAPSHOT_URL_MAX_LENGTH` | server refuses typed text (422, or `snapshot_url_too_long`) |
+| `lib/sources.ts::isEvidenceLevel` | `models/source.EVIDENCE_LEVELS` | the form, the queue and the source block count a source toward the evidence floor that the server does not, or the reverse |
+| `lib/sources.ts::DOCUMENT_SOURCE_KINDS` | `models/source.DOCUMENT_SOURCE_KINDS` (`schemas/source.SourceCreate` drops a document's capture position) | the editor offers a capture position the server drops, or hides one it keeps |
+| `lib/sources.ts::SOURCE_ERROR_MESSAGES` (each sentence, and the caps it names) | the source codes of `events/errors`, the upload codes of `uploads`, `conflict_required`, `invalid_coordinates` | a refused write prints the server's message, or names the wrong cap |
+| `lib/events.ts::batchCompletionBlockers` | `events/batch._publish_detection`, `events.detection_ready_predicate` (coordinates, a `direct` or `indirect` source with a file, no source without a URL, a proof image) | queue labels a row ready that the server refuses |
+| `lib/events.ts::missingEventFields`, `missingEventRequestFields` | `events/sources.check_publish_floor`, the required `kind` of `schemas/source.SourceCreate`, `sources._clean_links` (a URL on every source), `events/rules._require_conflict`, `_require_proof_image` | the form calls a submission ready that the server refuses, or blocks one it accepts |
 | `lib/events.ts::EventView` | `event_filters.VIEWS` (the router takes `str`, so codegen cannot carry it) | `view` parameter refused |
 | `lib/events.ts::DetectionReadiness` | `events/readiness.DETECTION_READINESS` (the router takes `str`, so codegen cannot carry it) | `readiness` parameter refused (422) |
-| `lib/events.ts::snapshotToEventView`, `changedFields`, `hasVersionChanges` | `versions.build_snapshot` fields, `versions.COMPARED_FIELDS` (the snapshot is untyped JSON, so neither codegen nor `tsc` catches a renamed key) | version pages silently blank a field |
-| `lib/events.ts::REPORT_DETAILS_MAX_LEN`, `VERSION_NOTE_MAX_LEN` | `schemas/report.DETAILS_MAX_LENGTH`, `schemas/event.VERSION_NOTE_MAX_LENGTH` | server refuses typed text |
-| `components/event/CloseEventForm.tsx::CLOSE_REASON_MAX_LEN` | `schemas/event.EventCloseRequest.close_reason` `max_length` | the server refuses typed text |
+| `lib/events.ts::snapshotToEventView`, `changedFields`, `hasVersionChanges` | `versions.build_snapshot` fields, the source entry of `versions.source_entry`, `versions.COMPARED_FIELDS` (the snapshot is untyped JSON, so neither codegen nor `tsc` catches a renamed key) | version pages silently blank a field or a source |
+| `lib/events.ts::EVENT_TITLE_MAX_LEN` (the event title, and `lib/collections.ts::COLLECTION_TITLE_MAX_LEN`), `REPORT_DETAILS_MAX_LEN`, `VERSION_NOTE_MAX_LEN`, `CLOSE_REASON_MAX_LEN` | `models/event.TITLE_MAX_LENGTH`, `schemas/report.DETAILS_MAX_LENGTH`, `schemas/event.VERSION_NOTE_MAX_LENGTH`, `CLOSE_REASON_MAX_LENGTH` | server refuses typed text |
+| none: the proof editor shows no counter | `sanitize._MAX_LENGTH` (200,000 characters of HTML), `_MAX_TAGS` | nothing drifts: the caps count markup the editor does not show, so the server's `invalid_proof` answer stands |
 | `components/profile/useProfileEdit.ts::BIO_MAX_LEN` | `schemas/user.BIO_MAX_LEN` | server refuses typed text |
-| `lib/xHandle.ts::X_HANDLE_REASON_MAX_LEN` | `schemas/x_handle_request.REASON_MAX_LENGTH` | server refuses typed text |
-| `components/admin/ProductUpdatesPanel.tsx` `PRODUCT_UPDATE_TITLE_MAX_LEN`, `PRODUCT_UPDATE_BODY_MAX_LEN` | `schemas/product_update.py` title and body `max_length` | server refuses typed text |
 | `components/ui/TagPicker.tsx::TAG_NAME_MAX_LEN` | `schemas/tag.py` name `max_length` | server refuses typed text |
-| `lib/collections.ts::COLLECTION_TITLE_MAX_LEN`, `COLLECTION_DESCRIPTION_MAX_LEN` | `models/event.TITLE_MAX_LENGTH`, `schemas/collection.DESCRIPTION_MAX_LENGTH` | server refuses typed text |
+| `lib/collections.ts::COLLECTION_DESCRIPTION_MAX_LEN` | `schemas/collection.DESCRIPTION_MAX_LENGTH` | server refuses typed text |
 | `lib/proof.tsx::htmlText` | `sanitize.html_text` | description counter disagrees with the server cap |
 | `lib/proof.tsx::proofImageSrcs`, `proofHasImage` | `sanitize.extract_image_srcs`, `events._require_proof_image` | form calls a proof ready that the server refuses |
-| `lib/cardTags.ts` `UNKNOWN_VALUE` | the `Unknown` row of `CAPTURE_SOURCE_TAGS` in the baseline migration (`alembic/versions/g5i7k9m1o3q5_baseline.py`) | feed cards show a *Capture source: Unknown* pill |
 | `lib/conflicts.ts::CONFLICT_OTHER_NAME` | the `Other` conflict row the baseline migration seeds (`alembic/versions/g5i7k9m1o3q5_baseline.py`) | the conflict picker stops offering the escape value |
 | `lib/collections.ts::COLLECTABLE_STATUSES` | `event_filters.collectable_events` | picker offers rows the add verb refuses (409) |
 | `components/collections/EventPicker.tsx::chronological` | `collections.chronological_key` | the picker orders a collection's events differently from its page |
 | `lib/og.ts::MOSAIC_MAX_TILES` | `collections.COVER_TILES` | a share card draws more tiles than the server sends |
-| `components/event/useEventActions.tsx` credit controls on `geolocated` rows only | `geolocator_credit._require_published` | the Geolocators panel offers an invitation the API refuses (409) |
-| `lib/approvals.ts::canApprove` | `approvals.approve` (published only, never a geolocator, one approval per analyst and version, one standing approval per organization and version) | the Approvals card offers an approval the API refuses (403 or 409); the API's `viewer_can_approve` covers former geolocators, whom the event's credit no longer lists |
-| `lib/approvals.ts::ownApprovalOnLive` | `approvals.approve` (one approval per analyst and version, revoked included) | the Approvals card offers Approve to a reviewer whose revoked approval blocks it, or hides Revoke on an approval that stands |
-| `lib/approvals.ts::organizationApprovalOnLive` and `hooks/useMemberOrganizations.ts` | `approvals._revoker_role` and `organizations.is_organization_member` (any member approves and revokes in the organization's name) | the Approvals card hides **Approve as** or **Revoke as** from a member the API accepts, or offers one the API refuses |
-| `lib/approvalRequests.ts::canRequestApproval` | `approval_requests._require_requester` (published only, a geolocator of the event) | the Approval requests card offers a request the API refuses (403 or 409) |
+| `components/event/useEventActions.tsx` and `components/geolocations/edit/EventEditForm.tsx` credit controls on `geolocated` rows only | `geolocator_credit._require_published` | the Geolocators panel or the edit form's byline offers an invitation the API refuses (409) |
+| `lib/geolocatorCredit.ts::MAX_EVENT_GEOLOCATORS`, the local refusals of `components/event/useGeolocatorsByline.tsx::inviteRefusal` | `geolocator_credit.MAX_EVENT_GEOLOCATORS` (the owner and pending invitations included) and the `already_geolocator`, `already_invited` and `too_many_geolocators` checks of `_stage_invite` | the byline holds back an invitation the API accepts, or lets through one it refuses (409, and a publish that carries it publishes nothing) |
+| `lib/approvals.ts::canApprove` | `approvals.approve` (published only, never a geolocator, one approval per analyst and version, one approval per organization and version) | the event page offers an approval the API refuses (403 or 409); the API's `viewer_can_approve` covers former geolocators, whom the event's credit no longer lists |
+| `hooks/useMemberOrganizations.ts` (each organization `canApprove` checks in the reader's name) | `organizations.is_organization_member` (any member approves in the organization's name) | the event page hides **Approve as** from a member the API accepts, or offers one the API refuses |
+| `lib/approvalRequests.ts::canRequestApproval` | `approval_requests._require_requester` (published only, a geolocator of the event) | the event page offers **Request approval** where the API refuses a request (403 or 409) |
 | `app/page.tsx::ROADMAP` | the [open issues of type Epic](https://github.com/vidithq/vidit/issues?q=is%3Aissue%20state%3Aopen%20type%3AEpic) except Future considerations: title, outcome (the epic's first line) and whether work has started | landing roadmap promises an outcome no epic plans, or leaves out one that an epic plans |
 | `lib/palette.ts::DEFAULT_PALETTE`, `lib/theme.ts::DEFAULT_THEME`, `lib/helpPreference.ts` (help shown when unset) | `schemas/preferences.DISPLAY_DEFAULTS` | first paint on a new device differs from the account's default until the preferences load |
 | `lib/palette.ts::PALETTES`, `lib/theme.ts::isThemeId` and the `data-palette` / `data-theme` blocks in `app/globals.css` | `schemas/preferences.PaletteId`, `ThemeId` (the id types are generated; the lists and CSS are not) | Settings offers no control for a value the API accepts, or the value repaints nothing |
 | the default `orange-*` scale in `app/globals.css`, the `/icon/android-192` route of `app/icon.tsx` | `services/email_layout.py` accent hex and `_LOGO_PATH` | emails wear another accent than the site, or show a broken header image |
-| `public/sw.js` payload fields `title`, `body`, `path` | `push.PushMessage` | push notifications show the fallback title or open `/notifications` |
 | `lib/users.ts::SOCIAL_HOSTS`, `SOCIAL_HANDLE_PATTERN` | `schemas/user.SOCIAL_PROFILE_HOSTS`, `SOCIAL_HANDLE_PATTERNS` | profile links the wrong host or hides an accepted handle |
-| `lib/snapshots.ts::SNAPSHOT_HOSTS` | keys of `source_archive.PROVIDER_HOSTS` | pre-submit check disagrees with the server, and a snapshot host asks before it opens |
+| `lib/snapshots.ts::SNAPSHOT_HOSTS` (from `WAYBACK_HOST`, `ARCHIVE_TODAY_HOSTS`, `GHOSTARCHIVE_HOST`), `snapshotProvider` | keys and providers of `source_archive.PROVIDER_HOSTS` | pre-submit check disagrees with the server, and a snapshot host asks before it opens |
 | `lib/snapshots.ts` hosts and capture-path patterns | `source_archive._WAYBACK_REPLAY_RE`, `_ARCHIVE_TODAY_CAPTURE_RE`, `PROVIDER_HOSTS` | mis-paste check silently matches nothing |
 | `lib/proof.tsx::TAG_CLASSES` (the read view's tag allowlist), `isSafeLinkHref`, `isSafeImageSrc` (`NEXT_PUBLIC_MEDIA_HOST`); `components/editor/ProofEditor.tsx` schema | `sanitize.py` nh3 tag and attribute allowlist, `safe_link_href`, `_safe_image_src` (CDN host pin) | a security fix lands on one side only |
-| `types/index.ts::MapPoint` 6-tuple | `routers/events/read.py::list_points` tuple order `[id, lat, lng, event_date, added_date, detected]` | every map point mis-decodes |
+| `types/index.ts::MapPoint` 6-tuple | `routers/events/read.py::list_points` tuple order `[id, lat, lng, occurred_date, added_date, detected]` | every map point mis-decodes |
 | expiry copy on `app/(auth)/forgot-password`, `registration-pending` and `resend-confirmation` (15 minutes, 24 hours) | `config.password_reset_token_minutes`, `registration.CONFIRMATION_TOKEN_MINUTES` | page states the wrong expiry |
 | `@viditbot` in `app/import/page.tsx` and `components/ui/MockPost.tsx` | `config.x_bot_handle` | guide names the wrong handle |
-| the retention periods on `app/privacy/page.tsx` (24 hours, 30 days) | `registration.CONFIRMATION_TOKEN_MINUTES`, `maintenance.AUTH_TOKEN_RETENTION_DAYS` | the privacy page states a period the server does not apply |
+| the retention periods on `app/privacy/page.tsx` (24 hours, 30 days) | `registration.CONFIRMATION_TOKEN_MINUTES`, `maintenance.PASSWORD_RESET_TOKEN_RETENTION_DAYS` | the privacy page states a period the server does not apply |
 | `lib/approvalRequests.ts::APPROVAL_REQUEST_AUDIENCE_DEFAULT` | `models/user_preferences.APPROVAL_REQUEST_AUDIENCE_DEFAULT` | Settings shows an audience the server does not apply while preferences load |
-| `lib/notifications.ts::NotificationChannel`, `CHANNEL_LABEL` | `models/notification.NotificationChannel` (the preferences schema types channels as plain keys) | Settings offers no switch for a channel the server delivers on |
 | `lib/notifications.ts::NOTIFICATION_KIND_COPY` labels | the `setting` each notification builder passes in `services/email.py` | an email names a switch Settings does not show |
 | `lib/notifications.ts::MAX_READ_IDS` | `schemas/notification.NotificationReadUpdate.ids` (`MAX_PAGE_SIZE`) | marking a long list read is refused with 422 and its rows stay unread |
 | `lib/notifications.ts::unsubscribeTokenKind` (the `<user>.<kind>.<signature>` token shape) | `unsubscribe_tokens.sign`, `verify` | the unsubscribe page reads the wrong kind from a valid link, or rejects one the server signed |
-| the `code` each page branches on: `archive_*` in `components/geolocations/ImportArchivePanel.tsx`, `nothing_changed` in `components/geolocations/edit/EventEditForm.tsx`, `email_pending_confirmation` in `components/auth/RegisterForm.tsx`, `device_revoked` in `lib/push.ts`, `version_mismatch` in `components/event/Approvals.tsx` | the `code` of the matching error classes in `archive_jobs`, `tweet_ingest/archive_zip`, `events/errors`, `registration`, `push` and `approvals` | the page prints a generic error, or skips its recovery step, for a refusal it handles |
+| the `code` each page branches on: `archive_*` in `components/geolocations/ImportArchivePanel.tsx`, `nothing_changed` in `components/geolocations/edit/EventEditForm.tsx`, `email_pending_confirmation` in `components/auth/RegisterForm.tsx`, `version_mismatch` in `components/event/Approvals.tsx`, `too_many_uploads` in `lib/sources.ts::uploadError` | the `code` of the matching error classes in `archive_jobs`, `tweet_ingest/archive_zip`, `events/errors`, `uploads`, `registration` and `approvals` | the page prints a generic error, or skips its recovery step, for a refusal it handles |
 | the last org manager rule in `components/organizations/OrganizationMembers.tsx` | `organizations._guard_last_manager` | the members list offers Leave or Make member that the server refuses, or hides one it accepts |
+
+### Schema naming convention
+
+Every table, column, constraint and API field follows these rules. The API field carries the database column's name, with no alias.
+
+| Rule | Form | Example |
+|---|---|---|
+| Foreign key | `<role>_id`, where the role says what the row is to this one | `owner_id`, `requested_by_id`, `used_by_id` |
+| Boolean | starts with `is_` or `has_` | `is_graphic`, `is_ongoing` |
+| Timestamp | ends with `_at`, stored as `TIMESTAMPTZ` | `created_at`, `hidden_at` |
+| Date, time of day | ends with `_date` or `_time` | `occurred_date`, `occurred_time` |
+| Counter | ends with `_count` | `attempt_count`, `detection_count` |
+| Enum | `VARCHAR` plus a CHECK named `ck_<table>_<column>_valid` | `ck_media_kind_valid` |
+| Repeated table name | A column does not repeat its table name | `media.kind`, not `media.media_type` |
+| Discriminator | Name it `kind`, never `type` | `media.kind`, `notifications.kind` |
+| Post | Write "post", never "tweet" | `event_detections.from_post_id` |
+| Event source | `source` is reserved for event sources | `sources`, `source_links`, `source_tags`, `media.source_id` |
+| X handle | `x_handle`, with a prefix when the table holds another handle | `users.x_handle`, `bot_mentions.author_x_handle` |
+| Leading underscore | A column or field name never starts with one | `token_hash` |
+| Creation stamp | Every entity table has `created_at`. A join table has none. | `tags.created_at`, `conflicts.created_at` |
+| Queue status | Background queues share `queued`, `running`, `done`, `failed`, `skipped`, and use the subset they need | `notification_deliveries.status` |
 
 ### Migration house style
 
@@ -501,7 +396,7 @@ Every other frontend copy of a backend rule or of the issue tracker is hand-kept
 - Geometry columns use `geoalchemy2` types, with `spatial_index` stated explicitly (GeoAlchemy2 otherwise creates a GIST index by default).
 - Validate a new migration's whole chain on a fresh database before pushing: `docker-compose up -d`, then `uv run alembic upgrade head`. Verify the current head with `uv run alembic heads`, not by filename sort order.
 
-The chain starts at one baseline migration, the only file whose `down_revision` is `None`. It builds the whole schema in a single step: the `postgis` extension, every table, constraint and index, and the seed rows a fresh database needs (the `capture_source` tag taxonomy and the `Other` conflict escape value). New migrations stack on top of it as usual.
+The chain starts at one baseline migration, the only file whose `down_revision` is `None`. It builds the whole schema in a single step: the `postgis` extension, every table, constraint and index, and its seed rows: the `capture_source` tags, which a later migration maps to source kinds and drops, and the `Other` conflict escape value. New migrations stack on top of it as usual.
 
 A squash replaces the chain with a new baseline that **keeps the previous head's revision id**. A database whose `alembic_version` already holds that id therefore needs no stamp, and the `migrate` role runs nothing. Read the deployed revision before merging a squash, and squash only when it matches the head being replaced:
 
@@ -517,9 +412,11 @@ The pytest template database keys its reuse on the alembic head id, which a squa
 
 ## Frontend: conventions
 
-Client pages load read-only API data through `useApiResource<T>(path)` ([`frontend/src/hooks/useApiResource.ts`](../frontend/src/hooks/useApiResource.ts)). It issues a GET on mount and on every `path` change, aborts the in-flight request on unmount or path change, and skips the request while `path` is `null` (auth unresolved, route params not ready). Call `refetch()` for retry buttons and post-mutation refreshes. Errors surface as messages for the page to render; 401 handling stays in the proxy. Lists the page mutates after seeding (for example, `TagPicker` appending a newly created tag) stay on `useState` plus `apiFetch`. Writes (create, update, delete) run through `useMutation(fn, { onSuccess, onError, fallback })` ([`frontend/src/hooks/useMutation.ts`](../frontend/src/hooks/useMutation.ts)), the shared `loading` / `error` / try-catch wrapper. `errorMessage(err, fallback)` ([`api.ts`](../frontend/src/lib/api.ts)) pulls the message. The anonymous-to-`/login` bounce on a protected page is `useRequireAuth()`, the mirror of `useRedirectIfAuthenticated`.
+Client pages load read-only API data through `useApiResource<T>(path)` ([`frontend/src/hooks/useApiResource.ts`](../frontend/src/hooks/useApiResource.ts)). It issues a GET on mount and on every `path` change, aborts the in-flight request on unmount or path change, and skips the request while `path` is `null` (auth unresolved, route params not ready). Call `refetch()` for retry buttons and post-mutation refreshes. Errors surface as messages for the page to render. Lists the page mutates after seeding (for example, `TagPicker` appending a newly created tag) stay on `useState` plus `apiFetch`. Writes (create, update, delete) run through `useMutation(fn, { onSuccess, onError, fallback })` ([`frontend/src/hooks/useMutation.ts`](../frontend/src/hooks/useMutation.ts)), the shared `loading` / `error` / try-catch wrapper. `errorMessage(err, fallback)` ([`api.ts`](../frontend/src/lib/api.ts)) pulls the message. The anonymous-to-`/login` bounce on a protected page is `useRequireAuth()`, the mirror of `useRedirectIfAuthenticated`.
 
 The auth wall in [`proxy.ts`](../frontend/src/proxy.ts) is default-deny over an explicit public set (`PUBLIC_PREFIXES`). Anonymous read is open on the content routes (map, events, requests, collections, profiles, organizations, search), the guide and legal pages (`/about`, `/guide`, `/import`, `/methodology`, `/legal`, `/privacy`, and the `/archive` and `/bot` redirects), and the auth pages. Write and account surfaces (`/submit`, `/settings`, `/admin`, `/feed`, `/notifications`) require a session. Write sub-routes nested under a public prefix (`/events/[id]/edit`, `/profile/[username]/detections`, `/collections/new`, `/collections/[id]/edit`) are bounced client-side by `useRequireAuth`.
+
+A session the server stops accepting moves the browser to signed out in one place. `apiFetch` reports a 401 from any path but `/auth/login` and `/auth/me` through [`lib/session.ts`](../frontend/src/lib/session.ts). `AuthProvider` then reads `/auth/me` once, however many calls failed together. A 401 there clears the user, and [`SessionEndedNotice`](../frontend/src/components/SessionEndedNotice.tsx) says *Your session ended. Sign in again.* with a sign-in link back to the current page. Any other answer leaves the user in place. A 403 is a refusal to a live session and never signs anyone out.
 
 Keep one short pointer on each side of a hand-kept frontend/backend mirror (the list is in [Hand-kept mirrors](#hand-kept-mirrors)), for example `Mirrors backend storage.derivative_key; change both.` Keep a comment to the fewest lines that hold the fact, usually one to three.
 
@@ -545,8 +442,6 @@ Each service has its own `.env` (not committed):
 
 - `backend/.env`: `DATABASE_URL`, `JWT_SECRET`, `STORAGE_BACKEND` (`local` or `s3`), `S3_BUCKET`, `AWS_REGION`, `CLOUDFRONT_DOMAIN`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `CORS_ORIGINS`. Full list in `backend/.env.example`.
 - `frontend/.env.local`: `NEXT_PUBLIC_API_URL`. Full list in `frontend/.env.local.example`.
-
-`make env` sets `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` in `backend/.env`, so push notifications work locally ([Web Push](#web-push)).
 
 Set `REPORT_NOTIFY_EMAIL` in `backend/.env` to receive one email per content report a viewer files. The message names the reason and links to both the admin console and the reported event. Leave it unset to record reports without sending mail. The admin report queue holds every report either way.
 
@@ -685,7 +580,7 @@ To change the shard count, edit the `group` list in the `backend-test-shard` mat
 
 The `frontend-e2e` job tests the phone layouts in a real Chromium, because jsdom (where `vitest` runs) has no layout engine.
 
-The suite lives in [`frontend/e2e/`](../frontend/e2e). [`frontend/playwright.config.ts`](../frontend/playwright.config.ts) runs every spec as two projects: Desktop Chrome at 375x812 and at 320x568, with no touch emulation, mobile user agent or device pixel ratio. It covers the golden paths (open a shared event link, browse and filter the map, fill the submit page in both modes, sign in and read settings), the pages that hold the narrowest content columns (the request board, the notifications list, the organization page, a profile, the collection pages and the event edit page), and the shared page chrome. A spec that measures a wide layout, such as the page width or a sticky filter rail, sets its own viewport with `page.setViewportSize` and asserts positions instead.
+The suite lives in [`frontend/e2e/`](../frontend/e2e). [`frontend/playwright.config.ts`](../frontend/playwright.config.ts) runs every spec as two projects: Desktop Chrome at 375x812 and at 320x568, with no touch emulation, mobile user agent or device pixel ratio. A spec that needs a finger, such as the swipe through an event's sources or the tap on an approval stamp, sets `hasTouch` with its own `test.use`, and drives a swipe as raw touch points (`Input.dispatchTouchEvent`): the headless Linux browser on CI reports no touch screen, so a synthesized touch scroll gesture does not scroll there. It covers the golden paths (open a shared event link, browse and filter the map, fill the submit page in both modes, sign in and read settings), the pages that hold the narrowest content columns (the request board, the notifications list, the organization page, a profile, the collection pages and the event edit page), and the shared page chrome. A spec that measures a wide layout, such as the page width or a sticky filter rail, sets its own viewport with `page.setViewportSize` and asserts positions instead.
 
 Each narrow-column spec takes the same three assertions, held in `e2e/support/narrowLayout.ts`:
 
@@ -693,7 +588,7 @@ Each narrow-column spec takes the same three assertions, held in `e2e/support/na
 - The page's primary control is visible, scrolled into view, and wholly inside the viewport (`toBeInViewport({ ratio: 1 })`). The scroll runs once, before the assertion, so a spec waits for any block above the control that renders a loading box and then grows: on the collection page, it waits for the player panel's event heading before it measures the Events header.
 - Every visible editable field computes a `font-size` of at least 16px, the size below which a phone zooms on focus. `<input>` types that render no typed text (`hidden`, `checkbox`, `radio`, `file`, `range`, `color`, `submit`, `button`, `reset`, `image`) are excluded.
 
-The suite has no screenshot comparison and no retries. It needs no database and no backend: `e2e/support/mockApi.ts` answers every API call with `page.route`, and `grantSession` sets the CSRF cookie [`proxy.ts`](../frontend/src/proxy.ts) reads. The config builds the app and serves it with `next start`, because a production server renders each page with less CPU than `next dev`, which compiles each route on its first request. `proxy.ts` exempts `localhost` from its host redirect, so that server answers on localhost and does not redirect to the apex. CI runs the suite with two workers, because the server and two browsers already use all four vCPUs of a runner. A failing run keeps its traces under `frontend/test-results/`, which the CI job uploads as an artifact.
+The suite has no screenshot comparison and no retries. It needs no database and no backend: `e2e/support/mockApi.ts` answers every API call with `page.route`, and `answerWith` swaps one path's fixture for a spec that needs another shape of the row, and `grantSession` sets the CSRF cookie [`proxy.ts`](../frontend/src/proxy.ts) reads. The config builds the app and serves it with `next start`, because a production server renders each page with less CPU than `next dev`, which compiles each route on its first request. `proxy.ts` exempts `localhost` from its host redirect, so that server answers on localhost and does not redirect to the apex. CI runs the suite with two workers, because the server and two browsers already use all four vCPUs of a runner. A failing run keeps its traces under `frontend/test-results/`, which the CI job uploads as an artifact.
 
 To run it locally, from `frontend/`:
 
@@ -712,8 +607,7 @@ The backend image runs every backend role. Its entrypoint, [`backend/entrypoint.
 |---------|------|-----------|--------------------|
 | `api` | The FastAPI server on `$PORT` (default `8000`), with the proxy-header flags in [Particularities](#particularities-non-obvious-behavior-found-during-development). | Always on; serves `/health`. | N/A |
 | `migrate` | `alembic upgrade head`, then exits. | One-shot, before each new `api` release takes traffic. A non-zero exit means the schema did not reach the head: do not start the new release. | Once per deploy |
-| `worker` | The import worker: notification emails, product update emails, archive imports, and bot webhook events ([Scheduler services](#scheduler-services)). | Always on; listens on no port. Two workers are safe. | N/A |
-| `bot` | One reconciliation pass of the mention pipeline ([`ingestion.md`](ingestion.md#the-bot)), then exits. | Scheduled. A missed run is harmless. | Hourly, `0 * * * *` |
+| `worker` | The import worker: notification emails, archive imports, the bot mention queue, the hourly bot catch-up and the hourly reaper of expired staged uploads ([Scheduler services](#scheduler-services)). | Always on; listens on no port. Two workers are safe. | N/A |
 | `sync-conflicts` | One pass of the ongoing-conflicts sync ([`conflicts.md`](conflicts.md)), then exits. | Scheduled. A missed run is harmless. | Once a day |
 
 Run a role locally against the image:
@@ -723,7 +617,7 @@ docker build -t vidit-backend backend
 docker run --rm --env-file backend/.env vidit-backend migrate
 ```
 
-Start `api` only after `migrate` succeeds. `worker`, `bot` and `sync-conflicts` wait for the schema to reach the head before their first pass ([Scheduler services](#scheduler-services)), so they can start alongside `migrate`. Any other argument list runs as a plain command, for example `docker run --rm vidit-backend alembic history`. The database backup is not a role: [`backups.md`](backups.md) describes what to dump and how.
+Start `api` only after `migrate` succeeds. `worker` and `sync-conflicts` wait for the schema to reach the head before their first pass ([Scheduler services](#scheduler-services)), so they can start alongside `migrate`. Any other argument list runs as a plain command, for example `docker run --rm vidit-backend alembic history`. The database backup is not a role: [`backups.md`](backups.md) describes what to dump and how.
 
 ### Deployment
 
@@ -734,14 +628,14 @@ To deploy a release tag to an instance:
 1. Take a database snapshot when the tag ships a migration ([`backups.md`](backups.md#manual-snapshot-and-rollback)).
 2. Build the backend image from `backend/` at the tag. [`backend/.dockerignore`](../backend/.dockerignore) keeps local `.env` files, virtual environments, local media and caches out of the image.
 3. Run the `migrate` role once. When it exits non-zero, stop: the schema did not reach the head.
-4. Start `api` with the new image, with `/health` as its healthcheck. Start `worker`, and point the scheduler's `bot` and `sync-conflicts` entries at the new image. The three roles without a port can start alongside `migrate`, since they wait for the schema head ([Scheduler services](#scheduler-services)).
+4. Start `api` with the new image, with `/health` as its healthcheck. Start `worker`, and point the scheduler's `sync-conflicts` entry at the new image. The two roles without a port can start alongside `migrate`, since they wait for the schema head ([Scheduler services](#scheduler-services)).
 5. Build the frontend from `frontend/` at the same tag, with its `NEXT_PUBLIC_*` variables set in the build environment, and publish it.
 
 A code rollback is the same procedure with the previous tag and no `migrate` step. Undoing a migration is in [`backups.md`](backups.md#manual-snapshot-and-rollback).
 
 **Frontend build variables.** Next.js compiles every `NEXT_PUBLIC_*` variable into the bundle at build time, so a change takes a new build. The build reads `NEXT_PUBLIC_API_URL` (required: [`lib/api.ts`](../frontend/src/lib/api.ts) refuses to load without it), `NEXT_PUBLIC_DEMO_VIDEO_URL` (the landing demo video), `NEXT_PUBLIC_MEDIA_HOST` (the host `next/image` loads media from and the proof-image host pin, see [Particularities](#particularities-non-obvious-behavior-found-during-development); set it to the CDN host, or to the bucket endpoint when media is served from the bucket without a CDN, since a build without it allows only the local dev media host), and the Sentry variables under [Observability](#observability-whats-wired-and-how-to-turn-it-on). The version badge reads `NEXT_PUBLIC_BUILD_VERSION`, or `git describe --tags` when it is unset ([`next.config.mjs`](../frontend/next.config.mjs)), so build from a checkout with its tags, or set the variable.
 
-**Database.** Give `api`, `worker`, `bot`, `sync-conflicts` and `migrate` the same `DATABASE_URL`. The backend image carries no `pg_dump` or `pg_restore` client, so database dumps and restores run from a `postgres:16` image ([`backups.md`](backups.md)).
+**Database.** Give `api`, `worker`, `sync-conflicts` and `migrate` the same `DATABASE_URL`. The backend image carries no `pg_dump` or `pg_restore` client, so database dumps and restores run from a `postgres:16` image ([`backups.md`](backups.md)).
 
 **Media bucket.** These settings live on the bucket, not in the code:
 
@@ -750,7 +644,7 @@ A code rollback is the same procedure with the previous tag and no `migrate` ste
 - Add the `archive-imports/` lifecycle rule [`backups.md`](backups.md#media-lifecycle) describes. The worker deletes a staged object at terminal states, but an object that was uploaded and never enqueued has no job row to trigger that delete.
 - Give the API and the worker credentials with object-level permissions on the prefixes the code writes: `uploads/`, `proof/`, `archive-imports/`, `detected/` and `avatars/`. A feature that adds a prefix extends that policy, or every write to it fails with `AccessDenied`, and adds a replication rule for it ([`backups.md`](backups.md#media-replication)).
 
-Every evidence image upload writes **three** sibling objects: the original (after the EXIF strip), `<key>_hero.jpg` (max dimension 1280, JPEG q80) and `<key>_thumb.jpg` (max dimension 400, JPEG q80). An avatar writes **one**: a single stripped 400 px JPEG under `avatars/<user id>/`. Frontend renderers derive the hero and thumbnail URLs through [`frontend/src/lib/mediaUrls.ts`](../frontend/src/lib/mediaUrls.ts), a mirror of `derivative_key()` in [`backend/app/services/storage.py`](../backend/app/services/storage.py).
+Every source image writes **three** sibling objects: the original (after the EXIF strip), `<key>_hero.jpg` (max dimension 1280, JPEG q80) and `<key>_thumb.jpg` (max dimension 400, JPEG q80). A proof image, uploaded or imported, writes **one**: the stripped original, which renders as is. An avatar writes **one**: a single stripped 400 px JPEG under `avatars/<user id>/`. Frontend renderers derive the hero and thumbnail URLs through [`frontend/src/lib/mediaUrls.ts`](../frontend/src/lib/mediaUrls.ts), a mirror of `derivative_key()` in [`backend/app/services/storage.py`](../backend/app/services/storage.py).
 
 **A proxy or CDN in front of the API.** Set `TRUSTED_PROXY_HOPS` to the number of proxies that append to `X-Forwarded-For` ([Particularities](#particularities-non-obvious-behavior-found-during-development)). Do not serve bot challenges on the API host: the frontend server reads the API for share cards and page metadata ([`frontend/src/app/_og/data.ts`](../frontend/src/app/_og/data.ts)), and a challenged read makes every event and profile unfurl as the fallback card.
 
@@ -758,17 +652,15 @@ Every evidence image upload writes **three** sibling objects: the original (afte
 
 ### Scheduler services
 
-The `worker`, `bot` and `sync-conflicts` [roles](#backend-roles) run from the backend image and listen on no port. Give them no HTTP healthcheck and no `migrate` step. Configure the host to restart a role that exits non-zero.
+The `worker` and `sync-conflicts` [roles](#backend-roles) run from the backend image and listen on no port. Give them no HTTP healthcheck and no `migrate` step. Configure the host to restart a role that exits non-zero.
 
-All three take the API's `DATABASE_URL` and `JWT_SECRET`, because [`config.py`](../backend/app/config.py)'s boot check refuses the placeholder secret against a non-local database. Set `SENTRY_DSN` on each, so a failure reaches Sentry instead of staying in the logs.
+Both take the API's `DATABASE_URL` and `JWT_SECRET`, because [`config.py`](../backend/app/config.py)'s boot check refuses the placeholder secret against a non-local database. Set `SENTRY_DSN` on each, so a failure reaches Sentry instead of staying in the logs.
 
 Only `migrate` changes the schema, and a host can start these roles before it finishes. Each scheduler entry point calls `wait_for_schema_head` in [`schema_gate.py`](../backend/app/schema_gate.py) before its first pass. It compares the database revision with the alembic script head and polls every 5 seconds while the database is behind. After 10 minutes it reports to Sentry and exits non-zero, and the host's restart policy starts it again. A database at a revision the code does not know, as after a code rollback, passes at once.
 
-**`worker`**, always on. It also takes the storage variables (`STORAGE_BACKEND`, `S3_BUCKET`, `AWS_*`) and email variables (`EMAIL_*`, `RESEND_API_KEY`, `FRONTEND_URL`) the API takes, plus the six `X_*` credentials and the two reply caps, `BOT_MAX_REPLIES_PER_HOUR` and `BOT_MAX_REPLIES_PER_AUTHOR_PER_HOUR`, since it posts the webhook path's bot replies, the two notification email caps, `NOTIFICATION_EMAIL_DAILY_CAP` and `NOTIFICATION_EMAIL_DAILY_CAP_PER_USER`, the push key pair, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT`, and the product update settings `PRODUCT_UPDATE_EMAIL_DAILY_CAP`, `PRODUCT_UPDATE_EMAIL_BATCH_SIZE` and `EMAIL_PROVIDER_DAILY_QUOTA`, and `API_URL`, the base of the one-click unsubscribe URLs, which `config.py` refuses as a localhost URL when `COOKIE_SECURE` is true. `PRODUCT_UPDATE_EMAIL_DAILY_CAP` and `PRODUCT_UPDATE_EMAIL_BATCH_SIZE` are at least 1. What it drains: the [notification queue](#email) first, then one batch of [product update emails](#product-update-emails), then the jobs and mentions in [`ingestion.md`](ingestion.md#archive-import-worker). An email queue that raises is reported to Sentry and skipped for that pass, so it never holds back the jobs and mentions.
+**`worker`**, always on. It also takes the storage variables (`STORAGE_BACKEND`, `S3_BUCKET`, `AWS_*`) and email variables (`EMAIL_*`, `RESEND_API_KEY`, `FRONTEND_URL`) the API takes, plus the six `X_*` credentials, `X_WEBHOOK_ENABLED` and the two reply caps, `BOT_MAX_REPLIES_PER_HOUR` and `BOT_MAX_REPLIES_PER_AUTHOR_PER_HOUR`, since it runs the bot (see below), the notification email caps, `NOTIFICATION_EMAIL_DAILY_CAP`, `NOTIFICATION_EMAIL_DAILY_CAP_PER_USER` and `NOTIFICATION_EMAIL_DAILY_CAP_PER_ACTOR`, `EMAIL_PROVIDER_DAILY_QUOTA`, and `API_URL`, the base of the one-click unsubscribe URLs, which `config.py` refuses as a localhost URL when `COOKIE_SECURE` is true. What it drains: the [notification queue](#email) first, then the jobs and mentions in [`ingestion.md`](ingestion.md#archive-import-worker). Once when it starts and then every hour, it also deletes the staged uploads past their expiry and their objects ([`uploads`](data-model.md#uploads)), whether or not the bot is configured. If the email queue raises, the worker reports it to Sentry and skips it for that pass, so it never holds back the jobs and mentions.
 
-**`bot`**, hourly (`0 * * * *`), since the webhook owns latency and the scheduled pass only reconciles. It also takes the six `X_*` credentials, the two `BOT_MAX_REPLIES_*` caps, and `X_WEBHOOK_ENABLED` (see `backend/.env.example`): a bearer token and bot user ID to read, and the four OAuth 1.0a values to post. Without the OAuth values, the bot processes mentions but posts nothing. The process makes one pass, then exits; a failed mentions pull exits non-zero. A missed run is harmless, because the next pass resumes from the ledger. A retry is safe too, but each one pays for another mentions read. What it runs: [`ingestion.md`](ingestion.md#the-bot).
-
-Set the reply caps to the same values on `worker` and `bot`. Defaults and behaviour: [`ingestion.md`](ingestion.md#the-bot).
+The bot runs inside the worker, so no separate schedule exists for it. The worker drains the `queued` rows of `bot_mentions` that the webhook inserts. It also runs the hourly catch-up, which pulls the mentions timeline to queue what the webhook missed: once when the worker starts, then every hour. The catch-up needs `X_BOT_BEARER_TOKEN` and `X_BOT_USER_ID` (see `backend/.env.example`), and the worker skips it when either is empty. Replies need the four OAuth 1.0a values; without them, the bot processes mentions but posts nothing. A failed mentions pull is captured to Sentry and does not stop the other queues. Each pull is billed, so a worker that restarts often pays for one extra read per start. A second worker is safe: the queue claim skips rows another worker holds, but each worker runs its own catch-up. What the bot runs: [`ingestion.md`](ingestion.md#the-bot).
 
 **`sync-conflicts`**, daily. Schedule and behaviour: [`conflicts.md`](conflicts.md).
 
@@ -787,14 +679,14 @@ uv run python scripts/manage_x_webhook.py delete <webhook_id>
 
 Register the webhook **after** you deploy the endpoint: X fires a Challenge-Response Check (CRC) at register time. Once `register` and `subscribe` succeed, set `X_WEBHOOK_ENABLED=true` on the backend roles.
 
-X re-runs the CRC hourly, and the endpoint answers it in-request, using pure HMAC with no database access. A failed check deactivates the webhook silently, and two nets catch that. `manage_x_webhook.py list` shows the webhook's `valid` flag. While `X_WEBHOOK_ENABLED=true`, the poll's gap detector catches it live: a mention the poll processes fresh logs a warning and captures a Sentry message (`webhook gap: mention <id> arrived via reconciliation`). For a known outage longer than the poll covers, X's replay API re-delivers up to 24 hours of events on request, manually, from the developer console or API.
+X re-runs the CRC hourly, and the endpoint answers it in-request, using pure HMAC with no database access. A failed check deactivates the webhook silently, and two nets catch that. `manage_x_webhook.py list` shows the webhook's `valid` flag. While `X_WEBHOOK_ENABLED=true`, the catch-up's gap detector catches it live: a mention the catch-up queues fresh logs a warning and captures a Sentry message (`webhook gap: mention <id> arrived via the catch-up`). For a known outage longer than the catch-up covers, X's replay API re-delivers up to 24 hours of events on request, manually, from the developer console or API.
 
 ### Observability: what's wired and how to turn it on
 
 | Piece | State | How to turn on |
 |---|---|---|
-| Backend Sentry | `init_sentry` in [`backend/app/observability.py`](../backend/app/observability.py) boots the SDK for the API ([`main.py`](../backend/app/main.py)) and the three [scheduler services](#scheduler-services), and only when `SENTRY_DSN` is non-empty. The scheduler services send traces at the same `SENTRY_TRACES_SAMPLE_RATE` as the API. Events carry no frame local variables and no request bodies, and `send_default_pii` stays off, so a password or an API credential held in a variable or sent in a request body never reaches an event. The engine sets `hide_parameters`, so database error text carries no bound parameters. | Create a project at sentry.io (Python / FastAPI), copy the DSN, and set `SENTRY_DSN` and `SENTRY_ENVIRONMENT=production` on `api` and on the three [scheduler services](#scheduler-services). Verify: hit a 5xx path, or run `sentry_sdk.capture_message('hello')` from a shell in an `api` container, and confirm it lands. |
-| Backend logs and request ids | `configure_logging` in [`backend/app/observability.py`](../backend/app/observability.py) runs at the start of the API and of the three scheduler services. Format and routing: [Backend logs](#backend-logs). | On by default. `LOG_LEVEL` sets the level of the `app.*` loggers: `DEBUG`, `INFO` (the default), `WARNING`, `ERROR`, or `CRITICAL`, in any case. |
+| Backend Sentry | `init_sentry` in [`backend/app/observability.py`](../backend/app/observability.py) boots the SDK for the API ([`main.py`](../backend/app/main.py)) and the two [scheduler services](#scheduler-services), and only when `SENTRY_DSN` is non-empty. The scheduler services send traces at the same `SENTRY_TRACES_SAMPLE_RATE` as the API. Events carry no frame local variables and no request bodies, and `send_default_pii` stays off, so a password or an API credential held in a variable or sent in a request body never reaches an event. The engine sets `hide_parameters`, so database error text carries no bound parameters. | Create a project at sentry.io (Python / FastAPI), copy the DSN, and set `SENTRY_DSN` and `SENTRY_ENVIRONMENT=production` on `api` and on the two [scheduler services](#scheduler-services). Verify: hit a 5xx path, or run `sentry_sdk.capture_message('hello')` from a shell in an `api` container, and confirm it lands. |
+| Backend logs and request ids | `configure_logging` in [`backend/app/observability.py`](../backend/app/observability.py) runs at the start of the API and of the two scheduler services. Format and routing: [Backend logs](#backend-logs). | On by default. `LOG_LEVEL` sets the level of the `app.*` loggers: `DEBUG`, `INFO` (the default), `WARNING`, `ERROR`, or `CRITICAL`, in any case. |
 | Frontend Sentry | SDK wired in [`frontend/instrumentation-client.ts`](../frontend/instrumentation-client.ts) + [`sentry.server.config.ts`](../frontend/sentry.server.config.ts) + [`sentry.edge.config.ts`](../frontend/sentry.edge.config.ts); booted by [`frontend/instrumentation.ts`](../frontend/instrumentation.ts) which also re-exports `onRequestError = Sentry.captureRequestError` so errors thrown inside nested React Server Components reach Sentry. `Sentry.init(...)` runs only when `NEXT_PUBLIC_SENTRY_DSN` (client) or `SENTRY_DSN` (server / edge) is non-empty. `app/error.tsx` + `app/global-error.tsx` forward caught exceptions via `Sentry.captureException` (React error boundaries are not auto-captured). `next.config.mjs` is wrapped with `withSentryConfig` (with `tunnelRoute: "/monitoring"`, see the ad-blocker note below). | On the frontend host, set `NEXT_PUBLIC_SENTRY_DSN` and `NEXT_PUBLIC_SENTRY_ENVIRONMENT=production` in the build environment, and `SENTRY_DSN` and `SENTRY_ENVIRONMENT=production` in the server runtime. For source-map upload, also set `SENTRY_ORG`, `SENTRY_PROJECT` and `SENTRY_AUTH_TOKEN` in the build environment. Rebuild the frontend. Verification: see [Frontend Sentry verification](#frontend-sentry-verification) below. |
 | Vercel Web Analytics + Speed Insights | `<Analytics />` + `<SpeedInsights />` (the `/next` entrypoints of `@vercel/analytics` / `@vercel/speed-insights`) render in [`frontend/src/app/layout.tsx`](../frontend/src/app/layout.tsx). Cookieless aggregate page-view counts and Core Web Vitals; no cross-site tracking, so no consent banner is required. Both components no-op outside a Vercel deployment. | On a Vercel host, enable **Analytics** and **Speed Insights** in the project. The components send nothing until both are on. |
 | Uptime monitor | External. Checks `/health` from outside the API's network, so an outage of the host itself alerts. | Add `https://<api-host>/health` as an HTTP monitor on any uptime service, at a 1 to 5 minute interval. The endpoint is unauthenticated and returns `{"status":"ok"}`. |
@@ -852,8 +744,8 @@ EOF
 - **`CORS_ORIGINS` is a comma-separated string**, not pydantic's default JSON list. The `cors_origins_list` property parses it. The deployed frontend origin must be in the list, or browser calls fail at preflight.
 - **`COOKIE_DOMAIN` must be the parent domain of the API and frontend hosts**: the `vidit_csrf` cookie is set by the API host but read by JavaScript on the frontend host. With the API on `api.example.org` and the frontend on `example.org`, set `COOKIE_DOMAIN=.example.org`. Without the parent-domain scope, the double-submit CSRF check can't see the token, and **every mutating request fails** with `CSRF token missing or invalid`.
 - **The frontend stays up during a backend outage**: the static bundle loads from the frontend host whatever the API's state. When you investigate a report that "the site is broken", check `/health` first.
-- **uvicorn needs `--proxy-headers` behind a reverse proxy, AND nothing may read `request.client.host` for security purposes**: without `--proxy-headers --forwarded-allow-ips='*'` (set by the `api` role in [`backend/entrypoint.sh`](../backend/entrypoint.sh)), `request.url.scheme` defaults to `http` and absolute URLs in emails go out broken. With those flags, however, uvicorn populates `request.client.host` from the **left-most** entry of `X-Forwarded-For` (uvicorn's `always_trust=True` branch returns `x_forwarded_for_hosts[0]`). Most proxies *append* to `X-Forwarded-For` rather than overwrite it, so the left-most entry is whatever the client sent: fully attacker-controlled. The two callers that need a trustworthy client IP, the slowapi rate limiter and the auth-events audit log, both route through [`services/audit.py::extract_client_ip`](../backend/app/services/audit.py), which parses XFF itself and picks the **right-most** entry (the one the trusted proxy actually wrote). The slowapi side specifically uses the `rate_limit_key` wrapper (same module) as its `key_func`. Without that, an attacker could rotate `X-Forwarded-For: <random>` to mint a fresh per-IP rate-limit bucket per request, or send `X-Forwarded-For: <victim_ip>` to pin a victim's bucket and lock them out, defeating every per-endpoint rate limit. **Never read `request.client.host` directly for rate-limit, auth, or audit purposes**; reach for `extract_client_ip` / `rate_limit_key`. `TRUSTED_PROXY_HOPS` (default `1`, [`config.py`](../backend/app/config.py)) is the number of right-most `X-Forwarded-For` entries written by trusted proxies: `extract_client_ip` reads the entry at that position from the right. Set it to the number of trusted proxies that append to the header in front of the API.
-- **CodeQL false positive on `services/audit.py::log_auth_event`**: the `security-extended` suite raises `py/clear-text-logging-sensitive-data` (high) on the `logger.warning` inside `log_auth_event`, which logs only an event-name constant and a UUID. CodeQL taints the whole login `request` (its body carries the password) and follows it through `log_auth_event_from_request` into the shared call. Any PR adding a new `log_auth_event_from_request` call site makes CodeQL re-attribute the baseline alert as new, turning the (non-required) code-scanning check red. The PR stays mergeable. Editing the log line does not release the alert, because the taint is on reachability, not the arguments. To resolve it, dismiss the alert: `gh api --method PATCH repos/vidithq/vidit/code-scanning/alerts/<n> -f state=dismissed -f dismissed_reason="false positive" -f dismissed_comment="..."` (the reason takes the space form `"false positive"`; the comment caps at 280 characters).
+- **uvicorn needs `--proxy-headers` behind a reverse proxy, AND nothing may read `request.client.host` for security purposes**: without `--proxy-headers --forwarded-allow-ips='*'` (set by the `api` role in [`backend/entrypoint.sh`](../backend/entrypoint.sh)), `request.url.scheme` defaults to `http` and absolute URLs in emails go out broken. With those flags, however, uvicorn populates `request.client.host` from the **left-most** entry of `X-Forwarded-For` (uvicorn's `always_trust=True` branch returns `x_forwarded_for_hosts[0]`). Most proxies *append* to `X-Forwarded-For` rather than overwrite it, so the left-most entry is whatever the client sent: fully attacker-controlled. The one caller that needs a trustworthy client IP, the slowapi rate limiter, takes [`services/audit.py::rate_limit_key`](../backend/app/services/audit.py) as its `key_func`. Its `_client_ip` helper parses XFF itself and picks the **right-most** entry (the one the trusted proxy actually wrote). The audit log stores no IP. Without that, an attacker could rotate `X-Forwarded-For: <random>` to mint a fresh per-IP rate-limit bucket per request, or send `X-Forwarded-For: <victim_ip>` to pin a victim's bucket and lock them out, defeating every per-endpoint rate limit. **Never read `request.client.host` directly for rate-limit, auth, or audit purposes**; reach for `rate_limit_key`. `TRUSTED_PROXY_HOPS` (default `1`, [`config.py`](../backend/app/config.py)) is the number of right-most `X-Forwarded-For` entries written by trusted proxies: `_client_ip` reads the entry at that position from the right. Set it to the number of trusted proxies that append to the header in front of the API.
+- **CodeQL false positive on `services/audit.py::log_auth_event`**: the `security-extended` suite raises `py/clear-text-logging-sensitive-data` (high) on the `logger.warning` inside `log_auth_event`, which logs only an action-name constant and a UUID. CodeQL taints the whole login `request` (its body carries the password) and follows it into the `log_auth_event` call. Any PR adding a new `log_auth_event` call site makes CodeQL re-attribute the baseline alert as new, turning the (non-required) code-scanning check red. The PR stays mergeable. Editing the log line does not release the alert, because the taint is on reachability, not the arguments. To resolve it, dismiss the alert: `gh api --method PATCH repos/vidithq/vidit/code-scanning/alerts/<n> -f state=dismissed -f dismissed_reason="false positive" -f dismissed_comment="..."` (the reason takes the space form `"false positive"`; the comment caps at 280 characters).
 - **User-influenced strings entering a log line go through [`services/storage.py::scrub_log`](../backend/app/services/storage.py)**: it strips CR/LF so a crafted URL or title cannot forge extra log entries (CodeQL `py/log-injection`). Current callers: the tweet-import router (URL logging on failure) and `storage.sweep_keys` (the caller-supplied `context` phrase, which can embed a detection source URL). Route any new log interpolation of user input through it instead of adding a local scrubber.
 - **`LocalStorage` keeps every key inside its root with a `realpath` + `startswith` check** in [`services/storage.py::LocalStorage._resolve`](../backend/app/services/storage.py). CodeQL does not treat `Path.is_relative_to` as a `py/path-injection` guard, so keep the string form when you change the check.
 - **Security response headers live in two places, one per origin**: the frontend origin sets `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Content-Security-Policy: frame-ancestors 'none'` via the `headers()` block in [`frontend/next.config.mjs`](../frontend/next.config.mjs); the frontend sets no resource CSP (script, style or img directives), because Next's inline bootstrap, the MapLibre worker and the BlockNote editor need nonce plumbing for one. The API origin stamps HSTS and a global `X-Content-Type-Options: nosniff` in the `add_hsts_header` middleware ([`backend/app/main.py`](../backend/app/main.py)); the tweet-media proxy additionally pins `nosniff` on its own response and clamps the echoed `Content-Type` to the upload MIME allowlist (`ALLOWED_TYPES`), so a lying upstream cannot serve HTML/SVG from the API origin.

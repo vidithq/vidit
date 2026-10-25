@@ -44,7 +44,7 @@ def test_anonymous_report_is_accepted(db, author):
     assert body["event_id"] == str(geo.id)
     assert body["reason"] == "illegal_content"
     # No account behind it, and no verdict yet.
-    assert body["reporter_user_id"] is None
+    assert body["reporter_id"] is None
     assert body["resolved_at"] is None
     assert body["resolution"] is None
 
@@ -61,7 +61,7 @@ def test_authenticated_report_records_the_reporter(db, author, second_user):
         headers=login_as(client, second_user),
     )
     assert response.status_code == 201, response.text
-    assert response.json()["reporter_user_id"] == str(second_user.id)
+    assert response.json()["reporter_id"] == str(second_user.id)
     assert response.json()["details"] is None
 
 

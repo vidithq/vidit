@@ -45,7 +45,7 @@ def test_fresh_code_is_usable(db, fresh_invite):
 def test_validation_does_not_consume_the_code(db, fresh_invite):
     validate_invite_code(db, fresh_invite.code)
     db.refresh(fresh_invite)
-    assert fresh_invite.used_by is None
+    assert fresh_invite.used_by_id is None
     assert fresh_invite.used_at is None
 
 
@@ -57,9 +57,9 @@ def test_exhausted_code_is_not_usable(db, fresh_invite):
     )
     db.add(user)
     db.flush()
-    # Exhaustion is governed by ``used_at``, not by ``used_by``: the FK is
+    # Exhaustion is governed by ``used_at``, not by ``used_by_id``: the FK is
     # nulled when the redeemer's account is erased, the stamp is not.
-    fresh_invite.used_by = user.id
+    fresh_invite.used_by_id = user.id
     fresh_invite.used_at = datetime.now(UTC)
     db.commit()
 
@@ -67,7 +67,7 @@ def test_exhausted_code_is_not_usable(db, fresh_invite):
         assert validate_invite_code(db, fresh_invite.code) is None
     finally:
         # Detach the FK before fresh_invite teardown deletes the invite row
-        fresh_invite.used_by = None
+        fresh_invite.used_by_id = None
         db.commit()
         db.delete(user)
         db.commit()
@@ -80,9 +80,9 @@ def test_revoked_code_is_not_usable(db, fresh_invite):
 
 
 def test_code_whose_redeemer_was_erased_stays_unusable(db):
-    """``used_by`` is nulled when the account is erased; the code stays spent."""
+    """``used_by_id`` is nulled when the account is erased; the code stays spent."""
     code = f"test-erased-{uuid.uuid4().hex}"
-    invite = InviteCode(code=code, used_by=None, used_at=datetime.now(UTC))
+    invite = InviteCode(code=code, used_by_id=None, used_at=datetime.now(UTC))
     db.add(invite)
     db.commit()
     try:

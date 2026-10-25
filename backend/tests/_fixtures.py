@@ -8,12 +8,18 @@ rejects a stub). It is embedded as hex so collection needs no Pillow.
 from __future__ import annotations
 
 import json
+import secrets
 from pathlib import Path
 from typing import Any
 
 from app.config import settings
 from app.services.sanitize import html_from_text, html_text
 from app.services.tweet_ingest.records import TweetRecord
+
+
+def fake_sha256() -> str:
+    """A random hex digest for a ``Media`` row whose bytes the test never stores."""
+    return secrets.token_hex(32)
 
 
 def stored_path(key: str) -> Path:
@@ -34,6 +40,12 @@ def store_bytes(data: bytes, key: str) -> None:
     path = stored_path(key)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
+
+
+def stored_keys() -> set[str]:
+    """Every key the local storage root holds (emptied before each test, see ``conftest``)."""
+    root = Path(settings.local_storage_dir)
+    return {p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file()}
 
 
 def write_archive_js(dest: Path, entries: list[dict[str, Any]]) -> None:

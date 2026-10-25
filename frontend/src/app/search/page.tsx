@@ -65,7 +65,7 @@ import { creditProps } from "@/lib/geolocatorCredit";
 import { memberCountLabel, organizationPath } from "@/lib/organizations";
 import { countLabel } from "@/lib/format";
 import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
-import { eventHref, profileHref } from "@/lib/routes";
+import { eventHref, profileHref, requestHref } from "@/lib/routes";
 
 const ICON = { size: 13, strokeWidth: 1.8, className: "max-sm:hidden" } as const;
 
@@ -211,7 +211,7 @@ function SearchPageBody() {
             ? [
                 {
                   title: "Event date",
-                  concept: "event_date",
+                  concept: "occurred_date",
                   summary: rangeSummary(panel.dates.eventFrom, panel.dates.eventTo),
                   active: eventWindowActive(panel.dates),
                   children: (
@@ -368,7 +368,6 @@ function SearchPageBody() {
           onChange={(e) => setQueryInput(e.target.value)}
           placeholder="Try a location, an analyst handle, or a keyword from a title…"
           autoFocus
-          className="bg-neutral-900 placeholder:text-neutral-500"
         />
 
         {filterSections ? (
@@ -519,23 +518,20 @@ function DateRange({
   onChange: (from: string, to: string) => void;
 }) {
   return (
-    // The pair stacks below `sm`: a native date control needs more width than two columns leave
-    // on 320px, and the separator only reads on a row.
-    <div className="flex max-sm:flex-col max-sm:items-stretch items-center gap-2">
+    // Stacked: two native date controls at the field type size need more width than a row of the
+    // filter rail or of a 320px screen leaves.
+    <div className="flex flex-col gap-2">
       <Input
         type="date"
         value={from}
         onChange={(e) => onChange(e.target.value, to)}
         aria-label={`${label} from`}
-        className="bg-neutral-800 sm:text-[11px]"
       />
-      <span className="max-sm:hidden text-neutral-500 text-xs">–</span>
       <Input
         type="date"
         value={to}
         onChange={(e) => onChange(from, e.target.value)}
         aria-label={`${label} to`}
-        className="bg-neutral-800 sm:text-[11px]"
       />
     </div>
   );
@@ -595,7 +591,7 @@ function EventResult({ hit }: { hit: SearchEventHit }) {
       media={hit.media[0]}
       isGraphic={hit.is_graphic}
       {...creditProps(hit)}
-      date={hit.event_date ?? undefined}
+      date={hit.occurred_date ?? undefined}
       coords={{ lat: hit.lat, lng: hit.lng }}
       tags={hit.tags}
     />
@@ -606,14 +602,14 @@ function RequestResult({ hit }: { hit: SearchRequestHit }) {
   return (
     <EntityCard
       variant="compact"
-      detailHref={`/requests/${hit.id}`}
+      detailHref={requestHref(hit.id)}
       title={<Highlighted value={hit.title_highlight} />}
       titleText={hit.title}
       badge={<StatusBadge status={hit.status} />}
       media={hit.media[0]}
       isGraphic={hit.is_graphic}
       author={hit.owner}
-      source={{ url: hit.source_url }}
+      source={{ url: hit.source_urls[0] ?? null }}
     />
   );
 }

@@ -66,11 +66,11 @@ export function CollectionsSection({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="basis-56 grow min-w-0 space-y-1">
           <SectionEyebrow title="Collections" margin="none" />
-          <p className="text-xs text-neutral-500">
-            {collections.length > 0
-              ? `Named groups of ${username}'s events, newest first.`
-              : "No collections yet."}
-          </p>
+          {collections.length > 0 && (
+            <p className="text-xs text-neutral-500">
+              {`Named groups of ${username}'s events, newest first.`}
+            </p>
+          )}
         </div>
         {isOwn && collections.length > 0 && (
           <div className="shrink-0">{newCollection}</div>

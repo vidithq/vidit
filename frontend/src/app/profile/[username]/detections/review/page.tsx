@@ -9,10 +9,9 @@ import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { skipBackRecord } from "@/lib/navigation";
 import {
   detectionsReviewPath,
-  detectionEditPath,
   type PaginatedEventDetails,
 } from "@/lib/events";
-import { detectionsQueueHref, profileHref } from "@/lib/routes";
+import { detectionsQueueHref, eventEditHref, profileHref } from "@/lib/routes";
 
 /**
  * Entry to a review pass: opens the first detection of the queue and hands the
@@ -42,7 +41,7 @@ export default function DetectionReviewPage() {
     const first = data.items[0];
     // Not part of the walk: left in the back-stack, Back would redirect again.
     skipBackRecord();
-    router.replace(first ? detectionEditPath(first.id, true) : queueHref);
+    router.replace(first ? eventEditHref(first.id, true) : queueHref);
   }, [data, router, queueHref]);
 
   if (authLoading || !user || !isOwn) {

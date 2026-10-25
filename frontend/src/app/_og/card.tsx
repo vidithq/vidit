@@ -46,7 +46,7 @@ export const OG_COLOR = {
 
 /** The sidebar wordmark: accent `V` plus neutral `idit`. Satori allows only
  * `display: flex | block | none`, so two flex children carry the contrast. */
-export function OgWordmark({ fontSize = 40 }: { fontSize?: number }) {
+function OgWordmark({ fontSize = 40 }: { fontSize?: number }) {
   return (
     <div style={{ display: "flex", alignItems: "baseline", fontSize: `${fontSize}px` }}>
       <div style={{ color: OG_COLOR.accent }}>V</div>

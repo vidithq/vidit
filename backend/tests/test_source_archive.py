@@ -1,201 +1,21 @@
-"""Tests for analyst-recorded source archival.
+"""Tests for the check of an analyst-recorded snapshot URL.
 
-The capture happens in the analyst's browser; the server only checks and stores
-it. Under test: the two halves of that check (is it one of the event's links, is
-the URL a snapshot address on an accepted provider) and the one-slot write.
+The capture happens in the analyst's browser and the snapshot URL rides on a source link.
+Under test: whether a pasted URL is a snapshot address on an accepted provider, which
+provider a stored URL lives on, and whether a re-paste names the stored copy.
 """
 
 from __future__ import annotations
 
-import uuid
-from datetime import UTC, datetime
-from html import escape
-
 import pytest
-from sqlalchemy.exc import IntegrityError
 
-from app.database import SessionLocal
-from app.models.event import (
-    SOURCE_URL_MAX_LENGTH,
-    STATUS_DETECTED,
-    Event,
-    EventSourceLink,
-)
-from app.models.source_archive import SourceArchive
-from app.models.user import User
+from app.models.source import SOURCE_URL_MAX_LENGTH
 from app.services import source_archive
-from app.services.auth import hash_password
 
 SOURCE = "https://newsdesk.example/post/1234567890"
-PROOF_LINK = "https://example.org/report"
-MIRROR = "https://t.me/channel/42"
-DETECTED_FROM = "https://x.com/analyst/status/9876543210"
 CAPTURE_TS = "20260811120000"
 WAYBACK_SNAPSHOT = f"https://web.archive.org/web/{CAPTURE_TS}/{SOURCE}"
 ARCHIVE_TODAY_SNAPSHOT = "https://archive.ph/abcde"
-
-
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
-@pytest.fixture
-def owner(db):
-    user = User(
-        username=f"arc{uuid.uuid4().hex[:8]}",
-        email=f"arc-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    db.expire_all()
-    db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
-
-
-def _proof_html(*hrefs: str) -> str:
-    """An HTML proof whose paragraph carries one link per href."""
-    links = "".join(f'<a href="{escape(href)}">see this</a>' for href in hrefs)
-    return f"<p>{links}</p>"
-
-
-@pytest.fixture
-def event(db, owner):
-    row = Event(
-        owner_id=owner.id,
-        title="Archived event",
-        source_url=SOURCE,
-        proof=_proof_html(PROOF_LINK),
-        status=STATUS_DETECTED,
-        detected_at=datetime.now(UTC),
-    )
-    db.add(row)
-    db.commit()
-    db.refresh(row)
-    yield row
-    db.expire_all()
-    db.query(Event).filter(Event.id == row.id).delete(synchronize_session=False)
-    db.commit()
-
-
-def _with_mirrors(db, event, *urls: str) -> Event:
-    """Give an event the ordered secondary source links ``urls``."""
-    event.source_links = [
-        EventSourceLink(position=index, url=url) for index, url in enumerate(urls)
-    ]
-    db.commit()
-    db.refresh(event)
-    return event
-
-
-# ── link collection ────────────────────────────────────────────────────
-
-
-def test_collect_links_orders_source_first_and_tags_origin(event):
-    assert source_archive.collect_links(event) == [
-        (SOURCE, "source_url"),
-        (PROOF_LINK, "proof_link"),
-    ]
-
-
-def test_collect_links_drops_a_url_the_parse_refuses(db, owner):
-    """The archivable set is ``sanitize.safe_link_href``: a scheme the proof editor refuses is not archivable."""
-    row = Event(
-        owner_id=owner.id,
-        title="Bad link",
-        source_url=SOURCE,
-        proof=_proof_html("mailto:someone@example.com"),
-        status=STATUS_DETECTED,
-        detected_at=datetime.now(UTC),
-    )
-    db.add(row)
-    db.commit()
-    db.refresh(row)
-
-    assert source_archive.collect_links(row) == [(SOURCE, "source_url")]
-
-
-def test_collect_links_drops_an_oversized_url(db, owner):
-    """A value past the ``source_url`` ceiling cannot be stored, so it never reaches the unique index."""
-    oversized = "https://example.org/" + "x" * SOURCE_URL_MAX_LENGTH
-    row = Event(
-        owner_id=owner.id,
-        title="Long link",
-        source_url=SOURCE,
-        proof=_proof_html(oversized),
-        status=STATUS_DETECTED,
-        detected_at=datetime.now(UTC),
-    )
-    db.add(row)
-    db.commit()
-    db.refresh(row)
-
-    assert source_archive.collect_links(row) == [(SOURCE, "source_url")]
-
-
-def test_collect_links_attributes_a_shared_link_to_the_source(db, owner):
-    """A link that is both the source and a proof citation is one link, under the first provenance reached."""
-    row = Event(
-        owner_id=owner.id,
-        title="Cited source",
-        source_url=SOURCE,
-        proof=_proof_html(SOURCE),
-        status=STATUS_DETECTED,
-        detected_at=datetime.now(UTC),
-    )
-    db.add(row)
-    db.commit()
-    db.refresh(row)
-
-    assert source_archive.collect_links(row) == [(SOURCE, "source_url")]
-
-
-def test_collect_links_includes_the_secondary_source_links(db, event):
-    _with_mirrors(db, event, MIRROR)
-    assert source_archive.collect_links(event) == [
-        (SOURCE, "source_url"),
-        (MIRROR, "secondary_source"),
-        (PROOF_LINK, "proof_link"),
-    ]
-
-
-def test_collect_links_includes_the_provenance_link(db, event):
-    """The analyst's own post carries the geolocation claim and rots like the footage source."""
-    event.detected_from_url = DETECTED_FROM
-    db.commit()
-    db.refresh(event)
-
-    assert source_archive.collect_links(event) == [
-        (SOURCE, "source_url"),
-        (DETECTED_FROM, "detected_from"),
-        (PROOF_LINK, "proof_link"),
-    ]
-
-
-def test_collect_links_keeps_a_mirror_of_the_source_url_once(db, event):
-    """A mirror repeating the declared source is one link, not two."""
-    _with_mirrors(db, event, SOURCE, MIRROR)
-    assert source_archive.collect_links(event) == [
-        (SOURCE, "source_url"),
-        (MIRROR, "secondary_source"),
-        (PROOF_LINK, "proof_link"),
-    ]
-
-
-def test_origin_of_answers_membership_and_label_together(db, event):
-    _with_mirrors(db, event, MIRROR)
-    assert source_archive.origin_of(event, SOURCE) == "source_url"
-    assert source_archive.origin_of(event, MIRROR) == "secondary_source"
-    assert source_archive.origin_of(event, PROOF_LINK) == "proof_link"
-    assert source_archive.origin_of(event, "https://elsewhere.example/x") is None
 
 
 # ── snapshot validation ────────────────────────────────────────────────
@@ -317,71 +137,17 @@ def test_an_oversized_snapshot_is_refused():
     assert _reject_code(oversized) == "snapshot_url_too_long"
 
 
-# ── storing a copy ─────────────────────────────────────────────────────
+# ── provider of a stored copy ──────────────────────────────────────────
 
 
-def _stage(db, event, url, snapshot):
-    """Stage the copy the way a write path does: resolve the origin, then upsert."""
-    origin = source_archive.origin_of(event, url)
-    assert origin is not None
-    source_archive.stage_snapshot(
-        db, event=event, original_url=url, origin=origin, snapshot_url=snapshot
-    )
-    db.commit()
+def test_provider_of_reads_the_provider_off_the_host():
+    assert source_archive.provider_of(WAYBACK_SNAPSHOT) == "wayback"
+    assert source_archive.provider_of("https://ARCHIVE.IS/abcde") == "archive_today"
+    assert source_archive.provider_of("https://ghostarchive.org/archive/aBcD1") == "ghostarchive"
 
 
-def test_staging_stores_the_copy_with_its_provider_and_origin(db, event):
-    _stage(db, event, SOURCE, WAYBACK_SNAPSHOT)
-
-    stored = db.query(SourceArchive).filter(SourceArchive.event_id == event.id).all()
-    assert [(r.original_url, r.origin) for r in stored] == [(SOURCE, "source_url")]
-    assert [(r.snapshot_url, r.provider) for r in stored] == [(WAYBACK_SNAPSHOT, "wayback")]
-
-
-def test_staging_overwrites_the_slot_on_a_resubmission(db, event):
-    """One copy per link: a second paste corrects it rather than adding a row."""
-    _stage(db, event, SOURCE, WAYBACK_SNAPSHOT)
-    _stage(db, event, SOURCE, ARCHIVE_TODAY_SNAPSHOT)
-
-    stored = db.query(SourceArchive).filter(SourceArchive.event_id == event.id).all()
-    assert len(stored) == 1
-    assert (stored[0].snapshot_url, stored[0].provider) == (
-        ARCHIVE_TODAY_SNAPSHOT,
-        "archive_today",
-    )
-
-
-def test_a_link_the_event_does_not_carry_has_no_origin(db, event):
-    """``origin_of`` is the membership test before filing a copy: an undeclared URL resolves to nothing."""
-    assert source_archive.origin_of(event, "https://elsewhere.example/x") is None
-
-
-def test_every_kind_of_link_the_event_carries_has_its_own_origin(db, event):
-    """The source, a mirror, the provenance link and a proof citation are archivable, each under its own origin."""
-    event.detected_from_url = DETECTED_FROM
-    _with_mirrors(db, event, MIRROR)
-
-    for url in (SOURCE, MIRROR, DETECTED_FROM, PROOF_LINK):
-        _stage(db, event, url, ARCHIVE_TODAY_SNAPSHOT)
-
-    stored = db.query(SourceArchive).filter(SourceArchive.event_id == event.id).all()
-    assert {r.original_url: r.origin for r in stored} == {
-        SOURCE: "source_url",
-        MIRROR: "secondary_source",
-        DETECTED_FROM: "detected_from",
-        PROOF_LINK: "proof_link",
-    }
-
-
-def test_archive_row_for_matches_a_link_by_url(db, event):
-    _stage(db, event, PROOF_LINK, ARCHIVE_TODAY_SNAPSHOT)
-    db.refresh(event)
-
-    assert source_archive.archive_row_for(event, PROOF_LINK).snapshot_url == (
-        ARCHIVE_TODAY_SNAPSHOT
-    )
-    assert source_archive.archive_row_for(event, SOURCE) is None
-    assert source_archive.archive_row_for(event, None) is None
+def test_provider_of_a_host_outside_the_allowlist_is_none():
+    assert source_archive.provider_of("https://elsewhere.example/web/1/x") is None
 
 
 # ── is this paste the copy already stored ──────────────────────────────
@@ -404,19 +170,3 @@ def test_a_different_copy_is_not_the_same_snapshot():
     assert not source_archive.same_snapshot(
         WAYBACK_SNAPSHOT, WAYBACK_SNAPSHOT.replace(CAPTURE_TS, "20270101000000")
     )
-
-
-def test_the_provider_constraint_rejects_an_unknown_service(db, event):
-    """The provider Literal is also pinned in the database, so no row can add a provider the UI has no glyph for."""
-    db.add(
-        SourceArchive(
-            event_id=event.id,
-            original_url=SOURCE,
-            origin="source_url",
-            snapshot_url=WAYBACK_SNAPSHOT,
-            provider="somewhere_else",
-        )
-    )
-    with pytest.raises(IntegrityError):
-        db.commit()
-    db.rollback()

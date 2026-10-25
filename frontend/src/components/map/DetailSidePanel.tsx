@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/Button";
 import { EventDetailBody } from "@/components/event/EventDetailBody";
 import { creditProps } from "@/lib/geolocatorCredit";
 import { eventHref } from "@/lib/routes";
+import { CARD_FRAME } from "@/components/ui/Card";
 
 /** Where the panel sits. `overlay`: a card over the full-screen map page (a bottom sheet below
  * `sm`), taking the display cutout as margins from `sm` up and as padding on the sheet's three
@@ -66,7 +67,8 @@ export function DetailSidePanel({
     // sheet's three edges.
     <div
       className={cn(
-        "bg-neutral-900 rounded-lg border border-neutral-700 overflow-y-auto",
+        CARD_FRAME,
+        "overflow-y-auto",
         PLACEMENT[placement],
       )}
     >
@@ -133,7 +135,7 @@ export function DetailSidePanel({
             </p>
           </div>
 
-          <EventDetailBody geo={detail} variant="panel" />
+          <EventDetailBody geo={detail} />
         </div>
       ) : null}
 

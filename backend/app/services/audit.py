@@ -1,6 +1,6 @@
-"""Audit-log writes for auth-relevant events, plus the shared rate-limit key.
+"""Audit-log writes for account actions, plus the shared rate-limit key.
 
-`log_auth_event` inserts one row inside a SAVEPOINT and swallows its own exceptions: a logging
+`log_auth_event` inserts one ``audit_log`` row inside a SAVEPOINT and swallows its own exceptions: a logging
 blind spot beats a login outage. Without the SAVEPOINT, a failed INSERT leaves psycopg in an
 error state and the caller's next ``db.commit()`` raises ``PendingRollbackError``.
 
@@ -18,33 +18,34 @@ from fastapi import Request
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models.auth_event import AuthEvent
+from app.models.audit_log import AuditLog
 
 logger = logging.getLogger(__name__)
 
 
 # CodeQL raises py/clear-text-logging-sensitive-data on the logger call below:
-# known false positive (only an event-name constant and a UUID are logged). See
+# known false positive (only an action-name constant and a UUID are logged). See
 # docs/engineering.md, Particularities, before chasing or "fixing" it.
 def log_auth_event(
     db: Session,
     *,
-    event: str,
+    action: str,
     user_id: uuid.UUID | None = None,
 ) -> None:
-    """Insert one audit row inside a savepoint. Best-effort: never raises. Caller commits."""
+    """Insert one audit row for an action on ``user_id``'s own account, inside a savepoint.
+    Best-effort: never raises. Caller commits."""
     try:
         with db.begin_nested():
-            db.add(AuthEvent(user_id=user_id, event=event))
-    except Exception as exc:  # noqa: BLE001 — see module docstring.
-        logger.warning("auth_event log failed: event=%s user_id=%s err=%s", event, user_id, exc)
+            db.add(AuditLog(actor_id=user_id, action=action))
+    except Exception as exc:  # noqa: BLE001 (see module docstring)
+        logger.warning("audit log failed: action=%s user_id=%s err=%s", action, user_id, exc)
 
 
 def rate_limit_key(request: Request) -> str:
     """Per-IP rate-limit key for ``slowapi.Limiter``.
 
     ``request.client.host`` (slowapi's default) comes from the left-most ``X-Forwarded-For``
-    entry under uvicorn's always-trust mode. the reverse proxy *appends* to that header, so the
+    entry under uvicorn's always-trust mode. The reverse proxy *appends* to that header, so the
     left-most entry is attacker-controlled: a random value mints a fresh bucket per request,
     and a victim's IP locks the victim out. :func:`_client_ip` reads the right-most entry
     instead; never read ``request.client.host`` directly.

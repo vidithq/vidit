@@ -8,7 +8,7 @@ import { XGlyph } from "@/components/ui/BrandGlyphs";
  * `path` on this origin as its url. A getter, not a value: it reads `window` and runs only from a
  * click handler.
  */
-export function shareIntentUrl(path: string, lines: string[]): string {
+function shareIntentUrl(path: string, lines: string[]): string {
   // twitter.com/intent/tweet still serves the composer post-rebrand and is the documented domain.
   const intent = new URL("https://twitter.com/intent/tweet");
   intent.searchParams.set("text", lines.join("\n"));
@@ -17,7 +17,7 @@ export function shareIntentUrl(path: string, lines: string[]): string {
 }
 
 /** Opens the composer built by `shareIntentUrl`. */
-export function openShareIntent(path: string, lines: string[]): void {
+function openShareIntent(path: string, lines: string[]): void {
   window.open(shareIntentUrl(path, lines), "_blank", "noopener,noreferrer");
 }
 

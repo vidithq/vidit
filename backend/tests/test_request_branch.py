@@ -59,7 +59,7 @@ def test_a_mirror_post_with_a_telegram_link_and_a_video_drafts_a_request() -> No
     assert draft.source_url == "https://t.me/example_channel/351"
     assert draft.footage_candidates == [_VIDEO]
     assert draft.title.startswith("Trabajo de la unidad de drones")
-    assert draft.detected_from_tweet_id == 9200000000000000001
+    assert draft.detected_from_post_id == 9200000000000000001
     assert draft.detected_from_url == "https://x.com/analyst/status/9200000000000000001"
     # A pure thread fetches nothing, so the source's date is unknown.
     assert draft.source_posted_at is None
@@ -241,7 +241,7 @@ def test_a_coordinate_in_the_quoted_post_drafts_nothing() -> None:
 
 
 def test_two_spellings_of_one_telegram_post_draft_one_source_url() -> None:
-    """The source is stored canonical: dedup compares ``source_url`` as a string
+    """The source is stored canonical: dedup compares a source link's URL as a string
     (``detection._match_legs``), so ``www.`` and share parameters must not change it."""
     spellings = [
         "https://t.me/example_channel/351",

@@ -17,7 +17,7 @@ import type { components } from "./api-types";
 
 export type PaletteId = components["schemas"]["DisplayPreferences"]["palette"];
 
-export interface PaletteOption {
+interface PaletteOption {
   id: PaletteId;
   label: string;
   /** Representative swatch (the 500 shade) for the settings picker. */

@@ -11,25 +11,13 @@ from app.models.event import STATUS_DETECTED, Event
 from app.services.events import detection_ready_predicate
 from app.services.events.batch import _publish_detection
 from app.services.evidence_intake import EvidenceIntakeError
-from tests.events._helpers import _make_geo
-from tests.events._readiness_cases import READINESS_CASES, READY_CASE_NAMES
+from tests.events._readiness_cases import READINESS_CASES, READY_CASE_NAMES, make_detection
 
 
-def _detection(db, author, overrides):
-    return _make_geo(
-        db,
-        author=author,
-        status=STATUS_DETECTED,
-        detected_from_url="https://x.com/a/status/1",
-        source_url=overrides.pop("source_url", "https://x.com/a/status/1"),
-        **overrides,
-    )
-
-
-def test_sql_predicate_and_publish_floor_agree_row_by_row(db, author, conflict, capture_source_tag):
-    """A review supplies the conflict and capture source, so only the evidence floor can refuse."""
+def test_sql_predicate_and_publish_floor_agree_row_by_row(db, author, conflict):
+    """A review supplies the conflict and the source kind, so only the evidence floor can refuse."""
     rows = {
-        name: _detection(db, author, dict(overrides))
+        name: make_detection(db, author, overrides)
         for name, (overrides, _) in READINESS_CASES.items()
     }
     names_by_id = {geo.id: name for name, geo in rows.items()}
@@ -50,7 +38,7 @@ def test_sql_predicate_and_publish_floor_agree_row_by_row(db, author, conflict, 
                 db,
                 event_id=geo.id,
                 current_user=author,
-                capture_source_tag=capture_source_tag,
+                kind="smartphone",
                 conflicts=[conflict],
             )
         except EvidenceIntakeError:
@@ -65,7 +53,7 @@ def test_sql_predicate_and_publish_floor_agree_row_by_row(db, author, conflict, 
 
 def test_incomplete_is_the_exact_complement(db, author):
     """A NULL predicate leg would drop rows from both queues; every leg must be true or false."""
-    rows = [_detection(db, author, dict(overrides)) for overrides, _ in READINESS_CASES.values()]
+    rows = [make_detection(db, author, overrides) for overrides, _ in READINESS_CASES.values()]
     ids = [geo.id for geo in rows]
     ready = detection_ready_predicate()
 

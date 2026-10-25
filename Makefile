@@ -47,7 +47,6 @@ install:
 
 env:
 	@if [ ! -f backend/.env ]; then cp backend/.env.example backend/.env && echo "Created backend/.env"; fi
-	@cd backend && uv run python scripts/ensure_vapid_keys.py
 	@if [ ! -f frontend/.env.local ]; then cp frontend/.env.local.example frontend/.env.local && echo "Created frontend/.env.local"; fi
 
 db-up:

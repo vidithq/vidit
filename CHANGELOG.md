@@ -2,6 +2,75 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## v0.8.0, 2026-10-25
+
+### Added
+
+- An event holds up to 10 sources, each with a level (direct, indirect or context), a kind (such as drone, aircraft or satellite), a capture time and position, a graphic flag, tags, a file, and up to 10 links with their post time and archived copy ([#693](https://github.com/vidithq/vidit/pull/693)).
+- `POST /uploads` stages one source file before the event write that uses it; a staged file nobody uses is deleted after 24 hours ([#693](https://github.com/vidithq/vidit/pull/693)).
+- Search matches source titles and source URLs, and the map, list, search and feed filters take `source_kind` and `level` ([#693](https://github.com/vidithq/vidit/pull/693)).
+- The event page and both event forms show the sources side by side in one row with arrows, each reading title, level, kind, links, capture time, capture position, then tags; a lone source shows its file beside them on a wide screen ([#693](https://github.com/vidithq/vidit/pull/693)).
+- In the event form, each source link is one row with its post time and archive box, the capture details fold under More details, removing a source takes a second click, and a publish attempt shows the first source with a missing field ([#693](https://github.com/vidithq/vidit/pull/693)).
+- A satellite or aircraft source warns, without blocking, when no imagery provider lets a reader reopen the image at its date; the form names the provider, how to reopen the image and its credit, and `POST /sources/check` runs the check ([#693](https://github.com/vidithq/vidit/pull/693)).
+- Submitting a geolocation or publishing a request or a detection invites the co-geolocators you pick by the byline, in the same write; `POST /events` and `POST /events/{id}/versions` take `geolocator_invites` ([#693](https://github.com/vidithq/vidit/pull/693)).
+- The feed shows machine detections from the analysts you follow, or from everyone on All, and a **Show detections** switch in its Kind filter hides them; `GET /feed` takes `kind=detected` ([#693](https://github.com/vidithq/vidit/pull/693)).
+
+### Changed
+
+- Every event write takes a `sources` list in place of the source URL, mirror, snapshot, capture position, post time, graphic flag and file fields, and event reads serve `sources` in place of the source and archive fields ([#693](https://github.com/vidithq/vidit/pull/693)).
+- Publishing needs a direct or indirect source with a file and a conflict; no tag is required. Every source needs a kind, `unknown` included. A request needs a direct or indirect source with a file ([#693](https://github.com/vidithq/vidit/pull/693)).
+- The analyst who publishes a request can correct its sources, and batch completion takes a source kind per detection in place of a capture-source tag ([#693](https://github.com/vidithq/vidit/pull/693)).
+- The graphic flag belongs to each source, and an event is graphic when any of its sources is; the admin moderation flag sets or clears it on every source ([#693](https://github.com/vidithq/vidit/pull/693)).
+- A request or a detection is version 0, published from its edit form through `POST /events/{id}/versions`; the published event is version 1, and the history and the version selector name version 0 *Request* or *Detection* ([#693](https://github.com/vidithq/vidit/pull/693)).
+- `POST /events/{id}/versions` takes an optional `version_no`, the version the form was loaded at, and answers 409 `version_mismatch` when the event has moved past it ([#693](https://github.com/vidithq/vidit/pull/693)).
+- A re-import or a bot re-tag never writes over an event that has a saved version ([#693](https://github.com/vidithq/vidit/pull/693)).
+- Profile stats count events per source kind, the source hosts read each event's first source URL, and `GET /tags` lists the tags on live events or their sources ([#693](https://github.com/vidithq/vidit/pull/693)).
+- API and database fields follow one naming convention: events use `occurred_date`, `occurred_time` and `coords`, media use `kind`, conflicts use `is_ongoing`, and foreign keys end in `_id`. The old field names no longer work, with no alias ([#693](https://github.com/vidithq/vidit/pull/693)).
+- An organization invitation is withdrawn by the invitee's username instead of an invitation id, and the organization and event invitation lists report `invited_at` in place of `created_at` ([#693](https://github.com/vidithq/vidit/pull/693)).
+- Approvals are final: Approve asks you to confirm first, joining an event as a co-geolocator deletes your approvals of it, and a site admin can delete an approval, after which its reviewer or organization can approve that version again ([#693](https://github.com/vidithq/vidit/pull/693)).
+- Approvals show under the event actions as the reviewers' pictures with a check badge, and a geolocator asks for one from a **Request approval** action ([#693](https://github.com/vidithq/vidit/pull/693)).
+- Notification settings are one email switch per kind, and the in-app notification list always shows every kind ([#693](https://github.com/vidithq/vidit/pull/693)).
+- A site admin links an X handle to an account ([#693](https://github.com/vidithq/vidit/pull/693)).
+- The worker runs the hourly bot mentions catch-up when it has the bot's X read credentials, so the backend image has no `bot` command and the bot needs no schedule of its own. Mentions queued by the webhook and the catch-up share one table ([#693](https://github.com/vidithq/vidit/pull/693)).
+- To upgrade, stop the worker, then run the database migrations, which move every event onto sources and lose data on downgrade. Give the worker the bot's X read credentials, and call `reap-password-reset-tokens` in place of `reap-auth-tokens` ([#693](https://github.com/vidithq/vidit/pull/693)).
+- The event page and both event forms share one layout: the title, which a form's Title field replaces, and the geolocators, the actions pinned top right over the approvals, then sources and proof beside location and Details ([#693](https://github.com/vidithq/vidit/pull/693)).
+- Submit opens on three cards, Single event, From an X post and Bulk import, in place of the mode switch; the chosen path stays in the address, and the back arrow returns to the cards ([#693](https://github.com/vidithq/vidit/pull/693)).
+- Both event forms pin their buttons on one line with a count of what each publish still misses, ask for a second click on every publish, and check a write in the same order with the same messages ([#693](https://github.com/vidithq/vidit/pull/693)).
+- A submit with blank required fields turns them red in place and reads the list to a screen reader, with no box listing them ([#693](https://github.com/vidithq/vidit/pull/693)).
+- Saving a version asks for its optional note in a small panel on the Save button, and the owner closes the event from a red trash button beside it ([#693](https://github.com/vidithq/vidit/pull/693)).
+- Latitude and Longitude sit on one line at every width, followed by the map and copy actions as separate buttons, in the Location card and in each source's capture position ([#693](https://github.com/vidithq/vidit/pull/693)).
+- Tags and conflicts are picked through a search field that suggests matches as you type, in the event form, each source, and the filters of the map, search, the Requests board and the feed; the form offers to create a missing tag ([#693](https://github.com/vidithq/vidit/pull/693)).
+- A remove control that asks before it removes shows a red trash, and one that removes at once shows a red cross, on the event forms and the approval stamps ([#693](https://github.com/vidithq/vidit/pull/693)).
+- The author filter shows among the active filter pills, as **By** *username*, so one click removes it like any other filter ([#693](https://github.com/vidithq/vidit/pull/693)).
+- On an event page, **Add to collection** and **Geolocators** open their panel over the page, anchored to the button, so nothing on the page moves ([#693](https://github.com/vidithq/vidit/pull/693)).
+- The event title, source titles, the version note, the close reason and report details count the characters used against their limit; link fields stop at the API's cap, and an out-of-range capture position is flagged ([#693](https://github.com/vidithq/vidit/pull/693)).
+- A write drops the capture position of an article, an official statement or an other source, since a document has none ([#693](https://github.com/vidithq/vidit/pull/693)).
+- Deleting a collection that an open report names withholds it from everyone at once, keeps it in the admin reports queue marked Deleted by its owner, and erases it when its last open report is resolved ([#693](https://github.com/vidithq/vidit/pull/693)).
+- The collection forms and the profile and organization edit modes pin Save and Cancel at the top right, and a collection's form flags its missing fields and adds events from a search list ([#693](https://github.com/vidithq/vidit/pull/693)).
+- A report opens in a dialog, and removing or leaving a geolocator takes a second click ([#693](https://github.com/vidithq/vidit/pull/693)).
+- Sign-in, registration, password reset, Change password and the invite form outline every blank required field at once and read the list to a screen reader, and the Settings accent colour picker moves between swatches with the arrow keys ([#693](https://github.com/vidithq/vidit/pull/693)).
+- The admin console finds analysts and events by name, confirms every destructive action in a dialog (revoking an invite code included), groups row actions in a menu, and pages the reports queue with Load more ([#693](https://github.com/vidithq/vidit/pull/693)).
+- `GET /admin/me` answers every signed-in analyst with their `is_admin` value instead of a 403 for an analyst who is not an admin ([#693](https://github.com/vidithq/vidit/pull/693)).
+
+### Removed
+
+- Push notifications: email and the in-app list are the two ways to get a notification, and the push settings, devices and keys are gone ([#693](https://github.com/vidithq/vidit/pull/693)).
+- Revoking an approval, with its reason and its notification, and the optional note on an approval ([#693](https://github.com/vidithq/vidit/pull/693)).
+- X handle change requests and the admin queue that answered them ([#693](https://github.com/vidithq/vidit/pull/693)).
+- Product update emails, their sign-up and Settings consent, and the admin screen that sent them ([#693](https://github.com/vidithq/vidit/pull/693)).
+- The `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `PRODUCT_UPDATE_EMAIL_DAILY_CAP` and `PRODUCT_UPDATE_EMAIL_BATCH_SIZE` settings; `NOTIFICATION_EMAIL_DAILY_CAP` must stay below `EMAIL_PROVIDER_DAILY_QUOTA` ([#693](https://github.com/vidithq/vidit/pull/693)).
+- Capture-source tags and tag categories: each source's kind replaces them, and `POST /tags` takes only a name ([#693](https://github.com/vidithq/vidit/pull/693)).
+- Archived copies of the post a detection came from and of the links in a proof body ([#693](https://github.com/vidithq/vidit/pull/693)).
+- `POST /events/{id}/geolocate`: `POST /events/{id}/versions` publishes a request or a detection ([#693](https://github.com/vidithq/vidit/pull/693)).
+- Answering a request from the submit page (`/submit?request_id=`) ([#693](https://github.com/vidithq/vidit/pull/693)).
+
+### Fixed
+
+- A browser whose session the server no longer accepts shows the reader as signed out, with *Your session ended. Sign in again.*, instead of failing every signed-in action with no explanation ([#693](https://github.com/vidithq/vidit/pull/693)).
+- Version 0 of an event credits who opened the request or the detection, as its history does, not the current owner ([#693](https://github.com/vidithq/vidit/pull/693)).
+- A proof image pasted before publishing no longer loads a broken address as the form closes ([#693](https://github.com/vidithq/vidit/pull/693)).
+- One unread notification and one pending detection read in the singular, and the organization bio placeholder speaks of the organization ([#693](https://github.com/vidithq/vidit/pull/693)).
+
 ## v0.7.4, 2026-10-22
 
 ### Changed

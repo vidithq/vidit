@@ -48,13 +48,21 @@ function ReportHarness({
 }
 
 describe("useReportContent state per target", () => {
-  it("ties aria-controls to the form only while it is open", () => {
+  it("opens the report as a dialog, Cancel first", () => {
     render(<ReportHarness eventId="e1" />);
     const trigger = screen.getByRole("button", { name: "Report" });
-    expect(trigger).not.toHaveAttribute("aria-controls");
+    expect(trigger).toHaveAttribute("aria-haspopup", "dialog");
 
     fireEvent.click(trigger);
-    expect(trigger).toHaveAttribute("aria-controls", "report-content-form");
+    const dialog = screen.getByRole("dialog", { name: "Report this event" });
+    expect(dialog).toContainElement(screen.getByLabelText("Reason"));
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+    // Each label explains itself through the shared `?`, not an "(optional)" marker.
+    expect(screen.getByRole("button", { name: "Which reason fits?" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "What goes in the details?" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("resets an open, half-filled form when the event changes", () => {
@@ -63,16 +71,16 @@ describe("useReportContent state per target", () => {
     fireEvent.change(screen.getByLabelText("Reason"), {
       target: { value: "copyright" },
     });
-    fireEvent.change(screen.getByLabelText("Details (optional)"), {
+    fireEvent.change(screen.getByLabelText("Details"), {
       target: { value: "half a sentence" },
     });
 
     rerender(<ReportHarness eventId="e2" />);
 
     // Closed, and nothing of the previous event's draft survives.
-    expect(screen.queryByLabelText("Details (optional)")).toBeNull();
+    expect(screen.queryByLabelText("Details")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Report" }));
-    expect(screen.getByLabelText("Details (optional)")).toHaveValue("");
+    expect(screen.getByLabelText("Details")).toHaveValue("");
     expect(screen.getByLabelText("Reason")).toHaveValue("illegal_content");
   });
 
@@ -106,7 +114,7 @@ describe("useReportContent per kind", () => {
     fireEvent.click(screen.getByRole("button", { name: "Report" }));
     // The form names what it is about, so a reader knows what they are flagging.
     expect(screen.getByText("Report this collection")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Details (optional)"), {
+    fireEvent.change(screen.getByLabelText("Details"), {
       target: { value: "  not what it says  " },
     });
     fireEvent.click(screen.getByRole("button", { name: "Send report" }));

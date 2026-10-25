@@ -13,6 +13,7 @@ from tests.events._readiness_cases import (
     INCOMPLETE_CASE_NAMES,
     READINESS_CASES,
     READY_CASE_NAMES,
+    make_detection,
 )
 
 _URL = "/api/v1/events/detections"
@@ -33,7 +34,7 @@ def _detected(db, author, **kwargs):
 def _mixed_queue(db, author) -> dict[str, str]:
     """One detection per shape in the shared table; returns name -> event id."""
     return {
-        name: str(_detected(db, author, **dict(overrides)).id)
+        name: str(make_detection(db, author, overrides).id)
         for name, (overrides, _) in READINESS_CASES.items()
     }
 
@@ -72,16 +73,17 @@ def test_detections_returns_only_callers_live_detected(db, author, second_user):
     assert body["items"][0]["status"] == "detected"
 
 
-def test_detections_includes_media_and_tags(db, author, conflict, capture_source_tag):
-    """The queue needs media (to judge) and tags (to compute readiness) inline,
-    plus the provenance link the card points back to."""
-    _detected(db, author, tags=[capture_source_tag], conflicts=[conflict], with_media=True)
+def test_detections_includes_sources_tags_and_conflicts(db, author, conflict, free_tag):
+    """The queue needs the sources and their files (to judge), the tags and conflicts
+    inline, plus the provenance link the card points back to."""
+    _detected(db, author, tags=[free_tag], conflicts=[conflict], with_media=True, kind="unknown")
 
     response = client.get(_URL, headers=login_as(client, author))
     item = response.json()["items"][0]
-    assert len(item["media"]) == 1
-    assert item["media"][0]["media_type"] == "image"
-    assert {t["category"] for t in item["tags"]} == {"capture_source"}
+    [source] = item["sources"]
+    assert source["media"]["kind"] == "image"
+    assert source["kind"] == "unknown"
+    assert [t["name"] for t in item["tags"]] == [free_tag.name]
     assert [c["name"] for c in item["conflicts"]] == [conflict.name]
     assert item["detected_from_url"] == "https://x.com/a/status/1"
 
@@ -179,7 +181,7 @@ def test_detections_pages_within_the_filtered_set(db, author):
     expected = {ids[name] for name in INCOMPLETE_CASE_NAMES}
 
     walked: list[str] = []
-    for page in (1, 2, 3, 4):
+    for page in range(1, len(expected) // 2 + 2):
         body = client.get(
             f"{_URL}?readiness=incomplete&page={page}&per_page=2", headers=headers
         ).json()

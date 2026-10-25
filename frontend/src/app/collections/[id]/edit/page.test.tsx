@@ -60,8 +60,8 @@ const event = (id: string, title: string) => ({
   status: "geolocated",
   media: null,
   is_graphic: false,
-  event_date: "2026-03-15",
-  event_coords: { lat: 49.71, lng: 37.616 },
+  occurred_date: "2026-03-15",
+  coords: { lat: 49.71, lng: 37.616 },
   tags: [],
   owner: USER,
   conflicts: [],
@@ -229,11 +229,8 @@ describe("EditCollectionPage", () => {
         name: "Remove Strike e3 from this collection",
       }),
     );
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Add Strike on the depot to this collection",
-      }),
-    );
+    fireEvent.focus(screen.getByRole("combobox", { name: "Add events" }));
+    fireEvent.click(screen.getByRole("option", { name: /^Strike on the depot/ }));
     fireEvent.click(screen.getByRole("button", { name: "Save collection" }));
 
     await waitFor(() => expect(push).toHaveBeenCalledWith("/collections/c1"));

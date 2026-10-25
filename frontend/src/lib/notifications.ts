@@ -9,21 +9,12 @@ export type Notification = components["schemas"]["NotificationRead"];
 export type NotificationKind = Notification["kind"];
 export type UnreadCount = components["schemas"]["NotificationUnreadCount"];
 
-export const NOTIFICATIONS_PATH = "/notifications";
+const NOTIFICATIONS_PATH = "/notifications";
 export const UNREAD_COUNT_PATH = "/notifications/unread-count";
 
 export function notificationsPath(cursor: string | null): string {
   return withCursor(NOTIFICATIONS_PATH, cursor);
 }
-
-/** A delivery channel of a notification kind, as the Settings column header names it.
- *  Mirrors backend `models/notification.NotificationChannel`; change both. */
-export type NotificationChannel = "email" | "push";
-
-export const CHANNEL_LABEL: Record<NotificationChannel, string> = {
-  email: "Email",
-  push: "Push",
-};
 
 /** The most ids one `POST /notifications/read` takes.
  *  Mirrors backend `schemas/notification` `MAX_PAGE_SIZE`; change both. */
@@ -60,14 +51,6 @@ export const NOTIFICATION_KIND_COPY: Record<
     label: "New follower",
     setting: "Someone follows you.",
   },
-  x_handle_request_approved: {
-    label: "X handle change approved",
-    setting: "An admin links the X handle you requested to your account.",
-  },
-  x_handle_request_declined: {
-    label: "X handle change declined",
-    setting: "An admin declines the X handle you requested.",
-  },
   co_geolocator_invite: {
     label: "Geolocator invitation",
     setting: "Someone invites you to share the credit of their geolocation.",
@@ -100,10 +83,6 @@ export const NOTIFICATION_KIND_COPY: Record<
     label: "Approval received",
     setting: "Someone approves your geolocation, as themselves or for an organization.",
   },
-  approval_revoked: {
-    label: "Approval revoked",
-    setting: "An approval of your geolocation is revoked.",
-  },
   approval_request_received: {
     label: "Approval request",
     setting: "Someone asks you, or an organization you manage, to approve their geolocation.",
@@ -133,10 +112,9 @@ export function notificationLabel(n: Notification): string {
 
 /** The feed row's sentence and destination. */
 // The kinds where an organization, not the member on the row, is the one acting: its approval
-// landed, was revoked, or it declined a request.
+// landed, or it declined a request.
 const ORGANIZATION_ACTS: ReadonlySet<NotificationKind> = new Set([
   "approval_received",
-  "approval_revoked",
   "approval_request_declined",
 ]);
 
@@ -170,13 +148,6 @@ export function describeNotification(n: Notification): { text: string; href: str
       return {
         text: `${actor} followed you`,
         href: n.actor ? profileHref(n.actor.username) : "/notifications",
-      };
-    case "x_handle_request_approved":
-      return { text: "An admin linked the X handle you requested", href: "/settings" };
-    case "x_handle_request_declined":
-      return {
-        text: "An admin declined your X handle request. Settings shows why.",
-        href: "/settings",
       };
     case "co_geolocator_invite":
       return {
@@ -217,11 +188,6 @@ export function describeNotification(n: Notification): { text: string; href: str
     case "approval_received":
       return {
         text: `${actor} approved your geolocation${n.organization ? ` for ${organization}` : ""}: ${title}`,
-        href: toEvent,
-      };
-    case "approval_revoked":
-      return {
-        text: `The approval by ${n.organization ? organization : actor} of your geolocation was revoked: ${title}`,
         href: toEvent,
       };
     case "approval_request_received":

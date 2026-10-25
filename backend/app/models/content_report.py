@@ -17,7 +17,7 @@ from app.database import Base, literal_check
 
 # Why a viewer flagged an event or collection. ``illegal_content`` is the legal
 # escalation; ``graphic_not_flagged`` is footage of death, injury or human
-# remains without the author's ``events.is_graphic``; ``copyright`` and
+# remains without the author's ``sources.is_graphic``; ``copyright`` and
 # ``privacy`` are third-party rights claims; ``other`` relies on ``details``.
 # One set for both targets. Value-domain source of truth for the column, the
 # Create schema and the generated frontend type.
@@ -41,7 +41,7 @@ class ContentReport(Base):
     """One viewer's report against one event or one collection.
 
     Open to anonymous viewers (a takedown request must not need an account);
-    ``reporter_user_id`` is NULL unless the reporter was logged in.
+    ``reporter_id`` is NULL unless the reporter was logged in.
 
     One row names one target, ``event_id`` or ``collection_id``, and both share
     one queue. Two real foreign keys rather than a ``(target_type, target_id)``
@@ -69,7 +69,7 @@ class ContentReport(Base):
     # The reporter's own words; capped at 2000 characters in the schema, not the column.
     details: Mapped[str | None] = mapped_column(Text, nullable=True)
     # NULL for an anonymous report. SET NULL: the report outlives the account (GDPR erasure).
-    reporter_user_id: Mapped[uuid.UUID | None] = mapped_column(
+    reporter_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -81,7 +81,7 @@ class ContentReport(Base):
     # See ``ContentReportResolution``; non-NULL exactly when ``resolved_at`` is.
     resolution: Mapped[ContentReportResolution | None] = mapped_column(String(30), nullable=True)
     # NULL until resolved, and after a GDPR erasure of that admin.
-    resolved_by: Mapped[uuid.UUID | None] = mapped_column(
+    resolved_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 

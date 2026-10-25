@@ -1,4 +1,4 @@
-"""Approvals of one event: the per-version read, approving the live version, and revoking.
+"""Approvals of one event: the per-version read and approving the live version.
 
 Business rules live in ``services/approvals``; this module maps its typed errors.
 """
@@ -14,7 +14,7 @@ from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
 from app.routers._errors import raise_typed_error
 from app.routers.events._common import resolve_live_event, resolve_readable_event
-from app.schemas.approval import ApprovalCreate, ApprovalList, ApprovalRead, ApprovalRevoke
+from app.schemas.approval import ApprovalCreate, ApprovalList, ApprovalRead
 from app.services import approvals, organizations
 from app.services.approvals import APPROVAL_ERROR_STATUS, ApprovalError
 
@@ -83,34 +83,7 @@ def approve_event(
             geo=geo,
             reviewer=current_user,
             version_no=body.version_no,
-            note=body.note,
             organization=organization,
-        )
-    except ApprovalError as exc:
-        _raise(exc)
-    return approvals.build_read(row, live_version=geo.version_no)
-
-
-@router.post("/{geolocation_id}/approvals/{approval_id}/revoke", response_model=ApprovalRead)
-@limiter.limit("60/minute")
-def revoke_approval(
-    request: Request,
-    geolocation_id: uuid.UUID,
-    approval_id: uuid.UUID,
-    body: ApprovalRevoke | None = None,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> ApprovalRead:
-    """Revoke an approval: your own, your organization's as one of its members, or any as a site
-    admin."""
-    geo = resolve_readable_event(db, geolocation_id, current_user)
-    try:
-        row = approvals.revoke(
-            db,
-            geo=geo,
-            approval_id=approval_id,
-            actor=current_user,
-            reason=body.reason if body is not None else None,
         )
     except ApprovalError as exc:
         _raise(exc)

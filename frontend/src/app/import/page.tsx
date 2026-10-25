@@ -47,8 +47,8 @@ const LIST = `list-disc space-y-1 pl-4 ${NOTE}`;
 
 const CARRIES: NumberedStep[] = [
   { title: "Coordinates, in any usual format." },
-  { title: "Source: the post you quote, or a single link." },
-  { title: "Source media: the footage in the quoted post." },
+  { title: "Source: the post you quote, or a single footage link." },
+  { title: "Source file: the footage in the quoted post." },
   { title: "Title: the first line with more than coordinates and links." },
   { title: "Proof: your text as written, and your photos as proof images." },
 ];
@@ -136,8 +136,17 @@ export default function ImportGuidePage() {
           <li>
             <span className="text-neutral-100">Source:</span> a quote outranks
             links. A link to your own post, an X link naming no post and a
-            Google Maps link never count. Several candidate links leave the
-            source empty, and you pick one at review.
+            Google Maps link never count. With several candidate links, each
+            becomes a source of its own, and you move or drop them at review.
+            An X post is dated from its link alone.
+          </li>
+          <li>
+            <span className="text-neutral-100">Context links:</span> a link to
+            satellite imagery or a map tool (Google Earth, Copernicus Browser,
+            Sentinel Hub, NASA FIRMS, NASA Worldview, Esri Wayback,
+            EarthExplorer), a gazetteer, Wikipedia or GoFundMe never counts as
+            footage. It becomes a context source, so it never leaves the source
+            ambiguous.
           </li>
           <li>
             <span className="text-neutral-100">Media:</span> with no quote, the

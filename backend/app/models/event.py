@@ -5,7 +5,6 @@ from typing import Literal
 from geoalchemy2 import Geometry
 from sqlalchemy import (
     BigInteger,
-    Boolean,
     CheckConstraint,
     ColumnElement,
     Date,
@@ -19,14 +18,17 @@ from sqlalchemy import (
     UniqueConstraint,
     and_,
     case,
+    exists,
     func,
     text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.engine.default import DefaultExecutionContext
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base, literal_check
+from app.models.source import Source, source_order
 
 # Lifecycle status (value-domain source of truth: the ORM column, the Read
 # schemas and the generated frontend type derive from it).
@@ -36,7 +38,7 @@ from app.database import Base, literal_check
 #   ``closed``      withdrawn (requested), rejected (detected) or retracted
 #                   (geolocated, still publicly readable with its history);
 #                   ``before_closed_status`` records which.
-# ``event_coords`` is independent of ``status`` except that ``geolocated``
+# ``coords`` is independent of ``status`` except that ``geolocated``
 # requires it (``ck_events_coords_status``).
 EventStatus = Literal["requested", "detected", "geolocated", "closed"]
 STATUS_REQUESTED: EventStatus = "requested"
@@ -49,22 +51,48 @@ STATUS_CLOSED: EventStatus = "closed"
 # feed and the map (``services/event_filters.view_predicate``).
 BeforeClosedStatus = Literal["requested", "detected", "geolocated"]
 
+# What version 0 of an event is: the request or the detection it was published from, or the
+# open row itself (``services/versions.version_zero``).
+VersionZero = Literal["request", "detection"]
+
 # Which ingest entry produced a machine detection. Stamped once by
-# ``detection.persist_detections``; NULL on human submits and older rows. Pinned
-# by ``ck_events_detected_via_valid``; keep the two in step.
+# ``detection.persist_detections``; NULL on older rows. Pinned by
+# ``ck_event_detections_via_valid``.
 DetectedVia = Literal["bot", "paste", "archive"]
 
-# Field-length ceilings for the create / edit forms. ``SOURCE_URL`` is an input
-# cap only: the column is unbounded ``Text``.
+
+def _initial_version(context: DefaultExecutionContext) -> int:
+    """0 for a row born unpublished (a request or a detection), else 1."""
+    params = context.get_current_parameters()
+    state = params.get("before_closed_status") or params.get("status")
+    return 0 if state in (STATUS_REQUESTED, STATUS_DETECTED) else 1
+
+
+# Field-length ceiling for the create / edit forms. Mirrored by
+# ``frontend/src/lib/events.ts::EVENT_TITLE_MAX_LEN``; change both.
 TITLE_MAX_LENGTH = 255
-SOURCE_URL_MAX_LENGTH = 2000
-# Ceiling on ``event_source_links`` rows per event; a submission past it is
-# rejected, not truncated.
-MAX_SECONDARY_SOURCE_LINKS = 10
 
 
-class _EventAnalystPair:
-    """One analyst on one event, both cascading: the shape of a credit and of an invitation."""
+# Where an analyst stands on one event's credit. ``invited``: the owner asked
+# them to share it. ``active``: they hold it. ``departed``: they held it and
+# lost it (removed by the owner, or left). A departed analyst may be invited
+# again: the row keeps ``departed_at``, declining returns it to ``departed``,
+# accepting makes it ``active``.
+GeolocatorState = Literal["invited", "active", "departed"]
+
+
+class EventGeolocator(Base):
+    """One analyst's standing on one event's geolocation credit, one row per pair.
+
+    ``active`` rows are the credit: who vouched the location. The owner of a
+    ``geolocated`` event always holds an ``active`` row, so an erasure hands a
+    co-credited event to the earliest other geolocator rather than leaving it
+    below one. A transition updates the row (``services/geolocator_credit``).
+    A former geolocator is no more independent of the work than a current one,
+    so neither approves the event nor is asked to approve it.
+    """
+
+    __tablename__ = "event_geolocators"
 
     event_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
@@ -72,84 +100,49 @@ class _EventAnalystPair:
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
+    state: Mapped[GeolocatorState] = mapped_column(String(20), nullable=False)
+    invited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    joined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The first departure; a later one leaves it as it is.
+    departed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-
-class EventGeolocator(_EventAnalystPair, Base):
-    """Durable credit for the geolocation: who vouched the location.
-
-    Written at the ``geolocate`` transition (at least one row) and when an
-    invited analyst accepts (``EventGeolocatorInvite``). The owner is always
-    among these rows: an erasure hands a co-credited event to the earliest
-    other geolocator rather than leaving it below one. The composite PK makes
-    credit idempotent.
-    """
-
-    __tablename__ = "event_geolocators"
-
-    event = relationship("Event", back_populates="geolocators")
+    event = relationship("Event", viewonly=True)
     user = relationship("User")
 
     __table_args__ = (
+        literal_check("state", GeolocatorState, "ck_event_geolocators_state_valid"),
+        CheckConstraint(
+            "(state <> 'invited' OR invited_at IS NOT NULL)"
+            " AND (state <> 'active' OR joined_at IS NOT NULL)"
+            " AND (state <> 'departed' OR departed_at IS NOT NULL)",
+            name="ck_event_geolocators_state_stamp",
+        ),
         # Serves the "a user's geolocations" profile query.
-        Index("ix_event_geolocators_user_created_at", "user_id", "created_at"),
-    )
-
-
-class EventGeolocatorInvite(_EventAnalystPair, Base):
-    """A pending invitation to share the geolocation credit of a published event.
-
-    The owner writes the row; the invitee accepts or declines it. Accepting
-    deletes it and inserts the ``event_geolocators`` row in one transaction, and
-    declining or a withdrawal deletes it, so a row exists only while pending
-    (``services/geolocator_credit``). The composite PK allows one pending
-    invitation per analyst and event.
-    """
-
-    __tablename__ = "event_geolocator_invites"
-
-    user = relationship("User")
-
-    __table_args__ = (
-        # Backs the cascade of an erased invitee.
-        Index("ix_event_geolocator_invites_user_id", "user_id"),
-    )
-
-
-class EventGeolocatorDeparture(_EventAnalystPair, Base):
-    """An analyst who held credit on an event and lost it: the owner removed them, or they left.
-
-    Written by ``services/geolocator_credit.remove`` in the transaction that deletes the
-    ``event_geolocators`` row. ``created_at`` is the first departure; a later one leaves the row
-    as it is. A former geolocator is no more independent of the work than a current one, so
-    neither approves the event nor is asked to approve it.
-    """
-
-    __tablename__ = "event_geolocator_departures"
-
-    __table_args__ = (
+        Index(
+            "ix_event_geolocators_user_id_joined_at",
+            "user_id",
+            "joined_at",
+            postgresql_where=text("state = 'active'"),
+        ),
         # Backs the cascade of an erased analyst.
-        Index("ix_event_geolocator_departures_user_id", "user_id"),
+        Index("ix_event_geolocators_user_id", "user_id"),
     )
 
 
 class EventVersion(Base):
-    """One superseded version of a published event, snapshotted at an edit.
+    """One superseded version of an event, snapshotted at an edit.
 
-    Append-only: ``services/events.save_version`` writes a row before the edit
+    Append-only: ``services/versions.file_version`` writes a row before the edit
     lands. ``version_no`` is the version this row holds, so an event at version
-    3 carries snapshots 1 and 2 plus the live row.
+    3 carries snapshots 1 and 2 plus the live row, and snapshot 0 too when it
+    was published from a request or a detection.
 
-    ``snapshot`` holds the fields the edit form writes
+    ``snapshot`` holds the fields the edit form writes, its sources included
     (``services/versions.build_snapshot``). Media rows are not versioned, so a
     ``proof`` row a snapshot points at is never hard-deleted while the snapshot
-    exists (``services/versions.referenced_media_urls``). The ``source`` row
-    cannot stay (one per event), so the snapshot describes it and its file
-    outlives the row (``services/versions.referenced_source_media``).
+    exists (``services/versions.referenced_media_urls``). A source an edit drops
+    goes with its row, so the snapshot describes it and its file outlives the row
+    (``services/versions.referenced_source_media``).
 
     Redaction is the one write a filed row takes: an admin blanks ``snapshot``
     and ``note`` and stamps ``redacted_at`` / ``redacted_by_id``. The row and
@@ -186,7 +179,7 @@ class EventVersion(Base):
 
     event = relationship("Event", back_populates="versions")
     # Only the editor is a relationship: the redacting admin is audited in
-    # ``admin_events`` and never rendered.
+    # ``audit_log`` and never rendered.
     edited_by = relationship("User", foreign_keys=[edited_by_id])
 
     __table_args__ = (
@@ -197,32 +190,56 @@ class EventVersion(Base):
     )
 
 
-class EventSourceLink(Base):
-    """One secondary source link: the same media mirrored on another network,
-    or another post from the same point of view.
-
-    The primary anchor stays the scalar ``Event.source_url``. These extras are
-    replaced wholesale by the geolocate transition and every later correction,
-    while the anchor moves only on its own field (and files a version).
-    ``position`` is part of the PK, so stored order is read order.
+class EventDetection(Base):
+    """Where a machine-written event came from: the post it was imported from, its thread and
+    the entry that read it. One row per imported event, written once at creation
+    (``services/events/request.stamp_provenance``); only ``post_at`` follows a re-import.
     """
 
-    __tablename__ = "event_source_links"
+    __tablename__ = "event_detections"
 
     event_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
     )
-    position: Mapped[int] = mapped_column(Integer, primary_key=True)
-    # Unbounded ``Text``; the API caps input at ``SOURCE_URL_MAX_LENGTH``.
-    url: Mapped[str] = mapped_column(Text, nullable=False)
+    via: Mapped[DetectedVia | None] = mapped_column(String(20), nullable=True)
+    # The post's URL, built from its id (``tweet_ingest.urls.canonical_tweet_url``). Not a
+    # source: the event's sources are the footage it rests on.
+    from_url: Mapped[str] = mapped_column(Text, nullable=False)
+    # The re-import match anchor.
+    from_post_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Every post id of the thread the detection was read from, anchor included.
+    # The re-import match reads it so the three entries land on one row: an
+    # archive anchors on the thread head, a bot tag or paste on a later post,
+    # so matching the anchor alone would file one geolocation as two detections.
+    # Older rows carry their anchor id alone.
+    thread_post_ids: Mapped[list[int] | None] = mapped_column(ARRAY(BigInteger), nullable=True)
+    # When the analyst published this geolocation on X: the precedence signal for the
+    # claim/dispute pipeline.
+    post_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    event = relationship("Event", back_populates="source_links")
+    event = relationship("Event", back_populates="detection")
+
+    __table_args__ = (
+        literal_check("via", DetectedVia, "ck_event_detections_via_valid", nullable=True),
+        # Back the re-import match by anchor post and by thread overlap.
+        Index(
+            "ix_event_detections_from_post_id",
+            "from_post_id",
+            postgresql_where=text("from_post_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_event_detections_thread_post_ids",
+            "thread_post_ids",
+            postgresql_using="gin",
+            postgresql_where=text("thread_post_ids IS NOT NULL"),
+        ),
+    )
 
 
 class Event(Base):
     """One event across the merged request + geolocation lifecycle.
 
-    ``status`` (``EventStatus``) is the lifecycle; ``event_coords`` is an
+    ``status`` (``EventStatus``) is the lifecycle; ``coords`` is an
     independent nullable axis required only at ``geolocated``
     (``ck_events_coords_status``). Fulfilling a request updates this row and
     inserts an ``event_geolocators`` row, with no copy.
@@ -232,7 +249,7 @@ class Event(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     # Edit-rights owner. A ``requested`` event's poster, handed to the fulfiller
-    # at geolocate. Always among the geolocators once ``geolocated``.
+    # at the publish. Always among the geolocators once ``geolocated``.
     owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     # Who opened the request, kept across fulfilment. NULL for a direct
     # geolocation. SET NULL: the event outlives its requester and a GDPR erasure
@@ -243,31 +260,13 @@ class Event(Base):
     title: Mapped[str] = mapped_column(String(TITLE_MAX_LENGTH), nullable=False)
     # What the footage shows. Required at ``geolocated`` (``ck_events_coords_status``).
     # One point per event.
-    event_coords = mapped_column(Geometry("POINT", srid=4326), nullable=True, index=True)
-    # Where the footage was shot from. Unindexed: no spatial read uses it.
-    capture_source_coords = mapped_column(
-        Geometry("POINT", srid=4326, spatial_index=False), nullable=True
-    )
-    # The declared footage source. A detection may carry none; the other states
-    # require it (``ck_events_source_url_status``, ``services/events.geolocate``).
-    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    coords = mapped_column(Geometry("POINT", srid=4326), nullable=True, index=True)
     # Sanitised HTML (``services/sanitize.sanitize_html``); ``""`` is an empty body.
     proof: Mapped[str] = mapped_column(Text, nullable=False, default="")
     # Often unknown for a ``requested`` event; required at ``geolocated``.
-    event_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    occurred_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     # UTC time of day. May stand alone: an hour can be known before the day.
-    event_time: Mapped[time | None] = mapped_column(Time, nullable=True)
-    # When the original source posted the media (UTC instant). Distinct from
-    # ``event_date`` and ``created_at``. NULL unless actually known.
-    source_posted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    # When the analyst published THIS geolocation on X (post time of
-    # ``detected_from_url``): the precedence signal for the claim/dispute
-    # pipeline. NULL for human submits.
-    detected_post_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    occurred_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     # Per-state entry stamps, set on entry and never cleared; the
     # ``geolocated`` / ``closed`` ones are tied to ``status`` by CHECKs.
     requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -278,40 +277,22 @@ class Event(Base):
     status: Mapped[EventStatus] = mapped_column(
         String(20), nullable=False, default=STATUS_GEOLOCATED, server_default=text("'geolocated'")
     )
-    # The post a machine detection was imported from (``source_url`` is the
-    # footage origin). The id is the re-import match anchor; the URL is built
-    # from it (``tweet_ingest.urls.canonical_tweet_url``). NULL for human submits.
-    detected_from_tweet_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    detected_from_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Every post id of the thread the detection was read from, anchor included.
-    # The re-import match reads it so the three entries land on one row: an
-    # archive anchors on the thread head, a bot tag or paste on a later post,
-    # so matching the anchor alone would file one geolocation as two detections.
-    # Written once at creation. NULL for human submits; older rows carry their
-    # anchor id alone.
-    detected_thread_tweet_ids: Mapped[list[int] | None] = mapped_column(
-        ARRAY(BigInteger), nullable=True
-    )
-    # Which entry produced this detection (``DetectedVia``). Written once, never
-    # moved by a re-import. NULL for human submits and older rows.
-    detected_via: Mapped[DetectedVia | None] = mapped_column(String(20), nullable=True)
 
     @hybrid_property
     def is_machine_detection(self) -> bool:
         """Whether this row is a machine extraction the pipeline is judged on.
 
-        An imported row carries ``detected_from_url`` and a request carries
+        An imported row carries an ``event_detections`` row and a request carries
         ``requested_at`` for life, so the pair separates a detection from a
         request the bot opened (which carries both). Read by
-        ``services/admin.detection_quality_stats``. The
-        ``ix_events_detected_from_url`` index backs the first leg alone.
+        ``services/admin.detection_quality_stats``.
         """
-        return self.detected_from_url is not None and self.requested_at is None
+        return self.detection is not None and self.requested_at is None
 
     @is_machine_detection.inplace.expression
     @classmethod
     def _is_machine_detection_expression(cls) -> ColumnElement[bool]:
-        return and_(cls.detected_from_url.isnot(None), cls.requested_at.is_(None))
+        return and_(exists().where(EventDetection.event_id == cls.id), cls.requested_at.is_(None))
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -337,42 +318,47 @@ class Event(Base):
     # Takedown after a content report: withheld from public reads alongside
     # ``deleted_at``, but reversible by an admin.
     hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # TRUE when the footage shows death, injury or human remains. Set by the
-    # author, overridable by an admin. Read surfaces cover flagged imagery until
-    # the viewer opts in, so the column is public.
-    is_graphic: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, server_default=text("false")
-    )
-    # Which version this row IS. Incremented under the row lock by
-    # ``services/events.save_version``, which first files the superseded state as
-    # an ``EventVersion``. A public address (``/events/{id}/v{n}``), so it only
-    # moves forward.
+    # Which version this row IS: 0 until the row is published, then 1 and up. Incremented
+    # under the row lock by ``services/events.save_version``, which first files the
+    # superseded state as an ``EventVersion``. A public address (``/events/{id}/v{n}``), so
+    # it only moves forward. ``ck_events_version_published`` ties it to the status.
     version_no: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=1, server_default=text("1")
+        Integer, nullable=False, default=_initial_version, server_default=text("1")
     )
+
+    @hybrid_property
+    def is_graphic(self) -> bool:
+        """Whether any source shows death, injury or human remains (``Source.is_graphic``)."""
+        return any(source.is_graphic for source in self.sources)
+
+    @is_graphic.inplace.expression
+    @classmethod
+    def _is_graphic_expression(cls) -> ColumnElement[bool]:
+        return exists().where(Source.event_id == cls.id, Source.is_graphic.is_(True))
 
     owner = relationship("User", foreign_keys=[owner_id], back_populates="events")
     requested_by = relationship("User", foreign_keys=[requested_by_id])
+    # Proof-body images only; a source's file hangs off its source.
     media = relationship("Media", back_populates="event", cascade="all, delete-orphan")
+    # In their derived order (``models/source.source_order``).
+    sources = relationship(
+        "Source",
+        back_populates="event",
+        cascade="all, delete-orphan",
+        order_by=lambda: source_order(),
+    )
     tags = relationship("Tag", secondary="event_tags", back_populates="events")
     conflicts = relationship("Conflict", secondary="event_conflicts", back_populates="events")
+    # The credit: ``active`` rows only, earliest first.
     geolocators = relationship(
         "EventGeolocator",
-        back_populates="event",
-        cascade="all, delete-orphan",
-        order_by="EventGeolocator.created_at",
+        primaryjoin="and_(Event.id == EventGeolocator.event_id, EventGeolocator.state == 'active')",
+        viewonly=True,
+        order_by="EventGeolocator.joined_at",
     )
-    # Links the owner recorded an archived copy for (``models.source_archive``).
-    archives = relationship(
-        "SourceArchive",
-        back_populates="event",
-        cascade="all, delete-orphan",
-    )
-    source_links = relationship(
-        "EventSourceLink",
-        back_populates="event",
-        cascade="all, delete-orphan",
-        order_by="EventSourceLink.position",
+    # Where a machine-written row came from; None for a human submit.
+    detection = relationship(
+        "EventDetection", uselist=False, back_populates="event", cascade="all, delete-orphan"
     )
     # Superseded versions, oldest first (``EventVersion``).
     versions = relationship(
@@ -385,13 +371,8 @@ class Event(Base):
     __table_args__ = (
         # Geolocated needs a subject coordinate.
         CheckConstraint(
-            "status <> 'geolocated' OR event_coords IS NOT NULL",
+            "status <> 'geolocated' OR coords IS NOT NULL",
             name="ck_events_coords_status",
-        ),
-        # Requested and geolocated rows need a source URL.
-        CheckConstraint(
-            "status NOT IN ('requested', 'geolocated') OR source_url IS NOT NULL",
-            name="ck_events_source_url_status",
         ),
         # Stamps tied to status so a path that forgets one is rejected.
         CheckConstraint(
@@ -412,31 +393,16 @@ class Event(Base):
             " OR (status <> 'closed' AND before_closed_status IS NULL)",
             name="ck_events_before_closed_status",
         ),
+        # Version 0 is the unpublished row (a request or a detection, open or closed); a
+        # published row is version 1 and up.
+        CheckConstraint(
+            "(version_no = 0) = (COALESCE(before_closed_status, status)"
+            " IN ('requested', 'detected'))",
+            name="ck_events_version_published",
+        ),
         literal_check("status", EventStatus, "ck_events_status_valid"),
-        literal_check("detected_via", DetectedVia, "ck_events_detected_via_valid", nullable=True),
         # Open requests / detections / geolocations, newest first.
         Index("ix_events_status_created_at", "status", "created_at"),
-        # Backs the re-import match on an owner's rows by source post. Partial:
-        # human rows are NULL.
-        Index(
-            "ix_events_owner_detected_from_tweet_id",
-            "owner_id",
-            "detected_from_tweet_id",
-            postgresql_where=text("detected_from_tweet_id IS NOT NULL"),
-        ),
-        # Backs the thread-overlap leg of the same match (GIN array overlap).
-        Index(
-            "ix_events_detected_thread_tweet_ids",
-            "detected_thread_tweet_ids",
-            postgresql_using="gin",
-            postgresql_where=text("detected_thread_tweet_ids IS NOT NULL"),
-        ),
-        # Backs the admin machine-detection cohort scans.
-        Index(
-            "ix_events_detected_from_url",
-            "detected_from_url",
-            postgresql_where=text("detected_from_url IS NOT NULL"),
-        ),
         # Serves the profile read and the admin GDPR delete's owned-event
         # enumeration. ``ix_events_owner_id`` is redundant with the composite
         # (cleanup tracked in issue #476).
@@ -449,16 +415,20 @@ class Event(Base):
 
 
 def feed_at() -> ColumnElement[datetime]:
-    """When an event entered the feed: ``requested_at`` for an open request, else
-    ``geolocated_at``.
+    """When an event entered the feed: ``requested_at`` for an open request, ``detected_at`` for
+    a detection, else ``geolocated_at``.
 
-    Both stamps are set on entry and never cleared, so the key is immutable while a row is in
+    Each stamp is set on entry and never cleared, so the key is immutable while a row is in
     the feed. ``created_at`` stands in for a missing stamp because a keyset row comparison
     against NULL is unknown. ``ix_events_timeline_at_id`` indexes this exact expression, and
     the planner matches it structurally, so changing it needs a migration.
     """
     return func.coalesce(
-        case((Event.status == STATUS_REQUESTED, Event.requested_at), else_=Event.geolocated_at),
+        case(
+            (Event.status == STATUS_REQUESTED, Event.requested_at),
+            (Event.status == STATUS_DETECTED, Event.detected_at),
+            else_=Event.geolocated_at,
+        ),
         Event.created_at,
     )
 
@@ -473,6 +443,6 @@ Index(
     postgresql_where=and_(
         Event.deleted_at.is_(None),
         Event.hidden_at.is_(None),
-        Event.status.in_((STATUS_GEOLOCATED, STATUS_REQUESTED)),
+        Event.status.in_((STATUS_GEOLOCATED, STATUS_REQUESTED, STATUS_DETECTED)),
     ),
 )

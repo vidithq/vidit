@@ -8,12 +8,12 @@ const IMAGE: Media = {
   id: "i",
   role: "source",
   storage_url: "/media/a.jpg",
-  media_type: "image",
-  sha256: null,
+  kind: "image",
+  sha256: "0".repeat(64),
   original_filename: "a.jpg",
 };
 
-const VIDEO: Media = { ...IMAGE, id: "v", storage_url: "/media/a.mp4", media_type: "video" };
+const VIDEO: Media = { ...IMAGE, id: "v", storage_url: "/media/a.mp4", kind: "video" };
 
 describe("MediaGallery", () => {
   it("says so when there is no media", () => {

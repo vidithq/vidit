@@ -16,7 +16,8 @@ import {
   COLLECTION,
   COLLECTION_ID,
   CONFLICTS,
-  CURATED_TAGS,
+  TAGS,
+  UPLOAD,
   DEFAULT_PREFERENCES,
   EMPTY_BASEMAP_STYLE,
   EMPTY_DETECTIONS,
@@ -34,14 +35,13 @@ import {
   ORGANIZATION_MEMBERS,
   ORGANIZATION_APPROVAL_REQUESTS,
   ORGANIZATION_SLUG,
-  PUSH_CONFIG,
   ONE_PIXEL_PNG,
   REQUESTED_EVENT,
   SECOND_COLLECTED_EVENT,
   SECOND_COLLECTED_EVENT_DETAIL,
   SECOND_COLLECTED_EVENT_ID,
   SIGNED_IN_USER,
-  X_HANDLE_WITH_DECLINED_REQUEST,
+  X_HANDLE,
 } from "./fixtures";
 
 /**
@@ -64,8 +64,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/^\/admin\/me$/, { is_admin: false }],
   [/^\/events\/detections$/, EMPTY_DETECTIONS],
   [/^\/users\/me\/preferences$/, DEFAULT_PREFERENCES],
-  [/^\/users\/me\/push-config$/, PUSH_CONFIG],
-  [/^\/users\/me\/x-handle$/, X_HANDLE_WITH_DECLINED_REQUEST],
+  [/^\/users\/me\/x-handle$/, X_HANDLE],
   [/^\/notifications\/unread-count$/, NO_UNREAD],
   [/^\/notifications$/, NOTIFICATION_FEED],
   // The request board's first page. Every pattern here anchors on the whole
@@ -76,7 +75,8 @@ const ROUTES: [RegExp, unknown][] = [
   [/^\/feed$/, FEED_ITEMS],
   [/^\/search$/, EMPTY_SEARCH],
   [/^\/events\/possible-duplicates$/, []],
-  [/^\/tags$/, CURATED_TAGS],
+  [/^\/tags$/, TAGS],
+  [/^\/uploads$/, UPLOAD],
   [/^\/conflicts$/, CONFLICTS],
   [new RegExp(`^/events/${EVENT_ID}$`), EVENT],
   [
@@ -192,4 +192,18 @@ export async function grantSession(context: BrowserContext): Promise<void> {
   await context.addCookies([
     { name: CSRF_COOKIE, value: CSRF_TOKEN, url: APP_ORIGIN },
   ]);
+}
+
+/**
+ * Answer one API path with `body` instead of its fixture, for a spec that needs another shape of
+ * the same row (a site admin, an event with more sources). Register it after `mockApi`: the route
+ * registered last is tried first.
+ */
+export async function answerWith(page: Page, path: string, body: unknown): Promise<void> {
+  const target = new URL(`${API_BASE_URL}${path}`);
+  // Matched on the origin and path, so a query string does not slip past the override.
+  const matches = (url: URL) => url.origin === target.origin && url.pathname === target.pathname;
+  await page.route(matches, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) }),
+  );
 }

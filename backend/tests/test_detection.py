@@ -20,15 +20,23 @@ from app.models.event import (
     STATUS_GEOLOCATED,
     DetectedVia,
     Event,
+    EventDetection,
     EventVersion,
 )
 from app.models.media import Media
+from app.models.source import Source, SourceLink
 from app.models.user import User
+from app.services import admin, versions
 from app.services.auth import hash_password
-from app.services.detection import Outcome, backfill_from_archive, persist_detections
+from app.services.detection import (
+    Outcome,
+    _row_disposition,
+    _write_warnings,
+    backfill_from_archive,
+    persist_detections,
+)
 from app.services.sanitize import extract_image_srcs, html_text
-from app.services.source_archive import stage_source_snapshot
-from app.services.storage import get_storage
+from app.services.storage import derivative_key, get_storage
 from app.services.tweet_ingest import (
     DUPLICATE_MEDIA,
     SOURCE_DATE_UNKNOWN,
@@ -40,7 +48,8 @@ from app.services.tweet_ingest import (
     ParsedMedia,
     Resolution,
 )
-from tests._fixtures import TINY_JPEG, stored_bytes, stored_path
+from app.services.tweet_ingest.resolve import LinkSource
+from tests._fixtures import TINY_JPEG, store_bytes, stored_bytes, stored_keys, stored_path
 
 ARCHIVE = Path(__file__).parent / "data" / "synthetic_archive"
 
@@ -61,7 +70,7 @@ OTHER_JPEG = _blue_jpeg()
 
 
 def _stored_objects(event_id: uuid.UUID) -> set[str]:
-    """Objects under one event's prefix (the storage root is shared across parallel workers)."""
+    """Objects under one event's prefix."""
     prefix = stored_path(f"detected/{event_id}")
     return {str(p.relative_to(prefix)) for p in prefix.rglob("*") if p.is_file()}
 
@@ -119,6 +128,35 @@ def _row(db, event_id) -> Event:
     return db.query(Event).filter(Event.id == event_id).one()
 
 
+def _sources(row: Event) -> list[tuple[str, str, list[tuple[str, datetime | None]], bool]]:
+    """Each source as ``(level, kind, [(url, posted_at)], has_file)``, in the derived order."""
+    return [
+        (
+            source.level,
+            source.kind,
+            [(link.url, link.posted_at) for link in source.links],
+            source.media is not None,
+        )
+        for source in row.sources
+    ]
+
+
+def _source_media(db, event_id: uuid.UUID) -> list[Media]:
+    """The files on an event's sources (proof images hang off the event instead)."""
+    return (
+        db.query(Media)
+        .join(Source, Media.source_id == Source.id)
+        .filter(Source.event_id == event_id)
+        .all()
+    )
+
+
+def _all_media(row: Event) -> set[tuple[str, str, str]]:
+    """``(role, storage_url, sha256)`` for the proof images and the source files of ``row``."""
+    files = list(row.media) + [s.media for s in row.sources if s.media is not None]
+    return {(m.role, m.storage_url, m.sha256) for m in files}
+
+
 def _detection(
     *,
     lat: float = 48.5,
@@ -131,6 +169,7 @@ def _detection(
     source_posted_at: datetime | None = None,
     source_fetch_failed: bool = False,
     secondary_source_urls: list[str] | None = None,
+    secondary_sources: list[LinkSource] | None = None,
     title: str = "Strike at Bakhmut",
     proof_text: str = "Strike at Bakhmut\nGeolocated by analyst",
 ) -> Detection:
@@ -141,16 +180,20 @@ def _detection(
         proof_text=proof_text,
         source_url=source_url,
         # The engine keys on the post id, so it follows the URL.
-        detected_from_tweet_id=int(url.rsplit("/", 1)[-1]),
+        detected_from_post_id=int(url.rsplit("/", 1)[-1]),
         detected_from_url=url,
         # One-post thread by default; a stitched thread passes its ids.
         thread_tweet_ids=(
             thread_tweet_ids if thread_tweet_ids is not None else (int(url.rsplit("/", 1)[-1]),)
         ),
-        event_date=date(2025, 11, 12),
+        occurred_date=date(2025, 11, 12),
         source_posted_at=source_posted_at,
         detected_post_at=datetime(2025, 11, 12, 14, 33, tzinfo=UTC),
-        secondary_source_urls=secondary_source_urls or [],
+        secondary_sources=(
+            secondary_sources
+            if secondary_sources is not None
+            else [LinkSource(url=url) for url in secondary_source_urls or []]
+        ),
         source_media=media or [],
         proof_media=proof_media or [],
         source_fetch_failed=source_fetch_failed,
@@ -167,31 +210,38 @@ def _publish_the_default_pair(db, owner: User) -> None:
         Event(
             owner_id=owner.id,
             title="Human submit",
-            event_coords=from_shape(Point(34.5, 48.5), srid=4326),
-            source_url="https://example.com/footage",
-            source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-            event_date=date(2025, 11, 12),
+            coords=from_shape(Point(34.5, 48.5), srid=4326),
+            sources=[
+                Source(
+                    level="direct",
+                    kind="smartphone",
+                    links=[
+                        SourceLink(
+                            url="https://example.com/footage",
+                            posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+                        )
+                    ],
+                )
+            ],
+            occurred_date=date(2025, 11, 12),
             status=STATUS_GEOLOCATED,
             geolocated_at=datetime.now(UTC),
-            detected_from_tweet_id=1,
-            detected_from_url="https://x.com/own/status/1",
+            detection=EventDetection(from_url="https://x.com/own/status/1", from_post_id=1),
         )
     )
     db.commit()
 
 
 async def test_assemble_injects_proof_images_into_the_proof(db, owner):
-    # Proof media persist as role=proof rows and as images in the proof HTML.
-    from app.models.media import Media as MediaRow
-
+    # Proof media persist as proof rows on the event and as images in the proof HTML.
     detection = _detection(proof_media=[_img(), _img()])
     outcome = await _persist(db, owner=owner, detections=[detection], fetch_media=_image_fetcher)
     geo = _row(db, outcome.created[0])
     srcs = extract_image_srcs(geo.proof)
     assert len(srcs) == 2
     assert all(src.startswith("http") for src in srcs)
-    proof_rows = db.query(MediaRow).filter(MediaRow.event_id == geo.id, MediaRow.role == "proof")
-    assert proof_rows.count() == 2
+    assert db.query(Media).filter(Media.event_id == geo.id).count() == 2
+    assert geo.sources == []
 
 
 async def test_proof_video_is_skipped_not_orphaned(db, owner):
@@ -214,8 +264,8 @@ async def test_proof_image_kept_when_mixed_with_video(db, owner):
         fetch_media=_image_fetcher,
     )
     geo = _row(db, outcome.created[0])
-    proof_rows = db.query(Media).filter(Media.event_id == geo.id, Media.role == "proof").all()
-    assert len(proof_rows) == 1 and proof_rows[0].media_type == "image"
+    proof_rows = db.query(Media).filter(Media.event_id == geo.id).all()
+    assert len(proof_rows) == 1 and proof_rows[0].kind == "image"
     assert len(extract_image_srcs(geo.proof)) == 1
 
 
@@ -231,36 +281,100 @@ async def test_assemble_persists_detected_row(db, owner):
 
     geo = db.query(Event).filter(Event.owner_id == owner.id).one()
     assert geo.status == STATUS_DETECTED
-    assert geo.detected_from_url == "https://x.com/own/status/1"
-    assert geo.source_url == "https://x.com/src/status/9"
-    assert geo.source_posted_at == datetime(2025, 11, 11, 9, 0, tzinfo=UTC)
-    assert geo.event_date == date(2025, 11, 12)
+    assert geo.detection.from_url == "https://x.com/own/status/1"
+    assert geo.occurred_date == date(2025, 11, 12)
     assert geo.proof.startswith("<p>")
+    # One direct source: the declared URL with its post time, and the footage. The review
+    # names the kind.
+    assert _sources(geo) == [
+        (
+            "direct",
+            "unknown",
+            [("https://x.com/src/status/9", datetime(2025, 11, 11, 9, 0, tzinfo=UTC))],
+            True,
+        )
+    ]
+    assert db.query(Media).filter(Media.event_id == geo.id).count() == 0
 
-    media = db.query(Media).filter(Media.event_id == geo.id).all()
+    media = _source_media(db, geo.id)
     assert len(media) == 1
-    assert media[0].role == "source"
-    assert media[0].media_type == "image"
+    assert media[0].kind == "image"
     assert media[0].sha256 and len(media[0].sha256) == 64
 
 
-async def test_assemble_prefills_secondary_source_links(db, owner):
-    # Mirrors land as ordered child rows.
+async def test_each_mirror_lands_as_its_own_direct_source_after_the_declared_one(db, owner):
+    """A mirror carries its URL only: no file, no post time, kind ``unknown``."""
     sourced = _detection(
         source_url="https://x.com/src/status/9",
         secondary_source_urls=["https://t.me/channel/11", "https://www.youtube.com/watch?v=M1"],
     )
     outcome = await _persist(db, owner=owner, detections=[sourced], fetch_media=_image_fetcher)
     geo = _row(db, outcome.created[0])
-    assert [(link.position, link.url) for link in geo.source_links] == [
-        (0, "https://t.me/channel/11"),
-        (1, "https://www.youtube.com/watch?v=M1"),
+    assert _sources(geo) == [
+        ("direct", "unknown", [("https://x.com/src/status/9", None)], False),
+        ("direct", "unknown", [("https://t.me/channel/11", None)], False),
+        ("direct", "unknown", [("https://www.youtube.com/watch?v=M1", None)], False),
     ]
 
 
-async def test_two_fetchable_source_media_caps_at_one_role_source_row(db, owner):
-    # uq_media_source_per_event allows one role=source row: the loop must stop
-    # after the first success instead of raising IntegrityError on a second insert.
+_EARTH = LinkSource(
+    url="https://earth.google.com/web/@48.5,34.5,50a",
+    level="context",
+    kind="satellite",
+    title="Google Earth",
+)
+
+
+async def test_a_context_link_lands_as_a_context_source_with_its_kind_and_title(db, owner):
+    """A dated mirror keeps its post time; a context link keeps its level, kind and title."""
+    mirror = LinkSource(url="https://x.com/m/status/9", posted_at=datetime(2024, 5, 1, tzinfo=UTC))
+    sourced = _detection(
+        source_url="https://x.com/src/status/9", secondary_sources=[mirror, _EARTH]
+    )
+    outcome = await _persist(db, owner=owner, detections=[sourced], fetch_media=_image_fetcher)
+    geo = _row(db, outcome.created[0])
+    assert [(s.level, s.kind, s.title) for s in geo.sources] == [
+        ("direct", "unknown", ""),
+        ("direct", "unknown", ""),
+        ("context", "satellite", "Google Earth"),
+    ]
+    assert [link.posted_at for link in geo.sources[1].links] == [mirror.posted_at]
+
+
+async def test_a_re_import_rebuilds_a_mirror_the_resolution_now_reads_as_context(db, owner):
+    """The re-import shape reads level, kind and title, not only the links."""
+    before = _detection(source_url="https://x.com/src/status/9", secondary_source_urls=[_EARTH.url])
+    await _persist(db, owner=owner, detections=[before], fetch_media=_image_fetcher)
+
+    after = dataclasses.replace(before, secondary_sources=[_EARTH])
+    outcome = await _persist(db, owner=owner, detections=[after], fetch_media=_image_fetcher)
+
+    assert len(outcome.updated) == 1
+    geo = _row(db, outcome.updated[0])
+    assert [(s.level, s.kind) for s in geo.sources] == [
+        ("direct", "unknown"),
+        ("context", "satellite"),
+    ]
+
+
+async def test_a_file_on_a_context_source_is_no_footage(db, owner):
+    """The footage warning reads direct and indirect sources only, as the publish floor does."""
+    sourced = _detection(source_url="https://x.com/src/status/9", media=[_img()])
+    outcome = await _persist(db, owner=owner, detections=[sourced], fetch_media=_image_fetcher)
+    assert SOURCE_FOOTAGE_MISSING not in outcome.warnings
+    geo = _row(db, outcome.created[0])
+    geo.sources[0].level = "context"
+    db.commit()
+
+    assert _write_warnings(db, [(geo.id, sourced)]) == {
+        SOURCE_FOOTAGE_MISSING: 1,
+        SOURCE_DATE_UNKNOWN: 1,
+    }
+
+
+async def test_two_fetchable_source_media_store_one_file_on_the_declared_source(db, owner):
+    # uq_media_source_id allows one file per source: the loop must stop after the first
+    # success instead of raising IntegrityError on a second insert.
     async def _both_fetcher(parsed: ParsedMedia) -> tuple[bytes, str]:
         if parsed.content_type.startswith("video/"):
             return b"\x00\x00\x00\x18ftypmp42fake", "video/mp4"
@@ -272,9 +386,10 @@ async def test_two_fetchable_source_media_caps_at_one_role_source_row(db, owner)
     assert len(outcome.created) == 1 and outcome.failed == 0
 
     geo = _row(db, outcome.created[0])
-    source_rows = db.query(Media).filter(Media.event_id == geo.id, Media.role == "source").all()
+    source_rows = _source_media(db, geo.id)
     assert len(source_rows) == 1
-    assert source_rows[0].media_type == "image"  # the first entry (photo) wins
+    assert source_rows[0].kind == "image"  # the first entry (photo) wins
+    assert len(geo.sources) == 1
 
 
 async def test_media_less_detection_persists(db, owner):
@@ -284,8 +399,7 @@ async def test_media_less_detection_persists(db, owner):
     )
     assert len(outcome.created) == 1
     geo = db.query(Event).filter(Event.owner_id == owner.id).one()
-    assert geo.source_url is None
-    assert geo.source_posted_at is None
+    assert geo.sources == []
     assert db.query(Media).filter(Media.event_id == geo.id).count() == 0
 
 
@@ -394,6 +508,52 @@ async def test_retracted_geolocation_is_skipped(db, owner):
     assert rows[0].title == stored_title
 
 
+async def test_a_detection_stays_at_version_0_while_re_imports_overwrite_it(db, owner):
+    await _persist(db, owner=owner, detections=[_detection()], fetch_media=_missing_fetcher)
+    outcome = await _persist(
+        db,
+        owner=owner,
+        detections=[_detection(title="Rewritten by the newer parser")],
+        fetch_media=_missing_fetcher,
+    )
+    assert len(outcome.updated) == 1
+    db.expire_all()
+    geo = db.query(Event).filter(Event.owner_id == owner.id).one()
+    assert geo.title == "Rewritten by the newer parser"
+    assert geo.version_no == 0
+    assert db.query(EventVersion).filter(EventVersion.event_id == geo.id).count() == 0
+
+
+async def test_a_published_detection_is_never_re_imported(db, owner):
+    """Once a person saved a version (the publish files version 0), the import leaves it."""
+    await _persist(db, owner=owner, detections=[_detection()], fetch_media=_missing_fetcher)
+    geo = db.query(Event).filter(Event.owner_id == owner.id).one()
+    geo_id, stored_title = geo.id, geo.title
+    versions.file_version(db, geo=geo, edited_by=owner, note=None)
+    geo.status = STATUS_GEOLOCATED
+    geo.geolocated_at = datetime.now(UTC)
+    db.commit()
+
+    outcome = await _persist(
+        db,
+        owner=owner,
+        detections=[_detection(title="Rewritten by the newer parser")],
+        fetch_media=_missing_fetcher,
+    )
+    assert outcome.created == [] and outcome.skipped == [geo_id] and outcome.updated == []
+    db.expire_all()
+    row = db.get(Event, geo_id)
+    assert row.title == stored_title
+    assert row.version_no == 1
+
+
+def test_the_import_writes_only_onto_version_0():
+    """The rule reads the version, not only the status: a detection a person saved a version
+    of is skipped too."""
+    assert _row_disposition(Event(status=STATUS_DETECTED, version_no=0)) == "upsert"
+    assert _row_disposition(Event(status=STATUS_DETECTED, version_no=1)) == "skip"
+
+
 async def test_same_source_and_coordinate_skips_across_provenance_urls(db, owner):
     # Delete-and-repost: two tweets declaring the same source at one coordinate are one event.
     first = _detection(url="https://x.com/own/status/1", source_url="https://t.me/chan/1")
@@ -413,10 +573,15 @@ async def test_a_corrected_source_url_still_matches_its_own_re_import(db, owner)
     geo = Event(
         owner_id=owner.id,
         title="Human submit",
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url=original,
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        event_date=date(2025, 11, 12),
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
+        sources=[
+            Source(
+                level="direct",
+                kind="smartphone",
+                links=[SourceLink(url="https://t.me/chan/corrected")],
+            )
+        ],
+        occurred_date=date(2025, 11, 12),
         status=STATUS_GEOLOCATED,
         geolocated_at=datetime.now(UTC),
     )
@@ -427,10 +592,25 @@ async def test_a_corrected_source_url_still_matches_its_own_re_import(db, owner)
             event_id=geo.id,
             version_no=1,
             edited_by_id=owner.id,
-            snapshot={"source_url": original, "source_media": []},
+            snapshot={
+                "sources": [
+                    {
+                        "level": "direct",
+                        "kind": "smartphone",
+                        "links": [
+                            {
+                                "url": original,
+                                "posted_at": None,
+                                "snapshot_url": None,
+                                "archived_at": None,
+                            }
+                        ],
+                        "media": None,
+                    }
+                ]
+            },
         )
     )
-    geo.source_url = "https://t.me/chan/corrected"
     geo.version_no = 2
     db.commit()
     geo_id = geo.id
@@ -448,7 +628,7 @@ async def test_a_corrected_source_url_still_matches_its_own_re_import(db, owner)
 
 
 async def test_same_source_different_coordinate_still_creates(db, owner):
-    # One video can show two strikes: the source_url leg must not collapse them.
+    # One video can show two strikes: the source URL leg must not collapse them.
     first = _detection(url="https://x.com/own/status/1", source_url="https://t.me/chan/1")
     second = _detection(
         url="https://x.com/own/status/2", source_url="https://t.me/chan/1", lat=48.6, lng=34.6
@@ -460,7 +640,7 @@ async def test_same_source_different_coordinate_still_creates(db, owner):
 
 
 async def test_sourceless_dtos_do_not_dedup_on_null_source(db, owner):
-    # NULL source_url declares nothing, so it cannot collide.
+    # A detection with no source URL declares nothing, so it cannot collide.
     first = _detection(url="https://x.com/own/status/1")
     second = _detection(url="https://x.com/own/status/2")
     await _persist(db, owner=owner, detections=[first], fetch_media=_missing_fetcher)
@@ -486,7 +666,7 @@ async def test_two_spellings_of_one_post_land_on_one_detection(db, owner):
     row = db.query(Event).filter(Event.owner_id == owner.id).one()
     assert row.title == "Second read"
     # Provenance is not the import's to move.
-    assert row.detected_from_url == "https://x.com/own/status/7"
+    assert row.detection.from_url == "https://x.com/own/status/7"
 
 
 async def test_an_archive_thread_then_a_bot_tag_on_its_tail_is_one_detection(db, owner):
@@ -516,9 +696,9 @@ async def test_an_archive_thread_then_a_bot_tag_on_its_tail_is_one_detection(db,
     row = db.query(Event).filter(Event.owner_id == owner.id).one()
     assert row.title == "From the tag"
     # Provenance and entry stay those of the first read.
-    assert row.detected_from_url == "https://x.com/own/status/101"
-    assert row.detected_thread_tweet_ids == [101, 102, 103]
-    assert row.detected_via == "archive"
+    assert row.detection.from_url == "https://x.com/own/status/101"
+    assert row.detection.thread_post_ids == [101, 102, 103]
+    assert row.detection.via == "archive"
 
 
 async def test_a_bot_tag_then_the_archive_of_the_same_thread_is_one_detection(db, owner):
@@ -542,8 +722,8 @@ async def test_a_bot_tag_then_the_archive_of_the_same_thread_is_one_detection(db
     assert len(outcome.updated) == 1 and outcome.created == []
     row = db.query(Event).filter(Event.owner_id == owner.id).one()
     assert row.title == "From the export"
-    assert row.detected_from_url == "https://x.com/own/status/102"
-    assert row.detected_via == "bot"
+    assert row.detection.from_url == "https://x.com/own/status/102"
+    assert row.detection.via == "bot"
 
 
 async def test_two_threads_sharing_no_post_are_two_detections(db, owner):
@@ -567,7 +747,7 @@ async def test_the_entry_that_produced_a_detection_is_stamped_on_the_row(db, own
         via=via,
     )
     [row_id] = outcome.created
-    assert _row(db, row_id).detected_via == via
+    assert _row(db, row_id).detection.via == via
 
 
 async def test_geolocated_pair_is_skipped(db, owner):
@@ -588,9 +768,9 @@ async def test_detected_detection_is_upserted_in_place(db, owner):
         "owner_id": stored.owner_id,
         "created_at": stored.created_at,
         "detected_at": stored.detected_at,
-        "detected_from_url": stored.detected_from_url,
     }
-    assert stored.source_url is None and stored.source_links == []
+    provenance = stored.detection.from_url
+    assert stored.sources == []
 
     richer = _detection(
         title="Depot hit, Shebekino",
@@ -606,15 +786,21 @@ async def test_detected_detection_is_upserted_in_place(db, owner):
     db.expire_all()
     row = db.query(Event).filter(Event.owner_id == owner.id).one()
     assert {k: getattr(row, k) for k in before} == before
+    assert row.detection.from_url == provenance
     assert row.status == STATUS_DETECTED
     # Import-owned fields are overwritten.
     assert row.title == "Depot hit, Shebekino"
-    assert row.source_url == "https://t.me/channel/42"
-    assert row.source_posted_at == datetime(2025, 11, 11, 9, 0, tzinfo=UTC)
-    assert [link.url for link in row.source_links] == ["https://www.youtube.com/watch?v=M1"]
+    assert _sources(row) == [
+        (
+            "direct",
+            "unknown",
+            [("https://t.me/channel/42", datetime(2025, 11, 11, 9, 0, tzinfo=UTC))],
+            True,
+        ),
+        ("direct", "unknown", [("https://www.youtube.com/watch?v=M1", None)], False),
+    ]
     assert html_text(row.proof).split("\n")[0] == "Depot hit, Shebekino"
-    media = db.query(Media).filter(Media.event_id == row.id).all()
-    assert [m.role for m in media] == ["source"]
+    assert db.query(Media).filter(Media.event_id == row.id).count() == 0
 
 
 async def test_a_re_import_whose_fetch_comes_back_short_keeps_the_stored_media(db, owner):
@@ -626,7 +812,7 @@ async def test_a_re_import_whose_fetch_comes_back_short_keeps_the_stored_media(d
         fetch_media=_image_fetcher,
     )
     stored = db.query(Event).filter(Event.owner_id == owner.id).one()
-    before = {(m.role, m.storage_url, m.sha256) for m in stored.media}
+    before = _all_media(stored)
     keys = {get_storage().key_from_url(url) for _role, url, _sha in before}
     assert len(before) == 2
 
@@ -642,7 +828,7 @@ async def test_a_re_import_whose_fetch_comes_back_short_keeps_the_stored_media(d
     db.expire_all()
     row = db.query(Event).filter(Event.owner_id == owner.id).one()
     assert row.title == "Corrected wording"
-    assert {(m.role, m.storage_url, m.sha256) for m in row.media} == before
+    assert _all_media(row) == before
     for key in keys:
         assert key is not None and stored_bytes(key)
     assert extract_image_srcs(row.proof) == [
@@ -667,7 +853,8 @@ async def test_a_re_import_that_only_loses_its_media_moves_nothing(db, owner):
     db.expire_all()
     row = db.query(Event).filter(Event.owner_id == owner.id).one()
     assert row.updated_at == updated_at
-    assert [m.role for m in row.media] == ["source"]
+    assert [source.media is not None for source in row.sources] == [True]
+    assert row.media == []
 
 
 async def test_a_pass_that_wrote_nothing_reports_no_warnings(db, owner):
@@ -703,7 +890,7 @@ async def test_upsert_replaces_source_media_and_sweeps_the_old_objects(db, owner
         db, owner=owner, detections=[_detection(media=[_img()])], fetch_media=_image_fetcher
     )
     stored = db.query(Event).filter(Event.owner_id == owner.id).one()
-    old = db.query(Media).filter(Media.event_id == stored.id, Media.role == "source").one()
+    [old] = _source_media(db, stored.id)
     old_key = get_storage().key_from_url(old.storage_url)
     assert old_key is not None and stored_bytes(old_key)
 
@@ -716,7 +903,7 @@ async def test_upsert_replaces_source_media_and_sweeps_the_old_objects(db, owner
     assert len(outcome.updated) == 1
 
     db.expire_all()
-    fresh = db.query(Media).filter(Media.event_id == stored.id, Media.role == "source").one()
+    [fresh] = _source_media(db, stored.id)
     assert fresh.sha256 != old.sha256
     with pytest.raises(FileNotFoundError):
         stored_bytes(old_key)
@@ -746,6 +933,107 @@ async def test_upsert_rewrites_proof_media_and_the_body_that_carries_it(db, owne
     assert [m.storage_url for m in rows] == [new_src]
 
 
+def _key(url: str) -> str:
+    key = get_storage().key_from_url(url)
+    assert key is not None
+    return key
+
+
+def _with_derivatives(key: str) -> set[str]:
+    return {key, derivative_key(key, "hero"), derivative_key(key, "thumb")}
+
+
+async def _import_source_and_proof(db, owner: User, fetch_media=_image_fetcher) -> Event:
+    await _persist(
+        db,
+        owner=owner,
+        detections=[_detection(media=[_img()], proof_media=[_img()])],
+        fetch_media=fetch_media,
+    )
+    db.expire_all()
+    return db.query(Event).filter(Event.owner_id == owner.id).one()
+
+
+def _stored_keys_of(db, row: Event) -> tuple[str, str]:
+    """``(source key, proof key)`` of a row holding one of each."""
+    [source] = _source_media(db, row.id)
+    [proof] = row.media
+    return _key(source.storage_url), _key(proof.storage_url)
+
+
+def _store_proof_derivatives(row: Event) -> None:
+    """Stage hero and thumbnail keys beside each proof image: a sweep must take them whatever
+    wrote them."""
+    for media in row.media:
+        key = _key(media.storage_url)
+        for suffix in ("hero", "thumb"):
+            store_bytes(TINY_JPEG, derivative_key(key, suffix))
+
+
+@pytest.fixture
+def actor(db):
+    user = User(
+        username=f"adm{uuid.uuid4().hex[:8]}",
+        email=f"adm-{uuid.uuid4().hex}@example.com",
+        password_hash=hash_password("password123"),
+        is_admin=True,
+    )
+    db.add(user)
+    db.commit()
+    user_id = user.id
+    yield user
+    db.expire_all()
+    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
+    db.commit()
+
+
+async def test_an_imported_proof_image_is_stored_without_derivatives(db, owner):
+    """Only the source image gets the hero and thumbnail its renders read."""
+    row = await _import_source_and_proof(db, owner)
+
+    source_key, proof_key = _stored_keys_of(db, row)
+    assert stored_keys() == _with_derivatives(source_key) | {proof_key}
+
+
+@pytest.mark.parametrize("erasure", ["event", "user", "purge"])
+async def test_every_erasure_path_leaves_no_stored_object(db, owner, actor, erasure):
+    """Hard delete of the event, of its owner, and the detection purge each sweep every
+    original and every derivative, whatever the media's role."""
+    row = await _import_source_and_proof(db, owner)
+    _store_proof_derivatives(row)
+    source_key, proof_key = _stored_keys_of(db, row)
+    assert stored_keys() == _with_derivatives(source_key) | _with_derivatives(proof_key)
+
+    if erasure == "event":
+        admin.hard_delete_geolocation(db, actor_id=actor.id, geolocation_id=row.id)
+    elif erasure == "user":
+        admin.hard_delete_user(db, actor_id=actor.id, user_id=owner.id)
+    else:
+        admin.purge_detected_events(db, actor_id=actor.id, user_id=owner.id)
+
+    assert stored_keys() == set()
+
+
+async def test_a_re_import_sweeps_every_object_of_the_media_it_replaces(db, owner):
+    row = await _import_source_and_proof(db, owner)
+    _store_proof_derivatives(row)
+
+    async def other_image(_parsed: ParsedMedia) -> tuple[bytes, str]:
+        return OTHER_JPEG, "image/jpeg"
+
+    outcome = await _persist(
+        db,
+        owner=owner,
+        detections=[_detection(media=[_img()], proof_media=[_img()])],
+        fetch_media=other_image,
+    )
+    assert len(outcome.updated) == 1
+
+    db.expire_all()
+    source_key, proof_key = _stored_keys_of(db, _row(db, row.id))
+    assert stored_keys() == _with_derivatives(source_key) | {proof_key}
+
+
 async def test_upsert_matched_through_the_source_url_leg(db, owner):
     # Delete-and-repost: the second post updates the first one's detection.
     first = _detection(url="https://x.com/own/status/1", source_url="https://t.me/chan/1")
@@ -764,7 +1052,7 @@ async def test_upsert_matched_through_the_source_url_leg(db, owner):
     row = db.query(Event).filter(Event.owner_id == owner.id).one()
     assert row.id == stored_id
     assert row.title == "Corrected wording"
-    assert row.detected_from_url == "https://x.com/own/status/1"
+    assert row.detection.from_url == "https://x.com/own/status/1"
 
 
 async def test_upsert_drops_a_snapshot_of_a_source_url_the_row_no_longer_declares(db, owner):
@@ -772,13 +1060,10 @@ async def test_upsert_drops_a_snapshot_of_a_source_url_the_row_no_longer_declare
     first = _detection(source_url="https://t.me/chan/1")
     await _persist(db, owner=owner, detections=[first], fetch_media=_missing_fetcher)
     row = db.query(Event).filter(Event.owner_id == owner.id).one()
-    stage_source_snapshot(
-        db,
-        event=row,
-        snapshot_url="https://web.archive.org/web/20260101120000/https://t.me/chan/1",
-    )
+    [link] = row.sources[0].links
+    link.snapshot_url = "https://web.archive.org/web/20260101120000/https://t.me/chan/1"
+    link.archived_at = datetime.now(UTC)
     db.commit()
-    assert len(row.archives) == 1
 
     moved = _detection(source_url="https://t.me/chan/2")
     outcome = await _persist(db, owner=owner, detections=[moved], fetch_media=_missing_fetcher)
@@ -786,22 +1071,58 @@ async def test_upsert_drops_a_snapshot_of_a_source_url_the_row_no_longer_declare
 
     db.expire_all()
     fresh = db.query(Event).filter(Event.owner_id == owner.id).one()
-    assert fresh.source_url == "https://t.me/chan/2"
-    assert fresh.archives == []
+    assert _sources(fresh) == [("direct", "unknown", [("https://t.me/chan/2", None)], False)]
+    assert fresh.sources[0].links[0].snapshot_url is None
+    assert db.query(SourceLink).filter(SourceLink.url == "https://t.me/chan/1").count() == 0
+
+
+async def test_upsert_whose_source_links_moved_keeps_the_unchanged_file(db, owner):
+    """The sources are rebuilt around the stored object: no re-upload, no sweep."""
+    await _persist(
+        db,
+        owner=owner,
+        detections=[_detection(source_url="https://t.me/chan/1", media=[_img()])],
+        fetch_media=_image_fetcher,
+    )
+    stored = db.query(Event).filter(Event.owner_id == owner.id).one()
+    [old] = _source_media(db, stored.id)
+    old_url, old_sha = old.storage_url, old.sha256
+    before_objects = _stored_objects(stored.id)
+
+    moved = _detection(
+        source_url="https://t.me/chan/2",
+        secondary_source_urls=["https://www.youtube.com/watch?v=M1"],
+        media=[_img()],
+    )
+    outcome = await _persist(db, owner=owner, detections=[moved], fetch_media=_image_fetcher)
+    assert len(outcome.updated) == 1
+
+    db.expire_all()
+    row = db.query(Event).filter(Event.owner_id == owner.id).one()
+    assert _sources(row) == [
+        ("direct", "unknown", [("https://t.me/chan/2", None)], True),
+        ("direct", "unknown", [("https://www.youtube.com/watch?v=M1", None)], False),
+    ]
+    assert [(m.storage_url, m.sha256) for m in _source_media(db, row.id)] == [(old_url, old_sha)]
+    assert _stored_objects(row.id) == before_objects
 
 
 async def test_reimporting_the_same_detection_twice_writes_nothing(db, owner):
     # Idempotence: no field churn, re-upload, new objects, or ``updated_at`` move.
     detection = _detection(
         source_url="https://t.me/chan/1",
-        secondary_source_urls=["https://www.youtube.com/watch?v=M1"],
+        secondary_sources=[
+            LinkSource(url="https://x.com/m/status/9", posted_at=datetime(2024, 5, 1, tzinfo=UTC)),
+            _EARTH,
+        ],
         media=[_img()],
         proof_media=[_img()],
     )
     await _persist(db, owner=owner, detections=[detection], fetch_media=_image_fetcher)
     stored = db.query(Event).filter(Event.owner_id == owner.id).one()
     before_updated_at = stored.updated_at
-    before_media = {(m.id, m.storage_url, m.sha256) for m in stored.media}
+    before_sources = [source.id for source in stored.sources]
+    before_media = _all_media(stored)
     before_objects = _stored_objects(stored.id)
 
     outcome = await _persist(db, owner=owner, detections=[detection], fetch_media=_image_fetcher)
@@ -810,7 +1131,8 @@ async def test_reimporting_the_same_detection_twice_writes_nothing(db, owner):
     db.expire_all()
     row = db.query(Event).filter(Event.owner_id == owner.id).one()
     assert row.updated_at == before_updated_at
-    assert {(m.id, m.storage_url, m.sha256) for m in row.media} == before_media
+    assert [source.id for source in row.sources] == before_sources
+    assert _all_media(row) == before_media
     assert _stored_objects(row.id) == before_objects
 
 
@@ -843,8 +1165,7 @@ async def test_thread_media_fetched_and_prepared_once_across_coordinates(db, own
     outcome = await _persist(db, owner=owner, detections=detections, fetch_media=counting_fetcher)
     assert len(outcome.created) == 2
     assert calls["n"] == 1  # fetched once, shared across both coordinate rows
-    geo_ids = outcome.created
-    assert db.query(Media).filter(Media.event_id.in_(geo_ids)).count() == 2
+    assert [len(_source_media(db, geo_id)) for geo_id in outcome.created] == [1, 1]
 
 
 async def test_unusable_media_is_skipped_and_detection_still_persists(db, owner):
@@ -857,6 +1178,7 @@ async def test_unusable_media_is_skipped_and_detection_still_persists(db, owner)
     )
     assert len(outcome.created) == 1 and outcome.failed == 0
     geo = db.query(Event).filter(Event.owner_id == owner.id).one()
+    assert geo.sources == []
     assert db.query(Media).filter(Media.event_id == geo.id).count() == 0
 
 
@@ -880,6 +1202,14 @@ async def test_over_cap_media_is_skipped_and_detection_still_persists(db, owner,
     assert len(outcome.created) == 1 and outcome.failed == 0
     assert outcome.warnings == {SOURCE_FOOTAGE_MISSING: 1}
     row = _row(db, outcome.created[0])
+    assert _sources(row) == [
+        (
+            "direct",
+            "unknown",
+            [("https://t.me/chan/42", datetime(2025, 11, 11, 8, 0, tzinfo=UTC))],
+            False,
+        )
+    ]
     assert db.query(Media).filter(Media.event_id == row.id).count() == 0
     assert not extract_image_srcs(row.proof)
 
@@ -912,7 +1242,7 @@ def test_validate_bytes_guards_type_and_size():
 
 
 async def test_a_sourced_detection_that_stored_no_footage_warns(db, owner):
-    """A declared source with no ``role=source`` media and an unknown post date warns."""
+    """A declared source that stored no file and has an unknown post date warns."""
     detection = _detection(
         source_url="https://t.me/chan/42",
         media=[_img()],
@@ -975,3 +1305,19 @@ async def test_media_already_on_another_event_warns_once_per_row(db, owner):
     )
     assert len(second.created) == 2
     assert second.warnings[DUPLICATE_MEDIA] == 2
+
+
+async def test_a_source_file_already_on_another_event_warns(db, owner):
+    """The duplicate check reads source files as well as proof images."""
+    await _persist(
+        db, owner=owner, detections=[_detection(media=[_img()])], fetch_media=_image_fetcher
+    )
+
+    outcome = await _persist(
+        db,
+        owner=owner,
+        detections=[_detection(url="https://x.com/own/status/2", lat=49.5, media=[_img()])],
+        fetch_media=_image_fetcher,
+    )
+    assert len(outcome.created) == 1
+    assert outcome.warnings[DUPLICATE_MEDIA] == 1

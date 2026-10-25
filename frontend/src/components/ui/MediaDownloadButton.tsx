@@ -16,7 +16,7 @@ function resolveDownload(source: DownloadSource): {
   url: string;
   filename: string;
 } {
-  const isMedia = "media_type" in source;
+  const isMedia = "kind" in source;
   const url = isMedia ? source.storage_url : source.src;
   // Each rung falls through on missing or empty ("" from an empty
   // `original_filename` or a trailing slash), which `??` would accept.

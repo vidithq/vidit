@@ -1,8 +1,8 @@
 """Invite codes an analyst mints from Settings, each bound to the invitee's X handle.
 
-A sponsored code is an ordinary ``invite_codes`` row with ``created_by`` set, so registration
+A sponsored code is an ordinary ``invite_codes`` row with ``created_by_id`` set, so registration
 redeems it like an admin-minted one. Minting is capped per sponsor per UTC day and gated by the
-admin switch ``users.invite_minting_enabled``.
+admin switch ``users.is_invite_minting_enabled``.
 """
 
 from __future__ import annotations
@@ -61,7 +61,7 @@ def _minted_since(db: Session, sponsor_id: uuid.UUID, start: datetime) -> int:
     # Every row counts, revoked or used, so revoking a code never frees a slot.
     return (
         db.query(func.count(InviteCode.id))
-        .filter(InviteCode.created_by == sponsor_id, InviteCode.created_at >= start)
+        .filter(InviteCode.created_by_id == sponsor_id, InviteCode.created_at >= start)
         .scalar()
         or 0
     )
@@ -88,7 +88,7 @@ def mint(db: Session, *, sponsor: User, x_handle: str) -> SponsoredInviteCodeRea
     """
     # The row lock serializes two concurrent mints, which would otherwise both pass the count.
     enabled = (
-        db.query(User.invite_minting_enabled)
+        db.query(User.is_invite_minting_enabled)
         .filter(User.id == sponsor.id)
         .with_for_update()
         .scalar()
@@ -102,7 +102,7 @@ def mint(db: Session, *, sponsor: User, x_handle: str) -> SponsoredInviteCodeRea
             f"The quota resets at {resets_at:%Y-%m-%d %H:%M} UTC."
         )
 
-    invite = InviteCode(code=generate_invite_code(), x_handle=x_handle, created_by=sponsor.id)
+    invite = InviteCode(code=generate_invite_code(), x_handle=x_handle, created_by_id=sponsor.id)
     db.add(invite)
     db.flush()
     log_admin_event(
@@ -121,13 +121,13 @@ def list_own(db: Session, *, sponsor: User) -> SponsoredInviteCodeList:
     start, resets_at = _quota_window(datetime.now(UTC))
     rows = (
         db.query(InviteCode)
-        .filter(InviteCode.created_by == sponsor.id)
+        .filter(InviteCode.created_by_id == sponsor.id)
         .order_by(InviteCode.created_at.desc(), InviteCode.id.desc())
         .all()
     )
     return SponsoredInviteCodeList(
         items=[_read(row) for row in rows],
-        minting_enabled=sponsor.invite_minting_enabled,
+        minting_enabled=sponsor.is_invite_minting_enabled,
         daily_limit=DAILY_MINT_LIMIT,
         minted_today=sum(1 for row in rows if row.created_at >= start),
         resets_at=resets_at,
@@ -142,7 +142,7 @@ def revoke_own(db: Session, *, sponsor: User, code_id: uuid.UUID) -> SponsoredIn
     # The row lock keeps a redemption from landing between the status check and the revoke.
     invite = (
         db.query(InviteCode)
-        .filter(InviteCode.id == code_id, InviteCode.created_by == sponsor.id)
+        .filter(InviteCode.id == code_id, InviteCode.created_by_id == sponsor.id)
         .with_for_update()
         .first()
     )

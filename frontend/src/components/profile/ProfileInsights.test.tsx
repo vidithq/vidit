@@ -14,7 +14,7 @@ function statsFixture(overrides: Partial<UserStats> = {}): UserStats {
     total_events: 15,
     media_count: 20,
     top_conflicts: [{ name: "Russo-Ukrainian War", count: 9 }],
-    capture_sources: [{ name: "drone", count: 5 }],
+    source_kinds: [{ name: "drone", count: 5 }],
     source_hosts: [{ name: "t.me", count: 10 }],
     other_hosts_count: 0,
     no_source_count: 5,
@@ -53,28 +53,28 @@ describe("ProfileInsights", () => {
       "/search?type=event&author=ana&conflict=Russo-Ukrainian+War"
     );
     expect(
-      screen.getByRole("link", { name: /Top capture source/ })
-    ).toHaveAttribute("href", "/search?type=event&author=ana&capture_source=drone");
+      screen.getByRole("link", { name: /Top source kind/ })
+    ).toHaveAttribute("href", "/search?type=event&author=ana&source_kind=drone");
   });
 
   it("names the leader of each ranked list once", async () => {
     await renderCard(statsFixture());
 
     expect(screen.getByText("Russo-Ukrainian War")).toBeInTheDocument();
-    expect(screen.getByText("drone")).toBeInTheDocument();
+    expect(screen.getByText("Drone")).toBeInTheDocument();
     // The count behind a leader isn't printed; the search the tile opens shows it.
     expect(screen.queryByText(/Russo-Ukrainian War · 9/)).not.toBeInTheDocument();
   });
 
   it("leaves a leaderless tile inert rather than linking nowhere", async () => {
-    await renderCard(statsFixture({ top_conflicts: [], capture_sources: [] }));
+    await renderCard(statsFixture({ top_conflicts: [], source_kinds: [] }));
 
     expect(screen.getAllByText("None")).toHaveLength(2);
     expect(
       screen.queryByRole("link", { name: /Top conflict/ })
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("link", { name: /Top capture source/ })
+      screen.queryByRole("link", { name: /Top source kind/ })
     ).not.toBeInTheDocument();
     // The counted tiles still link: an empty ranked list says nothing about whether the analyst has events.
     expect(screen.getByRole("link", { name: /Geolocated/ })).toBeInTheDocument();
@@ -87,7 +87,7 @@ describe("ProfileInsights", () => {
         geolocated_count: 0,
         detected_count: 0,
         top_conflicts: [],
-        capture_sources: [],
+        source_kinds: [],
       })
     );
     const { container } = render(<ProfileInsights username="ana" />);

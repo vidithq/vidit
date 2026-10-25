@@ -4,24 +4,28 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 import { EventEditForm } from "@/components/geolocations/edit/EventEditForm";
-import { RequestEditForm } from "@/components/geolocations/edit/RequestEditForm";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import {
   detectionsReviewPath,
-  detectionEditPath,
-  QUEUE_PARAM,
   type PaginatedEventDetails,
 } from "@/lib/events";
 import type { EventDetail } from "@/types";
-import { detectionsQueueHref, eventHref } from "@/lib/routes";
+import {
+  detectionsQueueHref,
+  eventEditHref,
+  eventHref,
+  QUEUE_PARAM,
+  requestHref,
+} from "@/lib/routes";
 
 /**
- * Owner edit of one event: correcting an open request (`RequestEditForm`,
- * overwritten in place), confirming a detection, or correcting a published
- * geolocation (both `EventEditForm`). A `closed` row has no owner edit.
+ * The edit of one event, `EventEditForm` in every shape: publishing a request
+ * or a detection, or correcting a published geolocation. A detection and a
+ * published row are their owner's; a request is anyone's to publish, and its
+ * owner's to save in place. A `closed` row has no edit.
  *
  * With `?queue=1` the page is one step of a detections review walk over real
  * URLs: it places this detection in the owner's queue and hands the form the
@@ -58,19 +62,17 @@ export default function EditEventPage() {
     return <PageLoading />;
   }
 
-  // Writes are owner-only and state-gated (403 / 409); refuse before the form.
-  if (user.id !== geo.owner.id) {
-    // Open requests read at `/requests/{id}`, other rows at `/events/{id}`.
-    const isRequest = geo.status === "requested";
+  const isOwner = user.id === geo.owner.id;
+
+  // Writes are state-gated (409) and, past an open request, owner-only (403); refuse before the
+  // form.
+  if (!isOwner && geo.status !== "requested") {
     return (
       <PageShell back title="Edit event">
         <p className="text-sm text-neutral-400">
           You can only edit your own events.{" "}
-          <Link
-            href={isRequest ? `/requests/${geo.id}` : eventHref(geo.id)}
-            className={TEXT_LINK}
-          >
-            {isRequest ? "View this request" : "View this geolocation"}
+          <Link href={eventHref(geo.id)} className={TEXT_LINK}>
+            View this event
           </Link>
           .
         </p>
@@ -78,9 +80,9 @@ export default function EditEventPage() {
     );
   }
 
-  // An open request is overwritten in place (no version); answering it is the submit form's job (`/submit?request_id=`).
+  // An open request publishes to its event page; its in-place save and its close return to it.
   if (geo.status === "requested") {
-    return <RequestEditForm geo={geo} redirectTo={`/requests/${geo.id}`} />;
+    return <EventEditForm geo={geo} redirectTo={requestHref(geo.id)} isOwner={isOwner} />;
   }
 
   // What is left is `closed`, which no write reopens.
@@ -101,7 +103,7 @@ export default function EditEventPage() {
     );
   }
 
-  // Return to the queue after a confirmation, the event after a version.
+  // Return to the queue after a publish, the event after a version.
   const doneHref =
     geo.status === "geolocated"
       ? eventHref(geo.id)
@@ -116,11 +118,17 @@ export default function EditEventPage() {
       ? {
           position: `Detection ${index + 1} of ${queueData?.total ?? items.length}`,
           onAdvance: () =>
-            router.push(next ? detectionEditPath(next.id, true) : doneHref),
+            router.push(next ? eventEditHref(next.id, true) : doneHref),
         }
       : undefined;
 
   return (
-    <EventEditForm geo={geo} redirectTo={doneHref} queue={queue} onCreditChanged={refetch} />
+    <EventEditForm
+      geo={geo}
+      redirectTo={doneHref}
+      isOwner
+      queue={queue}
+      onCreditChanged={refetch}
+    />
   );
 }

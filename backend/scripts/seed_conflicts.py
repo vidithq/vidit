@@ -3,7 +3,7 @@
 Pulls every armed conflict started in or after ``SINCE_YEAR`` (types in
 ``TYPE_ALLOWLIST``; battles, military operations and coup attempts are excluded
 as sub-conflict noise) and inserts the missing ones as ``source='seed'``,
-``ongoing=false`` rows. The Wikipedia sync (``scripts/sync_conflicts.py``)
+``is_ongoing=false`` rows. The Wikipedia sync (``scripts/sync_conflicts.py``)
 flips the ongoing subset; this seed provides historical depth for archival
 footage.
 
@@ -138,12 +138,12 @@ def main() -> None:
             taken_names.add(name)
             # ``conflicts.id`` has no server default, so the Core insert passes it.
             to_insert.append(
-                {**row, "id": uuid.uuid4(), "name": name, "ongoing": False, "source": "seed"}
+                {**row, "id": uuid.uuid4(), "name": name, "is_ongoing": False, "origin": "seed"}
             )
 
         if dry_run:
             for row in to_insert:
-                end = row["end_year"] or "ongoing"
+                end = row["end_year"] or "is_ongoing"
                 print(f"  + {row['wikidata_id']:<12} {row['start_year']}-{end}  {row['name']}")
         elif to_insert:
             db.execute(

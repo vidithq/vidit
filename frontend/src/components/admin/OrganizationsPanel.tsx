@@ -23,13 +23,14 @@ import {
   analystAccount,
   type Account,
 } from "@/components/ui/AccountPicker";
-import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Input, Textarea } from "@/components/ui/Input";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { TEXT_LINK, WARNING_CALLOUT } from "@/components/ui/styles";
+import { TEXT_LINK } from "@/components/ui/styles";
 import {
   FORM_ERROR_BANNER,
   FORM_LABEL,
@@ -130,11 +131,21 @@ function DeleteOrganization({
     onSuccess: onDone,
   });
   return (
-    <div className={`${WARNING_CALLOUT} w-full space-y-2 rounded-md px-3 py-2 text-xs`}>
+    <ConfirmDialog
+      title={`Delete ${slug}?`}
+      confirmLabel="Delete organization"
+      busyLabel="Deleting…"
+      busy={remove.loading}
+      confirmDisabled={typed !== slug}
+      error={remove.error}
+      tone="danger"
+      onConfirm={() => void remove.run()}
+      onCancel={onCancel}
+    >
       <p>
-        <strong>Deleting {slug} is irreversible.</strong> Its members, pending invites, approval
-        requests and every approval given in its name go with it; the owners of the events it
-        approved are told. Type the slug to confirm.
+        <strong>Deleting {slug} is irreversible.</strong> Its
+        members, pending invites, approval requests and every approval given in its name go with
+        it; the owners of the events it approved are told. Type the slug to confirm.
       </p>
       <Input
         variant="compact"
@@ -143,26 +154,12 @@ function DeleteOrganization({
         onChange={(e) => setTyped(e.target.value)}
         placeholder={slug}
       />
-      <div className="flex gap-2">
-        <Button
-          variant="danger"
-          className={typed === slug ? DANGER_CONFIRM : ""}
-          disabled={typed !== slug || remove.loading}
-          onClick={() => void remove.run()}
-        >
-          {remove.loading ? "Deleting…" : "Delete organization"}
-        </Button>
-        <Button variant="ghost" onClick={onCancel}>
-          Cancel
-        </Button>
-      </div>
-      {remove.error && <div className={FORM_ERROR_BANNER}>{remove.error}</div>}
-    </div>
+    </ConfirmDialog>
   );
 }
 
-/** One organization: a row to its page with its member count, Delete in the row, and below it
- *  the delete confirmation once opened and, when it has no org manager, the field to name one. */
+/** One organization: a row to its page with its member count and Delete, which opens the typed
+ *  confirm, and below it, when it has no org manager, the field to name one. */
 function OrganizationRow({ org, onChanged }: { org: AdminOrganization; onChanged: () => void }) {
   const [deleting, setDeleting] = useState(false);
   const orphan = org.manager_count === 0;
@@ -181,11 +178,13 @@ function OrganizationRow({ org, onChanged }: { org: AdminOrganization; onChanged
         href={organizationPath(org.slug)}
         external={false}
         action={
-          !deleting && (
-            <Button variant="dangerGhost" onClick={() => setDeleting(true)}>
-              Delete
-            </Button>
-          )
+          <Button
+            variant="dangerGhost"
+            aria-label={`Delete ${org.name}`}
+            onClick={() => setDeleting(true)}
+          >
+            Delete
+          </Button>
         }
       />
       {orphan && <AppointManager slug={org.slug} onDone={onChanged} />}
@@ -193,7 +192,10 @@ function OrganizationRow({ org, onChanged }: { org: AdminOrganization; onChanged
         <DeleteOrganization
           slug={org.slug}
           onCancel={() => setDeleting(false)}
-          onDone={onChanged}
+          onDone={() => {
+            setDeleting(false);
+            onChanged();
+          }}
         />
       )}
     </li>

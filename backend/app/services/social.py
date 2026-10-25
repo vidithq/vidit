@@ -14,6 +14,7 @@ from app.schemas.user import UserProfile
 from app.services import notifications
 from app.services.event_filters import (
     approval_predicates,
+    live_detections,
     open_requests,
     published_credited_to,
     published_events,
@@ -22,10 +23,10 @@ from app.services.event_filters import (
 )
 from app.services.geolocator_credit import CREDIT_LOAD
 from app.services.pagination import keyset_before
-from app.services.thumbnails import thumbnail_media_criteria
+from app.services.thumbnails import thumbnail_loads
 
 FeedScope = Literal["following", "all"]
-FeedKind = Literal["geolocation", "request"]
+FeedKind = Literal["geolocation", "request", "detected"]
 
 
 def follow_user(db: Session, *, follower_id: uuid.UUID, followed_user: User) -> bool:
@@ -105,7 +106,8 @@ def get_feed(
     cursor: tuple[datetime, uuid.UUID] | None = None,
     kind: list[FeedKind] | None = None,
     conflict: list[str] | None = None,
-    capture_source: list[str] | None = None,
+    source_kind: list[str] | None = None,
+    level: list[str] | None = None,
     tag: list[str] | None = None,
     approved: bool = False,
     approved_by: str | None = None,
@@ -113,23 +115,25 @@ def get_feed(
 ) -> list[Row[tuple[Event, float | None, float | None, datetime]]]:
     """One window of the feed, newest first, over-fetched by one row for ``pagination.paged``.
 
-    The feed carries two kinds of row: a geolocation an analyst published
-    (:func:`services.event_filters.published_events`) and a request an analyst has open
-    (:func:`services.event_filters.open_requests`). An open request's owner is its requester:
-    ownership moves only when a request is geolocated. ``scope="following"`` keeps the
-    geolocations credited to an analyst ``user_id`` follows (owner or co-geolocator) and the
-    requests such an analyst owns; ``"all"`` keeps every row.
+    The feed carries three kinds of row: a geolocation an analyst published
+    (:func:`services.event_filters.published_events`), a request an analyst has open
+    (:func:`services.event_filters.open_requests`) and a machine detection
+    (:func:`services.event_filters.live_detections`). An open request's owner is its requester:
+    ownership moves only when a request is geolocated. A detection's owner is the analyst whose
+    post was imported. ``scope="following"`` keeps the geolocations credited to an analyst
+    ``user_id`` follows (owner or co-geolocator) and the requests and detections such an analyst
+    owns; ``"all"`` keeps every row.
 
-    ``kind`` keeps the named kinds (both when empty). ``conflict``, ``capture_source`` and ``tag``
-    narrow through :func:`services.event_filters.taxonomy_predicates`, and ``approved``,
+    ``kind`` keeps the named kinds (all three when empty). ``conflict``, ``source_kind``,
+    ``level`` and ``tag`` narrow through :func:`services.event_filters.taxonomy_predicates`, and ``approved``,
     ``approved_by`` and ``approved_by_org`` through
     :func:`services.event_filters.approval_predicates`, as on ``GET /events``.
 
     Rows are ``(event, lat, lng, feed_at)`` ordered by ``feed_at DESC, id DESC``
-    (:func:`models.event.feed_at`), a total order over both kinds, so a keyset walk
+    (:func:`models.event.feed_at`), a total order over the three kinds, so a keyset walk
     neither repeats nor skips a row.
     """
-    kinds = set(kind or ("geolocation", "request"))
+    kinds = set(kind or ("geolocation", "request", "detected"))
     legs = []
     if scope == "following":
         followed = select(Follow.followed_id).where(Follow.follower_id == user_id)
@@ -137,18 +141,22 @@ def get_feed(
             legs.append(published_credited_to(followed))
         if "request" in kinds:
             legs.append(and_(open_requests(), Event.owner_id.in_(followed)))
+        if "detected" in kinds:
+            legs.append(and_(live_detections(), Event.owner_id.in_(followed)))
     else:
         if "geolocation" in kinds:
             legs.append(published_events())
         if "request" in kinds:
             legs.append(open_requests())
+        if "detected" in kinds:
+            legs.append(live_detections())
 
     key = feed_at()
     query = (
         db.query(
             Event,
-            ST_Y(Event.event_coords).label("lat"),
-            ST_X(Event.event_coords).label("lng"),
+            ST_Y(Event.coords).label("lat"),
+            ST_X(Event.coords).label("lng"),
             key.label("feed_at"),
         )
         # Loader choice: see ``list_detections`` in ``routers/events/read.py``.
@@ -156,13 +164,13 @@ def get_feed(
             joinedload(Event.owner),
             selectinload(Event.tags),
             selectinload(Event.conflicts),
-            selectinload(Event.media.and_(thumbnail_media_criteria())),
+            *thumbnail_loads(),
             CREDIT_LOAD,
         )
         .filter(
             *visible_events(),
             or_(*legs),
-            *taxonomy_predicates(conflict=conflict, capture_source=capture_source, tag=tag),
+            *taxonomy_predicates(conflict=conflict, source_kind=source_kind, level=level, tag=tag),
             *approval_predicates(
                 approved=approved, approved_by=approved_by, approved_by_org=approved_by_org
             ),
@@ -215,21 +223,21 @@ def list_published_geolocations(
     rows = (
         db.query(
             Event,
-            ST_Y(Event.event_coords).label("lat"),
-            ST_X(Event.event_coords).label("lng"),
+            ST_Y(Event.coords).label("lat"),
+            ST_X(Event.coords).label("lng"),
         )
         # Loader choice: see ``list_detections`` in ``routers/events/read.py``.
         .options(
             joinedload(Event.owner),
             selectinload(Event.tags),
             selectinload(Event.conflicts),
-            selectinload(Event.media.and_(thumbnail_media_criteria())),
+            *thumbnail_loads(),
             CREDIT_LOAD,
         )
         .filter(*credited_and_published)
-        # ``event_date`` is neither unique nor non-null, so ties could repeat or
+        # ``occurred_date`` is neither unique nor non-null, so ties could repeat or
         # skip rows across OFFSET pages; ``created_at, id`` makes it total.
-        .order_by(Event.event_date.desc(), Event.created_at.desc(), Event.id.desc())
+        .order_by(Event.occurred_date.desc(), Event.created_at.desc(), Event.id.desc())
         .offset((page - 1) * per_page)
         .limit(per_page)
         .all()

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base, literal_check
 
 # Who may send this analyst an approval request: analysts they follow, any signed-in analyst, or
-# nobody. Value-domain source of truth; ``ck_user_preferences_approval_request_audience`` pins it
+# nobody. Value-domain source of truth; ``ck_user_preferences_approval_request_audience_valid`` pins it
 # at the DB (keep the two in step).
 ApprovalRequestAudience = Literal["following", "everyone", "nobody"]
 # Mirrored by the frontend's lib/approvalRequests APPROVAL_REQUEST_AUDIENCE_DEFAULT; change both.
@@ -25,7 +25,7 @@ class UserPreferences(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
-    # ``{kind: {channel: bool}}``, overrides of ``NOTIFICATION_KINDS`` only.
+    # ``{kind: bool}``, email overrides of ``NOTIFICATION_KINDS`` only.
     notification_overrides: Mapped[dict[str, Any]] = mapped_column(
         JSONB, default=dict, nullable=False, server_default="{}"
     )
@@ -50,6 +50,6 @@ class UserPreferences(Base):
         literal_check(
             "approval_request_audience",
             ApprovalRequestAudience,
-            "ck_user_preferences_approval_request_audience",
+            "ck_user_preferences_approval_request_audience_valid",
         ),
     )

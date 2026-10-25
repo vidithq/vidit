@@ -54,7 +54,7 @@ const eventHit = (): SearchEventHit => ({
   title_highlight: "Kakhovka spillway",
   lat: 46.77,
   lng: 33.37,
-  event_date: "2026-06-06",
+  occurred_date: "2026-06-06",
   is_graphic: false,
   status: "geolocated",
   owner: OWNER,

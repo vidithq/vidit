@@ -8,7 +8,7 @@ from __future__ import annotations
 from sqlalchemy import ColumnElement, and_
 
 from app.models.event import Event
-from app.models.media import Media
+from app.models.source import EVIDENCE_LEVELS, Source
 
 # Proof-image leg as a regex over the stored HTML, the same verdict as
 # :func:`sanitize.extract_image_srcs` on a canonical body: ``<img`` there is
@@ -30,25 +30,22 @@ def detection_ready_predicate() -> ColumnElement[bool]:
 
     Ready means everything the review form cannot supply is on the row:
 
-    1. a non-blank ``source_url`` (non-NULL, has a non-space character);
-    2. ``event_coords`` present;
-    3. a ``source`` media row (``EXISTS``);
+    1. ``coords`` present;
+    2. a ``direct`` or ``indirect`` source with a file (``EXISTS``);
+    3. no source without a URL;
     4. a proof image (:data:`_PROOF_IMAGE_PATTERN`).
 
-    The conflict and ``capture_source`` tag legs are supplied per row by the
-    review, so they are not checked here. `batchCompletionBlockers`
+    The conflict and source kind are supplied per row by the review, so they
+    are not checked here. `batchCompletionBlockers`
     (``frontend/src/lib/events.ts``) draws the same line; keep the three in
     step (``tests/events/test_detections_readiness.py``).
 
     Every leg is TRUE or FALSE, never NULL, so ``not_()`` is the exact complement.
     """
     return and_(
-        # ``NULL AND unknown`` is FALSE, so NULL never leaks into the negation.
-        # ``[^[:space:]]`` mirrors Python's ``strip()`` and the frontend's ``trim()``.
-        Event.source_url.isnot(None),
-        Event.source_url.regexp_match("[^[:space:]]"),
-        Event.event_coords.isnot(None),
-        # ``.any()`` lowers to EXISTS, so several attachments do not multiply rows.
-        Event.media.any(Media.role == "source"),
+        Event.coords.isnot(None),
+        # ``.any()`` lowers to EXISTS, so several sources do not multiply rows.
+        Event.sources.any(and_(Source.level.in_(EVIDENCE_LEVELS), Source.media.has())),
+        ~Event.sources.any(~Source.links.any()),
         Event.proof.regexp_match(_PROOF_IMAGE_PATTERN),
     )

@@ -13,27 +13,22 @@ from sqlalchemy.orm import Session
 from app.cache import points_cache
 from app.models.conflict import Conflict
 from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event
-from app.models.tag import Tag
+from app.models.source import SourceKind
 from app.models.user import User
+from app.services import versions
 from app.services.event_filters import visible_events
 from app.services.evidence_intake import EvidenceIntakeError
 from app.services.permissions import ensure_owner
 
 from .errors import (
+    ConflictRequiredError,
     CoordinatesRequiredError,
     EventNotFoundError,
     EventStateError,
-    SourceUrlRequiredError,
-    TagRequirementsError,
+    SourceLinkRequiredError,
 )
-from .rules import (
-    _credit_geolocator,
-    _require_proof_image,
-    _require_submission_floor,
-    _require_submission_media,
-    _resolve_conflicts,
-    _resolve_tags,
-)
+from .rules import _credit_geolocator, _require_proof_image, _resolve_conflicts
+from .sources import check_publish_floor, stored_floor
 
 logger = logging.getLogger(__name__)
 
@@ -73,16 +68,18 @@ def _publish_detection(
     *,
     event_id: uuid.UUID,
     current_user: User,
-    capture_source_tag: Tag | None,
+    kind: SourceKind,
     conflicts: list[Conflict],
 ) -> None:
-    """Promote one detection to ``geolocated`` with the conflict and capture tag the batch supplies.
+    """Promote one detection to ``geolocated`` with the conflicts and source kind the batch
+    supplies.
 
-    No field edits, uploads or proof rewrite: the import already put the rest on
-    the row. It runs the same floor helpers as :func:`geolocate`, so a batch is
-    no looser a door to ``geolocated``.
+    No other field edits, uploads or proof rewrite: the import already put the rest on the
+    row. ``kind`` goes onto every source that carries a file. The floor is the one
+    :func:`save_version` runs on a publish, so a batch is no looser a door to ``geolocated``.
+    Like that publish, it files the detection as version 0 and the row becomes version 1.
 
-    Locked like :func:`geolocate`, so a race with a hand-submit serializes.
+    Locked like :func:`save_version`, so a race with a publish from the form serializes.
     Commits on success. The floor is projected into SQL by
     :func:`detection_ready_predicate`: change a leg in both.
 
@@ -92,7 +89,7 @@ def _publish_detection(
     """
     geo = (
         db.query(Event)
-        # A withheld detection is frozen for its owner, as in :func:`geolocate`.
+        # A withheld detection is frozen for its owner, as in :func:`save_version`.
         .filter(Event.id == event_id, *visible_events())
         .populate_existing()
         .with_for_update()
@@ -106,23 +103,20 @@ def _publish_detection(
         raise EventStateError("Only a detection can be completed in a batch")
 
     # The floor, cheapest read first; each message names what to fix.
-    if geo.source_url is None or not geo.source_url.strip():
-        raise SourceUrlRequiredError("A source URL is required to geolocate an event")
-    if geo.event_coords is None:
+    if geo.coords is None:
         raise CoordinatesRequiredError("This detection carries no coordinates")
-    _require_submission_media(any(m.role == "source" for m in geo.media))
     _require_proof_image(geo.proof)
-    if capture_source_tag is None:
-        raise TagRequirementsError("A capture source tag is required")
+    if any(not source.links for source in geo.sources):
+        raise SourceLinkRequiredError("Every source needs a URL")
+    check_publish_floor(stored_floor(geo.sources))
 
-    # One capture source per row: an imported one is replaced, other tags survive.
-    effective_tags = [t for t in geo.tags if t.category != "capture_source"]
-    effective_tags.append(capture_source_tag)
-    _require_submission_floor(effective_tags, conflicts)
-
-    # As in ``geolocate``: lazy-loading the collections would flush a half-stamped row.
+    # Filed before any field moves: the snapshot reads the live row.
+    versions.file_version(db, geo=geo, edited_by=current_user, note=None)
+    # As in ``save_version``: lazy-loading the collections would flush a half-stamped row.
     with db.no_autoflush:
-        geo.tags = effective_tags
+        for source in geo.sources:
+            if source.media is not None:
+                source.kind = kind
         geo.conflicts = conflicts
         geo.status = STATUS_GEOLOCATED
         geo.geolocated_at = datetime.now(UTC)
@@ -136,40 +130,36 @@ def complete_detections(
     *,
     current_user: User,
     conflict_ids: list[uuid.UUID],
-    rows: list[tuple[uuid.UUID, uuid.UUID]],
+    rows: list[tuple[uuid.UUID, SourceKind]],
 ) -> list[DetectionCompletion]:
     """Publish a selection of detections, one transaction per row.
 
     ``conflict_ids`` applies to the whole selection; ``rows`` are ordered
-    ``(event_id, capture_source_tag_id)`` pairs. A row that fails the floor
+    ``(event_id, kind)`` pairs. A row that fails the floor
     rolls back alone and stays a detection. Results mirror ``rows`` order.
 
     Two conditions fail the whole call before anything commits: an empty or
-    unresolvable ``conflict_ids`` (:class:`TagRequirementsError`) and a row
+    unresolvable ``conflict_ids`` (:class:`ConflictRequiredError`) and a row
     owned by someone else (403). After the first commit, a database error on
     one row is reported as :data:`ROW_INTERNAL_ERROR_CODE` against that row.
     """
     conflicts = _resolve_conflicts(db, conflict_ids)
     if not conflicts:
-        raise TagRequirementsError("A conflict is required")
+        raise ConflictRequiredError("A conflict is required")
     _assert_owns_all(db, event_ids=[event_id for event_id, _ in rows], current_user=current_user)
-
-    # Resolve the distinct tag ids once. An unresolvable or non-``capture_source``
-    # tag fails its own rows on the floor, not the call.
-    tags_by_id = {tag.id: tag for tag in _resolve_tags(db, list({tag_id for _, tag_id in rows}))}
 
     outcomes: list[DetectionCompletion] = []
     published = 0
-    for event_id, tag_id in rows:
+    for event_id, kind in rows:
         try:
             _publish_detection(
                 db,
                 event_id=event_id,
                 current_user=current_user,
-                capture_source_tag=tags_by_id.get(tag_id),
+                kind=kind,
                 conflicts=conflicts,
             )
-        # The shared base, not ``EventError``: ``MediaRequiredError`` is a sibling of it.
+        # The shared base, not ``EventError``: the upload errors are siblings of it.
         except EvidenceIntakeError as exc:
             db.rollback()
             outcomes.append(DetectionCompletion(event_id=event_id, code=exc.code, message=str(exc)))

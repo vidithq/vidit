@@ -8,8 +8,8 @@ const VIDEO: Media = {
   id: "v1",
   role: "source",
   storage_url: "/media/clip.mp4",
-  media_type: "video",
-  sha256: null,
+  kind: "video",
+  sha256: "0".repeat(64),
   original_filename: "dashcam-original.mp4",
 };
 

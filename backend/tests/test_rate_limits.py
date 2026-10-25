@@ -10,7 +10,7 @@ X-Forwarded-For IP, so buckets don't bleed between tests.
 
 from __future__ import annotations
 
-import base64
+import json
 import uuid
 from typing import Any, NamedTuple
 
@@ -24,9 +24,8 @@ from app.main import (
     READ_QUOTA_EXCEEDED_CODE,
     app,
 )
-from app.models.admin_event import AdminEvent
+from app.models.audit_log import AuditLog
 from app.models.invite_code import InviteCode
-from app.models.product_update import ProductUpdate
 from app.models.tag import Tag
 from app.models.user import User
 from app.ratelimit import (
@@ -93,9 +92,8 @@ def admin_user(db):
     # Reap the admin audit rows and invite codes so the user row deletes
     # without FK violations.
     db.expire_all()
-    db.query(AdminEvent).filter(AdminEvent.actor_id == user_id).delete()
-    db.query(ProductUpdate).filter(ProductUpdate.sent_by == user_id).delete()
-    db.query(InviteCode).filter(InviteCode.used_by == user_id).delete()
+    db.query(AuditLog).filter(AuditLog.actor_id == user_id).delete()
+    db.query(InviteCode).filter(InviteCode.used_by_id == user_id).delete()
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -160,13 +158,9 @@ def test_shared_limiter_fires_on_a_second_router(live_limiter, user, db):
     name = f"rl-{uuid.uuid4().hex[:8]}"
     try:
         for i in range(30):
-            r = client.post(
-                "/api/v1/tags", json={"name": name, "category": "free"}, headers=headers
-            )
+            r = client.post("/api/v1/tags", json={"name": name}, headers=headers)
             assert r.status_code in (200, 201), f"request {i} was {r.status_code}"
-        blocked = client.post(
-            "/api/v1/tags", json={"name": name, "category": "free"}, headers=headers
-        )
+        blocked = client.post("/api/v1/tags", json={"name": name}, headers=headers)
         assert blocked.status_code == 429
     finally:
         db.query(Tag).filter(Tag.name == name).delete(synchronize_session=False)
@@ -366,27 +360,17 @@ def test_read_quota_key_rejects_a_forged_token(user):
 # unparseable date, unknown invite code), so none stores evidence.
 #
 # Some groups still write, each reaped by a fixture:
-# * `/auth/login` writes an `auth_events` row per attempt;
+# * `/auth/login` writes an `audit_log` row per attempt;
 # * `PATCH /users/me`, `PATCH /users/me/preferences`, `POST /notifications/read` and
-#   `DELETE /users/me/avatar` touch the throwaway `user` row, and
-#   `POST /users/me/push-subscriptions` stores one device it cascades to, and
-#   `PUT /users/me/x-handle-request` files a request that goes with it;
-# * admin actions write `admin_events` rows, `POST /admin/invite-codes`
-#   mints 30 codes and `POST /admin/product-updates` records one announcement;
+#   `DELETE /users/me/avatar` touch the throwaway `user` row;
+# * admin actions write `audit_log` rows, `POST /admin/invite-codes`
+#   mints 30 codes;
 # * `POST /collections` opens 30 collections (dropped by the owner cascade);
-# * the `reap-*` cases delete expired `auth_tokens` / `pending_registrations`.
+# * the `reap-*` cases delete expired `password_reset_tokens` / `pending_registrations`.
 
 _MISSING_ID = uuid.UUID(int=0)
 
 # A well-formed browser subscription; every probe upserts the one row.
-_PUSH_SUBSCRIPTION = {
-    "endpoint": "https://fcm.googleapis.com/fcm/send/rate-limit-probe",
-    "keys": {
-        "p256dh": base64.urlsafe_b64encode(b"\x04" + b"\x01" * 64).decode().rstrip("="),
-        "auth": base64.urlsafe_b64encode(b"\x02" * 16).decode().rstrip("="),
-    },
-}
-
 # An HTML description, enough to pass body validation.
 _PROBE_DESCRIPTION = html_from_text("A probe shelf.")
 
@@ -396,15 +380,10 @@ _SUBMIT_FORM = {
     "title": "rate limit probe",
     "lat": "0",
     "lng": "0",
-    "source_url": "https://example.com/post",
-    "source_posted_at": "2026-01-01T00:00",
-    "event_date": "not-a-date",
+    "sources": json.dumps([{"level": "direct", "links": [{"url": "https://example.com/post"}]}]),
+    "occurred_date": "not-a-date",
 }
-_SUBMIT_FILE = {"files": {"file": ("probe.txt", b"probe", "text/plain")}}
-_GEOLOCATE_FILE = {"files": {"files": ("probe.txt", b"probe", "text/plain")}}
-
-
-_ANNOUNCEMENT = {"json": {"label": "999.0.0", "title": "Probe", "body": "Probe."}}
+_SUBMIT_FILE = {"files": {"proof_files": ("probe.txt", b"probe", "text/plain")}}
 
 
 class _Case(NamedTuple):
@@ -500,10 +479,10 @@ _DOCUMENTED_LIMITS = [
     _Case("post", "/api/v1/events/requests", 30, "user", {"data": _SUBMIT_FORM, **_SUBMIT_FILE}),
     _Case(
         "post",
-        f"/api/v1/events/{_MISSING_ID}/geolocate",
+        f"/api/v1/events/{_MISSING_ID}/versions",
         30,
         "user",
-        {"data": _SUBMIT_FORM, **_GEOLOCATE_FILE},
+        {"data": _SUBMIT_FORM, **_SUBMIT_FILE},
     ),
     # The conflict id resolves to nothing, so the call 400s before any lock.
     _Case(
@@ -517,7 +496,7 @@ _DOCUMENTED_LIMITS = [
                 "rows": [
                     {
                         "event_id": str(_MISSING_ID),
-                        "capture_source_tag_id": str(_MISSING_ID),
+                        "kind": "smartphone",
                     }
                 ],
             }
@@ -543,8 +522,17 @@ _DOCUMENTED_LIMITS = [
         "/api/v1/tags",
         30,
         "user",
-        {"json": {"name": "rate-limit-probe", "category": "capture_source"}},
+        {"json": {"name": "rate-limit-probe"}},
     ),
+    # The `text/plain` probe is rejected before any storage write.
+    _Case(
+        "post",
+        "/api/v1/uploads",
+        30,
+        "user",
+        {"files": {"file": ("probe.txt", b"probe", "text/plain")}},
+    ),
+    _Case("post", "/api/v1/sources/check", 120, "user", {"json": {"kind": "satellite"}}),
     _Case("patch", ME, 30, "user", {"json": {"bio": "probe"}}),
     # The PUT probe is `text/plain`: rejected before any storage write.
     _Case(
@@ -559,12 +547,7 @@ _DOCUMENTED_LIMITS = [
     _Case("delete", "/api/v1/users/no-such-user/follow", 60),
     _Case("get", f"{ME}/preferences", 120),
     _Case("patch", f"{ME}/preferences", 60, "user", {"json": {"display": {"theme": "dark"}}}),
-    _Case("get", f"{ME}/push-config", 60),
-    _Case("get", f"{ME}/push-subscriptions", 120),
-    _Case("post", f"{ME}/push-subscriptions", 30, "user", {"json": _PUSH_SUBSCRIPTION}),
-    _Case("delete", f"{ME}/push-subscriptions/{_MISSING_ID}", 30),
     _Case("get", f"{ME}/x-handle", 120),
-    _Case("put", f"{ME}/x-handle-request", 10, "user", {"json": {"x_handle": "rl_probe"}}),
     _Case("get", f"{ME}/invite-codes", 120),
     # Minting is off for the probe account, so no request mints or meets the daily quota.
     _Case("post", f"{ME}/invite-codes", 30, "user_minting_off", {"json": {"x_handle": "rl_probe"}}),
@@ -648,13 +631,7 @@ _DOCUMENTED_LIMITS = [
     _Case(
         "post", f"/api/v1/events/{_MISSING_ID}/approvals", 60, "user", {"json": {"version_no": 1}}
     ),
-    _Case(
-        "post",
-        f"/api/v1/events/{_MISSING_ID}/approvals/{_MISSING_ID}/revoke",
-        60,
-        "user",
-        {"json": {"reason": "probe"}},
-    ),
+    _Case("delete", f"/api/v1/admin/approvals/{_MISSING_ID}", 60, "admin"),
     _Case("get", f"/api/v1/events/{_MISSING_ID}/approval-requests", 120),
     _Case("get", f"/api/v1/events/{_MISSING_ID}/approval-request-targets", 120),
     _Case(
@@ -682,14 +659,6 @@ _DOCUMENTED_LIMITS = [
         "admin",
         {"json": {"enabled": False}},
     ),
-    _Case("post", f"/api/v1/admin/x-handle-requests/{_MISSING_ID}/approve", 60, "admin"),
-    _Case(
-        "post",
-        f"/api/v1/admin/x-handle-requests/{_MISSING_ID}/decline",
-        60,
-        "admin",
-        {"json": {"reason": "probe"}},
-    ),
     _Case("delete", f"/api/v1/admin/users/{_MISSING_ID}", 30, "admin"),
     _Case("delete", f"/api/v1/admin/users/{_MISSING_ID}/detected-events", 30, "admin"),
     _Case("delete", f"/api/v1/admin/events/{_MISSING_ID}", 60, "admin"),
@@ -708,17 +677,10 @@ _DOCUMENTED_LIMITS = [
         "admin",
         {"json": {"hidden": True}},
     ),
-    _Case("post", "/api/v1/admin/maintenance/reap-auth-tokens", 30, "admin"),
+    _Case("post", "/api/v1/admin/maintenance/reap-password-reset-tokens", 30, "admin"),
     _Case("post", "/api/v1/admin/maintenance/reap-pending-registrations", 30, "admin"),
-    _Case("post", "/api/v1/product-updates/unsubscribe?token=not-a-token", 30, "anon"),
     _Case("post", "/api/v1/notifications/unsubscribe?token=not-a-token", 30, "anon"),
     _Case("get", "/api/v1/notifications/unsubscribe?token=not-a-token", 30, "anon"),
-    _Case("get", "/api/v1/admin/product-updates", 120, "admin"),
-    _Case("post", "/api/v1/admin/product-updates/preview", 60, "admin", _ANNOUNCEMENT),
-    # The probe admin's address is unverified, so every test send is refused.
-    _Case("post", "/api/v1/admin/product-updates/test", 10, "admin", _ANNOUNCEMENT),
-    # The first send records the label; the rest are refused as already sent.
-    _Case("post", "/api/v1/admin/product-updates", 10, "admin", _ANNOUNCEMENT),
 ]
 
 
@@ -730,7 +692,7 @@ _DOCUMENTED_LIMITS = [
 def test_documented_limit_blocks_at_n_plus_1(live_limiter, db, user, admin_user, index, case):
     ip = f"192.0.2.{index + 1}"
     if case.role == "user_minting_off":
-        user.invite_minting_enabled = False
+        user.is_invite_minting_enabled = False
         db.commit()
     if case.role == "anon":
         headers = {"X-Forwarded-For": ip}

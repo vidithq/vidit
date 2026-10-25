@@ -29,8 +29,8 @@ const row = (
   status: "geolocated",
   media: null,
   is_graphic: false,
-  event_date: "2026-03-14",
-  event_coords: { lat: 49.71, lng: 37.616 },
+  occurred_date: "2026-03-14",
+  coords: { lat: 49.71, lng: 37.616 },
   tags: [],
   ...over,
 });
@@ -49,9 +49,12 @@ function mockBrowse(items: PickableEvent[], over: Record<string, unknown> = {}) 
   });
 }
 
-/** The add block's control on one row. */
+/** The add block's field. */
+const field = () => screen.getByRole("combobox", { name: "Add events" });
+
+/** One row of the add block's open list, named by its title, date and status. */
 function addRow(title: string): HTMLElement {
-  return screen.getByRole("button", { name: `Add ${title} to this collection` });
+  return screen.getByRole("option", { name: new RegExp(`^${title}`) });
 }
 
 /** The first block's control on one row. */
@@ -89,8 +92,8 @@ describe("EventPicker, the events the collection holds", () => {
       <EventPicker
         username="ana"
         events={[
-          row({ id: "e9", title: "Later strike", event_date: "2026-03-16" }),
-          row({ id: "e8", title: "Earlier strike", event_date: "2026-03-14" }),
+          row({ id: "e9", title: "Later strike", occurred_date: "2026-03-16" }),
+          row({ id: "e8", title: "Earlier strike", occurred_date: "2026-03-14" }),
         ]}
         onAdd={vi.fn()}
         onRemove={vi.fn()}
@@ -111,8 +114,8 @@ describe("EventPicker, the events the collection holds", () => {
       <EventPicker
         username="ana"
         events={[
-          row({ id: "e9", title: "Picked first", event_date: "2026-03-14" }),
-          row({ id: "e2", title: "Picked second", event_date: "2026-03-14" }),
+          row({ id: "e9", title: "Picked first", occurred_date: "2026-03-14" }),
+          row({ id: "e2", title: "Picked second", occurred_date: "2026-03-14" }),
         ]}
         onAdd={vi.fn()}
         onRemove={vi.fn()}
@@ -127,7 +130,7 @@ describe("EventPicker, the events the collection holds", () => {
     ]);
   });
 
-  it("hands the row's id back on the red cross", () => {
+  it("hands the row's id back on Remove", () => {
     const onRemove = vi.fn();
 
     render(
@@ -163,7 +166,7 @@ describe("EventPicker, the events the collection holds", () => {
 });
 
 describe("EventPicker, the add block", () => {
-  it("shows the analyst's most recent with nothing typed", () => {
+  it("lists the analyst's most recent on focus, with nothing typed", () => {
     render(
       <EventPicker
         username="ana"
@@ -172,6 +175,8 @@ describe("EventPicker, the add block", () => {
         onRemove={vi.fn()}
       />,
     );
+    expect(screen.queryByRole("listbox")).toBeNull();
+    fireEvent.focus(field());
 
     // Rows come off the browse walk; `/search` is asked nothing until something is
     // typed (the walk's spec is `pickerBrowsePath`'s, in `lib/collections.test.ts`).
@@ -179,10 +184,10 @@ describe("EventPicker, the add block", () => {
     expect(searchPickableEvents).not.toHaveBeenCalled();
   });
 
-  it("hands the whole row back on Add", () => {
+  it("hands the whole row back on a pick, and keeps the list open", () => {
     const onAdd = vi.fn();
     const only = row({ id: "e1" });
-    mockBrowse([only]);
+    mockBrowse([only, row({ id: "e2", title: "Second strike" })]);
 
     render(
       <EventPicker
@@ -192,15 +197,17 @@ describe("EventPicker, the add block", () => {
         onRemove={vi.fn()}
       />,
     );
+    fireEvent.focus(field());
     fireEvent.click(addRow("Strike on the rail junction"));
 
     // The row itself: the first block also renders the catalogue card for held rows.
     expect(onAdd).toHaveBeenCalledWith(only);
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
   });
 
-  it("moves an added row up, and says so where it stood", () => {
+  it("moves an added row up, out of the list", () => {
     const added = row({ id: "e1" });
-    mockBrowse([added]);
+    mockBrowse([added, row({ id: "e2", title: "Second strike" })]);
 
     const { rerender } = render(
       <EventPicker
@@ -218,12 +225,32 @@ describe("EventPicker, the add block", () => {
         onRemove={vi.fn()}
       />,
     );
+    fireEvent.focus(field());
 
     expect(removeRow("Strike on the rail junction")).toBeInTheDocument();
-    const control = screen.getByRole("button", {
-      name: "Already in this collection",
-    });
-    expect(control).toBeDisabled();
+    expect(
+      screen.queryByRole("option", { name: /^Strike on the rail junction/ }),
+    ).toBeNull();
+    expect(addRow("Second strike")).toBeInTheDocument();
+  });
+
+  it("says so when every row on show is already held", () => {
+    const added = row({ id: "e1" });
+    mockBrowse([added]);
+
+    render(
+      <EventPicker
+        username="ana"
+        events={[added]}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    fireEvent.focus(field());
+
+    expect(
+      screen.getByText("Every event on show is already in this collection."),
+    ).toBeInTheDocument();
   });
 
   it("shows five rows at most, and says how to reach the rest", () => {
@@ -237,8 +264,9 @@ describe("EventPicker, the add block", () => {
         onRemove={vi.fn()}
       />,
     );
+    fireEvent.focus(field());
 
-    expect(screen.getAllByRole("button", { name: /to this collection$/ })).toHaveLength(5);
+    expect(screen.getAllByRole("option")).toHaveLength(5);
     expect(screen.queryByText("Six")).not.toBeInTheDocument();
     expect(
       screen.getByText(
@@ -261,9 +289,7 @@ describe("EventPicker, the add block", () => {
         onRemove={vi.fn()}
       />,
     );
-    fireEvent.change(screen.getByRole("searchbox"), {
-      target: { value: "Kakhovka" },
-    });
+    fireEvent.change(field(), { target: { value: "Kakhovka" } });
 
     // Debounced: the words go out once typing stops.
     expect(searchPickableEvents).not.toHaveBeenCalled();
@@ -293,9 +319,7 @@ describe("EventPicker, the add block", () => {
         onRemove={vi.fn()}
       />,
     );
-    fireEvent.change(screen.getByRole("searchbox"), {
-      target: { value: "Kakhovka" },
-    });
+    fireEvent.change(field(), { target: { value: "Kakhovka" } });
     // `act` awaited so the timer and its answer land before the assertions.
     await act(async () => {
       vi.advanceTimersByTime(DEBOUNCE_MS);
@@ -321,9 +345,7 @@ describe("EventPicker, the add block", () => {
         onRemove={vi.fn()}
       />,
     );
-    fireEvent.change(screen.getByRole("searchbox"), {
-      target: { value: "Kakhovka" },
-    });
+    fireEvent.change(field(), { target: { value: "Kakhovka" } });
     await act(async () => {
       vi.advanceTimersByTime(DEBOUNCE_MS);
     });
@@ -335,22 +357,22 @@ describe("EventPicker, the add block", () => {
     ).toBeInTheDocument();
   });
 
-  it("searches on Enter instead of submitting the collection form", () => {
+  it("takes the highlighted row on Enter instead of submitting the collection form", () => {
     const onSubmit = vi.fn((e: FormEvent) => e.preventDefault());
+    const onAdd = vi.fn();
 
     render(
       <form onSubmit={onSubmit}>
         <EventPicker
           username="ana"
           events={[]}
-          onAdd={vi.fn()}
+          onAdd={onAdd}
           onRemove={vi.fn()}
         />
       </form>,
     );
-    const field = screen.getByRole("searchbox");
-    fireEvent.change(field, { target: { value: "Kakhovka" } });
-    const defaultPrevented = !fireEvent.keyDown(field, {
+    fireEvent.focus(field());
+    const defaultPrevented = !fireEvent.keyDown(field(), {
       key: "Enter",
       code: "Enter",
       charCode: 13,
@@ -360,6 +382,7 @@ describe("EventPicker, the add block", () => {
     // write a collection the analyst is still choosing the events for.
     expect(defaultPrevented).toBe(true);
     expect(onSubmit).not.toHaveBeenCalled();
+    expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ id: "e1" }));
   });
 
   it("keeps the collection's own rows through a search that lists none of them", async () => {
@@ -371,9 +394,7 @@ describe("EventPicker, the add block", () => {
         onRemove={vi.fn()}
       />,
     );
-    fireEvent.change(screen.getByRole("searchbox"), {
-      target: { value: "Kakhovka" },
-    });
+    fireEvent.change(field(), { target: { value: "Kakhovka" } });
     await act(async () => {
       vi.advanceTimersByTime(DEBOUNCE_MS);
     });
@@ -393,9 +414,10 @@ describe("EventPicker, the add block", () => {
         onRemove={vi.fn()}
       />,
     );
+    fireEvent.focus(field());
 
     expect(
-      screen.getByText("No geolocations to put on a collection yet."),
+      screen.getByText(/^No geolocations to put on a collection yet\./),
     ).toBeInTheDocument();
   });
 });

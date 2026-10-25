@@ -1,24 +1,24 @@
 """The @ViditBot pipeline: a tag on X becomes a detection and a reply.
 
-Two paths feed :func:`process_single_mention`:
+Two paths insert a mention as a ``queued`` ``bot_mentions`` row
+(:func:`enqueue_mentions`, ``ON CONFLICT (mention_post_id) DO NOTHING``):
 
 * **Webhook (nominal)**: the X Account Activity webhook delivers the mention to
-  ``routers/webhooks``, which queues it in ``bot_webhook_events``; the import
-  worker drains the queue (:func:`drain_webhook_events`).
-* **Poll (reconciliation)**: the hourly cron (``scripts/run_bot.py``) pulls the
-  mentions timeline since the last processed id (:func:`run_bot_once`). While
-  the webhook is live (``X_WEBHOOK_ENABLED``), a mention first seen here raises
+  ``routers/webhooks``.
+* **Catch-up (reconciliation)**: the import worker pulls the mentions timeline
+  at start and every :data:`CATCH_UP_INTERVAL` (:func:`catch_up`). While the
+  webhook is live (``X_WEBHOOK_ENABLED``), a mention first queued here raises
   a "webhook gap" Sentry message so a dead webhook pages.
 
-Both paths share the ``bot_mentions`` ledger, so a mention is processed (and
-billed) at most once. The poll's ``since_id`` derives from it, one interval
-behind the max (``_SINCE_ID_OVERLAP``) so a mention the webhook dropped is
-re-read even after a newer one advanced the ledger.
+The worker drains the ``queued`` rows (:func:`drain_mentions`), so a mention is
+processed (and billed) at most once. The catch-up's ``since_id`` derives from
+the table, one interval behind the max (``_SINCE_ID_OVERLAP``) so a mention the
+webhook dropped is re-read even after a newer one advanced the max.
 
 A mention counts as a tag only when the author typed it. X prefixes a reply
 with the parent's author and the parent's mentions, so :func:`_tag_is_inherited`
 reads that off the text (or one syndication read of the parent); an inherited
-tag is ledgered ``inherited`` without acquiring, answering or billing.
+tag lands ``inherited`` without acquiring, answering or billing.
 
 The grammar lives in the shared engine, not here. Acquisition is
 :func:`tweet_ingest.acquire_thread` (the tagged post plus the same author's
@@ -26,14 +26,14 @@ parent; a bare tag climbs the same author's parents to the coordinate post, plus
 the footage post above it). ``AcquiredThread.resolve`` reads the thread
 through ``tweet_ingest.resolve_threads`` and ``detection.persist_detections``
 writes it, owned by the account ``detection.linked_owner`` maps the author's
-handle to (the bot never mints users: an unknown handle is ledgered
+handle to (the bot never mints users: an unknown handle lands
 ``no_account``). A thread with footage and a source link but no coordinate
 opens a ``requested`` row through ``detection.open_request`` instead of
 ``coords_missing``; one that branch cannot serve is refused
 ``request_not_possible``. A coordinate-less thread whose read was cut short (a
 parent X would not serve, or the climb's cap) is refused ``thread_truncated``
 and opens nothing. This module is orchestration: the X API, the reply, the
-ledger, the budget and the webhook drain.
+queue, the budget and the drain.
 
 Response model: the reply is the only gesture (a like would signal nothing the
 reply does not, and was the most expensive call). Replies open with the
@@ -52,19 +52,19 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
+import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import httpx
 import sentry_sdk
-from sqlalchemy import Numeric, cast, func
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import and_, func, or_
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.bot_mention import BotMention, BotMentionOutcome
-from app.models.bot_webhook_event import BotWebhookEvent
 from app.models.user import User
 from app.services.detection import Outcome, linked_owner, open_request, persist_detections
 from app.services.tweet_ingest import (
@@ -144,16 +144,23 @@ def _within_reply_cap(text: str) -> str:
 # and ``bot_max_replies_per_author_per_hour``); wall-clock, read from the ledger.
 _GESTURE_WINDOW = timedelta(hours=1)
 
-# Poll cursor lookback in snowflake id space (timestamp is above bit 22): one
-# poll interval. Both paths feed the ledger max, so if the webhook drops A but
-# delivers newer B, a cursor at B would never re-read A. The cost is a bounded
-# number of billed re-reads per pass, absorbed as ``already_handled``.
-_SINCE_ID_OVERLAP = (60 * 60 * 1000) << 22
+# How often the worker pulls the mentions timeline behind the webhook (:func:`catch_up`).
+CATCH_UP_INTERVAL = timedelta(hours=1)
 
-# Attempts per queued webhook event before it lands ``failed`` (poison-pill
-# guard, like the archive jobs). Separate from the ledger's ``failed``, which
-# means the pipeline ran and raised.
-_WEBHOOK_MAX_ATTEMPTS = 3
+# Catch-up cursor lookback in snowflake id space (timestamp is above bit 22): one
+# catch-up interval. Both paths feed the table max, so if the webhook drops A but
+# delivers newer B, a cursor at B would never re-read A. The cost is a bounded
+# number of billed re-reads per pass, absorbed by ``ON CONFLICT DO NOTHING``.
+_SINCE_ID_OVERLAP = int(CATCH_UP_INTERVAL.total_seconds() * 1000) << 22
+
+# Attempts per mention before it lands ``failed`` (poison-pill guard, like the
+# archive jobs). Separate from the outcome ``failed``, which means the pipeline
+# ran and raised.
+_MAX_ATTEMPTS = 3
+
+# A claimed mention left ``running`` this long belongs to a worker that died; the
+# drain claims it again.
+STALE_RUNNING_AFTER = timedelta(hours=1)
 
 
 class BotNotConfigured(RuntimeError):
@@ -177,9 +184,9 @@ class GestureBudget:
         cutoff = datetime.now(UTC) - _GESTURE_WINDOW
         budget = cls()
         for handle, count in (
-            db.query(BotMention.author_handle, func.count())
-            .filter(BotMention.reply_tweet_id.isnot(None), BotMention.processed_at >= cutoff)
-            .group_by(BotMention.author_handle)
+            db.query(BotMention.author_x_handle, func.count())
+            .filter(BotMention.reply_post_id.isnot(None), BotMention.processed_at >= cutoff)
+            .group_by(BotMention.author_x_handle)
         ):
             budget.replies_posted += count
             budget._replies_by_author[handle] = count
@@ -199,12 +206,15 @@ class GestureBudget:
 
 @dataclass
 class BotRunOutcome:
-    """What one bot pass did, for the runner's log line."""
+    """What one catch-up or drain did, for the worker's log line."""
 
+    # Mentions the catch-up pulled, and those already in the table.
     mentions_seen: int = 0
     already_handled: int = 0
-    events_created: int = 0
-    # Mentions that opened a ``requested`` row (not counted in ``events_created``).
+    # Mentions the drain ran through the pipeline.
+    mentions_processed: int = 0
+    created_event_count: int = 0
+    # Mentions that opened a ``requested`` row (not counted in ``created_event_count``).
     requests_opened: int = 0
     # Mentions that only overwrote an open detection (none created, one or more updated).
     events_updated: int = 0
@@ -231,7 +241,7 @@ def acquire_tagged_thread(
     The handle is case-folded: it is the record's fallback screen name, feeds
     every provenance permalink and the own-status exclusion, so the payload's
     spelling must not leak through. Idempotency anchors on the post id
-    (``events.detected_from_tweet_id``).
+    (``event_detections.from_post_id``).
     """
     return acquire_thread(tweet_id, handle=author_handle.lower(), client=client)
 
@@ -360,32 +370,6 @@ def compose_failure_reply(reason: str | None = None, *, mention_id: str) -> str:
     # can't fix, so point them at the maintainers.
     warning = f"⚠ {diagnosis}" if diagnosis else f"⚠ Unexpected case. Reach out to {_ADMIN_CONTACT}"
     return _within_reply_cap("\n".join([head, warning, f"Guide in bio{ref}"]))
-
-
-def _record(
-    db: Session,
-    mention: Mention,
-    *,
-    outcome: BotMentionOutcome,
-    events_created: int = 0,
-    reply_tweet_id: str | None = None,
-) -> bool:
-    """Insert the ledger row; ``False`` when another worker won the ``mention_tweet_id`` race."""
-    db.add(
-        BotMention(
-            mention_tweet_id=mention.tweet_id,
-            author_handle=mention.author_handle,
-            outcome=outcome,
-            events_created=events_created,
-            reply_tweet_id=reply_tweet_id,
-        )
-    )
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        return False
-    return True
 
 
 def bot_credentials() -> OAuth1Credentials:
@@ -536,84 +520,81 @@ def _success_reply(assembled: Outcome) -> str:
 _ANSWERED_VERDICTS = ("no_detection", "failed")
 
 
-async def process_single_mention(
+def _finish(
     db: Session,
+    row_id: uuid.UUID,
+    *,
+    outcome: BotMentionOutcome,
+    created_event_count: int = 0,
+    reply_post_id: str | None = None,
+) -> None:
+    """Land a processed mention ``done`` with its outcome, and clear its payload."""
+    row = db.get(BotMention, row_id)
+    assert row is not None  # the claim committed it; nothing deletes a running row
+    row.status = "done"
+    row.outcome = outcome
+    row.created_event_count = created_event_count
+    row.reply_post_id = int(reply_post_id) if reply_post_id is not None else None
+    row.payload = None
+    row.processed_at = datetime.now(UTC)
+    db.commit()
+
+
+async def _process_claimed(
+    db: Session,
+    row_id: uuid.UUID,
     mention: Mention,
     *,
-    syndication_client: httpx.Client | None = None,
-    x_write_client: httpx.Client | None = None,
+    syndication_client: httpx.Client | None,
+    x_write_client: httpx.Client | None,
     budget: GestureBudget,
     outcome: BotRunOutcome,
-) -> str:
-    """Run one mention through the pipeline and response model (poll and drain).
+) -> BotMentionOutcome:
+    """Run one claimed mention through the pipeline and response model, and land its row.
 
-    Returns the ledger verdict, or ``"already_handled"`` (read by the poll's
-    gap detector). The up-front ledger check makes the two paths safe together:
-    the first to see a mention records it. A processing exception ledgers
-    ``failed`` (captured to Sentry) so the caller's loop moves on.
+    A processing exception lands ``failed`` (captured to Sentry) so the drain moves on.
     """
-    exists = db.query(BotMention.id).filter(BotMention.mention_tweet_id == mention.tweet_id).first()
-    if exists is not None:
-        outcome.already_handled += 1
-        return "already_handled"
-    # The bot's own posts can appear in its timeline. Ledger without
-    # processing, or ``since_id`` stalls below it and every pull re-bills it.
+    created: int = 0
+    reply_id: str | None = None
     if mention.author_id == settings.x_bot_user_id:
-        if not _record(db, mention, outcome="self"):
-            outcome.already_handled += 1
-            return "already_handled"
-        return "self"
-    # Inherited tag (:func:`_tag_is_inherited`): ledgered before acquisition
-    # and unanswered, since a failure reply would refuse a tag nobody made.
-    if await _tag_is_inherited(mention, client=syndication_client):
-        if not _record(db, mention, outcome="inherited"):
-            outcome.already_handled += 1
-            return "already_handled"
-        outcome.inherited += 1
-        return "inherited"
-    # The one handle-to-account read: the detections' owner and the failure-reply gate.
-    owner = linked_owner(db, mention.author_handle)
-    try:
-        verdict, created, reply_id, failure_reason = await _process_mention(
-            db,
-            mention,
-            owner=owner,
-            syndication_client=syndication_client,
-            x_write_client=x_write_client,
-            reply_allowed=budget.reply_allowed(mention.author_handle),
-        )
-    except Exception as exc:
-        db.rollback()
-        logger.exception("Bot mention %s failed", mention.tweet_id)
-        sentry_sdk.capture_exception(exc)
-        if not _record(db, mention, outcome="failed"):
-            outcome.already_handled += 1
-            return "already_handled"
-        outcome.failed += 1
-        return "failed"
-    if (
-        verdict in _ANSWERED_VERDICTS
-        and owner is not None
-        and mention.in_reply_to_user_id != settings.x_bot_user_id
-        and budget.reply_allowed(mention.author_handle)
-    ):
-        # The ``in_reply_to_user_id`` guard breaks the loop where a courtesy
-        # answer to the bot's own reply (which auto-mentions it) earns another.
-        reply_id = _post_reply_failsoft(
-            mention,
-            compose_failure_reply(failure_reason, mention_id=mention.tweet_id),
-            client=x_write_client,
-        )
-    if not _record(
-        db,
-        mention,
-        outcome=verdict,
-        events_created=created,
-        reply_tweet_id=reply_id,
-    ):
-        outcome.already_handled += 1
-        return "already_handled"
-    outcome.events_created += created
+        # The bot's own posts can appear in its timeline: recorded, never processed.
+        verdict: BotMentionOutcome = "self"
+    elif await _tag_is_inherited(mention, client=syndication_client):
+        # Unanswered, since a failure reply would refuse a tag nobody made.
+        verdict = "inherited"
+    else:
+        # The one handle-to-account read: the detections' owner and the failure-reply gate.
+        owner = linked_owner(db, mention.author_handle)
+        try:
+            verdict, created, reply_id, failure_reason = await _process_mention(
+                db,
+                mention,
+                owner=owner,
+                syndication_client=syndication_client,
+                x_write_client=x_write_client,
+                reply_allowed=budget.reply_allowed(mention.author_handle),
+            )
+        except Exception as exc:
+            db.rollback()
+            logger.exception("Bot mention %s failed", mention.tweet_id)
+            sentry_sdk.capture_exception(exc)
+            verdict, created, reply_id = "failed", 0, None
+        else:
+            if (
+                verdict in _ANSWERED_VERDICTS
+                and owner is not None
+                and mention.in_reply_to_user_id != settings.x_bot_user_id
+                and budget.reply_allowed(mention.author_handle)
+            ):
+                # The ``in_reply_to_user_id`` guard breaks the loop where a courtesy
+                # answer to the bot's own reply (which auto-mentions it) earns another.
+                reply_id = _post_reply_failsoft(
+                    mention,
+                    compose_failure_reply(failure_reason, mention_id=mention.tweet_id),
+                    client=x_write_client,
+                )
+    _finish(db, row_id, outcome=verdict, created_event_count=created, reply_post_id=reply_id)
+    outcome.created_event_count += created
     if reply_id is not None:
         budget.note_reply(mention.author_handle)
         outcome.replies_posted += 1
@@ -621,6 +602,8 @@ async def process_single_mention(
         outcome.events_updated += 1
     elif verdict == "requested":
         outcome.requests_opened += 1
+    elif verdict == "inherited":
+        outcome.inherited += 1
     elif verdict == "no_detection":
         outcome.no_detection += 1
     elif verdict == "no_account":
@@ -633,30 +616,59 @@ async def process_single_mention(
 
 
 def _since_id(db: Session) -> str | None:
-    # NUMERIC, not BIGINT, so the cursor survives ids outgrowing signed 64-bit.
     # The overlap re-reads the trailing interval (see _SINCE_ID_OVERLAP).
-    latest = db.query(func.max(cast(BotMention.mention_tweet_id, Numeric))).scalar()
+    latest = db.query(func.max(BotMention.mention_post_id)).scalar()
     return str(max(int(latest) - _SINCE_ID_OVERLAP, 1)) if latest is not None else None
 
 
-async def run_bot_once(
-    db: Session,
-    *,
-    syndication_client: httpx.Client | None = None,
-    x_read_client: httpx.Client | None = None,
-    x_write_client: httpx.Client | None = None,
-) -> BotRunOutcome:
-    """One poll pass, the reconciliation net behind the webhook.
+def is_configured() -> bool:
+    """Whether the mentions-read credentials are set, so the catch-up can run."""
+    return bool(settings.x_bot_bearer_token and settings.x_bot_user_id)
 
-    Mentions process oldest first, each ledgered in its own transaction, so a
-    crash resumes cleanly. A per-mention failure is ledgered ``failed`` (delete
-    the row to retry).
 
-    While the webhook is live (``X_WEBHOOK_ENABLED``) a mention not already in
-    the ledger means the webhook missed it, so a Sentry message fires (the gap
-    detector).
+def enqueue_mentions(db: Session, mentions: list[Mention]) -> list[Mention]:
+    """Insert each mention as a ``queued`` row unless its post is already in the table; one
+    commit. Returns the mentions inserted.
+
+    Shared by the webhook, which must answer X fast, and the catch-up. ``ON CONFLICT DO
+    NOTHING`` makes a redelivery, or a mention both paths saw, a no-op.
     """
-    if not settings.x_bot_bearer_token or not settings.x_bot_user_id:
+    if not mentions:
+        return []
+    inserted = set(
+        db.scalars(
+            insert(BotMention)
+            .values(
+                [
+                    {
+                        "id": uuid.uuid4(),
+                        "mention_post_id": int(m.tweet_id),
+                        "author_x_handle": m.author_handle,
+                        "payload": dataclasses.asdict(m),
+                        "status": "queued",
+                        "attempt_count": 0,
+                        "created_event_count": 0,
+                        "created_at": datetime.now(UTC),
+                    }
+                    for m in mentions
+                ]
+            )
+            .on_conflict_do_nothing(index_elements=["mention_post_id"])
+            .returning(BotMention.mention_post_id)
+        ).all()
+    )
+    db.commit()
+    return [m for m in mentions if int(m.tweet_id) in inserted]
+
+
+def catch_up(db: Session, *, x_read_client: httpx.Client | None = None) -> BotRunOutcome:
+    """Pull the mentions timeline since the last mention and queue the new ones: the net
+    behind the webhook, run by the worker every :data:`CATCH_UP_INTERVAL`.
+
+    While the webhook is live (``X_WEBHOOK_ENABLED``) a mention this pull queues fresh means
+    the webhook missed it, so a Sentry message fires (the gap detector).
+    """
+    if not is_configured():
         raise BotNotConfigured("X_BOT_BEARER_TOKEN and X_BOT_USER_ID must be set to run the bot")
     outcome = BotRunOutcome()
     mentions = fetch_mentions(
@@ -666,72 +678,64 @@ async def run_bot_once(
         client=x_read_client,
     )
     outcome.mentions_seen = len(mentions)
-    budget = GestureBudget.from_ledger(db)
-    for mention in mentions:
-        verdict = await process_single_mention(
-            db,
-            mention,
-            syndication_client=syndication_client,
-            x_write_client=x_write_client,
-            budget=budget,
-            outcome=outcome,
-        )
-        # Any fresh verdict means the webhook missed it.
-        if settings.x_webhook_enabled and verdict not in ("already_handled", "self"):
-            message = f"webhook gap: mention {mention.tweet_id} arrived via reconciliation"
+    fresh = enqueue_mentions(db, mentions)
+    outcome.already_handled = len(mentions) - len(fresh)
+    if settings.x_webhook_enabled:
+        for mention in fresh:
+            if mention.author_id == settings.x_bot_user_id:
+                continue
+            message = f"webhook gap: mention {mention.tweet_id} arrived via the catch-up"
             logger.warning(message)
             sentry_sdk.capture_message(message, level="warning")
     return outcome
 
 
-def enqueue_webhook_mentions(db: Session, mentions: list[Mention]) -> int:
-    """Insert webhook-delivered mentions as ``queued`` rows; one commit.
+def _claim(db: Session) -> BotMention | None:
+    """Claim the oldest claimable mention, or ``None`` when drained.
 
-    The webhook endpoint must answer X fast, so no dedup or pipeline work here;
-    a redelivery is absorbed by the drain's ledger check.
-    """
-    for mention in mentions:
-        db.add(BotWebhookEvent(mention=dataclasses.asdict(mention)))
-    db.commit()
-    return len(mentions)
-
-
-def _claim_webhook_event(db: Session) -> BotWebhookEvent | None:
-    """Claim the oldest queued webhook event, or ``None`` when drained.
-
-    ``FOR UPDATE SKIP LOCKED`` like the archive jobs: the claim sets
-    ``processing``, bumps ``attempts`` and commits, so concurrent workers skip
-    it. The drain re-queues on exception; a hard-killed worker strands the row
-    in ``processing`` but the hourly poll re-delivers the mention. Rows past
-    the attempt budget land ``failed``.
+    ``queued``, or ``running`` past :data:`STALE_RUNNING_AFTER` (a hard-killed worker's).
+    ``FOR UPDATE SKIP LOCKED`` like the archive jobs: the claim sets ``running``, bumps
+    ``attempt_count``, stamps ``processed_at`` and commits, so concurrent workers skip it.
+    Rows past the attempt budget land ``failed``.
     """
     while True:
-        event = (
-            db.query(BotWebhookEvent)
-            .filter(BotWebhookEvent.status == "queued")
-            .order_by(BotWebhookEvent.created_at)
+        now = datetime.now(UTC)
+        row = (
+            db.query(BotMention)
+            .filter(
+                or_(
+                    BotMention.status == "queued",
+                    and_(
+                        BotMention.status == "running",
+                        BotMention.processed_at < now - STALE_RUNNING_AFTER,
+                    ),
+                )
+            )
+            .order_by(BotMention.created_at)
             .with_for_update(skip_locked=True)
             .first()
         )
-        if event is None:
+        if row is None:
             return None
-        if event.attempts >= _WEBHOOK_MAX_ATTEMPTS:
-            event.status = "failed"
+        row.processed_at = now
+        if row.attempt_count >= _MAX_ATTEMPTS:
+            row.status = "failed"
             db.commit()
             continue
-        event.status = "processing"
-        event.attempts += 1
+        row.status = "running"
+        row.attempt_count += 1
         db.commit()
-        return event
+        return row
 
 
-def _mention_from_payload(payload: dict) -> Mention | None:
+def _mention_from_payload(payload: dict | None) -> Mention | None:
+    if payload is None:
+        return None
     tweet_id = payload.get("tweet_id")
     author_id = payload.get("author_id")
     author_handle = payload.get("author_handle")
     text = payload.get("text")
     reply_to = payload.get("in_reply_to_user_id")
-    # Absent from rows queued before the field existed: read as "not a reply".
     reply_to_status = payload.get("in_reply_to_status_id")
     if (
         not isinstance(tweet_id, str)
@@ -749,32 +753,34 @@ def _mention_from_payload(payload: dict) -> Mention | None:
     )
 
 
-async def drain_webhook_events(
+async def drain_mentions(
     db: Session,
     *,
     syndication_client: httpx.Client | None = None,
     x_write_client: httpx.Client | None = None,
 ) -> BotRunOutcome:
-    """Drain the webhook queue through the shared mention pipeline.
+    """Process every claimable mention through the pipeline, oldest first.
 
     Called by the import worker between archive drains. A pipeline exception
+    lands the mention ``done`` with the outcome ``failed``. Any other exception
     re-queues the claimed row (bounded by the attempt budget) and propagates so
-    the worker backs off; nominal outcomes, including a ledgered ``failed``
-    mention, land the row ``done`` (the ledger row is the retry path).
+    the worker backs off.
     """
     outcome = BotRunOutcome()
     budget = GestureBudget.from_ledger(db)
-    while (event := _claim_webhook_event(db)) is not None:
-        mention = _mention_from_payload(event.mention)
+    while (row := _claim(db)) is not None:
+        row_id = row.id
+        mention = _mention_from_payload(row.payload)
         if mention is None:
-            logger.warning("Dropping malformed webhook event %s: %r", event.id, event.mention)
-            event.status = "failed"
+            logger.warning("Dropping malformed mention %s: %r", row_id, row.payload)
+            row.status = "failed"
             db.commit()
             continue
-        outcome.mentions_seen += 1
+        outcome.mentions_processed += 1
         try:
-            await process_single_mention(
+            await _process_claimed(
                 db,
+                row_id,
                 mention,
                 syndication_client=syndication_client,
                 x_write_client=x_write_client,
@@ -783,9 +789,9 @@ async def drain_webhook_events(
             )
         except Exception:
             db.rollback()
-            event.status = "queued"
-            db.commit()
+            fresh = db.get(BotMention, row_id)
+            if fresh is not None:
+                fresh.status = "queued"
+                db.commit()
             raise
-        event.status = "done"
-        db.commit()
     return outcome

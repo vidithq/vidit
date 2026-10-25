@@ -22,7 +22,7 @@ import { useMapState } from "@/contexts/MapStateContext";
 import { TimelineScrubber } from "@/components/map/TimelineScrubber";
 
 interface FilterPanelProps {
-  /** Live tag taxonomy driving the capture-source + free chip buckets. */
+  /** Live tag taxonomy driving the tag chips. */
   tags: Tag[];
   /** Conflicts carried by at least one live event (`/conflicts?used=true`), server-ordered: ongoing first, then name. */
   conflicts: Conflict[];
@@ -102,9 +102,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
     ...buildActiveFilterPills(filters, onPatch),
     ...buildDateWindowPills(dateWindows, clearEventWindow, clearAddedWindow),
   ];
-  // The author narrows the view without a pill (its chip is in the Author section), so the badge
-  // counts it too.
-  const activeFilterCount = activeFilters.length + (filters.author.trim() ? 1 : 0);
+  const activeFilterCount = activeFilters.length;
   const hasActiveFilters = activeFilterCount > 0;
 
   return (
@@ -157,7 +155,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
             dateSections={[
               {
                 title: "Event date",
-                concept: "event_date",
+                concept: "occurred_date",
                 summary: rangeSummary(dateWindows.eventFrom, dateWindows.eventTo),
                 active: eventWindowActive(dateWindows),
                 children: (

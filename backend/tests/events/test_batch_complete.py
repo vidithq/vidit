@@ -1,14 +1,24 @@
 """Batch completion ``POST /events/batch-complete``.
 
-Same evidence floor as the single-row geolocate, one transaction per row: a mixed
-selection publishes what clears it and leaves the rest untouched, each with a reason.
+Same evidence floor as the single-row geolocate, with the conflicts and each row's source
+kind supplied by the call. One transaction per row: a mixed selection publishes what clears it
+and leaves the rest untouched, each with a reason.
 """
 
 from __future__ import annotations
 
 import uuid
 
-from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event, EventGeolocator
+from app.models.event import (
+    STATUS_DETECTED,
+    STATUS_GEOLOCATED,
+    Event,
+    EventGeolocator,
+    EventVersion,
+)
+from app.models.media import Media
+from app.models.source import Source, SourceLink
+from tests._fixtures import fake_sha256
 from tests.conftest import login_as
 from tests.events._helpers import _make_geo, client
 from tests.events._readiness_cases import PROOF_TEXT_ONLY, PROOF_WITH_IMAGE
@@ -17,7 +27,7 @@ _URL = "/api/v1/events/batch-complete"
 
 
 def _detection(db, author, *, proof: str | None = None, **kwargs) -> Event:
-    """A machine detection as the import leaves it, tagless (the batch supplies the tags)."""
+    """A machine detection as the import leaves it: kind ``unknown``, no conflict."""
     geo = _make_geo(
         db,
         author=author,
@@ -25,6 +35,7 @@ def _detection(db, author, *, proof: str | None = None, **kwargs) -> Event:
         detected_from_url="https://x.com/a/status/1",
         source_url=kwargs.pop("source_url", "https://x.com/a/status/1"),
         with_media=kwargs.pop("with_media", True),
+        kind=kwargs.pop("kind", "unknown"),
         **kwargs,
     )
     geo.proof = PROOF_WITH_IMAGE if proof is None else proof
@@ -33,12 +44,10 @@ def _detection(db, author, *, proof: str | None = None, **kwargs) -> Event:
     return geo
 
 
-def _body(conflict, rows: list[tuple[Event, uuid.UUID]]) -> dict:
+def _body(conflict, rows: list[tuple[Event, str]]) -> dict:
     return {
         "conflict_ids": [str(conflict.id)],
-        "rows": [
-            {"event_id": str(geo.id), "capture_source_tag_id": str(tag_id)} for geo, tag_id in rows
-        ],
+        "rows": [{"event_id": str(geo.id), "kind": kind} for geo, kind in rows],
     }
 
 
@@ -46,22 +55,19 @@ def _by_id(payload: dict) -> dict[str, dict]:
     return {row["event_id"]: row for row in payload["rows"]}
 
 
-def test_batch_complete_requires_authentication(db, author, conflict, capture_source_tag):
+def test_batch_complete_requires_authentication(db, author, conflict):
     detection = _detection(db, author)
-    response = client.post(_URL, json=_body(conflict, [(detection, capture_source_tag.id)]))
+    response = client.post(_URL, json=_body(conflict, [(detection, "drone")]))
     assert response.status_code == 401
 
 
-def test_batch_complete_publishes_a_ready_detection(
-    db, author, conflict, capture_source_tag, free_tag
-):
-    """The whole promotion: state, stamp, conflict, capture source, geolocator credit."""
+def test_batch_complete_publishes_a_ready_detection(db, author, conflict, free_tag):
+    """The whole promotion: state, stamp, conflict, kind, geolocator credit, version 0 filed
+    and version 1 live; tags stay."""
     detection = _detection(db, author, tags=[free_tag])
 
     response = client.post(
-        _URL,
-        headers=login_as(client, author),
-        json=_body(conflict, [(detection, capture_source_tag.id)]),
+        _URL, headers=login_as(client, author), json=_body(conflict, [(detection, "drone")])
     )
     assert response.status_code == 200, response.text
     body = response.json()
@@ -78,7 +84,13 @@ def test_batch_complete_publishes_a_ready_detection(
     assert row.status == STATUS_GEOLOCATED
     assert row.geolocated_at is not None
     assert [c.id for c in row.conflicts] == [conflict.id]
-    assert {t.id for t in row.tags} == {capture_source_tag.id, free_tag.id}
+    assert {t.id for t in row.tags} == {free_tag.id}
+    assert [s.kind for s in row.sources] == ["drone"]
+    assert row.version_no == 1
+    [filed] = db.query(EventVersion).filter(EventVersion.event_id == detection.id).all()
+    assert filed.version_no == 0
+    assert filed.edited_by_id == author.id
+    assert [source["kind"] for source in filed.snapshot["sources"]] != ["drone"]
     credit = (
         db.query(EventGeolocator)
         .filter(EventGeolocator.event_id == detection.id, EventGeolocator.user_id == author.id)
@@ -87,36 +99,38 @@ def test_batch_complete_publishes_a_ready_detection(
     assert credit is not None
 
 
-def test_batch_complete_replaces_an_imported_capture_source(
-    db, author, conflict, capture_source_tag
-):
-    """Capture source is single-valued, so the row's pick replaces whatever the
-    import guessed rather than landing beside it."""
-    from app.models.tag import Tag
-
-    imported = Tag(name=f"capture-{uuid.uuid4().hex[:8]}", category="capture_source")
-    db.add(imported)
+def test_batch_complete_sets_the_kind_of_every_source_with_a_file(db, author, conflict):
+    """The row's kind replaces whatever the import guessed on each filed source; a
+    source without a file keeps its own."""
+    detection = _detection(
+        db, author, kind="smartphone", secondary_source_urls=["https://t.me/c/2"]
+    )
+    second = Source(
+        level="indirect",
+        kind="unknown",
+        links=[SourceLink(url="https://sat.example/after")],
+        media=Media(sha256=fake_sha256(), storage_url="s3://x/n.jpg", kind="image"),
+    )
+    detection.sources.append(second)
     db.commit()
-    imported_id = imported.id
-    detection = _detection(db, author, tags=[imported])
 
     response = client.post(
-        _URL,
-        headers=login_as(client, author),
-        json=_body(conflict, [(detection, capture_source_tag.id)]),
+        _URL, headers=login_as(client, author), json=_body(conflict, [(detection, "satellite")])
     )
     assert response.status_code == 200, response.text
+    assert response.json()["published"] == 1
 
     db.expire_all()
     row = db.query(Event).filter(Event.id == detection.id).one()
-    assert {t.id for t in row.tags} == {capture_source_tag.id}
-    row.tags = []
-    db.commit()
-    db.execute(Tag.__table__.delete().where(Tag.id == imported_id))
-    db.commit()
+    kinds = {(s.level, s.media is not None): s.kind for s in row.sources}
+    assert kinds == {
+        ("direct", True): "satellite",
+        ("direct", False): "unknown",
+        ("indirect", True): "satellite",
+    }
 
 
-def test_batch_complete_publishes_what_clears_the_floor(db, author, conflict, capture_source_tag):
+def test_batch_complete_publishes_what_clears_the_floor(db, author, conflict):
     """A mixed selection: ready rows publish, the one missing proof stays a detection."""
     ready_one = _detection(db, author)
     ready_two = _detection(db, author)
@@ -125,14 +139,7 @@ def test_batch_complete_publishes_what_clears_the_floor(db, author, conflict, ca
     response = client.post(
         _URL,
         headers=login_as(client, author),
-        json=_body(
-            conflict,
-            [
-                (ready_one, capture_source_tag.id),
-                (imageless, capture_source_tag.id),
-                (ready_two, capture_source_tag.id),
-            ],
-        ),
+        json=_body(conflict, [(ready_one, "drone"), (imageless, "drone"), (ready_two, "drone")]),
     )
     assert response.status_code == 200, response.text
     body = response.json()
@@ -157,21 +164,22 @@ def test_batch_complete_publishes_what_clears_the_floor(db, author, conflict, ca
     }
     assert statuses[str(ready_one.id)] == STATUS_GEOLOCATED
     assert statuses[str(ready_two.id)] == STATUS_GEOLOCATED
-    # The failed row is untouched: still a detection, still tagless.
+    # The failed row is untouched: still a detection, no conflict, its kind unchanged.
     assert statuses[str(imageless.id)] == STATUS_DETECTED
     untouched = db.query(Event).filter(Event.id == imageless.id).one()
-    assert untouched.tags == []
     assert untouched.conflicts == []
+    assert [s.kind for s in untouched.sources] == ["unknown"]
 
 
-def test_batch_complete_reports_each_floor_miss_against_its_row(
-    db, author, conflict, capture_source_tag, free_tag
-):
+def test_batch_complete_reports_each_floor_miss_against_its_row(db, author, conflict):
     """One code per way a detection can miss the floor, each landing on its own row
     while the rest of the selection is unaffected."""
-    no_media = _detection(db, author, with_media=False)
-    no_source = _detection(db, author, source_url=None)
-    wrong_tag = _detection(db, author)
+    no_file = _detection(db, author, with_media=False)
+    no_source = _detection(db, author, source_url=None, with_media=False)
+    no_url = _detection(db, author, source_url=None)
+    context_only = _detection(db, author)
+    context_only.sources[0].level = "context"
+    db.commit()
     already_published = _make_geo(db, author=author)
     gone = uuid.uuid4()
 
@@ -181,45 +189,40 @@ def test_batch_complete_reports_each_floor_miss_against_its_row(
         json={
             "conflict_ids": [str(conflict.id)],
             "rows": [
-                {"event_id": str(no_media.id), "capture_source_tag_id": str(capture_source_tag.id)},
-                {
-                    "event_id": str(no_source.id),
-                    "capture_source_tag_id": str(capture_source_tag.id),
-                },
-                # A free tag is not a capture source, so the row fails the same
-                # floor an unknown tag id would.
-                {"event_id": str(wrong_tag.id), "capture_source_tag_id": str(free_tag.id)},
-                {
-                    "event_id": str(already_published.id),
-                    "capture_source_tag_id": str(capture_source_tag.id),
-                },
-                {"event_id": str(gone), "capture_source_tag_id": str(capture_source_tag.id)},
+                {"event_id": str(event_id), "kind": "drone"}
+                for event_id in (
+                    no_file.id,
+                    no_source.id,
+                    no_url.id,
+                    context_only.id,
+                    already_published.id,
+                    gone,
+                )
             ],
         },
     )
     assert response.status_code == 200, response.text
     body = response.json()
-    assert (body["published"], body["failed"]) == (0, 5)
+    assert (body["published"], body["failed"]) == (0, 6)
     codes = {event_id: row["code"] for event_id, row in _by_id(body).items()}
-    assert codes[str(no_media.id)] == "media_required"
-    assert codes[str(no_source.id)] == "source_url_required"
-    assert codes[str(wrong_tag.id)] == "tag_requirements_not_met"
-    assert codes[str(already_published.id)] == "invalid_state"
-    assert codes[str(gone)] == "event_not_found"
+    assert codes == {
+        str(no_file.id): "source_file_required",
+        str(no_source.id): "source_required",
+        str(no_url.id): "source_link_required",
+        str(context_only.id): "source_required",
+        str(already_published.id): "invalid_state",
+        str(gone): "event_not_found",
+    }
 
 
-def test_batch_complete_reports_a_pointless_detection_as_coordinates_required(
-    db, author, conflict, capture_source_tag
-):
+def test_batch_complete_reports_a_pointless_detection_as_coordinates_required(db, author, conflict):
     """An unplaced detection fails with the ``*_required`` code, not a malformed-input one."""
     pointless = _detection(db, author)
-    pointless.event_coords = None
+    pointless.coords = None
     db.commit()
 
     response = client.post(
-        _URL,
-        headers=login_as(client, author),
-        json=_body(conflict, [(pointless, capture_source_tag.id)]),
+        _URL, headers=login_as(client, author), json=_body(conflict, [(pointless, "drone")])
     )
     assert response.status_code == 200, response.text
     body = response.json()
@@ -230,16 +233,14 @@ def test_batch_complete_reports_a_pointless_detection_as_coordinates_required(
     assert db.query(Event).filter(Event.id == pointless.id).one().status == STATUS_DETECTED
 
 
-def test_batch_complete_rejects_a_detection_listed_twice(db, author, conflict, capture_source_tag):
+def test_batch_complete_rejects_a_detection_listed_twice(db, author, conflict):
     """A detection listed twice is rejected by shape, not reported as a state error."""
     detection = _detection(db, author)
 
     response = client.post(
         _URL,
         headers=login_as(client, author),
-        json=_body(
-            conflict, [(detection, capture_source_tag.id), (detection, capture_source_tag.id)]
-        ),
+        json=_body(conflict, [(detection, "drone"), (detection, "drone")]),
     )
     assert response.status_code == 422
 
@@ -247,43 +248,45 @@ def test_batch_complete_rejects_a_detection_listed_twice(db, author, conflict, c
     assert db.query(Event).filter(Event.id == detection.id).one().status == STATUS_DETECTED
 
 
-def test_batch_complete_rejects_a_selection_without_a_conflict(db, author, capture_source_tag):
+def test_batch_complete_rejects_a_row_without_a_known_kind(db, author, conflict):
+    """The kind is a closed list, so an unlisted or missing one fails the shape."""
+    detection = _detection(db, author)
+    headers = login_as(client, author)
+    for row in (
+        {"event_id": str(detection.id), "kind": "periscope"},
+        {"event_id": str(detection.id)},
+    ):
+        response = client.post(
+            _URL, headers=headers, json={"conflict_ids": [str(conflict.id)], "rows": [row]}
+        )
+        assert response.status_code == 422
+
+    db.expire_all()
+    assert db.query(Event).filter(Event.id == detection.id).one().status == STATUS_DETECTED
+
+
+def test_batch_complete_rejects_a_selection_without_a_conflict(db, author):
     """No conflict means no row could ever clear the floor, so the call fails
     whole rather than reporting the same miss N times."""
     detection = _detection(db, author)
     headers = login_as(client, author)
+    rows = [{"event_id": str(detection.id), "kind": "drone"}]
 
-    empty = client.post(
-        _URL,
-        headers=headers,
-        json={
-            "conflict_ids": [],
-            "rows": [
-                {"event_id": str(detection.id), "capture_source_tag_id": str(capture_source_tag.id)}
-            ],
-        },
-    )
+    empty = client.post(_URL, headers=headers, json={"conflict_ids": [], "rows": rows})
     assert empty.status_code == 422
 
     unknown = client.post(
-        _URL,
-        headers=headers,
-        json={
-            "conflict_ids": [str(uuid.uuid4())],
-            "rows": [
-                {"event_id": str(detection.id), "capture_source_tag_id": str(capture_source_tag.id)}
-            ],
-        },
+        _URL, headers=headers, json={"conflict_ids": [str(uuid.uuid4())], "rows": rows}
     )
     assert unknown.status_code == 400
-    assert unknown.json()["detail"]["code"] == "tag_requirements_not_met"
+    assert unknown.json()["detail"]["code"] == "conflict_required"
 
     db.expire_all()
     assert db.query(Event).filter(Event.id == detection.id).one().status == STATUS_DETECTED
 
 
 def test_batch_complete_refuses_another_analysts_detection_before_publishing_any(
-    db, author, second_user, conflict, capture_source_tag
+    db, author, second_user, conflict
 ):
     """Ownership fails the whole call, and it fails it BEFORE the first commit:
     a selection reaching for someone else's detection publishes nothing at all."""
@@ -293,7 +296,7 @@ def test_batch_complete_refuses_another_analysts_detection_before_publishing_any
     response = client.post(
         _URL,
         headers=login_as(client, author),
-        json=_body(conflict, [(mine, capture_source_tag.id), (theirs, capture_source_tag.id)]),
+        json=_body(conflict, [(mine, "drone"), (theirs, "drone")]),
     )
     assert response.status_code == 403
 

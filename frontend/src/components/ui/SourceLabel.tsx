@@ -14,8 +14,9 @@ type SourceLabelProps = {
 };
 
 /**
- * Source-URL display that reduces a stored URL to its host, with italic
- * fallbacks: "To confirm" for a null `url`, "no source" for a value with no host.
+ * Source-URL display that reduces a stored URL to its host (no leading `www.`), the full URL in
+ * the link's `title`, with italic fallbacks: "To confirm" for a null `url`, "no source" for a
+ * value with no host.
  */
 export function SourceLabel(props: SourceLabelProps) {
   const { url, className } = props;
@@ -33,6 +34,7 @@ export function SourceLabel(props: SourceLabelProps) {
   return (
     <OutboundLink
       href={url}
+      title={url}
       // `min-w-0`: a flex item's automatic floor is the whole hostname, which
       // pushes a row past its card; with it lifted, `truncate` fits the row.
       className={cn(`${TEXT_LINK} truncate min-w-0`, className)}

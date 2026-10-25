@@ -1,16 +1,13 @@
 import uuid
-from typing import Literal
+from datetime import UTC, datetime
 
-from sqlalchemy import Column, ForeignKey, String, Table
+from sqlalchemy import Column, DateTime, ForeignKey, String, Table
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
-# Tag category domain: ``capture_source`` is curated, ``free`` is user-typed.
-# Conflicts are not tags (``models/conflict.py``). Value-domain source of truth
-# for the column, the Read schema and the generated frontend type.
-TagCategory = Literal["capture_source", "free"]
-
+# One catalogue of free tags, shared by events and their sources (``models/source.source_tags``).
+# Conflicts are not tags (``models/conflict.py``); where a source comes from is its ``kind``.
 event_tags = Table(
     "event_tags",
     Base.metadata,
@@ -28,6 +25,11 @@ class Tag(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
-    category: Mapped[TagCategory] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
 
     events = relationship("Event", secondary=event_tags, back_populates="tags")
+    sources = relationship("Source", secondary="source_tags", back_populates="tags")

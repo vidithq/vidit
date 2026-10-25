@@ -1,45 +1,46 @@
 "use client";
 
-import { useState, type Dispatch, type SetStateAction } from "react";
-
-import { SourceMediaField } from "@/components/geolocations/SourceMediaField";
-import { TitleField } from "@/components/geolocations/TitleField";
 import {
-  TaxonomyFields,
-  useTaxonomy,
-  type TaxonomyState,
-} from "@/components/geolocations/TaxonomyFields";
-import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
-import { LocationPicker } from "@/components/geolocations/new/LocationPicker";
-import { ProofEditorPanel } from "@/components/geolocations/new/ProofEditorPanel";
+  useMemo,
+  useState,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from "react";
+
+import type { EventLayoutSlots } from "@/components/event/EventLayout";
+import { EventShell } from "@/components/event/EventShell";
+import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
+
+import { TitleField } from "@/components/geolocations/TitleField";
+import { useTaxonomy, type TaxonomyState } from "@/components/geolocations/TaxonomyFields";
+import { DetailsFields } from "@/components/geolocations/fields/DetailsFields";
+import { LocationPicker } from "@/components/geolocations/fields/LocationPicker";
+import { PROOF_GUIDE_LINK, ProofEditorPanel } from "@/components/geolocations/fields/ProofEditorPanel";
+import { SourcesField } from "@/components/sources/SourcesField";
 import { useIncompleteForm } from "@/hooks/useIncompleteForm";
-import { archivedCopies } from "@/lib/events";
-import type { MissingField, MissingFieldKey } from "@/lib/events";
-import { toDatetimeLocalUTC } from "@/lib/format";
+import { cleanNumber } from "@/lib/coordinates";
+import { hhmm } from "@/lib/format";
+import {
+  missingEventFields,
+  missingEventRequestFields,
+  parseGuessCoords,
+  type EventWriteInput,
+  type MissingField,
+  type MissingFieldKey,
+} from "@/lib/events";
+import {
+  newSourceDraft,
+  sourceCreatePayload,
+  sourceDraftFrom,
+  sourceFloor,
+  type SourceDraft,
+} from "@/lib/sources";
 import type { EventDetail } from "@/types";
 
 /**
- * The payload fields every write posts identically, straight off the state. A
- * caller adds what its endpoint takes differently: the title, coordinate,
- * source media, and on an edit the two lossy fields.
- */
-export interface EventSharedFields {
-  source_snapshot_url: string;
-  secondary_source_urls: string[];
-  secondary_snapshot_urls: string[];
-  event_date: string | undefined;
-  event_time: string | undefined;
-  source_posted_at: string;
-  is_graphic: boolean;
-  proof: string | null;
-  tag_ids: string[];
-  conflict_ids: string[];
-  proof_files: File[];
-}
-
-/**
- * The editable state behind the field block, built by `useEventForm` and handed
- * whole to `EventFormFields`.
+ * The editable state behind the fields, built by `useEventForm` and handed whole to
+ * `eventFormSlots`.
  */
 export interface EventFormState {
   title: string;
@@ -49,50 +50,33 @@ export interface EventFormState {
   setLat: Dispatch<SetStateAction<string>>;
   lng: string;
   setLng: Dispatch<SetStateAction<string>>;
-  /** The optional camera position, both halves or neither. */
-  captureLat: string;
-  setCaptureLat: Dispatch<SetStateAction<string>>;
-  captureLng: string;
-  setCaptureLng: Dispatch<SetStateAction<string>>;
-  sourceUrl: string;
-  setSourceUrl: Dispatch<SetStateAction<string>>;
-  /** What to write, not what is stored: starts empty on every surface. A paste
-   *  replaces the link's stored copy. */
-  sourceSnapshotUrl: string;
-  setSourceSnapshotUrl: Dispatch<SetStateAction<string>>;
-  secondarySourceUrls: string[];
-  setSecondarySourceUrls: Dispatch<SetStateAction<string[]>>;
-  /** One paste per mirror, index-aligned with the list above. */
-  secondarySnapshotUrls: string[];
-  setSecondarySnapshotUrls: Dispatch<SetStateAction<string[]>>;
+  sources: SourceDraft[];
+  setSources: Dispatch<SetStateAction<SourceDraft[]>>;
   eventDate: string;
   setEventDate: Dispatch<SetStateAction<string>>;
   eventTime: string;
   setEventTime: Dispatch<SetStateAction<string>>;
-  sourcePostedAt: string;
-  setSourcePostedAt: Dispatch<SetStateAction<string>>;
-  isGraphic: boolean;
-  setIsGraphic: Dispatch<SetStateAction<boolean>>;
   proof: string | null;
   setProof: Dispatch<SetStateAction<string | null>>;
   /** New inline proof images, uploaded as `proof_files[]` at post. */
   proofFiles: File[];
   setProofFiles: Dispatch<SetStateAction<File[]>>;
-  removedIds: Set<string>;
-  setRemovedIds: Dispatch<SetStateAction<Set<string>>>;
-  newFiles: File[];
-  setNewFiles: Dispatch<SetStateAction<File[]>>;
   taxonomy: TaxonomyState;
   selectedTagIds: string[];
   setSelectedTagIds: Dispatch<SetStateAction<string[]>>;
   selectedConflictIds: string[];
   setSelectedConflictIds: Dispatch<SetStateAction<string[]>>;
-  /** What the two lossy inputs were seeded with (time drops seconds,
-   *  datetime-local stops at the minute): a value equal to its seed is
-   *  untouched, and posting the truncation would cut seconds off a stored
-   *  record. Both `""` on a fresh submit. */
-  seeded: { eventTime: string; sourcePostedAt: string };
-  shared: () => EventSharedFields;
+  /** What a geolocation publish still misses, live: the request floor, then the coordinates,
+   *  the proof and the conflict. */
+  publishMissing: MissingField[];
+  /** What a request write still misses, live. */
+  requestMissing: MissingField[];
+  /** A geolocation write's body: the subject point is required, so a NaN never passes the floor
+   *  that runs first. Strict parse, so a coordinate cannot read valid one way and invalid the
+   *  other. */
+  publishInput: (invitees?: string[]) => EventWriteInput & { geolocator_invites?: string[] };
+  /** A request write's body: the subject point is an optional guess, both halves or neither. */
+  requestInput: () => EventWriteInput;
   missingFields: MissingField[];
   invalidKeys: Set<MissingFieldKey>;
   validationAttempt: number;
@@ -100,50 +84,30 @@ export interface EventFormState {
   clearIncomplete: () => void;
 }
 
+/** The editors a row seeds: one per stored source, or one blank editor. */
+function seedSources(row: EventDetail | null): SourceDraft[] {
+  return row && row.sources.length > 0 ? row.sources.map(sourceDraftFrom) : [newSourceDraft()];
+}
+
 /**
  * Seed one form's state from the row it edits, or empty for a fresh submit.
  *
- * Seeds are `useState` initialisers, so they apply at mount. The edit surfaces
- * mount after their row loaded (which gives the proof editor its `initialContent`); the
- * submit form seeds empty and drives the setters from its own load effect.
+ * Seeds are `useState` initialisers, so they apply at mount. The edit form mounts after its row
+ * loaded, which gives the proof editor its `initialContent`; the submit form seeds empty.
  */
 export function useEventForm(row?: EventDetail | null): EventFormState {
   const seed = row ?? null;
 
   const [title, setTitle] = useState(seed?.title ?? "");
-  const [lat, setLat] = useState(
-    seed?.event_coords ? String(seed.event_coords.lat) : ""
-  );
-  const [lng, setLng] = useState(
-    seed?.event_coords ? String(seed.event_coords.lng) : ""
-  );
-  const [captureLat, setCaptureLat] = useState(
-    seed?.capture_source_coords ? String(seed.capture_source_coords.lat) : ""
-  );
-  const [captureLng, setCaptureLng] = useState(
-    seed?.capture_source_coords ? String(seed.capture_source_coords.lng) : ""
-  );
-  const [sourceUrl, setSourceUrl] = useState(seed?.source_url ?? "");
-  const [sourceSnapshotUrl, setSourceSnapshotUrl] = useState("");
-  const [secondarySourceUrls, setSecondarySourceUrls] = useState<string[]>(
-    seed?.secondary_source_urls ?? []
-  );
-  const [secondarySnapshotUrls, setSecondarySnapshotUrls] = useState<string[]>(
-    (seed?.secondary_source_urls ?? []).map(() => "")
-  );
-  const [eventDate, setEventDate] = useState(seed?.event_date ?? "");
-  const seededEventTime = seed?.event_time?.slice(0, 5) ?? "";
-  const seededSourcePostedAt = toDatetimeLocalUTC(seed?.source_posted_at ?? null);
+  const [lat, setLat] = useState(seed?.coords ? String(seed.coords.lat) : "");
+  const [lng, setLng] = useState(seed?.coords ? String(seed.coords.lng) : "");
+  const [sources, setSources] = useState<SourceDraft[]>(() => seedSources(seed));
+  const [eventDate, setEventDate] = useState(seed?.occurred_date ?? "");
+  // The time input drops seconds: a value equal to its seed is untouched.
+  const seededEventTime = seed?.occurred_time ? hhmm(seed.occurred_time) : "";
   const [eventTime, setEventTime] = useState(seededEventTime);
-  const [sourcePostedAt, setSourcePostedAt] = useState(seededSourcePostedAt);
-  const [isGraphic, setIsGraphic] = useState(seed?.is_graphic ?? false);
-  const [proof, setProof] = useState<string | null>(
-    seed?.proof ?? null
-  );
+  const [proof, setProof] = useState<string | null>(seed?.proof ?? null);
   const [proofFiles, setProofFiles] = useState<File[]>([]);
-
-  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
-  const [newFiles, setNewFiles] = useState<File[]>([]);
 
   const taxonomy = useTaxonomy();
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>(
@@ -155,6 +119,41 @@ export function useEventForm(row?: EventDetail | null): EventFormState {
 
   const incomplete = useIncompleteForm();
 
+  // Memoised so the scans rerun only when an input changes.
+  const floor = useMemo(() => sourceFloor(sources), [sources]);
+  const requestMissing = useMemo(
+    () => missingEventRequestFields({ title, sources: floor }),
+    [title, floor]
+  );
+  const publishMissing = useMemo(
+    () =>
+      missingEventFields({
+        title,
+        lat,
+        lng,
+        proof,
+        sources: floor,
+        hasConflict: selectedConflictIds.length > 0,
+      }),
+    [title, lat, lng, proof, floor, selectedConflictIds]
+  );
+
+  const shared = (): Omit<EventWriteInput, "lat" | "lng"> => ({
+    title: title.trim(),
+    sources: sources.map(sourceCreatePayload),
+    occurred_date: eventDate || undefined,
+    // An untouched time goes back at the row's own precision, not as the input's truncation:
+    // an absent value clears it.
+    occurred_time:
+      seed && eventTime === seededEventTime
+        ? (seed.occurred_time ?? undefined)
+        : eventTime || undefined,
+    proof,
+    tag_ids: selectedTagIds,
+    conflict_ids: selectedConflictIds,
+    proof_files: proofFiles,
+  });
+
   return {
     title,
     setTitle,
@@ -162,191 +161,197 @@ export function useEventForm(row?: EventDetail | null): EventFormState {
     setLat,
     lng,
     setLng,
-    captureLat,
-    setCaptureLat,
-    captureLng,
-    setCaptureLng,
-    sourceUrl,
-    setSourceUrl,
-    sourceSnapshotUrl,
-    setSourceSnapshotUrl,
-    secondarySourceUrls,
-    setSecondarySourceUrls,
-    secondarySnapshotUrls,
-    setSecondarySnapshotUrls,
+    sources,
+    setSources,
     eventDate,
     setEventDate,
     eventTime,
     setEventTime,
-    sourcePostedAt,
-    setSourcePostedAt,
-    isGraphic,
-    setIsGraphic,
     proof,
     setProof,
     proofFiles,
     setProofFiles,
-    removedIds,
-    setRemovedIds,
-    newFiles,
-    setNewFiles,
     taxonomy,
     selectedTagIds,
     setSelectedTagIds,
     selectedConflictIds,
     setSelectedConflictIds,
-    seeded: { eventTime: seededEventTime, sourcePostedAt: seededSourcePostedAt },
-    shared: () => ({
-      source_snapshot_url: sourceSnapshotUrl,
-      secondary_source_urls: secondarySourceUrls,
-      secondary_snapshot_urls: secondarySnapshotUrls,
-      event_date: eventDate || undefined,
-      event_time: eventTime || undefined,
-      source_posted_at: sourcePostedAt,
-      is_graphic: isGraphic,
-      proof,
-      tag_ids: selectedTagIds,
-      conflict_ids: selectedConflictIds,
-      proof_files: proofFiles,
+    publishMissing,
+    requestMissing,
+    publishInput: (invitees) => ({
+      ...shared(),
+      lat: cleanNumber(lat) ?? NaN,
+      lng: cleanNumber(lng) ?? NaN,
+      ...(invitees && { geolocator_invites: invitees }),
     }),
-    ...incomplete,
+    requestInput: () => ({ ...shared(), ...parseGuessCoords(lat, lng) }),
+    missingFields: incomplete.missingFields,
+    invalidKeys: incomplete.invalidKeys,
+    validationAttempt: incomplete.validationAttempt,
+    flagIncomplete: incomplete.flagIncomplete,
+    clearIncomplete: incomplete.clearIncomplete,
   };
 }
 
-interface EventFormFieldsProps {
-  form: EventFormState;
-  /** The stored row behind the form (edited event, corrected or fulfilled
-   *  request). `null` on a fresh submit. */
+/** Where the fields come from and what follows them, past the form state. */
+interface EventFormFieldsOptions {
+  /** The stored row behind the form (the edited or published event). `null` on a fresh
+   *  submit. */
   row?: EventDetail | null;
-  /** A request fulfilment inherits the requester's footage. */
-  mediaLocked?: boolean;
-  /** Inherited the same way; shows a "from request" hint instead of an input. */
-  sourceUrlLocked?: boolean;
-  /** False on the request edit, which saves without the source instant. */
-  sourcePostedAtRequired?: boolean;
-  /** Show `row`'s provenance link, read-only. */
-  showProvenance?: boolean;
-  /** Without the setter the locked field renders bare. */
-  detectedFromSnapshotUrl?: string;
-  setDetectedFromSnapshotUrl?: (v: string) => void;
+  /** Follows the Location card (the submit form's duplicate probe). */
+  afterLocation?: ReactNode;
 }
 
 /**
- * The field block every event write fills in, in reading order: title, source
- * media, location, details, classification, proof.
- *
- * The submit form, the open-request edit and the detection / published edit
- * compose it and keep no copy of a field, so labels, help and red outlines stay
- * one thing. Per-surface pieces (readiness list, duplicate probe, version note,
- * confirm step) stay with the caller.
+ * An event form on `EventShell`, as both event forms render it: the fields of `eventFormSlots`
+ * in the shell's zones, the writes pinned with the hidden `IncompleteFormAnnouncer` under them,
+ * and the body's `<form>`. The form is `noValidate`, since the red outlines and the announcer
+ * own the required-field feedback; a submit (Enter in a field, a submit button outside the form
+ * that joins it through `formId`) runs `onSubmit`, or nothing when the writes are explicit
+ * buttons.
  */
-export function EventFormFields({
+export function EventFormShell({
   form,
-  row = null,
-  mediaLocked = false,
-  sourceUrlLocked = false,
-  sourcePostedAtRequired = true,
-  showProvenance = false,
-  detectedFromSnapshotUrl,
-  setDetectedFromSnapshotUrl,
-}: EventFormFieldsProps) {
-  const { invalidKeys } = form;
-
+  title,
+  byline,
+  backFallback,
+  onBack,
+  actions,
+  formId,
+  onSubmit,
+  fields,
+}: {
+  form: EventFormState;
+  /** The page name: a visually hidden `h1` and the browser tab's title. */
+  title: string;
+  byline: ReactNode;
+  backFallback?: string;
+  onBack?: () => void;
+  /** The writes, pinned top right. */
+  actions: ReactNode;
+  /** The `<form>`'s id, which the Title field and a submit button join from outside it. */
+  formId?: string;
+  onSubmit?: () => void;
+  fields?: EventFormFieldsOptions;
+}) {
+  const { titleField, body } = eventFormSlots(form, { ...fields, formId });
   return (
-    <>
+    <EventShell
+      title={title}
+      titleField={titleField}
+      byline={byline}
+      backFallback={backFallback}
+      onBack={onBack}
+      actions={{
+        pinned: actions,
+        below: (
+          <IncompleteFormAnnouncer
+            attempt={form.validationAttempt}
+            missing={form.missingFields.map((m) => m.label)}
+          />
+        ),
+      }}
+      body={{
+        ...body,
+        form: {
+          id: formId,
+          onSubmit: (e) => {
+            e.preventDefault();
+            onSubmit?.();
+          },
+          noValidate: true,
+        },
+      }}
+    />
+  );
+}
+
+/**
+ * The fields every event write fills in, as `EventShell`'s slots. The submit form and the edit
+ * form compose it and keep no copy of a field, so labels, help and red outlines stay one thing.
+ */
+function eventFormSlots(
+  form: EventFormState,
+  {
+    row = null,
+    afterLocation,
+    formId,
+  }: EventFormFieldsOptions & {
+    /** The body `<form>`'s id, which the Title field joins from the title section. */
+    formId?: string;
+  },
+): { titleField: ReactNode; body: Omit<EventLayoutSlots, "form"> } {
+  const { invalidKeys } = form;
+  const proofInvalid = invalidKeys.has("proof") || invalidKeys.has("proof_image");
+
+  return {
+    titleField: (
       <TitleField
         value={form.title}
         onChange={form.setTitle}
         invalid={invalidKeys.has("title")}
+        form={formId}
       />
-
-      <SourceMediaField
-        existing={row?.media ?? []}
-        removedIds={form.removedIds}
-        onRemoveExisting={
-          mediaLocked
-            ? undefined
-            : (id) => form.setRemovedIds((prev) => new Set(prev).add(id))
-        }
-        staged={mediaLocked ? [] : form.newFiles}
-        onAddFiles={
-          mediaLocked ? undefined : (f) => form.setNewFiles((prev) => [...prev, ...f])
-        }
-        onRemoveStaged={
-          mediaLocked
-            ? undefined
-            : (i) => form.setNewFiles((prev) => prev.filter((_, idx) => idx !== i))
-        }
-        locked={mediaLocked}
-        // The age gate covers every persisted tile of a flagged row (the bot
-        // opens requests, so an owner can meet unseen footage). Staged files
-        // show uncovered.
-        isGraphic={row?.is_graphic ?? false}
-        invalid={invalidKeys.has("source_media")}
-      />
-
-      <LocationPicker
-        lat={form.lat}
-        setLat={form.setLat}
-        lng={form.lng}
-        setLng={form.setLng}
-        captureLat={form.captureLat}
-        setCaptureLat={form.setCaptureLat}
-        captureLng={form.captureLng}
-        setCaptureLng={form.setCaptureLng}
-        invalid={invalidKeys.has("coordinates")}
-      />
-
-      <DetailsFields
-        sourceUrl={form.sourceUrl}
-        setSourceUrl={form.setSourceUrl}
-        sourceSnapshotUrl={form.sourceSnapshotUrl}
-        setSourceSnapshotUrl={form.setSourceSnapshotUrl}
-        archivedSource={row?.archived_source ?? null}
-        secondarySourceUrls={form.secondarySourceUrls}
-        setSecondarySourceUrls={form.setSecondarySourceUrls}
-        secondarySnapshotUrls={form.secondarySnapshotUrls}
-        setSecondarySnapshotUrls={form.setSecondarySnapshotUrls}
-        archivedCopies={row ? archivedCopies(row) : undefined}
-        eventDate={form.eventDate}
-        setEventDate={form.setEventDate}
-        eventTime={form.eventTime}
-        setEventTime={form.setEventTime}
-        sourcePostedAt={form.sourcePostedAt}
-        setSourcePostedAt={form.setSourcePostedAt}
-        sourcePostedAtRequired={sourcePostedAtRequired}
-        isGraphic={form.isGraphic}
-        setIsGraphic={form.setIsGraphic}
-        // The stored value: the flag ratchets on the backend.
-        graphicLocked={row?.is_graphic ?? false}
-        sourceUrlLocked={sourceUrlLocked}
-        detectedFromUrl={showProvenance ? row?.detected_from_url : undefined}
-        openedAsRequest={!!row?.requested_by}
-        detectedFromSnapshotUrl={detectedFromSnapshotUrl}
-        setDetectedFromSnapshotUrl={setDetectedFromSnapshotUrl}
-        archivedDetectedFrom={row?.archived_detected_from ?? null}
-        sourcePostedAtInvalid={invalidKeys.has("source_posted_at")}
-        sourceUrlInvalid={invalidKeys.has("source_url")}
-      />
-
-      <TaxonomyFields
-        taxonomy={form.taxonomy}
-        selectedTagIds={form.selectedTagIds}
-        setSelectedTagIds={form.setSelectedTagIds}
-        selectedConflictIds={form.selectedConflictIds}
-        setSelectedConflictIds={form.setSelectedConflictIds}
-        conflictInvalid={invalidKeys.has("conflict_tag")}
-        captureSourceInvalid={invalidKeys.has("capture_source_tag")}
-      />
-
-      {/* The image floor binds at the geolocate; a request may stay imageless. */}
-      <ProofEditorPanel
-        proof={form.proof}
-        onChange={form.setProof}
-        proofFiles={form.proofFiles}
-        onProofFilesChange={form.setProofFiles}
-        invalid={invalidKeys.has("proof") || invalidKeys.has("proof_image")}
-      />
-    </>
-  );
+    ),
+    body: {
+      sources: (
+        <SourcesField
+          sources={form.sources}
+          setSources={form.setSources}
+          tags={form.taxonomy.tags}
+          setTags={form.taxonomy.setTags}
+          invalidKeys={invalidKeys}
+          attempt={form.validationAttempt}
+        />
+      ),
+      // The image floor binds at the publish; a request may stay imageless.
+      proof: {
+        content: (
+          <ProofEditorPanel
+            proof={form.proof}
+            onChange={form.setProof}
+            proofFiles={form.proofFiles}
+            onProofFilesChange={form.setProofFiles}
+            invalid={proofInvalid}
+          />
+        ),
+        invalid: proofInvalid,
+        aside: PROOF_GUIDE_LINK,
+      },
+      details: {
+        content: (
+          <DetailsFields
+            eventDate={form.eventDate}
+            setEventDate={form.setEventDate}
+            eventTime={form.eventTime}
+            setEventTime={form.setEventTime}
+            detectedFromUrl={row?.detected_from_url}
+            openedAsRequest={!!row?.requested_by}
+            taxonomy={form.taxonomy}
+            selectedTagIds={form.selectedTagIds}
+            setSelectedTagIds={form.setSelectedTagIds}
+            selectedConflictIds={form.selectedConflictIds}
+            setSelectedConflictIds={form.setSelectedConflictIds}
+            conflictInvalid={invalidKeys.has("conflict_tag")}
+          />
+        ),
+        invalid: invalidKeys.has("conflict_tag"),
+      },
+      location: {
+        content: (
+          <div className="space-y-6">
+            <LocationPicker
+              lat={form.lat}
+              setLat={form.setLat}
+              lng={form.lng}
+              setLng={form.setLng}
+              invalid={invalidKeys.has("coordinates")}
+            />
+            {afterLocation}
+          </div>
+        ),
+        invalid: invalidKeys.has("coordinates"),
+      },
+    },
+  };
 }

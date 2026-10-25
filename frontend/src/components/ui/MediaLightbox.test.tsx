@@ -1,19 +1,19 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { MediaLightbox } from "./MediaLightbox";
+import { MediaLightbox, MediaOverlay } from "./MediaLightbox";
 import type { Media } from "@/types";
 
 const IMAGE: Media = {
   id: "m1",
   role: "source",
   storage_url: "/media/shot.jpg",
-  media_type: "image",
-  sha256: null,
+  kind: "image",
+  sha256: "0".repeat(64),
   original_filename: "shot.jpg",
 };
 
-const VIDEO: Media = { ...IMAGE, id: "m2", storage_url: "/media/clip.mp4", media_type: "video" };
+const VIDEO: Media = { ...IMAGE, id: "m2", storage_url: "/media/clip.mp4", kind: "video" };
 
 describe("MediaLightbox", () => {
   it("is a labelled modal dialog carrying the media and a download", () => {
@@ -82,6 +82,23 @@ describe("MediaLightbox", () => {
     });
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves Escape to a control inside that takes it", () => {
+    const onClose = vi.fn();
+    render(
+      <MediaOverlay variant="dialog" label="Filters" onClose={onClose}>
+        <input
+          aria-label="Field"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") e.preventDefault();
+          }}
+        />
+      </MediaOverlay>,
+    );
+
+    fireEvent.keyDown(screen.getByLabelText("Field"), { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("takes the keyboard on open and hands it back on close", () => {

@@ -5,7 +5,7 @@ import type { useCreateBlockNote } from "@blocknote/react";
 
 import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 
-import ProofEditor, { referencedProofFiles } from "./ProofEditor";
+import ProofEditor, { previewUrl, referencedProofFiles } from "./ProofEditor";
 
 // The created editor, so a test drives edits through BlockNote's own API (jsdom has no typing).
 let editor: ReturnType<typeof useCreateBlockNote>;
@@ -49,6 +49,24 @@ describe("referencedProofFiles", () => {
   });
 });
 
+describe("previewUrl", () => {
+  const a = { placeholder: "placeholder://a.png", previewUrl: "blob:a", file: png("a.png") };
+
+  it("previews a staged image from its blob URL", () => {
+    expect(previewUrl("placeholder://a.png", [a])).toBe("blob:a");
+  });
+
+  it("never hands an img a placeholder src, staged or not", () => {
+    const src = previewUrl("placeholder://gone.png", [a]);
+    expect(src.startsWith("placeholder://")).toBe(false);
+    expect(src.startsWith("data:image/")).toBe(true);
+  });
+
+  it("loads a stored image from its own URL", () => {
+    expect(previewUrl("https://media.example/proof.jpg", [a])).toBe("https://media.example/proof.jpg");
+  });
+});
+
 describe("ProofEditor", () => {
   it("seeds from stored HTML without emitting it back", async () => {
     const onChange = vi.fn();
@@ -66,6 +84,14 @@ describe("ProofEditor", () => {
 
     rerender(<ProofEditor onChange={() => {}} invalid />);
     expect(box().className).toContain(FORM_INVALID_FIELD);
+  });
+
+  it("draws no frame when bare, its text with no inline padding of BlockNote's", () => {
+    const { container } = render(<ProofEditor onChange={() => {}} bare invalid />);
+    const box = container.firstElementChild as HTMLElement;
+    expect(box.className).not.toContain("border");
+    expect(box.className).not.toContain("rounded");
+    expect(box.className).toContain("[&_.bn-editor]:px-0");
   });
 
   it("emits the typed text as HTML and stages only the images the body still shows", async () => {

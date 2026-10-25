@@ -12,7 +12,7 @@ from sqlalchemy import event
 from app.config import settings
 from app.database import engine
 from app.models.approval_request import ApprovalRequest
-from app.models.event import STATUS_CLOSED, Event, EventGeolocator, EventGeolocatorInvite
+from app.models.event import STATUS_CLOSED, Event, EventGeolocator
 from app.models.follow import Follow
 from app.models.notification import Notification
 from app.models.user import User
@@ -177,7 +177,9 @@ def test_the_picker_suggests_followers_and_never_reveals_an_open_audience(
     closed = make_user(audience="nobody", follows=author)
     stranger = make_user()
     co = make_user(audience="everyone")
-    db.add(EventGeolocator(event_id=geo.id, user_id=co.id))
+    db.add(
+        EventGeolocator(event_id=geo.id, user_id=co.id, state="active", joined_at=datetime.now(UTC))
+    )
     db.commit()
 
     listed = set(_targets(geo, author))
@@ -205,7 +207,9 @@ def test_the_picker_suggests_followers_and_never_reveals_an_open_audience(
 def test_only_a_geolocator_can_ask_and_a_co_geolocator_can(db, author, make_user):
     geo = published_geo(db, author)
     co = make_user()
-    db.add(EventGeolocator(event_id=geo.id, user_id=co.id))
+    db.add(
+        EventGeolocator(event_id=geo.id, user_id=co.id, state="active", joined_at=datetime.now(UTC))
+    )
     db.commit()
     outsider = make_user()
     target = make_user(audience="everyone")
@@ -219,7 +223,9 @@ def test_only_a_geolocator_can_ask_and_a_co_geolocator_can(db, author, make_user
 def test_a_geolocator_cannot_be_asked(db, author, make_user):
     geo = published_geo(db, author)
     co = make_user(audience="everyone")
-    db.add(EventGeolocator(event_id=geo.id, user_id=co.id))
+    db.add(
+        EventGeolocator(event_id=geo.id, user_id=co.id, state="active", joined_at=datetime.now(UTC))
+    )
     db.commit()
     for target in (co, author):
         response = _request(geo, author, target)
@@ -231,7 +237,11 @@ def test_a_geolocator_cannot_be_asked(db, author, make_user):
 def test_a_former_geolocator_neither_approves_nor_is_asked(db, author, make_user, departure):
     geo = published_geo(db, author)
     former = make_user(audience="everyone")
-    db.add(EventGeolocator(event_id=geo.id, user_id=former.id))
+    db.add(
+        EventGeolocator(
+            event_id=geo.id, user_id=former.id, state="active", joined_at=datetime.now(UTC)
+        )
+    )
     db.commit()
     leaver = former if departure == "left" else author
     response = client.delete(
@@ -377,7 +387,9 @@ def test_a_request_notifies_the_target_and_shows_in_their_feed(db, author, make_
 def test_approving_resolves_the_request_and_tells_the_requester(db, author, make_user):
     geo = published_geo(db, author)
     co = make_user()
-    db.add(EventGeolocator(event_id=geo.id, user_id=co.id))
+    db.add(
+        EventGeolocator(event_id=geo.id, user_id=co.id, state="active", joined_at=datetime.now(UTC))
+    )
     db.commit()
     target = make_user(audience="everyone")
     by_owner = _request(geo, author, target).json()
@@ -455,7 +467,11 @@ def test_joining_the_geolocators_drops_requests_to_the_new_geolocator(db, author
     geo = published_geo(db, author)
     target = make_user(audience="everyone")
     assert _request(geo, author, target).status_code == 201
-    db.add(EventGeolocatorInvite(event_id=geo.id, user_id=target.id))
+    db.add(
+        EventGeolocator(
+            event_id=geo.id, user_id=target.id, state="invited", invited_at=datetime.now(UTC)
+        )
+    )
     db.commit()
 
     headers = login_as(client, target)
@@ -479,7 +495,9 @@ def outbox(monkeypatch) -> list[email.Email]:
 def test_losing_credit_drops_the_requests_the_analyst_sent(db, author, make_user, departure):
     geo = published_geo(db, author)
     co = make_user()
-    db.add(EventGeolocator(event_id=geo.id, user_id=co.id))
+    db.add(
+        EventGeolocator(event_id=geo.id, user_id=co.id, state="active", joined_at=datetime.now(UTC))
+    )
     db.commit()
     target = make_user(audience="everyone")
     assert _request(geo, co, target).status_code == 201
@@ -502,10 +520,6 @@ def test_a_request_emails_the_target_and_a_decline_emails_only_on_opt_in(
 ):
     geo = published_geo(db, author)
     target = make_user(audience="everyone")
-    now = datetime.now(UTC)
-    author.email_verified_at = now
-    target.email_verified_at = now
-    db.commit()
 
     created = _request(geo, author, target).json()
     notification_delivery.drain(db)
@@ -519,7 +533,7 @@ def test_a_request_emails_the_target_and_a_decline_emails_only_on_opt_in(
 
     db.add(
         UserPreferences(
-            user_id=author.id, notification_overrides={"approval_request_declined": {"email": True}}
+            user_id=author.id, notification_overrides={"approval_request_declined": True}
         )
     )
     db.commit()
@@ -530,17 +544,3 @@ def test_a_request_emails_the_target_and_a_decline_emails_only_on_opt_in(
     notification_delivery.drain(db)
     [declined] = [m for m in outbox if m.to == author.email]
     assert target.username in declined.subject
-
-
-def test_push_messages_name_the_actor_and_open_the_event(db, author, make_user):
-    geo = published_geo(db, author)
-    target = make_user(audience="everyone")
-    created = _request(geo, author, target).json()
-    assert _decline(geo, created["id"], target).status_code == 200
-    db.expire_all()
-    rows = db.query(Notification).filter(Notification.event_id == geo.id).all()
-    assert {r.kind for r in rows} == {"approval_request_received", "approval_request_declined"}
-    for row in rows:
-        message = notification_delivery._push_for(row)
-        assert row.actor.username in message.title
-        assert message.path == f"/events/{geo.id}"

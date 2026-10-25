@@ -7,7 +7,7 @@ import { ACCENT_SURFACE } from "./styles";
 const NUMBER_DISC =
   "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold";
 
-export interface ProgressStep {
+interface ProgressStep {
   label: string;
   /** One-liner under the label while the step is active or failed. */
   detail?: string;

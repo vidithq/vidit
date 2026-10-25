@@ -28,7 +28,7 @@ describe("<OrganizationsPanel>", () => {
     const orgRow = await screen.findByRole("link", { name: /^OSW/ });
     expect(orgRow).toHaveAttribute("href", "/organizations/osw");
     expect(orgRow).toHaveTextContent("1 member");
-    const open = screen.getByRole("button", { name: "Delete" });
+    const open = screen.getByRole("button", { name: "Delete OSW" });
     expect(open.closest("a")).toBeNull();
     fireEvent.click(open);
     const confirm = screen.getByRole("button", { name: "Delete organization" });

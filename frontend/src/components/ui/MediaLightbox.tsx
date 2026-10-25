@@ -26,7 +26,7 @@ import type { Media } from "@/types";
  * A source is a persisted `Media` row or a plain `{src, kind}` shape (a staged
  * object URL, or a proof image from an allowlisted URL).
  */
-export type LightboxSource =
+type LightboxSource =
   | Media
   | { src: string; kind: "image" | "video"; filename?: string };
 
@@ -38,8 +38,8 @@ interface ResolvedSource {
 }
 
 function resolveSource(source: LightboxSource): ResolvedSource {
-  if ("media_type" in source) {
-    const isVideo = source.media_type !== "image";
+  if ("storage_url" in source) {
+    const isVideo = source.kind !== "image";
     return {
       // `hero` (max-dim 1280) avoids the original's payload. Videos have no
       // derivatives.
@@ -152,6 +152,8 @@ export function MediaOverlay({
       if (e.key === "Escape") {
         // Fullscreen owns this press; the browser is already exiting it.
         if (document.fullscreenElement) return;
+        // A control inside took this press: an open combobox list closes alone.
+        if (e.defaultPrevented) return;
         onClose();
         return;
       }

@@ -1,16 +1,16 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Table
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base
+from app.database import Base, literal_check
 
 # Where a conflict row came from: ``sync`` (daily Wikipedia ongoing-conflicts
 # sync), ``seed`` (one-shot Wikidata historical seed), ``manual`` (operator;
 # the ``Other`` value ships in the migration).
-ConflictSource = Literal["sync", "seed", "manual"]
+ConflictOrigin = Literal["sync", "seed", "manual"]
 
 # Tier table of the Wikipedia ongoing-conflicts page a row was last seen in:
 # major wars (10,000+ deaths/year), minor wars (1,000+), conflicts (100+). NULL
@@ -37,7 +37,7 @@ class Conflict(Base):
     """One armed conflict in the curated referential.
 
     ``wikidata_id`` is the natural key the sync/seed writers upsert on, so a
-    Wikipedia rename updates ``name`` in place. ``ongoing`` mirrors presence on
+    Wikipedia rename updates ``name`` in place. ``is_ongoing`` mirrors presence on
     the ongoing-conflicts page (with a grace period, ``services/conflict_sync``);
     rows are never deleted, so archival footage stays taggable.
     """
@@ -50,13 +50,22 @@ class Conflict(Base):
     # Wikidata item id ("Q131569"). NULL for manual rows; unique among the rest.
     wikidata_id: Mapped[str | None] = mapped_column(String(20), unique=True, nullable=True)
     start_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # See ``ConflictTier``.
-    tier: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    tier: Mapped[ConflictTier | None] = mapped_column(String(10), nullable=True)
     end_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    ongoing: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_ongoing: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # Last time the daily sync saw it on the ongoing page. NULL rows are never
     # touched by the grace-period deactivation.
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    source: Mapped[ConflictSource] = mapped_column(String(20), nullable=False)
+    origin: Mapped[ConflictOrigin] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
 
     events = relationship("Event", secondary=event_conflicts, back_populates="conflicts")
+
+    __table_args__ = (
+        literal_check("origin", ConflictOrigin, "ck_conflicts_origin_valid"),
+        literal_check("tier", ConflictTier, "ck_conflicts_tier_valid", nullable=True),
+    )

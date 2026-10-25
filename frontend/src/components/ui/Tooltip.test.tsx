@@ -88,4 +88,34 @@ describe("icon button tooltip", () => {
     fireEvent.pointerEnter(link.parentElement!, { pointerType: "mouse" });
     expect(bubble("Edit")).toBeDefined();
   });
+
+  it("with tapToShow, shows the label on a touch's first tap and follows the link on the second", () => {
+    render(
+      <Tooltip label="maya approved v2 on 15 Oct 2026" tapToShow>
+        <a href="#maya" aria-label="maya approved v2 on 15 Oct 2026">
+          m
+        </a>
+      </Tooltip>,
+    );
+    const link = screen.getByRole("link");
+    fireEvent.pointerDown(link, { pointerType: "touch" });
+    expect(fireEvent.click(link)).toBe(false);
+    expect(bubble("maya approved v2 on 15 Oct 2026")).toBeDefined();
+
+    fireEvent.pointerDown(link, { pointerType: "touch" });
+    expect(fireEvent.click(link)).toBe(true);
+  });
+
+  it("with tapToShow, lets a mouse click follow the link at once", () => {
+    render(
+      <Tooltip label="maya" tapToShow>
+        <a href="#maya" aria-label="maya">
+          m
+        </a>
+      </Tooltip>,
+    );
+    const link = screen.getByRole("link");
+    fireEvent.pointerDown(link, { pointerType: "mouse" });
+    expect(fireEvent.click(link)).toBe(true);
+  });
 });

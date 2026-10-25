@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { AtSign, Bot, Ellipsis, EyeOff, Trash2 } from "lucide-react";
 
 import {
   deleteUser,
@@ -11,11 +12,11 @@ import {
   type AdminUser,
   type AdminUserDeleteResponse,
 } from "@/lib/admin";
-import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
-import { FORM_LABEL, LIST_TILE } from "@/components/ui/form-styles";
-import { WARNING_CALLOUT } from "@/components/ui/styles";
-import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
+import { FORM_ERROR_BANNER, FORM_LABEL, LIST_TILE } from "@/components/ui/form-styles";
+import { ActionMenu } from "@/components/ui/ActionMenu";
+import { Button } from "@/components/ui/Button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Input } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
 import { ToggleRow } from "@/components/ui/ToggleRow";
@@ -26,8 +27,15 @@ type ActionableUser = Omit<AdminUser, "created_at">;
 
 type DangerMode = "soft" | "hard" | "purge";
 
+const DANGER_LABELS: Record<DangerMode, string> = {
+  soft: "Soft delete",
+  hard: "Hard delete",
+  purge: "Purge detected",
+};
+
 /** One user's admin actions: X-handle link, invite minting switch, soft/hard delete, detections
- * purge. Shared by Manage-analysts search and the onboarding table. */
+ * purge. The link and the destructive actions sit in the card's action menu, and each destructive
+ * one opens a `ConfirmDialog`. Shared by Manage-analysts search and the onboarding table. */
 export function UserActionsCard({
   user,
   detectedCount,
@@ -36,7 +44,7 @@ export function UserActionsCard({
   onPurged,
 }: {
   user: ActionableUser;
-  /** Live detections, shown on the purge button when known. */
+  /** Live detections, shown on the purge item when known. */
   detectedCount?: number;
   onUpdated: (u: AdminUser) => void;
   onDeleted: (userId: string, response: AdminUserDeleteResponse) => void;
@@ -45,7 +53,7 @@ export function UserActionsCard({
   const [xHandle, setXHandle] = useState(user.x_handle ?? "");
   const [showXHandleForm, setShowXHandleForm] = useState(false);
   const [dangerMode, setDangerMode] = useState<DangerMode | null>(null);
-  const [mintingEnabled, setMintingEnabled] = useState(user.invite_minting_enabled);
+  const [mintingEnabled, setMintingEnabled] = useState(user.is_invite_minting_enabled);
 
   const xHandleMutation = useMutation(
     (value: string | null) => setUserXHandle(user.id, { x_handle: value }),
@@ -64,7 +72,7 @@ export function UserActionsCard({
     {
       fallback: "Failed to change invite minting",
       onSuccess: (updated) => {
-        setMintingEnabled(updated.invite_minting_enabled);
+        setMintingEnabled(updated.is_invite_minting_enabled);
         onUpdated(updated);
       },
     },
@@ -75,9 +83,8 @@ export function UserActionsCard({
     {
       fallback: "Failed to delete user",
       onSuccess: (response) => {
-        onDeleted(user.id, response);
         setDangerMode(null);
-        confirmDanger.cancel();
+        onDeleted(user.id, response);
       },
     },
   );
@@ -85,32 +92,27 @@ export function UserActionsCard({
   const purgeMutation = useMutation(() => purgeDetectedEvents(user.id), {
     fallback: "Failed to purge detections",
     onSuccess: (response) => {
-      onPurged?.(response);
       setDangerMode(null);
-      confirmDanger.cancel();
+      onPurged?.(response);
     },
   });
 
   const linking = xHandleMutation.loading;
   const acting = deleteMutation.loading || purgeMutation.loading;
-  // One shared error slot across the card's actions; each clears the others.
-  const error =
-    xHandleMutation.error ??
-    mintingMutation.error ??
-    deleteMutation.error ??
-    purgeMutation.error;
+  // The card's error slot serves the inline actions; a destructive action's refusal shows in its
+  // dialog.
+  const error = xHandleMutation.error ?? mintingMutation.error;
+  const dangerError = deleteMutation.error ?? purgeMutation.error;
 
-  const resetOthers = (keep: "xhandle" | "minting" | "danger") => {
-    if (keep !== "xhandle") xHandleMutation.reset();
-    if (keep !== "minting") mintingMutation.reset();
-    if (keep !== "danger") {
-      deleteMutation.reset();
-      purgeMutation.reset();
-    }
+  const resetAll = () => {
+    xHandleMutation.reset();
+    mintingMutation.reset();
+    deleteMutation.reset();
+    purgeMutation.reset();
   };
 
   const submitXHandle = () => {
-    resetOthers("xhandle");
+    resetAll();
     if (!xHandle.trim()) {
       xHandleMutation.setError(
         "An X handle is required (use Clear to unlink).",
@@ -121,36 +123,28 @@ export function UserActionsCard({
   };
 
   const submitXHandleClear = () => {
-    resetOthers("xhandle");
+    resetAll();
     void xHandleMutation.run(null);
   };
 
   const submitDanger = () => {
-    if (dangerMode === null) return;
-    resetOthers("danger");
     if (dangerMode === "purge") {
       void purgeMutation.run();
-    } else {
+    } else if (dangerMode !== null) {
       void deleteMutation.run(dangerMode === "hard");
     }
   };
 
-  const confirmDanger = useConfirmAction(() => submitDanger());
-
-  const armDanger = (mode: DangerMode) => {
+  const openDanger = (mode: DangerMode) => {
+    resetAll();
     setDangerMode(mode);
-    confirmDanger.cancel();
   };
 
   const cancelDanger = () => {
     setDangerMode(null);
-    confirmDanger.cancel();
-    xHandleMutation.reset();
     deleteMutation.reset();
     purgeMutation.reset();
   };
-
-  const idle = dangerMode === null && !showXHandleForm;
 
   return (
     <div className={`${LIST_TILE} space-y-2`}>
@@ -178,45 +172,39 @@ export function UserActionsCard({
             </div>
           )}
         </div>
-        <div className="shrink-0 flex flex-col items-end gap-1">
-          {idle && (
-            <Button
-              variant="ghost"
-              onClick={() => setShowXHandleForm(true)}
-              className="whitespace-nowrap"
-            >
-              {user.x_handle ? "Edit X handle" : "Link X handle"}
-            </Button>
-          )}
-          {idle && (
-            <Button
-              variant="ghost"
-              onClick={() => armDanger("purge")}
-              className="whitespace-nowrap"
-            >
-              Purge detected
-              {detectedCount !== undefined ? ` (${detectedCount})` : ""}
-            </Button>
-          )}
-          {idle && (
-            <div className="inline-flex gap-1">
-              <Button
-                variant="ghost"
-                onClick={() => armDanger("soft")}
-                className="whitespace-nowrap"
-              >
-                Soft delete
-              </Button>
-              <Button
-                variant="danger"
-                onClick={() => armDanger("hard")}
-                className="whitespace-nowrap"
-              >
-                Hard delete
-              </Button>
-            </div>
-          )}
-        </div>
+        <ActionMenu
+          label={`Actions for ${user.username}`}
+          icon={<Ellipsis size={14} />}
+          items={[
+            {
+              key: "x-handle",
+              label: user.x_handle ? "Edit X handle" : "Link X handle",
+              icon: <AtSign size={14} aria-hidden />,
+              onSelect: () => {
+                resetAll();
+                setShowXHandleForm(true);
+              },
+            },
+            {
+              key: "purge",
+              label: `${DANGER_LABELS.purge}${detectedCount !== undefined ? ` (${detectedCount})` : ""}`,
+              icon: <Bot size={14} aria-hidden />,
+              onSelect: () => openDanger("purge"),
+            },
+            {
+              key: "soft",
+              label: DANGER_LABELS.soft,
+              icon: <EyeOff size={14} aria-hidden />,
+              onSelect: () => openDanger("soft"),
+            },
+            {
+              key: "hard",
+              label: DANGER_LABELS.hard,
+              icon: <Trash2 size={14} aria-hidden />,
+              onSelect: () => openDanger("hard"),
+            },
+          ]}
+        />
       </div>
 
       <ToggleRow
@@ -225,7 +213,7 @@ export function UserActionsCard({
         on={mintingEnabled}
         onToggle={() => {
           if (mintingMutation.loading) return;
-          resetOthers("minting");
+          resetAll();
           void mintingMutation.run(!mintingEnabled);
         }}
       />
@@ -267,8 +255,6 @@ export function UserActionsCard({
                 setShowXHandleForm(false);
                 setXHandle(user.x_handle ?? "");
                 xHandleMutation.reset();
-                deleteMutation.reset();
-                purgeMutation.reset();
               }}
             >
               Cancel
@@ -277,62 +263,45 @@ export function UserActionsCard({
         </div>
       )}
 
+      {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
+
       {dangerMode !== null && (
-        <div
-          className={`px-3 py-2 rounded-md text-xs space-y-2 ${
-            dangerMode === "hard"
-              ? "border bg-red-500/5 border-red-500/30 text-red-200"
-              : WARNING_CALLOUT
-          }`}
+        <ConfirmDialog
+          title={
+            dangerMode === "purge"
+              ? `Purge the detections of ${user.username}?`
+              : `${DANGER_LABELS[dangerMode]} ${user.username}?`
+          }
+          confirmLabel={DANGER_LABELS[dangerMode]}
+          busyLabel="Working…"
+          busy={acting}
+          error={dangerError}
+          tone="danger"
+          onConfirm={submitDanger}
+          onCancel={cancelDanger}
         >
           {dangerMode === "hard" ? (
             <p>
               <strong>Hard delete is irreversible.</strong> Drops{" "}
               {user.username}, every geolocation they authored, their media, and
               S3 objects. A geolocation another analyst shares the credit of passes
-              to that analyst instead, with its media.{" "}
-              {!confirmDanger.armed && "Click “Confirm” to proceed."}
+              to that analyst instead, with its media.
             </p>
           ) : dangerMode === "soft" ? (
             <p>
-              Soft-deleting will hide {user.username} from public reads and
-              cascade-hide every geolocation they authored.{" "}
-              {!confirmDanger.armed && "Click “Confirm” to proceed."}
+              Soft-deleting hides {user.username} from public reads and
+              cascade-hides every geolocation they authored.
             </p>
           ) : (
             <p>
               Purging drops every <strong>detection</strong>{" "}
               {user.username} owns (rows + media, dismissed detections included, so
               the sweep can exceed the counter), and keeps the account, its
-              geolocations and its requests. The broken-archive repair.{" "}
-              {!confirmDanger.armed && "Click “Confirm” to proceed."}
+              geolocations and its requests. The broken-archive repair.
             </p>
           )}
-          <div className="flex gap-2">
-            <Button
-              variant="danger"
-              onClick={confirmDanger.trigger}
-              disabled={acting}
-              className={confirmDanger.armed ? DANGER_CONFIRM : ""}
-            >
-              {acting
-                ? "Working…"
-                : confirmDanger.armed
-                  ? "Confirm"
-                  : dangerMode === "hard"
-                    ? "Hard delete"
-                    : dangerMode === "soft"
-                      ? "Soft delete"
-                      : "Purge detected"}
-            </Button>
-            <Button variant="ghost" onClick={cancelDanger}>
-              Cancel
-            </Button>
-          </div>
-        </div>
+        </ConfirmDialog>
       )}
-
-      {error && <div className="text-xs text-red-300">{error}</div>}
     </div>
   );
 }

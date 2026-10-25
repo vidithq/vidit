@@ -12,7 +12,7 @@ import {
   type EventFilterValues,
 } from "./EventFilterSections";
 
-const TAGS: Tag[] = [{ id: "t1", name: "Drone", category: "capture_source" }];
+const TAGS: Tag[] = [{ id: "t1", name: "Drone" }];
 const CONFLICTS: Conflict[] = [
   {
     id: "c1",
@@ -20,7 +20,7 @@ const CONFLICTS: Conflict[] = [
     wikidata_id: null,
     start_year: 2022,
     end_year: null,
-    ongoing: true,
+    is_ongoing: true,
     tier: "major",
   },
 ];
@@ -39,8 +39,9 @@ describe("<EventFilterSections>", () => {
     for (const name of [
       "Status",
       "Conflict",
-      "Capture source",
-      "Source media",
+      "Source kind",
+      "Level",
+      "Media",
       "Author",
       "Approvals",
     ]) {
@@ -50,9 +51,9 @@ describe("<EventFilterSections>", () => {
   });
 
   it("starts a section expanded when it holds an active value", () => {
-    renderPanel({ ...EMPTY_EVENT_FILTERS, captureSources: ["Drone"] });
+    renderPanel({ ...EMPTY_EVENT_FILTERS, sourceKinds: ["drone"] });
 
-    expect(header("Capture source")).toHaveAttribute("aria-expanded", "true");
+    expect(header("Source kind")).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("button", { name: "Drone" })).toBeInTheDocument();
     expect(header("Conflict")).toHaveAttribute("aria-expanded", "false");
   });
@@ -76,10 +77,10 @@ describe("<EventFilterSections>", () => {
   });
 
   it("toggles an active section closed and a collapsed one open", () => {
-    renderPanel({ ...EMPTY_EVENT_FILTERS, captureSources: ["Drone"] });
+    renderPanel({ ...EMPTY_EVENT_FILTERS, sourceKinds: ["drone"] });
 
-    fireEvent.click(header("Capture source"));
-    expect(header("Capture source")).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(header("Source kind"));
+    expect(header("Source kind")).toHaveAttribute("aria-expanded", "false");
 
     fireEvent.click(header("Conflict"));
     expect(header("Conflict")).toHaveAttribute("aria-expanded", "true");
@@ -149,5 +150,86 @@ describe("the Approvals section", () => {
       />,
     );
     expect(screen.queryByRole("button", { name: "Approvals" })).not.toBeInTheDocument();
+  });
+});
+
+describe("the author filter", () => {
+  it("has a removable pill like every other value and counts once", () => {
+    const onPatch = vi.fn();
+    const values = { ...EMPTY_EVENT_FILTERS, tags: ["drone"], author: "ana" };
+    expect(countActiveFilters(values, EMPTY_DATE_WINDOWS)).toBe(2);
+    const pills = buildActiveFilterPills(values, onPatch);
+    expect(pills.map((p) => p.label)).toEqual(["drone", "By ana"]);
+    pills[1].onRemove();
+    expect(onPatch).toHaveBeenCalledWith({ author: "" });
+  });
+
+  it("has no pill while the field is blank", () => {
+    const pills = buildActiveFilterPills({ ...EMPTY_EVENT_FILTERS, author: "  " }, vi.fn());
+    expect(pills).toEqual([]);
+  });
+});
+
+describe("the Conflict and Tags search fields", () => {
+  const ENDED: Conflict = {
+    id: "c2",
+    name: "Gulf War",
+    wikidata_id: null,
+    start_year: 1990,
+    end_year: 1991,
+    is_ongoing: false,
+    tier: null,
+  };
+  const options = () => screen.queryAllByRole("option").map((o) => o.textContent);
+
+  it("offers every conflict in use, ended ones included, and patches the picked name", () => {
+    const onPatch = vi.fn();
+    render(
+      <EventFilterSections
+        tags={TAGS}
+        conflicts={[...CONFLICTS, ENDED]}
+        values={{ ...EMPTY_EVENT_FILTERS, conflicts: ["Russian invasion of Ukraine"] }}
+        onPatch={onPatch}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Remove Russian invasion of Ukraine (2022-present)" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    fireEvent.focus(screen.getByRole("combobox", { name: "Conflict" }));
+    expect(options()).toEqual(["Gulf War (1990-1991)"]);
+    fireEvent.click(screen.getByRole("option", { name: "Gulf War (1990-1991)" }));
+    expect(onPatch).toHaveBeenCalledWith({
+      conflicts: ["Russian invasion of Ukraine", "Gulf War"],
+    });
+  });
+
+  it("searches the tags in use by name, with no Create row", () => {
+    const onPatch = vi.fn();
+    render(
+      <EventFilterSections
+        tags={[...TAGS, { id: "t2", name: "Artillery" }]}
+        conflicts={CONFLICTS}
+        values={{ ...EMPTY_EVENT_FILTERS, tags: ["Drone"] }}
+        onPatch={onPatch}
+      />,
+    );
+
+    const field = screen.getByRole("combobox", { name: "Tags" });
+    fireEvent.change(field, { target: { value: "zz" } });
+    expect(options()).toEqual([]);
+    expect(screen.getByRole("status")).toHaveTextContent("No tags match.");
+    fireEvent.change(field, { target: { value: "art" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(onPatch).toHaveBeenCalledWith({ tags: ["Drone", "Artillery"] });
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove Drone" }));
+    expect(onPatch).toHaveBeenCalledWith({ tags: [] });
+  });
+
+  it("keeps a picked name its catalogue lacks on show", () => {
+    renderPanel({ ...EMPTY_EVENT_FILTERS, tags: ["Retired tag"] });
+    expect(screen.getByRole("button", { name: "Remove Retired tag" })).toBeInTheDocument();
   });
 });

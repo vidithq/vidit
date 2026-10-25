@@ -18,6 +18,7 @@ import { NumberedSteps } from "@/components/ui/NumberedSteps";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { IMPORT_ENTRIES, IMPORT_GLYPH } from "@/lib/importEntries";
+import { submitHref } from "@/lib/routes";
 import type { EventStatus } from "@/types";
 import { staticPageMetadata } from "../_og/metadata";
 import { Shot } from "../_shots/Shot";
@@ -96,7 +97,7 @@ const STATUSES: { status: EventStatus; note: ReactNode }[] = [
 const DETECTION_STEPS = [
   { title: "An import puts it on the map and in your Detections queue, on your profile." },
   { title: "You check the coordinates, the source, the proof and the date." },
-  { title: "Only you publish it: Submit makes it a geolocation under your name." },
+  { title: "Only you publish it: Publish makes it a geolocation under your name." },
 ];
 
 const OTHERS = [
@@ -173,7 +174,7 @@ export default function GuidePage() {
             />
           ))}
           <IconTile
-            href="/submit"
+            href={submitHref("single")}
             icon={glyph(Plus)}
             title="Fill in the submit form"
             note="Anything else, as a geolocation or a request."

@@ -8,7 +8,7 @@ function conflict(overrides: Partial<Conflict> & Pick<Conflict, "id" | "name">):
     wikidata_id: null,
     start_year: null,
     end_year: null,
-    ongoing: true,
+    is_ongoing: true,
     tier: null,
     ...overrides,
   };
@@ -29,7 +29,7 @@ describe("conflictLabel", () => {
           name: "Falklands War",
           start_year: 1982,
           end_year: 1982,
-          ongoing: false,
+          is_ongoing: false,
         })
       )
     ).toBe("Falklands War (1982)");
@@ -43,7 +43,7 @@ describe("conflictLabel", () => {
           name: "Gulf War",
           start_year: 1990,
           end_year: 1991,
-          ongoing: false,
+          is_ongoing: false,
         })
       )
     ).toBe("Gulf War (1990-1991)");
@@ -70,7 +70,7 @@ describe("conflictLabel", () => {
           name: "Anglo-Turkish War (1918–1923)",
           start_year: 1918,
           end_year: 1923,
-          ongoing: false,
+          is_ongoing: false,
         })
       )
     ).toBe("Anglo-Turkish War (1918–1923)");

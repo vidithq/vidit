@@ -1,7 +1,7 @@
-from typing import Annotated, Literal
+from typing import Literal
 from urllib.parse import urlparse
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 DEFAULT_JWT_SECRET = "changeme-in-production"
@@ -74,20 +74,9 @@ class Settings(BaseSettings):
     # Notification emails one actor's actions queue in any trailing 24 hours,
     # so one analyst cannot spend the total cap on everyone else's behalf.
     notification_email_daily_cap_per_actor: int = 10
-    # Product update emails sent in any trailing 24 hours, and the most one
-    # worker pass sends before it turns to its other queues. With the
-    # notification cap this must stay below ``email_provider_daily_quota``, so
+    # The provider's daily quota. The notification cap must stay below it, so
     # the remainder is left to the auth emails.
-    product_update_email_daily_cap: Annotated[int, Field(ge=1)] = 30
-    product_update_email_batch_size: Annotated[int, Field(ge=1)] = 10
     email_provider_daily_quota: int = 100
-
-    # Web Push (services/push.py). The private key is the base64url raw P-256
-    # key; the public key browsers subscribe with derives from it. The subject
-    # is a `mailto:` or `https:` contact the push services can reach. A
-    # deployment requires both; outside one, both empty turns push off.
-    vapid_private_key: str = ""
-    vapid_subject: str = ""
 
     # Recipient of the "new content report" notification. Unset sends nothing
     # (reports still queue for the admin console). One address: fan-out is the
@@ -97,8 +86,7 @@ class Settings(BaseSettings):
     # Public frontend origin for links in emails: absolute URL, no trailing slash.
     frontend_url: str = "http://localhost:3000"
     # Public API base, the value of the frontend's ``NEXT_PUBLIC_API_URL``: the
-    # one-click ``List-Unsubscribe`` URLs of notification and product update
-    # emails post to it.
+    # one-click ``List-Unsubscribe`` URL of a notification email posts to it.
     api_url: str = "http://localhost:8000/api/v1"
 
     # Reset token TTL (minutes). Short to bound the value of an intercepted
@@ -111,7 +99,7 @@ class Settings(BaseSettings):
 
     # X bot (docs/ingestion.md). Reading mentions needs the bearer token and the
     # bot's numeric user id (stored to skip a lookup per run); both empty means
-    # the runner refuses to start. Replies need all four OAuth 1.0a credentials;
+    # the worker skips the catch-up. Replies need all four OAuth 1.0a credentials;
     # empty means mentions are processed but nothing is posted.
     x_bot_bearer_token: str = ""
     x_bot_user_id: str = ""
@@ -123,7 +111,7 @@ class Settings(BaseSettings):
     x_bot_access_token: str = ""
     x_bot_access_token_secret: str = ""
     # Whether the X Account Activity webhook is live in this deployment. While
-    # false, a mention arriving via the cron raises no gap warning.
+    # false, a mention the catch-up queues raises no gap warning.
     x_webhook_enabled: bool = False
     # Billed-spend ceilings on replies. Anyone can tag the bot and each reply is
     # billed, so the window posts at most this many replies (success + failure),
@@ -233,27 +221,13 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def _validate_vapid_config(self) -> "Settings":
-        if self.cookie_secure and not (self.vapid_private_key and self.vapid_subject):
-            raise ValueError(
-                "VAPID_PRIVATE_KEY and VAPID_SUBJECT must be set when COOKIE_SECURE is true: "
-                "a deployment always sends push notifications."
-            )
-        if bool(self.vapid_private_key) != bool(self.vapid_subject):
-            raise ValueError(
-                "VAPID_PRIVATE_KEY and VAPID_SUBJECT must be set together; "
-                "refusing a half-configured push sender."
-            )
-        return self
-
-    @model_validator(mode="after")
     def _validate_email_caps(self) -> "Settings":
-        capped = self.notification_email_daily_cap + self.product_update_email_daily_cap
+        capped = self.notification_email_daily_cap
         if capped >= self.email_provider_daily_quota:
             raise ValueError(
-                "NOTIFICATION_EMAIL_DAILY_CAP plus PRODUCT_UPDATE_EMAIL_DAILY_CAP must stay "
-                f"below EMAIL_PROVIDER_DAILY_QUOTA ({capped} >= "
-                f"{self.email_provider_daily_quota}); the remainder carries the auth emails."
+                "NOTIFICATION_EMAIL_DAILY_CAP must stay below EMAIL_PROVIDER_DAILY_QUOTA "
+                f"({capped} >= {self.email_provider_daily_quota}); the remainder carries the "
+                "auth emails."
             )
         return self
 

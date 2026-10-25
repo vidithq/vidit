@@ -11,42 +11,34 @@ import { displayUrlsFor, posterFrameUrl } from "@/lib/mediaUrls";
 import type { Media } from "@/types";
 
 interface MediaManagerProps {
-  /** Persisted media; empty for a fresh submit. */
+  /** The stored or staged file; empty while the source has none. */
   existing?: Media[];
-  /** Existing media marked for removal: hidden from the grid, applied on save. */
-  removedIds?: ReadonlySet<string>;
-  /** Omit (with `locked`) for read-only. */
+  /** Omit for a file that stays. */
   onRemoveExisting?: (id: string) => void;
-  /** New files staged for upload, with a local preview. */
+  /** A picked file while it uploads, with a local preview. */
   staged: File[];
   onAddFiles?: (files: File[]) => void;
   onRemoveStaged?: (index: number) => void;
-  /** Read-only (request fulfilment): show existing media, no add / remove. */
-  locked?: boolean;
-  /** Covers the persisted tiles with the age gate. Staged files stay ungated:
-   *  the analyst chose them. */
+  /** Covers the stored tile with the age gate. A picked file stays ungated: the analyst
+   *  chose it. */
   isGraphic?: boolean;
 }
 
 /**
- * The source-media control, shared by the submit form (`LocationPicker`) and the
- * detection edit form. A thin specialisation of `FileManager`: it supplies the
- * thumbnails (persisted and staged) as items. Staged object URLs are revoked on
- * change and unmount.
+ * One source's file slot, in each `SourceEditor`. A thin specialisation of `FileManager`: it
+ * supplies the thumbnails (a stored or staged file, or a picked file while it uploads) as items.
+ * Staged object URLs are revoked on change and unmount.
  *
- * **One source per event** (the backend enforces it with a partial unique
- * index), so this is a single-file picker: the add tile disappears once a source
- * is present, and the analyst removes it to swap. `multiple={false}` also caps a
- * multi-file drop to the first file.
+ * **One file per source**, so this is a single-file picker: the caller withholds `onAddFiles`
+ * once the source holds a file, and the analyst removes it to swap. `multiple={false}` also caps
+ * a multi-file drop to the first file.
  */
 export function MediaManager({
   existing = [],
-  removedIds,
   onRemoveExisting,
   staged,
   onAddFiles,
   onRemoveStaged,
-  locked = false,
   isGraphic = false,
 }: MediaManagerProps) {
   const [stagedUrls, setStagedUrls] = useState<string[]>([]);
@@ -58,18 +50,16 @@ export function MediaManager({
     };
   }, [staged]);
 
-  const visibleExisting = existing.filter((m) => !removedIds?.has(m.id));
-
   const items: FileManagerItem[] = [
-    ...visibleExisting.map((m) => ({
+    ...existing.map((m) => ({
       key: m.id,
       content:
-        m.media_type === "image" ? (
+        m.kind === "image" ? (
           <Image
-            src={displayUrlsFor(m).thumbnail}
+            src={displayUrlsFor(m).hero}
             alt=""
             fill
-            sizes="200px"
+            sizes="(min-width: 768px) 50vw, 100vw"
             className="object-cover"
           />
         ) : (
@@ -81,15 +71,15 @@ export function MediaManager({
             muted
           />
         ),
-      onRemove: !locked && onRemoveExisting ? () => onRemoveExisting(m.id) : undefined,
+      onRemove: onRemoveExisting ? () => onRemoveExisting(m.id) : undefined,
       removeLabel: "Remove media",
       // The tile is a muted, cropped preview; the lightbox (the same
       // `MediaLightboxBody` viewer) is where the source is reviewable.
       viewContent: <MediaLightboxBody source={m} />,
       // A clip's download is in the player's bar (same rule as MediaLightbox).
       viewActions:
-        m.media_type === "image" ? <MediaDownloadButton source={m} /> : undefined,
-      viewLabel: m.media_type === "image" ? "View image" : "Play video",
+        m.kind === "image" ? <MediaDownloadButton source={m} /> : undefined,
+      viewLabel: m.kind === "image" ? "View image" : "Play video",
       gated: isGraphic,
     })),
     // Only once the object URLs line up 1:1, else a broken preview flashes.
@@ -130,7 +120,7 @@ export function MediaManager({
   return (
     <FileManager
       items={items}
-      onAddFiles={locked ? undefined : onAddFiles}
+      onAddFiles={onAddFiles}
       accept={ACCEPTED_MEDIA_MIME}
       addLabel="Add media"
       layout="grid"

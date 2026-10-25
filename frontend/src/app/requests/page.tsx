@@ -27,14 +27,16 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { buttonClasses } from "@/components/ui/Button";
+import { requestHref, submitHref } from "@/lib/routes";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
 
 // Status is fixed to `requested`, so the board offers no Status section: "closed" would read as
-// "done" on a work queue. `GET /events` takes no `media` filter, so Source media stays off too.
+// "done" on a work queue. `GET /events` takes no `media` filter, so Media stays off too.
 const BOARD_SECTIONS: ReadonlyArray<EventFilterSectionName> = [
   "conflict",
-  "capture_source",
+  "source_kind",
+  "level",
   "location_guess",
   "tags",
   "author",
@@ -99,7 +101,7 @@ export default function RequestsPage() {
             onChange={setSort}
           />
           <Link
-            href="/submit"
+            href={submitHref("single")}
             className={buttonClasses("primary", { className: "whitespace-nowrap" })}
           >
             <Megaphone size={14} strokeWidth={2} />
@@ -133,7 +135,7 @@ export default function RequestsPage() {
           ) : (
             <>
               No open requests yet.{" "}
-              <Link href="/submit" className={TEXT_LINK}>
+              <Link href={submitHref("single")} className={TEXT_LINK}>
                 Post the first one
               </Link>
               .
@@ -149,15 +151,15 @@ export default function RequestsPage() {
               <EntityCard
                 key={r.id}
                 variant="compact"
-                detailHref={`/requests/${r.id}`}
+                detailHref={requestHref(r.id)}
                 title={r.title}
                 badge={<StatusBadge status={r.status} />}
                 media={r.media ?? undefined}
                 isGraphic={r.is_graphic}
                 author={r.owner}
-                date={r.event_date ?? undefined}
+                date={r.occurred_date ?? undefined}
                 age={r.requested_at ? formatOpenAge(r.requested_at) : undefined}
-                coords={r.event_coords}
+                coords={r.coords}
                 tags={r.tags}
               />
             ))}

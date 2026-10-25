@@ -94,10 +94,9 @@ class OrganizationMemberRead(BaseModel):
 class OrganizationInviteRead(BaseModel):
     """One pending invite, for the org manager's list."""
 
-    id: uuid.UUID
     user: AuthorRef
     invited_by: AuthorRef | None
-    created_at: datetime
+    invited_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 

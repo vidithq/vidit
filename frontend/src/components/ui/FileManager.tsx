@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Plus, Upload, X } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 
 import { ICON_TAP_STEP } from "@/components/ui/Button";
+import { RemoveButton } from "@/components/ui/RemoveButton";
 import { GraphicContentGate } from "@/components/ui/GraphicContentGate";
 import { MediaOverlay } from "@/components/ui/MediaLightbox";
 
@@ -36,7 +37,8 @@ interface FileManagerProps {
   multiple?: boolean;
   addLabel: string;
   addHint?: string;
-  /** `grid`: thumbnail tiles (media). `stack`: file cards in a column. */
+  /** `grid`: thumbnail tiles (media), one full-width tile for a single-file picker. `stack`:
+   *  file cards in a column. */
   layout?: "grid" | "stack";
 }
 
@@ -71,18 +73,15 @@ export function FileManager({
     if (files.length > 0) onAddFiles?.(multiple ? files : files.slice(0, 1));
   };
 
+  // Instant, so a cross. The 24px circle sits in a tile corner, where a near miss opens the
+  // lightbox, hence the phone floor.
   const removeButton = (onClick: () => void, label: string) => (
-    <button
-      type="button"
+    <RemoveButton
+      label={label}
       onClick={onClick}
-      aria-label={label}
-      title={label}
-      // The 24px circle sits in a tile corner, where a near miss opens the
-      // lightbox, hence the phone floor.
-      className={`absolute top-1 right-1 flex ${ICON_TAP_STEP} sm:size-6 items-center justify-center rounded-full bg-neutral-950/80 text-neutral-300 transition-colors hover:bg-neutral-950 hover:text-red-400`}
-    >
-      <X size={13} />
-    </button>
+      iconSize={13}
+      className={`absolute top-1 right-1 ${ICON_TAP_STEP} sm:size-6 rounded-full bg-neutral-950/80 hover:bg-neutral-950`}
+    />
   );
 
   const tileBody = (it: FileManagerItem) => {
@@ -150,7 +149,7 @@ export function FileManager({
 
   if (grid) {
     return (
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className={multiple ? "grid grid-cols-2 gap-3 sm:grid-cols-3" : "grid grid-cols-1"}>
         {items.map((it) => (
           <div
             key={it.key}

@@ -28,8 +28,8 @@ function submission(id: string): RecentSubmission {
     before_closed_status: null,
     requested_at: null,
     geolocators: [],
-    event_coords: { lat: 48.1, lng: 37.4 },
-    event_date: "2026-03-15",
+    coords: { lat: 48.1, lng: 37.4 },
+    occurred_date: "2026-03-15",
     is_graphic: false,
     media: null,
     owner: { id: "p1", username: "ana", avatar_url: null },
@@ -64,9 +64,10 @@ describe("RecentSubmissions", () => {
     );
 
     expect(screen.getByText("No geolocations submitted yet.")).toBeInTheDocument();
+    expect(screen.queryByText("No geolocations yet.")).not.toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Submit your first geolocation →" })
-    ).toHaveAttribute("href", "/submit");
+    ).toHaveAttribute("href", "/submit?mode=single");
   });
 
   it("expands into the same published set the block shows", () => {

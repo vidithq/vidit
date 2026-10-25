@@ -97,8 +97,8 @@ def report_collection(
     """Report a collection for moderation.
 
     Same gesture, body and per-IP limit as an event report: open to anonymous
-    viewers (``reporter_user_id`` NULL), a signed-in reporter is recorded. An
-    unknown, withheld or orphaned collection answers 404.
+    viewers (``reporter_id`` NULL), a signed-in reporter is recorded. An
+    unknown, withheld, owner-deleted or orphaned collection answers 404.
     """
     try:
         return reports_service.create_collection_report(
@@ -106,7 +106,7 @@ def report_collection(
             collection_id=collection_id,
             reason=body.reason,
             details=body.details,
-            reporter_user_id=current_user.id if current_user is not None else None,
+            reporter_id=current_user.id if current_user is not None else None,
             reporter_username=current_user.username if current_user is not None else None,
             background_tasks=background_tasks,
         )
@@ -124,7 +124,7 @@ def get_collection(
     current_user: User | None = Depends(get_current_user_optional),
 ) -> CollectionRead:
     """One collection's header: owner, title, item count and date range.
-    Public; a withheld collection is a 404 for everyone but an admin."""
+    Public; a withheld or owner-deleted collection is a 404 for everyone but an admin."""
     collection = _resolve(db, collection_id, current_user)
     return collections_service.build_collection_read(db, collection)
 
@@ -165,7 +165,11 @@ def delete_collection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
-    """Drop your collection (owner only). Its events stay."""
+    """Drop your collection (owner only). Its events stay.
+
+    Under an open content report the collection is only withheld, from every
+    read but an admin's, until its last open report is resolved, which erases it.
+    """
     collection = _resolve(db, collection_id, current_user)
     collections_service.delete_collection(db, collection=collection, user=current_user)
 
@@ -184,7 +188,7 @@ def list_collection_events(
 ):
     """The collection's items in the order the events happened.
 
-    Ordered ascending by ``event_date``, ``event_time``, ``created_at``, ``id``;
+    Ordered ascending by ``occurred_date``, ``occurred_time``, ``created_at``, ``id``;
     a missing date or hour sorts last. Capped at 100 rows; follow the
     ``Link: rel="next"`` cursor, sent exactly when the next page holds a row.
     """

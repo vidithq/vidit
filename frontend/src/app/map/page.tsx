@@ -57,7 +57,8 @@ export default function HomePage() {
     params.set("bbox", bbox);
     appendEventFilterParams(params, {
       conflicts: filters.conflicts,
-      captureSources: filters.captureSources,
+      sourceKinds: filters.sourceKinds,
+      levels: filters.levels,
       tags: filters.tags,
       mediaTypes: filters.mediaTypes,
       author: filters.author,
@@ -82,7 +83,8 @@ export default function HomePage() {
   }, [
     bbox,
     filters.conflicts,
-    filters.captureSources,
+    filters.sourceKinds,
+    filters.levels,
     filters.tags,
     filters.mediaTypes,
     filters.author,
@@ -134,7 +136,7 @@ export default function HomePage() {
     const subLo = lo(addedFrom);
     const subHi = hi(addedTo);
     return statusFiltered.filter((p) => {
-      // A missing or unparseable date (event_date is optional) is unconstrained, like the histogram, so the point is not dropped.
+      // A missing or unparseable date (occurred_date is optional) is unconstrained, like the histogram, so the point is not dropped.
       const ev = p[3] ? Date.parse(`${p[3]}T00:00:00Z`) : NaN;
       const sub = p[4] ? Date.parse(`${p[4]}T00:00:00Z`) : NaN;
       const evOk = Number.isNaN(ev) || (ev >= evLo && ev <= evHi);

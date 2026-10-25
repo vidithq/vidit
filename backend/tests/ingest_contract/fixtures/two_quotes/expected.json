@@ -8,12 +8,24 @@
     ]
   ],
   "source_url": null,
-  "secondary_source_urls": [
-    "https://x.com/ministry_wire/status/9600000000000000011",
-    "https://x.com/night_lens/status/9600000000000000012"
+  "secondary_sources": [
+    {
+      "url": "https://x.com/ministry_wire/status/9600000000000000011",
+      "level": "direct",
+      "kind": "unknown",
+      "title": "",
+      "posted_at": null
+    },
+    {
+      "url": "https://x.com/night_lens/status/9600000000000000012",
+      "level": "direct",
+      "kind": "unknown",
+      "title": "",
+      "posted_at": null
+    }
   ],
   "source_posted_at": null,
-  "event_date": "2026-05-12",
+  "occurred_date": "2026-05-12",
   "title": "The ministry says the plant caught fire overnight.",
   "source_media": [],
   "proof_media": [

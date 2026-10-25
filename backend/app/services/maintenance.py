@@ -14,8 +14,8 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models.auth_token import AuthToken
 from app.models.event import STATUS_DETECTED, Event
+from app.models.password_reset_token import PasswordResetToken
 from app.models.user import User
 from app.services import email as email_service
 from app.services.admin import log_admin_event
@@ -24,37 +24,37 @@ from app.services.event_filters import visible_events
 logger = logging.getLogger(__name__)
 
 # Consumed tokens stay for replay debugging; expired unconsumed rows are dropped at once.
-AUTH_TOKEN_RETENTION_DAYS = 30
+PASSWORD_RESET_TOKEN_RETENTION_DAYS = 30
 
 
 def run_logged(
     db: Session, *, actor_id: uuid.UUID, action: str, job: Callable[[Session], dict[str, int]]
 ) -> dict[str, int]:
-    """Run ``job``, record its counts in ``admin_events`` under ``action``, and commit."""
+    """Run ``job``, record its counts in ``audit_log`` under ``action``, and commit."""
     result = job(db)
     log_admin_event(db, actor_id=actor_id, action=action, target=result)
     db.commit()
     return result
 
 
-def reap_auth_tokens(db: Session) -> dict[str, int]:
-    """Drop expired-unconsumed and old-consumed auth_tokens rows; returns both counts."""
+def reap_password_reset_tokens(db: Session) -> dict[str, int]:
+    """Drop expired-unconsumed and old-consumed password_reset_tokens rows; returns both counts."""
     now = datetime.now(UTC)
-    retention_cutoff = now - timedelta(days=AUTH_TOKEN_RETENTION_DAYS)
+    retention_cutoff = now - timedelta(days=PASSWORD_RESET_TOKEN_RETENTION_DAYS)
 
     expired = (
-        db.query(AuthToken)
+        db.query(PasswordResetToken)
         .filter(
-            AuthToken.consumed_at.is_(None),
-            AuthToken.expires_at < now,
+            PasswordResetToken.consumed_at.is_(None),
+            PasswordResetToken.expires_at < now,
         )
         .delete(synchronize_session=False)
     )
     old_consumed = (
-        db.query(AuthToken)
+        db.query(PasswordResetToken)
         .filter(
-            AuthToken.consumed_at.isnot(None),
-            AuthToken.consumed_at < retention_cutoff,
+            PasswordResetToken.consumed_at.isnot(None),
+            PasswordResetToken.consumed_at < retention_cutoff,
         )
         .delete(synchronize_session=False)
     )
@@ -86,7 +86,6 @@ def detections_awaiting_completion(
             *visible_events(),
             User.deleted_at.is_(None),
             User.is_active.is_(True),
-            User.email.isnot(None),
         )
         .group_by(User.id)
         .order_by(func.count(Event.id).desc())

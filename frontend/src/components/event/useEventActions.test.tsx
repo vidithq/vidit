@@ -52,13 +52,9 @@ function eventFixture(
   return {
     id: "e1",
     title: "Strike near Bakhmut",
-    event_coords: { lat: 48.5, lng: 37.8 },
-    capture_source_coords: null,
-    archived_source: null,
-    archived_detected_from: null,
-    event_date: "2026-06-01",
-    event_time: null,
-    source_posted_at: "2026-05-30T14:32:00Z",
+    coords: { lat: 48.5, lng: 37.8 },
+    occurred_date: "2026-06-01",
+    occurred_time: null,
     status,
     version_no: versionNo,
     is_graphic: false,
@@ -69,14 +65,11 @@ function eventFixture(
     owner: OWNER,
     tags: [],
     conflicts: [],
-    source_url: "https://t.me/channel/12345",
-    secondary_source_urls: [],
-    archived_secondary_sources: [],
+    sources: [{ id: "s1", title: "", level: "direct", kind: "unknown", captured_at: null, capture_position: null, is_graphic: false, links: [{ url: "https://t.me/channel/12345", posted_at: null, archived: null }], tags: [], media: null, warnings: [] }],
     proof: null,
     created_at: "2026-06-02T10:00:00Z",
     geolocated_at: null,
     closed_at: null,
-    media: [],
     thumbnail: null,
     requested_by: null,
     geolocators: status === "geolocated" ? [OWNER, CO_GEOLOCATOR] : [],
@@ -94,13 +87,14 @@ function Harness({
   beforeClosedStatus?: BeforeClosedStatus | null;
   versionNo?: number;
 }) {
-  const { panels, rail } = useEventActions({
+  const { panels, actions } = useEventActions({
     event: eventFixture(status, beforeClosedStatus, versionNo),
     surface,
   });
   return (
     <>
-      {rail}
+      {actions?.pinned}
+      {actions?.below}
       {panels}
     </>
   );
@@ -113,45 +107,50 @@ function renderAs(viewer: Viewer, props: Parameters<typeof Harness>[0]) {
 
 const row = () => screen.getByRole("group", { name: "Event actions" });
 
+/** Waits until the approvals the event page reads have landed. */
+const approvalsRead = () =>
+  waitFor(() =>
+    expect(api.apiFetch).toHaveBeenCalledWith(
+      "/events/e1/approvals?all_versions=true",
+      expect.anything(),
+    ),
+  );
+
 const stamp = (id: string, username: string, over: Partial<Approval> = {}): Approval => ({
   id,
   version_no: 1,
-  verdict: "approve",
   reviewer: { id: `r-${id}`, username },
-  note: null,
   created_at: "2026-10-15T09:00:00Z",
   current: true,
-  revoked_at: null,
-  revoke_reason: null,
-  revoked_as: null,
   organization: null,
   ...over,
 });
 
-/** The rail's row of controls, buttons and links, left to right, by accessible name. */
+/** The row of controls, buttons and links, left to right, by accessible name. */
 const rowControls = () =>
   [...row().querySelectorAll<HTMLElement>("button, a")].map(
     (el) => el.getAttribute("aria-label") ?? el.textContent,
   );
 
 describe("the event actions per reader", () => {
-  it("gives the owner the version, Edit, Share and Add to collection, and no report", async () => {
+  it("gives the owner the version, Edit, Share, Add to collection and Request approval, and no report", async () => {
     renderAs(OWNER, { status: "geolocated", surface: "event" });
     expect(rowControls()).toEqual([
       "v1: choose a version",
       "Edit",
       "Share",
       "Add to collection",
+      "Request approval",
     ]);
     expect(within(row()).getByRole("link", { name: "Edit" })).toHaveAttribute(
       "href",
       "/events/e1/edit",
     );
-    await screen.findByText("No approvals yet");
+    await approvalsRead();
   });
 
-  // Approving starts from the Approvals card, after reading the record.
-  it("gives an analyst who may approve the version, Share and Report; Approve waits in the card", async () => {
+  // Approving starts from the approvals under the row, after reading the record.
+  it("gives an analyst who may approve the version, Share and Report; Approve waits under the row", async () => {
     renderAs(ANALYST, { status: "geolocated", surface: "event" });
     const card = await screen.findByRole("region", { name: "Approvals" });
     expect(await within(card).findByRole("button", { name: "Approve" })).toBeInTheDocument();
@@ -160,14 +159,15 @@ describe("the event actions per reader", () => {
 
   // Credit only: a co-geolocator shelves the row and reads its geolocators (where they leave),
   // and never edits, closes or approves it.
-  it("gives a co-geolocator Add to collection and Geolocators beside Share and Report", async () => {
+  it("gives a co-geolocator Add to collection, Geolocators and Request approval beside Share and Report", async () => {
     renderAs(CO_GEOLOCATOR, { status: "geolocated", surface: "event" });
-    await screen.findByText("No approvals yet");
+    await approvalsRead();
     expect(rowControls()).toEqual([
       "v1: choose a version",
       "Share",
       "Add to collection",
       "Geolocators",
+      "Request approval",
       "Report",
     ]);
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
@@ -175,14 +175,14 @@ describe("the event actions per reader", () => {
 
   it("gives a signed-out reader the version, Share and Report", async () => {
     renderAs(null, { status: "geolocated", surface: "event" });
-    await screen.findByText("No approvals yet");
+    await approvalsRead();
     expect(rowControls()).toEqual(["v1: choose a version", "Share", "Report"]);
   });
 
   it("carries no menu, no close, no stamps and no approve control in the row", async () => {
     api.approvals = [stamp("a1", "maya")];
     renderAs(OWNER, { status: "geolocated", surface: "event" });
-    await screen.findByRole("link", { name: "maya" });
+    await screen.findByRole("link", { name: /^maya approved/ });
     expect(within(row()).queryByRole("button", { name: "More actions" })).toBeNull();
     expect(within(row()).queryByRole("button", { name: /^Close/ })).toBeNull();
     expect(within(row()).queryByRole("list", { name: "Approved by" })).toBeNull();
@@ -207,27 +207,26 @@ describe("the owner's edit", () => {
     expect(within(row()).queryByRole("link", { name: "Edit" })).toBeNull();
   });
 
-  it("puts the asker's Edit and Geolocate in the request page's Actions card", () => {
+  it("puts the asker's Edit and Geolocate in the request page's actions, with no card around them", () => {
     renderAs(OWNER, { status: "requested", surface: "request" });
-    const card = screen.getByRole("heading", { name: "Actions" }).closest("section")!;
-    expect(card).toContainElement(row());
     expect(rowControls()).toEqual(["Edit", "Share"]);
-    expect(within(card).getByRole("link", { name: "Geolocate" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Geolocate" })).toHaveAttribute(
       "href",
-      "/submit?request_id=e1",
+      "/events/e1/edit",
     );
+    expect(screen.queryByRole("heading", { name: "Actions" })).toBeNull();
+    expect(row().closest("section")).toBeNull();
   });
 
-  it("shows a visitor Share and Report on the request page, Geolocate in the card", () => {
+  it("shows a visitor Share and Report on the request page, then Geolocate", () => {
     renderAs(ANALYST, { status: "requested", surface: "request" });
     expect(rowControls()).toEqual(["Share", "Report"]);
     expect(screen.getByRole("link", { name: "Geolocate" })).toBeInTheDocument();
   });
 
-  it("gives a closed request Share and Report in its Actions card, and no Geolocate", () => {
+  it("gives a closed request Share and Report, and no Geolocate", () => {
     renderAs(ANALYST, { status: "closed", surface: "request", beforeClosedStatus: "requested" });
     expect(screen.queryByRole("link", { name: "Geolocate" })).toBeNull();
-    expect(screen.getByRole("heading", { name: "Actions" })).toBeInTheDocument();
     expect(rowControls()).toEqual(["Share", "Report"]);
   });
 
@@ -246,22 +245,45 @@ describe("the owner's edit", () => {
 });
 
 describe("panels the row opens", () => {
-  it("opens and closes the collection picker, marking its toggle while open", async () => {
+  it("opens the collection picker over the page and closes it on Escape", async () => {
     renderAs(OWNER, { status: "geolocated", surface: "event" });
     const toggle = within(row()).getByRole("button", { name: "Add to collection" });
     fireEvent.click(toggle);
-    expect(screen.getByRole("heading", { name: "Add to collection" })).toBeInTheDocument();
+    const picker = screen.getByRole("dialog", { name: "Add to collection" });
+    expect(within(picker).getByRole("heading", { name: "Add to collection" })).toBeInTheDocument();
     expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await waitFor(() => expect(document.getElementById("add-to-collection-panel")).toHaveFocus());
+    expect(picker).toHaveFocus();
+    // Portaled out of the page flow, so opening it moves nothing.
+    expect(row().contains(picker)).toBe(false);
 
-    fireEvent.click(toggle);
-    expect(screen.queryByRole("heading", { name: "Add to collection" })).toBeNull();
+    fireEvent.keyDown(picker, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Add to collection" })).toBeNull();
+    expect(toggle).toHaveFocus();
   });
 
-  it("opens the geolocators panel for a co-geolocator, where they leave", () => {
+  it("closes the collection picker on an outside click", () => {
+    renderAs(OWNER, { status: "geolocated", surface: "event" });
+    fireEvent.click(within(row()).getByRole("button", { name: "Add to collection" }));
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole("dialog", { name: "Add to collection" })).toBeNull();
+  });
+
+  it("opens the geolocators panel for a co-geolocator, where they leave and nothing more", async () => {
     renderAs(CO_GEOLOCATOR, { status: "geolocated", surface: "event" });
     fireEvent.click(within(row()).getByRole("button", { name: "Geolocators" }));
-    expect(screen.getByRole("heading", { name: "Geolocators" })).toBeInTheDocument();
+    const panel = screen.getByRole("dialog", { name: "Geolocators" });
+    expect(within(panel).getByRole("heading", { name: "Geolocators" })).toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "Remove" })).toBeNull();
+    // Only the reader's own row leaves.
+    expect(within(panel).getAllByRole("button", { name: "Leave" })).toHaveLength(1);
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Leave" }));
+    // The first click arms in place and sends nothing.
+    expect(api.apiFetch).not.toHaveBeenCalledWith("/events/e1/geolocators/bo", { method: "DELETE" });
+    fireEvent.click(within(panel).getByRole("button", { name: "Confirm leave" }));
+    await waitFor(() =>
+      expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/geolocators/bo", { method: "DELETE" }),
+    );
   });
 
   it.each<EventStatus>(["requested", "detected"])("offers no geolocators panel on a %s row", (status) => {
@@ -318,10 +340,13 @@ describe("the version selector", () => {
   });
 });
 
-describe("the Approvals card", () => {
-  it("comes with the event page of a published row", async () => {
+describe("the approvals beside the actions row", () => {
+  it("come with the event page of a published row, in the side, not the sticky actions", async () => {
+    api.approvals = [stamp("a1", "maya")];
     renderAs(null, { status: "geolocated", surface: "event" });
-    expect(await screen.findByRole("region", { name: "Approvals" })).toBeInTheDocument();
+    const approvals = await screen.findByRole("region", { name: "Approvals" });
+    expect(row().contains(approvals)).toBe(false);
+    expect(row().compareDocumentPosition(approvals) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it.each<[ActionSurface, EventStatus]>([

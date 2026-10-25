@@ -1,6 +1,6 @@
 # Data model
 
-One `events` row carries a geolocation for its whole life. The status it holds says how far along it is, four writes move or correct it, and the tables below hang off it rather than copy it.
+One `events` row carries a geolocation for its whole life. The status it holds says how far along it is, three writes move or correct it, and the tables below hang off it rather than copy it.
 
 ```mermaid
 flowchart LR
@@ -28,25 +28,29 @@ flowchart LR
   requested["`**requested**
   requested_at; a coordinate is optional, so the ask may carry a guess`"]:::core
   detected["`**detected**
-  detected_at; source_url optional, public from the moment it lands`"]:::core
+  detected_at; sources optional, public from the moment it lands`"]:::core
   geolocated["`**geolocated**
-  geolocated_at; ck_events_coords_status and ck_events_source_url_status make the coordinate and the source NOT NULL here`"]:::core
+  geolocated_at; ck_events_coords_status makes the coordinate NOT NULL here`"]:::core
   closed["`**closed**
   closed_at, close_reason, and before_closed_status: withdrawn, rejected or retracted`"]:::core
 
   amend["`**update_request**
   the owner corrects the open question: overwritten in place, no version filed`"]:::spec
-  vouch["`**services/events.geolocate**
-  a person vouches: coordinate, source_url, one proof image. owner_id moves to the fulfiller`"]:::spec
+  vouch["`**publish**
+  a person vouches: coordinate, a direct or indirect source with its file, one proof image. A request or a detection is filed as version 0, and owner_id moves to a request's fulfiller`"]:::spec
   version["`**POST /events/{id}/versions**
-  every later correction; refused past 100 versions`"]:::spec
+  the publish of version 0, then every later correction; refused past 100 versions`"]:::spec
   close["`**close**
   the owner takes the row back, from any live status`"]:::spec
 
+  evidence[("`**sources** + **source_links** + **media**
+  the evidence the row rests on; each write posts the whole list`")]:::store
+  detection[("`**event_detections**
+  where a machine-written row came from: the post, its thread, the entry`")]:::store
   credit[("`**event_geolocators**
-  durable credit, owner included`")]:::store
+  one row per analyst and event: invited, active or departed; the owner is active`")]:::store
   invite["`**POST /events/{id}/geolocator-invites**
-  the owner invites; the invitee accepts into event_geolocators`"]:::spec
+  the owner invites; the invitee accepts, and the row turns active`"]:::spec
   versions[("`**event_versions**
   the superseded state, as version_no moves on`")]:::store
   approve["`**POST /events/{id}/approvals**
@@ -58,9 +62,7 @@ flowchart LR
   approval_requests[("`**approval_requests**
   open until approved, declined or withdrawn`")]:::store
   leave["`**DELETE /events/{id}/geolocators/{username}**
-  the owner removes a co-geolocator, or one leaves`"]:::spec
-  departures[("`**event_geolocator_departures**
-  who held the credit and lost it; they never approve the row`")]:::store
+  the owner removes a co-geolocator, or one leaves: the row turns departed, and the analyst never approves the row`"]:::spec
   orgs[("`**organizations**
   an approval, or a request for one, may be placed in its name`")]:::store
   reports[("`**content_reports**
@@ -72,14 +74,21 @@ flowchart LR
 
   ask --> requested
   engine --> detected
+  engine --> detection
   submit --> vouch
   requested --> amend --> requested
   requested --> vouch
   detected --> vouch
   vouch --> geolocated --> version --> geolocated
+  vouch --> versions
+  ask --> evidence
+  engine --> evidence
+  amend --> evidence
+  vouch --> evidence
+  version --> evidence
   vouch --> credit
   geolocated --> invite --> credit
-  credit --> leave --> departures
+  credit --> leave
   leave --> approval_requests
   approvals -.-> orgs
   approval_requests -.-> orgs
@@ -97,7 +106,7 @@ flowchart LR
   shelve --> shelves
 ```
 
-The three entries on the left are the three ways a row is born: a request and a direct submit come from [`POST /events/requests` and `POST /events`](api.md#post-events), and a machine detection comes from the [ingest engine](ingestion.md). The four statuses and the constraints that pin them are [`events`](#events). The four writes are `update_request`, `geolocate`, `save_version` and `close`, all in [`api.md`](api.md). Two of them correct a row rather than move it, and they differ on what the row is: `update_request` overwrites an open question, while `save_version` files what it supersedes, because a published row is a vouched claim. The tables on the right exist because a write happened: [`event_geolocators`](#event_geolocators) records who vouched, the owner and every analyst who accepted an invitation ([`event_geolocator_invites`](#event_geolocator_invites)), [`event_versions`](#event_versions) holds what a correction superseded, [`event_geolocator_departures`](#event_geolocator_departures) holds who lost the credit, [`event_approvals`](#event_approvals) holds who attested which version, [`approval_requests`](#approval_requests) holds who was asked to (a departure withdraws the open requests its analyst sent), an [organization](#organizations) can stand behind an approval or a request in place of one analyst, [`content_reports`](#content_reports) holds what a viewer flagged, and [`collections`](#collections) with [`collection_events`](#collection_events) holds the curated sets a credited analyst puts the row on.
+The three entries on the left are the three ways a row is born: a request and a direct submit come from [`POST /events/requests` and `POST /events`](api.md#post-events), and a machine detection comes from the [ingest engine](ingestion.md). The four statuses and the constraints that pin them are [`events`](#events). The three writes are `update_request`, `save_version` and `close`, all in [`api.md`](api.md), plus the batch form of the publish. A request or a detection is version 0. `update_request` lets the requester overwrite an open question in place, at version 0. `save_version` publishes a request or a detection, filing it as version 0, and corrects a published row, filing what each correction supersedes, because a published row is a vouched claim. [`sources`](#sources), with their [`source_links`](#source_links) and files in [`media`](#media), hold the evidence the row rests on: every write but `close` posts the whole list, and the floor a status demands is in [`api.md`](api.md#evidence-floor). The tables on the right exist because a write happened: [`event_geolocators`](#event_geolocators) records who vouched (the owner and every analyst who accepted an invitation), who is invited and who lost the credit, [`event_detections`](#event_detections) records where an imported row came from, [`event_versions`](#event_versions) holds what a correction superseded, [`event_approvals`](#event_approvals) holds who attested which version, [`approval_requests`](#approval_requests) holds who was asked to (a departure withdraws the open requests its analyst sent), an [organization](#organizations) can stand behind an approval or a request in place of one analyst, [`content_reports`](#content_reports) holds what a viewer flagged, and [`collections`](#collections) with [`collection_events`](#collection_events) holds the curated sets a credited analyst puts the row on.
 
 ## Schema overview
 
@@ -106,42 +115,33 @@ erDiagram
     users {
         UUID id PK
         VARCHAR username
-        VARCHAR email "nullable, legacy credential-less rows"
-        VARCHAR password_hash "nullable, legacy credential-less rows"
+        VARCHAR email
+        VARCHAR password_hash
         VARCHAR x_handle "nullable, UNIQUE, admin-linked bot-attribution handle"
         BOOLEAN is_active
         BOOLEAN is_admin
-        TIMESTAMPTZ email_verified_at "nullable"
         TIMESTAMPTZ last_seen_at "nullable, throttled activity stamp"
         TIMESTAMPTZ deleted_at "nullable, soft-delete"
         INTEGER token_version "session-invalidation counter"
         TEXT bio "nullable, profile blurb"
         TEXT avatar_url "nullable"
         JSONB external_links "default {}, linktree-style"
-        BOOLEAN invite_minting_enabled "admin switch over sponsored invites"
+        BOOLEAN is_invite_minting_enabled "admin switch over sponsored invites"
         TIMESTAMPTZ created_at
     }
 
-    admin_events {
+    audit_log {
         UUID id PK
-        UUID actor_id FK "nullable"
+        UUID actor_id FK "nullable, the acting account"
         TEXT action
-        JSON target "nullable"
+        JSON target "nullable, NULL for an action on one's own account"
         TIMESTAMPTZ created_at
     }
 
-    auth_events {
-        UUID id PK
-        UUID user_id FK "nullable"
-        TEXT event
-        TIMESTAMPTZ created_at
-    }
-
-    auth_tokens {
+    password_reset_tokens {
         UUID id PK
         UUID user_id FK
         TEXT token_hash
-        TEXT purpose "password_reset"
         TIMESTAMPTZ expires_at
         TIMESTAMPTZ consumed_at "nullable"
         TIMESTAMPTZ created_at
@@ -150,12 +150,12 @@ erDiagram
     invite_codes {
         UUID id PK
         VARCHAR code
-        UUID used_by FK "nullable, audit-only"
+        UUID used_by_id FK "nullable, audit-only"
         TIMESTAMPTZ used_at "nullable, redemption stamp"
         TIMESTAMPTZ expires_at "nullable"
         TIMESTAMPTZ revoked_at "nullable"
         VARCHAR x_handle "nullable, bound handle copied at redemption"
-        UUID created_by FK "nullable, the sponsor"
+        UUID created_by_id FK "nullable, the sponsor"
         TIMESTAMPTZ created_at
     }
 
@@ -166,7 +166,6 @@ erDiagram
         VARCHAR password_hash
         UUID invite_code_id FK
         TEXT token_hash UK
-        TIMESTAMPTZ product_updates_consented_at "nullable, consent carried to the account"
         TIMESTAMPTZ expires_at
         TIMESTAMPTZ created_at
     }
@@ -176,18 +175,10 @@ erDiagram
         UUID owner_id FK "edit-rights owner, moves to geolocator"
         UUID requested_by_id FK "nullable, who opened the request"
         VARCHAR title
-        GEOMETRY event_coords "nullable, the subject; required at geolocated"
-        GEOMETRY capture_source_coords "nullable, the camera position"
-        TEXT source_url "nullable, required at requested/geolocated"
-        BIGINT detected_from_tweet_id "nullable, detection provenance id"
-        BIGINT_ARRAY detected_thread_tweet_ids "nullable, the thread's post ids"
-        TEXT detected_from_url "nullable, detection provenance link"
-        VARCHAR detected_via "nullable, bot | paste | archive"
+        GEOMETRY coords "nullable, the subject; required at geolocated"
         TEXT proof "sanitized HTML"
-        DATE event_date "nullable"
-        TIME event_time "nullable, optional UTC hour"
-        TIMESTAMPTZ source_posted_at "nullable, when the source posted (UTC)"
-        TIMESTAMPTZ detected_post_at "nullable, analyst's X post time"
+        DATE occurred_date "nullable"
+        TIME occurred_time "nullable, optional UTC hour"
         TIMESTAMPTZ requested_at "nullable, entered requested"
         TIMESTAMPTZ detected_at "nullable, entered detected"
         TIMESTAMPTZ geolocated_at "nullable, entered geolocated"
@@ -197,8 +188,7 @@ erDiagram
         VARCHAR before_closed_status "nullable, requested | detected | geolocated"
         TIMESTAMPTZ deleted_at "nullable, admin soft-delete"
         TIMESTAMPTZ hidden_at "nullable, admin takedown"
-        BOOLEAN is_graphic "death, injury or human remains"
-        INTEGER version_no "which version the live row is, from 1"
+        INTEGER version_no "which version the live row is: 0 until published"
         TIMESTAMPTZ created_at
         TIMESTAMPTZ updated_at
     }
@@ -221,29 +211,29 @@ erDiagram
         UUID collection_id FK "nullable, the other target; never set with event_id"
         VARCHAR reason "illegal_content | graphic_not_flagged | copyright | privacy | other"
         TEXT details "nullable, capped at 2000 chars by the schema"
-        UUID reporter_user_id FK "nullable, anonymous reports leave this NULL"
+        UUID reporter_id FK "nullable, anonymous reports leave this NULL"
         TIMESTAMPTZ created_at
         TIMESTAMPTZ resolved_at "nullable"
         VARCHAR resolution "nullable, marked_graphic | hidden | dismissed"
-        UUID resolved_by FK "nullable"
+        UUID resolved_by_id FK "nullable"
+    }
+
+    event_detections {
+        UUID event_id PK, FK
+        VARCHAR via "nullable, bot | paste | archive"
+        TEXT from_url "the post the row was imported from"
+        BIGINT from_post_id "nullable, the re-import match anchor"
+        BIGINT_ARRAY thread_post_ids "nullable, the thread's post ids"
+        TIMESTAMPTZ post_at "nullable, analyst's X post time"
     }
 
     event_geolocators {
-        UUID event_id FK
-        UUID user_id FK
-        TIMESTAMPTZ created_at
-    }
-
-    event_geolocator_invites {
-        UUID event_id FK
-        UUID user_id FK "the invitee"
-        TIMESTAMPTZ created_at
-    }
-
-    event_geolocator_departures {
-        UUID event_id FK
-        UUID user_id FK "the former geolocator"
-        TIMESTAMPTZ created_at "the first departure"
+        UUID event_id PK, FK
+        UUID user_id PK, FK
+        VARCHAR state "invited | active | departed"
+        TIMESTAMPTZ invited_at "nullable, set while invited"
+        TIMESTAMPTZ joined_at "nullable, set while active"
+        TIMESTAMPTZ departed_at "nullable, the first departure"
     }
 
     event_approvals {
@@ -252,13 +242,7 @@ erDiagram
         INT version_no "the version attested"
         UUID reviewer_id FK "the analyst, or the acting member; nullable"
         UUID organization_id FK "nullable, the organization approving"
-        VARCHAR verdict "approve"
-        TEXT note "nullable"
         TIMESTAMPTZ created_at
-        TIMESTAMPTZ revoked_at "nullable"
-        UUID revoked_by_id FK "nullable"
-        TEXT revoke_reason "nullable, public, optional"
-        VARCHAR revoked_as "nullable: reviewer, organization_member, site_admin"
     }
 
     approval_requests {
@@ -273,19 +257,52 @@ erDiagram
         TIMESTAMPTZ resolved_at "nullable"
     }
 
-    event_source_links {
+    sources {
+        UUID id PK
         UUID event_id FK
-        INT position
-        TEXT url
+        VARCHAR title "empty string for none"
+        VARCHAR level "direct | indirect | context"
+        VARCHAR kind "where the source comes from"
+        TIMESTAMPTZ captured_at "nullable, when the media was captured"
+        GEOMETRY capture_position "nullable, where a capture was shot from"
+        BOOLEAN is_graphic "death, injury or human remains"
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    source_links {
+        UUID id PK
+        UUID source_id FK
+        TEXT url "UNIQUE per source"
+        TIMESTAMPTZ posted_at "nullable, when the media was posted there"
+        TEXT snapshot_url "nullable, the archived copy"
+        TIMESTAMPTZ archived_at "nullable, set with snapshot_url"
+        TIMESTAMPTZ created_at
+    }
+
+    source_tags {
+        UUID source_id FK
+        UUID tag_id FK
+    }
+
+    uploads {
+        UUID id PK
+        UUID uploader_id FK
+        TEXT storage_key
+        VARCHAR kind "image | video"
+        VARCHAR sha256
+        TEXT original_filename "nullable"
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ expires_at "24 hours after created_at"
     }
 
     media {
         UUID id PK
-        UUID event_id FK
-        VARCHAR role "source | proof"
+        UUID source_id FK "nullable, UNIQUE, a source's file"
+        UUID event_id FK "nullable, a proof image's event"
         TEXT storage_url
-        VARCHAR media_type
-        VARCHAR sha256 "nullable, hex-encoded SHA-256 of uploaded bytes"
+        VARCHAR kind
+        VARCHAR sha256 "hex-encoded SHA-256 of uploaded bytes"
         TEXT original_filename "nullable, client-supplied filename"
         TIMESTAMPTZ created_at
     }
@@ -293,7 +310,7 @@ erDiagram
     tags {
         UUID id PK
         VARCHAR name
-        VARCHAR category "capture_source | free"
+        TIMESTAMPTZ created_at
     }
 
     event_tags {
@@ -307,10 +324,11 @@ erDiagram
         VARCHAR wikidata_id "nullable, UNIQUE, sync/seed natural key"
         INT start_year "nullable"
         INT end_year "nullable"
-        BOOLEAN ongoing
+        BOOLEAN is_ongoing
         TIMESTAMPTZ last_seen_at "nullable, last sync sighting"
         VARCHAR tier "nullable, major | minor | conflict"
-        VARCHAR source "sync | seed | manual"
+        VARCHAR origin "sync | seed | manual"
+        TIMESTAMPTZ created_at
     }
 
     event_conflicts {
@@ -370,91 +388,26 @@ erDiagram
     organization_members {
         UUID organization_id PK "FK"
         UUID user_id PK "FK"
+        UUID invited_by_id FK "nullable, the org manager who invited"
+        VARCHAR state "invited | active"
         VARCHAR role "manager | member"
-        TIMESTAMPTZ joined_at
-    }
-
-    organization_invites {
-        UUID id PK
-        UUID organization_id FK
-        UUID user_id FK "the invitee"
-        UUID invited_by_id FK "nullable"
-        TIMESTAMPTZ created_at
+        TIMESTAMPTZ invited_at "nullable, set while invited"
+        TIMESTAMPTZ joined_at "nullable, set while active"
     }
 
     notification_deliveries {
         UUID id PK
         UUID notification_id FK
-        VARCHAR channel "email | push"
-        VARCHAR status "queued | sending | sent | failed | skipped"
-        INTEGER attempts "provider refusals"
+        VARCHAR status "queued | running | done | failed | skipped"
+        INTEGER attempt_count "provider refusals"
         TIMESTAMPTZ created_at
         TIMESTAMPTZ claimed_at "nullable"
         TIMESTAMPTZ sent_at "nullable"
-    }
-
-    push_subscriptions {
-        UUID id PK
-        UUID user_id FK
-        TEXT endpoint "UNIQUE, bearer URL"
-        VARCHAR p256dh
-        VARCHAR auth
-        VARCHAR user_agent "nullable"
-        TIMESTAMPTZ created_at
-        TIMESTAMPTZ last_success_at "nullable"
-        INT refusals "refusals since the last accepted push"
-    }
-
-    revoked_push_endpoints {
-        UUID user_id FK
-        VARCHAR endpoint_sha256 "hash of a revoked endpoint"
-        TIMESTAMPTZ revoked_at
-    }
-
-    product_update_consents {
-        UUID id PK
-        UUID user_id FK
-        VARCHAR source "sign_up | settings"
-        TIMESTAMPTZ granted_at
-        TIMESTAMPTZ withdrawn_at "nullable, NULL while current"
-    }
-
-    product_updates {
-        UUID id PK
-        VARCHAR label UK "MAJOR.MINOR.0"
-        VARCHAR title
-        TEXT body
-        TEXT link_url "nullable"
-        UUID sent_by FK "nullable"
-        INTEGER recipient_count
-        TIMESTAMPTZ created_at
-    }
-
-    product_update_deliveries {
-        UUID id PK
-        UUID product_update_id FK
-        UUID user_id FK
-        VARCHAR status "queued | sending | sent | failed | skipped"
-        INTEGER attempts "provider refusals"
-        TIMESTAMPTZ created_at
-        TIMESTAMPTZ claimed_at "nullable"
-        TIMESTAMPTZ sent_at "nullable"
-    }
-
-    x_handle_requests {
-        UUID id PK
-        UUID user_id FK "UNIQUE, the requester"
-        VARCHAR x_handle "the handle asked for"
-        TEXT reason "nullable"
-        VARCHAR status "pending | declined"
-        TEXT decline_reason "nullable"
-        TIMESTAMPTZ created_at
-        TIMESTAMPTZ decided_at "nullable"
     }
 
     user_preferences {
         UUID user_id PK
-        JSONB notification_overrides "per-kind, per-channel overrides only"
+        JSONB notification_overrides "per-kind email overrides only"
         JSONB display "palette, theme, help_tooltips"
         VARCHAR approval_request_audience "following, everyone, nobody"
         TIMESTAMPTZ updated_at
@@ -462,20 +415,16 @@ erDiagram
 
     bot_mentions {
         UUID id PK
-        VARCHAR mention_tweet_id "UNIQUE, X snowflake"
-        VARCHAR author_handle
-        VARCHAR outcome
-        INTEGER events_created
-        VARCHAR reply_tweet_id "nullable"
-        TIMESTAMPTZ processed_at
-    }
-
-    bot_webhook_events {
-        UUID id PK
-        JSONB mention
-        VARCHAR status "queued | processing | done | failed"
-        INTEGER attempts
+        BIGINT mention_post_id "UNIQUE, X snowflake"
+        VARCHAR author_x_handle
+        JSONB payload "nullable, cleared once done"
+        VARCHAR status "queued | running | done | failed"
+        INTEGER attempt_count
+        VARCHAR outcome "nullable, set when done"
+        INTEGER created_event_count
+        BIGINT reply_post_id "nullable"
         TIMESTAMPTZ created_at
+        TIMESTAMPTZ processed_at "nullable"
     }
 
     archive_import_jobs {
@@ -483,10 +432,10 @@ erDiagram
         UUID owner_id FK
         TEXT zip_key
         VARCHAR status "queued | running | done | failed"
-        INTEGER attempts
-        INTEGER post_estimate "nullable"
-        INTEGER progress_done
-        INTEGER progress_total "nullable"
+        INTEGER attempt_count
+        INTEGER estimated_post_count "nullable"
+        INTEGER processed_detection_count
+        INTEGER detection_count "nullable"
         INTEGER created_count
         INTEGER updated_count
         INTEGER skipped_count
@@ -497,49 +446,39 @@ erDiagram
         TIMESTAMPTZ finished_at "nullable"
     }
 
-    source_archives {
-        UUID id PK
-        UUID event_id FK
-        TEXT original_url
-        VARCHAR origin "source_url | secondary_source | detected_from | proof_link"
-        TEXT snapshot_url
-        VARCHAR provider "wayback | archive_today | ghostarchive"
-        TIMESTAMPTZ created_at
-    }
-
-    users |o--o{ invite_codes : "used_by"
-    users |o--o{ invite_codes : "created_by"
+    users |o--o{ invite_codes : "used_by_id"
+    users |o--o{ invite_codes : "created_by_id"
     invite_codes ||--o{ pending_registrations : "invite_code_id"
-    users ||--o{ auth_tokens : "user_id"
-    users |o--o{ admin_events : "actor_id"
-    users |o--o{ auth_events : "user_id"
+    users ||--o{ password_reset_tokens : "user_id"
+    users |o--o{ audit_log : "actor_id"
     users ||--o{ events : "owner_id"
     users |o--o{ events : "requested_by_id"
+    events ||--o{ sources : "event_id"
+    sources ||--o{ source_links : "source_id"
+    sources ||--o{ source_tags : "source_id"
+    tags ||--o{ source_tags : "tag_id"
+    sources ||--o| media : "source_id"
     events ||--o{ media : "event_id"
+    users ||--o{ uploads : "uploader_id"
     events ||--o{ event_tags : "event_id"
     tags ||--o{ event_tags : "tag_id"
     events ||--o{ event_conflicts : "event_id"
     conflicts ||--o{ event_conflicts : "conflict_id"
     events ||--o{ event_geolocators : "event_id"
     users ||--o{ event_geolocators : "user_id"
-    events ||--o{ event_geolocator_invites : "event_id"
-    users ||--o{ event_geolocator_invites : "user_id"
-    events ||--o{ event_geolocator_departures : "event_id"
-    users ||--o{ event_geolocator_departures : "user_id"
+    events ||--o| event_detections : "event_id"
     events ||--o{ event_approvals : "event_id"
     users |o--o{ event_approvals : "reviewer_id"
-    users |o--o{ event_approvals : "revoked_by_id"
     events ||--o{ approval_requests : "event_id"
     users ||--o{ approval_requests : "requester_id"
     users |o--o{ approval_requests : "target_user_id"
-    events ||--o{ event_source_links : "event_id"
     events ||--o{ event_versions : "event_id"
     users |o--o{ event_versions : "edited_by_id"
     users |o--o{ event_versions : "redacted_by_id"
     events |o--o{ content_reports : "event_id"
     collections |o--o{ content_reports : "collection_id"
-    users |o--o{ content_reports : "reporter_user_id"
-    users |o--o{ content_reports : "resolved_by"
+    users |o--o{ content_reports : "reporter_id"
+    users |o--o{ content_reports : "resolved_by_id"
     users ||--o{ collections : "owner_id"
     collections ||--o{ collection_events : "collection_id"
     events ||--o{ collection_events : "event_id"
@@ -550,30 +489,22 @@ erDiagram
     events |o--o{ notifications : "event_id"
     notifications ||--o{ notification_deliveries : "notification_id"
     users ||--o| user_preferences : "user_id"
-    users ||--o{ push_subscriptions : "user_id"
-    users ||--o{ revoked_push_endpoints : "user_id"
-    users ||--o{ product_update_consents : "user_id"
-    users |o--o{ product_updates : "sent_by"
-    product_updates ||--o{ product_update_deliveries : "product_update_id"
-    users ||--o{ product_update_deliveries : "user_id"
-    users ||--o| x_handle_requests : "user_id"
     organizations |o--o{ notifications : "organization_id"
     event_approvals |o--o{ notifications : "approval_id"
     organizations ||--o{ organization_members : "organization_id"
     users ||--o{ organization_members : "user_id"
-    organizations ||--o{ organization_invites : "organization_id"
     organizations |o--o{ event_approvals : "organization_id"
     organizations |o--o{ approval_requests : "target_organization_id"
-    users ||--o{ organization_invites : "user_id"
-    users |o--o{ organization_invites : "invited_by_id"
+    users |o--o{ organization_members : "invited_by_id"
     users |o--o{ organizations : "created_by_id"
     users ||--o{ archive_import_jobs : "owner_id"
-    events ||--o{ source_archives : "event_id"
 ```
 
 ---
 
 ## Tables
+
+Table and column names follow the [schema naming convention](engineering.md#schema-naming-convention).
 
 In the Constraints column, `default X` is the value the application sets on insert, and `server_default X` is a SQL `DEFAULT` the database applies.
 
@@ -583,19 +514,18 @@ In the Constraints column, `default X` is the value the application sets on inse
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `username` | `VARCHAR(50)` | UNIQUE, NOT NULL |
-| `email` | `VARCHAR(255)` | UNIQUE, nullable. NULL only on legacy credential-less rows; every path that creates an account sets it. |
-| `password_hash` | `VARCHAR(255)` | nullable, on the same legacy rows as `email`. |
-| `x_handle` | `VARCHAR(50)` | UNIQUE, nullable. The X handle the bot attributes mentions to (lowercase, no `@`). The system sets it at registration from an invite-bound handle, or an admin links it through `PATCH /admin/users/{id}/x-handle` or by approving an [`x_handle_requests`](#x_handle_requests) row. Analysts cannot self-serve this field, and the bot never creates rows for it. It differs from `external_links["x"]`, a display handle the owner sets and nobody verifies. |
+| `email` | `VARCHAR(255)` | UNIQUE, NOT NULL. [Notification email](#notification_deliveries) goes to this address. |
+| `password_hash` | `VARCHAR(255)` | NOT NULL. |
+| `x_handle` | `VARCHAR(50)` | UNIQUE, nullable. The X handle the bot attributes mentions to (lowercase, no `@`). The system sets it at registration from an invite-bound handle, or an admin links it through `PATCH /admin/users/{id}/x-handle`. Analysts cannot self-serve this field, and the bot never creates rows for it. It differs from `external_links["x"]`, a display handle the owner sets and nobody verifies. |
 | `is_active` | `BOOLEAN` | NOT NULL, default `true` |
 | `is_admin` | `BOOLEAN` | NOT NULL, default `false`. The system flips this to `true` automatically on login or registration if the email matches `ADMIN_EMAILS`. |
-| `email_verified_at` | `TIMESTAMPTZ` | nullable. Written once by the registration confirmation (to `created_at`). Every account the registration flow creates carries it. [Notification email](#notification_deliveries) goes only to an account that carries it, so an older account with NULL here receives none. |
 | `last_seen_at` | `TIMESTAMPTZ` | nullable. The instant of the account's most recent authenticated request. `dependencies.get_current_user` rewrites it once the stored value is older than `LAST_SEEN_THROTTLE` (15 minutes), so a session costs one UPDATE per window. `POST /auth/login` and `POST /auth/confirm-registration` stamp it when they issue cookies. The admin onboarding table reads it as the account's activity, falling back to the newest `login` auth event while it is NULL. |
 | `deleted_at` | `TIMESTAMPTZ` | nullable. A non-NULL value marks the user as soft-deleted: login is rejected, the profile returns 404, and public reads filter the row out. Soft-deleting a user passes every owned event another live analyst is credited on to the earliest of them, then soft-deletes every other event they own with the user's own timestamp. Hard-delete, the GDPR escape hatch, drops the user row, the events only they are credited on, and their contributor rows, and sweeps S3. An owned event with another live geolocator passes to the earliest of them instead, files included, and so does an event the user's soft delete hid (its `deleted_at` equals the user's), which is restored. An event soft-deleted on its own is purged. Because the owner is always among an event's geolocators, hard-delete never leaves a `geolocated` event with zero geolocators. |
 | `token_version` | `INTEGER` | NOT NULL, default `0`. A monotonic session-invalidation counter. The session JWT embeds this value as a `tv` claim, and `get_current_user` returns 401 on a mismatch. The system bumps this counter on logout, password change, password reset, and soft-delete, which invalidates every outstanding JWT for the user at once. A JWT with no `tv` claim also returns 401. |
 | `bio` | `TEXT` | nullable. A short plain-text blurb shown on the public profile. Analysts edit it through `PATCH /users/me`. The API layer caps it at 500 characters. There is no database constraint, so changing the cap does not require a migration. |
 | `avatar_url` | `TEXT` | nullable. The public URL of the analyst's profile picture, always an object on the media host. The server mints the value: `PUT /users/me/avatar` stores one metadata-stripped 400 px JPEG under `avatars/{user_id}/` and writes its URL here, `DELETE /users/me/avatar` clears the column and the object, and `PATCH /users/me` rejects the field, so the avatar cannot become a beacon that collects readers' IP addresses and User-Agents. |
 | `external_links` | `JSONB` | NOT NULL, default `'{}'::jsonb`. A Linktree-style object keyed by platform (`x`, `discord`, `website`, `github`), each value validated and normalised on the way in (see [`api.md`](api.md#patch-usersme)). The default `{}` means the value is never NULL, so the read path always gets a dict. `PATCH /users/me` replaces the whole column. A partial merge would conflict with the whole-panel form submit. |
-| `invite_minting_enabled` | `BOOLEAN` | NOT NULL, default `true`, server_default `true`. Whether the analyst can mint [sponsored invite codes](#invite_codes) from Settings. An admin moves it through `PATCH /admin/users/{id}/invite-minting`. Codes already minted stay valid when it turns off. |
+| `is_invite_minting_enabled` | `BOOLEAN` | NOT NULL, default `true`, server_default `true`. Whether the analyst can mint [sponsored invite codes](#invite_codes) from Settings. An admin moves it through `PATCH /admin/users/{id}/invite-minting`. Codes already minted stay valid when it turns off. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
 Indexes:
@@ -606,7 +536,7 @@ Indexes:
 
 ---
 
-### `auth_tokens`
+### `password_reset_tokens`
 
 Password-reset tokens. Each token is single-use.
 
@@ -615,18 +545,16 @@ Password-reset tokens. Each token is single-use.
 | `id` | `UUID` | PK, default `uuid4()` |
 | `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL |
 | `token_hash` | `TEXT` | UNIQUE, NOT NULL. `sha256(secret)`. The plaintext token exists only in the email link. |
-| `purpose` | `TEXT` | NOT NULL, CHECK in `('password_reset')`. `consume` matches on it, so a token minted for one purpose can never be redeemed for another. |
 | `expires_at` | `TIMESTAMPTZ` | NOT NULL |
 | `consumed_at` | `TIMESTAMPTZ` | nullable. A non-null value means the token was already redeemed. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
 Indexes:
 
-- `ix_auth_tokens_user_id` on `(user_id)`. Supports cascade delete and per-user revocation lookups.
-- `ix_auth_tokens_user_purpose` on `(user_id, purpose)`. Checks whether a live reset already exists for a user before minting a new one.
-- `ix_auth_tokens_live_expires_at`: partial index on `(expires_at) WHERE consumed_at IS NULL`. Keeps the reaper scan cheap as consumed rows accumulate.
+- `ix_password_reset_tokens_user_id` on `(user_id)`. Supports cascade delete and per-user revocation lookups.
+- `ix_password_reset_tokens_live_expires_at`: partial index on `(expires_at) WHERE consumed_at IS NULL`. Keeps the reaper scan cheap as consumed rows accumulate.
 
-Lifecycle: `mint` creates a token, `consume` redeems it, and `revoke_all_live_for_user` force-revokes prior tokens on a fresh same-purpose mint. Cleanup runs on demand through `POST /admin/maintenance/reap-auth-tokens` (`services/maintenance.py::reap_auth_tokens`). It deletes live-but-expired rows immediately and drops consumed rows older than 30 days.
+Lifecycle: `mint` creates a token, `consume` redeems it, and `revoke_all_live_for_user` force-revokes the user's prior tokens on a fresh mint. Cleanup runs on demand through `POST /admin/maintenance/reap-password-reset-tokens` (`services/maintenance.py::reap_password_reset_tokens`). It deletes live-but-expired rows immediately and drops consumed rows older than 30 days.
 
 ---
 
@@ -636,25 +564,25 @@ Lifecycle: `mint` creates a token, `consume` redeems it, and `revoke_all_live_fo
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `code` | `VARCHAR(64)` | UNIQUE, NOT NULL |
-| `used_by` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable, **audit-only**. Records the user who redeemed the code. The FK is set to NULL on user hard-delete. |
-| `used_at` | `TIMESTAMPTZ` | nullable. Stamped at redemption. Every code is single-use, so a non-NULL value is what spends it. Unlike `used_by`, it survives the redeemer's hard-delete. |
+| `used_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable, **audit-only**. Records the user who redeemed the code. The FK is set to NULL on user hard-delete. |
+| `used_at` | `TIMESTAMPTZ` | nullable. Stamped at redemption. Every code is single-use, so a non-NULL value is what spends it. Unlike `used_by_id`, it survives the redeemer's hard-delete. |
 | `expires_at` | `TIMESTAMPTZ` | nullable |
 | `revoked_at` | `TIMESTAMPTZ` | nullable. The admin page sets this. A non-null value invalidates the code immediately. |
 | `x_handle` | `VARCHAR(50)` | nullable. The X handle the code binds, normalized to lowercase with no `@`. Redemption copies it onto the new account's `users.x_handle`, the bot-attribution link. If the handle got linked elsewhere between mint and redemption, redemption fails soft. |
-| `created_by` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The analyst who minted the code from Settings (`POST /users/me/invite-codes`), its sponsor. NULL for an admin-minted code, and once the sponsor's account is erased. A sponsored code always binds an `x_handle`. |
+| `created_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The analyst who minted the code from Settings (`POST /users/me/invite-codes`), its sponsor. NULL for an admin-minted code, and once the sponsor's account is erased. A sponsored code always binds an `x_handle`. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
 Indexes:
 
-- `ix_invite_codes_created_by_created_at` on `(created_by, created_at)`. Supports the sponsor's daily quota count and the sponsor's own list.
+- `ix_invite_codes_created_by_id_created_at` on `(created_by_id, created_at)`. Supports the sponsor's daily quota count and the sponsor's own list.
 
-A code is valid exactly when `revoked_at IS NULL AND used_at IS NULL AND (expires_at IS NULL OR expires_at > now())`. `used_by` is not part of the validity check: it is nulled when the redeemer's account is erased, while `used_at` stays.
+A code is valid exactly when `revoked_at IS NULL AND used_at IS NULL AND (expires_at IS NULL OR expires_at > now())`. `used_by_id` is not part of the validity check: it is nulled when the redeemer's account is erased, while `used_at` stays.
 
-An account created from a sponsored code reaches its sponsor through the code row: `used_by` names the account and `created_by` the sponsor. The `User.sponsor` relationship in [`models/user.py`](../backend/app/models/user.py) reads that pair, so the link has one home and needs no column on `users`. Redemption therefore carries the sponsor without a change to `pending_registrations`, which already references the code.
+An account created from a sponsored code reaches its sponsor through the code row: `used_by_id` names the account and `created_by_id` the sponsor. The `User.sponsor` relationship in [`models/user.py`](../backend/app/models/user.py) reads that pair, so the link has one home and needs no column on `users`. Redemption therefore carries the sponsor without a change to `pending_registrations`, which already references the code.
 
-A sponsor mints at most 5 codes per UTC day (`DAILY_MINT_LIMIT` in [`services/sponsored_invites.py`](../backend/app/services/sponsored_invites.py)). The count covers every row with that `created_by` and a `created_at` since 00:00 UTC, revoked or used. The mint locks the sponsor's `users` row, so two concurrent mints cannot both pass the count.
+A sponsor mints at most 5 codes per UTC day (`DAILY_MINT_LIMIT` in [`services/sponsored_invites.py`](../backend/app/services/sponsored_invites.py)). The count covers every row with that `created_by_id` and a `created_at` since 00:00 UTC, revoked or used. The mint locks the sponsor's `users` row, so two concurrent mints cannot both pass the count.
 
-`DELETE /admin/invite-codes/{id}` drops a row whose `used_by` is NULL, the cleanup for codes that were minted and never used. A row naming a redeemer is refused: it is that account's origin record. The `admin_events` row for the deletion carries the `code` value, so the trail names what left the table.
+`DELETE /admin/invite-codes/{id}` drops a row whose `used_by_id` is NULL, the cleanup for codes that were minted and never used. A row naming a redeemer is refused: it is that account's origin record. The `audit_log` row for the deletion carries the `code` value, so the trail names what left the table.
 
 ---
 
@@ -669,7 +597,6 @@ A sponsor mints at most 5 codes per UTC day (`DAILY_MINT_LIMIT` in [`services/sp
 | `invite_code_id` | `UUID` | FK → `invite_codes.id` ON DELETE CASCADE, NOT NULL. The invite is referenced but **not consumed** until confirmation. |
 | `token_hash` | `TEXT` | UNIQUE, NOT NULL. `sha256(secret)`. The plaintext token exists only in the email link. |
 | `expires_at` | `TIMESTAMPTZ` | NOT NULL. Set to 24 hours after mint. |
-| `product_updates_consented_at` | `TIMESTAMPTZ` | nullable. The time of the request when the sign-up form's product update switch was on, NULL when it was off. Confirmation copies it into a [`product_update_consents`](#product_update_consents) row with `source = 'sign_up'`. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
 Indexes:
@@ -682,48 +609,30 @@ Lifecycle: `POST /auth/register` inserts a row through `services/registration.py
 
 ---
 
-### `auth_events`
+### `audit_log`
 
-An append-only audit log for auth-relevant events. The auth router populates it synchronously on `login`, `failed_login`, `logout`, `register_pending`, `register_resent`, `register_confirmed`, `password_reset_requested`, `password_reset_completed`, and `password_changed`. Writes happen inside a SAVEPOINT (`db.begin_nested()`), so an INSERT failure rolls back only the audit row and the caller's transaction stays usable.
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `id` | `UUID` | PK, default `uuid4()` |
-| `user_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. NULL when the email didn't match a live user: `failed_login`, the `password_reset_requested` no-op branch, `register_pending`, both branches of `register_resent`, and anonymous logout. This prevents the row from doubling as a probe-able email-to-existence oracle. |
-| `event` | `TEXT` | NOT NULL. A plain string, not a database enum, so adding a new event kind doesn't require a migration. |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
-
-Indexes:
-
-- `ix_auth_events_user_id_created_at` on `(user_id, created_at)`. Supports the forensics query "what did this user do, latest first".
-- `ix_auth_events_event_created_at` on `(event, created_at)`. Supports the query "did event X spike recently".
-
-The table stores no IP address or User-Agent: Vidit stores neither, for privacy. There is no retention policy.
-
----
-
-### `admin_events`
-
-An append-only audit log for admin actions taken through the `/admin` page, and for sponsored invite mints. It is a sibling to the `auth_events` table above.
+An append-only log of the actions that change an account or that a site admin or sponsor takes. [`services/audit.log_auth_event`](../backend/app/services/audit.py) writes the account actions: the auth router calls it synchronously on `login`, `failed_login`, `logout`, `register_pending`, `register_resent`, `register_confirmed`, `password_reset_requested`, `password_reset_completed` and `password_changed`. The write runs inside a SAVEPOINT (`db.begin_nested()`), so an INSERT failure rolls back only the audit row and the caller's transaction stays usable. [`services/admin.log_admin_event`](../backend/app/services/admin.py) writes the admin actions and the sponsored invite mints in the caller's transaction.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
-| `actor_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The admin, or the sponsor on an `invite_sponsored` row and on an `invite_revoked` row for a code the sponsor revoked. |
-| `action` | `TEXT` | NOT NULL, for example `invite_created`, `invite_revoked`, `invite_deleted`, `invite_sponsored`, `invite_minting_enabled` and `invite_minting_disabled` |
-| `target` | `JSON` | nullable. Free-form context: target IDs and parameters. |
+| `actor_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The acting account: the site admin, the sponsor on an `invite_sponsored` row and on an `invite_revoked` row for a code the sponsor revoked, or the account itself for an account action. NULL for a `failed_login`, a `password_reset_requested` no-op, a `register_pending` and a `register_resent` whose email matches no live account, and for an anonymous logout. This keeps the table from becoming a probe-able email-to-existence oracle. NULL again once the account is erased. |
+| `action` | `TEXT` | NOT NULL. A plain string, not a database enum, so a new action needs no migration. For example `login`, `failed_login`, `invite_created`, `invite_revoked`, `invite_deleted`, `invite_sponsored`, `invite_minting_enabled` and `invite_minting_disabled`. |
+| `target` | `JSON` | nullable. What the action touched: target IDs and parameters. NULL for an action on one's own account. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
 Indexes:
 
-- `ix_admin_events_actor_id` on `(actor_id)`. Supports the query "what did this admin do?".
-- `ix_admin_events_created_at` on `(created_at)`. Supports chronological scans.
+- `ix_audit_log_actor_id_created_at` on `(actor_id, created_at)`. Supports the forensics query "what did this account do, latest first".
+- `ix_audit_log_action_created_at` on `(action, created_at)`. Supports the query "did action X spike recently".
+
+The table stores no IP address or User-Agent: Vidit stores neither, for privacy. There is no retention period.
 
 ---
 
 ### `events`
 
-One row represents one event across its whole lifecycle. `status` tracks the lifecycle. `event_coords` is an independent nullable field tied to `status` by a CHECK constraint. A request is a `requested` event on this table, with no coordinates required yet. Fulfilling a request is a single `UPDATE status='geolocated', event_coords=...` on the same row plus an `event_geolocators` insert. It never copies the row into a new one.
+One row represents one event across its whole lifecycle. `status` tracks the lifecycle. `coords` is an independent nullable field tied to `status` by a CHECK constraint. A request is a `requested` event on this table, with no coordinates required yet. Fulfilling a request is a single `UPDATE status='geolocated', coords=...` on the same row plus an `event_geolocators` insert. It never copies the row into a new one.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -731,133 +640,138 @@ One row represents one event across its whole lifecycle. `status` tracks the lif
 | `owner_id` | `UUID` | FK → `users.id`, NOT NULL. The edit-rights owner. For a `requested` event, this is the poster. It moves to the fulfiller at the `geolocated` transition, so permission checks stay a single-owner check across the lifecycle. A hard delete of the owner's account moves it to the earliest live co-geolocator. The owner is always among the event's geolocators; see `event_geolocators`. |
 | `requested_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. Records who opened the request. This is preserved across fulfilment so the identity of the requester is not erased. NULL for a directly submitted geolocation. |
 | `title` | `VARCHAR(255)` | NOT NULL |
-| `event_coords` | `GEOMETRY(Point, 4326)` | nullable. The subject: what the footage shows. Tied to `status` by `ck_events_coords_status`: required for `geolocated`, optional otherwise. A `requested` request may carry an approximate guess. Each event has one subject point. |
-| `capture_source_coords` | `GEOMETRY(Point, 4326)` | nullable. The camera position: where the footage was shot from. Always optional, one per event. |
-| `source_url` | `TEXT` | nullable. Where the footage was first published. Tied to `status` by `ck_events_source_url_status`: required for `requested` and `geolocated`, optional for `detected`. A machine detection may declare no source; see [`ingestion.md`](ingestion.md). |
-| `detected_from_tweet_id` | `BIGINT` | nullable. The ID of the post a machine detection was imported from. It anchors the display link and is the post-ID leg of the re-import match: one post spells its URL several ways, so the ID keeps two spellings on one detection. NULL for human submits. Indexed with `owner_id`, partial on the populated cohort. |
-| `detected_thread_tweet_ids` | `BIGINT[]` | nullable. Every post ID of the thread the detection was read from, the anchor included. The [re-import](ingestion.md#re-import) match reads it: a detection matches a row when their post-ID sets intersect. Written once at creation, like the other provenance columns. NULL for human submits; some machine rows carry their anchor ID alone. GIN-indexed, partial on the populated cohort. |
-| `detected_from_url` | `TEXT` | nullable. The post a machine detection was imported from, as a link an analyst can open: the display value, written from `detected_from_tweet_id` at the engine's exit. A provenance link, distinct from `source_url`. NULL for human submits. |
-| `detected_via` | `VARCHAR(20)` | nullable, `ck_events_detected_via_valid`: `'bot'`, `'paste'` or `'archive'`, the ingest entry that produced the row (see [`ingestion.md`](ingestion.md)). Stamped once at creation by the shared write path and never moved, so a re-import through another entry does not rewrite where the row first came from. Read-only on `EventRead`. NULL for human submits and on some machine rows. This and the three `detected_from_*` columns above are stamped on a `requested` row the bot opened as well as on a detection, which is what lets a second tag on the same post recognise it. |
+| `coords` | `GEOMETRY(Point, 4326)` | nullable. The subject: what the footage shows. Tied to `status` by `ck_events_coords_status`: required for `geolocated`, optional otherwise. A `requested` request may carry an approximate guess. Each event has one subject point. |
 | `proof` | `TEXT` | NOT NULL. Sanitized HTML, on the [rich text](api.md#rich-text) rules. A human submit carries the analyst's write-up, and a machine detection carries the tweet or thread text, one `p` per line, followed by its proof images as `img`. A submission with no proof body, or a body with no text and no image, stores `''`, not NULL. |
-| `event_date` | `DATE` | nullable in every status. When the depicted event happened. NULL when unknown: the footage doesn't always establish the date, and it renders as *Unknown*. For a machine detection, this is provisionally the originating tweet's post date; the owner corrects it at submit. |
-| `event_time` | `TIME` | nullable. An optional time of day for `event_date`, in UTC. NULL when the hour is unknown. |
-| `source_posted_at` | `TIMESTAMPTZ` | nullable. When the original source posted the media: a real post instant, so a full UTC timestamp when known. Distinct from `event_date` (when the event happened), `detected_post_at` (when the analyst posted the geolocation), and `created_at` (when the row was submitted). A human submit or a machine detection with a quoted source always sets it. A machine detection with only a footage link and no quote leaves it `NULL`, because the link carries no date, except a Telegram footage link whose public embed was chased. That case carries the post's own date; see [`ingestion.md`](ingestion.md#archive-formats). |
-| `detected_post_at` | `TIMESTAMPTZ` | nullable. When the analyst published this on X: the post time of `detected_from_url`, whether the row is a detection or a request the bot opened. This is the precedence input for the "who geolocated it first" claim/dispute pipeline. The system captures it at import, because the tweet may later be deleted. NULL for human submits. |
+| `occurred_date` | `DATE` | nullable in every status. When the depicted event happened. NULL when unknown: the footage doesn't always establish the date, and it renders as *Unknown*. For a machine detection, this is provisionally the originating post's date; the owner corrects it at submit. |
+| `occurred_time` | `TIME` | nullable. An optional time of day for `occurred_date`, in UTC. NULL when the hour is unknown. |
 | `requested_at` | `TIMESTAMPTZ` | nullable. Stamped when the event entered `requested`. |
-| `detected_at` | `TIMESTAMPTZ` | nullable. Stamped when a machine produced it, entering `detected`. |
+| `detected_at` | `TIMESTAMPTZ` | nullable. Stamped when a machine produced it, entering `detected`. The provenance of an imported row is its [`event_detections`](#event_detections) row. |
 | `geolocated_at` | `TIMESTAMPTZ` | nullable. Stamped when a person vouched for it and published it, entering `geolocated`. |
 | `closed_at` | `TIMESTAMPTZ` | nullable. Stamped when the event entered the terminal `closed` state. |
-| `status` | `VARCHAR(20)` | NOT NULL, `server_default 'geolocated'`. The lifecycle runs `requested` (an open call to geolocate) → `detected` (a machine detection, marked on every surface, immutable until vouched) → `geolocated` (a person vouched for it and published it; always has a location, and every later correction is a version) → `closed` (the owner took the row back, from any of the three live states). It is a plain string, not a native enum, and `ck_events_status_valid` pins the value domain. The default keeps a direct human submit correct without setting the value explicitly; the requested and detected paths pass `status` explicitly. The `update_request`, `geolocate`, `save_version` and `close` writes are documented in [`api.md`](api.md). |
+| `status` | `VARCHAR(20)` | NOT NULL, `server_default 'geolocated'`. The lifecycle runs `requested` (an open call to geolocate) → `detected` (a machine detection, marked on every surface, immutable until vouched) → `geolocated` (a person vouched for it and published it; always has a location, and every later correction is a version) → `closed` (the owner took the row back, from any of the three live states). It is a plain string, not a native enum, and `ck_events_status_valid` pins the value domain. The default keeps a direct human submit correct without setting the value explicitly; the requested and detected paths pass `status` explicitly. The `update_request`, `save_version` and `close` writes are documented in [`api.md`](api.md). |
 | `close_reason` | `TEXT` | nullable. A free-text reason the event was closed, such as AI image, bot bug, or withdrawn. Required by the close endpoint and kept visible for transparency, which is what makes a closed row read as a decision rather than a disappearance. |
 | `before_closed_status` | `VARCHAR(20)` | nullable. The status held just before `closed`: `requested` means withdrawn, `detected` means rejected, `geolocated` means retracted. Drives the status badge and the read views: a rejected detection stays in the located catalog, a withdrawn request in the requested queue, and a retraction is in neither. |
 | `deleted_at` | `TIMESTAMPTZ` | nullable. A non-NULL value marks an admin soft-delete: the row and its media stay in place, but every public read filters it out, admins included. |
 | `hidden_at` | `TIMESTAMPTZ` | nullable. A non-NULL value marks a takedown: the row is withheld from every public read the same way `deleted_at` is, but an admin still reads it (judging the [content report](#content_reports) that led to the takedown means seeing what was withheld), and the state is reversible, which is what separates it from `deleted_at`. Set by `POST /admin/reports/{id}/resolve` (`resolution = "hidden"`) or directly by `PATCH /admin/events/{id}/moderation`; cleared only by the latter. |
-| `version_no` | `INTEGER` | NOT NULL, `server_default 1`. Which version of the event the live row is. It starts at 1 and moves forward one step per correction, which files the superseded state in [`event_versions`](#event_versions). Only a `geolocated` row can move past 1, because saving a version is the published-row correction path; see [`POST /events/{id}/versions`](api.md#post-eventsidversions). An open request is corrected in place by [`POST /events/{id}/request`](api.md#post-eventsidrequest) and stays at 1: a version supersedes a vouched claim, and a request is a question. |
-| `is_graphic` | `BOOLEAN` | NOT NULL, default `false`. `TRUE` when the footage shows death, injury or human remains. The author sets it on the create / edit forms; an admin can override it, directly (`PATCH /admin/events/{id}/moderation`) or by resolving a report as `marked_graphic`. Public column, carried by every event read schema: the frontend covers a flagged event's media behind [`GraphicContentGate`](design.md#components) until the viewer confirms they want to see it. |
+| `version_no` | `INTEGER` | NOT NULL, `server_default 1`. Which version of the event the live row is. A request or a detection is version 0, open or closed; the ORM sets 0 when it inserts one (`models/event._initial_version`). Publishing it files version 0 in [`event_versions`](#event_versions) and the row becomes version 1; a row created published starts at 1. Each later correction moves it forward one step and files the superseded state; see [`POST /events/{id}/versions`](api.md#post-eventsidversions). The requester's correction of an open request, [`POST /events/{id}/request`](api.md#post-eventsidrequest), overwrites it in place at version 0. A [re-import](ingestion.md#re-import) writes onto a detection only at version 0. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
+The evidence is not on this row. An event's footage, its URLs and the capture position are its [`sources`](#sources), and `Event.is_graphic` is derived from them: `true` when any source is graphic. In Python it reads the loaded sources; in SQL it is an `EXISTS` over `sources`, so a filter can use it. Every event read schema carries it, and the frontend covers a graphic source behind [`GraphicContentGate`](design.md#components) until the viewer confirms they want to see it.
+
 **Check constraints:**
 - `ck_events_status_valid`: `status IN ('requested', 'detected', 'geolocated', 'closed')`. Pins the value domain at the database. The column is a plain `VARCHAR`, not a native enum, so this constraint rejects a bad write at the Postgres level, not only at the app-layer `Literal`.
-- `ck_events_detected_via_valid`: `detected_via IS NULL OR detected_via IN ('bot', 'paste', 'archive')`. The same reason as the status domain, for the ingest entry. NULL is in-domain: a human submit names no entry.
-- `ck_events_coords_status`: `status <> 'geolocated' OR event_coords IS NOT NULL`. A `geolocated` event always has a subject coordinate. The other states leave it free, so a `requested` request may carry an approximate guess.
-- `ck_events_source_url_status`: `status NOT IN ('requested', 'geolocated') OR source_url IS NOT NULL`. A `requested` or `geolocated` event always has a source URL. A detection may carry none; see [`ingestion.md`](ingestion.md). The promotion to `geolocated` enforces the same rule in `services/events.geolocate` before the row can violate this CHECK.
+- `ck_events_coords_status`: `status <> 'geolocated' OR coords IS NOT NULL`. A `geolocated` event always has a subject coordinate. The other states leave it free, so a `requested` request may carry an approximate guess.
 - `ck_events_closed_stamp` (`status <> 'closed' OR closed_at IS NOT NULL`) and `ck_events_geolocated_stamp` (`status <> 'geolocated' OR geolocated_at IS NOT NULL`). These tie the terminal stamps to status. An app path that forgets to stamp is rejected at write time, not stored as silent bad data.
+- `ck_events_version_published`: `(version_no = 0) = (COALESCE(before_closed_status, status) IN ('requested', 'detected'))`. A row that was never published is version 0, and a published row, retracted or not, is version 1 or more.
 - `ck_events_before_closed_status`: `(status = 'closed' AND before_closed_status IS NOT NULL AND before_closed_status IN ('requested', 'detected', 'geolocated')) OR (status <> 'closed' AND before_closed_status IS NULL)`. The field is non-NULL and in-domain exactly when `closed`, and NULL otherwise. The explicit `IS NOT NULL` clause is required: `NULL IN (...)` evaluates to unknown, not false, so without it a `closed` row could keep a NULL discriminator and slip through.
 
-**Temporal fields: four kinds of time.** A geolocation carries several timestamps. Each marks a different point on the path from an event to a Vidit row. They are distinct by design:
+**Temporal fields: five kinds of time.** A geolocation carries several timestamps. Each marks a different point on the path from an event to a Vidit row. They are distinct by design:
 
 ```
-event happens ──▶ source posts the media ──▶ analyst posts the geoloc on X ──▶ imported to Vidit
- event_date           source_posted_at            detected_post_at                 created_at
- (+ event_time)       (UTC instant)               (UTC instant, machine path)      (UTC instant)
+event happens ──▶ media captured ──▶ media posted at a URL ──▶ analyst posts the geoloc on X ──▶ imported to Vidit
+ occurred_date     sources.          source_links.posted_at    event_detections.post_at         created_at
+ (+ occurred_time)  captured_at      (UTC instant)             (UTC instant, machine path)      (UTC instant)
 ```
 
 | Field | Meaning | Filled by | Null? |
 |---|---|---|---|
-| `event_date` (+ `event_time`) | when the depicted event happened | analyst, or detection (tweet date) | date nullable in every status: NULL when the footage doesn't establish it. Time optional: the hour is often unknown. |
-| `source_posted_at` | when the source posted the media | analyst, or detection (a quoted source's date) | nullable. `NULL` on a `detected` row whose source is a footage link with no date, or whose source is undeclared. |
-| `detected_post_at` | when the analyst posted it on X | machine-written rows only (the imported post's time) | NULL for human submits |
+| `occurred_date` (+ `occurred_time`) | when the depicted event happened | analyst, or detection (post date) | date nullable in every status: NULL when the footage doesn't establish it. Time optional: the hour is often unknown. |
+| `sources.captured_at` | when one source's media was captured | analyst | nullable. A machine source carries none. |
+| `source_links.posted_at` | when the media was posted at one URL | analyst, or detection (a quoted source's date) | nullable. `NULL` on a machine source whose link carries no date. |
+| `event_detections.post_at` | when the analyst posted it on X | machine-written rows only (the imported post's time) | no row for a human submit |
 | `created_at` | when it was submitted to Vidit | system | NOT NULL |
 
-`event_date` is *editorial*: a real-world event, often known only to the day, with no canonical time zone. It stores a bare date plus an optional UTC hour. `source_posted_at` and `detected_post_at` are *post instants*: known to the minute when present, and always UTC, so they store full timestamps. All entered times follow the UTC convention.
+`occurred_date` is *editorial*: a real-world event, often known only to the day, with no canonical time zone. It stores a bare date plus an optional UTC hour. `captured_at`, `posted_at` and `event_detections.post_at` are *instants*: known to the minute when present, and always UTC, so they store full timestamps. All entered times follow the UTC convention.
 
 **Indexes:**
-- `GIST(event_coords)`. Required for geospatial queries: bounding-box filtering and proximity sort. `capture_source_coords` is not indexed, because no spatial read consumes it.
+- `GIST(coords)`. Required for geospatial queries: bounding-box filtering and proximity sort.
 - `(owner_id)`. Supports profile lookup.
-- `(event_date)` and `(created_at)`. Support time-based queries.
+- `(occurred_date)` and `(created_at)`. Support time-based queries.
 - `(owner_id, created_at DESC)`. A composite index for profile listing. Single-author reads key on `owner_id`.
 - `ix_events_live`: partial index on `(created_at) WHERE deleted_at IS NULL`. Every public read filters on `deleted_at IS NULL`, and the partial index keeps it tight.
 - `ix_events_status_created_at` on `(status, created_at)`. The requested view, the map, and the detections queue all filter on `status`, newest first.
 - `ix_events_created_at_id` on `(created_at, id)`. Backs the keyset that the capped list endpoints page on. `GET /events` and `GET /events/detections` order by `created_at DESC, id DESC` and cut each page with a row comparison over that pair; see [`api.md`](api.md#pagination).
-- `ix_events_timeline_at_id` on `(feed_at, id)`, where `feed_at` is `coalesce(CASE WHEN status = 'requested' THEN requested_at ELSE geolocated_at END, created_at)`. Partial: visible (`deleted_at` and `hidden_at` NULL) `geolocated` and `requested` rows. Backs the keyset of [`GET /feed`](api.md#get-feed), which orders by `feed_at DESC, id DESC`, so a page reads the index in order instead of sorting. The expression matches `models/event.feed_at` exactly; the planner ignores the index on any difference.
-- `ix_events_detected_from_url`: partial index on `(detected_from_url) WHERE detected_from_url IS NOT NULL`. Backs the admin machine-detection cohort scans, which count the rows carrying a provenance link at all. Human rows are always NULL here.
-- `ix_events_owner_detected_from_tweet_id`: partial index on `(owner_id, detected_from_tweet_id) WHERE detected_from_tweet_id IS NOT NULL`. Backs the post-id leg of the re-import match, one lookup per detection during a backfill, scoped to the importer's own rows.
-- `ix_events_detected_thread_tweet_ids`: partial GIN index on `(detected_thread_tweet_ids) WHERE detected_thread_tweet_ids IS NOT NULL`. Backs the array-overlap leg of the re-import match, one lookup per detection during a backfill.
-- `ix_events_search_fts`: GIN index on `to_tsvector('simple', coalesce(title, ''))`. Backs `GET /search`; both the located and requested views run through it. The `simple` configuration, not `english`, keeps matching predictable for the corpus of place names and analyst handles. Soft-delete is filtered at query time. `source_url` is not in the indexed expression, because Postgres' simple parser tokenizes URLs as host and path units.
+- `ix_events_timeline_at_id` on `(feed_at, id)`, where `feed_at` is `coalesce(CASE WHEN status = 'requested' THEN requested_at WHEN status = 'detected' THEN detected_at ELSE geolocated_at END, created_at)`. Partial: visible (`deleted_at` and `hidden_at` NULL) `geolocated`, `requested` and `detected` rows. Backs the keyset of [`GET /feed`](api.md#get-feed), which orders by `feed_at DESC, id DESC`, so a page reads the index in order instead of sorting. The expression matches `models/event.feed_at` exactly; the planner ignores the index on any difference.
+- `ix_events_search_fts`: GIN index on `to_tsvector('simple', coalesce(title, ''))`. Backs `GET /search`; both the located and requested views run through it. The `simple` configuration, not `english`, keeps matching predictable for the corpus of place names and analyst handles. Soft-delete is filtered at query time. Source titles have their own index, [`ix_sources_search_fts`](#sources). Source URLs are matched by substring rather than through a text index, because Postgres' simple parser tokenizes URLs as host and path units.
 
-> `event_coords` and `capture_source_coords` are PostGIS points in WGS84 (SRID 4326, standard GPS coordinates). GeoAlchemy2 exposes them as `.lat` and `.lng` through `WKBElement`, or as `ST_X` and `ST_Y` in raw SQL.
+> `coords` and `sources.capture_position` are PostGIS points in WGS84 (SRID 4326, standard GPS coordinates). GeoAlchemy2 exposes them as `.lat` and `.lng` through `WKBElement`, or as `ST_X` and `ST_Y` in raw SQL.
+
+---
+
+### `event_detections`
+
+Where a machine-written row came from: the post it was imported from, the thread that post sits in and the ingest entry that read it. One row per imported event, whether the event is a `detected` row or a `requested` row the bot opened. A human submit has no row. [`services/events/request.stamp_provenance`](../backend/app/services/events/request.py) writes the row once at creation, and [`Event.detection`](../backend/app/models/event.py) reads it. `Event.is_machine_detection` is true when the row exists and `requested_at` is NULL.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `event_id` | `UUID` | PK, FK → `events.id` ON DELETE CASCADE |
+| `via` | `VARCHAR(20)` | nullable, `ck_event_detections_via_valid`: `'bot'`, `'paste'` or `'archive'`, the ingest entry that produced the row (see [`ingestion.md`](ingestion.md)). Stamped once at creation by the shared write path and never moved, so a re-import through another entry does not rewrite where the row first came from. NULL on some machine rows. Read-only on `EventRead` as `detected_via`. |
+| `from_url` | `TEXT` | NOT NULL. The post the row was imported from, as a link an analyst can open: the display value, written from `from_post_id` at the engine's exit. A provenance link, not a source: the event's [sources](#sources) are the footage it rests on. Read on `EventRead` as `detected_from_url`. |
+| `from_post_id` | `BIGINT` | nullable. The ID of the post. It anchors the display link and is the post-ID leg of the re-import match: one post spells its URL several ways, so the ID keeps two spellings on one detection. |
+| `thread_post_ids` | `BIGINT[]` | nullable. Every post ID of the thread the detection was read from, the anchor included. The [re-import](ingestion.md#re-import) match reads it: a detection matches a row when their post-ID sets intersect. Some machine rows carry their anchor ID alone. |
+| `post_at` | `TIMESTAMPTZ` | nullable. When the analyst published the geolocation on X: the post time of `from_url`. This is the precedence input for the "who geolocated it first" claim and dispute pipeline. The system captures it at import, because the post may later be deleted. A re-import updates this column and no other. |
+
+**Indexes:**
+- `ix_event_detections_from_post_id`: partial index on `(from_post_id) WHERE from_post_id IS NOT NULL`. Backs the post-ID leg of the re-import match, one lookup per detection during a backfill.
+- `ix_event_detections_thread_post_ids`: partial GIN index on `(thread_post_ids) WHERE thread_post_ids IS NOT NULL`. Backs the array-overlap leg of the re-import match, one lookup per detection during a backfill.
+
+The match joins to `events` to scope itself to the importer's own rows. The admin machine-detection cohort tests whether the row exists, through the primary key.
 
 ---
 
 ### `event_geolocators`
 
-Durable credit for the geolocation: who vouched for the location. `owner_id` is always among these rows. The system writes at least one row at the `geolocate` transition, and one more each time an invited analyst accepts (see [`event_geolocator_invites`](#event_geolocator_invites)). Credit grants no write right: every write still checks `owner_id`. Every read that lists an analyst's work matches an event on `owner_id` or on these rows (`services/event_filters.credited_to`).
+One analyst's standing on one event's credit, one row per pair. A row is `invited` while the owner's invitation waits, `active` while the analyst holds the credit, and `departed` once they held it and lost it. The `active` rows are the credit: who vouched for the location. `owner_id` is always among them on a `geolocated` event. The system writes the owner's `active` row at the publish, and a row turns `active` each time an invited analyst accepts. Credit grants no write right: every write still checks `owner_id`. Every read that lists an analyst's work matches an event on `owner_id` or on an `active` row (`services/event_filters.credited_to`).
+
+```mermaid
+stateDiagram-v2
+  classDef held fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef gone fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+
+  [*] --> active: publish, for the owner
+  [*] --> invited: invite
+  invited --> active: accept
+  invited --> departed: decline or withdraw, row has departed_at
+  invited --> [*]: decline or withdraw, row has no departed_at
+  active --> departed: remove or leave
+  departed --> invited: invite, departed_at kept
+
+  class invited,active held
+  class departed gone
+```
+
+In the diagram, a green state counts toward the cap of 10 per event (`MAX_EVENT_GEOLOCATORS` in [`services/geolocator_credit.py`](../backend/app/services/geolocator_credit.py)), counting only analysts whose account is live. A blue state is a former geolocator. `[*]` is no row.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
-| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE |
-| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
+| `event_id` | `UUID` | PK, FK → `events.id` ON DELETE CASCADE |
+| `user_id` | `UUID` | PK, FK → `users.id` ON DELETE CASCADE |
+| `state` | `VARCHAR(20)` | NOT NULL, `ck_event_geolocators_state_valid`: `'invited'`, `'active'` or `'departed'`. |
+| `invited_at` | `TIMESTAMPTZ` | nullable. When the owner sent the latest invitation. NOT NULL while `invited`. |
+| `joined_at` | `TIMESTAMPTZ` | nullable. When the analyst took the credit. NOT NULL while `active`. Orders `Event.geolocators`, the earliest first. |
+| `departed_at` | `TIMESTAMPTZ` | nullable. The first departure; a later one leaves it unchanged, and a new invitation keeps it. NOT NULL while `departed`. |
 
-Composite PK: `(event_id, user_id)`. Makes the credit idempotent.
-
-**Indexes:**
-- `ix_event_geolocators_user_created_at` on `(user_id, created_at)`. Supports the reverse query, a user's geolocations, for the profile page.
-
-The composite PK's leading `event_id` serves the forward read, who geolocated event X. A row is deleted when the owner removes a co-geolocator or a co-geolocator leaves; the owner's own row stays. `hard_delete_user` hands each owned event that has another live geolocator to the earliest of them by `created_at`, and deletes the rest, so erasing a user never leaves a `geolocated` event with zero geolocators.
-
----
-
-### `event_geolocator_invites`
-
-A pending invitation to share an event's credit. The owner of a `geolocated` event writes the row; the invitee answers it through [`/events/{id}/geolocator-invites`](api.md#shared-credit). Accepting deletes the row and inserts the `event_geolocators` row in one transaction; declining or a withdrawal deletes it. A row exists only while the invitation is pending.
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE |
-| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE. The invitee. |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
-
-Composite PK: `(event_id, user_id)`: one pending invitation per analyst and event. Its leading `event_id` serves the event's invitation list.
+Composite PK: `(event_id, user_id)`. It allows one row per analyst and event, and its leading `event_id` serves both the forward read, who geolocated event X, and the event's invitation list. `ck_event_geolocators_state_stamp` requires the stamp of the current state: `invited_at` for `invited`, `joined_at` for `active`, `departed_at` for `departed`.
 
 **Indexes:**
-- `ix_event_geolocator_invites_user_id` on `(user_id)`. Backs the cascade when an invitee's account is erased.
+- `ix_event_geolocators_user_id_joined_at` on `(user_id, joined_at) WHERE state = 'active'`. Supports the reverse query, a user's geolocations, for the profile page.
+- `ix_event_geolocators_user_id` on `(user_id)`. Backs the cascade when an analyst's account is erased.
 
-The service caps geolocators plus pending invitations at 10 per event (`MAX_EVENT_GEOLOCATORS`).
+[`services/geolocator_credit`](../backend/app/services/geolocator_credit.py) moves a row between states, locking the event first:
 
----
+- An invitation inserts an `invited` row, or turns a `departed` row `invited`.
+- Accepting turns the row `active`, stamps `joined_at`, and deletes the invitee's [approvals](#event_approvals) of the event, on every version, in one transaction.
+- Declining or a withdrawal returns a former geolocator's row to `departed` and deletes any other row.
+- A removal or a leave turns an `active` row `departed`.
 
-### `event_geolocator_departures`
-
-An analyst who held an event's credit and lost it: the owner removed them, or they left. [`services/geolocator_credit.remove`](../backend/app/services/geolocator_credit.py) writes the row in the transaction that deletes the `event_geolocators` row. A former geolocator neither approves the event nor receives an approval request for it, as a current one.
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE |
-| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE. The former geolocator. |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL. The first departure; a later one leaves the row unchanged. |
-
-Composite PK: `(event_id, user_id)`. Its leading `event_id` serves the eligibility checks.
-
-**Indexes:**
-- `ix_event_geolocator_departures_user_id` on `(user_id)`. Backs the cascade when the analyst's account is erased.
+An analyst is *ever credited* on an event when they are its owner, hold a row that is not `invited`, or hold an `invited` row that keeps `departed_at`. A former geolocator is no more independent of the work than a current one, so an ever-credited analyst neither approves the event nor receives an approval request for it. `hard_delete_user` hands each owned event that has another live `active` geolocator to the earliest of them by `joined_at`, and deletes the rest, so erasing a user never leaves a `geolocated` event with zero geolocators.
 
 ---
 
 ### `event_approvals`
 
-An analyst's attestation, or an organization's through any of its members, that one version of a published event holds, written through [`/events/{id}/approvals`](api.md#approvals). A row is current while `version_no` equals `events.version_no` and `revoked_at` is NULL, so a new version ends it without a write and the row stays readable on the version it covered. Revocation stamps the row; nothing deletes it short of the event's, the reviewer's or the organization's hard delete.
+An analyst's attestation, or an organization's through any of its members, that one version of a published event holds, written through [`/events/{id}/approvals`](api.md#approvals). A row is current while `version_no` equals `events.version_no`, so a new version ends it without a write and the row stays readable on the version it covered. An approval is final. Three paths delete a row: the reviewer accepts a co-geolocator invitation for the event (every version, including the approvals the reviewer placed for an organization), a site admin calls [`DELETE /admin/approvals/{approval_id}`](api.md#delete-adminapprovalsapproval_id), or the event, the reviewer or the organization is hard-deleted. The `approval_received` notifications that reported the row go with it.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -866,21 +780,14 @@ An analyst's attestation, or an organization's through any of its members, that 
 | `version_no` | `INTEGER` | NOT NULL. The live `events.version_no` when the approval was placed. |
 | `reviewer_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The analyst who approved: for an organization's approval, the member who placed it. An erasure deletes the analyst's own approvals first ([`admin.hard_delete_user`](../backend/app/services/admin.py)), so only an organization's approval loses its reviewer; `ck_event_approvals_reviewer` refuses a NULL reviewer on a row without an organization. |
 | `organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, nullable. The organization the approval speaks for; NULL for an analyst's own approval. |
-| `verdict` | `VARCHAR(20)` | NOT NULL, default `'approve'`, CHECK in `('approve')` (constraint `ck_event_approvals_verdict_valid`). `ApprovalVerdict` in [`models/approval.py`](../backend/app/models/approval.py) lists the same values. |
-| `note` | `TEXT` | nullable. The reviewer's note; the API caps it at 280 characters. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
-| `revoked_at` | `TIMESTAMPTZ` | nullable. Set when the reviewer, a member of the organization, a site admin, or a co-geolocator acceptance revokes the approval. |
-| `revoked_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. Who revoked it. |
-| `revoke_reason` | `TEXT` | nullable. The optional public reason. `ck_event_approvals_revoke_reason` keeps it NULL while `revoked_at` is NULL; a revoked approval may carry none. |
-| `revoked_as` | `VARCHAR(20)` | nullable, CHECK in `('reviewer', 'organization_member', 'site_admin')` (constraint `ck_event_approvals_revoked_as_valid`). The role the revoker acted in, stamped at revocation because roles change later. `ck_event_approvals_revoked_as` sets it exactly when `revoked_at` is set. `ApprovalRevoker` in [`models/approval.py`](../backend/app/models/approval.py) lists the same values. |
 
-`uq_event_approvals_analyst`: unique partial index on `(event_id, version_no, reviewer_id) WHERE organization_id IS NULL AND revoked_at IS NULL`. One standing approval per analyst and version. Only the live version takes a new approval, so this also allows one current approval per analyst and event. A revoked row stays as history; whether its reviewer may approve the version again is the service's rule (`services/approvals.closes_review`). The leading `(event_id, version_no)` serves the per-version read.
+`uq_event_approvals_analyst`: unique partial index on `(event_id, version_no, reviewer_id) WHERE organization_id IS NULL`. One approval per analyst and version. Only the live version takes a new approval, so this also allows one current approval per analyst and event. After a site admin deletes the row, the analyst can approve that version again. The leading `(event_id, version_no)` serves the per-version read.
 
-`uq_event_approvals_organization`: unique partial index on `(event_id, version_no, organization_id) WHERE organization_id IS NOT NULL AND revoked_at IS NULL`. One standing approval per organization and version; after a revocation by one of its members, any member can approve the version again. An analyst's own approval and the approval they place for an organization are separate rows.
+`uq_event_approvals_organization`: unique partial index on `(event_id, version_no, organization_id) WHERE organization_id IS NOT NULL`. One approval per organization and version; after a site admin deletes the row, any member can approve the version again. An analyst's own approval and the approval they place for an organization are separate rows.
 
 **Indexes:**
 - `ix_event_approvals_reviewer_id` on `(reviewer_id)`. Backs the delete and the SET NULL when a reviewer's account is erased.
-- `ix_event_approvals_revoked_by_id`: partial index on `(revoked_by_id) WHERE revoked_by_id IS NOT NULL`. Backs the SET NULL when a revoker's account is erased.
 - `ix_event_approvals_organization_created_at`: partial index on `(organization_id, created_at) WHERE organization_id IS NOT NULL`. Serves the organization page's approvals, newest first, and backs the cascade when an organization is deleted.
 
 ---
@@ -912,13 +819,13 @@ A geolocator's request that an analyst or an organization approve an event, writ
 
 ### `event_versions`
 
-One superseded version of a published event. Correcting a `geolocated` row must not silently rewrite the record, so the pre-edit state is filed here before the edit lands and `events.version_no` moves on. A version number is a public address, so a filed row is never removed and never renumbered while its event lives: nothing reuses a number, nothing reorders the history, and `/events/{id}/vN` means the same thing forever. Redaction is the one write a filed row takes (below), and the cascade with its event is the one delete.
+One superseded version of an event. Publishing a request or a detection, or correcting a `geolocated` row, must not silently rewrite the record, so the pre-edit state is filed here before the edit lands and `events.version_no` moves on. A version number is a public address, so a filed row is never removed and never renumbered while its event lives: nothing reuses a number, nothing reorders the history, and `/events/{id}/vN` means the same thing forever. Redaction is the one write a filed row takes (below), and the cascade with its event is the one delete.
 
-Read it as "the snapshots, then the live row": an event at `version_no` 3 carries rows 1 and 2 here, and the live row is version 3. Publication writes nothing here, so version 1 is the published row itself.
+Read it as "the snapshots, then the live row": an event at `version_no` 3 carries rows 1 and 2 here, and the live row is version 3. An event published from a request or a detection also carries row 0: the request or the detection as the requester or the import left it. An event created published (`POST /events`) has no row 0, and neither has one published before the publish filed version 0; `services/versions.version_zero` reads which case applies.
 
-One write files a version, through `services/versions.file_version`: the owner's edit ([`POST /events/{id}/versions`](api.md#post-eventsidversions)), which is also where an [archived copy](#source_archives) of one of the row's links is recorded, since that is a change to what the published record says about its own evidence. The number is taken under the event's row lock.
+Two writes file a version, through `services/versions.file_version`: [`POST /events/{id}/versions`](api.md#post-eventsidversions), the publish of version 0 and the owner's later edits, which is also where an [archived copy](#source_links) of one of the row's links is recorded, since that is a change to what the published record says about its own evidence; and the batch publish, [`POST /events/batch-complete`](api.md#post-eventsbatch-complete), which files each detection as version 0. The number is taken under the event's row lock.
 
-An event carries at most 100 versions (`services/versions.MAX_VERSIONS_PER_EVENT`); a save whose only change is archived copies is exempt. [`api.md`](api.md#post-eventsidversions) states the refusal. A version has to differ from the row it supersedes, so a save that moves no versioned field and no archived copy files nothing.
+An event carries at most 100 versions (`services/versions.MAX_VERSIONS_PER_EVENT`); a save whose only change is a link's archived copy is exempt. [`api.md`](api.md#post-eventsidversions) states the refusal. A version has to differ from the row it supersedes, so a save that moves no versioned field and no archived copy files nothing.
 
 Redaction is that one write, and it is still not a delete: an admin blanks `snapshot` and `note` in place and stamps `redacted_at` / `redacted_by_id`, so the row, its number and its byline stay. See [`POST /admin/events/{id}/versions/{version_no}/redact`](api.md#post-admineventsidversionsversion_noredact).
 
@@ -927,12 +834,12 @@ Redaction is that one write, and it is still not a delete: an admin blanks `snap
 | `id` | `UUID` | PK, default `uuid4()` |
 | `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, NOT NULL |
 | `version_no` | `INTEGER` | NOT NULL. The version this row **holds**, not the one that replaced it. |
-| `edited_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The analyst whose edit superseded this version. NULL once that account is erased: an event legitimately outlives an editor who is not its owner. |
+| `edited_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The analyst whose edit superseded this version; on version 0, the analyst who published it. NULL once that account is erased: an event legitimately outlives an editor who is not its owner. |
 | `note` | `TEXT` | nullable. The editor's own words about the edit. Bounded to 280 characters by the schema, not the column, which stays unbounded `TEXT`. |
-| `snapshot` | `JSONB` | NOT NULL. The editable fields as they stood: `title`, `source_url`, `source_media`, `event_coords`, `capture_source_coords`, `event_date`, `event_time`, `source_posted_at`, `is_graphic`, `secondary_source_urls`, `tags`, `conflicts`, `proof` (the HTML string, as `events.proof` stores it), `proof_media`, and `archives`. `source_media` and `proof_media` carry each [media](#media) whole (`id`, `role`, `storage_url`, `media_type`, `sha256`, `original_filename`); `proof_media` holds the images this version's own proof body referenced, not every `proof` row the event holds. `archives` carries the version's [archived copies](#source_archives) (`original_url`, `origin`, `snapshot_url`, `provider`, `created_at`), sorted by `original_url` so a stored list never reshuffles between versions. Tags and conflicts carry their names alongside their ids, so a version stays readable after a referential row is renamed. `{}` on a redacted version. |
+| `snapshot` | `JSONB` | NOT NULL. The editable fields as they stood (`services/versions.build_snapshot`): `title`, `coords`, `occurred_date`, `occurred_time`, `sources`, `tags`, `conflicts`, `proof` (the HTML string, as `events.proof` stores it), and `proof_media`. `sources` lists each [source](#sources) in the event's source order (`services/versions.source_entry`): `title`, `level`, `kind`, `captured_at`, `capture_position`, `is_graphic`, `links` (each `url`, `posted_at`, `snapshot_url`, `archived_at`), `tags`, and `media`, its file or `null`. A source entry carries no id: a source is filed by its content, not its row. `media` and each `proof_media` entry carry the [media](#media) row whole (`id`, `storage_url`, `kind`, `sha256`, `original_filename`); `proof_media` holds the images this version's own proof body referenced, not every proof image the event holds. Tags and conflicts carry their names alongside their ids, so a version stays readable after a referential row is renamed. `{}` on a redacted version. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL. When the edit that superseded this version happened. |
 | `redacted_at` | `TIMESTAMPTZ` | nullable. When an admin blanked this version's content. NULL on every ordinary row. |
-| `redacted_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. Which admin redacted it. NULL once that account is erased; the readable trail is the `admin_events` row the same write files. |
+| `redacted_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. Which admin redacted it. NULL once that account is erased; the readable trail is the `audit_log` row the same write files. |
 
 **Unique constraint:** `uq_event_versions_event_no` on `(event_id, version_no)`. The writer takes the number off the locked event row, so a duplicate is a bug Postgres rejects rather than a second history entry for one version.
 
@@ -940,25 +847,83 @@ There is no secondary index: the only read is "this event's history, by version"
 
 **Media rows are not versioned; the files they name outlive them.** A `media` row a readable snapshot's `proof_media` points at is never hard-deleted, so a past version stays renderable after the current proof body drops the image. The shared intake checks this before it deletes a proof row; see `services/versions.referenced_media_urls`.
 
-The `source` media cannot take that route: [`uq_media_source_per_event`](#media) allows one per event, so a correction that swaps the anchor deletes the row it replaces. The snapshot carries that media whole instead, and its S3 object is left in place, which is what keeps `/vN` renderable; `services/versions.referenced_source_media` is what resolves those objects for the sweeps that would otherwise orphan or delete them. A redacted version displays nothing, so it holds nothing alive: redacting the last version that showed a proof image deletes that image, row and object, and the last one that named a superseded source frees its file.
+A source's file cannot take that route: a correction that drops a source, or replaces its file, deletes the `media` row with it. The snapshot carries the source whole instead, its file included, and the stored object stays while a readable snapshot names it, which is what keeps `/vN` renderable. The [reference-counted sweep](#media) reads the snapshots for that reason, and `services/versions.referenced_source_media` resolves those objects for the hard deletes. A redacted version displays nothing, so it holds nothing alive: redacting the last version that showed a proof image deletes that image, row and object, and the last one that named a dropped source's file frees it, unless a `media` row still names it.
 
 ---
 
-### `event_source_links`
+### `sources`
 
-An event's ordered secondary source links: mirrors of the same footage on another network, or another post from the same point of view. The primary source stays the scalar `events.source_url`, which a `requested` row protects from its fulfiller; these rows are optional extras with no such protection. See [`api.md`](api.md#post-events).
+One piece of evidence an event rests on: at most one file, the URLs that file was posted at, and what is known about its capture. An event holds up to 10 sources (`MAX_SOURCES_PER_EVENT` in [`models/source.py`](../backend/app/models/source.py)), and none is the main one. A source belongs to one event. [`api.md`](api.md#sources) states the write contract.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
-| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE |
-| `position` | `INTEGER` | list index, `0`-based |
-| `url` | `TEXT` | NOT NULL |
+| `id` | `UUID` | PK, default `uuid4()` |
+| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, NOT NULL, indexed |
+| `title` | `VARCHAR(255)` | NOT NULL, server_default `''`. An optional label; `''` is no title. Searched by `GET /search` through `ix_sources_search_fts`. |
+| `level` | `VARCHAR(10)` | NOT NULL, CHECK in `('direct', 'indirect', 'context')` (constraint `ck_sources_level_valid`). The evidence level: how close the source stands to the act. See the table below. |
+| `kind` | `VARCHAR(20)` | NOT NULL, CHECK in `('smartphone', 'camera', 'static_camera', 'drone', 'aircraft', 'satellite', 'dashcam', 'body_cam', 'article', 'official_statement', 'other', 'unknown')` (constraint `ck_sources_kind_valid`). Where the source comes from, on every source, a file-less one included: what captured it (`camera` is a handheld or press camera, `static_camera` a CCTV or a webcam, `aircraft` a plane or a helicopter, historical aerial photos included) or the kind of document it is. A `satellite` or `aircraft` source is checked against the [imagery providers](imagery.md). Whether its file is a photo or a video is the file's own [`media.kind`](#media). A machine source is `unknown` until a review names it, and `unknown` keeps the choice satisfiable for a source of uncertain provenance. |
+| `captured_at` | `TIMESTAMPTZ` | nullable. When the media was captured (UTC). Distinct from the event's `occurred_date` and from a link's `posted_at`. |
+| `capture_position` | `GEOMETRY(Point, 4326)` | nullable. Where a capture was shot from; a document has none. Not indexed, because no spatial read consumes it. |
+| `is_graphic` | `BOOLEAN` | NOT NULL, default `false`. `TRUE` when the media shows death, injury or human remains. An event is graphic when any of its sources is (`Event.is_graphic`). |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
+| `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()`, moved on every update |
 
-Composite PK: `(event_id, position)`. `position` sits in the key, so the stored order is the read order, and Postgres rejects a duplicate slot.
+| Level | What the source shows | Supports a publication |
+|---|---|---|
+| `direct` | The act while it happens | yes |
+| `indirect` | The direct consequences of the act, after the fact | yes |
+| `context` | Anything else: an image from before, a portrait that identifies a victim, an article or a statement without media | no |
 
-There is no secondary index: every read is "this event's links, in order", served by the PK's leading `event_id`. `MAX_SECONDARY_SOURCE_LINKS = 10` (`backend/app/models/event.py`) caps how many rows an event carries. The write forms normalize and enforce this cap before insert: they strip whitespace, drop blanks, drop duplicates, and drop the entry equal to `source_url`, preserving order.
+The `kind` and `level` value domains have one home, the `SourceKind` and `SourceLevel` aliases in [`models/source.py`](../backend/app/models/source.py). The column CHECKs, the schemas, the `source_kind` and `level` filters and the generated frontend types derive from them; the frontend owns the display labels.
 
-The system writes this list wholesale, not row by row. A create sets the full ordered list once, and every later write replaces the whole list with whatever the form submits: the requester's own edit of an open request, and the geolocate, including for requested events. Unlike `source_url`, there is no requester protection here. Hard-deleting the event cascades to the rows.
+**Indexes:**
+- `ix_sources_event_id` on `(event_id)`. Serves "this event's sources" and the cascade.
+- `ix_sources_search_fts`: GIN index on `to_tsvector('simple', coalesce(title, ''))`. Backs the source-title leg of event search ([`GET /search`](api.md#get-search)), on the same `simple` configuration as `ix_events_search_fts`.
+
+**The order is derived, not stored.** An event's sources read by level (`direct`, then `indirect`, then `context`), then by `captured_at` with unknown last, then by `created_at` and `id` (`models/source.source_order`). There is no position column, so no write reorders a list by hand.
+
+**A write posts the whole list.** Every event write posts the event's full source list, and the stored sources follow it (`services/events/sources.apply_sources`): an entry naming a stored source's `id` updates that source in place, an entry without one creates a source, and a stored source the list leaves out is deleted, its links, tags and `media` row with it. The source's file outlives its row while another `media` row or a readable version names it (see [`media`](#media)). A request's sources are not locked: the analyst who publishes a request rewrites them like any other field.
+
+**The graphic flag only rises from the forms.** A posted `false` leaves a stored source's `is_graphic` set. Only an admin clears it, through [`PATCH /admin/events/{id}/moderation`](api.md#patch-admineventsidmoderation), which sets or clears the flag on every source of the event; resolving a report as `marked_graphic` sets it on every source.
+
+**A file shared within an event.** A source may name the file of another source of the same event: the write adds a `media` row on the same stored object, and the source takes that source's graphic flag. The stored object stays until no `media` row names it.
+
+**Versioned with the event.** A source is part of what an event says, so an edit to a source on a `geolocated` event files a version like any other edit, and the snapshot keeps each source whole ([`event_versions`](#event_versions)).
+
+---
+
+### `source_links`
+
+One URL a source's media was posted at: the same media is often posted in several places. A source carries 1 to 10 links (`MAX_LINKS_PER_SOURCE`); an analyst's write refuses a source with none, and a machine source may carry none until it is published.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `UUID` | PK, default `uuid4()` |
+| `source_id` | `UUID` | FK → `sources.id` ON DELETE CASCADE, NOT NULL |
+| `url` | `TEXT` | NOT NULL. The API caps input at 2000 characters (`SOURCE_URL_MAX_LENGTH`). |
+| `posted_at` | `TIMESTAMPTZ` | nullable. When the media was posted at this URL (UTC). NULL unless known. |
+| `snapshot_url` | `TEXT` | nullable. The archived copy an analyst recorded for this URL, checked for provider and path shape before it is stored (see [`archival.md`](archival.md)). |
+| `archived_at` | `TIMESTAMPTZ` | nullable. When that copy was recorded. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
+
+**Constraints:**
+- `uq_source_links_source_url` on `(source_id, url)`. One row per URL on a source. Its leading `source_id` also serves "this source's links", so the table has no other index.
+- `ck_source_links_archive_stamp`: `(snapshot_url IS NULL) = (archived_at IS NULL)`. A copy and its stamp travel together.
+
+A source's links read by `posted_at` with unknown last, then `created_at` and `id`. A write replaces a source's links whole: it strips each URL, drops blanks and repeats, and checks each pasted snapshot. A re-posted snapshot that names the stored copy (`services/source_archive.same_snapshot`) keeps its `archived_at`; any other paste is stamped at the write. The archive provider (`wayback`, `archive_today` or `ghostarchive`) is not a column: the read derives it from the snapshot URL's host (`services/source_archive.provider_of`).
+
+---
+
+### `source_tags`
+
+Many-to-many junction table between `sources` and `tags`, same shape as [`event_tags`](#event_tags). Events and sources share one tag catalogue.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `source_id` | `UUID` | FK → `sources.id` ON DELETE CASCADE |
+| `tag_id` | `UUID` | FK → `tags.id` ON DELETE CASCADE |
+
+Composite PK: `(source_id, tag_id)`. `ix_source_tags_tag_id` on `(tag_id)` backs the tag deletion cascade and the list of tags in use ([`GET /tags`](api.md#get-tags)).
 
 ---
 
@@ -972,14 +937,14 @@ One row names one target, through `event_id` or `collection_id`. Two real foreig
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `event_id` | `UUID` | FK → `events.id` ON DELETE SET NULL, nullable. NULL once the reported event is hard-deleted: the report is the record that a complaint was filed and how it was answered, so it outlives the event. NULL too on a report filed against a collection. An orphaned report accepts only the `dismissed` verdict; every other verdict mutates a row that is gone, and answers 409 `report_target_gone`. |
-| `collection_id` | `UUID` | FK → `collections.id` ON DELETE SET NULL, nullable. The other target, on the same terms as `event_id` above and NULL for a report filed against an event. It empties when the collection goes, which a collection only does with its owner's account (`collections.owner_id` cascades), and the report survives that erasure the way it survives an event's. |
-| `reason` | `VARCHAR(30)` | NOT NULL, CHECK in `('illegal_content', 'graphic_not_flagged', 'copyright', 'privacy', 'other')`. `illegal_content` is the legal escalation (material whose hosting is itself unlawful); `graphic_not_flagged` says the footage shows death, injury or human remains without the author's `events.is_graphic` declaration; `copyright` and `privacy` are third-party rights claims; `other` keeps the form answerable when none of the four fits, with `details` carrying the story. |
+| `collection_id` | `UUID` | FK → `collections.id` ON DELETE SET NULL, nullable. The other target, on the same terms as `event_id` above and NULL for a report filed against an event. It empties when the collection is erased, and the report survives that erasure the way it survives an event's. An open report holds back the owner's delete: the collection is only marked [`collections.deleted_at`](#collections) until its last open report is resolved. An account erasure (`collections.owner_id` cascades) does not wait. |
+| `reason` | `VARCHAR(30)` | NOT NULL, CHECK in `('illegal_content', 'graphic_not_flagged', 'copyright', 'privacy', 'other')`. `illegal_content` is the legal escalation (material whose hosting is itself unlawful); `graphic_not_flagged` says the footage shows death, injury or human remains without its source's `is_graphic` flag; `copyright` and `privacy` are third-party rights claims; `other` keeps the form answerable when none of the four fits, with `details` carrying the story. |
 | `details` | `TEXT` | nullable. The reporter's own words. Bounded to 2000 characters by the schema, not the column, which stays unbounded `TEXT`. |
-| `reporter_user_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. NULL for an anonymous report, and again once the reporter's account is erased (the report outlives the account, including a GDPR erasure). |
+| `reporter_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. NULL for an anonymous report, and again once the reporter's account is erased (the report outlives the account, including a GDPR erasure). |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL. The application stamps it on insert; the column carries no server default, so a raw `INSERT` must supply it. |
 | `resolved_at` | `TIMESTAMPTZ` | nullable. Non-NULL exactly when `resolution` is (`ck_content_reports_resolution_stamp`), so `resolved_at IS NULL` is the single-column test for an open report. |
-| `resolution` | `VARCHAR(30)` | nullable, CHECK in `('marked_graphic', 'hidden', 'dismissed')` when set. `marked_graphic` sets `events.is_graphic`, `hidden` withholds the target from every public read via `events.hidden_at` or `collections.hidden_at`, `dismissed` closes the report and leaves the target untouched. `marked_graphic` is an event verdict only: the flag is a column on the event, so a collection report answering it is a 409 `report_verdict_not_applicable` rather than a verdict that changed nothing. There is no re-resolve: a report already carrying a verdict answers a second resolve attempt with 409. |
-| `resolved_by` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The admin who resolved it, NULL until then and again after a GDPR erasure of that admin's account. |
+| `resolution` | `VARCHAR(30)` | nullable, CHECK in `('marked_graphic', 'hidden', 'dismissed')` when set. `marked_graphic` sets `is_graphic` on every source of the event, `hidden` withholds the target from every public read via `events.hidden_at` or `collections.hidden_at`, `dismissed` closes the report and leaves the target untouched. Any verdict on the last open report of a collection its owner deleted then erases that collection. `marked_graphic` is an event verdict only: the flag lives on an event's sources, so a collection report answering it is a 409 `report_verdict_not_applicable` rather than a verdict that changed nothing. There is no re-resolve: a report already carrying a verdict answers a second resolve attempt with 409. |
+| `resolved_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The admin who resolved it, NULL until then and again after a GDPR erasure of that admin's account. |
 
 **Check constraints:**
 - `ck_content_reports_reason_valid`: pins the `reason` domain at the database, mirroring the `ContentReportReason` alias so a bad write is rejected by Postgres, not only by the app-layer `Literal`.
@@ -1023,12 +988,12 @@ One thing that happened to an analyst, listed at [`GET /notifications`](api.md#n
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The recipient. |
-| `kind` | `VARCHAR(40)` | NOT NULL, CHECK in `('request_fulfilled', 'new_follower', 'x_handle_request_approved', 'x_handle_request_declined', 'co_geolocator_invite', 'co_geolocator_removed', 'ownership_transferred', 'organization_invite', 'organization_invite_accepted', 'organization_manager_inherited', 're_approve_requested', 'approval_received', 'approval_revoked', 'approval_request_received', 'approval_request_declined', 'organization_approval_removed')` (constraint `ck_notifications_kind_valid`). The kind registry `NOTIFICATION_KINDS` in [`models/notification.py`](../backend/app/models/notification.py) lists the same values with their per-channel defaults. |
-| `actor_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, nullable. Who acted: the fulfiller, the follower, the owner who invited or removed you or saved a new version, the reviewer who approved, the reviewer whose approval was revoked, the geolocator who requested an approval, the analyst who declined one, the inviting org manager, or the analyst who accepted an organization invite. NULL on the X handle request outcomes, which name no admin, on `ownership_transferred` and `organization_manager_inherited`, which must not name the erased analyst, and on `organization_approval_removed`, which a site admin's deletion sets off. |
+| `kind` | `VARCHAR(40)` | NOT NULL, CHECK in `('request_fulfilled', 'new_follower', 'co_geolocator_invite', 'co_geolocator_removed', 'ownership_transferred', 'organization_invite', 'organization_invite_accepted', 'organization_manager_inherited', 're_approve_requested', 'approval_received', 'approval_request_received', 'approval_request_declined', 'organization_approval_removed')` (constraint `ck_notifications_kind_valid`). The kind registry `NOTIFICATION_KINDS` in [`models/notification.py`](../backend/app/models/notification.py) lists the same values with their email defaults. |
+| `actor_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, nullable. Who acted: the fulfiller, the follower, the owner who invited or removed you or saved a new version, the reviewer who approved, the geolocator who requested an approval, the analyst who declined one, the inviting org manager, or the analyst who accepted an organization invite. NULL on `ownership_transferred` and `organization_manager_inherited`, which must not name the erased analyst, and on `organization_approval_removed`, which a site admin's deletion of the organization sets off. |
 | `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, nullable. The event the row concerns; NULL for a kind that names none. |
 | `organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, nullable. The organization an `organization_*` row concerns. |
 | `organization_name` | `VARCHAR(100)` | nullable. The name of the deleted organization on an `organization_approval_removed` row, which outlives the organization it names; NULL on every other kind. |
-| `approval_id` | `UUID` | FK → `event_approvals.id` ON DELETE CASCADE, nullable. The approval an `approval_received` row reports; the list and the count hide the row once that approval is revoked. NULL on every other kind. |
+| `approval_id` | `UUID` | FK → `event_approvals.id` ON DELETE CASCADE, nullable. The approval an `approval_received` row reports; the row goes when the approval is deleted. NULL on every other kind. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()`. Orders the list. |
 | `read_at` | `TIMESTAMPTZ` | nullable. Set by `POST /notifications/read` on the rows the notifications page showed; NULL is unread. Read state is per row because `created_at` is stamped at flush: an action that flushes its row and commits after a slow upload would land behind a single read marker already moved past it. |
 
@@ -1037,9 +1002,9 @@ Indexes:
 - `ix_notifications_user_created_at` on `(user_id, created_at, id)`. Backs the list's keyset walk.
 - `ix_notifications_user_unread`: partial index on `(user_id) WHERE read_at IS NULL`. Backs the unread count.
 - `ix_notifications_actor_id` on `(actor_id)`, `ix_notifications_event_id` on `(event_id)` and `ix_notifications_organization_id` on `(organization_id)`. Back the cascades when an actor, an event or an organization is hard-deleted.
-- `ix_notifications_approval_id`: partial index on `(approval_id) WHERE approval_id IS NOT NULL`. Backs the revoked-approval filter and the cascade when an approval is deleted.
+- `ix_notifications_approval_id`: partial index on `(approval_id) WHERE approval_id IS NOT NULL`. Backs the cascade when an approval is deleted.
 
-Every foreign key cascades, so a hard-deleted recipient, actor, event, organization or approval takes its rows with it. A soft delete or a takedown keeps the row and hides it at read time: the list and the count skip a row whose event has `deleted_at` or `hidden_at` set, whose actor has `deleted_at` set, or whose approval has `revoked_at` set. Undoing the takedown shows the row again.
+Every foreign key cascades, so a hard-deleted recipient, actor, event, organization or approval takes its rows with it. A soft delete or a takedown keeps the row and hides it at read time: the list and the count skip a row whose event has `deleted_at` or `hidden_at` set, or whose actor has `deleted_at` set. Undoing the takedown shows the row again.
 
 `new_follower` is written once per follower: an unfollow and re-follow finds the earlier row and writes none.
 
@@ -1047,119 +1012,30 @@ Every foreign key cascades, so a hard-deleted recipient, actor, event, organizat
 
 ### `notification_deliveries`
 
-The delivery queue for notifications: one row per notification and channel, drained by the always-on worker ([`engineering.md`](engineering.md#email)). The transaction that writes the notification writes this row too, when the recipient's switch for the kind and channel is on and the recipient can receive on the channel: an address that carries `email_verified_at` for `email`, at least one [`push_subscriptions`](#push_subscriptions) row for `push`.
+The delivery queue for notifications: at most one row per notification, drained by the always-on worker ([`engineering.md`](engineering.md#email)). The transaction that writes the notification writes this row too, when the recipient's email switch for the kind is on. The in-app feed shows every notification whatever the switch says.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
-| `notification_id` | `UUID` | FK → `notifications.id` ON DELETE SET NULL, nullable. Deleting a notification deletes its `queued` and `skipped` rows first; the rows that may have reached the provider stay with NULL here, so the daily email cap keeps counting them. |
-| `channel` | `VARCHAR(20)` | NOT NULL, CHECK in `('email', 'push')` (constraint `ck_notification_deliveries_channel_valid`). UNIQUE with `notification_id` (constraint `uq_notification_deliveries_channel`). |
-| `status` | `VARCHAR(10)` | NOT NULL, default `queued`, CHECK in `('queued', 'sending', 'sent', 'failed', 'skipped')` (constraint `ck_notification_deliveries_status_valid`). See the lifecycle below. |
-| `attempts` | `INTEGER` | NOT NULL, default `0`. Provider refusals so far. The third sets `failed`. |
+| `notification_id` | `UUID` | FK → `notifications.id` ON DELETE SET NULL, nullable. Deleting a notification deletes its `queued` and `skipped` rows first; the rows that may have reached the provider stay with NULL here, so the daily email cap keeps counting them. UNIQUE (constraint `uq_notification_deliveries_notification_id`), so a notification has at most one delivery. |
+| `status` | `VARCHAR(10)` | NOT NULL, default `queued`, CHECK in `('queued', 'running', 'done', 'failed', 'skipped')` (constraint `ck_notification_deliveries_status_valid`). See the lifecycle below. |
+| `attempt_count` | `INTEGER` | NOT NULL, default `0`. Provider refusals so far. The third sets `failed`. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()`. The claim order, oldest first. A row still `queued` 48 hours after it becomes `skipped`. |
-| `claimed_at` | `TIMESTAMPTZ` | nullable. The latest claim. A row `sending` for an hour past it becomes `failed`. A refused row waits 5 minutes past it before the next claim. |
-| `sent_at` | `TIMESTAMPTZ` | nullable. When the provider accepted the message. For `push`, when at least one device's push service accepted it. The email daily caps count `sent` email rows by this column. |
+| `claimed_at` | `TIMESTAMPTZ` | nullable. The latest claim. A row `running` for an hour past it becomes `failed`. A refused row waits 5 minutes past it before the next claim. |
+| `sent_at` | `TIMESTAMPTZ` | nullable. When the provider accepted the message. The daily email caps count `done` rows by this column. |
 
 Indexes:
 
 - `ix_notification_deliveries_queued` on `(created_at)` where `status = 'queued'`. Backs the claim.
-- `ix_notification_deliveries_sent_at` on `(sent_at)` where `status = 'sent'`. Backs the daily cap counts.
+- `ix_notification_deliveries_sent_at` on `(sent_at)` where `status = 'done'`. Backs the daily cap counts.
 
 | Status | Meaning |
 |--------|---------|
 | `queued` | Waiting for the worker, or for the next try after a refusal |
-| `sending` | Claimed and committed before the provider call. Never retried: the provider may have accepted it. |
-| `sent` | The provider accepted it |
-| `failed` | Refused three times, or stale in `sending` |
-| `skipped` | Dropped unsent: the switch is off, the address is gone or unverified, no push device is left or a development server has no VAPID keys, the recipient is soft-deleted or inactive, the filter would hide the notification, or the row aged out in the queue |
-
----
-
-### `push_subscriptions`
-
-One browser or installed app an analyst registered for Web Push, through [`POST /users/me/push-subscriptions`](api.md#post-usersmepush-subscriptions). The worker sends each `push` delivery to every row of the recipient ([`engineering.md`](engineering.md#web-push)).
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `id` | `UUID` | PK, default `uuid4()` |
-| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. Indexed (`ix_push_subscriptions_user_id`). |
-| `endpoint` | `TEXT` | NOT NULL, UNIQUE (constraint `uq_push_subscriptions_endpoint`). The push service URL. It is a bearer URL: no log line, error report or API response carries it. A browser that registers again under another account moves the row to that account. |
-| `p256dh` | `VARCHAR(128)` | NOT NULL. The browser's base64url P-256 public key, which the payload is encrypted for. |
-| `auth` | `VARCHAR(64)` | NOT NULL. The browser's base64url 16-byte authentication secret. |
-| `user_agent` | `VARCHAR(512)` | nullable. The `User-Agent` of the registering request. |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
-| `last_success_at` | `TIMESTAMPTZ` | nullable. The last push the push service accepted. |
-| `refusals` | `INTEGER` | NOT NULL, default `0`. Rejections (a 400 or 403 answer) since the last accepted push or registration. |
-
-The worker deletes a row when its push service answers 404 or 410, the answer for a subscription that is gone for good, and at its third rejection in a row (`MAX_REFUSALS` in [`services/push.py`](../backend/app/services/push.py)). An analyst holds at most 10 rows (`MAX_DEVICES_PER_USER`): registering one more deletes the oldest by `created_at`.
-
----
-
-### `revoked_push_endpoints`
-
-A push device its analyst revoked, kept by the SHA-256 of its endpoint so the browser cannot register it again by itself. A registration with `resync` refuses a recorded endpoint; an explicit registration, which enabling push sends, deletes the row ([`services/push.py`](../backend/app/services/push.py)).
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE |
-| `endpoint_sha256` | `VARCHAR(64)` | The hex SHA-256 of the endpoint. The endpoint itself is a bearer URL and is not kept. |
-| `revoked_at` | `TIMESTAMPTZ` | NOT NULL |
-
-Composite PK: `(user_id, endpoint_sha256)`.
-
----
-
-### `product_update_consents`
-
-The consent record for product update emails ([`engineering.md`](engineering.md#product-update-emails)). Each grant is one row. A withdrawal stamps `withdrawn_at`, and a later grant adds a new row, so no change overwrites an earlier grant or withdrawal.
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `id` | `UUID` | PK, default `uuid4()` |
-| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL |
-| `source` | `VARCHAR(10)` | NOT NULL, CHECK in `('sign_up', 'settings')` (constraint `ck_product_update_consents_source_valid`). Where the grant was given. |
-| `granted_at` | `TIMESTAMPTZ` | NOT NULL. For a sign-up grant, the time of the registration request, not of the confirmation. |
-| `withdrawn_at` | `TIMESTAMPTZ` | nullable. Set by the Settings switch or the unsubscribe link. NULL while the grant is current. |
-
-Indexes:
-
-- `uq_product_update_consents_current` UNIQUE on `(user_id)` where `withdrawn_at IS NULL`. At most one current grant per analyst; a grant while one is current writes nothing.
-
----
-
-### `product_updates`
-
-One major release announcement, written when the admin sends it.
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `id` | `UUID` | PK, default `uuid4()` |
-| `label` | `VARCHAR(20)` | UNIQUE, NOT NULL. The release, `MAJOR.MINOR.0`. The UNIQUE constraint sends each label once. |
-| `title` | `VARCHAR(120)` | NOT NULL. The heading; the subject reads `Vidit <label>: <title>`. |
-| `body` | `TEXT` | NOT NULL. Plain text: a blank line starts a paragraph, and a paragraph of lines that start with `- ` is a list. |
-| `link_url` | `TEXT` | nullable. An http or https URL, the email's one action. |
-| `sent_by` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The admin who sent it. |
-| `recipient_count` | `INTEGER` | NOT NULL. The delivery rows the send queued. |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()`. When it was sent. |
-
----
-
-### `product_update_deliveries`
-
-The email queue for product updates: one row per announcement and recipient, written by the send for every analyst with a current consent, a verified address and a live active account. The worker drains it under its own daily cap ([`engineering.md`](engineering.md#product-update-emails)).
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `id` | `UUID` | PK, default `uuid4()` |
-| `product_update_id` | `UUID` | FK → `product_updates.id` ON DELETE CASCADE, NOT NULL. UNIQUE with `user_id` (constraint `uq_product_update_deliveries_user`). |
-| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The recipient. |
-| `status`, `attempts`, `created_at`, `claimed_at`, `sent_at` | | As in [`notification_deliveries`](#notification_deliveries), except that a `queued` row never ages out: a large audience takes several days. The status CHECK is `ck_product_update_deliveries_status_valid`. `skipped` means the recipient withdrew consent, lost the verified address, or left since the send. |
-
-Indexes:
-
-- `ix_product_update_deliveries_user_id` on `(user_id)`. Backs the cascade of a hard-deleted recipient.
-- `ix_product_update_deliveries_queued` on `(created_at)` where `status = 'queued'`. Backs the claim.
-- `ix_product_update_deliveries_sent_at` on `(sent_at)` where `status = 'sent'`. Backs the daily cap count.
+| `running` | Claimed and committed before the provider call. Never retried: the provider may have accepted it. |
+| `done` | The provider accepted it |
+| `failed` | Refused three times, or stale in `running` |
+| `skipped` | Dropped unsent: the switch is off, the address is gone, the recipient is soft-deleted or inactive, the filter would hide the notification, or the row aged out in the queue |
 
 ---
 
@@ -1176,7 +1052,7 @@ A collective with its own public profile at `/organizations/{slug}`. Only a site
 | `bio` | `TEXT` | nullable. Same rules as `users.bio`. |
 | `avatar_url` | `TEXT` | nullable. Server-minted under `avatars/{organization_id}/`, like `users.avatar_url`. |
 | `external_links` | `JSONB` | NOT NULL, default `'{}'::jsonb`. Same keys and rules as `users.external_links`. |
-| `approval_request_audience` | `VARCHAR(20)` | NOT NULL, default `'following'`, CHECK in `('following', 'everyone', 'nobody')` (constraint `ck_organizations_approval_request_audience`). Who may send the organization an [approval request](#approval_requests), set by its org managers: `following` admits an analyst whom any live org manager follows. Same values as `user_preferences.approval_request_audience`. |
+| `approval_request_audience` | `VARCHAR(20)` | NOT NULL, default `'following'`, CHECK in `('following', 'everyone', 'nobody')` (constraint `ck_organizations_approval_request_audience_valid`). Who may send the organization an [approval request](#approval_requests), set by its org managers: `following` admits an analyst whom any live org manager follows. Same values as `user_preferences.approval_request_audience`. |
 | `created_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The site admin who created it. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL |
 
@@ -1186,34 +1062,21 @@ A collective with its own public profile at `/organizations/{slug}`. Only a site
 
 ### `organization_members`
 
-One analyst's membership in one organization. An analyst can belong to several organizations.
+One analyst's standing in one organization, one row per pair: a pending invitation, or a membership with its role. An analyst can belong to several organizations. An org manager's invitation inserts an `invited` row with the `member` role, and accepting turns it `active`. Declining, a withdrawal and leaving delete the row, so a row is `invited` only while the invitee has not answered.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
-| `organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, NOT NULL |
-| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL |
-| `role` | `VARCHAR(20)` | NOT NULL, CHECK in `('manager', 'member')` (constraint `ck_organization_members_role_valid`). `manager` is an org manager, who holds the membership powers. Every member acts in the organization's name on approvals and approval requests. |
-| `joined_at` | `TIMESTAMPTZ` | NOT NULL |
+| `organization_id` | `UUID` | PK, FK → `organizations.id` ON DELETE CASCADE, NOT NULL |
+| `user_id` | `UUID` | PK, FK → `users.id` ON DELETE CASCADE, NOT NULL |
+| `invited_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The org manager who invited. NULL for an org manager a site admin appointed, and once the inviter's account is erased. |
+| `state` | `VARCHAR(20)` | NOT NULL, `ck_organization_members_state_valid`: `'invited'` or `'active'`. |
+| `role` | `VARCHAR(20)` | NOT NULL, CHECK in `('manager', 'member')` (constraint `ck_organization_members_role_valid`). `manager` is an org manager, who holds the membership powers. Every member acts in the organization's name on approvals and approval requests. An `invited` row holds `member`. |
+| `invited_at` | `TIMESTAMPTZ` | nullable. When the invitation was sent. NOT NULL while `invited`. |
+| `joined_at` | `TIMESTAMPTZ` | nullable. When the analyst joined. NOT NULL while `active`. |
 
-Composite PK: `(organization_id, user_id)`, so an analyst holds one role per organization. `ix_organization_members_user_id` on `(user_id)` backs the list of an analyst's organizations.
+Composite PK: `(organization_id, user_id)`, so an analyst holds one row, and one role, per organization. `ck_organization_members_state_stamp` requires `invited_at` while `invited` and `joined_at` while `active`. `ix_organization_members_user_id` on `(user_id)` backs the list of an analyst's organizations and the invitee's lookups. Only `active` rows count as members: the member list, the member count, the org manager rule below and the approval powers read `state = 'active'`.
 
 Every organization keeps at least one live org manager. The service enforces it rather than a constraint: a demotion, a removal or a leave locks the `organizations` row, then refuses to take away the last org manager whose account is not soft-deleted. An admin soft delete or erasure of that last org manager promotes the earliest-joined live member instead (`services/organizations.hand_over_manager_roles`), in the transaction that also hands the erased analyst's events to their co-geolocators; with no live member left, the organization keeps no org manager.
-
----
-
-### `organization_invites`
-
-A pending invitation. Accepting turns the row into an `organization_members` row with the `member` role, and declining or withdrawing deletes it, so a row exists only while the invitee has not answered.
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `id` | `UUID` | PK, default `uuid4()` |
-| `organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, NOT NULL |
-| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The invitee. |
-| `invited_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The org manager who invited. |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL |
-
-`uq_organization_invites_pair` on `(organization_id, user_id)` keeps one pending invite per analyst and organization. `ix_organization_invites_user_id` on `(user_id)` backs the invitee's lookups.
 
 ---
 
@@ -1224,31 +1087,12 @@ One analyst's stored preferences, read and written through [`/users/me/preferenc
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `user_id` | `UUID` | PK, FK → `users.id` ON DELETE CASCADE |
-| `notification_overrides` | `JSONB` | NOT NULL, default `'{}'::jsonb`. `{kind: {channel: bool}}`, holding only the values that differ from the kind's default in `NOTIFICATION_KINDS`. A write equal to the default removes the key, so a changed default reaches every analyst who never moved that switch. |
+| `notification_overrides` | `JSONB` | NOT NULL, default `'{}'::jsonb`. `{kind: bool}`, whether the kind is emailed, holding only the values that differ from the kind's default in `NOTIFICATION_KINDS`. A write equal to the default removes the key, so a changed default reaches every analyst who never moved that switch. |
 | `display` | `JSONB` | NOT NULL, default `'{}'::jsonb`. `palette`, `theme` and `help_tooltips`, each present once written. A missing key reads as the default in `schemas/preferences.DISPLAY_DEFAULTS`. |
-| `approval_request_audience` | `VARCHAR(20)` | NOT NULL, default `'following'`, CHECK in `('following', 'everyone', 'nobody')` (constraint `ck_user_preferences_approval_request_audience`). Who may send the analyst an [approval request](#approval_requests). `ApprovalRequestAudience` in [`models/user_preferences.py`](../backend/app/models/user_preferences.py) lists the same values. |
+| `approval_request_audience` | `VARCHAR(20)` | NOT NULL, default `'following'`, CHECK in `('following', 'everyone', 'nobody')` (constraint `ck_user_preferences_approval_request_audience_valid`). Who may send the analyst an [approval request](#approval_requests). `ApprovalRequestAudience` in [`models/user_preferences.py`](../backend/app/models/user_preferences.py) lists the same values. |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, stamped on every write |
 
 A stored value the API no longer accepts, such as a retired kind or palette, reads as its default.
-
----
-
-### `x_handle_requests`
-
-An analyst's request that an admin bind a new X handle to their account, filed through [`PUT /users/me/x-handle-request`](api.md#put-usersmex-handle-request). An analyst holds at most one row.
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `id` | `UUID` | PK, default `uuid4()`. A new request replaces the row under a new `id`, so an admin decision names the request the admin read. |
-| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, UNIQUE, NOT NULL. The requester. |
-| `x_handle` | `VARCHAR(50)` | NOT NULL. The handle asked for, normalized like `users.x_handle`. |
-| `reason` | `TEXT` | nullable. The requester's note to the admin. The API caps it at 500 characters. |
-| `status` | `VARCHAR(20)` | NOT NULL, CHECK in `('pending', 'declined')` (constraint `ck_x_handle_requests_status_valid`). |
-| `decline_reason` | `TEXT` | nullable. The admin's reason, shown to the requester in Settings. |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
-| `decided_at` | `TIMESTAMPTZ` | nullable. When an admin declined the request. |
-
-`ck_x_handle_requests_decision_stamp` holds `decline_reason` and `decided_at` set exactly when `status` is `declined`. An approval writes `users.x_handle` through `admin.set_user_x_handle` and deletes the row in the same transaction, so no row records an approval; the `x_handle_linked` audit row does.
 
 ---
 
@@ -1264,6 +1108,7 @@ A named, curated set of events one analyst is credited on, as owner or as a co-g
 | `description` | `TEXT` | NOT NULL. What the collection holds, written by the owner on the create and on every edit as sanitized HTML, the same sanitizer [`events.proof`](#events) takes, minus images. |
 | `description_text` | `TEXT` | NOT NULL. The plain-text projection of `description`, written beside it on every write from `services/sanitize.html_text`. Stored rather than derived per read because the collections search index is a GIN over it: a `to_tsvector` over the HTML would index tag names and entities instead of the words the owner wrote. It is also what a surface with no room for rich text prints, and what the API caps at 500 characters, the figure [`users.bio`](#users) takes for the same class of body; there is no database constraint, so changing the cap does not require a migration. The API floor is 1 character after whitespace is stripped. |
 | `hidden_at` | `TIMESTAMPTZ` | nullable. Takedown: NULL = visible, timestamp = withheld from every read but an admin's, the owner's included. The same reversible axis [`events.hidden_at`](#events) carries. Set by `DELETE /admin/collections/{id}`, by `PATCH /admin/collections/{id}/moderation` with `hidden: true`, or by resolving a [content report](#content_reports) filed against the collection as `hidden`. Cleared only by `PATCH /admin/collections/{id}/moderation` with `hidden: false`. |
+| `deleted_at` | `TIMESTAMPTZ` | nullable. Pending erasure: the owner deleted the collection while an open [content report](#content_reports) named it. Withheld from every read but an admin's, the owner's included, and never cleared. Resolving the last open report erases the row. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, SQLAlchemy `onupdate` stamp |
 
@@ -1275,9 +1120,11 @@ A named, curated set of events one analyst is credited on, as owner or as a co-g
 
 **What a collection shows is one predicate, not a column.** `services/event_filters.collectable_events` is a visible event (`deleted_at IS NULL AND hidden_at IS NULL`) in one of the two worked statuses, `geolocated` or `detected`. The item list, the item count, the date range, the card mosaic and the eligibility check the add verb runs all read it, so an event that later closes or is taken down leaves all five at once with no write to `collection_events`. A `requested` row is an ask rather than an answer; a `closed` row is one the owner rejected or retracted, and a curated shelf must not go on presenting it as work that stands.
 
-**Counts and the date range are computed per read.** `event_count` is the number of showable items, `first_date` and `last_date` the smallest and largest `event_date` among them. Nothing is stored, so no write path can leave a stale figure behind.
+**Counts and the date range are computed per read.** `event_count` is the number of showable items, `first_date` and `last_date` the smallest and largest `occurred_date` among them. Nothing is stored, so no write path can leave a stale figure behind.
 
 **The card mosaic is computed, not stored.** A collection carries no cover column and no cover object. The `cover` field of the read is up to four tiles taken off the items themselves: walk the showable items in chronological order, skip one flagged `is_graphic`, take each remaining item's card media (`services/thumbnails.pick_thumbnail`, preferring an image over a clip on an item carrying both), and stop at four. A graphic item is skipped rather than ending the walk, so a card never shows death or injury to a reader who did not open the item. The list is empty when no item qualifies. See [`api.md`](api.md#get-collectionsid).
+
+**An open report holds back the owner's delete.** `services/collections.delete_collection` erases the row, its memberships with it, unless an open [content report](#content_reports) names the collection. Then it only stamps `deleted_at`, so the moderators keep the evidence and the owner cannot erase reported content to repeat it. `services/reports.resolve_report` erases the row once the last open report on it is resolved, whatever the verdict. Both lock the collection row before they count the open reports, so a delete and a verdict that race never leave a deleted collection with no open report. The owner's write verbs answer 404 on a collection pending erasure, an admin's included.
 
 **The credit invariant lives in the service.** An event joins only the collections of an analyst it credits (`services/event_filters.credited_to`), which spans three tables and so is no CHECK: `services/collections.ensure_collectable` enforces it, and an attempt to shelve an event that does not credit you is a 403. Removing a co-geolocator deletes that analyst's memberships of the event in the same transaction. See [`api.md`](api.md#collections).
 
@@ -1304,45 +1151,120 @@ Both foreign keys cascade, so neither a hard-deleted event nor a hard-deleted co
 
 ### `media`
 
-Every uploaded file for an event, source footage and proof-body images alike, split by `role`. Each row has one `event_id` owner. A request is a `requested` event, so all evidence lives on one table, and fulfilling a request never moves media.
+One stored file: a source's file, or an inline image of an event's proof body. A row hangs off exactly one parent: a [source](#sources) through `source_id`, or an event through `event_id` for a proof image.
+
+```mermaid
+flowchart LR
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`a write`"]:::spec
+    l2["`a row that names the object`"]:::shared
+    l3["`the check that decides a delete`"]:::core
+    l4[("`a store`")]:::store
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
+  end
+
+  stage["`**POST /uploads**
+  one source file per request; expires after 24 hours`"]:::spec
+  upload["`**uploads** row
+  a file no event holds yet`"]:::shared
+  write["`**an event write**
+  a source names upload_id or media_id`"]:::spec
+  source_row["`**media** row, source_id set
+  one per source`"]:::shared
+  copy_row["`**media** row on another source of the event
+  same storage_url, new row`"]:::shared
+  proof_row["`**media** row, event_id set
+  a proof image`"]:::shared
+  snapshot["`**event_versions.snapshot**
+  a readable version that renders the file`"]:::shared
+  object[("`**the stored object**
+  plus its _hero and _thumb derivatives for a source image`")]:::store
+  sweep["`**sweep_unreferenced**
+  after the commit: delete only when no media row and no readable snapshot names it`"]:::core
+  reaper["`**reap_expired_uploads**
+  the import worker, hourly`"]:::spec
+
+  stage --> upload --> write --> source_row
+  write --> copy_row
+  source_row --> object
+  copy_row --> object
+  proof_row --> object
+  snapshot --> object
+  object --> sweep
+  upload -- "expired" --> reaper --> sweep
+```
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
-| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, NOT NULL. Always set. Files upload at publish, so there is no unattached staging row; see Upload timing below. |
-| `role` | `VARCHAR(10)` | NOT NULL, CHECK in `('source', 'proof')` (constraint `ck_media_role_valid`). `'source'` for the footage, at most one per event, enforced by a partial unique index, or `'proof'` for inline images referenced from the proof body, with no per-event limit. |
-| `storage_url` | `TEXT` | NOT NULL. An S3 or CloudFront URL. |
-| `media_type` | `VARCHAR(10)` | NOT NULL, `'image'` or `'video'`. The stored MIME type is not a column: an analyst's upload keeps the accepted type it arrived as, and a machine-imported photo is re-encoded to one format at ingest whichever entry read the post; see [`ingestion.md`](ingestion.md#the-contract). |
-| `sha256` | `VARCHAR(64)` | nullable. Hex-encoded SHA-256 of the uploaded bytes, captured at upload time. A stable content fingerprint that survives storage-class changes and copies, unlike the S3 ETag, which is an MD5 for non-multipart uploads and is not stable across copies. **The hash is computed on the bytes that land on S3, for images after the EXIF strip, so an auditor downloading the public URL can independently verify it.** |
+| `source_id` | `UUID` | FK → `sources.id` ON DELETE CASCADE, nullable. The source this file belongs to. UNIQUE (`uq_media_source_id`): one file per source. |
+| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, nullable, indexed. The event whose proof body displays this image. |
+| `storage_url` | `TEXT` | NOT NULL. An S3 or CloudFront URL. Several rows may hold the same value: see Reference counting below. |
+| `kind` | `VARCHAR(10)` | NOT NULL, CHECK in `('image', 'video')` (constraint `ck_media_kind_valid`). The stored MIME type is not a column: an analyst's upload keeps the accepted type it arrived as, and a machine-imported photo is re-encoded to one format at ingest whichever entry read the post; see [`ingestion.md`](ingestion.md#the-contract). |
+| `sha256` | `VARCHAR(64)` | NOT NULL. Hex-encoded SHA-256 of the uploaded bytes, captured at upload time. A stable content fingerprint that survives storage-class changes and copies, unlike the S3 ETag, which is an MD5 for non-multipart uploads and is not stable across copies. **The hash is computed on the bytes that land on S3, for images after the EXIF strip, so an auditor downloading the public URL can independently verify it.** |
 | `original_filename` | `TEXT` | nullable. The client-supplied filename, for example `IMG_1234.jpg`. Surfaced on the public read API so investigators can trace evidence back to a source post by filename. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
 `uploaded_ip` and `uploaded_user_agent` are **not stored**: Vidit stores no IP address or User-Agent, for privacy.
 
+**Check constraints:**
+- `ck_media_one_parent`: `num_nonnulls(source_id, event_id) = 1`. A row is a source's file or a proof image, never both and never neither.
+
 **Indexes:**
-- `ix_media_sha256` on `(sha256) WHERE sha256 IS NOT NULL`: a partial index for "find every row with this content hash" audit and dedup queries. Covers only the rows that carry a hash.
-- unique `uq_media_source_per_event` on `(event_id) WHERE role = 'source'`. Enforces the "at most one source media per event" cap.
+- `ix_media_sha256` on `(sha256)`: backs "find every row with this content hash" audit and dedup queries.
+- `ix_media_storage_url` on `(storage_url)`: backs the reference count below, "every row naming this object".
+- `uq_media_source_id` on `(source_id)`, and the index on `(event_id)`: serve each parent's read and its cascade.
 
-Each request and each `geolocated` event requires at least one `source` media row. The `geolocate` transition requires at least one `proof` image. A `requested` event carries the poster's evidence from the start.
+The model reads a row's role off the foreign key that is set (`Media.role`: `source` or `proof`). Only a source image has `_hero` and `_thumb` derivatives, so the API serves the role on every `MediaRead` and cover tile for clients to pick a derivative.
 
-**Upload timing.** Persistence happens only at publish. While the analyst writes, the proof editor holds local previews. Submit uploads every file, source and proof, through the same evidence intake, in one transaction. As a result, `event_id` is always set: there is no staging table, no `event_id IS NULL` orphan, and no proof-image reaper.
+**Two upload paths.** A source file uploads on its own request before the event write, through [`POST /uploads`](api.md#post-uploads), which stores the object and records an [`uploads`](#uploads) row; the event write names that row in a source's `upload_id` and turns it into the source's `media` row. Keeping every request to one file keeps a video within the request size limit. Proof images still travel inside the event write, as `proof_files` matched to the proof body's `placeholder://` srcs, and become rows with `event_id` set in the same transaction.
+
+**Reference counting.** Two sources of one event may share a stored object through two `media` rows, and a readable [version snapshot](#event_versions) may name an object no row holds any more. A write therefore never deletes an object outright: after the commit, `services/evidence_intake.sweep_unreferenced` deletes the objects that no `media` row and no readable version snapshot names. The event and user hard deletes, the detection purge, a redaction, the detection re-import and the upload reaper all go through the same check. A sweep deletes an image's `_hero` and `_thumb` keys with it whatever its role, so an erasure leaves no derivative behind.
+
+---
+
+### `uploads`
+
+A source file stored ahead of the event write that references it: the first layer of the two-layer upload. A row is a file no event holds yet. The event write that takes it creates the source's `media` row and deletes the `uploads` row ([`services/uploads.py`](../backend/app/services/uploads.py)).
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `UUID` | PK, default `uuid4()`. What a source names as `upload_id`. |
+| `uploader_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL, indexed. Only the uploader may reference the row. |
+| `storage_key` | `TEXT` | NOT NULL. The object's key, under `uploads/`. |
+| `kind` | `VARCHAR(10)` | NOT NULL, CHECK in `('image', 'video')` (constraint `ck_uploads_kind_valid`). |
+| `sha256` | `VARCHAR(64)` | NOT NULL. As on [`media`](#media), carried onto the `media` row. |
+| `original_filename` | `TEXT` | nullable. The sanitized client filename, carried onto the `media` row. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
+| `expires_at` | `TIMESTAMPTZ` | NOT NULL. 24 hours after `created_at` (`UPLOAD_TTL` in [`models/upload.py`](../backend/app/models/upload.py)). A write naming the row after this instant is refused with `upload_expired`. |
+
+**Indexes:**
+- `ix_uploads_uploader_id` on `(uploader_id)`. Serves the per-account count and the erasure.
+- `ix_uploads_expires_at` on `(expires_at)`. Backs the reaper.
+
+An account holds at most 20 unexpired rows (`MAX_PENDING_UPLOADS_PER_USER`); the 21st upload is refused with `too_many_uploads`. The import worker runs `reap_expired_uploads` once when it starts and then every hour, on the bot catch-up cadence, whether or not the bot is configured: it deletes the expired rows, then sweeps their objects through the reference count. The hard delete of a user sweeps the account's staged objects, and the foreign key cascade drops the rows.
 
 ---
 
 ### `tags`
 
+One catalogue of free tags, shared by events ([`event_tags`](#event_tags)) and their sources ([`source_tags`](#source_tags)). Analysts create them through [`POST /tags`](api.md#post-tags).
+
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
-| `name` | `VARCHAR(100)` | UNIQUE, NOT NULL |
-| `category` | `VARCHAR(20)` | NOT NULL, `'capture_source'` or `'free'` |
+| `name` | `VARCHAR(100)` | UNIQUE, NOT NULL. Matching is case-sensitive, like the constraint. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL |
 
-Tags with category `capture_source` describe the original "lens" that captured the media: `Smartphone`, `Satellite`, `Drone`, `Static camera`, `Dashcam`, `Body / helmet cam`, plus an `Unknown` escape value. The [baseline migration](engineering.md#migration-house-style) seeds them, since the category is required on the submit form and the options must exist on a fresh database.
-Tags with category `free` are user-created and free-form.
+Conflicts are not tags: they live in the dedicated [`conflicts`](#conflicts) table and link to events through [`event_conflicts`](#event_conflicts). Where a source comes from is not a tag either: it is the source's [`kind`](#sources).
 
-Conflicts are not a tag category. They live in the dedicated [`conflicts`](#conflicts) table and link to events through [`event_conflicts`](#event_conflicts).
-
-`capture_source` is **curated**, server-managed and not user-creatable, and **required**: a submission must carry at least one `capture_source` tag and at least one conflict; see [`api.md`](api.md) → `POST /events`. The API layer enforces this rule, not a database constraint. Both domains ship an escape value: `capture_source` has `"Unknown"`, and conflict has `"Other"`. `name` is globally UNIQUE across both categories, so a `capture_source` tag cannot share a name with a `free` tag.
+No tag is required on any write. The publish floor asks for a conflict, and every source names its kind; see [`api.md`](api.md#evidence-floor).
 
 ---
 
@@ -1361,7 +1283,7 @@ Composite PK: `(event_id, tag_id)`
 
 ### `conflicts`
 
-The conflict referential: one row per armed conflict, externally synced. Three writers feed it, discriminated by `source`: the daily Wikipedia ongoing-conflicts sync (`sync`), the one-shot Wikidata historical seed (`seed`), and operator rows (`manual`), which include the `Other` escape value. See [`conflicts.md`](conflicts.md) for the sync mechanics.
+The conflict referential: one row per armed conflict, externally synced. Three writers feed it, discriminated by `origin`: the daily Wikipedia ongoing-conflicts sync (`sync`), the one-shot Wikidata historical seed (`seed`), and operator rows (`manual`), which include the `Other` escape value. See [`conflicts.md`](conflicts.md) for the sync mechanics.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -1370,10 +1292,11 @@ The conflict referential: one row per armed conflict, externally synced. Three w
 | `wikidata_id` | `VARCHAR(20)` | UNIQUE, nullable. The Wikidata item id, for example `Q131569`. The natural key that the sync and seed writers upsert on. NULL on `manual` rows. |
 | `start_year` | `INTEGER` | nullable. The sync fills it only where it is NULL ([`conflicts.md`](conflicts.md)). |
 | `end_year` | `INTEGER` | nullable |
-| `ongoing` | `BOOLEAN` | NOT NULL, default `false`. Mirrors presence on the Wikipedia ongoing-conflicts page, with a 14-day grace period. No row is ever deleted. |
-| `tier` | `VARCHAR(10)` | nullable. `'major'`, `'minor'`, or `'conflict'`: the Wikipedia death-toll tier table the sync last saw the row in ([`conflicts.md`](conflicts.md) lists the bands). NULL for rows the sync has never seen. |
+| `is_ongoing` | `BOOLEAN` | NOT NULL, default `false`. Mirrors presence on the Wikipedia ongoing-conflicts page, with a 14-day grace period. No row is ever deleted. |
+| `tier` | `VARCHAR(10)` | nullable, CHECK in `('major', 'minor', 'conflict')` when set (constraint `ck_conflicts_tier_valid`): the Wikipedia death-toll tier table the sync last saw the row in ([`conflicts.md`](conflicts.md) lists the bands). NULL for rows the sync has never seen. |
 | `last_seen_at` | `TIMESTAMPTZ` | nullable. The last time the sync saw the row on the page. NULL for rows the sync has never seen: `manual` rows and never-listed `seed` rows. Those rows are immune to the grace-period deactivation. |
-| `source` | `VARCHAR(20)` | NOT NULL, `'sync'`, `'seed'`, or `'manual'` |
+| `origin` | `VARCHAR(20)` | NOT NULL, CHECK in `('sync', 'seed', 'manual')` (constraint `ck_conflicts_origin_valid`). |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL |
 
 The sync upserts by `wikidata_id`, so a rename updates `name` in place. Mechanics: [`conflicts.md`](conflicts.md).
 
@@ -1394,31 +1317,23 @@ Composite PK: `(event_id, conflict_id)`
 
 ### `bot_mentions`
 
-The bot's idempotency ledger: one row per processed @-mention of the bot, whatever the outcome, so a mention is processed, and billed, at most once. The webhook and the reconciliation poll share it. See [`ingestion.md`](ingestion.md#the-bot) for the pipeline.
+The bot's queue and ledger: one row per @-mention of the bot. The webhook endpoint ([`POST /webhooks/x`](api.md#post-webhooksx)), which must answer X fast and therefore only inserts, and the hourly catch-up both insert a `queued` row with `ON CONFLICT (mention_post_id) DO NOTHING`. The import worker claims the queued rows and runs them through the shared mention pipeline, then leaves the row as the ledger of what happened, so a mention is processed, and billed, at most once. See [`ingestion.md`](ingestion.md#the-bot) for the pipeline.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
-| `mention_tweet_id` | `VARCHAR(25)` | UNIQUE, NOT NULL. The tagged tweet's id: an X snowflake, stored as a numeric string. |
-| `author_handle` | `VARCHAR(50)` | NOT NULL. The tagging analyst's handle, normalized to lowercase with no leading `@`. Stored for forensics, not as a FK. Attribution resolves through the admin-linked `users.x_handle`. |
-| `outcome` | `VARCHAR(20)` | NOT NULL, `'created'`, `'updated'` (no row created, an open detection overwritten with the newer parse, which earns the success reply as a creation does), `'requested'` (no coordinate, so a `requested` row was opened over the thread's footage instead, which earns its own success reply; see [`ingestion.md`](ingestion.md#the-bot)), `'inherited'` (the author never typed the tag, X's reply prefix carried it over from the parent, so nothing was acquired and nothing answered), `'no_detection'`, `'no_account'` (no live account carries the tagged author's admin-linked `x_handle`, so nothing is created and no reply is sent), `'skipped'` (a match the pass moved nothing on), `'self'` (the bot's own post, ledgered so the cursor advances past it), or `'failed'`. A `failed` row retries only when an operator deletes it. |
-| `events_created` | `INTEGER` | NOT NULL, default 0. Detections only: a mention that opened a request counts 0 here and is told apart by its `outcome`. |
-| `reply_tweet_id` | `VARCHAR(25)` | nullable. The bot's in-thread reply: on success, an event reference plus warnings; on failure, the refusal the engine named, sent only to linked authors (see [`ingestion.md`](ingestion.md#the-bot)). NULL when no reply was earned, reply credentials are absent, or the post failed. The detection stays durable either way. |
-| `processed_at` | `TIMESTAMPTZ` | NOT NULL |
+| `mention_post_id` | `BIGINT` | UNIQUE, NOT NULL. The tagged post's id: an X snowflake. The idempotency key, and the catch-up derives its `since_id` cursor from the highest value. |
+| `author_x_handle` | `VARCHAR(50)` | NOT NULL. The tagging analyst's handle, normalized to lowercase with no leading `@`. Stored for forensics, not as a FK. Attribution resolves through the admin-linked `users.x_handle`. |
+| `payload` | `JSONB` | nullable. The internal `Mention` shape: `tweet_id`, `author_id`, `author_handle`, `text`, `in_reply_to_user_id`, `in_reply_to_status_id`. Carries everything the pipeline needs, so a drain never re-reads, and never re-bills, the paid API. The worker clears it once the row is `done`. |
+| `status` | `VARCHAR(10)` | NOT NULL, default `'queued'`, CHECK in `('queued', 'running', 'done', 'failed')` (constraint `ck_bot_mentions_status_valid`). The row moves `queued` → `running` → `done` \| `failed`. `running` marks a claimed row so a concurrent worker skips it. A row left `running` for more than an hour is claimed again, since its worker died. An exception outside the pipeline puts the row back to `queued`. `done` means the pipeline ran; the per-mention result, including `failed`, is the `outcome`. `failed` means the attempt budget is spent or the payload was malformed. |
+| `attempt_count` | `INTEGER` | NOT NULL, default 0. A claim counter. When it reaches the budget (3), the row lands `failed`, a poison-pill guard. |
+| `outcome` | `VARCHAR(20)` | nullable, CHECK in the values below (constraint `ck_bot_mentions_outcome_valid`). Set exactly when `status` is `done` (constraint `ck_bot_mentions_outcome_done`). Values: `'created'`, `'updated'` (no row created, an open detection overwritten with the newer parse, which earns the success reply as a creation does), `'requested'` (no coordinate, so a `requested` row was opened over the thread's footage instead, which earns its own success reply; see [`ingestion.md`](ingestion.md#the-bot)), `'inherited'` (the author never typed the tag, X's reply prefix carried it over from the parent, so nothing was acquired and nothing answered), `'no_detection'`, `'no_account'` (no live account carries the tagged author's admin-linked `x_handle`, so nothing is created and no reply is sent), `'skipped'` (a match the pass moved nothing on), `'self'` (the bot's own post, recorded so the cursor advances past it), or `'failed'`. A row with the outcome `failed` retries only when an operator deletes it. |
+| `created_event_count` | `INTEGER` | NOT NULL, default 0. Detections only: a mention that opened a request counts 0 here and is told apart by its `outcome`. |
+| `reply_post_id` | `BIGINT` | nullable. The bot's in-thread reply: on success, an event reference plus warnings; on failure, the refusal the engine named, sent only to linked authors (see [`ingestion.md`](ingestion.md#the-bot)). NULL when no reply was earned, reply credentials are absent, or the post failed. The detection stays durable either way. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL. When the mention was queued. |
+| `processed_at` | `TIMESTAMPTZ` | nullable. The worker's latest claim while `running`, and its finish once `done` or `failed`. |
 
----
-
-### `bot_webhook_events`
-
-The queue between the X Account Activity webhook endpoint ([`POST /webhooks/x`](api.md#post-webhooksx)), which must answer X fast and therefore only inserts, and the import worker, which drains the queue through the shared mention pipeline. Idempotency lives in [`bot_mentions`](#bot_mentions), not here: a redelivered or poll-raced mention processes once. See [`ingestion.md`](ingestion.md#the-bot).
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `id` | `UUID` | PK, default `uuid4()` |
-| `mention` | `JSONB` | NOT NULL. The internal `Mention` shape: `tweet_id`, `author_id`, `author_handle`, `text`, `in_reply_to_user_id`, `in_reply_to_status_id`. Carries everything the pipeline needs, so a drain never re-reads, and never re-bills, the paid API. |
-| `status` | `VARCHAR(10)` | NOT NULL. `'queued'` → `'processing'` → `'done'` \| `'failed'`. `processing` marks a claimed row so a concurrent worker skips it. An exception re-queues the row; a hard worker crash strands it, and the reconciliation poll re-delivers the mention. `done` means the pipeline ran; the per-mention outcome, including a ledgered `failed`, lives in `bot_mentions`. `failed` means the attempt budget is spent or the payload was malformed. A composite index on `(status, created_at)` matches the claim query. |
-| `attempts` | `INTEGER` | NOT NULL, default 0. A claim counter. When it reaches the budget, the row lands `failed`, a poison-pill guard. |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL |
+A partial index `ix_bot_mentions_claim` on `created_at`, for rows whose `status` is `queued` or `running`, matches the claim query.
 
 ---
 
@@ -1431,34 +1346,14 @@ The durable queue behind `POST /events/import-archive`. The endpoint stages the 
 | `id` | `UUID` | PK, default `uuid4()` |
 | `owner_id` | `UUID` | FK → `users.id`, ON DELETE CASCADE, NOT NULL, indexed. The uploader. Every resulting row lands `detected` under this owner. |
 | `zip_key` | `TEXT` | NOT NULL. The storage key of the staged upload (`archive-imports/<id>.zip`). The object is deleted when the job reaches a terminal state. |
-| `status` | `VARCHAR(10)` | NOT NULL, indexed. `'queued'` → `'running'` → `'done'` \| `'failed'`. A `running` row whose `started_at` is past the stale window is reclaimable, because the worker died mid-job. |
-| `attempts` | `INTEGER` | NOT NULL, default 0. A claim counter. When it reaches the budget, the job lands `failed` instead of looping, a poison-pill guard. |
-| `post_estimate` | `INTEGER` | nullable. A volume hint from zip metadata, stamped at enqueue: the declared `tweets.js` size divided by a per-record average. Display only. |
-| `progress_done` / `progress_total` | `INTEGER` | NOT NULL default 0, and nullable, respectively. The worker's live scan position, updated every few rows once the parse has the exact detection count. |
+| `status` | `VARCHAR(10)` | NOT NULL, indexed, CHECK in `('queued', 'running', 'done', 'failed')` (constraint `ck_archive_import_jobs_status_valid`). The row moves `queued` → `running` → `done` or `failed`. A `running` row whose `started_at` is past the stale window is reclaimable, because the worker died mid-job. |
+| `attempt_count` | `INTEGER` | NOT NULL, default 0. A claim counter. When it reaches the budget, the job lands `failed` instead of looping, a poison-pill guard. |
+| `estimated_post_count` | `INTEGER` | nullable. A volume hint from zip metadata, stamped at enqueue: the declared `tweets.js` size divided by a per-record average. Display only. |
+| `processed_detection_count` / `detection_count` | `INTEGER` | NOT NULL default 0, and nullable, respectively. The worker's live scan position, updated every few rows once the parse has the exact detection count. |
 | `created_count` / `updated_count` / `skipped_count` / `failed_count` | `INTEGER` | NOT NULL, default 0. The import counts, final once `done`, disjoint. |
 | `error` | `TEXT` | nullable. A terse, operator-facing failure reason. The owner gets the full story by email. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL |
 | `started_at` / `finished_at` | `TIMESTAMPTZ` | nullable |
-
----
-
-### `source_archives`
-
-One row per link an analyst has recorded an archived copy for: the event's `source_url`, its [`event_source_links`](#event_source_links) mirrors, its `detected_from_url`, or an `http(s)` href in the proof body's HTML. A row exists because a copy exists, so there is no queue state and no attempt counter. The capture happens in the analyst's own browser, and the write forms are where the snapshot URL comes back: `source_snapshot_url`, `secondary_snapshot_urls` and, on [`POST /events/{id}/versions`](api.md#post-eventsidversions), `detected_from_snapshot_url`. See [`archival.md`](archival.md) for the flow and the validation.
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `id` | `UUID` | PK, default `uuid4()` |
-| `event_id` | `UUID` | FK → `events.id`, ON DELETE CASCADE, NOT NULL, indexed |
-| `original_url` | `TEXT` | NOT NULL. The link exactly as stored on the event. It is never normalized, because it is half the row's identity and what the read surface matches against `events.source_url`. |
-| `origin` | `VARCHAR(20)` | NOT NULL, `ck_source_archives_origin_valid`: `'source_url'` (the event's declared footage source), `'secondary_source'` (a row of [`event_source_links`](#event_source_links)), `'detected_from'` (the event's `detected_from_url`, the post a machine detection came from), or `'proof_link'` (an href inside the proof body). A link reachable from several of these is stored once, under the first of them it appears in. |
-| `snapshot_url` | `TEXT` | NOT NULL. The archived copy, checked for provider and path shape before it is stored (see [`archival.md`](archival.md)). |
-| `provider` | `VARCHAR(20)` | NOT NULL, `ck_source_archives_provider_valid`: `'wayback'`, `'archive_today'` or `'ghostarchive'`. Inferred from the snapshot's host at write time, and what the read surface names the copy from. |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL |
-
-`UNIQUE (event_id, original_url)` is one copy per link. It is also the owner's correction path: pasting a second snapshot for a link overwrites the row rather than adding a competing one.
-
-The table holds the copies as they stand. On a `geolocated` event, the edit that writes one also files an [`event_versions`](#event_versions) row, whose `archives` fragment is what the copies were at that version, so the history reads them back after a correction overwrites the live row.
 
 ---
 
@@ -1470,14 +1365,17 @@ The rich editor reads and writes HTML, so the column stores the sanitized HTML i
 ### Why `event_tags` and not an array column on `events`?
 This is a many-to-many relationship: a geolocation can carry several tags, and a tag can appear on many geolocations. The `event_tags` junction table is the standard solution. It supports efficient filtering (`WHERE tag_id = X`) and indexing on both sides. The alternative, a `tag_ids[]` array on `events`, would make filters more complex and less performant at scale.
 
-### Why a single `tags` table with a category?
-Capture-source and free-form tags share the same mechanics: filtering and many-to-many association. A single table plus a `category` field avoids duplicating the logic. The distinction stays queryable: `WHERE category = 'capture_source'`.
+### Why is the source kind a column and not a tag?
+A kind is one closed value per source, required on every source, and filtered on as a domain of its own. A column with a CHECK holds all three, and the value domain generates into the frontend types. A tag holds none of them: tags are free, many per row, and shared by events and sources.
+
+### Why do several `media` rows share one stored object?
+A source that takes the file of another source of its event gets its own row, so each source keeps a file it can drop on its own. Sharing the object and not the bytes keeps one file for one piece of footage, which keeps its `sha256` and its storage cost single. The price is the reference count: an object is deleted only when no row and no readable version names it.
 
 ### Why `GEOMETRY` instead of two `lat` / `lng` columns?
 PostGIS enables native geospatial queries: bounding-box filtering, distance computation, and clustering. GeoAlchemy2 exposes those types directly to SQLAlchemy.
 
 ### Why an `event_geolocators` table and not an id array?
-The table is read from both sides: an event's geolocators, and a user's geolocations on the profile page. A junction table indexes both directions and carries a per-row `created_at`. An id array on `events` would force a GIN scan for the reverse query and store no timestamp.
+The table is read from both sides: an event's geolocators, and a user's geolocations on the profile page. A junction table indexes both directions and carries a per-row state and stamps. An id array on `events` would force a GIN scan for the reverse query and store no state or timestamp.
 
 ### Why full snapshots in `event_versions` and not a per-field change log?
 A version has to be readable on its own: `/events/{id}/v2` renders the whole event as it stood, which a change log answers only by replaying every entry from the beginning. A snapshot answers it with one row, and the fields it stores are exactly the fields an edit can write, so a snapshot plus the live row is a complete history. The cost is bounded: an edit that changes nothing files nothing, and an event stops at 100 versions. What changed between two versions is a diff of adjacent snapshots, computed at read time.

@@ -21,8 +21,6 @@ from app.database import Base, literal_check
 NotificationKind = Literal[
     "request_fulfilled",
     "new_follower",
-    "x_handle_request_approved",
-    "x_handle_request_declined",
     "co_geolocator_invite",
     "co_geolocator_removed",
     "ownership_transferred",
@@ -31,38 +29,29 @@ NotificationKind = Literal[
     "organization_manager_inherited",
     "re_approve_requested",
     "approval_received",
-    "approval_revoked",
     "approval_request_received",
     "approval_request_declined",
     "organization_approval_removed",
 ]
 
-# A delivery channel besides the in-app feed, which is always on.
-# ``ck_notification_deliveries_channel_valid`` pins it at the DB.
-# Mirrored by the frontend's lib/notifications NotificationChannel; change both.
-NotificationChannel = Literal["email", "push"]
-
-# The kind registry: every kind with its per-channel default. Analysts store
-# only overrides (``user_preferences.notification_overrides``), so changing a
-# default here moves everyone who never touched that switch. Push mirrors the
-# email default and reaches only an analyst with a registered device.
-NOTIFICATION_KINDS: dict[NotificationKind, dict[NotificationChannel, bool]] = {
-    "request_fulfilled": {"email": True, "push": True},
-    "new_follower": {"email": False, "push": False},
-    "x_handle_request_approved": {"email": True, "push": True},
-    "x_handle_request_declined": {"email": True, "push": True},
-    "co_geolocator_invite": {"email": True, "push": True},
-    "co_geolocator_removed": {"email": False, "push": False},
-    "ownership_transferred": {"email": True, "push": True},
-    "organization_invite": {"email": True, "push": True},
-    "organization_invite_accepted": {"email": False, "push": False},
-    "organization_manager_inherited": {"email": True, "push": True},
-    "re_approve_requested": {"email": False, "push": False},
-    "approval_received": {"email": False, "push": False},
-    "approval_revoked": {"email": False, "push": False},
-    "approval_request_received": {"email": True, "push": True},
-    "approval_request_declined": {"email": False, "push": False},
-    "organization_approval_removed": {"email": False, "push": False},
+# The kind registry: every kind with its email default. The in-app feed always
+# shows every kind. Analysts store only overrides
+# (``user_preferences.notification_overrides``), so changing a default here
+# moves everyone who never touched that switch.
+NOTIFICATION_KINDS: dict[NotificationKind, bool] = {
+    "request_fulfilled": True,
+    "new_follower": False,
+    "co_geolocator_invite": True,
+    "co_geolocator_removed": False,
+    "ownership_transferred": True,
+    "organization_invite": True,
+    "organization_invite_accepted": False,
+    "organization_manager_inherited": True,
+    "re_approve_requested": False,
+    "approval_received": False,
+    "approval_request_received": True,
+    "approval_request_declined": False,
+    "organization_approval_removed": False,
 }
 assert set(NOTIFICATION_KINDS) == set(get_args(NotificationKind))
 
@@ -96,8 +85,8 @@ class Notification(Base):
     # The name of an organization the row speaks of once it is gone: an
     # ``organization_approval_removed`` row outlives the organization it names.
     organization_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    # The approval an ``approval_received`` row reports: the feed hides the row once it is
-    # revoked.
+    # The approval an ``approval_received`` row reports: the row goes when the approval is
+    # deleted.
     approval_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("event_approvals.id", ondelete="CASCADE"), nullable=True
     )
@@ -139,46 +128,25 @@ class Notification(Base):
     )
 
 
-# ``queued``: waiting for the worker. ``sending``: claimed, the provider call
-# under way or its outcome unknown; never retried, it turns ``failed`` once
-# stale. ``sent``: the provider accepted it. ``failed``: refused past the
-# attempt budget, or stale in ``sending``. ``skipped``: dropped unsent (the
-# switch or consent went off, the address went away, the item was hidden, or
-# it aged out in the queue).
-NotificationDeliveryStatus = Literal["queued", "sending", "sent", "failed", "skipped"]
+# The background queue vocabulary. ``queued``: waiting for the worker.
+# ``running``: claimed, the provider call under way or its outcome unknown;
+# never retried, it turns ``failed`` once stale. ``done``: the provider accepted
+# it. ``failed``: refused past the attempt budget, or stale in ``running``.
+# ``skipped``: dropped unsent (the switch went off, the account went away, the
+# notification was hidden, or it aged out in the queue).
+NotificationDeliveryStatus = Literal["queued", "running", "done", "failed", "skipped"]
 
 
-# What a channel sender reports for one row. ``sent``: the provider took it.
+# What the sender reports for one row. ``sent``: the provider took it.
 # ``skipped``: nothing to send it to. ``refused``: a definite refusal, retried.
-# ``unknown``: it may have gone out, so the row stays ``sending`` and is never
+# ``unknown``: it may have gone out, so the row stays ``running`` and is never
 # retried.
 DeliveryOutcome = Literal["sent", "skipped", "refused", "unknown"]
 
 
-class DeliveryState:
-    """The send state of one row of a queue the worker drains
-    (``services/notification_delivery.deliver``)."""
-
-    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    status: Mapped[NotificationDeliveryStatus] = mapped_column(
-        String(10), nullable=False, default="queued"
-    )
-    # Provider refusals so far; the row fails at ``MAX_ATTEMPTS``.
-    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
-    # The latest claim: the stale clock while ``sending``, the retry clock once
-    # a refusal puts the row back in ``queued``.
-    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-
-class NotificationDelivery(DeliveryState, Base):
-    """One notification to deliver on one channel, written beside the
-    ``Notification`` row when the recipient's switch for that kind is on.
+class NotificationDelivery(Base):
+    """One notification to email, written beside the ``Notification`` row when
+    the recipient's email switch for that kind is on.
 
     The worker drains the queue (``services/notification_delivery``), so a send
     happens after the action commits and never inside it.
@@ -186,21 +154,34 @@ class NotificationDelivery(DeliveryState, Base):
 
     __tablename__ = "notification_deliveries"
 
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    status: Mapped[NotificationDeliveryStatus] = mapped_column(
+        String(10), nullable=False, default="queued"
+    )
+    # Provider refusals so far; the row fails at ``MAX_ATTEMPTS``.
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    # The latest claim: the stale clock while ``running``, the retry clock once
+    # a refusal puts the row back in ``queued``.
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # SET NULL: a deleted notification leaves its sent rows behind for the daily
     # email cap (``services/notifications.delete`` removes the unsent ones).
     notification_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("notifications.id", ondelete="SET NULL"), nullable=True
     )
-    channel: Mapped[NotificationChannel] = mapped_column(String(20), nullable=False)
 
     notification = relationship("Notification")
 
     __table_args__ = (
-        literal_check("channel", NotificationChannel, "ck_notification_deliveries_channel_valid"),
         literal_check(
             "status", NotificationDeliveryStatus, "ck_notification_deliveries_status_valid"
         ),
-        UniqueConstraint("notification_id", "channel", name="uq_notification_deliveries_channel"),
+        UniqueConstraint("notification_id", name="uq_notification_deliveries_notification_id"),
         # The claim walk, oldest first.
         Index(
             "ix_notification_deliveries_queued",
@@ -211,6 +192,6 @@ class NotificationDelivery(DeliveryState, Base):
         Index(
             "ix_notification_deliveries_sent_at",
             "sent_at",
-            postgresql_where="status = 'sent'",
+            postgresql_where="status = 'done'",
         ),
     )

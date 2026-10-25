@@ -19,10 +19,16 @@ import { InviteStatusPill } from "@/components/invites/InviteStatusPill";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CopyButton } from "@/components/ui/CopyButton";
+import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import { Input } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { FORM_ERROR_BANNER, FORM_LABEL, LIST_TILE } from "@/components/ui/form-styles";
+import {
+  FORM_ERROR_BANNER,
+  FORM_LABEL,
+  LIST_TILE,
+} from "@/components/ui/form-styles";
+import { blankFields, useIncompleteForm } from "@/hooks/useIncompleteForm";
 
 /** `copiedOnMint` holds while the mint's own copy of this link flashes. */
 function CopyLink({ code, copiedOnMint }: { code: SponsoredInviteCode; copiedOnMint: boolean }) {
@@ -79,6 +85,7 @@ export function InviteAnalystsCard() {
   // Shown at the top of the list until the refetch returns it, so its copy flash is visible.
   const [minted, setMinted] = useState<SponsoredInviteCode | null>(null);
   const mintCopy = useCopyToClipboard();
+  const incomplete = useIncompleteForm<"handle">();
 
   const mint = useMutation(() => mintInviteCode(handle.trim()), {
     fallback: "Could not mint the invite code. Try again.",
@@ -106,6 +113,15 @@ export function InviteAnalystsCard() {
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     revoke.reset();
+    const missing = blankFields([
+      { key: "handle", label: "Invitee's X handle", value: handle },
+    ]);
+    if (missing.length) {
+      mint.reset();
+      incomplete.flagIncomplete(missing);
+      return;
+    }
+    incomplete.clearIncomplete();
     void mint.run();
   };
 
@@ -124,14 +140,21 @@ export function InviteAnalystsCard() {
       )}
 
       {mintingEnabled && data && (
-        <form onSubmit={onSubmit} className="space-y-3">
+        <form onSubmit={onSubmit} noValidate className="space-y-3">
+          <IncompleteFormAnnouncer
+            attempt={incomplete.validationAttempt}
+            missing={incomplete.missingFields.map((m) => m.label)}
+          />
           <div>
-            <label htmlFor="invite-x-handle" className={FORM_LABEL}>
+            <label
+              htmlFor="invite-x-handle"
+              className={incomplete.labelClass("handle", FORM_LABEL)}
+            >
               Invitee&apos;s X handle
             </label>
             <Input
               id="invite-x-handle"
-              required
+              invalid={incomplete.invalidKeys.has("handle")}
               autoComplete="off"
               value={handle}
               onChange={(e) => setHandle(e.target.value)}

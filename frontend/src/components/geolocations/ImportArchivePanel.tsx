@@ -5,6 +5,8 @@ import Link from "next/link";
 import { ExternalLink, FileArchive, ShieldCheck, Upload } from "lucide-react";
 
 import { Button, buttonClasses } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { OutboundLink } from "@/components/ui/OutboundLink";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
@@ -219,7 +221,7 @@ export function ImportArchivePanel({ username }: { username: string }) {
   return (
     <div className="space-y-6">
       <section className="space-y-3">
-        <h2 className="text-sm font-medium text-neutral-200">How to export from X</h2>
+        <SectionHeading title="How to export from X" />
         <NumberedSteps steps={STEPS} variant="boxed" />
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
           <span className="inline-flex items-center gap-1.5 text-neutral-400">
@@ -254,8 +256,8 @@ export function ImportArchivePanel({ username }: { username: string }) {
                   {
                     key: file.name,
                     content: (
-                      <div className="w-60 max-w-full overflow-hidden rounded-md border border-neutral-700 bg-neutral-950">
-                        <div className="flex aspect-video items-center justify-center bg-neutral-900">
+                      <Card className="w-60 max-w-full space-y-0 overflow-hidden p-0">
+                        <div className="flex aspect-video items-center justify-center bg-neutral-950">
                           <FileArchive size={44} strokeWidth={1.3} className="text-orange-400" />
                         </div>
                         <div className="border-t border-neutral-800 px-3 py-2">
@@ -264,7 +266,7 @@ export function ImportArchivePanel({ username }: { username: string }) {
                             {formatBytes(file.size)} · ready to import
                           </p>
                         </div>
-                      </div>
+                      </Card>
                     ),
                     onRemove: () => {
                       setFile(null);
@@ -303,7 +305,7 @@ export function ImportArchivePanel({ username }: { username: string }) {
           {loading ? "Importing…" : "Import archive"}
         </Button>
         {(loading || error || phase === "done") && (
-          <div className="space-y-3 rounded-lg border border-neutral-800 bg-neutral-900 p-4">
+          <Card className="space-y-3">
             <ProgressSteps
               steps={[
                 {
@@ -325,10 +327,10 @@ export function ImportArchivePanel({ username }: { username: string }) {
                 {
                   label: IMPORT_STEP_LABELS[2],
                   spinner: true,
-                  ...(liveJob?.post_estimate != null
+                  ...(liveJob?.estimated_post_count != null
                     ? {
-                        detail: `~${liveJob.post_estimate.toLocaleString()} ${pluralNoun(
-                          liveJob.post_estimate,
+                        detail: `~${liveJob.estimated_post_count.toLocaleString()} ${pluralNoun(
+                          liveJob.estimated_post_count,
                           "post",
                         )} in your archive.`,
                       }
@@ -336,21 +338,21 @@ export function ImportArchivePanel({ username }: { username: string }) {
                 },
                 {
                   label: IMPORT_STEP_LABELS[3],
-                  // Two worker legs: the parse (`progress_total` still null),
+                  // Two worker legs: the parse (`detection_count` still null),
                   // then the per-detection persist. A zero total is complete.
-                  ...(liveJob && liveJob.progress_total !== null
+                  ...(liveJob && liveJob.detection_count !== null
                     ? {
                         progress:
-                          liveJob.progress_total > 0
-                            ? liveJob.progress_done / liveJob.progress_total
+                          liveJob.detection_count > 0
+                            ? liveJob.processed_detection_count / liveJob.detection_count
                             : 1,
                         detail:
-                          `${liveJob.progress_done.toLocaleString()} of ${liveJob.progress_total.toLocaleString()} ${pluralNoun(
-                            liveJob.progress_total,
+                          `${liveJob.processed_detection_count.toLocaleString()} of ${liveJob.detection_count.toLocaleString()} ${pluralNoun(
+                            liveJob.detection_count,
                             "geolocation",
                           )} extracted` +
-                          (liveJob.post_estimate !== null
-                            ? ` · from ~${liveJob.post_estimate.toLocaleString()} posts`
+                          (liveJob.estimated_post_count !== null
+                            ? ` · from ~${liveJob.estimated_post_count.toLocaleString()} posts`
                             : ""),
                       }
                     : { spinner: true, detail: "Reading your posts…" }),
@@ -425,7 +427,7 @@ export function ImportArchivePanel({ username }: { username: string }) {
                 </div>
               </div>
             )}
-          </div>
+          </Card>
         )}
       </form>
     </div>

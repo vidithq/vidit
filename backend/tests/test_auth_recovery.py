@@ -1,8 +1,7 @@
 """End-to-end tests for /auth/forgot-password and /auth/reset-password.
 
 The tests go through the endpoints, where wrong-token and replay safety must
-hold; the purpose match is the one case pinned at the service level, since the
-CHECK constraint allows a single stored value. The email service is patched
+hold. The email service is patched
 with a recorder to assert the right *Email* went to the right recipient.
 """
 
@@ -16,14 +15,13 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
-from app.models.auth_token import (
-    PURPOSE_PASSWORD_RESET,
-    AuthToken,
+from app.models.password_reset_token import (
+    PasswordResetToken,
 )
 from app.models.user import User
 from app.routers import auth as auth_router
 from app.services import auth as auth_service
-from app.services import auth_tokens, email
+from app.services import email, password_reset_tokens
 
 # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -77,7 +75,7 @@ def user_factory(db):
     yield _make
 
     for user in created:
-        # Cascade deletes auth_tokens via the FK; just nuke the user.
+        # Cascade deletes password_reset_tokens via the FK; just nuke the user.
         db.query(User).filter(User.id == user.id).delete()
     db.commit()
 
@@ -119,11 +117,10 @@ def test_forgot_password_known_email_mints_token_and_sends(
     assert "/reset-password?token=" in sent.text
 
     rows = (
-        db.query(AuthToken)
+        db.query(PasswordResetToken)
         .filter(
-            AuthToken.user_id == user.id,
-            AuthToken.purpose == PURPOSE_PASSWORD_RESET,
-            AuthToken.consumed_at.is_(None),
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.consumed_at.is_(None),
         )
         .all()
     )
@@ -138,20 +135,18 @@ def test_forgot_password_revokes_previously_outstanding_tokens(
     client.post("/api/v1/auth/forgot-password", json={"email": user.email})
 
     live = (
-        db.query(AuthToken)
+        db.query(PasswordResetToken)
         .filter(
-            AuthToken.user_id == user.id,
-            AuthToken.purpose == PURPOSE_PASSWORD_RESET,
-            AuthToken.consumed_at.is_(None),
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.consumed_at.is_(None),
         )
         .all()
     )
     consumed = (
-        db.query(AuthToken)
+        db.query(PasswordResetToken)
         .filter(
-            AuthToken.user_id == user.id,
-            AuthToken.purpose == PURPOSE_PASSWORD_RESET,
-            AuthToken.consumed_at.isnot(None),
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.consumed_at.isnot(None),
         )
         .all()
     )
@@ -277,14 +272,13 @@ def test_reset_password_rejects_unknown_token(client):
 
 def test_reset_password_rejects_expired_token(client, user_factory, db):
     user, _ = user_factory()
-    raw = auth_tokens.mint(
+    raw = password_reset_tokens.mint(
         db,
         user_id=user.id,
-        purpose=PURPOSE_PASSWORD_RESET,
         ttl_minutes=15,
     )
     db.commit()
-    db.query(AuthToken).filter(AuthToken.user_id == user.id).update(
+    db.query(PasswordResetToken).filter(PasswordResetToken.user_id == user.id).update(
         {"expires_at": datetime.now(UTC) - timedelta(minutes=1)}
     )
     db.commit()
@@ -294,25 +288,6 @@ def test_reset_password_rejects_expired_token(client, user_factory, db):
         json={"token": raw, "new_password": "newpassword2"},
     )
     assert response.status_code == 400
-
-
-def test_consume_rejects_a_token_minted_for_another_purpose(user_factory, db):
-    """``consume`` must match on ``purpose``, not on the token hash alone.
-
-    Asserted from the consume side: the CHECK constraint allows one stored purpose.
-    """
-    user, _ = user_factory()
-    raw = auth_tokens.mint(
-        db,
-        user_id=user.id,
-        purpose=PURPOSE_PASSWORD_RESET,
-        ttl_minutes=60,
-    )
-    db.commit()
-
-    assert auth_tokens.consume(db, raw, "email_verification") is None
-    # Still live: a mismatched purpose must not burn the token either.
-    assert auth_tokens.consume(db, raw, PURPOSE_PASSWORD_RESET) is not None
 
 
 # ── Race-safety regression ────────────────────────────────────────────────
@@ -331,17 +306,16 @@ def test_consume_atomic_under_parallel_use(user_factory):
     # Own session, so the fixture session holds no row lock.
     minting_session = SessionLocal()
     try:
-        raw = auth_tokens.mint(
+        raw = password_reset_tokens.mint(
             minting_session,
             user_id=user.id,
-            purpose=PURPOSE_PASSWORD_RESET,
             ttl_minutes=15,
         )
         minting_session.commit()
     finally:
         minting_session.close()
 
-    results: list[AuthToken | None] = []
+    results: list[PasswordResetToken | None] = []
     errors: list[BaseException] = []
     barrier = threading.Barrier(2)
 
@@ -349,7 +323,7 @@ def test_consume_atomic_under_parallel_use(user_factory):
         session = SessionLocal()
         try:
             barrier.wait(timeout=2)
-            row = auth_tokens.consume(session, raw, PURPOSE_PASSWORD_RESET)
+            row = password_reset_tokens.consume(session, raw)
             session.commit()
             results.append(row)
         except BaseException as exc:  # noqa: BLE001
@@ -370,16 +344,3 @@ def test_consume_atomic_under_parallel_use(user_factory):
         f"exactly one consume() must succeed; got {len(winners)} successes "
         f"out of {len(results)} attempts"
     )
-
-
-def test_credential_less_account_cannot_log_in(client, user_factory):
-    """A profile with no password never authenticates: 401, not a crash on the NULL hash."""
-    user, _ = user_factory(password=None)
-    assert user.password_hash is None
-
-    response = client.post(
-        "/api/v1/auth/login",
-        json={"email": user.email, "password": "anything-at-all"},
-    )
-
-    assert response.status_code == 401

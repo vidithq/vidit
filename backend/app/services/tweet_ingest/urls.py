@@ -5,6 +5,8 @@ Pure string work, no I/O:
 * :func:`normalise_tweet_url` (the one parse, at the router) and
   :func:`canonical_tweet_url` (the one build, at the engine's exit);
 * the host predicates the source rule and the chase ask;
+* :func:`x_status_posted_at`, an X post's time read off its status id;
+* :data:`CONTEXT_HOSTS`, the closed list of hosts that never carry the filmed act;
 * the media-host allowlist every remote fetch checks (:func:`is_trusted_media_url`).
 """
 
@@ -12,7 +14,11 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Literal
 from urllib.parse import urlparse
+
+from app.services.imagery import PROVIDERS
 
 from .errors import InvalidTweetUrl
 
@@ -51,6 +57,79 @@ def x_status_id(url: str) -> str | None:
         return None
     match = X_STATUS_URL_RE.search(url)
     return match.group(1) if match is not None else None
+
+
+# X's snowflake epoch, 2010-11-04T01:42:54.657Z: an id holds its post's millisecond above bit 22.
+X_SNOWFLAKE_EPOCH_MS = 1288834974657
+# Ids from before snowflakes are sequential, all below 3e10, and decode into the epoch's first
+# seconds. An instant inside the epoch's first day is therefore not a post time.
+_MIN_SNOWFLAKE_OFFSET_MS = 86_400_000
+
+
+def x_status_posted_at(url: str, *, now: datetime | None = None) -> datetime | None:
+    """When the X status ``url`` names was posted, read off its id, or ``None``.
+
+    Exact and fetch-free, cut to the second (the precision X serves a post's date at). ``None``
+    for a non-status URL, a pre-snowflake id, and an instant after ``now``, which no real post
+    carries.
+    """
+    status_id = x_status_id(url)
+    if status_id is None:
+        return None
+    offset_ms = int(status_id) >> 22
+    if offset_ms < _MIN_SNOWFLAKE_OFFSET_MS:
+        return None
+    posted_at = datetime.fromtimestamp((X_SNOWFLAKE_EPOCH_MS + offset_ms) // 1000, UTC)
+    if posted_at > (now or datetime.now(UTC)):
+        return None
+    return posted_at
+
+
+ContextKind = Literal["satellite", "aircraft", "article", "other"]
+
+
+@dataclass(frozen=True)
+class ContextHost:
+    """What a link on a context host becomes: a ``context`` source of this kind and title."""
+
+    kind: ContextKind
+    # The provider's name for an imagery tool, ``""`` otherwise.
+    title: str = ""
+
+
+# Hosts that never carry the filmed act, each with the path prefix it covers (``""`` for the
+# whole host). A host matches itself and its subdomains (:func:`_host_matches_base`). Closed on
+# purpose: a news site can host the only copy of the footage, so no open-ended rule demotes a
+# link to context. Every imagery provider (``services/imagery.PROVIDERS``) comes first, of its
+# first kind and titled with its name; ``docs/ingestion.md`` lists the rest.
+CONTEXT_HOSTS: tuple[tuple[str, str, ContextHost], ...] = (
+    *(
+        (base, prefix, ContextHost(provider.kinds[0], provider.name))
+        for provider in PROVIDERS
+        for base, prefix in provider.hosts
+    ),
+    ("mapcarta.com", "", ContextHost("other")),
+    ("geoview.info", "", ContextHost("other")),
+    ("oct7map.com", "", ContextHost("other")),
+    ("3rbmap.com", "", ContextHost("other")),
+    ("wikipedia.org", "", ContextHost("article")),
+    ("gofundme.com", "", ContextHost("other")),
+)
+
+
+def context_host(url: str) -> ContextHost | None:
+    """The :data:`CONTEXT_HOSTS` entry ``url`` falls under, or ``None``."""
+    host = hostname(url)
+    if not host:
+        return None
+    try:
+        path = urlparse(url).path.lower()
+    except ValueError:
+        return None
+    for base, prefix, entry in CONTEXT_HOSTS:
+        if _host_matches_base(host, base) and path.startswith(prefix):
+            return entry
+    return None
 
 
 def telegram_post_url(url: str) -> str | None:

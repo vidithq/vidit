@@ -4,6 +4,13 @@ import type { AuthorRef as Author } from "@/types";
 
 export type GeolocatorInvite = components["schemas"]["GeolocatorInviteRead"];
 
+/** Geolocators plus pending invitations on one event, the owner included. Mirrors
+ *  `geolocator_credit.MAX_EVENT_GEOLOCATORS`; change both. */
+export const MAX_EVENT_GEOLOCATORS = 10;
+
+/** What the invite picker prints once the credit line is full. */
+export const GEOLOCATOR_CAP_MESSAGE = `An event credits at most ${MAX_EVENT_GEOLOCATORS} geolocators, you and pending invitations included.`;
+
 /** The analysts an event credits, owner first, then every other geolocator by credit time. The
  *  owner of a published row is a geolocator too; a request or a detection has none, so its
  *  owner stands alone. */

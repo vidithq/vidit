@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  Ellipsis,
   FileArchive,
   MapPin,
   Trash2,
@@ -22,8 +23,6 @@ import {
   type AdminPurgeDetectedResponse,
   type InviteCode,
 } from "@/lib/admin";
-import { errorMessage } from "@/lib/api";
-import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { useCursorList } from "@/hooks/useCursorList";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
@@ -34,8 +33,10 @@ import {
   FORM_LABEL,
   LABEL_TEXT,
 } from "@/components/ui/form-styles";
-import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
+import { ActionMenu } from "@/components/ui/ActionMenu";
+import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Input } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
 import { InviteStatusPill } from "@/components/invites/InviteStatusPill";
@@ -63,45 +64,65 @@ function formatDay(value: string | null): string {
   return new Date(value).toLocaleDateString();
 }
 
+type InviteAction = "revoke" | "delete";
+
+const INVITE_ACTIONS: Record<
+  InviteAction,
+  { label: string; title: string; body: string; busy: string; fallback: string }
+> = {
+  revoke: {
+    label: "Revoke",
+    title: "Revoke this invite code?",
+    body: "The code stops working at once and cannot be turned back on. Its row stays in the table.",
+    busy: "Revoking…",
+    fallback: "Failed to revoke invite code",
+  },
+  delete: {
+    label: "Delete",
+    title: "Delete this invite code?",
+    body: "Drops the row for good. The code was never used, so no account depends on it.",
+    busy: "Deleting…",
+    fallback: "Failed to delete invite code",
+  },
+};
+
 function InviteCodeRow({
   invite,
   expanded,
   onToggle,
-  onRevoke,
-  onDelete,
+  onRevoked,
+  onDeleted,
 }: {
   invite: InviteCode;
   expanded: boolean;
   onToggle: () => void;
-  onRevoke: (id: string) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
+  onRevoked: () => void;
+  onDeleted: () => void;
 }) {
-  const [revoking, setRevoking] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [confirming, setConfirming] = useState<InviteAction | null>(null);
   const { copied, copy } = useCopyToClipboard();
 
-  // Revoking retires a live code: the button stands only where there is one to retire.
+  const action = useMutation(
+    async (kind: InviteAction) => {
+      await (kind === "revoke" ? revokeInviteCode(invite.id) : deleteInviteCode(invite.id));
+    },
+    {
+      fallback: confirming ? INVITE_ACTIONS[confirming].fallback : undefined,
+      onSuccess: (_result, kind) => {
+        setConfirming(null);
+        // Either write changes what the first page holds: the panel restarts the walk.
+        if (kind === "revoke") onRevoked();
+        else onDeleted();
+      },
+    },
+  );
+
+  // Revoking retires a live code: the item stands only where there is one to retire.
   const canRevoke = invite.status === "active";
   const redeemer = invite.redeemer;
   // Deletion drops the row, which the backend allows only while no account was created from the
-  // code. Same predicate here, so the button stands exactly where it works.
+  // code. Same predicate here, so the item stands exactly where it works.
   const canDelete = redeemer == null;
-
-  const {
-    armed: deleteArmed,
-    trigger: triggerDelete,
-    controlRef: deleteButtonRef,
-  } = useConfirmAction(
-    async () => {
-      setDeleting(true);
-      try {
-        await onDelete(invite.id);
-      } finally {
-        setDeleting(false);
-      }
-    },
-    { timeoutMs: ARM_MS, dismissOnOutside: true },
-  );
 
   const onCopy = () => void copy(invite.code);
 
@@ -183,42 +204,58 @@ function InviteCodeRow({
         {formatDay(redeemer?.last_seen_at ?? null)}
       </td>
       <td className="py-2 text-right whitespace-nowrap">
-        {redeemer && (
-          <Button variant="ghost" onClick={onToggle}>
-            {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-            Manage
-          </Button>
-        )}
-        {canRevoke && (
-          <Button
-            variant="danger"
-            disabled={revoking}
-            onClick={async () => {
-              setRevoking(true);
-              try {
-                await onRevoke(invite.id);
-              } finally {
-                setRevoking(false);
-              }
+        <div className="inline-flex items-center gap-1">
+          {redeemer && (
+            <Button variant="ghost" onClick={onToggle}>
+              {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              Manage
+            </Button>
+          )}
+          {(canRevoke || canDelete) && (
+            <ActionMenu
+              label={`More actions for ${invite.code.slice(0, 6)}`}
+              icon={<Ellipsis size={14} />}
+              items={[
+                ...(canRevoke
+                  ? [
+                      {
+                        key: "revoke",
+                        label: INVITE_ACTIONS.revoke.label,
+                        icon: <Ban size={14} aria-hidden />,
+                        onSelect: () => setConfirming("revoke"),
+                      },
+                    ]
+                  : []),
+                ...(canDelete
+                  ? [
+                      {
+                        key: "delete",
+                        label: INVITE_ACTIONS.delete.label,
+                        icon: <Trash2 size={14} aria-hidden />,
+                        onSelect: () => setConfirming("delete"),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+          )}
+        </div>
+        {confirming && (
+          <ConfirmDialog
+            title={INVITE_ACTIONS[confirming].title}
+            confirmLabel={INVITE_ACTIONS[confirming].label}
+            busyLabel={INVITE_ACTIONS[confirming].busy}
+            busy={action.loading}
+            error={action.error}
+            tone="danger"
+            onConfirm={() => void action.run(confirming)}
+            onCancel={() => {
+              setConfirming(null);
+              action.reset();
             }}
-            className="ml-1"
           >
-            <Ban size={12} />
-            Revoke
-          </Button>
-        )}
-        {canDelete && (
-          <Button
-            ref={deleteButtonRef}
-            variant="danger"
-            disabled={deleting}
-            onClick={triggerDelete}
-            className={`ml-1 ${deleteArmed ? DANGER_CONFIRM : ""}`}
-            title="Drop this row. The code was never used."
-          >
-            <Trash2 size={12} />
-            {deleteArmed ? "Confirm?" : "Delete"}
-          </Button>
+            <p>{INVITE_ACTIONS[confirming].body}</p>
+          </ConfirmDialog>
         )}
       </td>
     </tr>
@@ -244,8 +281,8 @@ export function OnboardingPanel() {
   const [expiresInDays, setExpiresInDays] = useState<number | "">(14);
   const [xHandle, setXHandle] = useState("");
 
-  // The mint action owns the one error slot; revoke and delete write to it via `setError` (the row
-  // owns their loading state). The loader's error shows in the same banner.
+  // The mint's error and the loader's share the banner; a row's revoke or delete shows its refusal
+  // in its dialog.
   const createMutation = useMutation(
     () =>
       createInviteCode({
@@ -260,33 +297,12 @@ export function OnboardingPanel() {
       },
     },
   );
-  const { error, setError } = createMutation;
+  const { error } = createMutation;
   const creating = createMutation.loading;
 
   const onCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     await createMutation.run();
-  };
-
-  const onRevoke = async (id: string) => {
-    try {
-      await revokeInviteCode(id);
-      // A mint or revoke changes what the first page holds: restart the walk rather than patch a page it may have left.
-      reload();
-    } catch (err) {
-      setError(errorMessage(err, "Failed to revoke invite code"));
-    }
-  };
-
-  const onDelete = async (id: string) => {
-    try {
-      await deleteInviteCode(id);
-      // The row is gone: restart the walk as after a mint or revoke.
-      setExpandedId((prev) => (prev === id ? null : prev));
-      reload();
-    } catch (err) {
-      setError(errorMessage(err, "Failed to delete invite code"));
-    }
   };
 
   const onPurged = (response: AdminPurgeDetectedResponse) => {
@@ -358,7 +374,9 @@ export function OnboardingPanel() {
         <div className={FORM_ERROR_BANNER}>{error ?? loadError}</div>
       )}
 
-      <div className="overflow-x-auto">
+      {/* `relative` holds the headers' absolute `sr-only` labels inside the scroll box, which
+          otherwise widen the page on a phone. */}
+      <div className="relative overflow-x-auto">
         <table className="w-full text-left">
           <thead>
             <tr className={LABEL_TEXT}>
@@ -404,8 +422,13 @@ export function OnboardingPanel() {
                     setLastPurge(null);
                     setExpandedId((prev) => (prev === c.id ? null : c.id));
                   }}
-                  onRevoke={onRevoke}
-                  onDelete={onDelete}
+                  // A mint, revoke or delete changes what the first page holds: restart the walk
+                  // rather than patch a page it may have left.
+                  onRevoked={reload}
+                  onDeleted={() => {
+                    setExpandedId((prev) => (prev === c.id ? null : prev));
+                    reload();
+                  }}
                 />
               ))
             )}
@@ -425,7 +448,7 @@ export function OnboardingPanel() {
             email: managed.email,
             is_admin: managed.is_admin,
             x_handle: managed.x_handle,
-            invite_minting_enabled: managed.invite_minting_enabled,
+            is_invite_minting_enabled: managed.is_invite_minting_enabled,
             sponsor: managedCode?.sponsor ?? null,
           }}
           detectedCount={managed.detected_count}

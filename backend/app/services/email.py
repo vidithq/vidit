@@ -18,7 +18,7 @@ during a Resend outage.
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Literal
@@ -276,7 +276,7 @@ def completion_digest_email(*, to: str, count: int, link: str) -> Email:
                 "waits on the two calls only you can make: which conflict it belongs to, and "
                 "what the footage was shot with.",
                 "Open the queue and choose Start reviewing to go through them one by one: "
-                "set the conflict and the capture source, then publish each.",
+                "set the conflict and the source kind, then publish each.",
             ],
             action=Action("Open your detections", link),
         ),
@@ -388,31 +388,3 @@ def one_click_unsubscribe(message: Email, url: str) -> Email:
             "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         },
     )
-
-
-def product_update_email(
-    *,
-    to: str,
-    label: str,
-    title: str,
-    blocks: Sequence[Block],
-    link_url: str | None,
-    unsubscribe_url: str,
-    one_click_url: str,
-) -> Email:
-    """A major release announcement. The visible link opens the unsubscribe
-    page; the header URL takes the one-click POST of RFC 8058. ``blocks`` are an
-    admin's words, so a URL in them is a link."""
-    message = _compose(
-        to=to,
-        subject=f"Vidit {label}: {title}",
-        content=Content(
-            heading=title,
-            blocks=blocks,
-            action=Action("See what is new", link_url) if link_url else None,
-            note="You get this email because you asked for news about major Vidit releases. "
-            f"Unsubscribe: {unsubscribe_url}",
-            link_blocks=True,
-        ),
-    )
-    return one_click_unsubscribe(message, one_click_url)

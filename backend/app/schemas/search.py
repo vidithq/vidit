@@ -45,7 +45,7 @@ class SearchEventHit(BaseModel):
     lat: float
     lng: float
     # Nullable but always serialised (``services.search.search_geolocations``).
-    event_date: date | None
+    occurred_date: date | None
     # See ``EventRead.is_graphic``; travels with the hit to avoid a detail fetch.
     is_graphic: bool
     # ``detected`` rows surface marked, as everywhere else.
@@ -65,9 +65,8 @@ class SearchRequestHit(BaseModel):
     id: uuid.UUID
     title: str
     title_highlight: str
-    # Required-nullable; a ``requested`` hit always has one today
-    # (``ck_events_source_url_status``).
-    source_url: str | None
+    # Every link of the request's sources, in source order.
+    source_urls: list[str]
     # ``requested``, or ``closed`` once withdrawn.
     status: EventStatus
     created_at: datetime

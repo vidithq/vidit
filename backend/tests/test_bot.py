@@ -18,16 +18,18 @@ from app.config import settings
 from app.database import SessionLocal
 from app.models.bot_mention import BotMention
 from app.models.event import STATUS_DETECTED, STATUS_REQUESTED, Event
-from app.models.media import Media
+from app.models.upload import Upload
 from app.models.user import User
 from app.services.bot import (
     REPLY_MAX_WEIGHTED_LEN,
     BotNotConfigured,
+    BotRunOutcome,
+    catch_up,
     compose_failure_reply,
     compose_reply,
     compose_request_reply,
+    drain_mentions,
     reply_weighted_len,
-    run_bot_once,
 )
 from app.services.tweet_ingest import (
     DUPLICATE_MEDIA,
@@ -453,7 +455,7 @@ def _cleanup():
     yield
     session = SessionLocal()
     try:
-        session.query(BotMention).filter(BotMention.mention_tweet_id.in_(list(BODIES))).delete(
+        session.query(BotMention).filter(BotMention.mention_post_id.in_(list(BODIES))).delete(
             synchronize_session=False
         )
         for handle in (HANDLE, OTHER_HANDLE):
@@ -467,6 +469,22 @@ def _cleanup():
         session.commit()
     finally:
         session.close()
+
+
+async def _pass(
+    db,
+    *,
+    syndication_client: httpx.Client | None = None,
+    x_read_client: httpx.Client | None = None,
+    x_write_client: httpx.Client | None = None,
+) -> BotRunOutcome:
+    """One catch-up then one drain, as a worker pass runs them, with the counts of both."""
+    seen = catch_up(db, x_read_client=x_read_client)
+    outcome = await drain_mentions(
+        db, syndication_client=syndication_client, x_write_client=x_write_client
+    )
+    outcome.mentions_seen, outcome.already_handled = seen.mentions_seen, seen.already_handled
+    return outcome
 
 
 async def _run(
@@ -488,30 +506,32 @@ async def _run(
         _mentions_client(mention_ids, seen_params, reply_to, handle, parent_of) as read,
         _write_client(posted, liked) as write,
     ):
-        outcome = await run_bot_once(
-            db, syndication_client=syn, x_read_client=read, x_write_client=write
-        )
+        outcome = await _pass(db, syndication_client=syn, x_read_client=read, x_write_client=write)
     return outcome, seen_params, posted, liked
 
 
 async def test_a_tagged_post_creates_a_detection(db, linked_owner):
     outcome, _, posted, liked = await _run(db, [TAGGED_ID])
 
-    assert outcome.events_created == 1
+    assert outcome.created_event_count == 1
     assert outcome.replies_posted == 1
     assert liked == []
 
     event = db.query(Event).filter(Event.owner_id == linked_owner.id).one()
     assert event.status == STATUS_DETECTED
-    assert event.detected_from_url == f"https://x.com/{HANDLE}/status/{TAGGED_ID}"
+    assert event.detection.from_url == f"https://x.com/{HANDLE}/status/{TAGGED_ID}"
     # The title is the first line with text beyond coordinates and links.
     assert event.title == "Strike on the vehicle depot"
-    point = to_shape(event.event_coords)
+    point = to_shape(event.coords)
     assert point.y == pytest.approx(48.123456)
     assert point.x == pytest.approx(37.654321)
-    assert event.source_url == _SOURCE_URL
-    assert event.source_posted_at is not None
-    assert event.source_posted_at.date().isoformat() == "2026-03-10"
+    # The declared source: one direct source of kind unknown, its URL and post time, no file.
+    (source,) = event.sources
+    assert (source.level, source.kind, source.media) == ("direct", "unknown", None)
+    (link,) = source.links
+    assert link.url == _SOURCE_URL
+    assert link.posted_at is not None
+    assert link.posted_at.date().isoformat() == "2026-03-10"
 
     # The proof is the post as written, minus the bot tag and media wrappers.
     proof = event.proof
@@ -521,10 +541,10 @@ async def test_a_tagged_post_creates_a_detection(db, linked_owner):
     assert "t.co" not in proof
     assert "55.751200" not in proof and "11.111111" not in proof
 
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == TAGGED_ID).one()
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == TAGGED_ID).one()
     assert ledger.outcome == "created"
-    assert ledger.events_created == 1
-    assert ledger.reply_tweet_id == "777"
+    assert ledger.created_event_count == 1
+    assert ledger.reply_post_id == 777
 
     (payload,) = posted
     assert payload["reply"] == {"in_reply_to_tweet_id": TAGGED_ID}
@@ -544,20 +564,23 @@ async def test_the_two_post_field_format_lands_one_detection(db, linked_owner):
     # provenance anchored on the parent.
     outcome, _, posted, _ = await _run(db, [TWO_POST_TAGGED_ID])
 
-    assert outcome.events_created == 1
+    assert outcome.created_event_count == 1
     event = db.query(Event).filter(Event.owner_id == linked_owner.id).one()
     assert event.status == STATUS_DETECTED
-    assert event.detected_from_url == f"https://x.com/{HANDLE}/status/{TWO_POST_PARENT_ID}"
+    assert event.detection.from_url == f"https://x.com/{HANDLE}/status/{TWO_POST_PARENT_ID}"
     assert event.title == "Depot strike geolocated"
-    assert event.source_url == "https://www.tiktok.com/@war/video/7"
-    assert event.source_posted_at is None
+    (source,) = event.sources
+    assert [(link.url, link.posted_at) for link in source.links] == [
+        ("https://www.tiktok.com/@war/video/7", None)
+    ]
+    assert source.media is None
 
     proof = event.proof
     assert "Matched the tower skyline" in proof  # the parent's line
     assert "footage saved below" in proof  # the reply's line joins it
     assert "viditbot" not in proof
 
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == TWO_POST_TAGGED_ID).one()
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == TWO_POST_TAGGED_ID).one()
     assert ledger.outcome == "created"
     (payload,) = posted  # the success reply answers the tagged reply
     assert payload["reply"] == {"in_reply_to_tweet_id": TWO_POST_TAGGED_ID}
@@ -571,7 +594,7 @@ async def test_tagging_either_post_shares_the_parent_idempotency_key(db, linked_
         db, [TWO_POST_TAGGED_ID, TWO_POST_TAGGED_TWICE_ID, TWO_POST_PARENT_ID]
     )
 
-    assert outcome.events_created == 1
+    assert outcome.created_event_count == 1
     assert outcome.events_updated == 2
     assert outcome.skipped == 0
     assert db.query(Event).filter(Event.owner_id == linked_owner.id).count() == 1
@@ -587,7 +610,7 @@ async def test_a_tag_under_a_foreign_parent_reads_only_the_tag(db, linked_owner)
     outcome, _, posted, _ = await _run(db, [FOREIGN_PARENT_TAG_ID])
 
     assert outcome.no_detection == 1
-    assert outcome.events_created == 0
+    assert outcome.created_event_count == 0
     (payload,) = posted  # the linked author still gets the diagnosis
     assert payload["text"].startswith("❌ Nothing saved\n⚠ No coordinate in the post\n")
 
@@ -604,7 +627,7 @@ async def test_tombstoned_tagged_post_earns_a_reply_not_a_page(db, linked_owner,
 
     assert outcome.no_detection == 1
     assert outcome.failed == 0
-    assert outcome.events_created == 0
+    assert outcome.created_event_count == 0
     assert captured == []
     (payload,) = posted
     assert payload["text"] == (
@@ -612,9 +635,9 @@ async def test_tombstoned_tagged_post_earns_a_reply_not_a_page(db, linked_owner,
         "⚠ Post not readable on X (age-restricted, withheld or gone)\n"
         "Guide in bio (m00017)"
     )
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == TOMBSTONE_ID).one()
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == TOMBSTONE_ID).one()
     assert ledger.outcome == "no_detection"
-    assert ledger.reply_tweet_id == "777"
+    assert ledger.reply_post_id == 777
 
 
 async def test_rerun_is_idempotent_and_advances_since_id(db, linked_owner):
@@ -624,7 +647,7 @@ async def test_rerun_is_idempotent_and_advances_since_id(db, linked_owner):
     outcome, seen_params, posted, liked = await _run(db, [TAGGED_ID])
 
     assert outcome.already_handled == 1
-    assert outcome.events_created == 0
+    assert outcome.created_event_count == 0
     assert posted == []
     assert liked == []  # an already-handled mention earns no second gesture
     # Resumed from the ledger max minus the lookback overlap.
@@ -636,7 +659,14 @@ async def test_rerun_is_idempotent_and_advances_since_id(db, linked_owner):
 async def test_poll_overlap_recovers_mention_dropped_by_webhook(db, linked_owner):
     # The webhook dropped TAGGED_ID, so the ledger max leapfrogged it; since_id
     # sits one overlap behind the max and recovers it.
-    db.add(BotMention(mention_tweet_id=NO_COORD_ID, author_handle=HANDLE, outcome="no_detection"))
+    db.add(
+        BotMention(
+            mention_post_id=NO_COORD_ID,
+            author_x_handle=HANDLE,
+            status="done",
+            outcome="no_detection",
+        )
+    )
     db.commit()
 
     def handler(req: httpx.Request) -> httpx.Response:
@@ -662,13 +692,11 @@ async def test_poll_overlap_recovers_mention_dropped_by_webhook(db, linked_owner
         httpx.Client(transport=httpx.MockTransport(handler)) as read,
         _write_client(posted, liked) as write,
     ):
-        outcome = await run_bot_once(
-            db, syndication_client=syn, x_read_client=read, x_write_client=write
-        )
+        outcome = await _pass(db, syndication_client=syn, x_read_client=read, x_write_client=write)
 
-    assert outcome.events_created == 1  # the dropped mention processed
+    assert outcome.created_event_count == 1  # the dropped mention processed
     assert outcome.already_handled == 1  # the ledgered one re-read, absorbed
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == TAGGED_ID).one()
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == TAGGED_ID).one()
     assert ledger.outcome == "created"
 
 
@@ -677,15 +705,15 @@ async def test_unlinked_handle_records_no_account_and_creates_nothing(db):
     outcome, _, posted, liked = await _run(db, [TAGGED_ID])
 
     assert outcome.no_account == 1
-    assert outcome.events_created == 0
+    assert outcome.created_event_count == 0
     assert outcome.replies_posted == 0
     assert posted == []
     assert liked == []
     assert db.query(User).filter(User.x_handle == HANDLE).first() is None
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == TAGGED_ID).one()
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == TAGGED_ID).one()
     assert ledger.outcome == "no_account"
-    assert ledger.events_created == 0
-    assert ledger.reply_tweet_id is None
+    assert ledger.created_event_count == 0
+    assert ledger.reply_post_id is None
 
 
 async def test_deactivated_linked_owner_records_no_account(db, linked_owner):
@@ -696,7 +724,7 @@ async def test_deactivated_linked_owner_records_no_account(db, linked_owner):
     outcome, _, posted, liked = await _run(db, [TAGGED_ID])
 
     assert outcome.no_account == 1
-    assert outcome.events_created == 0
+    assert outcome.created_event_count == 0
     assert posted == []
     assert liked == []
 
@@ -715,13 +743,13 @@ async def test_a_persist_that_raised_on_every_detection_answers_the_analyst(
     outcome, _, posted, _ = await _run(db, [TAGGED_ID])
 
     assert outcome.failed == 1
-    assert outcome.events_created == 0
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == TAGGED_ID).one()
+    assert outcome.created_event_count == 0
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == TAGGED_ID).one()
     assert ledger.outcome == "failed"
 
     (payload,) = posted
     assert payload["text"].startswith("❌ Nothing saved\n⚠ Unexpected case. Reach out to @vidithq")
-    assert ledger.reply_tweet_id is not None
+    assert ledger.reply_post_id is not None
     assert db.query(Event).filter(Event.owner_id == linked_owner.id).all() == []
 
 
@@ -730,19 +758,19 @@ async def test_non_conforming_mention_from_unlinked_author_records_silently(db):
     outcome, _, posted, liked = await _run(db, [NO_COORD_ID])
 
     assert outcome.no_detection == 1
-    assert outcome.events_created == 0
+    assert outcome.created_event_count == 0
     assert posted == []
     assert liked == []
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == NO_COORD_ID).one()
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == NO_COORD_ID).one()
     assert ledger.outcome == "no_detection"
-    assert ledger.reply_tweet_id is None
+    assert ledger.reply_post_id is None
 
 
 async def test_non_conforming_mention_from_linked_author_gets_failure_reply(db, linked_owner):
     outcome, _, posted, liked = await _run(db, [NO_COORD_ID])
 
     assert outcome.no_detection == 1
-    assert outcome.events_created == 0
+    assert outcome.created_event_count == 0
     assert outcome.replies_posted == 1
     assert liked == []
     (payload,) = posted
@@ -752,9 +780,9 @@ async def test_non_conforming_mention_from_linked_author_gets_failure_reply(db, 
     assert text.startswith("❌ Nothing saved\n⚠ No coordinate in the post\n")
     assert "(m00004)" in text  # the anti-duplicate mention tail
     assert "http" not in text and ".app" not in text and ".com" not in text
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == NO_COORD_ID).one()
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == NO_COORD_ID).one()
     assert ledger.outcome == "no_detection"
-    assert ledger.reply_tweet_id == "777"
+    assert ledger.reply_post_id == 777
 
 
 async def test_failure_reply_loop_guard_on_replies_to_the_bot(db, linked_owner):
@@ -764,8 +792,8 @@ async def test_failure_reply_loop_guard_on_replies_to_the_bot(db, linked_owner):
     assert outcome.no_detection == 1
     assert posted == []
     assert liked == []
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == NO_COORD_ID).one()
-    assert ledger.reply_tweet_id is None
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == NO_COORD_ID).one()
+    assert ledger.reply_post_id is None
 
 
 @pytest.mark.parametrize(
@@ -822,15 +850,15 @@ async def test_a_reply_that_only_inherits_the_tag_is_not_a_mention(db, linked_ow
 
     assert outcome.inherited == 1
     assert outcome.no_detection == 0
-    assert outcome.events_created == 0
+    assert outcome.created_event_count == 0
     assert posted == []
     assert liked == []
     # One syndication read (the parent's), no billed call.
     assert fetched == [INHERITED_PARENT_ID]
     assert db.query(Event).filter(Event.owner_id == linked_owner.id).count() == 0
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == INHERITED_REPLY_ID).one()
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == INHERITED_REPLY_ID).one()
     assert ledger.outcome == "inherited"
-    assert ledger.reply_tweet_id is None
+    assert ledger.reply_post_id is None
 
 
 async def test_a_tag_typed_under_someone_elses_post_is_processed(db, linked_owner):
@@ -842,15 +870,13 @@ async def test_a_tag_typed_under_someone_elses_post_is_processed(db, linked_owne
     )
 
     assert outcome.inherited == 0
-    assert outcome.events_created == 1
+    assert outcome.created_event_count == 1
     assert outcome.replies_posted == 1
     event = db.query(Event).filter(Event.owner_id == linked_owner.id).one()
-    assert event.detected_from_url == f"https://x.com/{HANDLE}/status/{TYPED_UNDER_FOREIGN_ID}"
-    point = to_shape(event.event_coords)
+    assert event.detection.from_url == f"https://x.com/{HANDLE}/status/{TYPED_UNDER_FOREIGN_ID}"
+    point = to_shape(event.coords)
     assert point.y == pytest.approx(48.123456)
-    ledger = (
-        db.query(BotMention).filter(BotMention.mention_tweet_id == TYPED_UNDER_FOREIGN_ID).one()
-    )
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == TYPED_UNDER_FOREIGN_ID).one()
     assert ledger.outcome == "created"
     assert posted
 
@@ -863,10 +889,10 @@ async def test_a_bare_tag_under_an_untagged_parent_still_climbs(db, linked_owner
     )
 
     assert outcome.inherited == 0
-    assert outcome.events_created == 1
+    assert outcome.created_event_count == 1
     event = db.query(Event).filter(Event.owner_id == linked_owner.id).one()
-    assert event.detected_from_url == f"https://x.com/{HANDLE}/status/{TWO_POST_PARENT_ID}"
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == BARE_TAG_ID).one()
+    assert event.detection.from_url == f"https://x.com/{HANDLE}/status/{TWO_POST_PARENT_ID}"
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == BARE_TAG_ID).one()
     assert ledger.outcome == "created"
     assert posted
 
@@ -884,7 +910,7 @@ async def test_a_climb_cut_by_a_parent_x_will_not_serve_says_so(db, linked_owner
     text = payload["text"]
     assert isinstance(text, str)
     assert text.startswith(f"\u274c Nothing saved\n\u26a0 {REFUSAL_MESSAGES[THREAD_TRUNCATED]}\n")
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == CUT_BARE_TAG_ID).one()
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == CUT_BARE_TAG_ID).one()
     assert ledger.outcome == "no_detection"
 
 
@@ -895,9 +921,9 @@ async def test_a_follow_up_under_the_analysts_own_tagged_post_inherits(db, linke
     )
 
     assert outcome.inherited == 1
-    assert outcome.events_created == 0
+    assert outcome.created_event_count == 0
     assert posted == []
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == OWN_FOLLOW_UP_ID).one()
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == OWN_FOLLOW_UP_ID).one()
     assert ledger.outcome == "inherited"
 
 
@@ -914,7 +940,7 @@ async def test_an_unreadable_parent_reads_as_an_inherited_tag(db, linked_owner):
     assert outcome.inherited == 1
     assert posted == []
     assert fetched == [UNREADABLE_PARENT_ID]
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == ORPHAN_REPLY_ID).one()
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == ORPHAN_REPLY_ID).one()
     assert ledger.outcome == "inherited"
 
 
@@ -929,7 +955,7 @@ async def test_reply_budget_cap_skips_reply_but_detection_still_lands(
     assert posted == []
     assert liked == []
     assert outcome.replies_posted == 0
-    assert outcome.events_created == 1
+    assert outcome.created_event_count == 1
 
 
 @pytest.fixture
@@ -960,42 +986,46 @@ async def test_a_coordinate_less_mirror_post_opens_a_request(
 ):
     """The branch on both chase technologies.
 
-    The row is owned by the analyst, stamped ``requested_at``, carries the
-    original as source and the footage as its one ``role=source`` media, with
-    no coordinate. Provenance lets a second tag recognise it.
+    The row is owned by the analyst, stamped ``requested_at``, and carries one
+    direct source with the original's URL and the footage as its file (staged as
+    an upload and taken by the write), with no coordinate and kind ``unknown``.
+    Provenance lets a second tag recognise it.
     """
     outcome, _, posted, liked = await _run(db, [mention_id])
 
     assert outcome.requests_opened == 1
-    assert outcome.events_created == 0
+    assert outcome.created_event_count == 0
     assert outcome.replies_posted == 1
     assert liked == []
 
     row = _request_row(db, linked_owner)
     assert row.status == STATUS_REQUESTED
-    assert row.event_coords is None
+    assert row.coords is None
     assert row.requested_at is not None
     assert row.owner_id == linked_owner.id == row.requested_by_id
+    (source,) = row.sources
+    assert (source.level, source.kind) == ("direct", "unknown")
+    (link,) = source.links
     # The chased original, not the mirroring post.
-    assert row.source_url == source_url
-    assert row.detected_from_url == f"https://x.com/{HANDLE}/status/{mention_id}"
-    assert row.detected_via == "bot"
-    assert row.detected_from_tweet_id == int(mention_id)
-    assert row.detected_thread_tweet_ids == [int(mention_id)]
+    assert link.url == source_url
+    assert row.detection.from_url == f"https://x.com/{HANDLE}/status/{mention_id}"
+    assert row.detection.via == "bot"
+    assert row.detection.from_post_id == int(mention_id)
+    assert row.detection.thread_post_ids == [int(mention_id)]
     # Fifth provenance column (``events.stamp_provenance``): when the analyst posted the mirror.
-    assert row.detected_post_at is not None
-    assert row.detected_post_at != row.source_posted_at
+    assert row.detection.post_at is not None
+    assert row.detection.post_at != link.posted_at
     # The chase served a date: no date warning.
-    assert row.source_posted_at is not None
+    assert link.posted_at is not None
 
-    (media,) = db.query(Media).filter(Media.event_id == row.id).all()
-    assert media.role == "source"
-    assert media.media_type == "video"
+    assert source.media is not None and source.media.kind == "video"
+    assert row.media == []
+    assert db.query(Upload).filter(Upload.uploader_id == linked_owner.id).count() == 0
 
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == mention_id).one()
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == mention_id).one()
     assert ledger.outcome == "requested"
-    assert ledger.events_created == 0
-    assert ledger.reply_tweet_id == "777"
+    assert ledger.created_event_count == 0
+    assert ledger.reply_post_id == 777
 
     (payload,) = posted
     assert payload["reply"] == {"in_reply_to_tweet_id": mention_id}
@@ -1017,9 +1047,9 @@ async def test_the_same_mirror_posted_twice_opens_one_request(db, linked_owner, 
     assert outcome.skipped == 1
     assert posted == []
     assert len(db.query(Event).filter(Event.owner_id == linked_owner.id).all()) == 1
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == MIRROR_TG_REPOST_ID).one()
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == MIRROR_TG_REPOST_ID).one()
     assert ledger.outcome == "skipped"
-    assert ledger.reply_tweet_id is None
+    assert ledger.reply_post_id is None
 
 
 async def test_a_second_owner_mirroring_the_same_clip_is_told_it_is_a_duplicate(
@@ -1049,7 +1079,7 @@ async def test_a_request_shaped_post_from_an_unlinked_author_stays_silent(db, _s
     assert outcome.requests_opened == 0
     assert posted == []
     assert db.query(User).filter(User.x_handle == HANDLE).first() is None
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == MIRROR_TG_ID).one()
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == MIRROR_TG_ID).one()
     assert ledger.outcome == "no_account"
 
 
@@ -1068,7 +1098,7 @@ async def test_footage_that_will_not_fetch_falls_back_to_the_refusal(db, linked_
 
     (payload,) = posted
     assert payload["text"].startswith("\u274c Nothing saved\n\u26a0 No coordinate in the post\n")
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == MIRROR_TG_ID).one()
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == MIRROR_TG_ID).one()
     assert ledger.outcome == "no_detection"
 
 
@@ -1079,12 +1109,10 @@ async def test_a_mirror_of_a_clip_on_another_host_opens_a_request(db, linked_own
     assert outcome.requests_opened == 1
     row = _request_row(db, linked_owner)
     assert row.status == STATUS_REQUESTED
-    assert row.source_url == _OTHER_HOST_SOURCE
-    assert row.source_posted_at is None
-
-    (media,) = db.query(Media).filter(Media.event_id == row.id).all()
-    assert media.role == "source"
-    assert media.media_type == "video"
+    (source,) = row.sources
+    assert [(link.url, link.posted_at) for link in source.links] == [(_OTHER_HOST_SOURCE, None)]
+    assert source.media is not None and source.media.kind == "video"
+    assert row.media == []
 
     (payload,) = posted
     text = payload["text"]
@@ -1092,7 +1120,7 @@ async def test_a_mirror_of_a_clip_on_another_host_opens_a_request(db, linked_own
     assert text.startswith("\u2705 Geolocation request opened \u00b7 ref ")
     assert WARNING_MESSAGES[SOURCE_DATE_UNKNOWN] in text
     assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == MIRROR_YT_ID).one()
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == MIRROR_YT_ID).one()
     assert ledger.outcome == "requested"
 
 
@@ -1114,7 +1142,7 @@ async def test_a_mirror_carrying_no_clip_of_its_own_is_told_to_attach_one(
         f"\u274c Nothing saved\n\u26a0 {REFUSAL_MESSAGES[REQUEST_NOT_POSSIBLE]}\n"
     )
     assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == MIRROR_YT_NO_VIDEO_ID).one()
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == MIRROR_YT_NO_VIDEO_ID).one()
     assert ledger.outcome == "no_detection"
 
 
@@ -1131,7 +1159,7 @@ async def test_footage_the_intake_refuses_is_named_back(db, linked_owner, _stub_
     assert payload["text"].startswith(
         f"\u274c Nothing saved\n\u26a0 {REFUSAL_MESSAGES[FOOTAGE_UNUSABLE]}\n"
     )
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == MIRROR_TG_ID).one()
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == MIRROR_TG_ID).one()
     assert ledger.outcome == "no_detection"
 
 
@@ -1146,7 +1174,7 @@ async def test_a_coordinate_bearing_re_tag_lands_a_detection_beside_the_request(
     await _run(db, [MIRROR_TG_ID])
     outcome, _, _, _ = await _run(db, [MIRROR_TG_GEO_ID])
 
-    assert outcome.events_created == 1
+    assert outcome.created_event_count == 1
     assert outcome.requests_opened == 0
 
     rows = db.query(Event).filter(Event.owner_id == linked_owner.id).all()
@@ -1154,7 +1182,7 @@ async def test_a_coordinate_bearing_re_tag_lands_a_detection_beside_the_request(
     (request_row,) = [row for row in rows if row.status == STATUS_REQUESTED]
     assert request_row.closed_at is None
     assert request_row.deleted_at is None
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == MIRROR_TG_GEO_ID).one()
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == MIRROR_TG_GEO_ID).one()
     assert ledger.outcome == "created"
 
 
@@ -1169,9 +1197,9 @@ async def test_the_reply_budget_skips_the_reply_and_keeps_the_request(
     assert outcome.replies_posted == 0
     assert posted == []
     assert _request_row(db, linked_owner).status == STATUS_REQUESTED
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == MIRROR_TG_ID).one()
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == MIRROR_TG_ID).one()
     assert ledger.outcome == "requested"
-    assert ledger.reply_tweet_id is None
+    assert ledger.reply_post_id is None
 
 
 async def test_self_mention_is_ledgered_so_cursor_advances(db):
@@ -1191,12 +1219,12 @@ async def test_self_mention_is_ledgered_so_cursor_advances(db):
         httpx.Client(transport=httpx.MockTransport(handler)) as read,
         _syndication_client() as syn,
     ):
-        outcome = await run_bot_once(db, syndication_client=syn, x_read_client=read)
+        outcome = await _pass(db, syndication_client=syn, x_read_client=read)
 
-    assert outcome.events_created == 0
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == NO_COORD_ID).one()
+    assert outcome.created_event_count == 0
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == NO_COORD_ID).one()
     assert ledger.outcome == "self"
-    assert ledger.reply_tweet_id is None
+    assert ledger.reply_post_id is None
 
 
 async def test_poll_flags_webhook_gap_when_webhook_enabled(db, linked_owner, monkeypatch):
@@ -1253,14 +1281,14 @@ async def test_gap_detector_fires_on_failed_verdict_too(db, linked_owner, monkey
             httpx.Client(transport=httpx.MockTransport(read_handler)) as read,
             _write_client(posted, liked) as write,
         ):
-            outcome = await run_bot_once(
+            outcome = await _pass(
                 db, syndication_client=syn, x_read_client=read, x_write_client=write
             )
 
         assert outcome.failed == 1
         assert any("webhook gap" in m and unknown_id in m for m, _ in captured)
     finally:
-        db.query(BotMention).filter(BotMention.mention_tweet_id == unknown_id).delete(
+        db.query(BotMention).filter(BotMention.mention_post_id == unknown_id).delete(
             synchronize_session=False
         )
         db.commit()
@@ -1284,7 +1312,7 @@ async def test_poll_stays_gap_silent_while_webhook_disabled(db, linked_owner, mo
 async def test_unconfigured_bot_refuses_to_run(db, monkeypatch):
     monkeypatch.setattr(settings, "x_bot_bearer_token", "")
     with pytest.raises(BotNotConfigured):
-        await run_bot_once(db)
+        catch_up(db)
 
 
 def test_compose_reply_is_linkless_and_carries_the_warnings():
@@ -1332,7 +1360,7 @@ def test_compose_reply_carries_one_line_per_warning_and_stays_in_the_cap():
         assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
 
     ambiguous = compose_reply(event_id, detections=2, warnings=[SOURCE_AMBIGUOUS, DUPLICATE_MEDIA])
-    assert "Several possible sources" in ambiguous
+    assert "Several source links" in ambiguous
     assert "The source served no footage" not in ambiguous and "post date" not in ambiguous
     assert reply_weighted_len(ambiguous) <= REPLY_MAX_WEIGHTED_LEN
 

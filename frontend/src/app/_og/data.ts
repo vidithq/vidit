@@ -44,7 +44,7 @@ const REENCODED_MAX_INPUT_PIXELS = 50_000_000;
 /** One upstream read. `missing` is permanent (the row is not there), `failed` is every
  * transient case (rate limit, upstream error, timeout). Kept apart because a crawler caches
  * what it is served: a busy backend must not freeze "no such analyst" into the unfurl. */
-export type OgRead<T> = { status: "ok"; data: T } | { status: "missing" } | { status: "failed" };
+type OgRead<T> = { status: "ok"; data: T } | { status: "missing" } | { status: "failed" };
 
 /** GET a public API payload as a read result. Never throws. */
 export async function ogFetch<T>(path: string): Promise<OgRead<T>> {

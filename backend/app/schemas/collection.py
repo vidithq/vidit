@@ -4,7 +4,7 @@ from datetime import date, datetime
 from pydantic import BaseModel, Field, field_validator
 
 from app.models.event import TITLE_MAX_LENGTH
-from app.models.media import MediaRole, MediaType
+from app.models.media import MediaKind, MediaRole
 from app.schemas.tag import TagRead
 from app.schemas.user import AuthorRef
 
@@ -70,17 +70,17 @@ class CollectionUpdate(CollectionWrite):
 class CollectionCoverTile(BaseModel):
     """One tile of a collection's mosaic and what kind of file it is.
 
-    ``url`` is the media of one held item. ``media_type``
-    (``models/media.MediaType``) lets a client pick the element that renders
+    ``url`` is the media of one held item. ``kind``
+    (``models/media.MediaKind``) lets a client pick the element that renders
     it (most source media are clips, and an ``<img>`` on one paints an empty
     band). ``role`` (``models/media.MediaRole``) says whether the picture has
-    display derivatives: only a ``source`` image does
-    (``services/storage.upload_file``); a ``proof`` image has no ``_hero`` /
+    display derivatives: only a source's image does
+    (``services/storage.upload_source_file``); a ``proof`` image has no ``_hero`` /
     ``_thumb`` sibling.
     """
 
     url: str
-    media_type: MediaType
+    kind: MediaKind
     role: MediaRole
 
 
@@ -96,15 +96,15 @@ class CollectionRead(BaseModel):
     over the events the collection may show
     (``services/event_filters.collectable_events``), so a closed, taken-down or
     soft-deleted row leaves them without a write. The dates are the min and max
-    ``event_date`` and are null for an empty or undated collection.
+    ``occurred_date`` and are null for an empty or undated collection.
 
     ``cover`` is the card's mosaic: zero to four tiles, computed at read time
     (``services/collections.cover_tiles_for``), empty when no item has showable
     media. Each tile carries url, kind and role together (see
     :class:`CollectionCoverTile`).
 
-    ``tags`` is the union of the tags of the events the collection may show,
-    ordered by category then name (``services/collections.tags_for``), derived
+    ``tags`` is the union of the tags of the events the collection may show
+    and their sources, ordered by name (``services/collections.tags_for``), derived
     and never stored; empty when nothing is tagged.
     """
 

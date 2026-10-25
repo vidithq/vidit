@@ -22,7 +22,7 @@ nor skip. Most lists page on ``(created_at, id)`` under
 swaps in its own timestamp (``models/event.feed_at``). A list
 with a unique ordinal pages on that (:func:`encode_ordinal_cursor`, a version
 history on ``version_no``). A collection's items page on
-``event_date, event_time, created_at, id`` ascending
+``occurred_date, occurred_time, created_at, id`` ascending
 (:func:`encode_chronological_cursor`). Cursors are opaque (base64 of compact
 JSON); callers do not build them.
 """
@@ -136,16 +136,16 @@ def decode_ordinal_cursor(cursor: str) -> int:
 
 
 def encode_chronological_cursor(
-    event_date: date, event_time: time, created_at: datetime, row_id: uuid.UUID
+    occurred_date: date, occurred_time: time, created_at: datetime, row_id: uuid.UUID
 ) -> str:
-    """Opaque cursor for a list ordered by ``event_date, event_time, created_at, id``.
+    """Opaque cursor for a list ordered by ``occurred_date, occurred_time, created_at, id``.
 
     The caller passes the exact sort values, stand-ins for a missing date or
     hour included (``services/collections.chronological_key``), so the next
     page's predicate compares the values that cut this one.
     """
     return _encode(
-        [event_date.isoformat(), event_time.isoformat(), created_at.isoformat(), str(row_id)]
+        [occurred_date.isoformat(), occurred_time.isoformat(), created_at.isoformat(), str(row_id)]
     )
 
 

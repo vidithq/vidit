@@ -39,7 +39,7 @@ InviteCodeStatus = Literal["active", "exhausted", "revoked", "expired"]
 class AdminInviteCodeCreate(BaseModel):
     """Body for `POST /admin/invite-codes`.
 
-    Every code is single-use, so the audit trail (`used_by`, `used_at`) is
+    Every code is single-use, so the audit trail (`used_by_id`, `used_at`) is
     unambiguous. ``x_handle`` optionally binds the code to an X handle that
     redemption copies onto the new account (same normalization as
     `PATCH /admin/users/{id}/x-handle`).
@@ -66,10 +66,10 @@ class AdminInviteRedeemerRead(BaseModel):
     email: str | None
     is_admin: bool
     x_handle: str | None
-    invite_minting_enabled: bool
+    is_invite_minting_enabled: bool
     # ``done`` archive-import jobs only.
     archives_imported: int
-    # Sum of ``bot_mentions.events_created`` for the account's X handle.
+    # Sum of ``bot_mentions.created_event_count`` for the account's X handle.
     # Historical: a later-deleted detection still counted.
     bot_detection_count: int
     # Live detections they own. The purge endpoint also sweeps soft-deleted
@@ -78,7 +78,7 @@ class AdminInviteRedeemerRead(BaseModel):
     # Live ``geolocated`` events they own.
     geolocated_count: int
     # Most recent authenticated request (``users.last_seen_at``), falling back
-    # to the newest ``login`` auth event on rows predating it; NULL if neither.
+    # to the newest ``login`` audit row on rows predating it; NULL if neither.
     last_seen_at: datetime | None
 
 
@@ -128,7 +128,7 @@ class AdminUserRead(BaseModel):
     email: str | None
     is_admin: bool
     x_handle: str | None
-    invite_minting_enabled: bool
+    is_invite_minting_enabled: bool
     # Who minted the code the account was created from (``User.sponsor``).
     sponsor: AuthorRef | None
     created_at: datetime
@@ -198,9 +198,9 @@ class AdminCollectionModerationUpdate(BaseModel):
 class AdminEventModerationUpdate(BaseModel):
     """Body for ``PATCH /admin/events/{id}/moderation``.
 
-    Two independent optional axes: ``is_graphic`` overrides the author's
-    declaration, ``hidden`` withholds or restores the event. ``None`` leaves
-    that axis as is.
+    Two independent optional axes: ``is_graphic`` overrides the authors'
+    declaration on every source of the event, ``hidden`` withholds or restores
+    the event. ``None`` leaves that axis as is.
     """
 
     is_graphic: bool | None = None
@@ -217,6 +217,7 @@ class AdminEventModerationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    # Whether any source is graphic (``Event.is_graphic``).
     is_graphic: bool
     hidden_at: datetime | None
 
@@ -265,7 +266,7 @@ class AdminDetectionStatsRead(BaseModel):
     """Quality signal on the machine-extraction pipeline (admin-only).
 
     A machine detection is a row imported from X and never a request:
-    ``detected_from_url`` set and ``requested_at`` NULL. The second column
+    an ``event_detections`` row and ``requested_at`` NULL. The second column
     keeps a bot-opened request out of the cohort for life, since the stamp is
     never cleared, even after a fulfiller geolocates it.
 
@@ -283,7 +284,7 @@ class AdminDetectionStatsRead(BaseModel):
     soft-delete counts that account's pending detections as rejects.
 
     The ``pending_*`` counts profile the live ``detected`` queue (machine rows,
-    ``deleted_at IS NULL``): how many miss a piece the geolocate floor demands,
+    ``deleted_at IS NULL``): how many miss a piece the publish floor demands,
     so a poor extraction run shows before an analyst opens the queue.
     """
 

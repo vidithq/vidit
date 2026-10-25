@@ -35,12 +35,9 @@ function baseEvent(versionNo: number): EventDetail {
   return {
     id: "e1",
     title: "Strike on a depot",
-    event_coords: { lat: 48.01, lng: 37.8 },
-    capture_source_coords: null,
-    archived_source: null,
-    event_date: "2026-06-01",
-    event_time: null,
-    source_posted_at: "2026-05-30T14:32:00Z",
+    coords: { lat: 48.01, lng: 37.8 },
+    occurred_date: "2026-06-01",
+    occurred_time: null,
     is_graphic: false,
     status: "geolocated",
     version_no: versionNo,
@@ -48,18 +45,14 @@ function baseEvent(versionNo: number): EventDetail {
     before_closed_status: null,
     detected_from_url: null,
     detected_via: null,
-    archived_detected_from: null,
     owner: OWNER,
     tags: [],
     conflicts: [],
-    source_url: "https://t.me/channel/12345",
-    secondary_source_urls: [],
-    archived_secondary_sources: [],
+    sources: [{ id: "s1", title: "", level: "direct", kind: "unknown", captured_at: null, capture_position: null, is_graphic: false, links: [{ url: "https://t.me/channel/12345", posted_at: null, archived: null }], tags: [], media: null, warnings: [] }],
     proof: "",
     created_at: "2026-06-01T10:00:00Z",
     geolocated_at: "2026-06-01T10:00:00Z",
     closed_at: null,
-    media: [],
     thumbnail: null,
     requested_by: null,
     geolocators: [],
@@ -86,15 +79,12 @@ function version(
 const snapshot = (title: string): Record<string, unknown> => ({
   title,
   // Every filed version names the evidence anchor; omitting it would read as a swap and print a phantom changed field.
-  source_url: "https://t.me/channel/12345",
+  sources: [{ id: "s1", title: "", level: "direct", kind: "unknown", captured_at: null, capture_position: null, is_graphic: false, links: [{ url: "https://t.me/channel/12345", posted_at: null, archived: null }], tags: [], media: null, warnings: [] }],
   source_media: [],
-  event_coords: { lat: 48.01, lng: 37.8 },
-  capture_source_coords: null,
-  event_date: "2026-06-01",
-  event_time: null,
-  source_posted_at: "2026-05-30T14:32:00+00:00",
+  coords: { lat: 48.01, lng: 37.8 },
+  occurred_date: "2026-06-01",
+  occurred_time: null,
   is_graphic: false,
-  secondary_source_urls: [],
   tags: [],
   conflicts: [],
   proof: "",
@@ -128,6 +118,18 @@ describe("EventHistoryPage", () => {
     render(<EventHistoryPage />);
     expect(within(row(3)).getByText("Title")).toBeTruthy();
     expect(within(row(2)).getByText("Title")).toBeTruthy();
+    expect(within(row(1)).getByText("Published")).toBeTruthy();
+  });
+
+  it("ends on the request the event was published from, named so", () => {
+    event = { ...baseEvent(2), version_zero: "request", requested_by: BOB };
+    walk.items = [version(1, snapshot("v1 title")), version(0, snapshot("Asked"))];
+    render(<EventHistoryPage />);
+    expect(screen.getByText("3 versions")).toBeTruthy();
+    const request = screen.getByLabelText("Request").parentElement!;
+    expect(within(request).getByText("Request")).toBeTruthy();
+    expect(within(request).getByText("Requested")).toBeTruthy();
+    expect(within(request).getByText("bob")).toBeTruthy();
     expect(within(row(1)).getByText("Published")).toBeTruthy();
   });
 

@@ -5,7 +5,7 @@ import { pluralNoun } from "@/lib/format";
 import type { PublicProfile, UserStats } from "@/lib/users";
 
 /** Equirectangular world projection, normalised to the unit square. */
-export interface ProjectedPoint {
+interface ProjectedPoint {
   /** 0 at 180°W, 1 at 180°E. */
   x: number;
   /** 0 at the north pole, 1 at the south pole. */
@@ -41,7 +41,7 @@ export function ogCount(value: number): string {
   return value.toLocaleString("en-US");
 }
 
-export interface OgProfileCount {
+interface OgProfileCount {
   label: string;
   value: number;
 }
@@ -66,7 +66,7 @@ export interface OgMosaicBox {
 }
 
 /** A mosaic panel's outer box and the gap between tiles. */
-export interface OgMosaicFrame {
+interface OgMosaicFrame {
   width: number;
   height: number;
   gap: number;
