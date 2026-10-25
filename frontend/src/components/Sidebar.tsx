@@ -35,6 +35,7 @@ import {
   Menu,
   X,
 } from "lucide-react";
+import { countLabel, pluralNoun } from "@/lib/format";
 import { detectionsQueueHref, profileHref } from "@/lib/routes";
 
 const X_URL = "https://x.com/vidithq";
@@ -451,7 +452,7 @@ export default function Sidebar() {
               )}
               {detectionCount > 0 && (
                 <span className="sr-only">
-                  {detectionCount} geolocations awaiting submission
+                  {countLabel(detectionCount, "geolocation")} awaiting submission
                 </span>
               )}
             </Link>
@@ -462,7 +463,7 @@ export default function Sidebar() {
           {user &&
             renderNavItem(
               NOTIFICATIONS_ITEM,
-              unread > 0 ? { label: `${unread} unread notifications` } : undefined,
+              unread > 0 ? { label: `${unread} unread ${pluralNoun(unread, "notification")}` } : undefined,
             )}
           {user && renderNavItem(SETTINGS_ITEM)}
 

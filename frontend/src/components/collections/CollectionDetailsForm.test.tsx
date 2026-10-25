@@ -89,7 +89,7 @@ describe("CollectionDetailsForm", () => {
 
     // Counted over the plain-text projection, as the server measures the cap.
     expect(
-      screen.getByText(`${COLLECTION_DESCRIPTION_MAX_LEN - 12} / ${COLLECTION_DESCRIPTION_MAX_LEN}`),
+      screen.getByText(`12 / ${COLLECTION_DESCRIPTION_MAX_LEN}`),
     ).toBeInTheDocument();
   });
 

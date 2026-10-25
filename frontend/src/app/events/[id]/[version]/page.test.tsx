@@ -159,6 +159,16 @@ describe("EventVersionPage", () => {
     expect(screen.getByRole("button", { name: "Detection: choose a version" })).toBeTruthy();
   });
 
+  it("credits version 0 of a request to its asker, as the history does, not to the owner", () => {
+    current = { ...EVENT, version_zero: "request", requested_by: BOB };
+    rows[0] = version(0, snapshot("As asked"));
+    segment = "v0";
+    render(<EventVersionPage />);
+    const header = screen.getByRole("heading", { name: "As asked" }).closest("header")!;
+    expect(header.textContent).toContain("bob");
+    expect(header.textContent).not.toContain("ana");
+  });
+
   it("serves a redacted version as its banner and a notice, with no content", () => {
     rows[2] = version(2, {}, { redacted: true });
     render(<EventVersionPage />);

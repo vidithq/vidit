@@ -76,7 +76,15 @@ export default function EventVersionPage() {
   return (
     <EventShell
       title={version.view?.title ?? geo.title}
-      byline={<AuthorByline {...creditProps(geo)} coAuthorsAs="avatars" avatar />}
+      byline={
+        // Version 0 is the request or the detection, credited like its history row: to who opened
+        // it, before anyone published it or joined it as a geolocator.
+        number === 0 && version.editor ? (
+          <AuthorByline author={version.editor} avatar />
+        ) : (
+          <AuthorByline {...creditProps(geo)} coAuthorsAs="avatars" avatar />
+        )
+      }
       actions={{
         pinned: <VersionSelector event={geo} selected={number} />,
         // Version 0 was never published, so nothing approves it.

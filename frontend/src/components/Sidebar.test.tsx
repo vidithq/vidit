@@ -102,6 +102,13 @@ describe("Sidebar notifications row", () => {
     expect(row.querySelector(".bg-orange-500")).not.toBeNull();
     expect(row).toHaveTextContent("2 unread notifications");
   });
+
+  it("names one unread notification in the singular", () => {
+    viewer.unread = 1;
+    render(<Sidebar />);
+    expect(screen.getByTitle("Notifications")).toHaveTextContent("1 unread notification");
+    expect(screen.getByTitle("Notifications")).not.toHaveTextContent("notifications");
+  });
 });
 
 // Below `sm` the rail is a drawer behind a floating chip. jsdom applies no media query, so both

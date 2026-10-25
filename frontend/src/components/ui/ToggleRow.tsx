@@ -7,18 +7,16 @@ import { Switch } from "./Switch";
 /** A settings preference's text: the label at reading size over a line saying what it does. */
 function PreferenceText({
   label,
-  labelId,
   description,
   descriptionId,
 }: {
   label: string;
-  labelId?: string;
   description?: ReactNode;
   descriptionId?: string;
 }) {
   return (
     <span className="block min-w-0 flex-1">
-      <span id={labelId} className="block text-sm text-neutral-200">
+      <span className="block text-sm text-neutral-200">
         {label}
       </span>
       {description !== undefined && (
@@ -39,8 +37,9 @@ function PreferenceText({
  *  reading size over a line saying what it does). Same control, semantics and
  *  tap target.
  *
- *  The accessible name is the label alone (`aria-labelledby`); the description
- *  is its accessible description. */
+ *  The accessible name is the label alone (`aria-label`, not the text the button
+ *  holds, which would fold the description in); the description is its accessible
+ *  description. */
 export function ToggleRow({
   label,
   description,
@@ -59,7 +58,6 @@ export function ToggleRow({
   /** The caller's own divider and spacing. */
   className?: string;
 }) {
-  const labelId = useId();
   const descriptionId = useId();
   const described = description !== undefined;
   return (
@@ -67,7 +65,7 @@ export function ToggleRow({
       type="button"
       role="switch"
       aria-checked={on}
-      aria-labelledby={labelId}
+      aria-label={label}
       aria-describedby={described ? descriptionId : undefined}
       onClick={onToggle}
       disabled={disabled}
@@ -81,13 +79,11 @@ export function ToggleRow({
       {described ? (
         <PreferenceText
           label={label}
-          labelId={labelId}
           description={description}
           descriptionId={descriptionId}
         />
       ) : (
         <span
-          id={labelId}
           className="block min-w-0 text-[10px] text-neutral-500 uppercase tracking-wider group-hover:text-neutral-400 transition-colors"
         >
           {label}

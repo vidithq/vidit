@@ -6,10 +6,21 @@ import { CharCounter } from "@/components/ui/CharCounter";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { BIO_MAX_LEN, type ProfileEditState } from "./useProfileEdit";
 
-/** The bio as an editable field: textarea plus remaining-characters counter against
- * `BIO_MAX_LEN`, nothing in view mode (reading it is one line of the identity block,
- * `ProfileIdentity`). */
-export function BioField({ edit }: { edit: ProfileEditState }) {
+const PLACEHOLDER = {
+  analyst: "A short blurb about you, your focus area, what to expect from your submissions.",
+  organization: "A short blurb about the organization: who it is, what it covers, how it works.",
+} as const;
+
+/** The bio as an editable field: textarea plus characters counter against `BIO_MAX_LEN`, nothing
+ * in view mode (reading it is one line of the identity block, `ProfileIdentity`). `owner` words
+ * the placeholder for an analyst or an organization. */
+export function BioField({
+  edit,
+  owner = "analyst",
+}: {
+  edit: ProfileEditState;
+  owner?: keyof typeof PLACEHOLDER;
+}) {
   if (!edit.editing) return null;
 
   return (
@@ -23,7 +34,7 @@ export function BioField({ edit }: { edit: ProfileEditState }) {
         value={edit.draftBio}
         invalid={edit.bioOver}
         onChange={(e) => edit.setDraftBio(e.target.value)}
-        placeholder="A short blurb about you, your focus area, what to expect from your submissions."
+        placeholder={PLACEHOLDER[owner]}
         className="min-h-[96px] resize-y"
       />
     </Card>

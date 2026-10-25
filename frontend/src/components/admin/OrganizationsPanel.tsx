@@ -177,7 +177,11 @@ function OrganizationRow({ org, onChanged }: { org: AdminOrganization; onChanged
         href={organizationPath(org.slug)}
         external={false}
         action={
-          <Button variant="dangerGhost" onClick={() => setDeleting(true)}>
+          <Button
+            variant="dangerGhost"
+            aria-label={`Delete ${org.name}`}
+            onClick={() => setDeleting(true)}
+          >
             Delete
           </Button>
         }

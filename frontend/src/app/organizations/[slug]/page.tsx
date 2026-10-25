@@ -103,7 +103,7 @@ export default function OrganizationPage() {
     >
       <ProfileHeaderEditFields name={org.name} edit={edit} />
 
-      <BioField edit={edit} />
+      <BioField edit={edit} owner="organization" />
 
       <LinkedAccountsFields edit={edit} />
 

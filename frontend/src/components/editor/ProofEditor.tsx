@@ -52,9 +52,24 @@ interface ProofEditorProps {
   allowImages?: boolean;
   /** Red invalid outline on the editor's box (FORM_INVALID_FIELD) for a caller whose submit refuses the body. */
   invalid?: boolean;
+  /** The editor is the section's card itself, padded like the event page's proof card, its text
+   *  starting where that card's text starts: an event form's Proof. Otherwise it is a field. */
+  bare?: boolean;
 }
 
 type StagedImage = { placeholder: string; previewUrl: string; file: File };
+
+// A transparent pixel: what an image shows when its placeholder has no staged file.
+const BLANK_IMAGE = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
+/** What an image block's URL loads from: a staged file's blob URL, a stored URL as is. A
+ *  placeholder with no staged file (the staging emptied as the editor unmounts) loads a blank
+ *  pixel, so no `placeholder://` src reaches an `img`, which the browser cannot fetch. */
+export function previewUrl(url: string, staged: readonly StagedImage[]): string {
+  const hit = staged.find((s) => s.placeholder === url);
+  if (hit) return hit.previewUrl;
+  return url.startsWith(PROOF_PLACEHOLDER_PREFIX) ? BLANK_IMAGE : url;
+}
 
 /** The staged files the emitted HTML still references as an `<img src>`: a deleted image drops
  *  its file. */
@@ -186,6 +201,7 @@ export default function ProofEditor({
   initialProofFiles,
   allowImages = true,
   invalid = false,
+  bare = false,
 }: ProofEditorProps) {
   const stagedRef = useRef<StagedImage[]>([]);
   // Filenames claimed this session, so two picks of `IMG.jpg` don't share a placeholder (the
@@ -212,8 +228,7 @@ export default function ProofEditor({
     schema: allowImages ? SCHEMA_WITH_IMAGES : SCHEMA_TEXT_ONLY,
     links: { isValidLink: isSafeLinkHref },
     uploadFile: allowImages ? uploadFile : undefined,
-    resolveFileUrl: async (url: string) =>
-      stagedRef.current.find((s) => s.placeholder === url)?.previewUrl ?? url,
+    resolveFileUrl: async (url: string) => previewUrl(url, stagedRef.current),
     pasteHandler: ({ event, defaultPasteHandler }) =>
       refusesFiles(event.clipboardData, allowImages) || defaultPasteHandler(),
     // Drop has no public hook. A direct editor prop runs before BlockNote's own drop plugin, and
@@ -231,8 +246,9 @@ export default function ProofEditor({
     },
   });
 
-  // Seed once; the parent re-keys to re-seed. The cleanup revokes the staged blob URLs (compose
-  // then navigate must not leak them) and empties the staging, so a dev double mount restages.
+  // Seed once; the parent re-keys to re-seed. The cleanup empties the staging, so a dev double
+  // mount restages, and revokes the staged blob URLs (compose then navigate must not leak them)
+  // on the next task, once the editor's images are gone: a revoked blob still in an `img` fails.
   useEffect(() => {
     const staged = stagedRef.current;
     const usedNames = usedNamesRef.current;
@@ -243,9 +259,11 @@ export default function ProofEditor({
       seedingRef.current = false;
     }
     return () => {
-      for (const s of staged) URL.revokeObjectURL(s.previewUrl);
-      staged.length = 0;
+      const dropped = staged.splice(0);
       usedNames.clear();
+      setTimeout(() => {
+        for (const s of dropped) URL.revokeObjectURL(s.previewUrl);
+      }, 0);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor]);
@@ -261,7 +279,13 @@ export default function ProofEditor({
   return (
     <div
       className={cn(
-        "border border-neutral-700 rounded-sm bg-neutral-800 focus-within:border-orange-500 py-2",
+        "border focus-within:border-orange-500",
+        bare
+          ? // `ProofSection`'s card: its padding, and no inline padding of BlockNote's own, so the
+            // text starts where the event page's proof text starts. The side menu floats into the
+            // card's padding.
+            "rounded-lg border-neutral-700 bg-neutral-900 p-4 [&_.bn-editor]:px-0"
+          : "rounded-sm border-neutral-700 bg-neutral-800 py-2",
         FIELD_TEXT,
         invalid && FORM_INVALID_FIELD,
       )}
