@@ -227,6 +227,12 @@ class LocalStorage:
         shutil.copyfile(self._path(key), dest)
 
 
+# Every key this module mints carries a fresh ``uuid4`` (a derivative is a
+# sibling of one), so no object is ever rewritten under its URL and a browser
+# or CDN may keep it for good.
+IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable"
+
+
 class S3Storage:
     def __init__(
         self,
@@ -253,7 +259,9 @@ class S3Storage:
         # Hash in chunks, then stream via ``upload_fileobj``: buffering a
         # whole video per upload would OOM the single worker.
         sha256 = _hash_uploadfile(file)
-        extra_args = {"ContentType": file.content_type} if file.content_type else {}
+        extra_args = {"CacheControl": IMMUTABLE_CACHE_CONTROL}
+        if file.content_type:
+            extra_args["ContentType"] = file.content_type
         # ``upload_fileobj`` is sync; ``to_thread`` keeps the loop free.
         await asyncio.to_thread(
             self.client.upload_fileobj,
@@ -274,6 +282,7 @@ class S3Storage:
             Key=key,
             Body=data,
             ContentType=content_type,
+            CacheControl=IMMUTABLE_CACHE_CONTROL,
         )
         return UploadResult(url=self.public_url(key), sha256=sha256)
 

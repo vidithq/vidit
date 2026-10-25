@@ -35,8 +35,10 @@ async def test_s3_storage_upload_puts_object_and_returns_s3_url(s3_setup):
     result = await backend.upload(file, "uploads/abc/evidence.jpg")
 
     assert result.url == f"https://{BUCKET}.s3.{REGION}.amazonaws.com/uploads/abc/evidence.jpg"
-    body = s3_setup.get_object(Bucket=BUCKET, Key="uploads/abc/evidence.jpg")["Body"].read()
-    assert body == b"image-bytes"
+    stored = s3_setup.get_object(Bucket=BUCKET, Key="uploads/abc/evidence.jpg")
+    assert stored["Body"].read() == b"image-bytes"
+    assert stored["ContentType"] == "image/jpeg"
+    assert stored["CacheControl"] == "public, max-age=31536000, immutable"
     assert result.sha256 == hashlib.sha256(b"image-bytes").hexdigest()
 
 
@@ -49,6 +51,7 @@ async def test_s3_storage_upload_bytes_puts_object_with_content_type(s3_setup):
 
     head = s3_setup.head_object(Bucket=BUCKET, Key="seed/demo/x.png")
     assert head["ContentType"] == "image/png"
+    assert head["CacheControl"] == "public, max-age=31536000, immutable"
     body = s3_setup.get_object(Bucket=BUCKET, Key="seed/demo/x.png")["Body"].read()
     assert body == b"raw"
     assert result.url == f"https://{BUCKET}.s3.{REGION}.amazonaws.com/seed/demo/x.png"
