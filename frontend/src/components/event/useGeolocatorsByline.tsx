@@ -38,6 +38,7 @@ function picture(
   label: string,
   remove: AvatarStackItem["remove"],
   muted = false,
+  link = true,
 ): AvatarStackItem {
   return {
     key: person.username,
@@ -45,7 +46,7 @@ function picture(
     avatarUrl: person.avatar_url,
     variant: "analyst",
     label,
-    href: profileHref(person.username),
+    href: link ? profileHref(person.username) : undefined,
     remove,
     muted,
   };
@@ -238,6 +239,7 @@ export function useDraftGeolocatorsByline(): { byline: ReactNode; invitees: stri
         onClick: () => setPicked(picked.filter((other) => accountName(other) !== name)),
       },
       true,
+      false,
     );
   });
   return {

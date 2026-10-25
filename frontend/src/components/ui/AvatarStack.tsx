@@ -17,8 +17,9 @@ export interface AvatarStackItem {
   variant: "analyst" | "organization";
   /** The picture's accessible name and tooltip. */
   label: string;
-  /** The picture's own page, which the picture links to. */
-  href: string;
+  /** The picture's own page, which the picture links to. Without one the picture is not a link
+   *  (a co-geolocator picked on a form, whose username may be typed text). */
+  href?: string;
   /** A remove control on the picture's top-right corner, revealed on hover or keyboard focus
    *  (a site admin's delete of an approval stamp, a co-geolocator taken off a byline). */
   remove?: { label: string; onClick: () => void };
@@ -85,47 +86,57 @@ export function AvatarStack({
   );
   return (
     <ul aria-label={label} className={cn("flex flex-wrap items-center", SPACING[spacing])}>
-      {shown.map((item) => (
-        <li key={item.key} className={cn("group relative flex shrink-0", item.remove && REMOVE_ROOM)}>
-          <Tooltip label={item.label} tapToShow>
-            <Link
-              href={item.href}
-              aria-label={item.label}
-              className={cn(
-                "relative flex hover:z-20 focus-visible:z-20",
-                item.variant === "organization" ? "rounded-md" : "rounded-full",
-                RING,
-                item.muted && "opacity-50",
-              )}
-            >
-              <Avatar
-                as="span"
-                src={item.avatarUrl}
-                username={item.name}
-                size={SIZE}
-                shape={item.variant === "organization" ? "square" : "circle"}
-                decorative
-              />
-              {checked && (
-                <span aria-hidden="true" className={CHECK}>
-                  <Check size={9} strokeWidth={4} />
+      {shown.map((item) => {
+        const boxClass = cn(
+          "relative flex hover:z-20 focus-visible:z-20",
+          item.variant === "organization" ? "rounded-md" : "rounded-full",
+          RING,
+          item.muted && "opacity-50",
+        );
+        const picture = (
+          <>
+            <Avatar
+              as="span"
+              src={item.avatarUrl}
+              username={item.name}
+              size={SIZE}
+              shape={item.variant === "organization" ? "square" : "circle"}
+              decorative
+            />
+            {checked && (
+              <span aria-hidden="true" className={CHECK}>
+                <Check size={9} strokeWidth={4} />
+              </span>
+            )}
+          </>
+        );
+        return (
+          <li key={item.key} className={cn("group relative flex shrink-0", item.remove && REMOVE_ROOM)}>
+            <Tooltip label={item.label} tapToShow>
+              {item.href ? (
+                <Link href={item.href} aria-label={item.label} className={boxClass}>
+                  {picture}
+                </Link>
+              ) : (
+                <span role="img" aria-label={item.label} tabIndex={0} className={boxClass}>
+                  {picture}
                 </span>
               )}
-            </Link>
-          </Tooltip>
-          {item.remove && (
-            <Button
-              icon
-              variant="dangerGhost"
-              aria-label={item.remove.label}
-              onClick={item.remove.onClick}
-              className={REMOVE}
-            >
-              <X size={12} />
-            </Button>
-          )}
-        </li>
-      ))}
+            </Tooltip>
+            {item.remove && (
+              <Button
+                icon
+                variant="dangerGhost"
+                aria-label={item.remove.label}
+                onClick={item.remove.onClick}
+                className={REMOVE}
+              >
+                <X size={12} />
+              </Button>
+            )}
+          </li>
+        );
+      })}
       {hidden > 0 && (
         <li className="relative flex shrink-0">
           {onOverflow ? (

@@ -117,7 +117,7 @@ describe("useDraftGeolocatorsByline", () => {
     pick("dee");
     pick("eve");
     expect(invitees).toEqual(["dee", "eve"]);
-    expect(screen.getByRole("link", { name: "dee, invited when you publish" })).toHaveClass(
+    expect(screen.getByRole("img", { name: "dee, invited when you publish" })).toHaveClass(
       "opacity-50",
     );
     expect(api.apiFetch).not.toHaveBeenCalled();
