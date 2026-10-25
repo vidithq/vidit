@@ -14,7 +14,6 @@ import { DateTimeInput } from "@/components/ui/DateTimeInput";
 import { Disclosure } from "@/components/ui/Disclosure";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Card } from "@/components/ui/Card";
-import { CharCounter } from "@/components/ui/CharCounter";
 import {
   FORM_INVALID_FIELD,
   FORM_INVALID_LABEL,
@@ -157,12 +156,9 @@ export function SourceEditor({
   const essentials = (
     <div className="space-y-4">
       <div className="space-y-1.5">
-        <span className="flex items-center justify-between gap-2">
-          <label htmlFor={id("title")} className={FORM_LABEL}>
-            Title
-          </label>
-          <CharCounter length={draft.title.length} max={SOURCE_TITLE_MAX_LEN} />
-        </span>
+        <label htmlFor={id("title")} className={FORM_LABEL}>
+          Title
+        </label>
         <Input
           id={id("title")}
           // Named apart from the event's Title field and the other editors' titles.
