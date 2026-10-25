@@ -6,11 +6,17 @@ import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api";
 
 import { eventFormSlots, useEventForm } from "@/components/geolocations/EventFormFields";
-import { PublishActions, usePublishAction } from "@/components/geolocations/PublishActions";
-import { Ban, MapPin, Megaphone, Save } from "lucide-react";
+import {
+  PUBLISH_CONFIRM,
+  PublishActions,
+  SAVING_LABEL,
+  publishGeolocationButton,
+  requestWriteButton,
+} from "@/components/geolocations/PublishActions";
+import { WRITE_FALLBACK, useEventWrite, writeGroup } from "@/components/geolocations/useEventWrite";
+import { Ban, Save } from "lucide-react";
 
 import { FieldHelp } from "@/components/ui/FieldHelp";
-import { sourcesBlockWrite } from "@/components/sources/SourcesField";
 import { LABEL_TEXT } from "@/components/ui/form-styles";
 import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import { Button } from "@/components/ui/Button";
@@ -21,7 +27,6 @@ import {
   useDraftGeolocatorsByline,
 } from "@/components/event/useGeolocatorsByline";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
-import { useMutation } from "@/hooks/useMutation";
 import { Input } from "@/components/ui/Input";
 import {
   VERSION_NOTE_MAX_LEN,
@@ -31,16 +36,13 @@ import {
   updateEventRequest,
   type EventVersionFormState,
 } from "@/lib/events";
-import { sourcesChanged, sourceWriteError } from "@/lib/sources";
+import { sourcesChanged } from "@/lib/sources";
 import { eventHref } from "@/lib/routes";
 import type { EventDetail } from "@/types";
 
 // Ties the pinned actions, the version note and the Title field to the form, which they sit
 // outside of.
 const EDIT_FORM_ID = "event-edit-form";
-
-const CONFIRM_SENTENCE =
-  "Click again to publish. Publishing makes the event public as version 1; later changes become versions.";
 
 /**
  * The one edit form of an event, in two shapes, each a write of `POST /events/{id}/versions`.
@@ -109,57 +111,6 @@ export function EventEditForm({
   const [editNote, setEditNote] = useState("");
   const [closing, setClosing] = useState(false);
 
-  const submitMutation = useMutation(
-    () =>
-      saveVersion(geo.id, {
-        ...form.publishInput(editingPublished ? undefined : draftCredit.invitees),
-        version_no: geo.version_no,
-        ...(editingPublished && { note: editNote }),
-      }),
-    {
-      fallback: editingPublished ? "Couldn't save this version." : "Couldn't publish.",
-      // The row may have moved under an open form, so `nothing_changed` prints
-      // the server's sentence (it names the version actually compared against);
-      // the loaded number is only the fallback. `version_limit` and
-      // `version_mismatch` keep the server's message.
-      onError: (err) =>
-        err instanceof ApiError && err.code === "nothing_changed"
-          ? err.message || nothingChangedMessage(geo.version_no)
-          : sourceWriteError(err),
-      onSuccess: () => {
-        if (editingPublished) {
-          finish();
-          return;
-        }
-        // The badge counts `detected` rows, which a publish removes.
-        if (!isRequest) refreshDetectionCount();
-        // A published request opens as the event it now is.
-        if (isRequest) router.push(eventHref(geo.id));
-        else finish();
-      },
-    }
-  );
-
-  // The requester's in-place save of an open request: no version, and the request floor only.
-  const saveRequestMutation = useMutation(
-    () =>
-      updateEventRequest(geo.id, form.requestInput()),
-    {
-      fallback: "Couldn't save this request.",
-      onError: sourceWriteError,
-      onSuccess: () => router.push(redirectTo),
-    }
-  );
-
-  const busy = submitMutation.loading || saveRequestMutation.loading;
-  const actionError = submitMutation.error ?? saveRequestMutation.error;
-
-  const resetActions = () => {
-    submitMutation.reset();
-    saveRequestMutation.reset();
-    form.clearIncomplete();
-  };
-
   const versionState = (): EventVersionFormState => ({
     title: form.title,
     sourcesMoved: sourcesChanged(geo.sources, form.sources),
@@ -172,58 +123,55 @@ export function EventEditForm({
     conflictIds: form.selectedConflictIds,
   });
 
-  // The write enforces the full floor on every click. A version writes on the first click; a
-  // publish is public, so it arms and writes on the second. An incomplete form surfaces the
-  // notice instead.
-  const submit = usePublishAction({
-    check: () => {
-      resetActions();
-      // The taxonomy must be loaded before the floor can tell "didn't pick one"
-      // from "still loading".
-      if (form.taxonomy.blockedMessage !== null) {
-        submitMutation.setError(form.taxonomy.blockedMessage);
-        return false;
+  // The write enforces the full floor on every click. A version asks for its note in a panel on
+  // the button; a publish is public, so it arms and writes on the second click.
+  const submit = useEventWrite(form, {
+    floor: "publish",
+    post: () =>
+      saveVersion(geo.id, {
+        ...form.publishInput(editingPublished ? undefined : draftCredit.invitees),
+        version_no: geo.version_no,
+        ...(editingPublished && { note: editNote }),
+      }),
+    fallback: editingPublished ? WRITE_FALLBACK.version : WRITE_FALLBACK.publish,
+    // The row may have moved under an open form, so `nothing_changed` prints the server's sentence
+    // (it names the version actually compared against); the loaded number is only the fallback.
+    // `version_limit` and `version_mismatch` keep the server's message.
+    onError: (err) =>
+      err instanceof ApiError && err.code === "nothing_changed"
+        ? err.message || nothingChangedMessage(geo.version_no)
+        : undefined,
+    onSuccess: () => {
+      if (editingPublished) {
+        finish();
+        return;
       }
-      if (form.publishMissing.length) {
-        form.flagIncomplete(form.publishMissing);
-        return false;
-      }
-      // A running upload or a refused archived copy holds the write.
-      const blocked = sourcesBlockWrite(form.sources);
-      if (blocked) {
-        submitMutation.setError(blocked);
-        return false;
-      }
-      // The server refuses the same edit with the same words.
-      if (editingPublished && !hasVersionChanges(geo, versionState())) {
-        submitMutation.setError(nothingChangedMessage(geo.version_no));
-        return false;
-      }
-      return true;
+      // The badge counts `detected` rows, which a publish removes.
+      if (!isRequest) refreshDetectionCount();
+      // A published request opens as the event it now is.
+      if (isRequest) router.push(eventHref(geo.id));
+      else finish();
     },
-    write: () => void submitMutation.run(),
-    // A version asks for its note in a panel on the button; a publish arms.
-    confirm: editingPublished ? undefined : CONFIRM_SENTENCE,
+    confirm: editingPublished ? undefined : PUBLISH_CONFIRM,
     ask: editingPublished,
+    // The server refuses the same edit with the same words.
+    extraCheck: () =>
+      editingPublished && !hasVersionChanges(geo, versionState())
+        ? nothingChangedMessage(geo.version_no)
+        : null,
+    resetAll: () => writes.reset(),
   });
 
-  // No confirm: the in-place save publishes nothing and files no version.
-  const saveRequest = usePublishAction({
-    check: () => {
-      resetActions();
-      if (form.requestMissing.length) {
-        form.flagIncomplete(form.requestMissing);
-        return false;
-      }
-      const blocked = sourcesBlockWrite(form.sources);
-      if (blocked) {
-        saveRequestMutation.setError(blocked);
-        return false;
-      }
-      return true;
-    },
-    write: () => void saveRequestMutation.run(),
+  // The requester's in-place save of an open request: no version, the request floor only, and no
+  // confirm, since it publishes nothing.
+  const saveRequest = useEventWrite(form, {
+    floor: "request",
+    post: () => updateEventRequest(geo.id, form.requestInput()),
+    fallback: WRITE_FALLBACK.saveRequest,
+    onSuccess: () => router.push(redirectTo),
+    resetAll: () => writes.reset(),
   });
+  const writes = writeGroup(submit, saveRequest);
 
   const title = editingPublished
     ? "Edit geolocation"
@@ -238,15 +186,15 @@ export function EventEditForm({
 
   const actions = (
     <PublishActions
-      disabled={busy}
-      error={actionError}
+      disabled={writes.busy}
+      error={writes.error}
       help={editingPublished ? undefined : "action_publish"}
       // The review pass's own chrome. A plain edit has none.
       lead={
         queue && (
           <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
             <span className={LABEL_TEXT}>{queue.position}</span>
-            <Button variant="secondary" onClick={queue.onAdvance} disabled={busy}>
+            <Button variant="secondary" onClick={queue.onAdvance} disabled={writes.busy}>
               Skip
             </Button>
           </div>
@@ -255,10 +203,10 @@ export function EventEditForm({
       buttons={[
         editingPublished
           ? {
-              action: submit,
+              action: submit.action,
               label: saveLabel,
-              busyLabel: "Saving…",
-              busy: submitMutation.loading,
+              busyLabel: SAVING_LABEL,
+              busy: submit.busy,
               variant: "primary",
               icon: <Save size={14} strokeWidth={2} />,
               form: EDIT_FORM_ID,
@@ -269,33 +217,14 @@ export function EventEditForm({
                     note={editNote}
                     setNote={setEditNote}
                     saveLabel={saveLabel}
-                    onSave={submit.confirmAsk}
+                    onSave={submit.action.confirmAsk}
                   />
                 ),
               },
             }
-          : {
-              action: submit,
-              label: "Publish",
-              busyLabel: "Publishing…",
-              busy: submitMutation.loading,
-              variant: "primary",
-              icon: <MapPin size={14} strokeWidth={2} />,
-              missing: form.publishMissing,
-              form: EDIT_FORM_ID,
-            },
+          : { ...publishGeolocationButton(submit, "Publish"), form: EDIT_FORM_ID },
         ...(isRequest && isOwner
-          ? [
-              {
-                action: saveRequest,
-                label: "Save request",
-                busyLabel: "Saving…",
-                busy: saveRequestMutation.loading,
-                variant: "secondary" as const,
-                icon: <Megaphone size={14} strokeWidth={2} />,
-                missing: form.requestMissing,
-              },
-            ]
+          ? [requestWriteButton(saveRequest, "Save request", SAVING_LABEL)]
           : []),
       ]}
       trailing={
@@ -314,7 +243,7 @@ export function EventEditForm({
               <CloseEventDialog
                 eventId={geo.id}
                 status={geo.status}
-                disabled={busy}
+                disabled={writes.busy}
                 onCancel={() => setClosing(false)}
                 onClosed={() => {
                   if (geo.status === "detected") refreshDetectionCount();
@@ -360,7 +289,7 @@ export function EventEditForm({
           id: EDIT_FORM_ID,
           onSubmit: (e) => {
             e.preventDefault();
-            submit.attempt();
+            submit.action.attempt();
           },
           noValidate: true,
         },

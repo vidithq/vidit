@@ -1567,7 +1567,58 @@ Every clickable is accent, and red is only for destructive or alerting actions. 
 
 **One submit page, content-gated.** [`/submit`](../frontend/src/app/submit/page.tsx) is a single form: you fill in what you have, and two actions publish from the content, "Publish geolocation" (born `geolocated`) or "Publish request" (born `requested`). Each is gated on a live requirements tick-list that escalates from the request floor to the full geolocation floor. `/submit` opens on a chooser of three [`<IconTile>`](../frontend/src/components/ui/IconTile.tsx) links, each with an icon, a title and one sentence: **Single event** (geolocate one event, or ask the community to geolocate it), **From an X post** (paste a link to one of your own posts, which becomes a detection you review), and **Bulk import** (upload your X archive; each geolocation in your posts becomes a detection to review). A tile opens its path in place of the chooser and names it in the `mode` query (`single`, `xpost` or `bulk`, built by `submitHref` in [`lib/routes.ts`](../frontend/src/lib/routes.ts)), so a reload keeps the path and the browser's Back returns to the chooser. On a path the page header carries the `PageShell` back arrow, which returns to the chooser: a step back through the history when the chooser opened the path, and a navigation to `/submit` otherwise (`onBack`). The draft lives in the page, above the form, so it survives a trip through the chooser: the fields reseed from it when the path opens again. `?import=1`, the target of the onboarding card and the `/import` guide, opens **Bulk import**. A link that asks for the form opens it directly (`?mode=single`): **Post request** on the Requests board, the empty profile's first-submission link, and the guide's submit tile. `/requests/new` redirects to the form, and `/geolocations/new` redirects to `/submit` with its query. A request is answered from its own [edit form](#the-owner-edit-form), not from here.
 
-**Submit actions.** The submit form renders the edit form's shell, [`EventShell`](#event-layout) filled by `eventFormSlots`, and its writes are the page's sticky actions, an `aside` named *Actions* at the top right of the header, pinned while the fields scroll. It is the edit form's [`PublishActions`](../frontend/src/components/geolocations/PublishActions.tsx): **Publish geolocation** (primary) and **Publish request** on one right-aligned line, then the `?` (`action_submit`) from `sm` up, since the two buttons fill a 320px line, then the error banner, `role="alert"`. Each button carries a [`<CountBadge>`](#build-on-shared-primitives) of the conditions it still misses, and dims while short: **Publish request** counts the request floor, and **Publish geolocation** counts the request floor plus the coordinates, the proof and the conflict. The list shows on hover, on keyboard focus, or on a tap on the count. Both publish: the first click arms the button in place (*Confirm*, `ARMED_RING`, its sentence in a live region), and the second writes. Below `lg` the buttons drop their icons, so both fit one line at 320px. The hidden `IncompleteFormAnnouncer` sits in `actions.below`. The import entries render the chooser's `PageShell` instead, without the form or its actions.
+**Submit actions.** The submit form renders the edit form's shell, [`EventShell`](#event-layout) filled by `eventFormSlots`, and its writes are the page's sticky actions, an `aside` named *Actions* at the top right of the header, pinned while the fields scroll. It is the edit form's [`PublishActions`](../frontend/src/components/geolocations/PublishActions.tsx): **Publish geolocation** (primary) and **Publish request** on one right-aligned line, then the `?` (`action_submit`) from `sm` up, since the two buttons fill a 320px line, then the error banner, `role="alert"`. Each button carries a [`<CountBadge>`](#build-on-shared-primitives) of the conditions it still misses, and dims while short: **Publish request** counts the request floor, and **Publish geolocation** counts the request floor plus the proof, the coordinates and the conflict. The list shows on hover, on keyboard focus, or on a tap on the count. Both publish: the first click arms the button in place (*Confirm*, `ARMED_RING`, its sentence in a live region), and the second writes. Below `lg` the buttons drop their icons, so both fit one line at 320px. The hidden `IncompleteFormAnnouncer` sits in `actions.below`. The import entries render the chooser's `PageShell` instead, without the form or its actions.
+
+**One write flow.** The submit form and the edit form write through the same controller, so the two forms check, word and post a write the same way.
+
+```mermaid
+flowchart TB
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`the controller, thick-bordered`"]:::core
+    l2["`a step of the gate`"]:::spec
+    l3["`what the form state or a form supplies`"]:::shared
+    l1 ~~~ l2 ~~~ l3
+  end
+
+  state["`**useEventForm**
+  publishMissing, requestMissing
+  publishInput, requestInput`"]:::shared
+  write["`**useEventWrite**, one per button
+  the mutation, the gate, usePublishAction`"]:::core
+  group["`**writeGroup**
+  one banner, busy, the reset`"]:::shared
+
+  subgraph gate [The gate, on every click]
+    direction TB
+    reset["`**reset**: every write's banner, the red outlines`"]:::spec
+    taxonomy["`**conflict options**, a publish floor only
+    still loading or failed: the banner`"]:::spec
+    floor["`**the floor**: every missing field red at once`"]:::spec
+    hold["`**sourcesBlockWrite**: an upload running, a refused snapshot
+    the banner`"]:::spec
+    extra["`**extraCheck**, the form's own refusal
+    Nothing changed since version N`"]:::spec
+    reset --> taxonomy --> floor --> hold --> extra
+  end
+
+  arm["`**arm, ask or write**
+  PUBLISH_CONFIRM, REQUEST_CONFIRM, the version note`"]:::shared
+  success["`**onSuccess**, each form's own route`"]:::shared
+
+  state --> write
+  group --> write
+  write --> gate --> arm --> success
+```
+
+- **The form state.** [`useEventForm`](../frontend/src/components/geolocations/EventFormFields.tsx) computes both floors live: `requestMissing`, and `publishMissing`, which is the request floor followed by the rest in page order (title, the sources' file, URL and kind, the proof or its image, the coordinates, the conflict). It also builds both bodies: `publishInput` posts the subject point as required, and `requestInput` posts it as an optional guess, both halves or neither. A form adds only what its endpoint takes on top, `version_no` and the version note.
+- **The controller.** [`useEventWrite`](../frontend/src/components/geolocations/useEventWrite.ts) is one write per button: its mutation, its gate and its arming (`usePublishAction`). `writeGroup` reads a form's writes together: the one error banner, whether any write runs, and the reset each click starts with.
+- **The gate.** Every click runs it in the order of the diagram. The conflict options come before the floor, because before they load a missing conflict cannot be told from one still loading. The floor comes before the sources' hold, because a running upload clears itself and must not hide a field you have to fill. The form's own refusal comes last: the edit form refuses a version that changes nothing. A refusal other than a missing field prints in the banner.
+- **The wording.** [`PublishActions`](../frontend/src/components/geolocations/PublishActions.tsx) exports what both forms show: the armed sentence of each publish (`PUBLISH_CONFIRM`, `REQUEST_CONFIRM`), the busy labels (`PUBLISHING_LABEL`, `SAVING_LABEL`), and the two button presets, `publishGeolocationButton` (primary, map pin) and `requestWriteButton` (secondary, megaphone). `WRITE_FALLBACK` holds one fallback sentence per write kind. Where a write lands on success stays with each form.
 
 Section placement follows [Event layout](#event-layout): Title, **Sources** and **Proof** in the main column; **Location** and **Details** (event date and time, the provenance link of an imported row, conflict and tags) in the side column. Each section reads like the event page's: its [`<SectionEyebrow>`](../frontend/src/components/ui/SectionEyebrow.tsx), with the section `?`, sits on the page above the section's card. **Proof** carries the *Methodology guide* link beside its eyebrow, and a publish attempt that flags the proof turns the eyebrow red and outlines the card. **Sources** has no card of its own: each source editor is a card. Fields use the [`<Input>`](../frontend/src/components/ui/Input.tsx) primitive. **Sources** is the row of source editors that [Source blocks](#source-blocks) describes, reused by submit, request, detection review and the published-row edit so they can't drift; each editor's file slot sits on the generic [`FileManager`](../frontend/src/components/ui/FileManager.tsx). **From an X post** is [`ImportPostPanel`](../frontend/src/components/geolocations/ImportPostPanel.tsx): a URL field and one action. The post becomes detections server-side, and the panel opens the first one in the detections queue; a run with something to say (warnings, a refusal, a post already imported) stays on the panel and says it, with the review one click away. **Bulk import** is [`ImportArchivePanel`](../frontend/src/components/geolocations/ImportArchivePanel.tsx), whose export walkthrough is a `boxed` [`NumberedSteps`](../frontend/src/components/ui/NumberedSteps.tsx).
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { MapPin, Megaphone } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
 import { CountBadge } from "@/components/ui/CountBadge";
@@ -16,6 +17,18 @@ import type { Concept } from "@/lib/fieldHelp";
 /** What an armed button reads. One word no longer than a publish label, so arming never widens
  *  the line. */
 const ARMED_LABEL = "Confirm";
+
+/** The armed sentence of a geolocation publish, on the submit form and the edit form. */
+export const PUBLISH_CONFIRM =
+  "Click again to publish. The geolocation becomes public at version 1; later changes become versions.";
+
+/** The armed sentence of a request publish. */
+export const REQUEST_CONFIRM =
+  "Click again to publish. The request becomes public, open for anyone to geolocate.";
+
+/** A button's label while its write runs. */
+export const PUBLISHING_LABEL = "Publishing…";
+export const SAVING_LABEL = "Saving…";
 
 /**
  * One write of an event form. `attempt` runs `check` and, when it passes, the write: at once;
@@ -91,6 +104,44 @@ export interface PublishButton {
   /** The panel an `ask` action opens under the button: its name and its content, which ends on
    *  the confirm that calls `action.confirmAsk`. */
   ask?: { label: string; content: ReactNode };
+}
+
+/** What a preset takes from a write: its action, whether it runs, and its live floor. */
+type ButtonWrite = Pick<PublishButton, "action" | "busy" | "missing">;
+
+/** The primary write that publishes a geolocation: *Publish geolocation* on the submit form,
+ *  *Publish* on the edit form. */
+export function publishGeolocationButton(
+  { action, busy, missing }: ButtonWrite,
+  label: string,
+): PublishButton {
+  return {
+    action,
+    busy,
+    missing,
+    label,
+    busyLabel: PUBLISHING_LABEL,
+    variant: "primary",
+    icon: <MapPin size={14} strokeWidth={2} />,
+  };
+}
+
+/** The secondary write that keeps the event a request: *Publish request* on the submit form,
+ *  *Save request* on the edit form. */
+export function requestWriteButton(
+  { action, busy, missing }: ButtonWrite,
+  label: string,
+  busyLabel: string,
+): PublishButton {
+  return {
+    action,
+    busy,
+    missing,
+    label,
+    busyLabel,
+    variant: "secondary",
+    icon: <Megaphone size={14} strokeWidth={2} />,
+  };
 }
 
 /**

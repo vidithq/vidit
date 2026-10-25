@@ -32,7 +32,16 @@ import type { Conflict, EventDetail, EventStatus, Media, Tag } from "@/types";
 import { PageShell } from "@/components/ui/PageShell";
 import { AccountPicker, analystAccount, type Account } from "@/components/ui/AccountPicker";
 import { Popover } from "@/components/ui/Popover";
-import { PublishActions, usePublishAction } from "@/components/geolocations/PublishActions";
+import {
+  PUBLISHING_LABEL,
+  PUBLISH_CONFIRM,
+  PublishActions,
+  REQUEST_CONFIRM,
+  SAVING_LABEL,
+  publishGeolocationButton,
+  requestWriteButton,
+  usePublishAction,
+} from "@/components/geolocations/PublishActions";
 import { Combobox } from "@/components/ui/Combobox";
 import { ActionMenu } from "@/components/ui/ActionMenu";
 import { CopyButton } from "@/components/ui/CopyButton";
@@ -1998,7 +2007,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<PublishActions>" usage="The pinned writes of the event forms (components/geolocations/PublishActions.tsx), the submit form's and the edit form's: an aside named Actions, one right-aligned line of buttons that never wraps, each with a <CountBadge> of what it still misses and dimmed while short (it stays clickable, so a click flags the gaps), its icon from lg up, then the ? and the caller's trailing control (the edit form's red close). usePublishAction runs the caller's checks on every click, then writes at once, or arms on a first click with confirm (the button reads Confirm with ARMED_RING, its sentence in a live region, and the second click writes), or with ask opens a <PopoverPanel> under the button whose own confirm writes (the version note). helpFromSm hides the ? below sm, for a line that fills a 320px phone. The error banner follows the line as an alert; lead heads the block (a review pass's position and Skip).">
+          <Item name="<PublishActions>" usage="The pinned writes of the event forms (components/geolocations/PublishActions.tsx), the submit form's and the edit form's: an aside named Actions, one right-aligned line of buttons that never wraps, each with a <CountBadge> of what it still misses and dimmed while short (it stays clickable, so a click flags the gaps), its icon from lg up, then the ? and the caller's trailing control (the edit form's red close). usePublishAction runs the caller's checks on every click, then writes at once, or arms on a first click with confirm (the button reads Confirm with ARMED_RING, its sentence in a live region, and the second click writes), or with ask opens a <PopoverPanel> under the button whose own confirm writes (the version note). helpFromSm hides the ? below sm, for a line that fills a 320px phone. The error banner follows the line as an alert; lead heads the block (a review pass's position and Skip). Both forms build their buttons from the same presets and wording: publishGeolocationButton (primary, MapPin, Publishing…), requestWriteButton (secondary, Megaphone), PUBLISH_CONFIRM and REQUEST_CONFIRM for the armed sentences, PUBLISHING_LABEL and SAVING_LABEL for the busy labels. useEventWrite (components/geolocations/useEventWrite.ts) feeds them: one mutation and one gate order per write, and writeGroup reads a form's writes as one banner.">
             <PalettePublishActions />
           </Item>
 
@@ -2224,7 +2233,12 @@ function PalettePublishActions() {
   const publish = usePublishAction({
     check: () => true,
     write: () => undefined,
-    confirm: "Click again to publish.",
+    confirm: PUBLISH_CONFIRM,
+  });
+  const request = usePublishAction({
+    check: () => true,
+    write: () => undefined,
+    confirm: REQUEST_CONFIRM,
   });
   const save = usePublishAction({ check: () => true, write: () => undefined, ask: true });
   return (
@@ -2234,15 +2248,11 @@ function PalettePublishActions() {
           disabled={false}
           help="action_submit"
           buttons={[
-            {
-              action: publish,
-              label: "Publish geolocation",
-              busyLabel: "Publishing…",
-              busy: false,
-              variant: "primary",
-              icon: <MapPin size={14} strokeWidth={2} />,
-              missing: [{ key: "proof", label: "Proof" }],
-            },
+            publishGeolocationButton(
+              { action: publish, busy: false, missing: [{ key: "proof", label: "Proof" }] },
+              "Publish geolocation",
+            ),
+            requestWriteButton({ action: request, busy: false }, "Publish request", PUBLISHING_LABEL),
           ]}
         />
       </Variant>
@@ -2253,7 +2263,7 @@ function PalettePublishActions() {
             {
               action: save,
               label: "Save version 3",
-              busyLabel: "Saving…",
+              busyLabel: SAVING_LABEL,
               busy: false,
               variant: "primary",
               icon: <Save size={14} strokeWidth={2} />,

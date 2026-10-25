@@ -18,6 +18,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 ### Changed
 
 - A submit with blank required fields no longer shows a box listing them: the fields turn red in place, the publish buttons count them, and a screen reader hears the list.
+- The submit form and the edit form check a write in the same order (the conflict options, then the missing fields in page order, then running uploads) and use the same confirm sentences and error messages.
 - The author filter shows among the active filter pills, as **By** *username*, so one click removes it like any other filter.
 - On an event page, **Add to collection** and **Geolocators** open their panel over the page, anchored to the button, so nothing on the page moves.
 - Deleting a collection that an open report names withholds it from everyone at once, keeps it in the admin reports queue marked Deleted by its owner, and erases it when its last open report is resolved.

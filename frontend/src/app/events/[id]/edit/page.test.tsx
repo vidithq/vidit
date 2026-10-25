@@ -59,6 +59,7 @@ vi.mock("@/lib/events", async (importOriginal) => ({
 
 import { closeEvent, saveVersion, updateEventRequest } from "@/lib/events";
 import { ARM_MS } from "@/hooks/useConfirmAction";
+import { PUBLISH_CONFIRM } from "@/components/geolocations/PublishActions";
 import type { Source } from "@/lib/sources";
 import type { Conflict, EventDetail, Tag } from "@/types";
 
@@ -163,6 +164,9 @@ function requestFixture(overrides: Partial<EventDetail> = {}): EventDetail {
 /** The row `/events/d1` serves, set per test. */
 let row: EventDetail;
 
+/** Whether `/conflicts` has answered. */
+let conflictsLoaded = true;
+
 /** The queue being walked: this detection, then two more. */
 let queueItems: EventDetail[] = [];
 
@@ -171,7 +175,7 @@ function resource(path: string) {
   if (path.startsWith("/events/d1")) return row;
   if (path.startsWith("/events/detections"))
     return { items: queueItems, total: queueItems.length, page: 1, per_page: 100 };
-  if (path === "/conflicts") return CONFLICTS;
+  if (path === "/conflicts") return conflictsLoaded ? CONFLICTS : null;
   return null;
 }
 
@@ -244,6 +248,7 @@ beforeEach(() => {
   row = detectionFixture();
   auth.user = OWNER;
   queryParam = null;
+  conflictsLoaded = true;
   queueItems = [
     detectionFixture(),
     detectionFixture({ id: "d2", title: "Second" }),
@@ -417,6 +422,28 @@ describe("a review pass over the queue", () => {
   });
 });
 
+describe("the publish gate", () => {
+  it("waits for the conflict options before it flags the floor", () => {
+    conflictsLoaded = false;
+    render(<EditEventPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Publish" }));
+    expect(screen.getByRole("alert")).toHaveTextContent(/Still loading the required Conflict/);
+    expect(screen.queryByText(/^Fill in the required fields/)).toBeNull();
+    expect(saveVersionMock).not.toHaveBeenCalled();
+  });
+
+  it("flags the whole floor at once, in page order", () => {
+    row = detectionFixture({ title: "", coords: null, proof: null });
+    render(<EditEventPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Publish" }));
+    expect(screen.getByText(/^Fill in the required fields/)).toHaveTextContent(
+      "Title, Proof, Coordinates, Conflict."
+    );
+  });
+});
+
 describe("the publish confirm", () => {
   /** Render the form, fill the floor, and take the first (arming) click. */
   function armSubmit() {
@@ -440,9 +467,7 @@ describe("the publish confirm", () => {
   it("announces the armed state and what the next click costs", () => {
     armSubmit();
     // A live region beside the button, not a renamed control, like every copy control.
-    const announcement = screen.getByText(
-      "Click again to publish. Publishing makes the event public as version 1; later changes become versions."
-    );
+    const announcement = screen.getByText(PUBLISH_CONFIRM);
     expect(announcement).toHaveAttribute("role", "status");
     expect(announcement).toHaveAttribute("aria-live", "polite");
   });
@@ -457,11 +482,7 @@ describe("the publish confirm", () => {
     const button = armSubmit();
     fireEvent.keyDown(document, { key: "Escape" });
     expect(button).toHaveAccessibleName("Publish");
-    expect(
-      screen.queryByText(
-        "Click again to publish. Publishing makes the event public as version 1; later changes become versions."
-      )
-    ).toBeNull();
+    expect(screen.queryByText(PUBLISH_CONFIRM)).toBeNull();
   });
 
   it("disarms when the next click lands elsewhere", () => {
@@ -684,6 +705,15 @@ describe("editing a published geolocation", () => {
     fireEvent.keyDown(again, { key: "Enter" });
     await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
     expect(saveVersionMock.mock.calls[0][1].note).toBe("Typo.");
+  });
+
+  it("flags the floor before it refuses an unchanged save", async () => {
+    row = publishedFixture({ conflicts: [] });
+    render(<EditEventPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
+    expect(await screen.findByText(/^Fill in the required fields/)).toHaveTextContent("Conflict");
+    expect(screen.queryByText("Nothing changed since version 1.")).toBeNull();
   });
 
   it("still holds the published floor before it posts", async () => {
