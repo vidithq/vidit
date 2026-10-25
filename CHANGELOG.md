@@ -2,6 +2,12 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- Sites: you can map an area of interest such as a base or a depot, keep its dated satellite imagery history, link your published events to it with their effect, follow its history on its own page, report it, and show sites as a layer on the map ([#644](https://github.com/vidithq/vidit/pull/644)).
+
 ## v0.8.0, 2026-10-25
 
 ### Added
@@ -15,9 +21,6 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - Submitting a geolocation or publishing a request or a detection invites the co-geolocators you pick by the byline, in the same write; `POST /events` and `POST /events/{id}/versions` take `geolocator_invites` ([#693](https://github.com/vidithq/vidit/pull/693)).
 - The feed shows machine detections from the analysts you follow, or from everyone on All, and a **Show detections** switch in its Kind filter hides them; `GET /feed` takes `kind=detected` ([#693](https://github.com/vidithq/vidit/pull/693)).
 
-### Added
-
-- Sites: you can map a durable place such as a base or a depot as a dated zone backed by imagery, link your published events to it with their effect, follow its history on its own page, and show sites as a layer on the map ([#644](https://github.com/vidithq/vidit/pull/644)).
 ### Changed
 
 - Every event write takes a `sources` list in place of the source URL, mirror, snapshot, capture position, post time, graphic flag and file fields, and event reads serve `sources` in place of the source and archive fields ([#693](https://github.com/vidithq/vidit/pull/693)).

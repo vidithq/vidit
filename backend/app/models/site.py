@@ -1,18 +1,18 @@
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from typing import Literal
 
 from geoalchemy2 import Geometry
-from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, String, Text, func, text
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, func, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base, literal_check
 from app.models.event import TITLE_MAX_LENGTH
 
-# Value domains (source of truth: the ORM CHECKs, the schemas and the generated
-# frontend types derive from them). The migration that creates each CHECK
-# changes by hand with its type.
-SiteType = Literal[
+# Value domains (source of truth: the ORM CHECKs, the schemas and the generated frontend types
+# derive from them). The migration that creates each CHECK changes by hand with its type.
+SiteKind = Literal[
     "airbase",
     "military_base",
     "depot",
@@ -21,29 +21,21 @@ SiteType = Literal[
     "artillery_position",
     "radar",
     "fortification",
+    "unknown",
     "other",
 ]
-ImageryProvider = Literal["google_earth", "sentinel_2", "landsat", "other"]
-# What the imagery shows, never an intention.
-ObservationEffect = Literal[
-    "observed_no_change",
-    "construction_extension",
-    "no_visible_activity",
-    "reoccupation",
-    "other",
-]
-LinkEffect = Literal["damage", "destruction", "other"]
-
-OBSERVATION_EFFECT_DEFAULT: ObservationEffect = "observed_no_change"
+# What a linked event shows at the site. ``activity`` is the neutral effect: activity observed,
+# such as a column leaving or a launch.
+LinkEffect = Literal["damage", "destruction", "activity", "other"]
 
 
 class Site(Base):
-    """A durable place (a base, a depot, a radar) with a name and a type.
+    """A named area of interest that analysts monitor through dated satellite imagery.
 
-    The zone is not a column: it lives on :class:`SiteObservation`, one dated
-    polygon per observation, and every read derives the zone, the state and
-    the corroboration from those rows and from ``event_site_links``
-    (``services/sites``). ``owner_id`` cascades like ``Collection.owner_id``.
+    The zone is not a column: each contour is a ``site_contours`` row citing a site image (a
+    ``sources`` row with ``site_id`` set), and every read derives the zone, the last image and
+    the corroboration (``services/sites``). ``name`` and ``kind`` are versioned in
+    ``site_versions``. ``owner_id`` cascades like ``Collection.owner_id``.
     """
 
     __tablename__ = "sites"
@@ -53,8 +45,11 @@ class Site(Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(TITLE_MAX_LENGTH), nullable=False)
-    site_type: Mapped[SiteType] = mapped_column(String(30), nullable=False)
-    # Takedown: NULL = visible; same axis and reversal as ``Event.hidden_at``.
+    kind: Mapped[SiteKind] = mapped_column(String(30), nullable=False)
+    version_no: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default=text("1")
+    )
+    # Takedown: NULL = visible; same axis and reversal as ``Collection.hidden_at``.
     hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -71,36 +66,62 @@ class Site(Base):
     owner = relationship("User")
 
     __table_args__ = (
-        literal_check("site_type", SiteType, "ck_sites_site_type_valid"),
+        literal_check("kind", SiteKind, "ck_sites_kind_valid"),
         Index("ix_sites_owner_id", "owner_id"),
     )
 
 
-class SiteObservation(Base):
-    """One dated zone of a site, proven by imagery captured on ``captured_on``.
+class SiteVersion(Base):
+    """One superseded state of a site's record, filed by the owner's edit.
 
-    Append-only: a correction is a new row. The zone valid on a date is the row
-    with the greatest ``(captured_on, created_at)`` at or before it.
+    Append-only, like ``EventVersion``: ``version_no`` is the version this row holds, and the
+    live row is ``sites.version_no``.
     """
 
-    __tablename__ = "site_observations"
+    __tablename__ = "site_versions"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     site_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("sites.id", ondelete="CASCADE"), nullable=False
     )
+    version_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    edited_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # ``{"name": ..., "kind": ...}`` as they stood before the edit.
+    snapshot = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+
+    edited_by = relationship("User")
+
+    __table_args__ = (UniqueConstraint("site_id", "version_no", name="uq_site_versions_site_no"),)
+
+
+class SiteContour(Base):
+    """One zone the site's owner drew, citing the site image that shows it.
+
+    Append-only. The zone valid on a date is the contour whose image has the latest
+    ``captured_at`` on or before it (``services/sites.zones_at``).
+    """
+
+    __tablename__ = "site_contours"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    site_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("sites.id", ondelete="CASCADE"), nullable=False
+    )
+    # A ``sources`` row of the same site (checked in ``services/sites``).
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("sources.id", ondelete="CASCADE"), nullable=False
+    )
     author_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    zone = mapped_column(Geometry("POLYGON", srid=4326), nullable=False)
-    captured_on: Mapped[date] = mapped_column(Date, nullable=False)
-    imagery_provider: Mapped[ImageryProvider] = mapped_column(String(20), nullable=False)
-    imagery_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    effect: Mapped[ObservationEffect] = mapped_column(
-        String(30), nullable=False, default=OBSERVATION_EFFECT_DEFAULT
-    )
-    # Plain text; the API caps it at ``schemas/site.NOTE_MAX_LENGTH``.
-    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    zone = mapped_column(Geometry("POLYGON", srid=4326, spatial_index=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
@@ -110,26 +131,13 @@ class SiteObservation(Base):
     author = relationship("User")
 
     __table_args__ = (
-        literal_check(
-            "imagery_provider", ImageryProvider, "ck_site_observations_imagery_provider_valid"
-        ),
-        literal_check("effect", ObservationEffect, "ck_site_observations_effect_valid"),
-        # A provider outside the list is reproducible only through its URL.
-        CheckConstraint(
-            "imagery_provider <> 'other' OR imagery_url IS NOT NULL",
-            name="ck_site_observations_other_needs_url",
-        ),
-        Index(
-            "ix_site_observations_site_captured",
-            "site_id",
-            "captured_on",
-            "created_at",
-        ),
+        Index("ix_site_contours_site_id", "site_id"),
+        Index("ix_site_contours_source_id", "source_id"),
     )
 
 
 class EventSiteLink(Base):
-    """One period during which an event was linked to a site, with what it did to the site.
+    """One period during which an event was linked to a site, with what it showed there.
 
     Append-only history: unlinking stamps ``unlinked_at``, and changing the effect stamps
     ``unlinked_at`` on the live row and inserts a new one with ``linked_at`` equal to it, in one

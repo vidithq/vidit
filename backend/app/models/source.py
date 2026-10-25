@@ -80,19 +80,31 @@ source_tags = Table(
 
 
 class Source(Base):
-    """One piece of evidence an event rests on: a file and the URLs it was posted at.
+    """One piece of evidence: a file and the URLs it was posted at.
 
-    An event holds up to :data:`MAX_SOURCES_PER_EVENT` sources and none is the main one. The
-    order is derived (:func:`source_order`). A source is versioned with its event
-    (``services/versions.build_snapshot``): an edit to it is an edit to the event.
+    Its owner is an event (the evidence the event rests on) or a site (a dated satellite image
+    in its imagery history), never both (``ck_sources_one_owner``). An event holds up to
+    :data:`MAX_SOURCES_PER_EVENT` sources and none is the main one. The order is derived
+    (:func:`source_order`). An event's source is versioned with its event
+    (``services/versions.build_snapshot``): an edit to it is an edit to the event. A site's
+    source is never edited.
     """
 
     __tablename__ = "sources"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    event_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True
+    event_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    site_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("sites.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    # A site image's analyst; any signed-in analyst files one. NULL on an event's source.
+    author_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # A site image's plain-text note; the API caps it at ``schemas/site.IMAGE_NOTE_MAX_LENGTH``.
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
     # ``""`` is no title.
     title: Mapped[str] = mapped_column(
         String(SOURCE_TITLE_MAX_LENGTH), nullable=False, default="", server_default=text("''")
@@ -123,6 +135,7 @@ class Source(Base):
     )
 
     event = relationship("Event", back_populates="sources")
+    author = relationship("User")
     links = relationship(
         "SourceLink",
         back_populates="source",
@@ -142,6 +155,17 @@ class Source(Base):
     __table_args__ = (
         literal_check("level", SourceLevel, "ck_sources_level_valid"),
         literal_check("kind", SourceKind, "ck_sources_kind_valid"),
+        CheckConstraint("num_nonnulls(event_id, site_id) = 1", name="ck_sources_one_owner"),
+        # A site image is a dated satellite capture that supports no publication.
+        CheckConstraint(
+            "site_id IS NULL OR (kind = 'satellite' AND level = 'context' "
+            "AND captured_at IS NOT NULL)",
+            name="ck_sources_site_image",
+        ),
+        CheckConstraint(
+            "site_id IS NOT NULL OR (author_id IS NULL AND note IS NULL)",
+            name="ck_sources_site_fields",
+        ),
     )
 
 

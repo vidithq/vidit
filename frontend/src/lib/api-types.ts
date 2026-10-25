@@ -434,6 +434,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/sites/{site_id}/moderation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set Site Moderation
+         * @description Withhold a site from every read but an admin's, or restore it.
+         *
+         *     ``true`` stamps ``hidden_at``: the site leaves the map, the event links and the
+         *     suggestions. ``false`` clears it. Idempotent: an unchanged state writes no audit row.
+         *     404 on an unknown site.
+         */
+        patch: operations["set_site_moderation_api_v1_admin_sites__site_id__moderation_patch"];
+        trace?: never;
+    };
     "/api/v1/admin/users": {
         parameters: {
             query?: never;
@@ -1535,8 +1559,8 @@ export interface paths {
          * Link Site
          * @description Link your published event to a site, or change the effect of its link (idempotent).
          *
-         *     403 for anyone but the event's owner, 409 ``event_not_linkable`` for an event that is not
-         *     published, 404 ``site_not_found`` for an unknown or withheld site.
+         *     403 ``not_event_owner`` for anyone but the event's owner, 409 ``event_not_linkable`` for an
+         *     event that is not published, 404 ``site_not_found`` for an unknown or withheld site.
          */
         post: operations["link_site_api_v1_events__geolocation_id__site_links_post"];
         delete?: never;
@@ -2105,13 +2129,13 @@ export interface paths {
          * List Sites
          * @description The visible sites whose zone valid on ``as_of`` meets the box, newest site first.
          *
-         *     A site with no observation on or before ``as_of`` is absent. Capped at 1000 sites.
+         *     A site with no contour on or before ``as_of`` is absent. Capped at 1000 sites.
          */
         get: operations["list_sites_api_v1_sites_get"];
         put?: never;
         /**
          * Create Site
-         * @description Create a site with its first observation.
+         * @description Create a site with its first image and the contour that image shows.
          *
          *     ``overlapping_sites`` lists the visible sites whose current zone shares area with the new
          *     one, as a duplicate warning; it never blocks the create.
@@ -2152,12 +2176,36 @@ export interface paths {
         };
         /**
          * Get Site
-         * @description One site: current zone and state, observations, and visible linked events.
+         * @description One site: current zone and last image, images, contours and visible linked events.
          *     A withheld site is a 404 for everyone but an admin.
          */
         get: operations["get_site_api_v1_sites__site_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit Site
+         * @description Change your site's name or kind; the superseded record is kept. Owner only.
+         */
+        patch: operations["edit_site_api_v1_sites__site_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/sites/{site_id}/contours": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change Contour
+         * @description Draw a new contour of your site, citing one of its images. Owner only.
+         */
+        post: operations["change_contour_api_v1_sites__site_id__contours_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2173,7 +2221,8 @@ export interface paths {
         };
         /**
          * Get Site History
-         * @description The site's history: creation, observations, and every link, unlink and effect change.
+         * @description The site's history: creation, record edits, images, contours, and every link, unlink and
+         *     effect change.
          *
          *     ``order=fact`` sorts by when each fact happened on the ground, ``order=recorded`` by when
          *     it entered Vidit.
@@ -2181,6 +2230,27 @@ export interface paths {
         get: operations["get_site_history_api_v1_sites__site_id__history_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sites/{site_id}/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * File Image
+         * @description File a dated satellite image in a site's imagery history. Any signed-in analyst; an
+         *     image is never edited.
+         */
+        post: operations["file_image_api_v1_sites__site_id__images_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2208,7 +2278,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/sites/{site_id}/observations": {
+    "/api/v1/sites/{site_id}/report": {
         parameters: {
             query?: never;
             header?: never;
@@ -2218,10 +2288,13 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Add Observation
-         * @description Add a dated zone to a site. Any signed-in analyst; observations are never edited.
+         * Report Site
+         * @description Report a site for moderation.
+         *
+         *     Same gesture, body and per-IP limit as an event report: open to anonymous viewers. An
+         *     unknown or withheld site answers 404 ``site_not_found``.
          */
-        post: operations["add_observation_api_v1_sites__site_id__observations_post"];
+        post: operations["report_site_api_v1_sites__site_id__report_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2933,6 +3006,30 @@ export interface components {
             username: string;
         };
         /**
+         * AdminSiteModerationRead
+         * @description Response for ``PATCH /admin/sites/{id}/moderation``: the stamp the site now carries
+         *     (``None`` once restored).
+         */
+        AdminSiteModerationRead: {
+            /** Hidden At */
+            hidden_at: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Site Id
+             * Format: uuid
+             */
+            site_id: string;
+        };
+        /**
+         * AdminSiteModerationUpdate
+         * @description Body for ``PATCH /admin/sites/{id}/moderation``: withhold the site, or restore it.
+         */
+        AdminSiteModerationUpdate: {
+            /** Hidden */
+            hidden: boolean;
+        };
+        /**
          * AdminUserDeleteResponse
          * @description Response for `DELETE /admin/users/{id}`, with the cascade summary as a
          *     record of an irreversible action.
@@ -3617,10 +3714,11 @@ export interface components {
         };
         /**
          * ContentReportCreate
-         * @description Body for ``POST /events/{id}/report`` and ``POST /collections/{id}/report``.
+         * @description Body for ``POST /events/{id}/report``, ``POST /collections/{id}/report``
+         *     and ``POST /sites/{id}/report``.
          *
          *     ``reason`` is one of ``ContentReportReason``; ``details`` is optional. One
-         *     body for both targets, the path names the thing.
+         *     body for every target, the path names the thing.
          */
         ContentReportCreate: {
             /** Details */
@@ -3655,8 +3753,9 @@ export interface components {
          *     ``resolved_at`` / ``resolution`` / ``resolved_by_id`` are all NULL while open
          *     and all set once resolved, so ``resolved_at is None`` is the open test.
          *
-         *     A row names one target: ``event_id`` or ``collection``. Both are NULL once
-         *     the target is destroyed (the orphan row, closed only by ``dismissed``).
+         *     A row names one target: ``event_id``, ``collection`` or ``site``. All are
+         *     NULL once the target is destroyed (the orphan row, closed only by
+         *     ``dismissed``).
          */
         ContentReportRead: {
             collection?: components["schemas"]["ReportedCollection"] | null;
@@ -3685,6 +3784,7 @@ export interface components {
             resolution: ("marked_graphic" | "hidden" | "dismissed") | null;
             /** Resolved At */
             resolved_at: string | null;
+            site?: components["schemas"]["ReportedSite"] | null;
         };
         /**
          * ContentReportUpdate
@@ -3853,7 +3953,7 @@ export interface components {
              * Effect
              * @enum {string}
              */
-            effect: "damage" | "destruction" | "other";
+            effect: "damage" | "destruction" | "activity" | "other";
             /**
              * Site Id
              * Format: uuid
@@ -3869,7 +3969,7 @@ export interface components {
              * Effect
              * @enum {string}
              */
-            effect: "damage" | "destruction" | "other";
+            effect: "damage" | "destruction" | "activity" | "other";
             /**
              * Linked At
              * Format: date-time
@@ -4039,6 +4139,16 @@ export interface components {
             name: string;
         };
         /**
+         * ImageryProviderRef
+         * @description An imagery provider of ``services/imagery.PROVIDERS``, by id and name.
+         */
+        ImageryProviderRef: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
          * ImportNote
          * @description One thing the import has to say: a stable code plus its sentence.
          *
@@ -4063,7 +4173,7 @@ export interface components {
              * Effect
              * @enum {string}
              */
-            effect: "damage" | "destruction" | "other";
+            effect: "damage" | "destruction" | "activity" | "other";
             /**
              * Event Id
              * Format: uuid
@@ -4495,6 +4605,20 @@ export interface components {
             title: string;
         };
         /**
+         * ReportedSite
+         * @description The reported site as the admin queue names it, read live.
+         */
+        ReportedSite: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            owner: components["schemas"]["AuthorRef"];
+        };
+        /**
          * ResendConfirmationRequest
          * @description Body for ``POST /auth/resend-confirmation``. Always 204, so it can't leak
          *     whether the email matched a pending registration.
@@ -4662,29 +4786,28 @@ export interface components {
             username_highlight: string;
         };
         /**
-         * SiteCreate
-         * @description Body of ``POST /sites``: the site and its first observation, written together.
-         *
-         *     ``name`` and ``site_type`` never change after the create.
+         * SiteContourCreate
+         * @description Body of ``POST /sites/{id}/contours``: a zone and the site image that shows it.
          */
-        SiteCreate: {
-            /** Name */
-            name: string;
-            observation: components["schemas"]["SiteObservationCreate"];
+        SiteContourCreate: {
             /**
-             * Site Type
-             * @enum {string}
+             * Image Id
+             * Format: uuid
              */
-            site_type: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "other";
+            image_id: string;
+            zone: components["schemas"]["ZonePolygon"];
         };
         /**
-         * SiteCreatedRead
-         * @description ``POST /sites`` answer: the new site and the visible sites its zone overlaps.
+         * SiteContourRead
+         * @description One contour the owner drew; ``captured_at`` is its image's, the date it holds from.
          */
-        SiteCreatedRead: {
-            centroid: components["schemas"]["CoordsRead"];
-            /** Corroboration Count */
-            corroboration_count: number;
+        SiteContourRead: {
+            author: components["schemas"]["AuthorRef"] | null;
+            /**
+             * Captured At
+             * Format: date-time
+             */
+            captured_at: string;
             /**
              * Created At
              * Format: date-time
@@ -4696,37 +4819,72 @@ export interface components {
              */
             id: string;
             /**
-             * Imagery Provider
+             * Image Id
+             * Format: uuid
+             */
+            image_id: string;
+            zone: components["schemas"]["ZonePolygon"];
+        };
+        /**
+         * SiteCreate
+         * @description Body of ``POST /sites``: the record, the first image and the contour it shows.
+         */
+        SiteCreate: {
+            contour: components["schemas"]["ZonePolygon"];
+            image: components["schemas"]["SiteImageCreate"];
+            /**
+             * Kind
              * @enum {string}
              */
-            imagery_provider: "google_earth" | "sentinel_2" | "landsat" | "other";
+            kind: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "unknown" | "other";
+            /** Name */
+            name: string;
+        };
+        /**
+         * SiteCreatedRead
+         * @description ``POST /sites`` answer: the new site and the visible sites its zone overlaps.
+         */
+        SiteCreatedRead: {
+            centroid: components["schemas"]["CoordsRead"];
+            /**
+             * Contour Id
+             * Format: uuid
+             */
+            contour_id: string;
+            /** Contours */
+            contours: components["schemas"]["SiteContourRead"][];
+            /** Corroboration Count */
+            corroboration_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Hidden At */
+            hidden_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Images */
+            images: components["schemas"]["SiteImageRead"][];
             /** Is Corroborated */
             is_corroborated: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "unknown" | "other";
+            last_image: components["schemas"]["SiteLastImageRead"] | null;
             latest_link_effect: components["schemas"]["LatestLinkEffect"] | null;
             /** Linked Events */
             linked_events: components["schemas"]["SiteLinkedEventRead"][];
             /** Name */
             name: string;
-            /**
-             * Observation Effect
-             * @enum {string}
-             */
-            observation_effect: "observed_no_change" | "construction_extension" | "no_visible_activity" | "reoccupation" | "other";
-            /** Observations */
-            observations: components["schemas"]["SiteObservationRead"][];
-            /**
-             * Observed On
-             * Format: date
-             */
-            observed_on: string;
             /** Overlapping Sites */
             overlapping_sites: components["schemas"]["SiteOverlapRead"][];
             owner: components["schemas"]["AuthorRef"];
-            /**
-             * Site Type
-             * @enum {string}
-             */
-            site_type: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "other";
             /**
              * Updated At
              * Format: date-time
@@ -4736,36 +4894,39 @@ export interface components {
         };
         /**
          * SiteHistoryEntry
-         * @description One fact in a site's history, computed from the site, observation and link rows.
+         * @description One fact in a site's history, computed from the site's tables.
          *
          *     ``recorded_at`` is when the fact entered Vidit. ``fact_date`` is when it happened on the
-         *     ground: the imagery capture date of an observation, the event date of a link entry, null
-         *     for ``site_created``. ``actor`` is null once that account is erased.
+         *     ground: the capture date of an image, or of the image a contour cites, the event date of a
+         *     link entry, null for ``site_created`` and ``record_edited``. ``actor`` is null once that
+         *     account is erased.
          *
-         *     Payload by kind: ``observation_added`` sets ``observation_id``, ``observation_effect`` and
-         *     ``imagery_provider``; the three link kinds set ``event`` and ``link_effect``, and
-         *     ``link_effect_changed`` also sets ``previous_link_effect``.
+         *     Payload by kind: ``site_created`` sets ``record``, ``image_id`` and ``contour_id`` (the
+         *     first ones); ``image_filed`` sets ``image_id``; ``contour_changed`` sets ``contour_id`` and
+         *     ``image_id``; ``record_edited`` sets ``record`` and ``previous_record``; the three link
+         *     kinds set ``event`` and ``link_effect``, and ``link_effect_changed`` also sets
+         *     ``previous_link_effect``.
          */
         SiteHistoryEntry: {
             actor: components["schemas"]["AuthorRef"] | null;
+            /** Contour Id */
+            contour_id?: string | null;
             event?: components["schemas"]["SiteHistoryEvent"] | null;
             /** Fact Date */
             fact_date: string | null;
-            /** Imagery Provider */
-            imagery_provider?: ("google_earth" | "sentinel_2" | "landsat" | "other") | null;
+            /** Image Id */
+            image_id?: string | null;
             /**
              * Kind
              * @enum {string}
              */
-            kind: "site_created" | "observation_added" | "event_linked" | "event_unlinked" | "link_effect_changed";
+            kind: "site_created" | "image_filed" | "contour_changed" | "record_edited" | "event_linked" | "event_unlinked" | "link_effect_changed";
             /** Link Effect */
-            link_effect?: ("damage" | "destruction" | "other") | null;
-            /** Observation Effect */
-            observation_effect?: ("observed_no_change" | "construction_extension" | "no_visible_activity" | "reoccupation" | "other") | null;
-            /** Observation Id */
-            observation_id?: string | null;
+            link_effect?: ("damage" | "destruction" | "activity" | "other") | null;
             /** Previous Link Effect */
-            previous_link_effect?: ("damage" | "destruction" | "other") | null;
+            previous_link_effect?: ("damage" | "destruction" | "activity" | "other") | null;
+            previous_record?: components["schemas"]["SiteRecord"] | null;
+            record?: components["schemas"]["SiteRecord"] | null;
             /**
              * Recorded At
              * Format: date-time
@@ -4785,13 +4946,145 @@ export interface components {
             title: string;
         };
         /**
+         * SiteImageCreate
+         * @description One dated satellite image filed on a site.
+         *
+         *     The links are where a reader reopens the image (``services/imagery``). The file is one of
+         *     ``upload_id`` (a staged file from ``POST /uploads``) and ``media_id`` (the file of a
+         *     satellite source of a published event), or neither.
+         */
+        SiteImageCreate: {
+            /**
+             * Captured At
+             * Format: date-time
+             */
+            captured_at: string;
+            /** Links */
+            links?: components["schemas"]["SourceLinkCreate"][];
+            /** Media Id */
+            media_id?: string | null;
+            /** Note */
+            note?: string | null;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            /** Upload Id */
+            upload_id?: string | null;
+        };
+        /**
+         * SiteImageFiledRead
+         * @description ``POST /sites/{id}/images`` answer: the image, and the images already filed on the site
+         *     with the same provider and capture date.
+         */
+        SiteImageFiledRead: {
+            author: components["schemas"]["AuthorRef"] | null;
+            capture_position: components["schemas"]["CoordsRead"] | null;
+            /** Captured At */
+            captured_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Duplicate Image Ids */
+            duplicate_image_ids: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Graphic */
+            is_graphic: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "smartphone" | "camera" | "static_camera" | "drone" | "aircraft" | "satellite" | "dashcam" | "body_cam" | "article" | "official_statement" | "other" | "unknown";
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "direct" | "indirect" | "context";
+            /** Links */
+            links: components["schemas"]["SourceLinkRead"][];
+            media: components["schemas"]["MediaRead"] | null;
+            /** Note */
+            note: string | null;
+            provider: components["schemas"]["ImageryProviderRead"] | null;
+            /** Tags */
+            tags: components["schemas"]["TagRead"][];
+            /** Title */
+            title: string;
+            /** Warnings */
+            warnings: components["schemas"]["SourceWarning"][];
+        };
+        /**
+         * SiteImageRead
+         * @description One image of a site's imagery history: the source, its provider, analyst and note.
+         */
+        SiteImageRead: {
+            author: components["schemas"]["AuthorRef"] | null;
+            capture_position: components["schemas"]["CoordsRead"] | null;
+            /** Captured At */
+            captured_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Graphic */
+            is_graphic: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "smartphone" | "camera" | "static_camera" | "drone" | "aircraft" | "satellite" | "dashcam" | "body_cam" | "article" | "official_statement" | "other" | "unknown";
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "direct" | "indirect" | "context";
+            /** Links */
+            links: components["schemas"]["SourceLinkRead"][];
+            media: components["schemas"]["MediaRead"] | null;
+            /** Note */
+            note: string | null;
+            provider: components["schemas"]["ImageryProviderRead"] | null;
+            /** Tags */
+            tags: components["schemas"]["TagRead"][];
+            /** Title */
+            title: string;
+            /** Warnings */
+            warnings: components["schemas"]["SourceWarning"][];
+        };
+        /** SiteLastImageRead */
+        SiteLastImageRead: {
+            /**
+             * Captured At
+             * Format: date-time
+             */
+            captured_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            provider: components["schemas"]["ImageryProviderRef"] | null;
+        };
+        /**
          * SiteLinkedEventRead
          * @description One visible event linked to the site.
          *
-         *     ``inside_zone`` and ``distance_m`` are measured against
-         *     ``measured_observation_id``: the observation valid on ``occurred_date``, or the
-         *     earliest one when the event predates them all, or the latest one when the
-         *     event has no date. ``distance_m`` is null inside the zone.
+         *     ``inside_zone`` and ``distance_m`` are measured against ``measured_contour_id``: the
+         *     contour valid on ``occurred_date``, the earliest one when the event predates them all, or
+         *     the current one when the event has no date. ``distance_m`` is null inside the zone.
          */
         SiteLinkedEventRead: {
             coords: components["schemas"]["CoordsRead"];
@@ -4801,7 +5094,7 @@ export interface components {
              * Effect
              * @enum {string}
              */
-            effect: "damage" | "destruction" | "other";
+            effect: "damage" | "destruction" | "activity" | "other";
             /**
              * Id
              * Format: uuid
@@ -4815,10 +5108,10 @@ export interface components {
              */
             linked_at: string;
             /**
-             * Measured Observation Id
+             * Measured Contour Id
              * Format: uuid
              */
-            measured_observation_id: string;
+            measured_contour_id: string;
             /** Occurred Date */
             occurred_date: string | null;
             owner: components["schemas"]["AuthorRef"];
@@ -4827,10 +5120,15 @@ export interface components {
         };
         /**
          * SiteList
-         * @description One site on the map, with the zone valid at ``as_of``.
+         * @description One site on the map, read at ``as_of``.
          */
         SiteList: {
             centroid: components["schemas"]["CoordsRead"];
+            /**
+             * Contour Id
+             * Format: uuid
+             */
+            contour_id: string;
             /** Corroboration Count */
             corroboration_count: number;
             /**
@@ -4838,36 +5136,22 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /**
-             * Imagery Provider
-             * @enum {string}
-             */
-            imagery_provider: "google_earth" | "sentinel_2" | "landsat" | "other";
             /** Is Corroborated */
             is_corroborated: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "unknown" | "other";
+            last_image: components["schemas"]["SiteLastImageRead"] | null;
             latest_link_effect: components["schemas"]["LatestLinkEffect"] | null;
             /** Name */
             name: string;
-            /**
-             * Observation Effect
-             * @enum {string}
-             */
-            observation_effect: "observed_no_change" | "construction_extension" | "no_visible_activity" | "reoccupation" | "other";
-            /**
-             * Observed On
-             * Format: date
-             */
-            observed_on: string;
             /**
              * Owner Id
              * Format: uuid
              */
             owner_id: string;
-            /**
-             * Site Type
-             * @enum {string}
-             */
-            site_type: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "other";
             zone: components["schemas"]["ZonePolygon"];
         };
         /**
@@ -4890,70 +5174,6 @@ export interface components {
             title: string;
         };
         /**
-         * SiteObservationCreate
-         * @description One dated zone and the imagery that proves it.
-         *
-         *     ``imagery_url`` is required when ``imagery_provider`` is ``other``.
-         *     ``captured_on`` may not be later than today (UTC).
-         */
-        SiteObservationCreate: {
-            /**
-             * Captured On
-             * Format: date
-             */
-            captured_on: string;
-            /**
-             * Effect
-             * @default observed_no_change
-             * @enum {string}
-             */
-            effect: "observed_no_change" | "construction_extension" | "no_visible_activity" | "reoccupation" | "other";
-            /**
-             * Imagery Provider
-             * @enum {string}
-             */
-            imagery_provider: "google_earth" | "sentinel_2" | "landsat" | "other";
-            /** Imagery Url */
-            imagery_url?: string | null;
-            /** Note */
-            note?: string | null;
-            zone: components["schemas"]["ZonePolygon"];
-        };
-        /** SiteObservationRead */
-        SiteObservationRead: {
-            author: components["schemas"]["AuthorRef"] | null;
-            /**
-             * Captured On
-             * Format: date
-             */
-            captured_on: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Effect
-             * @enum {string}
-             */
-            effect: "observed_no_change" | "construction_extension" | "no_visible_activity" | "reoccupation" | "other";
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /**
-             * Imagery Provider
-             * @enum {string}
-             */
-            imagery_provider: "google_earth" | "sentinel_2" | "landsat" | "other";
-            /** Imagery Url */
-            imagery_url: string | null;
-            /** Note */
-            note: string | null;
-            zone: components["schemas"]["ZonePolygon"];
-        };
-        /**
          * SiteOverlapCheck
          * @description Body of ``POST /sites/overlaps``.
          */
@@ -4972,25 +5192,33 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "unknown" | "other";
             /** Name */
             name: string;
             /** Share Of Existing Zone */
             share_of_existing_zone: number;
             /** Share Of New Zone */
             share_of_new_zone: number;
-            /**
-             * Site Type
-             * @enum {string}
-             */
-            site_type: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "other";
         };
         /**
          * SiteRead
-         * @description The full site: its current zone and state, every observation oldest first,
-         *     and every visible linked event oldest first.
+         * @description The full site: its current state, every image and contour, oldest capture first, and every
+         *     visible linked event, oldest first. ``hidden_at`` is set only on a withheld site, which only
+         *     an admin reads.
          */
         SiteRead: {
             centroid: components["schemas"]["CoordsRead"];
+            /**
+             * Contour Id
+             * Format: uuid
+             */
+            contour_id: string;
+            /** Contours */
+            contours: components["schemas"]["SiteContourRead"][];
             /** Corroboration Count */
             corroboration_count: number;
             /**
@@ -4998,47 +5226,48 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Hidden At */
+            hidden_at: string | null;
             /**
              * Id
              * Format: uuid
              */
             id: string;
-            /**
-             * Imagery Provider
-             * @enum {string}
-             */
-            imagery_provider: "google_earth" | "sentinel_2" | "landsat" | "other";
+            /** Images */
+            images: components["schemas"]["SiteImageRead"][];
             /** Is Corroborated */
             is_corroborated: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "unknown" | "other";
+            last_image: components["schemas"]["SiteLastImageRead"] | null;
             latest_link_effect: components["schemas"]["LatestLinkEffect"] | null;
             /** Linked Events */
             linked_events: components["schemas"]["SiteLinkedEventRead"][];
             /** Name */
             name: string;
-            /**
-             * Observation Effect
-             * @enum {string}
-             */
-            observation_effect: "observed_no_change" | "construction_extension" | "no_visible_activity" | "reoccupation" | "other";
-            /** Observations */
-            observations: components["schemas"]["SiteObservationRead"][];
-            /**
-             * Observed On
-             * Format: date
-             */
-            observed_on: string;
             owner: components["schemas"]["AuthorRef"];
-            /**
-             * Site Type
-             * @enum {string}
-             */
-            site_type: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "other";
             /**
              * Updated At
              * Format: date-time
              */
             updated_at: string;
             zone: components["schemas"]["ZonePolygon"];
+        };
+        /**
+         * SiteRecord
+         * @description A site's record as it stood.
+         */
+        SiteRecord: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "unknown" | "other";
+            /** Name */
+            name: string;
         };
         /** SiteRef */
         SiteRef: {
@@ -5047,13 +5276,13 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Name */
-            name: string;
             /**
-             * Site Type
+             * Kind
              * @enum {string}
              */
-            site_type: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "other";
+            kind: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "unknown" | "other";
+            /** Name */
+            name: string;
         };
         /**
          * SiteSuggestionRead
@@ -5067,13 +5296,23 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Name */
-            name: string;
             /**
-             * Site Type
+             * Kind
              * @enum {string}
              */
-            site_type: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "other";
+            kind: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "unknown" | "other";
+            /** Name */
+            name: string;
+        };
+        /**
+         * SiteUpdate
+         * @description Body of ``PATCH /sites/{id}``: the fields to change, at least one.
+         */
+        SiteUpdate: {
+            /** Kind */
+            kind?: ("airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "unknown" | "other") | null;
+            /** Name */
+            name?: string | null;
         };
         /**
          * SourceCheck
@@ -5178,16 +5417,10 @@ export interface components {
          * @description One URL of a source as the event form posts it.
          */
         SourceLinkCreate: {
-            /**
-             * Posted At
-             * @default null
-             */
-            posted_at: string | null;
-            /**
-             * Snapshot Url
-             * @default null
-             */
-            snapshot_url: string | null;
+            /** Posted At */
+            posted_at?: string | null;
+            /** Snapshot Url */
+            snapshot_url?: string | null;
             /** Url */
             url: string;
         };
@@ -6320,6 +6553,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ContentReportRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_site_moderation_api_v1_admin_sites__site_id__moderation_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminSiteModerationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSiteModerationRead"];
                 };
             };
             /** @description Validation Error */
@@ -9292,6 +9562,80 @@ export interface operations {
             };
         };
     };
+    edit_site_api_v1_sites__site_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SiteUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    change_contour_api_v1_sites__site_id__contours_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SiteContourCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteContourRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_site_history_api_v1_sites__site_id__history_get: {
         parameters: {
             query?: {
@@ -9314,6 +9658,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SiteHistoryEntry"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    file_image_api_v1_sites__site_id__images_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SiteImageCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteImageFiledRead"];
                 };
             };
             /** @description Validation Error */
@@ -9362,7 +9743,7 @@ export interface operations {
             };
         };
     };
-    add_observation_api_v1_sites__site_id__observations_post: {
+    report_site_api_v1_sites__site_id__report_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -9375,7 +9756,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SiteObservationCreate"];
+                "application/json": components["schemas"]["ContentReportCreate"];
             };
         };
         responses: {
@@ -9385,7 +9766,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SiteObservationRead"];
+                    "application/json": components["schemas"]["ContentReportRead"];
                 };
             };
             /** @description Validation Error */

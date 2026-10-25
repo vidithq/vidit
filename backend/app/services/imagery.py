@@ -5,9 +5,10 @@ permalink shape a reader reopens, the credit line and a one-line help. The event
 through ``POST /sources/check``, every ``SourceRead`` carries the warnings it computes, and the
 import's context hosts (``tweet_ingest.urls.CONTEXT_HOSTS``) take their imagery rows from it.
 
-A check never refuses: :func:`source_warnings` describes what keeps a reader from reopening
-the image, and the write goes through. Pure string work, no I/O, no app import, so the ingest
-vocabulary can read it.
+A check never refuses an event's source: :func:`source_warnings` describes what keeps a reader
+from reopening the image, and the write goes through. A site image is refused when no link
+reopens it (:func:`can_reopen`, read by ``services/sites``). Pure string work, no I/O, no app
+import, so the ingest vocabulary can read it.
 """
 
 from __future__ import annotations
@@ -441,6 +442,29 @@ def is_short_link(url: str) -> bool:
     return parsed is not None and any(_host_matches(parsed.host, b) for b in SHORT_LINK_HOSTS)
 
 
+def _reopens(link: LinkCheck) -> bool:
+    """A listed provider a reader can reopen, or an unlisted publication with an archived copy."""
+    if is_short_link(link.url):
+        return False
+    provider = provider_of(link.url)
+    if provider is None:
+        return link.archived
+    return provider.group != "not_reopenable"
+
+
+def can_reopen(links: Sequence[LinkCheck]) -> bool:
+    """Whether at least one link lets a reader reopen the image."""
+    return any(_reopens(link) for link in links)
+
+
+def image_provider(urls: Sequence[str]) -> ImageryProvider | None:
+    """The provider an image is credited to: the first link on a reopenable listed provider,
+    else the first link on any listed provider."""
+    providers = [p for p in map(provider_of, urls) if p is not None]
+    reopenable = [p for p in providers if p.group != "not_reopenable"]
+    return next(iter(reopenable or providers), None)
+
+
 def _suggested(kind: str) -> str:
     names = [
         p.name for p in PROVIDERS if p.group in ("accepted", "aircraft_archive") and kind in p.kinds
@@ -459,7 +483,6 @@ def source_warnings(
     if kind not in IMAGERY_KINDS:
         return []
     warnings: list[ImageryWarning] = []
-    reopenable = False
     unlisted = False
     for link in links:
         if is_short_link(link.url):
@@ -474,22 +497,18 @@ def source_warnings(
             continue
         provider = provider_of(link.url)
         if provider is None:
-            if link.archived:
-                reopenable = True
-            else:
-                unlisted = True
+            unlisted = unlisted or not link.archived
             continue
         if provider.group == "not_reopenable":
             warnings.append(ImageryWarning("provider_not_reopenable", provider.help, link.url))
             continue
-        reopenable = True
         parsed = _parse(link.url)
         problem = provider.shape(parsed) if provider.shape and parsed else None
         if problem is not None:
             warnings.append(
                 ImageryWarning("permalink_shape", f"{provider.name}: {problem}", link.url)
             )
-    if unlisted and not reopenable:
+    if unlisted and not can_reopen(links):
         warnings.append(
             ImageryWarning(
                 "provider_unknown",

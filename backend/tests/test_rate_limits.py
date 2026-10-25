@@ -386,12 +386,16 @@ _PROBE_ZONE = {
     "type": "Polygon",
     "coordinates": [[[-150.0, -60.0], [-149.99, -60.0], [-149.99, -59.99], [-150.0, -60.0]]],
 }
-_PROBE_OBSERVATION = {
-    "zone": _PROBE_ZONE,
-    "captured_on": "2025-01-01",
-    "imagery_provider": "landsat",
+_PROBE_IMAGE = {
+    "captured_at": "2025-01-01T00:00:00Z",
+    "links": [{"url": "https://earthexplorer.usgs.gov/scene/metadata/full/landsat/probe/"}],
 }
-_PROBE_SITE = {"name": "rate limit probe", "site_type": "other", "observation": _PROBE_OBSERVATION}
+_PROBE_SITE = {
+    "name": "rate limit probe",
+    "kind": "other",
+    "contour": _PROBE_ZONE,
+    "image": _PROBE_IMAGE,
+}
 
 # A well-formed browser subscription; every probe upserts the one row.
 # An HTML description, enough to pass body validation.
@@ -607,13 +611,16 @@ _DOCUMENTED_LIMITS = [
     # The site create stores a row per request; the other probes 404 after the limiter.
     _Case("post", "/api/v1/sites", 30, "user", {"json": _PROBE_SITE}),
     _Case("post", "/api/v1/sites/overlaps", 60, "user", {"json": {"zone": _PROBE_ZONE}}),
+    _Case("post", f"/api/v1/sites/{_MISSING_ID}/images", 30, "user", {"json": _PROBE_IMAGE}),
     _Case(
         "post",
-        f"/api/v1/sites/{_MISSING_ID}/observations",
+        f"/api/v1/sites/{_MISSING_ID}/contours",
         30,
         "user",
-        {"json": _PROBE_OBSERVATION},
+        {"json": {"zone": _PROBE_ZONE, "image_id": str(_MISSING_ID)}},
     ),
+    _Case("patch", f"/api/v1/sites/{_MISSING_ID}", 30, "user", {"json": {"name": "probe"}}),
+    _Case("post", f"/api/v1/sites/{_MISSING_ID}/report", 10, "anon", {"json": {"reason": "other"}}),
     _Case(
         "post",
         f"/api/v1/events/{_MISSING_ID}/site-links",
@@ -705,6 +712,13 @@ _DOCUMENTED_LIMITS = [
     _Case("delete", f"/api/v1/admin/users/{_MISSING_ID}/detected-events", 30, "admin"),
     _Case("delete", f"/api/v1/admin/events/{_MISSING_ID}", 60, "admin"),
     _Case("delete", f"/api/v1/admin/collections/{_MISSING_ID}", 60, "admin"),
+    _Case(
+        "patch",
+        f"/api/v1/admin/sites/{_MISSING_ID}/moderation",
+        60,
+        "admin",
+        {"json": {"hidden": True}},
+    ),
     _Case(
         "post",
         f"/api/v1/admin/reports/{_MISSING_ID}/resolve",

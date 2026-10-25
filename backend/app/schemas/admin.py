@@ -195,6 +195,21 @@ class AdminCollectionModerationUpdate(BaseModel):
     hidden: bool
 
 
+class AdminSiteModerationUpdate(BaseModel):
+    """Body for ``PATCH /admin/sites/{id}/moderation``: withhold the site, or restore it."""
+
+    hidden: bool
+
+
+class AdminSiteModerationRead(BaseModel):
+    """Response for ``PATCH /admin/sites/{id}/moderation``: the stamp the site now carries
+    (``None`` once restored)."""
+
+    site_id: uuid.UUID
+    name: str
+    hidden_at: datetime | None
+
+
 class AdminEventModerationUpdate(BaseModel):
     """Body for ``PATCH /admin/events/{id}/moderation``.
 

@@ -47,14 +47,16 @@ username_highlight  # schemas/search.py SearchUserHit
 in_collection  # schemas/collection.py CollectionMembershipRead
 cover  # schemas/collection.py CollectionRead, the card's mosaic
 share_of_existing_zone  # schemas/site.py SiteOverlapRead
+duplicate_image_ids  # schemas/site.py SiteImageFiledRead
 inside_zone  # schemas/site.py SiteLinkedEventRead
-measured_observation_id  # schemas/site.py SiteLinkedEventRead
-observation_effect  # schemas/site.py SiteState
+measured_contour_id  # schemas/site.py SiteLinkedEventRead
+last_image  # schemas/site.py SiteState
+corroboration_count  # schemas/site.py SiteState
+is_corroborated  # schemas/site.py SiteState
 latest_link_effect  # schemas/site.py SiteState
-observations  # schemas/site.py SiteRead
 linked_events  # schemas/site.py SiteRead
 overlapping_sites  # schemas/site.py SiteCreatedRead
-link_effect  # schemas/site.py SiteHistoryEntry
+previous_record  # schemas/site.py SiteHistoryEntry
 previous_link_effect  # schemas/site.py SiteHistoryEntry
 archives_imported  # schemas/admin.py AdminInviteRedeemerRead
 bot_detection_count  # schemas/admin.py AdminInviteRedeemerRead

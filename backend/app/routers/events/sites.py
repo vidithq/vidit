@@ -41,8 +41,8 @@ def link_site(
 ) -> EventSiteLinkRead:
     """Link your published event to a site, or change the effect of its link (idempotent).
 
-    403 for anyone but the event's owner, 409 ``event_not_linkable`` for an event that is not
-    published, 404 ``site_not_found`` for an unknown or withheld site.
+    403 ``not_event_owner`` for anyone but the event's owner, 409 ``event_not_linkable`` for an
+    event that is not published, 404 ``site_not_found`` for an unknown or withheld site.
     """
     geo = resolve_live_event(db, geolocation_id)
     try:
@@ -64,7 +64,10 @@ def unlink_site(
 ) -> None:
     """Remove your event's link to a site (owner only). Idempotent (204)."""
     geo = resolve_live_event(db, geolocation_id)
-    sites_service.unlink_event(db, event=geo, user=current_user, site_id=site_id)
+    try:
+        sites_service.unlink_event(db, event=geo, user=current_user, site_id=site_id)
+    except sites_service.SiteError as exc:
+        raise_typed_error(exc, sites_service.SITE_ERROR_STATUS)
 
 
 @router.get("/{geolocation_id}/site-suggestions", response_model=list[SiteSuggestionRead])
