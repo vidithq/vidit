@@ -10,8 +10,8 @@ import {
   createEventRequest,
   missingEventFields,
   missingEventRequestFields,
+  missingSummary,
   parseGuessCoords,
-  type MissingFieldKey,
 } from "@/lib/events";
 import { draftUrls, sourceFloor, sourceWriteError } from "@/lib/sources";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
@@ -20,13 +20,9 @@ import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel
 import { ImportPostPanel } from "@/components/geolocations/ImportPostPanel";
 import { MapPin, Megaphone } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { CountBadge } from "@/components/ui/CountBadge";
 import { IconTile } from "@/components/ui/IconTile";
 import { EventFormLayout, useEventForm } from "@/components/geolocations/EventFormFields";
-import {
-  GEO_EXTRA_REQS,
-  REQUEST_REQS,
-  usePublishConditions,
-} from "@/components/geolocations/PublishChecklist";
 import { sourcesBlockWrite } from "@/components/sources/SourcesField";
 import { DuplicateProbe } from "@/components/geolocations/new/DuplicateProbe";
 import { IMPORT_GLYPH } from "@/lib/importEntries";
@@ -91,8 +87,8 @@ function SubmitForm() {
   }, [mode]);
 
   // Every field both publish paths fill, empty. `invalidKeys` drive the in-form red outlines,
-  // set when a publish is clicked while its floor is short. The tick-list is the standing
-  // summary, so no notice banner.
+  // set when a publish is clicked while its floor is short. The counts on the publish buttons
+  // are the standing summary, so no notice banner.
   const form = useEventForm();
   const { flagIncomplete, clearIncomplete } = form;
 
@@ -149,31 +145,11 @@ function SubmitForm() {
     () => missingEventRequestFields({ title: form.title, sources: floor }),
     [form.title, floor]
   );
-  const geoMissingKeys = useMemo(
-    () => new Set<MissingFieldKey>(geoMissing.map((m) => m.key)),
-    [geoMissing]
-  );
-  const reqMissingKeys = useMemo(
-    () => new Set<MissingFieldKey>(reqMissing.map((m) => m.key)),
-    [reqMissing]
-  );
   // Readiness drives button emphasis (dimmed while short). The button stays clickable so a
   // click still flags the gaps red.
   const geoReady =
     geoMissing.length === 0 && form.taxonomy.blockedMessage === null;
   const reqReady = reqMissing.length === 0;
-
-  // Two outcomes gated on content: meet the request floor and a request can post; add the extra
-  // rows and a geolocation can publish. A click while short flags the gaps red.
-  const conditions = usePublishConditions([
-    { title: "Request", concept: "submit_request", reqs: REQUEST_REQS, missing: reqMissingKeys },
-    {
-      title: "Geolocation",
-      concept: "submit_geolocation_extra",
-      reqs: GEO_EXTRA_REQS,
-      missing: geoMissingKeys,
-    },
-  ]);
 
   // Both publish handlers clear the shared error banner and prior red outlines before
   // re-validating.
@@ -184,7 +160,7 @@ function SubmitForm() {
   };
 
   // A running upload or a pasted snapshot that cannot be one holds the write: the publish says
-  // why. Not a missing field (archives are optional), so it stays out of the tick-list.
+  // why. Not a missing field (archives are optional), so it stays out of the counts.
   const blocked = sourcesBlockWrite(form.sources);
 
   const publishGeolocation = async () => {
@@ -227,33 +203,43 @@ function SubmitForm() {
   // and leaves through the review queue.
   const showForm = mode === "single";
 
-  // The page's sticky actions: the publish buttons, the conditions under them, then the banner.
+  // The page's sticky actions: the publish buttons on one line, each counting the conditions it
+  // still misses (a geolocation needs the request floor too), then the banner. The icons give
+  // way below `sm`, so both buttons fit one line at 320px.
   const actions = (
     <aside aria-label="Actions" className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Button
-          type="button"
-          variant="primary"
-          disabled={submitting}
-          className={geoReady ? "" : "opacity-60"}
-          onClick={publishGeolocation}
-        >
-          <MapPin size={14} strokeWidth={2} />
-          {geolocationMutation.loading ? "Publishing…" : "Publish geolocation"}
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={submitting}
-          className={reqReady ? "" : "opacity-60"}
-          onClick={postRequest}
-        >
-          <Megaphone size={14} strokeWidth={2} />
-          {requestMutation.loading ? "Posting…" : "Publish request"}
-        </Button>
-        {conditions.toggle}
+        <CountBadge count={geoMissing.length} label={missingSummary(geoMissing)}>
+          {(describedBy) => (
+            <Button
+              type="button"
+              variant="primary"
+              disabled={submitting}
+              className={geoReady ? "" : "opacity-60"}
+              aria-describedby={describedBy}
+              onClick={publishGeolocation}
+            >
+              <MapPin size={14} strokeWidth={2} className="max-sm:hidden" />
+              {geolocationMutation.loading ? "Publishing…" : "Publish geolocation"}
+            </Button>
+          )}
+        </CountBadge>
+        <CountBadge count={reqMissing.length} label={missingSummary(reqMissing)}>
+          {(describedBy) => (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={submitting}
+              className={reqReady ? "" : "opacity-60"}
+              aria-describedby={describedBy}
+              onClick={postRequest}
+            >
+              <Megaphone size={14} strokeWidth={2} className="max-sm:hidden" />
+              {requestMutation.loading ? "Posting…" : "Publish request"}
+            </Button>
+          )}
+        </CountBadge>
       </div>
-      {conditions.list}
       {error && (
         <div className={FORM_ERROR_BANNER} role="alert">
           {error}

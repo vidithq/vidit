@@ -11,7 +11,6 @@ import {
 } from "@/components/geolocations/EventFormFields";
 import { Ellipsis } from "lucide-react";
 
-import { PUBLISH_REQS, usePublishConditions } from "@/components/geolocations/PublishChecklist";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -23,6 +22,7 @@ import { FORM_ERROR_BANNER, LABEL_TEXT } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Button } from "@/components/ui/Button";
+import { CountBadge } from "@/components/ui/CountBadge";
 import { CloseEventDialog, closeActionLabel } from "@/components/event/CloseEventDialog";
 import { GeolocatorsPanel } from "@/components/event/GeolocatorCredit";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
@@ -35,12 +35,12 @@ import {
   hasVersionChanges,
   missingEventFields,
   missingEventRequestFields,
+  missingSummary,
   nothingChangedMessage,
   parseGuessCoords,
   saveVersion,
   updateEventRequest,
   type EventVersionFormState,
-  type MissingFieldKey,
 } from "@/lib/events";
 import { sourceFloor, sourcesChanged, sourceWriteError } from "@/lib/sources";
 import { eventHref } from "@/lib/routes";
@@ -57,8 +57,8 @@ const CONFIRM_SENTENCE =
  *
  * **Publish** (a `requested` or `detected` row, version 0): the whole event is editable and
  * **Publish** applies the form and makes the row a geolocation at version 1, in one request.
- * The row as it stood stays readable as version 0. The rail lists the publish requirements, met
- * or not, and the write takes a confirm, since publishing makes the event public. A detection is
+ * The row as it stood stays readable as version 0. **Publish** counts the publish requirements
+ * still missing, and the write takes a confirm, since publishing makes the event public. A detection is
  * the owner's to publish; a request is anyone's, and its owner may also **Save request**, which
  * overwrites it in place and leaves it version 0.
  *
@@ -71,7 +71,7 @@ const CONFIRM_SENTENCE =
  * row that moved meanwhile answers a conflict instead of being overwritten.
  *
  * The fields fill `EventLayout`'s slots. The page's sticky actions hold the writes, the
- * requirements as chips, the banners and, for the owner, **More actions** with the close. A
+ * banners and, for the owner, **More actions** with the close. A
  * published row's version note heads the side column, and its geolocators, whose changes apply on
  * click and never make a version, follow the Details card.
  *
@@ -114,7 +114,7 @@ export function EventEditForm({
   const [editNote, setEditNote] = useState("");
   const [closing, setClosing] = useState(false);
 
-  // Live, so the requirements tick as the form fills.
+  // Live, so the count on Publish drops as the form fills.
   const floor = useMemo(() => sourceFloor(form.sources), [form.sources]);
   const publishMissing = useMemo(
     () =>
@@ -128,18 +128,6 @@ export function EventEditForm({
       }),
     [form.title, form.lat, form.lng, form.proof, floor, form.selectedConflictIds]
   );
-  const publishMissingKeys = useMemo(
-    () => new Set<MissingFieldKey>(publishMissing.map((m) => m.key)),
-    [publishMissing]
-  );
-  const conditions = usePublishConditions([
-    {
-      title: "To publish",
-      concept: "publish_requirements",
-      reqs: PUBLISH_REQS,
-      missing: publishMissingKeys,
-    },
-  ]);
 
   const submitMutation = useMutation(
     () =>
@@ -312,23 +300,32 @@ export function EventEditForm({
 
       <div className="flex flex-wrap items-center gap-2">
         <span className="inline-flex items-center gap-1.5">
-          <Button
-            ref={submitButtonRef}
-            type="submit"
-            form={EDIT_FORM_ID}
-            variant="primary"
-            disabled={busy}
-            className={submitArmed ? ARMED_RING : ""}
-            title={submitArmed ? CONFIRM_SENTENCE : undefined}
+          {/* A published row's save needs the same floor, but only a publish counts it. */}
+          <CountBadge
+            count={editingPublished ? 0 : publishMissing.length}
+            label={missingSummary(publishMissing)}
           >
-            {/* Labels stack in one grid cell so arming never resizes the button. */}
-            <span className="grid">
-              <span aria-hidden className="col-start-1 row-start-1 invisible">
-                {widestLabel}
-              </span>
-              <span className="col-start-1 row-start-1">{submitLabel}</span>
-            </span>
-          </Button>
+            {(describedBy) => (
+              <Button
+                ref={submitButtonRef}
+                type="submit"
+                form={EDIT_FORM_ID}
+                variant="primary"
+                disabled={busy}
+                className={submitArmed ? ARMED_RING : ""}
+                title={submitArmed ? CONFIRM_SENTENCE : undefined}
+                aria-describedby={describedBy}
+              >
+                {/* Labels stack in one grid cell so arming never resizes the button. */}
+                <span className="grid">
+                  <span aria-hidden className="col-start-1 row-start-1 invisible">
+                    {widestLabel}
+                  </span>
+                  <span className="col-start-1 row-start-1">{submitLabel}</span>
+                </span>
+              </Button>
+            )}
+          </CountBadge>
           {!editingPublished && <FieldHelp concept="action_publish" />}
         </span>
         {/* No confirm: the in-place save publishes nothing and files no version. */}
@@ -337,7 +334,6 @@ export function EventEditForm({
             {saveRequestMutation.loading ? "Saving…" : "Save request"}
           </Button>
         )}
-        {!editingPublished && conditions.toggle}
         {isOwner && (
           <ActionMenu
             label="More actions"
@@ -356,8 +352,6 @@ export function EventEditForm({
           {submitArmed ? CONFIRM_SENTENCE : ""}
         </span>
       </div>
-
-      {!editingPublished && conditions.list}
 
       <IncompleteFormNotice
         key={form.validationAttempt}

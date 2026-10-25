@@ -33,7 +33,7 @@ export interface MissingField {
   label: string;
 }
 
-/** One label per field key, read by the validators and the submit tick-list. */
+/** One label per field key, read by the validators. */
 export const FIELD_LABELS: Record<MissingFieldKey, string> = {
   title: "Title",
   coordinates: "Coordinates",
@@ -893,6 +893,11 @@ export function missingEventFields(s: EventFieldsState): MissingField[] {
   else if (!proofHasImage(s.proof)) add("proof_image");
   if (!s.hasConflict) add("conflict_tag");
   return missing;
+}
+
+/** The unmet fields as a publish button's count badge names them: `2 missing: Title, Conflict`. */
+export function missingSummary(missing: MissingField[]): string {
+  return `${missing.length} missing: ${missing.map((m) => m.label).join(", ")}`;
 }
 
 /** Every unmet required field for a request: a title, and a direct or indirect source with a

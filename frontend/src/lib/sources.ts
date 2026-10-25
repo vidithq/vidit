@@ -208,7 +208,7 @@ function fileReference(file: SourceFile | null): Pick<SourceCreate, "upload_id" 
   return {};
 }
 
-/** A file that is, or is becoming, the source's: a running upload counts, so the tick-list does
+/** A file that is, or is becoming, the source's: a running upload counts, so the publish counts do
  *  not flicker while it runs. `uploadsRunning` holds the write until it lands. */
 const holdsFile = (draft: SourceDraft): boolean =>
   draft.file !== null && draft.file.state !== "failed";

@@ -35,10 +35,11 @@ function useTooltip(label: string, hidden: boolean) {
   const { open, wrapperProps, anchorProps, popoverProps } = usePinnedPopover<HTMLSpanElement>();
   const { ref: wrapperRef } = wrapperProps;
   const { ref: anchorRef } = anchorProps;
+  // `placeOn` is the box the bubble hangs under, the control itself unless the caller names another.
   const attach = useCallback(
-    (el: HTMLElement | null) => {
+    (el: HTMLElement | null, placeOn: HTMLElement | null = el) => {
       wrapperRef.current = el;
-      anchorRef.current = el as HTMLButtonElement | null;
+      anchorRef.current = placeOn as HTMLButtonElement | null;
     },
     [wrapperRef, anchorRef],
   );
@@ -154,20 +155,28 @@ export function TooltipButton({
  * `tapToShow` is for a link whose label is the only place a fact shows (who approved which
  * version when): a touch's first tap shows the bubble instead of following the link, and a
  * second tap on the same link follows it.
+ *
+ * `underParent` hangs the bubble under the wrapper's parent instead of under the control: a
+ * `<CountBadge>` on a button's corner would otherwise drop its list over the button.
  */
 export function Tooltip({
   label,
   tapToShow = false,
+  underParent = false,
   children,
 }: {
   label: string;
   tapToShow?: boolean;
+  underParent?: boolean;
   children: ReactNode;
 }) {
   const { attach, handlers, tapClick, bubble } = useTooltip(label, false);
   const setRef: Ref<HTMLSpanElement> = useCallback(
-    (el: HTMLSpanElement | null) => attach((el?.firstElementChild as HTMLElement | null) ?? null),
-    [attach],
+    (el: HTMLSpanElement | null) => {
+      const control = (el?.firstElementChild as HTMLElement | null) ?? null;
+      attach(control, underParent ? (el?.parentElement ?? control) : control);
+    },
+    [attach, underParent],
   );
   return (
     <span

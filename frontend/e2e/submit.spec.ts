@@ -25,7 +25,7 @@ test.describe("submit", () => {
     await expectNarrowViewportLayout(page, publish);
   });
 
-  test("pins the publish buttons on a phone and folds the conditions into one toggle", async ({ page }) => {
+  test("pins the publish buttons on one line on a phone, each counting what it misses", async ({ page }) => {
     await page.goto("/submit?mode=single");
 
     const actions = page.getByRole("complementary", { name: "Actions" });
@@ -33,16 +33,23 @@ test.describe("submit", () => {
     const request = actions.getByRole("button", { name: "Publish request" });
     await expect(publish).toBeVisible();
 
-    // Every condition is unmet on an empty form: seven, folded away until a tap.
-    const toggle = actions.getByRole("button", { name: "7 missing" });
-    const chip = actions.getByText("Source kind", { exact: true });
-    await expect(chip).toBeHidden();
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await expect(chip).toBeVisible();
+    // Every condition is unmet on an empty form: a geolocation misses the request's four and
+    // its own three. Each button says so, and its count names them.
+    await expect(publish).toHaveAccessibleDescription(
+      "7 missing: Title, Coordinates, Source file, Source URL, Source kind, Proof, Conflict",
+    );
+    await expect(request).toHaveAccessibleDescription(
+      "4 missing: Title, Source file, Source URL, Source kind",
+    );
+    await expect(actions.getByRole("button", { name: /^7 missing: / })).toHaveText("7");
+    await expect(actions.getByRole("button", { name: /^4 missing: / })).toHaveText("4");
+
+    // One line of buttons, and nothing else in the cluster.
+    const publishBox = (await publish.boundingBox())!;
+    const requestBox = (await request.boundingBox())!;
+    expect(Math.abs(publishBox.y - requestBox.y)).toBeLessThan(1);
+    expect((await actions.boundingBox())!.height).toBeLessThan(publishBox.height + 1);
     await expectNoHorizontalOverflow(page);
-    await toggle.click();
-    await expect(chip).toBeHidden();
 
     // Scrolled to the last field, both buttons stay on screen, under the menu chip.
     await page.getByRole("heading", { name: /^Details/ }).scrollIntoViewIfNeeded();
@@ -51,7 +58,7 @@ test.describe("submit", () => {
     await expect(request).toBeInViewport({ ratio: 1 });
     expect((await actions.boundingBox())!.y).toBeGreaterThanOrEqual(56);
 
-    // A publish while short flags the gaps: the conditions stay folded, the fields turn red.
+    // A publish while short flags the gaps: the fields turn red.
     await publish.click();
     await expect(page.getByLabel("Title", { exact: true })).toHaveClass(/border-red-500/);
   });
@@ -80,8 +87,11 @@ test.describe("submit", () => {
     await page.goto("/submit?mode=single");
 
     const rail = page.getByRole("complementary", { name: "Actions" });
-    await expect(rail.getByText("Conflict", { exact: true })).toBeVisible();
-    await expect(rail.getByRole("button", { name: /missing$/ })).toBeHidden();
+    // A mouse on a count lists what is missing.
+    const label = "4 missing: Title, Source file, Source URL, Source kind";
+    await rail.getByRole("button", { name: label }).hover();
+    await expect(page.getByText(label, { exact: true }).and(page.locator(":visible"))).toBeVisible();
+    await page.mouse.move(0, 0);
     const actions = (await rail.boundingBox())!;
     const title = (await page.getByRole("heading", { level: 1 }).boundingBox())!;
     const location = (await page.getByRole("heading", { name: /^Location/ }).boundingBox())!;
@@ -291,6 +301,36 @@ test.describe("submit", () => {
     await expect(page).toHaveURL(/\/submit$/);
     await page.goto("/requests/new");
     await expect(page).toHaveURL(/\/submit\?mode=single$/);
+  });
+});
+
+test.describe("publish counts on a touch screen", () => {
+  test.use({ hasTouch: true });
+
+  test("lists what is missing on a tap on the count, and publishes on a tap on the button", async ({
+    context,
+    page,
+  }) => {
+    await grantSession(context);
+    await mockApi(page);
+    await page.goto("/submit?mode=single");
+
+    const actions = page.getByRole("complementary", { name: "Actions" });
+    const label = "4 missing: Title, Source file, Source URL, Source kind";
+    const list = page.getByText(label, { exact: true }).and(page.locator(":visible"));
+    const request = actions.getByRole("button", { name: "Publish request" });
+    await actions.getByRole("button", { name: label }).tap();
+    await expect(list).toBeVisible();
+    // The list hangs under the button, never over it.
+    expect((await list.boundingBox())!.y).toBeGreaterThanOrEqual(
+      (await request.boundingBox())!.y + (await request.boundingBox())!.height,
+    );
+    await expectNoHorizontalOverflow(page);
+
+    // A tap on the button itself closes the list and flags the gaps red.
+    await request.tap();
+    await expect(list).toBeHidden();
+    await expect(page.getByLabel("Title", { exact: true })).toHaveClass(/border-red-500/);
   });
 });
 

@@ -11,9 +11,7 @@ import {
   BookOpen,
   Bot,
   Camera,
-  Check,
   ChevronDown,
-  Circle,
   Copy,
   Download,
   ExternalLink,
@@ -33,6 +31,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { AccountPicker, type Account } from "@/components/ui/AccountPicker";
 import { ActionMenu } from "@/components/ui/ActionMenu";
 import { CopyButton } from "@/components/ui/CopyButton";
+import { CountBadge } from "@/components/ui/CountBadge";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { PageWithRail } from "@/components/ui/PageWithRail";
@@ -577,7 +576,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<Tooltip>" usage="The label of an icon-only control in a TOOLTIP_SURFACE bubble, while a mouse rests on it or the keyboard focuses it; a touch never opens it, so a tap leaves nothing standing, except with tapToShow (the AvatarStack pictures), where a touch's first tap pins the bubble and the second follows the link. Placement and dismissal (Escape, scroll, resize, an outside click) are usePinnedPopover's. <Button icon> renders its button through TooltipButton, so every icon button gets it with no call-site change: the tip is `title` when it differs from the name (a longer hint) and the aria-label otherwise, and the native title is dropped so no second tooltip appears. An icon link (buttonClasses on a Link or an a) wraps itself in <Tooltip label>, a display: contents span that leaves the layout alone. The bubble is aria-hidden, since the control's accessible name already says it.">
+          <Item name="<Tooltip>" usage="The label of an icon-only control in a TOOLTIP_SURFACE bubble, while a mouse rests on it or the keyboard focuses it; a touch never opens it, so a tap leaves nothing standing, except with tapToShow (the AvatarStack pictures, the CountBadge count), where a touch's first tap pins the bubble and the second follows the link. underParent hangs the bubble under the wrapper's parent rather than under the control (a CountBadge's list under the button it counts for). Placement and dismissal (Escape, scroll, resize, an outside click) are usePinnedPopover's. <Button icon> renders its button through TooltipButton, so every icon button gets it with no call-site change: the tip is `title` when it differs from the name (a longer hint) and the aria-label otherwise, and the native title is dropped so no second tooltip appears. An icon link (buttonClasses on a Link or an a) wraps itself in <Tooltip label>, a display: contents span that leaves the layout alone. The bubble is aria-hidden, since the control's accessible name already says it.">
             <Variant label="icon button (hover or tab to it)">
               <Button icon variant="ghost" aria-label="Copy coordinates">
                 <Copy size={14} />
@@ -593,6 +592,18 @@ export default function PalettePage() {
                   <Archive size={14} />
                 </a>
               </Tooltip>
+            </Variant>
+          </Item>
+
+          <Item name="<CountBadge>" usage="A red count on a control's top-right corner of what it still lacks: the missing conditions on Publish geolocation and Publish request on submit, and on Publish in the edit form of a request or a detection. The count is a danger <Pill> on a button beside the control, never inside it, and the wrapper keeps 8px clear on the right for its overhang. Its label (2 missing: Title, Conflict) is the badge's accessible name and shows under the control in a <Tooltip tapToShow underParent> on hover or keyboard focus, or on a tap on a touch screen, where the badge's hit area grows to about 36px up and into the control's corner; a tap on the control itself still acts. The control's aria-describedby points at a hidden copy of the label, so it says what is missing. No badge at a count of 0.">
+            <Variant label="hover or tab to the count">
+              <CountBadge count={2} label="2 missing: Title, Conflict">
+                {(describedBy) => (
+                  <Button variant="primary" aria-describedby={describedBy}>
+                    Publish
+                  </Button>
+                )}
+              </CountBadge>
             </Variant>
           </Item>
 
@@ -645,23 +656,6 @@ export default function PalettePage() {
                   </Pill>
                 ))}
                 <span className="text-[11px] text-neutral-600 self-center">← click</span>
-              </div>
-              {/* Readiness tick-list (submit): a met vs pending pair per tone, so
-                  the marked-state loudness can be compared side by side. */}
-              <div className="space-y-1.5">
-                {(["accent", "secondary", "neutral"] as const).map((t) => (
-                  <div key={t} className="flex flex-wrap items-center gap-2">
-                    <span className="text-[11px] text-neutral-600 self-center w-12">
-                      {t}
-                    </span>
-                    <Pill tone={t} icon={<Check size={12} strokeWidth={2.5} />}>
-                      Coordinates
-                    </Pill>
-                    <Pill tone="neutral" icon={<Circle size={9} strokeWidth={2} />}>
-                      Proof image
-                    </Pill>
-                  </div>
-                ))}
               </div>
             </div>
           </Item>

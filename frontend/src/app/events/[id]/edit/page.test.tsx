@@ -278,13 +278,14 @@ describe("the detection edit surface", () => {
     expect(screen.queryByRole("button", { name: "Skip" })).toBeNull();
   });
 
-  it("lists what publishing needs, ticking what the row already holds", () => {
+  it("counts on Publish what publishing still needs", () => {
     render(<EditEventPage />);
 
     const rail = screen.getByRole("complementary", { name: "Actions" });
-    // The import left no conflict: that requirement is pending, the title is met.
-    expect(within(rail).getByText("Title")).toBeInTheDocument();
-    expect(within(rail).getByText(/Conflict/)).toBeInTheDocument();
+    // The import left no conflict: Publish counts it, and not the title it holds.
+    const publish = within(rail).getByRole("button", { name: "Publish" });
+    expect(publish).toHaveAccessibleDescription(/^\d+ missing: .*Conflict/);
+    expect(publish).not.toHaveAccessibleDescription(/Title/);
   });
 
   it("publishes through the versioned write, naming version 0", async () => {

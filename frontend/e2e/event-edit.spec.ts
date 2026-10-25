@@ -7,8 +7,8 @@ import { expectNarrowViewportLayout, expectNoHorizontalOverflow } from "./suppor
 /**
  * The one edit form: the owner's correction of a published geolocation, and the publish of a
  * request. The writes are the page's sticky actions, top right of the header: they stay pinned at
- * the top of the viewport while the fields scroll under them, and on a phone the requirements fold
- * into one toggle.
+ * the top of the viewport while the fields scroll under them, and Publish counts the requirements
+ * it still misses.
  */
 test.describe("event edit", () => {
   test.beforeEach(async ({ context, page }) => {
@@ -22,6 +22,8 @@ test.describe("event edit", () => {
     const actions = page.getByRole("complementary", { name: "Actions" });
     const save = actions.getByRole("button", { name: "Save version 2" });
     await expectNarrowViewportLayout(page, save);
+    // A version needs the publish floor too, but only a publish counts it.
+    await expect(actions.getByRole("button", { name: /missing/ })).toHaveCount(0);
 
     // At rest the actions sit above the title field; the close waits behind More actions.
     const title = page.getByLabel("Title", { exact: true });
@@ -86,7 +88,7 @@ test.describe("event edit", () => {
     await expect(rail.getByRole("button", { name: "Save version 2" })).toBeInViewport({ ratio: 1 });
   });
 
-  test("publishes a request from the same form, its requirements folded on a phone", async ({ page }) => {
+  test("publishes a request from the same form, counting its missing requirements", async ({ page }) => {
     await answerWith(page, `/events/${EVENT_ID}`, {
       ...EVENT,
       status: "requested",
@@ -104,13 +106,11 @@ test.describe("event edit", () => {
     await expect(rail.getByRole("button", { name: "Save request" })).toBeVisible();
     await expect(page.getByRole("button", { name: /Save version/ })).toHaveCount(0);
 
-    // The chips fold into one toggle that counts the unmet requirements; a tap shows them.
-    const conflict = rail.getByText("Conflict", { exact: true });
-    await expect(conflict).toBeHidden();
-    const toggle = rail.getByRole("button", { name: /^\d+ missing$/ });
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await toggle.click();
-    await expect(conflict).toBeVisible();
+    // The request names no conflict: Publish counts it, and its count names it.
+    await expect(publish).toHaveAccessibleDescription(/^\d+ missing: .*Conflict/);
+    const count = rail.getByRole("button", { name: /^\d+ missing: / });
+    await count.hover();
+    await expect(page.getByText(/^\d+ missing: .*Conflict$/).and(page.locator(":visible"))).toBeVisible();
     await expectNarrowViewportLayout(page, publish);
   });
 });
