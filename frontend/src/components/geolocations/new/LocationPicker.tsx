@@ -18,7 +18,7 @@ interface LocationPickerProps {
  *  source carries its own capture position. */
 export function LocationPicker({ lat, setLat, lng, setLng, invalid = false }: LocationPickerProps) {
   return (
-    <Card>
+    <Card dense>
       <div className="space-y-1.5">
         <FieldLabel {...EVENT_FIELDS.coordinates} invalid={invalid} />
         <CoordinateInputs lat={lat} setLat={setLat} lng={lng} setLng={setLng} invalid={invalid} />

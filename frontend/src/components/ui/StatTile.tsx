@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 
+import { CARD_FRAME } from "./Card";
 import { TAPPABLE_HOVER } from "./styles";
 
 // A labelled metric tile (icon, uppercase label, value) and the grid that lays a
@@ -12,7 +13,7 @@ import { TAPPABLE_HOVER } from "./styles";
 // off, with the shared tappable hover and an accent value. Without it the tile is
 // an inert `<div>`.
 
-const SHELL = "block bg-neutral-900 rounded-lg border border-neutral-700 p-3";
+const SHELL = `block ${CARD_FRAME} p-3`;
 
 // Keyboard affordance for the linked tile: the ring `<FieldHelp>` draws. The
 // card hover is pointer-only, and the default outline suits a rounded card badly.

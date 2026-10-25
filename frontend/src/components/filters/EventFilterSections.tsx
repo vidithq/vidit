@@ -10,6 +10,7 @@ import {
 } from "@/lib/search";
 
 import type { Conflict, Tag } from "@/types";
+import { CARD_FRAME } from "@/components/ui/Card";
 import type { ActiveFilter } from "@/components/ui/ActiveFilterPills";
 import { FORM_LABEL } from "@/components/ui/form-styles";
 import { ChipBucket } from "@/components/ui/ChipBucket";
@@ -363,7 +364,7 @@ export function EventFilterSections({
   );
 
   return (
-    <div className="bg-neutral-900 rounded-lg border border-neutral-700 px-3">
+    <div className={`${CARD_FRAME} px-3`}>
       {leadSections.map(renderInjected)}
 
       {offers("status") && (

@@ -25,7 +25,8 @@ import {
   analystAccount,
   type Account,
 } from "@/components/ui/AccountPicker";
-import { AuthorByline } from "@/components/ui/AuthorByline";
+import { AuthorByline, BYLINE_GAP } from "@/components/ui/AuthorByline";
+import { cn } from "@/lib/cn";
 import { AvatarStack, type AvatarStackItem } from "@/components/ui/AvatarStack";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Popover } from "@/components/ui/Popover";
@@ -79,7 +80,7 @@ function BylineRow({
   add: ReactNode;
 }) {
   return (
-    <span className="inline-flex flex-wrap items-center gap-2">
+    <span className={cn("inline-flex flex-wrap items-center", BYLINE_GAP)}>
       <AuthorByline author={owner} avatar />
       {/* Every picture shows: the server caps the geolocators and invitations. */}
       <AvatarStack items={pictures} label="Co-geolocators" spacing="gap" size="sm" max={Infinity} />

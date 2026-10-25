@@ -169,7 +169,7 @@ export function PageShell({
           )}
         >
           <div className="basis-56 grow min-w-0 space-y-2">
-            <h1 className={cn("text-xl font-medium text-neutral-100", titleField && "sr-only")}>
+            <h1 className={cn(PAGE_TITLE_TEXT, "text-neutral-100", titleField && "sr-only")}>
               {title}
             </h1>
             {titleField}
@@ -266,6 +266,9 @@ export function PageShell({
     </PageFrame>
   );
 }
+
+/** The page title's type: the `h1`, and a form's Title field in its place (`TitleField`). */
+export const PAGE_TITLE_TEXT = "text-xl leading-7 font-medium";
 
 /** The 65:35 split of `PageColumns`, for a grid that places its own cells (`EventLayout`). */
 export const PAGE_COLUMNS_SPLIT = "lg:grid-cols-[minmax(0,65fr)_minmax(0,35fr)]";

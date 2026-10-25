@@ -51,7 +51,7 @@ export function DetailsFields({
   conflictInvalid = false,
 }: DetailsFieldsProps) {
   return (
-    <Card>
+    <Card dense>
       {/* One line at every width: two shrinking columns, in the side column and at 320px. */}
       <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4">
         {/* Optional: an empty date reads as "Unknown". */}

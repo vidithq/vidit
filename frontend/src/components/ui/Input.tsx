@@ -29,7 +29,8 @@ export const LOCKED_FIELD = `w-full px-3 py-2 bg-neutral-950 border border-neutr
 
 // One field height across the variants (38px from `sm` up, 42px below): the
 // ghost icon buttons in a field need the taller box to sit inside a gutter.
-// `compact` keeps its quieter text and no focus accent.
+// `compact` keeps its quieter text and no focus accent. `TitleField` bleeds by the default's
+// border and `px-3`; change both.
 const VARIANT: Record<InputVariant, string> = {
   default: `w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md ${FIELD_TEXT} text-neutral-100 placeholder:text-neutral-600 focus:outline-hidden focus:border-orange-500`,
   compact: `w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md ${FIELD_TEXT} text-neutral-300`,

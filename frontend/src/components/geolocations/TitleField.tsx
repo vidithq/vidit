@@ -3,6 +3,8 @@
 import { CharCounter } from "@/components/ui/CharCounter";
 import { Textarea } from "@/components/ui/Input";
 import { FieldHelp } from "@/components/ui/FieldHelp";
+import { PAGE_TITLE_TEXT } from "@/components/ui/PageShell";
+import { cn } from "@/lib/cn";
 import { EVENT_TITLE_MAX_LEN } from "@/lib/events";
 
 interface TitleFieldProps {
@@ -44,7 +46,12 @@ export function TitleField({ value, onChange, invalid = false, form }: TitleFiel
         }}
         placeholder="Title, e.g. Strike on ammunition depot, Donetsk"
         invalid={invalid}
-        className="-my-[5px] -ml-[13px] min-w-0 flex-1 resize-none py-1 text-xl leading-7 font-medium field-sizing-content sm:text-xl"
+        // The bleed is the border plus the padding: `px-3` from `Input`'s `VARIANT.default`, `py-1`
+        // here. Mirrors Input.tsx VARIANT.default; change both.
+        className={cn(
+          PAGE_TITLE_TEXT,
+          "-my-[5px] -ml-[13px] min-w-0 flex-1 resize-none py-1 field-sizing-content sm:text-xl",
+        )}
       />
       <CharCounter length={value.length} max={EVENT_TITLE_MAX_LEN} />
       <FieldHelp concept="title" />

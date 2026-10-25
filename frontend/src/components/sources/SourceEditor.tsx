@@ -15,6 +15,7 @@ import { Disclosure } from "@/components/ui/Disclosure";
 import { CharCounter } from "@/components/ui/CharCounter";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { Card } from "@/components/ui/Card";
+import { LEAD_BESIDE_SPLIT } from "@/components/ui/DetailRow";
 import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 import { Input, Select } from "@/components/ui/Input";
 import { LinkListInput } from "@/components/ui/LinkListInput";
@@ -322,7 +323,7 @@ export function SourceEditor({
   );
 
   return (
-    <Card as="section" aria-label={name} className="@container">
+    <Card as="section" aria-label={name} dense className="@container">
       <header className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-medium text-neutral-200">{name}</h3>
         <div className="flex flex-wrap items-center gap-1">{actions}</div>
@@ -331,7 +332,7 @@ export function SourceEditor({
           file sits left of the title, level and kind, 3:2 (`DetailCard leadBeside`), and the links
           and More details take the card's width under both, so a link keeps its one-row layout;
           narrower, everything stacks. */}
-      <div className={cn("grid gap-4", wide && "@2xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] @2xl:gap-x-5")}>
+      <div className={cn("grid gap-4", wide && cn(LEAD_BESIDE_SPLIT, "@2xl:gap-x-5"))}>
         {fileSlot}
         {essentials}
         <div className={cn(wide && "@2xl:col-span-2")}>{rest}</div>

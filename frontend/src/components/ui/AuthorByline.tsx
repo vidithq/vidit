@@ -2,7 +2,7 @@ import { Fragment } from "react";
 import Link from "next/link";
 
 import { Avatar } from "@/components/ui/Avatar";
-import { Tooltip } from "@/components/ui/Tooltip";
+import { AvatarStack } from "@/components/ui/AvatarStack";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { cn } from "@/lib/cn";
 import { profileHref } from "@/lib/routes";
@@ -13,6 +13,11 @@ type Author = {
   /** Where the name links; the analyst's profile by default. */
   href?: string;
 };
+
+/** The gap between the names of a credit line, and between the lead and the co-authors'
+ *  pictures: the page byline and the form's managed byline (`useGeolocatorsByline`) share it,
+ *  so the two line up. */
+export const BYLINE_GAP = "gap-x-2 gap-y-1";
 
 /** What a screen reader hears before the name at `index` in a credit line of `count` names:
  *  nothing, a comma, or " and " before the last ("ana, bo and cy"). On screen the names stand
@@ -32,8 +37,9 @@ function CreditSeparator({ index, count }: { index: number; count: number }) {
  * line of an event several geolocators share. By default each is its picture
  * and name, and with more than one name every name shows its picture, `avatar`
  * or not. `coAuthorsAs="avatars"` keeps the lead as picture and name and shows
- * each co-author as a picture alone, named by its handle and showing it in a
- * `<Tooltip>`: the feed cards and the event page header.
+ * the co-authors as an `<AvatarStack>` (`sm`, or `xs` on a card), each picture
+ * named by its handle and showing it in a tooltip: the feed cards and the event
+ * page header, which the form's managed byline repeats picture for picture.
  *
  * `link={false}` drops the anchor for a slot that is itself one click: a row
  * under a stretched link cannot hold a second link (a separate keyboard stop).
@@ -80,39 +86,48 @@ export function AuthorByline({
     />
   );
   const href = (person: Author) => person.href ?? profileHref(person.username);
+  const name = (person: Author) => (
+    <span className={cn("inline-flex items-center", gap)}>
+      {pictures && picture(person)}
+      {link ? (
+        <Link href={href(person)} className={TEXT_LINK}>
+          {person.username}
+        </Link>
+      ) : (
+        <span>{person.username}</span>
+      )}
+    </span>
+  );
   return (
     <span className={cn("inline-flex items-center", gap, className)}>
       {prefix && !avatar && <>by </>}
-      <span className="inline-flex flex-wrap items-center gap-x-2.5 gap-y-1">
-        {names.map((person, index) => (
-          <Fragment key={person.username}>
-            <CreditSeparator index={index} count={names.length} />
-            {index > 0 && coAuthorsAs === "avatars" ? (
-              <Tooltip label={person.username}>
-                {link ? (
-                  <Link href={href(person)} aria-label={person.username} className="flex rounded-full">
-                    {picture(person)}
-                  </Link>
-                ) : (
-                  <span role="img" aria-label={person.username} className="flex">
-                    {picture(person)}
-                  </span>
-                )}
-              </Tooltip>
-            ) : (
-              <span className={cn("inline-flex items-center", gap)}>
-                {pictures && picture(person)}
-                {link ? (
-                  <Link href={href(person)} className={TEXT_LINK}>
-                    {person.username}
-                  </Link>
-                ) : (
-                  <span>{person.username}</span>
-                )}
-              </span>
-            )}
-          </Fragment>
-        ))}
+      <span className={cn("inline-flex flex-wrap items-center", BYLINE_GAP)}>
+        {coAuthorsAs === "avatars" ? (
+          <>
+            {name(author)}
+            <AvatarStack
+              items={coAuthors.map((person) => ({
+                key: person.username,
+                name: person.username,
+                avatarUrl: person.avatar_url,
+                variant: "analyst",
+                label: person.username,
+                href: link ? href(person) : undefined,
+              }))}
+              label="Co-geolocators"
+              spacing="gap"
+              size={size}
+              max={Infinity}
+            />
+          </>
+        ) : (
+          names.map((person, index) => (
+            <Fragment key={person.username}>
+              <CreditSeparator index={index} count={names.length} />
+              {name(person)}
+            </Fragment>
+          ))
+        )}
       </span>
     </span>
   );

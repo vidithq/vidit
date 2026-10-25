@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
+import { CARD_FRAME } from "./Card";
 import { FieldHelp } from "./FieldHelp";
 import { Pill } from "./Pill";
 import type { Concept } from "@/lib/fieldHelp";
@@ -8,6 +9,10 @@ import type { Concept } from "@/lib/fieldHelp";
 // map-panel `compact` variant), the request detail page and the source blocks.
 // Pass a text-ish `value`, or a raw node (a `StatusBadge`, a `SourceLabel`) as
 // `children`, rendered as-is.
+
+/** A lead slot beside the rows, 3:2, once the card is 42rem wide: a lone source's file, on the
+ *  page (`DetailCard leadBeside`) and in the form (`SourceEditor wide`). */
+export const LEAD_BESIDE_SPLIT = "@2xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]";
 
 export function DetailCard({
   lead,
@@ -26,12 +31,11 @@ export function DetailCard({
   className?: string;
 }) {
   const Root = label ? "section" : "div";
-  const frame = "bg-neutral-900 rounded-lg border border-neutral-700";
   if (lead && leadBeside) {
     // The card is the container, so the split follows the column it sits in, not the viewport.
     return (
-      <Root aria-label={label} className={cn(frame, "@container", className)}>
-        <div className="grid grid-cols-1 @2xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <Root aria-label={label} className={cn(CARD_FRAME, "@container", className)}>
+        <div className={cn("grid grid-cols-1", LEAD_BESIDE_SPLIT)}>
           <div className="border-b border-neutral-800 px-4 py-3 @2xl:border-r @2xl:border-b-0">
             {lead}
           </div>
@@ -41,7 +45,7 @@ export function DetailCard({
     );
   }
   return (
-    <Root aria-label={label} className={cn(frame, "divide-y divide-neutral-800", className)}>
+    <Root aria-label={label} className={cn(CARD_FRAME, "divide-y divide-neutral-800", className)}>
       {lead && <div className="px-4 py-3">{lead}</div>}
       {children}
     </Root>

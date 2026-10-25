@@ -28,14 +28,17 @@ export interface AvatarStackItem {
   muted?: boolean;
 }
 
-// `md` is the 28px stamp; `sm` is the 20px picture of a byline, the size `<AuthorByline>` gives
-// its avatars, so a byline line keeps one height whether it lists or manages the geolocators.
+// `md` is the 28px stamp; `sm` is the 20px picture of a page byline, read or managed, and `xs`
+// the 16px one of a card's byline (`<AuthorByline>` sets both), so a byline line keeps one
+// height whether it lists or manages the geolocators.
 const SIZES = {
   md: { picture: "size-7 text-[11px]", remove: "size-5 sm:size-5", mark: 12 },
   sm: { picture: "size-5 text-[10px]", remove: "size-4 sm:size-4", mark: 10 },
+  xs: { picture: "size-4 text-[9px]", remove: "size-4 sm:size-4", mark: 10 },
 } as const;
-// The page canvas as a ring, so overlapping pictures read as separate discs.
-const RING = "ring-2 ring-neutral-950 outline-hidden focus-visible:ring-orange-400";
+const FOCUS_RING = "outline-hidden focus-visible:ring-2 focus-visible:ring-orange-400";
+// Overlapping pictures take the page canvas as a ring, so they read as separate discs.
+const OVERLAP_RING = "ring-2 ring-neutral-950";
 
 const SPACING = { overlap: "gap-y-1 -space-x-1.5", gap: "gap-1.5" } as const;
 
@@ -93,10 +96,11 @@ export function AvatarStack({
   const shown = items.slice(0, max);
   const hidden = items.length - shown.length;
   const dims = SIZES[size];
+  const ring = cn(FOCUS_RING, spacing === "overlap" && OVERLAP_RING);
   const bubble = cn(
     dims.picture,
     "flex items-center justify-center rounded-full bg-neutral-800 text-neutral-300 font-medium",
-    RING,
+    ring,
   );
   const row = cn("flex flex-wrap items-center", SPACING[spacing], className);
   const list = (
@@ -105,7 +109,7 @@ export function AvatarStack({
         const boxClass = cn(
           "relative flex hover:z-20 focus-visible:z-20",
           item.variant === "organization" ? "rounded-md" : "rounded-full",
-          RING,
+          ring,
           item.muted && "opacity-50",
         );
         const picture = (
