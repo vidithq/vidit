@@ -27,11 +27,11 @@ interface EventDetailBodyProps {
   /**
    * `panel`: map's 380px overlay, one column: stacked sources with `thumbnail` media, bare rows,
    * the proof last, no request-trace row. `page`: full detail page, in `EventLayout`: the sources
-   * as a sideways row with `hero` media, then the proof, in the main column; the Details card with
-   * the request-trace row, then `location`, in the side column.
+   * as a sideways row with `hero` media, then the proof, in the main column; `location`, then the
+   * Details card with the request-trace row, in the side column.
    */
   variant: "panel" | "page";
-  /** The page variant's Location module, under Details; falsy when the event has none. */
+  /** The page variant's Location module, above Details; falsy when the event has none. */
   location?: ReactNode;
 }
 
@@ -56,7 +56,7 @@ export function EventDetailBody({ geo, variant, location }: EventDetailBodyProps
         <DetailRows
           geo={geo}
           compact={false}
-          besideScroller={sourcesScroll(geo.sources.length)}
+          besideScroller={sourcesScroll(geo.sources.length) && !location}
         />
       }
       location={location}

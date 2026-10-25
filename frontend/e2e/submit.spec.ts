@@ -25,6 +25,38 @@ test.describe("submit", () => {
     await expectNarrowViewportLayout(page, publish);
   });
 
+  test("stacks the form on a phone as sources, proof, location, details, actions", async ({ page }) => {
+    await page.goto("/submit?mode=single");
+
+    const blocks = [
+      page.getByRole("heading", { name: /^Sources/ }),
+      page.getByRole("heading", { name: /^Proof/ }),
+      page.getByRole("heading", { name: /^Location/ }),
+      page.getByRole("heading", { name: /^Details/ }),
+      page.getByRole("complementary", { name: "Actions" }),
+    ];
+    const boxes = [];
+    for (const block of blocks) boxes.push((await block.boundingBox())!);
+    for (let i = 1; i < boxes.length; i++) {
+      expect(boxes[i].y, `block ${i + 1} starts under block ${i}`).toBeGreaterThan(boxes[i - 1].y);
+    }
+  });
+
+  test("puts the actions, the location, then the details in the side column on a wide screen", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/submit?mode=single");
+
+    const actions = (await page.getByRole("complementary", { name: "Actions" }).boundingBox())!;
+    const location = (await page.getByRole("heading", { name: /^Location/ }).boundingBox())!;
+    const details = (await page.getByRole("heading", { name: /^Details/ }).boundingBox())!;
+    expect(location.x).toBeGreaterThanOrEqual(actions.x);
+    expect(location.y).toBeGreaterThanOrEqual(actions.y + actions.height);
+    expect(details.x).toBe(location.x);
+    expect(details.y).toBeGreaterThan(location.y);
+  });
+
   test("holds two source editors on a narrow column", async ({ page }) => {
     await page.goto("/submit?mode=single");
 

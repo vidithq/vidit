@@ -32,7 +32,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - `POST /events/{id}/versions` takes an optional `version_no`, the version the form was loaded at, and answers 409 `version_mismatch` when the event has moved past it.
 - A re-import or a bot re-tag never writes over an event that has a saved version.
 - Profile stats count events per source kind, the source hosts read each event's first source URL, and `GET /tags` lists the tags on live events or their sources.
-- The event page, the edit form and the submit form share one layout: the title, the sources and the proof on the left; the actions, the details and the location on the right; and on a phone one column with the actions last ([#693](https://github.com/vidithq/vidit/pull/693)).
+- The event page, the edit form and the submit form share one layout: the title, the sources and the proof on the left; the actions, the location and the details on the right; and on a phone one column with the actions last ([#693](https://github.com/vidithq/vidit/pull/693)).
 - Submit opens on three cards, Single event, From an X post and Bulk import, in place of the mode switch; the chosen path stays in the address, so a reload or Back keeps your place ([#693](https://github.com/vidithq/vidit/pull/693)).
 
 ### Removed

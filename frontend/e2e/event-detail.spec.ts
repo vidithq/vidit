@@ -103,7 +103,7 @@ test.describe("shared event link", () => {
     await expectNarrowViewportLayout(page, stamps.getByRole("link").last());
   });
 
-  test("puts the actions top right of the side column, the details level with the sources", async ({
+  test("puts the actions top right of the side column, the location level with the sources", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1512, height: 900 });
@@ -121,10 +121,10 @@ test.describe("shared event link", () => {
     const sources = (await page.getByRole("heading", { name: /^Sources/ }).boundingBox())!;
     const details = (await page.getByRole("heading", { name: "Details" }).boundingBox())!;
     const location = (await page.getByRole("heading", { name: "Location" }).boundingBox())!;
-    expect(details.x).toBeGreaterThan(rowBox.x - 1);
-    expect(Math.abs(details.y - sources.y)).toBeLessThan(2);
-    expect(location.x).toBe(details.x);
-    expect(location.y).toBeGreaterThan(details.y);
+    expect(location.x).toBeGreaterThan(rowBox.x - 1);
+    expect(Math.abs(location.y - sources.y)).toBeLessThan(2);
+    expect(details.x).toBe(location.x);
+    expect(details.y).toBeGreaterThan(location.y);
     const reportBox = (await row.getByRole("button", { name: "Report" }).boundingBox())!;
     expect(reportBox.y).toBeLessThan(
       (await page.getByRole("region", { name: "Approvals" }).boundingBox())!.y,
@@ -133,7 +133,7 @@ test.describe("shared event link", () => {
 });
 
 test.describe("event page on a phone", () => {
-  test("reads in one column: title, actions and approvals, sources, proof, details, location", async ({
+  test("reads in one column: title, actions and approvals, sources, proof, location, details", async ({
     page,
   }) => {
     await mockApi(page);
@@ -147,8 +147,8 @@ test.describe("event page on a phone", () => {
       approvals,
       page.getByRole("heading", { name: /^Sources/ }),
       page.getByRole("heading", { name: "Proof" }),
-      page.getByRole("heading", { name: "Details" }),
       page.getByRole("heading", { name: "Location" }),
+      page.getByRole("heading", { name: "Details" }),
     ];
     const boxes = [];
     for (const block of blocks) boxes.push((await block.boundingBox())!);

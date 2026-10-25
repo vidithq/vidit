@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import type { EventDetail } from "@/types";
 import { CoordinateValue } from "@/components/event/CoordinateActions";
 import { EventDetailBody } from "@/components/event/EventDetailBody";
+import { sourcesScroll } from "@/components/sources/SourceBlock";
 import { DetailRow } from "@/components/ui/DetailRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 
@@ -12,13 +13,13 @@ const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
 
 /**
  * The full-page render of one event: the shared `EventDetailBody`, with the page's Location module
- * under Details in its side column. It takes a view, not an id, so the same markup renders the live
+ * above Details in its side column. It takes a view, not an id, so the same markup renders the live
  * row on `/events/{id}` and a filed version on `/events/{id}/vN` (fed by `snapshotToEventView`). The body writes nothing, so a version page needs no gate: the chrome
  * above carries every control that acts on the record, and the approvals.
  */
 export function EventPageBody({ geo }: { geo: EventDetail }) {
   // A coordless event (a `requested` row served by id) has no point, so no Location module.
-  const location = geo.coords ? <EventLocation geo={geo} coords={geo.coords} /> : null;
+  const location = geo.coords ? <EventLocation geo={geo} coords={geo.coords} besideScroller={sourcesScroll(geo.sources.length)} /> : null;
   return <EventDetailBody geo={geo} variant="page" location={location} />;
 }
 
@@ -26,13 +27,15 @@ export function EventPageBody({ geo }: { geo: EventDetail }) {
 function EventLocation({
   geo,
   coords,
+  besideScroller,
 }: {
   geo: EventDetail;
   coords: NonNullable<EventDetail["coords"]>;
+  besideScroller: boolean;
 }) {
   return (
     <div>
-      <SectionEyebrow title="Location" concept="section_location" />
+      <SectionEyebrow title="Location" concept="section_location" besideScroller={besideScroller} />
       {/* Map and coordinates are one module: the coords read as a Details-style row fused to the map's
           bottom (mirrors the submit form's Location section). `overflow-hidden` sits on the map alone,
           to clip its rounded corners, since the whole module would clip the coordinate row's `?` tooltip. */}

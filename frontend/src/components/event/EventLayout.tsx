@@ -8,8 +8,8 @@ import { PAGE_COLUMNS_SPLIT } from "@/components/ui/PageShell";
  * form, so a block sits in the same spot on every surface. Move a block here, not in a page.
  *
  * From `lg` up, on the `PageColumns` split: the main column holds `header`, `sources` and `proof`;
- * the side column holds `actions`, then `details`, then `location`. Below `lg` one column reads
- * header, sources, proof, details, location, then actions, which is also the DOM and tab order:
+ * the side column holds `actions`, then `location`, then `details`. Below `lg` one column reads
+ * header, sources, proof, location, details, then actions, which is also the DOM and tab order:
  * the actions act on the fields above them, as a rail with `narrowRail="below"` does.
  *
  * With `form`, the field blocks render inside a `<form>` laid out as `display: contents`, so the
@@ -51,8 +51,8 @@ export function EventLayout({
   );
   const side = (
     <div className={cn("min-w-0 space-y-6 lg:col-start-2", hasActions ? "lg:row-start-2" : "lg:row-start-1")}>
-      {details}
       {location}
+      {details}
     </div>
   );
   return (

@@ -162,8 +162,8 @@ interface EventFormLayoutProps {
 
 /**
  * The fields every event write fills in, placed in `EventLayout`'s slots: the title heads the main
- * column over the sources and the proof; the details (date, time, provenance, then the
- * classification) and the location fill the side column under the actions.
+ * column over the sources and the proof; the location, then the details (date, time, provenance,
+ * then the classification), fill the side column under the actions.
  *
  * The submit form and the edit form compose it and keep no copy of a field, so labels, help and
  * red outlines stay one thing. Per-surface pieces (readiness list, duplicate probe, version note,

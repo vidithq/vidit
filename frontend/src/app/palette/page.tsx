@@ -1822,7 +1822,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<EventDetailBody>" usage="Geoloc detail pages + map panel (page/panel variant). page: EventLayout (components/event/EventLayout.tsx, the one placement of an event's blocks, shared with the edit and submit forms), the source blocks then the proof in the main column, the Details card then the location slot in the side column. panel: one column, the source blocks, the Details rows, then the proof.">
+          <Item name="<EventDetailBody>" usage="Geoloc detail pages + map panel (page/panel variant). page: EventLayout (components/event/EventLayout.tsx, the one placement of an event's blocks, shared with the edit and submit forms), the source blocks then the proof in the main column, the location slot then the Details card in the side column. panel: one column, the source blocks, the Details rows, then the proof.">
             <div className="w-full space-y-4">
               <Variant label="page">
                 <EventDetailBody geo={MOCK_DETAIL} variant="page" />

@@ -35,7 +35,7 @@ test.describe("event edit", () => {
     await expect(page.getByRole("button", { name: "Invite" })).toBeVisible();
   });
 
-  test("puts the actions top right, over the details and the location, on a wide screen", async ({
+  test("puts the actions top right, over the location and the details, on a wide screen", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -47,19 +47,19 @@ test.describe("event edit", () => {
       (await page.getByRole("heading", { name: new RegExp(`^${name}`) }).boundingBox())!;
     const railBox = (await rail.boundingBox())!;
     const title = (await page.getByLabel("Title", { exact: true }).boundingBox())!;
-    const [sources, proof, details, location] = [
+    const [sources, proof, location, details] = [
       await box("Sources"),
       await box("Proof"),
-      await box("Details"),
       await box("Location"),
+      await box("Details"),
     ];
-    // Main column: title, sources, proof. Side column: actions, details, location.
+    // Main column: title, sources, proof. Side column: actions, location, details.
     expect(railBox.x).toBeGreaterThan(title.x + title.width);
     expect(sources.y).toBeGreaterThan(title.y);
     expect(proof.y).toBeGreaterThan(sources.y);
-    expect(details.x).toBeGreaterThanOrEqual(railBox.x);
-    expect(details.y).toBeGreaterThanOrEqual(railBox.y + railBox.height);
-    expect(location.y).toBeGreaterThan(details.y);
+    expect(location.x).toBeGreaterThanOrEqual(railBox.x);
+    expect(location.y).toBeGreaterThanOrEqual(railBox.y + railBox.height);
+    expect(details.y).toBeGreaterThan(location.y);
     // The actions start no lower than the title field.
     expect(railBox.y).toBeLessThanOrEqual(title.y);
   });
