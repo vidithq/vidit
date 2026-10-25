@@ -19,7 +19,8 @@ class Collection(Base):
     events happened: no manual position, denormalized count or version history.
 
     ``owner_id`` cascades, unlike ``Event.owner_id``: nothing outlives the
-    owner's account, and a collection stores no file.
+    owner's account, and a collection stores no file. An owner's delete erases
+    the row at once unless a report on it is open (``deleted_at``).
     """
 
     __tablename__ = "collections"
@@ -39,6 +40,10 @@ class Collection(Base):
     description_text: Mapped[str] = mapped_column(Text, nullable=False)
     # Takedown: NULL = visible; same axis and reversal as ``Event.hidden_at``.
     hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The owner deleted it while a content report on it was open: withheld from every read but an
+    # admin's until the last open report is resolved, which erases the row
+    # (``services/collections.delete_collection``, ``erase_if_released``). Never cleared.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),

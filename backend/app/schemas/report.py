@@ -31,6 +31,9 @@ class ReportedCollection(BaseModel):
     id: uuid.UUID
     title: str
     owner: AuthorRef
+    # Set once the owner deleted it under an open report: withheld from every
+    # read but an admin's, and erased when its last open report is resolved.
+    deleted_at: datetime | None
 
 
 class ContentReportRead(BaseModel):

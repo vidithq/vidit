@@ -35,7 +35,7 @@ from app.models.content_report import (
 from app.models.event import Event
 from app.services import email
 from app.services.admin import log_admin_event, withhold_collection
-from app.services.collections import visible_collections
+from app.services.collections import erase_if_released, visible_collections
 from app.services.event_filters import visible_events
 
 logger = logging.getLogger(__name__)
@@ -55,9 +55,10 @@ class EventNotFoundError(ReportError):
 
 
 class CollectionNotFoundError(ReportError):
-    """The collection does not exist, is withheld, or belongs to a soft-deleted account.
+    """The collection does not exist, is withheld, was deleted by its owner, or belongs to a
+    soft-deleted account.
 
-    All three read alike so the caller cannot tell which. The code is the one
+    All four read alike so the caller cannot tell which. The code is the one
     every ``/collections`` path raises for an unreadable id.
     """
 
@@ -364,6 +365,11 @@ def resolve_report(
     A report whose target was deleted (both id columns NULL) accepts
     ``dismissed`` only (:class:`ReportTargetGoneError`, 409).
 
+    A collection its owner deleted while reported (``collections.deleted_at``)
+    takes every verdict a live one takes. Once no open report names it, the
+    verdict erases it (``services/collections.erase_if_released``) and appends
+    a ``collection_erased`` audit row.
+
     The report is locked ``FOR UPDATE`` first and its verdict re-checked, so
     concurrent resolves serialize and the loser gets
     :class:`ReportAlreadyResolvedError` (409). Target-mutating verdicts lock
@@ -388,7 +394,19 @@ def resolve_report(
         raise ReportAlreadyResolvedError("This report is already resolved")
 
     hidden_changed = False
-    # ``dismissed`` touches no target, so it skips the fetch and lock.
+    collection: Collection | None = None
+    if report.collection_id is not None:
+        # Locked whatever the verdict, serializing with ``DELETE /admin/collections/{id}`` and
+        # with the owner's delete, which reads the open reports under the same lock. Withheld
+        # and owner-deleted collections stay reachable (the stamp is idempotent).
+        collection = (
+            db.query(Collection)
+            .filter(Collection.id == report.collection_id)
+            .populate_existing()
+            .with_for_update()
+            .one()
+        )
+    # ``dismissed`` touches no target, so it skips the event fetch and lock.
     if resolution != "dismissed":
         if report.event_id is not None:
             # Locked so a resolve racing the direct moderation endpoint
@@ -405,21 +423,11 @@ def resolve_report(
                 _mark_graphic(db, event=event, actor_id=actor_id, graphic=True)
             elif resolution == "hidden":
                 hidden_changed = _set_hidden(db, event=event, actor_id=actor_id, hidden=True)
-        elif report.collection_id is not None:
+        elif collection is not None:
             if resolution == "marked_graphic":
                 raise ReportVerdictNotApplicableError(
                     "A collection carries no footage of its own, so it cannot be marked graphic"
                 )
-            # Locked like the event above, serializing with
-            # ``DELETE /admin/collections/{id}``. Already withheld stays
-            # reachable (the stamp is idempotent).
-            collection = (
-                db.query(Collection)
-                .filter(Collection.id == report.collection_id)
-                .populate_existing()
-                .with_for_update()
-                .one()
-            )
             withhold_collection(db, collection=collection, actor_id=actor_id)
         else:
             raise ReportTargetGoneError(
@@ -443,6 +451,10 @@ def resolve_report(
             "resolution": resolution,
         },
     )
+    if collection is not None:
+        erased = {"collection_id": str(collection.id), "title": collection.title}
+        if erase_if_released(db, collection=collection):
+            log_admin_event(db, actor_id=actor_id, action="collection_erased", target=erased)
     db.commit()
     db.refresh(report)
     return report, hidden_changed
