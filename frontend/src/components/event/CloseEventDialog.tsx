@@ -56,7 +56,7 @@ interface CloseEventDialogProps {
 }
 
 /**
- * The close of an owner's edit page, opened from its **More actions** menu: a `ConfirmDialog` that
+ * The close of an owner's edit page, opened from its red close button: a `ConfirmDialog` that
  * says what closing does, then a required free-text reason, **Cancel** and **Close this …**.
  * `status` only picks the noun (`CLOSE_NOUN`). The reason stays publicly visible on the closed
  * row, so the backend requires it; this enforces the same non-empty rule client-side.

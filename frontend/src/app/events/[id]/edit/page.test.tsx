@@ -206,10 +206,9 @@ function follows(earlier: Element, later: Element): boolean {
   return !!(earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING);
 }
 
-/** Close the row on screen: More actions, its close item, then the reason dialog. */
+/** Close the row on screen: the red close button, then the reason dialog. */
 function closeRow(label: string, reason: string) {
-  fireEvent.click(screen.getByRole("button", { name: "More actions" }));
-  fireEvent.click(screen.getByRole("menuitem", { name: label }));
+  fireEvent.click(within(screen.getByRole("complementary", { name: "Actions" })).getByRole("button", { name: label }));
   const dialog = screen.getByRole("dialog", { name: label });
   fireEvent.change(within(dialog).getByLabelText(/Close reason/), {
     target: { value: reason },
@@ -247,7 +246,7 @@ describe("the detection edit surface", () => {
     expect(screen.queryByText("Requested from")).toBeNull();
   });
 
-  it("renders the form under a bare title, with Publish and More actions in the sticky actions", () => {
+  it("renders the form under a bare title, with Publish and the close in the sticky actions", () => {
     render(<EditEventPage />);
 
     expect(
@@ -262,12 +261,11 @@ describe("the detection edit surface", () => {
     expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
     expect(follows(submit, document.getElementById("event-edit-form")!)).toBe(true);
 
-    // The close waits behind More actions, after Publish.
-    const more = within(rail).getByRole("button", { name: "More actions" });
-    expect(follows(submit, more)).toBe(true);
-    expect(screen.queryByRole("button", { name: "Close this detection" })).toBeNull();
-    fireEvent.click(more);
-    expect(screen.getByRole("menuitem", { name: "Close this detection" })).toBeInTheDocument();
+    // The close shows as itself, a red icon button after Publish.
+    const close = within(rail).getByRole("button", { name: "Close this detection" });
+    expect(follows(submit, close)).toBe(true);
+    expect(close.className).toContain("text-red-400");
+    expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
   });
 
   it("closes the detection behind its reason panel", async () => {
@@ -494,13 +492,13 @@ describe("editing a published geolocation", () => {
     expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
   });
 
-  it("holds the save and More actions in the actions, the note under them, the geolocators beside the byline", () => {
+  it("holds the save and the close in the actions, the note under them, the geolocators beside the byline", () => {
     render(<EditEventPage />);
 
     const rail = screen.getByRole("complementary", { name: "Actions" });
     const save = within(rail).getByRole("button", { name: "Save version 2" });
-    const more = within(rail).getByRole("button", { name: "More actions" });
-    expect(follows(save, more)).toBe(true);
+    const close = within(rail).getByRole("button", { name: "Close this geolocation" });
+    expect(follows(save, close)).toBe(true);
     // The note is a field under the actions, not an action, over the body.
     const note = screen.getByRole("textbox", { name: "Version note" });
     expect(rail.contains(note)).toBe(false);
@@ -681,8 +679,7 @@ describe("editing an open request", () => {
     const rail = screen.getByRole("complementary", { name: "Actions" });
     expect(within(rail).getByRole("button", { name: "Publish" })).toBeInTheDocument();
     expect(within(rail).getByRole("button", { name: "Save request" })).toBeInTheDocument();
-    fireEvent.click(within(rail).getByRole("button", { name: "More actions" }));
-    expect(screen.getByRole("menuitem", { name: "Close this request" })).toBeInTheDocument();
+    expect(within(rail).getByRole("button", { name: "Close this request" })).toBeInTheDocument();
     // A request is version 0: nothing to supersede yet.
     expect(screen.queryByRole("button", { name: /Save version/ })).toBeNull();
   });
@@ -700,7 +697,7 @@ describe("editing an open request", () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith("/events/d1"));
   });
 
-  it("closes the request from More actions, then lands on the request", async () => {
+  it("closes the request from its close button, then lands on the request", async () => {
     closeMock.mockResolvedValue(requestFixture({ status: "closed" }));
     render(<EditEventPage />);
 

@@ -65,7 +65,7 @@ export interface PublishButton {
 /**
  * The pinned writes of an event form, the submit form's and the edit form's: one right-aligned
  * line of buttons, each with the count of what it still misses, then the `?` and `trailing`
- * (**More actions**). A short button dims and stays clickable, so a click still flags the gaps.
+ * (the edit form's close). A short button dims and stays clickable, so a click still flags the gaps.
  * An arming button reads *Confirm publish* on the first click, with `ARMED_RING`, and announces its
  * sentence in a live region; the second click writes. The error banner follows the line. `lead`
  * heads the block (a review pass's position and Skip).

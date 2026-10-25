@@ -7,10 +7,9 @@ import { ApiError } from "@/lib/api";
 
 import { eventFormSlots, useEventForm } from "@/components/geolocations/EventFormFields";
 import { PublishActions, usePublishAction } from "@/components/geolocations/PublishActions";
-import { Ellipsis, MapPin, Megaphone, Save } from "lucide-react";
+import { Ban, MapPin, Megaphone, Save } from "lucide-react";
 
 import { Card } from "@/components/ui/Card";
-import { ActionMenu } from "@/components/ui/ActionMenu";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { sourcesBlockWrite } from "@/components/sources/SourcesField";
 import { LABEL_TEXT } from "@/components/ui/form-styles";
@@ -67,7 +66,7 @@ const CONFIRM_SENTENCE =
  * row that moved meanwhile answers a conflict instead of being overwritten.
  *
  * The fields fill `EventShell`'s zones. The actions block pins the writes (`PublishActions`), the
- * error banner and, for the owner, **More actions** with the close; the incomplete-form notice and
+ * error banner and, for the owner, the close as a red icon button; the incomplete-form notice and
  * a published row's version note read under them.
  * The title section's byline manages the geolocators in place: on a published row each change
  * applies on click and never makes a version; on a request or a detection the reader picks the
@@ -319,17 +318,15 @@ export function EventEditForm({
       trailing={
         isOwner && (
           <>
-            <ActionMenu
-              label="More actions"
-              icon={<Ellipsis size={14} />}
-              items={[
-                {
-                  key: "close",
-                  label: closeActionLabel(geo.status),
-                  onSelect: () => setClosing(true),
-                },
-              ]}
-            />
+            {/* The close is destructive, so it shows as itself, red, beside the write. */}
+            <Button
+              icon
+              variant="dangerGhost"
+              aria-label={closeActionLabel(geo.status)}
+              onClick={() => setClosing(true)}
+            >
+              <Ban size={14} />
+            </Button>
             {closing && (
               <CloseEventDialog
                 eventId={geo.id}

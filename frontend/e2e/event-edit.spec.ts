@@ -25,15 +25,12 @@ test.describe("event edit", () => {
     // A version needs the publish floor too, but only a publish counts it.
     await expect(actions.getByRole("button", { name: /missing/ })).toHaveCount(0);
 
-    // At rest the actions sit above the title field; the close waits behind More actions.
+    // At rest the actions sit above the title field, the close a red icon beside the save.
     const title = page.getByLabel("Title", { exact: true });
     expect((await actions.boundingBox())!.y + (await actions.boundingBox())!.height).toBeLessThanOrEqual(
       (await title.boundingBox())!.y,
     );
-    await expect(page.getByRole("button", { name: "Close this geolocation" })).toHaveCount(0);
-    await actions.getByRole("button", { name: "More actions" }).click();
-    await expect(page.getByRole("menuitem", { name: "Close this geolocation" })).toBeVisible();
-    await page.keyboard.press("Escape");
+    await expect(actions.getByRole("button", { name: "Close this geolocation" })).toBeVisible();
 
     // The version note reads under the actions, over Location. The byline under the title field
     // ends with the add button, whose picker floats in a popover.
