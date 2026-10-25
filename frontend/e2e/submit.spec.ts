@@ -319,6 +319,22 @@ test.describe("submit", () => {
     });
   }
 
+  // The side column of a wide screen and a 320px phone both hold the pair side by side.
+  for (const width of [null, 1024]) {
+    test(`keeps the event date and time on one line${width ? ` at ${width}px` : ""}`, async ({ page }) => {
+      if (width) await page.setViewportSize({ width, height: 900 });
+      await page.goto("/submit?mode=single");
+      const card = page.getByRole("heading", { name: /^Details/ }).locator("xpath=ancestor::section[1]");
+      const date = (await card.locator("#occurred_date").boundingBox())!;
+      const time = (await card.locator("#occurred_time").boundingBox())!;
+      expect(Math.abs(date.y - time.y)).toBeLessThan(1);
+      expect(time.x).toBeGreaterThanOrEqual(date.x + date.width);
+      const cardBox = (await card.boundingBox())!;
+      expect(time.x + time.width).toBeLessThanOrEqual(cardBox.x + cardBox.width + 0.5);
+      await expectNoHorizontalOverflow(page);
+    });
+  }
+
   test("lays each link out on one row under column headers on a wide screen", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/submit?mode=single");

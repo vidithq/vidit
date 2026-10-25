@@ -42,32 +42,30 @@ export function DetailsFields({
     <Card as="section">
       <SectionHeading title="Details" concept="section_details" />
 
-      {/* Two columns once the box holds both, whichever column the card sits in. */}
-      <div className="@container">
-        <div className="grid grid-cols-1 @md:grid-cols-2 gap-4">
-          {/* Optional: an empty date reads as "Unknown". */}
-          <div className="space-y-1.5">
-            <label htmlFor="occurred_date" className={FORM_LABEL}>
-              Event date <FieldHelp concept="occurred_date" />
-            </label>
-            <DateTimeInput
-              id="occurred_date"
-              type="date"
-              value={eventDate}
-              onChange={(e) => setEventDate(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label htmlFor="occurred_time" className={FORM_LABEL}>
-              Event time <FieldHelp concept="occurred_time" />
-            </label>
-            <DateTimeInput
-              id="occurred_time"
-              type="time"
-              value={eventTime}
-              onChange={(e) => setEventTime(e.target.value)}
-            />
-          </div>
+      {/* One line at every width: two shrinking columns, in the side column and at 320px. */}
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4">
+        {/* Optional: an empty date reads as "Unknown". */}
+        <div className="space-y-1.5">
+          <label htmlFor="occurred_date" className={FORM_LABEL}>
+            Event date <FieldHelp concept="occurred_date" />
+          </label>
+          <DateTimeInput
+            id="occurred_date"
+            type="date"
+            value={eventDate}
+            onChange={(e) => setEventDate(e.target.value)}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label htmlFor="occurred_time" className={FORM_LABEL}>
+            Event time <FieldHelp concept="occurred_time" />
+          </label>
+          <DateTimeInput
+            id="occurred_time"
+            type="time"
+            value={eventTime}
+            onChange={(e) => setEventTime(e.target.value)}
+          />
         </div>
       </div>
 
