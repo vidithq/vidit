@@ -323,9 +323,12 @@ export function PageLoading({ label = "Loading…" }: { label?: string }) {
 export function PageError({
   message,
   backHref,
+  backLabel = "Back to map",
 }: {
   message: ReactNode;
   backHref?: string;
+  /** Names where `backHref` leads, when it is not the map. */
+  backLabel?: string;
 }) {
   return (
     <PageCenter>
@@ -333,7 +336,7 @@ export function PageError({
         <p className="text-sm text-neutral-300">{message}</p>
         {backHref && (
           <Link href={backHref} className={`text-xs ${TEXT_LINK}`}>
-            Back to map
+            {backLabel}
           </Link>
         )}
       </div>

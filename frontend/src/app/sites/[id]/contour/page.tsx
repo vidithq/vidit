@@ -11,7 +11,7 @@ import { Select } from "@/components/ui/Input";
 import { PageColumns, PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { TEXT_LINK, WARNING_CALLOUT } from "@/components/ui/styles";
-import { imageName } from "@/components/sites/SiteImageCard";
+import { imageChoiceLabels, imageName } from "@/components/sites/SiteImageCard";
 import { SiteWriteActions } from "@/components/sites/SiteImageEditor";
 import { ZoneEditor, useDrawHistory } from "@/components/sites/ZoneEditor";
 import { useAuth } from "@/contexts/AuthContext";
@@ -60,6 +60,7 @@ export default function SiteContourPage() {
       <PageError
         message="Only the site's owner draws its contour. File an image instead."
         backHref={siteHref(site.id)}
+        backLabel="Back to the site"
       />
     );
   }
@@ -81,6 +82,7 @@ function ContourForm({ site }: { site: Site }) {
     { fallback: "The contour was not saved. Try again.", onSuccess: () => router.push(siteHref(site.id)) },
   );
 
+  const choices = imageChoiceLabels(images);
   const image = site.images.find((i) => i.id === imageId) ?? null;
   const current = contourOn(site.contours, todayUtc());
   const unchanged =
@@ -150,8 +152,7 @@ function ContourForm({ site }: { site: Site }) {
               >
                 {images.map((i) => (
                   <option key={i.id} value={i.id}>
-                    {imageName(i)}
-                    {i.provider ? `, ${i.provider.name}` : ""}
+                    {choices.get(i.id)}
                   </option>
                 ))}
               </Select>

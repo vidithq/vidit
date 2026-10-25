@@ -17,6 +17,22 @@ export function imageName(image: Pick<SiteImage, "captured_at" | "created_at">):
   return `Image of ${formatInstantDate(image.captured_at ?? image.created_at)}`;
 }
 
+/** The names the contour form's image picker shows, by image id: the capture day and the
+ *  provider, plus who filed it when two images would otherwise read the same. */
+export function imageChoiceLabels(images: SiteImage[]): Map<string, string> {
+  const base = (image: SiteImage) =>
+    image.provider ? `${imageName(image)}, ${image.provider.name}` : imageName(image);
+  const counts = new Map<string, number>();
+  for (const image of images) counts.set(base(image), (counts.get(base(image)) ?? 0) + 1);
+  return new Map(
+    images.map((image) => {
+      const label = base(image);
+      const repeated = (counts.get(label) ?? 0) > 1 && image.author;
+      return [image.id, repeated ? `${label}, filed by ${image.author!.username}` : label];
+    }),
+  );
+}
+
 /** A provider's credit line with its `[year]` filled in from the capture date. */
 function creditFor(credit: string, capturedAt: string | null): string {
   return capturedAt ? credit.replace("[year]", capturedAt.slice(0, 4)) : credit;
