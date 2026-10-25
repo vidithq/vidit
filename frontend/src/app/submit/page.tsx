@@ -1,18 +1,11 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { Suspense, useEffect, useRef, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
-import { cleanNumber } from "@/lib/coordinates";
-import {
-  createEvent,
-  createEventRequest,
-  missingEventFields,
-  missingEventRequestFields,
-  parseGuessCoords,
-} from "@/lib/events";
-import { draftUrls, sourceFloor, sourceWriteError } from "@/lib/sources";
+import { createEvent, createEventRequest } from "@/lib/events";
+import { draftUrls, sourceWriteError } from "@/lib/sources";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel";
 import { ImportPostPanel } from "@/components/geolocations/ImportPostPanel";
@@ -97,12 +90,7 @@ function SubmitForm() {
 
   // The two publish paths share one error banner; each mutation clears the other.
   const requestMutation = useMutation(
-    () =>
-      createEventRequest({
-        ...form.shared(),
-        // Optional guess, both-or-neither, strict parse.
-        ...parseGuessCoords(form.lat, form.lng),
-      }),
+    () => createEventRequest(form.requestInput()),
     {
       fallback: "Submission failed",
       onError: sourceWriteError,
@@ -111,15 +99,7 @@ function SubmitForm() {
   );
 
   const geolocationMutation = useMutation(
-    // Required (the floor check runs first), strict parse so a coordinate can't read valid one way and
-    // invalid the other.
-    () =>
-      createEvent({
-        ...form.shared(),
-        lat: cleanNumber(form.lat) ?? NaN,
-        lng: cleanNumber(form.lng) ?? NaN,
-        geolocator_invites: geolocators.invitees,
-      }),
+    () => createEvent(form.publishInput(geolocators.invitees)),
     {
       fallback: "Submission failed",
       onError: sourceWriteError,
@@ -129,26 +109,6 @@ function SubmitForm() {
 
   const error = requestMutation.error ?? geolocationMutation.error;
   const submitting = requestMutation.loading || geolocationMutation.loading;
-
-  // Live readiness from the shared validators, memoised so the scans rerun only when an input
-  // changes.
-  const floor = useMemo(() => sourceFloor(form.sources), [form.sources]);
-  const geoMissing = useMemo(
-    () =>
-      missingEventFields({
-        title: form.title,
-        lat: form.lat,
-        lng: form.lng,
-        proof: form.proof,
-        sources: floor,
-        hasConflict: form.selectedConflictIds.length > 0,
-      }),
-    [form.title, form.lat, form.lng, form.proof, floor, form.selectedConflictIds]
-  );
-  const reqMissing = useMemo(
-    () => missingEventRequestFields({ title: form.title, sources: floor }),
-    [form.title, floor]
-  );
 
   // Both publish handlers clear the shared error banner and prior red outlines before
   // re-validating.
@@ -177,8 +137,8 @@ function SubmitForm() {
         geolocationMutation.setError(blocked);
         return false;
       }
-      if (geoMissing.length) {
-        flagIncomplete(geoMissing);
+      if (form.publishMissing.length) {
+        flagIncomplete(form.publishMissing);
         return false;
       }
       return true;
@@ -194,8 +154,8 @@ function SubmitForm() {
         requestMutation.setError(blocked);
         return false;
       }
-      if (reqMissing.length) {
-        flagIncomplete(reqMissing);
+      if (form.requestMissing.length) {
+        flagIncomplete(form.requestMissing);
         return false;
       }
       return true;
@@ -225,7 +185,7 @@ function SubmitForm() {
           busy: geolocationMutation.loading,
           variant: "primary",
           icon: <MapPin size={14} strokeWidth={2} />,
-          missing: geoMissing,
+          missing: form.publishMissing,
         },
         {
           action: publishRequest,
@@ -234,7 +194,7 @@ function SubmitForm() {
           busy: requestMutation.loading,
           variant: "secondary",
           icon: <Megaphone size={14} strokeWidth={2} />,
-          missing: reqMissing,
+          missing: form.requestMissing,
         },
       ]}
     />

@@ -897,16 +897,13 @@ export function missingEventFields(s: EventFieldsState): MissingField[] {
   const lng = cleanNumber(s.lng);
   const coordsValid = lat !== null && lng !== null && inBounds(lat, lng);
 
-  const missing: MissingField[] = [];
+  // The request floor, then the rest in page order.
+  const missing = missingEventRequestFields(s);
   const add = (key: MissingFieldKey) => missing.push({ key, label: FIELD_LABELS[key] });
-  if (!s.title.trim()) add("title");
-  if (!coordsValid) add("coordinates");
-  if (!s.sources.hasEvidenceFile) add("source_file");
-  if (s.sources.missingLink) add("source_link");
-  if (s.sources.missingKind) add("source_kind");
   // "Proof" (none) and "Proof image" (text-only) are distinct misses.
   if (!s.proof) add("proof");
   else if (!proofHasImage(s.proof)) add("proof_image");
+  if (!coordsValid) add("coordinates");
   if (!s.hasConflict) add("conflict_tag");
   return missing;
 }

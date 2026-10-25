@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ApiError } from "@/lib/api";
@@ -23,19 +23,15 @@ import {
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { useMutation } from "@/hooks/useMutation";
 import { Input } from "@/components/ui/Input";
-import { cleanNumber } from "@/lib/coordinates";
 import {
   VERSION_NOTE_MAX_LEN,
   hasVersionChanges,
-  missingEventFields,
-  missingEventRequestFields,
   nothingChangedMessage,
-  parseGuessCoords,
   saveVersion,
   updateEventRequest,
   type EventVersionFormState,
 } from "@/lib/events";
-import { sourceFloor, sourcesChanged, sourceWriteError } from "@/lib/sources";
+import { sourcesChanged, sourceWriteError } from "@/lib/sources";
 import { eventHref } from "@/lib/routes";
 import type { EventDetail } from "@/types";
 
@@ -113,36 +109,12 @@ export function EventEditForm({
   const [editNote, setEditNote] = useState("");
   const [closing, setClosing] = useState(false);
 
-  // Live, so the count on Publish drops as the form fills.
-  const floor = useMemo(() => sourceFloor(form.sources), [form.sources]);
-  const publishMissing = useMemo(
-    () =>
-      missingEventFields({
-        title: form.title,
-        lat: form.lat,
-        lng: form.lng,
-        proof: form.proof,
-        sources: floor,
-        hasConflict: form.selectedConflictIds.length > 0,
-      }),
-    [form.title, form.lat, form.lng, form.proof, floor, form.selectedConflictIds]
-  );
-  const requestMissing = useMemo(
-    () => missingEventRequestFields({ title: form.title, sources: floor }),
-    [form.title, floor]
-  );
-
   const submitMutation = useMutation(
     () =>
       saveVersion(geo.id, {
-        ...form.shared(),
-        // Required (the floor check runs first), so a NaN never reaches a submit.
-        lat: cleanNumber(form.lat) ?? NaN,
-        lng: cleanNumber(form.lng) ?? NaN,
+        ...form.publishInput(editingPublished ? undefined : draftCredit.invitees),
         version_no: geo.version_no,
-        ...(editingPublished
-          ? { note: editNote }
-          : { geolocator_invites: draftCredit.invitees }),
+        ...(editingPublished && { note: editNote }),
       }),
     {
       fallback: editingPublished ? "Couldn't save this version." : "Couldn't publish.",
@@ -171,11 +143,7 @@ export function EventEditForm({
   // The requester's in-place save of an open request: no version, and the request floor only.
   const saveRequestMutation = useMutation(
     () =>
-      updateEventRequest(geo.id, {
-        ...form.shared(),
-        // Both-or-neither parse, so a half-typed pair is dropped, not a 400.
-        ...parseGuessCoords(form.lat, form.lng),
-      }),
+      updateEventRequest(geo.id, form.requestInput()),
     {
       fallback: "Couldn't save this request.",
       onError: sourceWriteError,
@@ -216,8 +184,8 @@ export function EventEditForm({
         submitMutation.setError(form.taxonomy.blockedMessage);
         return false;
       }
-      if (publishMissing.length) {
-        form.flagIncomplete(publishMissing);
+      if (form.publishMissing.length) {
+        form.flagIncomplete(form.publishMissing);
         return false;
       }
       // A running upload or a refused archived copy holds the write.
@@ -243,8 +211,8 @@ export function EventEditForm({
   const saveRequest = usePublishAction({
     check: () => {
       resetActions();
-      if (requestMissing.length) {
-        form.flagIncomplete(requestMissing);
+      if (form.requestMissing.length) {
+        form.flagIncomplete(form.requestMissing);
         return false;
       }
       const blocked = sourcesBlockWrite(form.sources);
@@ -313,7 +281,7 @@ export function EventEditForm({
               busy: submitMutation.loading,
               variant: "primary",
               icon: <MapPin size={14} strokeWidth={2} />,
-              missing: publishMissing,
+              missing: form.publishMissing,
               form: EDIT_FORM_ID,
             },
         ...(isRequest && isOwner
@@ -325,7 +293,7 @@ export function EventEditForm({
                 busy: saveRequestMutation.loading,
                 variant: "secondary" as const,
                 icon: <Megaphone size={14} strokeWidth={2} />,
-                missing: requestMissing,
+                missing: form.requestMissing,
               },
             ]
           : []),

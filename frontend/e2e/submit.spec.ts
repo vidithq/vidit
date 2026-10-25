@@ -37,7 +37,7 @@ test.describe("submit", () => {
     // Every condition is unmet on an empty form: a geolocation misses the request's four and
     // its own three. Each button says so, and its count names them.
     await expect(publish).toHaveAccessibleDescription(
-      "7 missing: Title, Coordinates, Source file, Source URL, Source kind, Proof, Conflict",
+      "7 missing: Title, Source file, Source URL, Source kind, Proof, Coordinates, Conflict",
     );
     await expect(request).toHaveAccessibleDescription(
       "4 missing: Title, Source file, Source URL, Source kind",

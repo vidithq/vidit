@@ -29,7 +29,7 @@ describe("missingEventFields", () => {
     expect(labels(complete)).toEqual([]);
   });
 
-  it("lists every miss at once for an empty detection", () => {
+  it("lists every miss at once for an empty detection, in page order", () => {
     expect(
       labels({
         title: "",
@@ -41,11 +41,11 @@ describe("missingEventFields", () => {
       })
     ).toEqual([
       "Title",
-      "Coordinates",
       "Source file",
       "Source URL",
       "Source kind",
       "Proof",
+      "Coordinates",
       "Conflict",
     ]);
   });
@@ -74,6 +74,17 @@ describe("missingEventFields", () => {
 
   it("treats a blank-string title as missing", () => {
     expect(labels({ ...complete, title: "   " })).toEqual(["Title"]);
+  });
+
+  it("opens on the request floor", () => {
+    const state: EventFieldsState = {
+      ...complete,
+      title: "",
+      proof: null,
+      sources: { hasEvidenceFile: false, missingLink: true, missingKind: false },
+    };
+    const request = missingEventRequestFields(state);
+    expect(missingEventFields(state).slice(0, request.length)).toEqual(request);
   });
 });
 

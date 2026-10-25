@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useMemo,
   useState,
   type Dispatch,
   type ReactNode,
@@ -20,11 +21,20 @@ import { LocationPicker } from "@/components/geolocations/new/LocationPicker";
 import { ProofEditorPanel } from "@/components/geolocations/new/ProofEditorPanel";
 import { SourcesField } from "@/components/sources/SourcesField";
 import { useIncompleteForm } from "@/hooks/useIncompleteForm";
-import type { EventWriteInput, MissingField, MissingFieldKey } from "@/lib/events";
+import { cleanNumber } from "@/lib/coordinates";
+import {
+  missingEventFields,
+  missingEventRequestFields,
+  parseGuessCoords,
+  type EventWriteInput,
+  type MissingField,
+  type MissingFieldKey,
+} from "@/lib/events";
 import {
   newSourceDraft,
   sourceCreatePayload,
   sourceDraftFrom,
+  sourceFloor,
   type SourceDraft,
 } from "@/lib/sources";
 import type { EventDetail } from "@/types";
@@ -57,9 +67,17 @@ export interface EventFormState {
   setSelectedTagIds: Dispatch<SetStateAction<string[]>>;
   selectedConflictIds: string[];
   setSelectedConflictIds: Dispatch<SetStateAction<string[]>>;
-  /** The write's fields straight off the state, the subject point aside: each caller posts it
-   *  by its endpoint's rule. */
-  shared: () => Omit<EventWriteInput, "lat" | "lng">;
+  /** What a geolocation publish still misses, live: the request floor, then the coordinates,
+   *  the proof and the conflict. */
+  publishMissing: MissingField[];
+  /** What a request write still misses, live. */
+  requestMissing: MissingField[];
+  /** A geolocation write's body: the subject point is required, so a NaN never passes the floor
+   *  that runs first. Strict parse, so a coordinate cannot read valid one way and invalid the
+   *  other. */
+  publishInput: (invitees?: string[]) => EventWriteInput & { geolocator_invites?: string[] };
+  /** A request write's body: the subject point is an optional guess, both halves or neither. */
+  requestInput: () => EventWriteInput;
   missingFields: MissingField[];
   invalidKeys: Set<MissingFieldKey>;
   validationAttempt: number;
@@ -102,6 +120,41 @@ export function useEventForm(row?: EventDetail | null): EventFormState {
 
   const incomplete = useIncompleteForm();
 
+  // Memoised so the scans rerun only when an input changes.
+  const floor = useMemo(() => sourceFloor(sources), [sources]);
+  const requestMissing = useMemo(
+    () => missingEventRequestFields({ title, sources: floor }),
+    [title, floor]
+  );
+  const publishMissing = useMemo(
+    () =>
+      missingEventFields({
+        title,
+        lat,
+        lng,
+        proof,
+        sources: floor,
+        hasConflict: selectedConflictIds.length > 0,
+      }),
+    [title, lat, lng, proof, floor, selectedConflictIds]
+  );
+
+  const shared = (): Omit<EventWriteInput, "lat" | "lng"> => ({
+    title: title.trim(),
+    sources: sources.map(sourceCreatePayload),
+    occurred_date: eventDate || undefined,
+    // An untouched time goes back at the row's own precision, not as the input's truncation:
+    // an absent value clears it.
+    occurred_time:
+      seed && eventTime === seededEventTime
+        ? (seed.occurred_time ?? undefined)
+        : eventTime || undefined,
+    proof,
+    tag_ids: selectedTagIds,
+    conflict_ids: selectedConflictIds,
+    proof_files: proofFiles,
+  });
+
   return {
     title,
     setTitle,
@@ -124,21 +177,15 @@ export function useEventForm(row?: EventDetail | null): EventFormState {
     setSelectedTagIds,
     selectedConflictIds,
     setSelectedConflictIds,
-    shared: () => ({
-      title: title.trim(),
-      sources: sources.map(sourceCreatePayload),
-      occurred_date: eventDate || undefined,
-      // An untouched time goes back at the row's own precision, not as the input's truncation:
-      // an absent value clears it.
-      occurred_time:
-        seed && eventTime === seededEventTime
-          ? (seed.occurred_time ?? undefined)
-          : eventTime || undefined,
-      proof,
-      tag_ids: selectedTagIds,
-      conflict_ids: selectedConflictIds,
-      proof_files: proofFiles,
+    publishMissing,
+    requestMissing,
+    publishInput: (invitees) => ({
+      ...shared(),
+      lat: cleanNumber(lat) ?? NaN,
+      lng: cleanNumber(lng) ?? NaN,
+      ...(invitees && { geolocator_invites: invitees }),
     }),
+    requestInput: () => ({ ...shared(), ...parseGuessCoords(lat, lng) }),
     ...incomplete,
   };
 }
