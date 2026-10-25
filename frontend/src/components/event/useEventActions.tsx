@@ -73,7 +73,6 @@ const TIERS: Record<
 
 const COLLECT_PANEL_ID = "add-to-collection-panel";
 const CREDIT_PANEL_ID = "geolocators-panel";
-const REPORT_PANEL_ID = "report-panel";
 
 export interface EventActionsOptions {
   /** The row to act on. Null while it loads: every node comes back null. */
@@ -248,7 +247,9 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
             </Card>
           </TogglePanel>
         )}
-        {canReport && report.panel && <TogglePanel id={REPORT_PANEL_ID}>{report.panel}</TogglePanel>}
+        {/* No TogglePanel: the report form is a dialog that focuses its own Cancel, and the
+            receipt left after it is a live region. */}
+        {canReport && report.panel}
       </>
     ),
     actions: (controls.length > 0 || geolocate) && (

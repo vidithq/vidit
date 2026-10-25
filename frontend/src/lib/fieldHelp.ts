@@ -120,6 +120,14 @@ export const FIELD_HELP = {
     text: "Opens this request in the edit form, its sources filled in. Publishing it answers the request, and you become the owner of the event.",
     label: "What does Geolocate do?",
   },
+  report_reason: {
+    text: "The kind of problem you report. An admin reads every report and decides what happens to what it flags. Pick the closest fit.",
+    label: "Which reason fits?",
+  },
+  report_details: {
+    text: "Optional. Anything an admin needs to judge the report, in your own words. The reason is often the whole report.",
+    label: "What goes in the details?",
+  },
   approval: {
     text: "An approval means an analyst or an organization checked this geolocation and agrees with it. It covers one version: when the event gets a new version, approvers are asked to approve again. An approval is final.",
     label: "What is an approval?",

@@ -75,7 +75,7 @@ test.describe("collection page", () => {
       page.getByRole("link", { name: "Your geolocations" }),
     );
 
-    // The flag opens a select and a textarea under the header, the only form
+    // The flag opens a dialog holding a select and a textarea, the only form
     // this reading page ever shows: both have to render at the size that
     // keeps mobile Safari from zooming the column in on focus.
     await page.getByRole("button", { name: "Report" }).click();
