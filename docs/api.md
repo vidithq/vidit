@@ -655,19 +655,19 @@ flowchart LR
 
 | Field | Rule |
 |---|---|
-| `id` | A stored source of this event, to update in place. Omit it to create a source. An id that is not one of the event's sources, or that repeats, is `source_not_found` |
+| `id` | A stored source of this event, to update in place. Omit it, or send `null`, to create a source. An id that is not one of the event's sources, or that repeats, is `source_not_found` |
 | `title` | Optional, at most 255 characters, stripped. `""` is no title |
 | `level` | Required. `direct` (the act while it happens), `indirect` (its direct consequences, after the fact) or `context` (anything else). See [`data-model.md`](data-model.md#sources) |
 | `kind` | Required. Where the source comes from: `smartphone`, `camera` (a handheld or press camera), `static_camera` (CCTV or a webcam), `drone`, `aircraft` (a plane or a helicopter, historical aerial photos included), `satellite`, `dashcam`, `body_cam`, `article`, `official_statement`, `other` or `unknown`. Whether its file is a photo or a video is the file's own `kind` (`media.kind`). Use `unknown` when the provenance is uncertain |
 | `captured_at` | `YYYY-MM-DDTHH:MM`, read as UTC: when the media was captured. Optional |
-| `capture_position` | `{lat, lng}`: where a capture was shot from. Optional; a value out of range is `invalid_coordinates` |
+| `capture_position` | `{lat, lng}`: where a capture was shot from. Optional; a value out of range is `invalid_coordinates`. A document kind (`article`, `official_statement`, `other`) carries none: the write drops a posted one |
 | `is_graphic` | `true` when the media shows death, injury or human remains. Defaults to `false`. On a stored source it only rises: `false` keeps a set flag, and only [`PATCH /admin/events/{id}/moderation`](#patch-admineventsidmoderation) clears it |
 | `links` | 1 to 10 URLs, each `{url, posted_at, snapshot_url}`. `url` is at most 2000 characters; `posted_at` (`YYYY-MM-DDTHH:MM`, UTC) is when the media was posted there; `snapshot_url` is the link's [archived copy](#archived-copies). Each URL is stripped, and blanks and repeats are dropped before the count |
 | `tag_ids` | The source's tags, from the catalogue events use. An unknown id is ignored |
 | `upload_id` | A file you staged through [`POST /uploads`](#post-uploads). The write consumes it: the staged row becomes the source's file |
 | `media_id` | A stored file of one of this event's sources. The source's own file keeps it; another source's file is copied: a new file row on the same stored object, and the source takes that source's `is_graphic`. A file of another event is `source_media_not_found` |
 
-A source names one file, through `upload_id` or `media_id`, or none; both is a 422. Every other field outside this table is a 422 too.
+A source names one file, through `upload_id` or `media_id`, or none; both is a 422. Every other field outside this table is a 422 too. `/openapi.json` lists `SourceCreate` and `SourceLinkCreate` among its component schemas.
 
 **The posted list replaces the stored one.** An entry with `id` updates that source in place, an entry without one creates a source, and a stored source the list leaves out is deleted with its links, tags and file row. Its stored object stays while another file row or a readable version names it ([`data-model.md`](data-model.md#media)). A source's links are replaced whole too, so post back each link's `snapshot_url` to keep its copy. The order is derived (level, then `captured_at`), so the posted order is not stored.
 
