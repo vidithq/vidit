@@ -109,7 +109,9 @@ test.describe("submit", () => {
     await expect(card.getByText("Tags", { exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: /^Classification/ })).toHaveCount(0);
 
-    // Scrolled down, the actions stay top right while the title goes.
+    // Scrolled down, the actions stay top right while the title goes. The source's extra fields
+    // make the form taller than the screen.
+    await page.getByRole("region", { name: "Source 1" }).getByRole("button", { name: "More details" }).click();
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     await expect(page.getByRole("heading", { level: 1 })).not.toBeInViewport();
     const pinned = (await rail.boundingBox())!;

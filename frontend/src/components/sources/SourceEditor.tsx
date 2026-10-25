@@ -13,7 +13,8 @@ import {
 import { DateTimeInput } from "@/components/ui/DateTimeInput";
 import { Disclosure } from "@/components/ui/Disclosure";
 import { FieldHelp } from "@/components/ui/FieldHelp";
-import { FORM_INVALID_FIELD, FORM_INVALID_LABEL, FORM_LABEL, LIST_TILE } from "@/components/ui/form-styles";
+import { Card } from "@/components/ui/Card";
+import { FORM_INVALID_FIELD, FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
 import { Input, Select } from "@/components/ui/Input";
 import { LinkListInput } from "@/components/ui/LinkListInput";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
@@ -109,9 +110,7 @@ export function SourceEditor({
     linkDescription(index, safeHostname(url.trim()), i, draft.links.length);
 
   return (
-    // The tile sits inside the Sources card's padding: on a phone its own side padding narrows,
-    // so a filled capture time still clears its calendar mark at 320px.
-    <section aria-label={name} className={cn(LIST_TILE, "space-y-4 max-sm:px-2")}>
+    <Card as="section" aria-label={name}>
       <header className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-medium text-neutral-200">{name}</h3>
         <div className="flex flex-wrap items-center gap-1">{actions}</div>
@@ -317,6 +316,6 @@ export function SourceEditor({
           />
         </div>
       </Disclosure>
-    </section>
+    </Card>
   );
 }

@@ -10,13 +10,17 @@ export function Card({
   as: Tag = "div",
   className = "",
   children,
+  "aria-label": label,
 }: {
   as?: ElementType;
   className?: string;
   children: ReactNode;
+  /** Names a `section` card as a region. */
+  "aria-label"?: string;
 }) {
   return (
     <Tag
+      aria-label={label}
       className={cn(
         "bg-neutral-900 rounded-lg border border-neutral-700 p-5 space-y-4",
         className,
