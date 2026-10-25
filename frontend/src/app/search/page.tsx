@@ -368,7 +368,6 @@ function SearchPageBody() {
           onChange={(e) => setQueryInput(e.target.value)}
           placeholder="Try a location, an analyst handle, or a keyword from a title…"
           autoFocus
-          className="bg-neutral-900 placeholder:text-neutral-500"
         />
 
         {filterSections ? (
@@ -527,7 +526,6 @@ function DateRange({
         value={from}
         onChange={(e) => onChange(e.target.value, to)}
         aria-label={`${label} from`}
-        className="bg-neutral-800 sm:text-[11px]"
       />
       <span className="max-sm:hidden text-neutral-500 text-xs">–</span>
       <Input
@@ -535,7 +533,6 @@ function DateRange({
         value={to}
         onChange={(e) => onChange(from, e.target.value)}
         aria-label={`${label} to`}
-        className="bg-neutral-800 sm:text-[11px]"
       />
     </div>
   );

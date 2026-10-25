@@ -142,9 +142,8 @@ describe("RequestsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Filters" }));
     const dialog = screen.getByRole("dialog", { name: "Filters" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Toggle Conflict" }));
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "Russian invasion of Ukraine" })
-    );
+    fireEvent.focus(within(dialog).getByRole("combobox", { name: "Conflict" }));
+    fireEvent.click(screen.getByRole("option", { name: /^Russian invasion of Ukraine/ }));
     expect(lastQuery().has("conflict")).toBe(false);
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Apply" }));

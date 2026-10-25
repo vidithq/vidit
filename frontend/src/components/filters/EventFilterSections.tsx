@@ -12,7 +12,6 @@ import {
 import type { Conflict, Tag } from "@/types";
 import type { ActiveFilter } from "@/components/ui/ActiveFilterPills";
 import { FORM_LABEL } from "@/components/ui/form-styles";
-import { TAP_STEP } from "@/components/ui/Button";
 import { ChipBucket } from "@/components/ui/ChipBucket";
 import { AccountPicker, accountName, analystAccount } from "@/components/ui/AccountPicker";
 import {
@@ -20,7 +19,7 @@ import {
   chipSummary,
   rangeSummary,
 } from "@/components/ui/FilterSection";
-import { Pill } from "@/components/ui/Pill";
+import { ConflictChips, TagChips } from "@/components/ui/TagPicker";
 import type { Concept } from "@/lib/fieldHelp";
 import {
   LEVEL_LABELS,
@@ -122,10 +121,6 @@ export interface InjectedSection {
   active: boolean;
   children: ReactNode;
 }
-
-// The free-tag bucket is unbounded: show this many, the rest behind "Show all". Selected tags past
-// the cut always show.
-const TAGS_PREVIEW = 8;
 
 // Location-guess options: a request carrying a guessed point, or a blind one.
 const LOCATION_GUESS_OPTIONS: ReadonlyArray<[string, string]> = [
@@ -300,7 +295,7 @@ export function EventFilterSections({
   dateSections = [],
   sections = ALL_FILTER_SECTIONS,
 }: {
-  /** Live tag taxonomy driving the tag chips. */
+  /** Live tag taxonomy the tag field searches. */
   tags: Tag[];
   /** Conflicts carried by >=1 live event (`/conflicts?used=true`). */
   conflicts: Conflict[];
@@ -315,7 +310,6 @@ export function EventFilterSections({
 }) {
   const offers = (name: EventFilterSectionName) => sections.includes(name);
   const approvedById = useId();
-  const [showAllTags, setShowAllTags] = useState(false);
   // The server's author filter is an exact match, so a typed fragment becomes a handle through
   // the typeahead; an ineligible draft is not committed, instead of 422ing.
   const commitAuthor = (name: string) => {
@@ -350,15 +344,7 @@ export function EventFilterSections({
     });
   };
 
-  // Alphabetical so the tag "top N" preview is stable across loads.
-  const freeTags = [...tags].sort((a: Tag, b: Tag) => a.name.localeCompare(b.name));
-
-  const visibleFreeTags = showAllTags
-    ? freeTags
-    : [
-        ...freeTags.slice(0, TAGS_PREVIEW),
-        ...freeTags.slice(TAGS_PREVIEW).filter((t) => values.tags.includes(t.name)),
-      ];
+  const sortedTags = [...tags].sort((a: Tag, b: Tag) => a.name.localeCompare(b.name));
 
   const renderInjected = (section: InjectedSection) => (
     <FilterSection
@@ -408,10 +394,11 @@ export function EventFilterSections({
           open={!!openSections["Conflict"]}
           onToggle={() => toggleSection("Conflict")}
         >
-          <ChipBucket
-            options={conflicts}
+          <ConflictChips
+            filter
+            conflicts={conflicts}
             selected={values.conflicts}
-            onToggle={(n) => toggleIn("conflicts", n)}
+            setSelected={(next) => onPatch({ conflicts: next })}
           />
         </FilterSection>
       )}
@@ -484,7 +471,7 @@ export function EventFilterSections({
 
       {dateSections.map(renderInjected)}
 
-      {offers("tags") && freeTags.length > 0 && (
+      {offers("tags") && tags.length > 0 && (
         <FilterSection
           title="Tags"
           summary={chipSummary(values.tags)}
@@ -492,19 +479,12 @@ export function EventFilterSections({
           open={!!openSections["Tags"]}
           onToggle={() => toggleSection("Tags")}
         >
-          <ChipBucket
-            options={visibleFreeTags}
+          <TagChips
+            filter
+            tags={sortedTags}
             selected={values.tags}
-            onToggle={(n) => toggleIn("tags", n)}
+            setSelected={(next) => onPatch({ tags: next })}
           />
-          {freeTags.length > TAGS_PREVIEW && (
-            <button
-              onClick={() => setShowAllTags((s) => !s)}
-              className={`mt-2 inline-flex items-center ${TAP_STEP} text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors`}
-            >
-              {showAllTags ? "Show less" : `Show all ${freeTags.length}`}
-            </button>
-          )}
         </FilterSection>
       )}
 
@@ -526,7 +506,6 @@ export function EventFilterSections({
             placeholder="Type a username…"
             aria-label="Author username"
             emptyText="No analyst matches"
-            className="sm:text-[11px]"
           />
         </FilterSection>
       )}
@@ -569,7 +548,6 @@ export function EventFilterSections({
               onClear={() => onPatch({ approvedBy: null })}
               placeholder="Type an analyst or organization…"
               emptyText="No analyst or organization matches"
-              className="sm:text-[11px]"
             />
           </div>
         </FilterSection>

@@ -264,8 +264,8 @@ export function SourceEditor({
         <TagChips
           tags={tags}
           setTags={setTags}
-          selectedTagIds={draft.tagIds}
-          setSelectedTagIds={(tagIds) => update({ tagIds })}
+          selected={draft.tagIds}
+          setSelected={(tagIds) => update({ tagIds })}
           owner={name}
         />
       </div>
