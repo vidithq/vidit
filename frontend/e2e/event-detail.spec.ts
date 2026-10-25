@@ -119,13 +119,15 @@ test.describe("shared event link", () => {
     const rowBox = (await row.boundingBox())!;
     expect(rowBox.x).toBeGreaterThan(titleBox.x + titleBox.width / 2);
     expect(Math.abs(rowBox.y - titleBox.y)).toBeLessThan(12);
-    const sources = (await page.getByRole("heading", { name: /^Sources/ }).boundingBox())!;
+    const firstSource = (await page.getByRole("region", { name: "Source 1" }).boundingBox())!;
     const details = (await page.getByRole("heading", { name: "Details" }).boundingBox())!;
     const location = (await page.getByRole("heading", { name: "Location" }).boundingBox())!;
     const map = (await page.getByRole("heading", { name: "Location" }).locator("xpath=following-sibling::div[1]").boundingBox())!;
     // The row ends on the side column's right edge.
     expect(Math.abs(rowBox.x + rowBox.width - (map.x + map.width))).toBeLessThanOrEqual(1);
-    expect(Math.abs(location.y - sources.y)).toBeLessThan(2);
+    // The map and the first source start level: the Location eyebrow takes the sources row's
+    // 32px header height.
+    expect(Math.abs(map.y - firstSource.y)).toBeLessThan(2);
     expect(details.x).toBe(location.x);
     expect(details.y).toBeGreaterThan(location.y);
     const reportBox = (await row.getByRole("button", { name: "Report" }).boundingBox())!;
