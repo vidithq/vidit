@@ -58,6 +58,7 @@ export function DetectionQueueRow({ detection }: { detection: EventDetail }) {
         media={detection.thumbnail ?? undefined}
         isGraphic={detection.is_graphic}
         className="w-16"
+        sizes="64px"
       />
       {/* The badge shares the row from `sm` up and drops under the text on a phone, where badge and
           title can't share a column. */}

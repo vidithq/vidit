@@ -16,6 +16,11 @@ const IMAGE: CollectionCoverTile = {
   role: "source",
 };
 
+/** The URL a picture loads, decoded out of `next/image`'s optimizer query. */
+function loads(img: Element | null): string {
+  return decodeURIComponent(img?.getAttribute("src") ?? "");
+}
+
 function tiles(count: number): CollectionCoverTile[] {
   return Array.from({ length: count }, (_, i) => ({
     ...IMAGE,
@@ -37,10 +42,7 @@ describe("CollectionCover", () => {
 
     const images = document.querySelectorAll("img");
     expect(images).toHaveLength(1);
-    expect(images[0]).toHaveAttribute(
-      "src",
-      "https://media.example/uploads/geo/item0_hero.jpg",
-    );
+    expect(loads(images[0])).toContain("https://media.example/uploads/geo/item0_hero.jpg");
   });
 
   it("splits the slot between two tiles, at the card row's own derivative", () => {
@@ -48,10 +50,7 @@ describe("CollectionCover", () => {
 
     const images = document.querySelectorAll("img");
     expect(images).toHaveLength(2);
-    expect(images[0]).toHaveAttribute(
-      "src",
-      "https://media.example/uploads/geo/item0_thumb.jpg",
-    );
+    expect(loads(images[0])).toContain("https://media.example/uploads/geo/item0_thumb.jpg");
   });
 
   it.each([3, 4])("gives each of %i tiles its own cell", (count) => {
@@ -92,9 +91,6 @@ describe("CollectionCover", () => {
       />,
     );
 
-    expect(document.querySelector("img")).toHaveAttribute(
-      "src",
-      "https://media.example/proof/u1/inline.jpg",
-    );
+    expect(loads(document.querySelector("img"))).toContain("https://media.example/proof/u1/inline.jpg");
   });
 });

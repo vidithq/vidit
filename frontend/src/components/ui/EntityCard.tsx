@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { MapPin } from "lucide-react";
 
@@ -28,11 +29,15 @@ import { SourceLabel } from "@/components/ui/SourceLabel";
 // `preload="metadata"`, `object-contain` so a portrait clip letterboxes.
 // Consumers: this card, the map's pin preview, the detections queue row.
 //
+// A picture goes through `next/image`, lazy and sized to the slot: a proof image
+// has no derivative, so its card would otherwise load the full original.
+//
 // `isGraphic` covers the picture (not the "no media" box) with the compact
 // `GraphicContentGate`.
 export function MediaThumb({
   media,
   size = "thumbnail",
+  sizes,
   className,
   isGraphic = false,
 }: {
@@ -41,16 +46,20 @@ export function MediaThumb({
   /** Image derivative: 400 px `thumbnail` or 1280 px `hero`. Videos and proof
    *  images have none and ignore it. */
   size?: "thumbnail" | "hero";
+  /** The slot's rendered width, as the `<img sizes>` attribute. Defaults to the
+   *  derivative's own width, so a slot never loads more pixels than it does today. */
+  sizes?: string;
   className?: string;
   isGraphic?: boolean;
 }) {
   const picture = media ? (
     media.kind === "image" ? (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
+      <Image
         src={displayUrlsFor(media)[size]}
         alt=""
-        className="w-full h-full object-cover"
+        fill
+        sizes={sizes ?? (size === "hero" ? "1280px" : "400px")}
+        className="object-cover"
       />
     ) : (
       <video
@@ -198,7 +207,12 @@ export function EntityCard({
   // Narrower on a phone, where the 112px slot plus the badge left the title no
   // width.
   const thumb = (
-    <MediaThumb media={media} isGraphic={isGraphic} className="w-20 sm:w-28" />
+    <MediaThumb
+      media={media}
+      isGraphic={isGraphic}
+      className="w-20 sm:w-28"
+      sizes="(min-width: 640px) 112px, 80px"
+    />
   );
 
   const tagRow =

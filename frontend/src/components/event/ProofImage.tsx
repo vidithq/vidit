@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { getImageProps } from "next/image";
 import { Expand } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
@@ -19,8 +20,10 @@ import { FLOATING_CONTROL, HOVER_REVEAL } from "@/components/ui/styles";
  * state here keeps a proof body a server render with one interactive leaf.
  *
  * Plain `<img>` on purpose: a proof image has unknown natural dimensions from an arbitrary
- * allowlisted host, which `next/image` cannot size. Lazy and no-referrer hints cover the load
- * discipline. `src` is validated by the caller. The `span` + `inline-block` wrappers keep the
+ * allowlisted host, which `next/image` cannot size. On the deployment's media host it still loads
+ * through the image optimizer (`displaySrc`), since an original can weigh megabytes. Lazy and
+ * no-referrer hints cover the load discipline. `src` is validated by the caller. The viewer and
+ * the download keep the original. The `span` + `inline-block` wrappers keep the
  * hover cluster's positioning context on the picture alone; `renderProof` in
  * [`lib/proof.tsx`](../../lib/proof.tsx) is the only place it renders, and it turns a paragraph
  * holding an image into a `div`, so it never nests in a `<p>`.
@@ -28,6 +31,27 @@ import { FLOATING_CONTROL, HOVER_REVEAL } from "@/components/ui/styles";
  * The viewer portals to `document.body` ([`MediaLightbox`](../ui/MediaLightbox.tsx)), so a
  * transformed or scrolling ancestor can't clip it.
  */
+// Two optimizer widths cover a body column up to 960 CSS px at 2x.
+const PROOF_SLOT_PX = 960;
+
+/** The optimizer URL for a picture on the media host, the only host the optimizer serves; any
+ *  other `src` as is. One URL and no `srcset`: the optimizer never upscales, so a `srcset`
+ *  candidate wider than the original would paint it below its natural size. The URL is the 2x
+ *  candidate, so a picture keeps its natural size up to that width. */
+function displaySrc(src: string): string {
+  const mediaHost = process.env.NEXT_PUBLIC_MEDIA_HOST;
+  if (!mediaHost) return src;
+  let hostname: string;
+  try {
+    hostname = new URL(src).hostname;
+  } catch {
+    return src;
+  }
+  if (hostname !== mediaHost.toLowerCase()) return src;
+  const { props } = getImageProps({ src, alt: "", width: PROOF_SLOT_PX, height: PROOF_SLOT_PX });
+  return props.src;
+}
+
 export function ProofImage({
   src,
   alt,
@@ -53,7 +77,7 @@ export function ProofImage({
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={src}
+          src={displaySrc(src)}
           alt={alt}
           title={title}
           loading="lazy"
