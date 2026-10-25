@@ -144,13 +144,13 @@ export function useEventForm(row?: EventDetail | null): EventFormState {
 }
 
 /**
- * The fields every event write fills in, as `EventShell`'s body slots: the title heads the main
- * column over the sources and the proof; the location, then the one Details card (date, time,
- * provenance, conflict, tags), fill the side column.
+ * The fields every event write fills in, as `EventShell`'s zones: the Title field closes the title
+ * section; in the body the sources and the proof fill the main column, and the location, then the
+ * one Details card (date, time, provenance, conflict, tags), fill the side column.
  *
  * The submit form and the edit form compose it and keep no copy of a field, so labels, help and
  * red outlines stay one thing. Per-surface blocks (the version note, the geolocators) are the
- * shell's own slots; the writes are its sticky actions.
+ * shell's own; the writes are its pinned actions.
  */
 export function eventFormSlots(
   form: EventFormState,
@@ -158,6 +158,7 @@ export function eventFormSlots(
     row = null,
     showProvenance = false,
     afterLocation,
+    formId,
   }: {
     /** The stored row behind the form (the edited or published event). `null` on a fresh
      *  submit. */
@@ -166,64 +167,73 @@ export function eventFormSlots(
     showProvenance?: boolean;
     /** Follows the Location section (the submit form's duplicate probe). */
     afterLocation?: ReactNode;
+    /** The body `<form>`'s id, which the Title field joins from the title section. */
+    formId?: string;
   } = {},
-): Omit<EventLayoutSlots, "afterDetails" | "form"> {
+): { titleField: ReactNode; body: Omit<EventLayoutSlots, "form"> } {
   const { invalidKeys } = form;
 
   return {
     titleField: (
-      <TitleField value={form.title} onChange={form.setTitle} invalid={invalidKeys.has("title")} />
-    ),
-    sources: (
-      <SourcesField
-        sources={form.sources}
-        setSources={form.setSources}
-        tags={form.taxonomy.tags}
-        setTags={form.taxonomy.setTags}
-        invalidKeys={invalidKeys}
-        attempt={form.validationAttempt}
+      <TitleField
+        value={form.title}
+        onChange={form.setTitle}
+        invalid={invalidKeys.has("title")}
+        form={formId}
       />
     ),
-    // The image floor binds at the publish; a request may stay imageless.
-    proof: (
-      <ProofEditorPanel
-        proof={form.proof}
-        onChange={form.setProof}
-        proofFiles={form.proofFiles}
-        onProofFilesChange={form.setProofFiles}
-        invalid={invalidKeys.has("proof") || invalidKeys.has("proof_image")}
-      />
-    ),
-    details: (
-      <DetailsFields
-        eventDate={form.eventDate}
-        setEventDate={form.setEventDate}
-        eventTime={form.eventTime}
-        setEventTime={form.setEventTime}
-        detectedFromUrl={showProvenance ? row?.detected_from_url : undefined}
-        openedAsRequest={!!row?.requested_by}
-      >
-        <TaxonomyFields
-          taxonomy={form.taxonomy}
-          selectedTagIds={form.selectedTagIds}
-          setSelectedTagIds={form.setSelectedTagIds}
-          selectedConflictIds={form.selectedConflictIds}
-          setSelectedConflictIds={form.setSelectedConflictIds}
-          conflictInvalid={invalidKeys.has("conflict_tag")}
+    body: {
+      sources: (
+        <SourcesField
+          sources={form.sources}
+          setSources={form.setSources}
+          tags={form.taxonomy.tags}
+          setTags={form.taxonomy.setTags}
+          invalidKeys={invalidKeys}
+          attempt={form.validationAttempt}
         />
-      </DetailsFields>
-    ),
-    location: (
-      <>
-        <LocationPicker
-          lat={form.lat}
-          setLat={form.setLat}
-          lng={form.lng}
-          setLng={form.setLng}
-          invalid={invalidKeys.has("coordinates")}
+      ),
+      // The image floor binds at the publish; a request may stay imageless.
+      proof: (
+        <ProofEditorPanel
+          proof={form.proof}
+          onChange={form.setProof}
+          proofFiles={form.proofFiles}
+          onProofFilesChange={form.setProofFiles}
+          invalid={invalidKeys.has("proof") || invalidKeys.has("proof_image")}
         />
-        {afterLocation}
-      </>
-    ),
+      ),
+      details: (
+        <DetailsFields
+          eventDate={form.eventDate}
+          setEventDate={form.setEventDate}
+          eventTime={form.eventTime}
+          setEventTime={form.setEventTime}
+          detectedFromUrl={showProvenance ? row?.detected_from_url : undefined}
+          openedAsRequest={!!row?.requested_by}
+        >
+          <TaxonomyFields
+            taxonomy={form.taxonomy}
+            selectedTagIds={form.selectedTagIds}
+            setSelectedTagIds={form.setSelectedTagIds}
+            selectedConflictIds={form.selectedConflictIds}
+            setSelectedConflictIds={form.setSelectedConflictIds}
+            conflictInvalid={invalidKeys.has("conflict_tag")}
+          />
+        </DetailsFields>
+      ),
+      location: (
+        <>
+          <LocationPicker
+            lat={form.lat}
+            setLat={form.setLat}
+            lng={form.lng}
+            setLng={form.setLng}
+            invalid={invalidKeys.has("coordinates")}
+          />
+          {afterLocation}
+        </>
+      ),
+    },
   };
 }

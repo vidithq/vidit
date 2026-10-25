@@ -13,7 +13,7 @@ import { PageError, PageLoading } from "@/components/ui/PageShell";
  * A request is a `requested` event (see `docs/data-model.md`, `events`) served by
  * `GET /events/{id}`; renders the shared `EventShell` and the event page's fields, with
  * the actions (`useEventActions`: Edit, Share, Report, then Geolocate) as the
- * page's sticky actions, top right. The owner closes it from the
+ * page's actions block, top right. The owner closes it from the
  * edit page.
  */
 export default function RequestDetailPage() {
@@ -27,7 +27,7 @@ export default function RequestDetailPage() {
     requestId ? `/events/${requestId}` : null
   );
   // Called before the early returns.
-  const { panels, actions, side } = useEventActions({
+  const { panels, actions } = useEventActions({
     event: request,
     surface: "request",
     onChanged: refetch,
@@ -47,7 +47,6 @@ export default function RequestDetailPage() {
       title={request.title}
       byline={<AuthorByline author={request.owner} avatar />}
       actions={actions}
-      sideTop={side}
       panels={panels}
       // No coordinates: no Location module, and the missing rows drop out.
       body={eventPageSlots(request)}

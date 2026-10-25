@@ -87,14 +87,14 @@ function Harness({
   beforeClosedStatus?: BeforeClosedStatus | null;
   versionNo?: number;
 }) {
-  const { panels, actions, side } = useEventActions({
+  const { panels, actions } = useEventActions({
     event: eventFixture(status, beforeClosedStatus, versionNo),
     surface,
   });
   return (
     <>
-      {actions}
-      {side}
+      {actions?.pinned}
+      {actions?.below}
       {panels}
     </>
   );

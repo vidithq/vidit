@@ -251,22 +251,24 @@ function SubmitForm() {
   // The draft lives in `form`, above both shells, so it survives a trip through the chooser: the
   // fields reseed from it when the form opens again.
   if (mode === "single") {
+    const fields = eventFormSlots(form, {
+      afterLocation: (
+        <DuplicateProbe
+          lat={form.lat}
+          lng={form.lng}
+          sourceUrl={form.sources.flatMap(draftUrls)[0] ?? ""}
+          eventDate={form.eventDate}
+        />
+      ),
+    });
     return (
       <EventShell
         title="Submit"
+        belowTitle={fields.titleField}
         onBack={backToChooser}
-        actions={actions}
+        actions={{ pinned: actions }}
         body={{
-          ...eventFormSlots(form, {
-            afterLocation: (
-              <DuplicateProbe
-                lat={form.lat}
-                lng={form.lng}
-                sourceUrl={form.sources.flatMap(draftUrls)[0] ?? ""}
-                eventDate={form.eventDate}
-              />
-            ),
-          }),
+          ...fields.body,
           // No `onSubmit` route: publish actions are explicit buttons, and one clicked while its
           // floor is short flags the missing fields red. `noValidate` stops native bubbles.
           form: { onSubmit: (e) => e.preventDefault(), noValidate: true },

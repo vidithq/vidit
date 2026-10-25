@@ -119,6 +119,23 @@ function CreditRow({
   );
 }
 
+/** The geolocators panel under its titled card: the event page's panel for a co-geolocator, a
+ *  published edit's panel for the owner. */
+export function GeolocatorsCard({
+  event,
+  onChanged,
+}: {
+  event: EventDetail;
+  onChanged: () => void;
+}) {
+  return (
+    <Card as="section">
+      <SectionEyebrow title="Geolocators" concept="geolocators" margin="none" />
+      <GeolocatorsPanel event={event} onChanged={onChanged} />
+    </Card>
+  );
+}
+
 const INVITE_FIELD_ID = "geolocator-invite-username";
 
 /**

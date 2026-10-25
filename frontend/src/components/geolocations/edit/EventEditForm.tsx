@@ -9,7 +9,6 @@ import { eventFormSlots, useEventForm } from "@/components/geolocations/EventFor
 import { Ellipsis } from "lucide-react";
 
 import { Card } from "@/components/ui/Card";
-import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { ActionMenu } from "@/components/ui/ActionMenu";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { sourcesBlockWrite } from "@/components/sources/SourcesField";
@@ -21,7 +20,7 @@ import { Button } from "@/components/ui/Button";
 import { CountBadge } from "@/components/ui/CountBadge";
 import { CloseEventDialog, closeActionLabel } from "@/components/event/CloseEventDialog";
 import { EventShell } from "@/components/event/EventShell";
-import { GeolocatorsPanel } from "@/components/event/GeolocatorCredit";
+import { useGeolocatorsByline } from "@/components/event/useGeolocatorsByline";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
@@ -43,7 +42,8 @@ import { sourceFloor, sourcesChanged, sourceWriteError } from "@/lib/sources";
 import { eventHref } from "@/lib/routes";
 import type { EventDetail } from "@/types";
 
-// Ties the sticky actions to the form, which they sit outside of.
+// Ties the pinned actions, the version note and the Title field to the form, which they sit
+// outside of.
 const EDIT_FORM_ID = "event-edit-form";
 
 const CONFIRM_SENTENCE =
@@ -67,10 +67,10 @@ const CONFIRM_SENTENCE =
  * `initialContent` on first paint. Every write names the version the form was loaded at, so a
  * row that moved meanwhile answers a conflict instead of being overwritten.
  *
- * The fields fill `EventShell`'s body slots. The shell's sticky actions hold the writes, the
- * banners and, for the owner, **More actions** with the close. A published row's version note
- * heads the side column under them (`sideTop`), and its geolocators, whose changes apply on click
- * and never make a version, follow the Details card.
+ * The fields fill `EventShell`'s zones. The actions block pins the writes, the banners and, for
+ * the owner, **More actions** with the close; a published row's version note reads under them. A
+ * published row's title section carries its geolocators byline, with the toggle that opens their
+ * panel: those changes apply on click and never make a version.
  *
  * With `queue` set the actions gain the position and a Skip, and a finished detection hands over
  * to the next one.
@@ -106,6 +106,7 @@ export function EventEditForm({
   const finish = queue?.onAdvance ?? (() => router.push(redirectTo));
 
   const form = useEventForm(geo);
+  const credit = useGeolocatorsByline(geo, () => onCreditChanged?.());
 
   // Edit only: a publish files version 0, which keeps no note of its own.
   const [editNote, setEditNote] = useState("");
@@ -371,15 +372,24 @@ export function EventEditForm({
     </aside>
   );
 
+  const fields = eventFormSlots(form, { row: geo, showProvenance: true, formId: EDIT_FORM_ID });
+
   return (
     <EventShell
       title={title}
+      byline={editingPublished && credit.byline}
+      belowTitle={
+        <>
+          {editingPublished && credit.panel}
+          {fields.titleField}
+        </>
+      }
       backFallback={redirectTo}
-      actions={actions}
-      // Optional, never part of the floor. Outside the `<form>`, so it joins it through `form`,
-      // and Enter in it still saves.
-      sideTop={
-        editingPublished && (
+      actions={{
+        pinned: actions,
+        // Optional, never part of the floor. Outside the `<form>`, so it joins it through `form`,
+        // and Enter in it still saves.
+        below: editingPublished && (
           <Card as="section">
             <SectionHeading title="Version note" concept="version_note" />
             <Input
@@ -393,16 +403,10 @@ export function EventEditForm({
               aria-label="Version note"
             />
           </Card>
-        )
-      }
-      body={{
-        ...eventFormSlots(form, { row: geo, showProvenance: true }),
-        afterDetails: editingPublished && (
-          <Card as="section">
-            <SectionEyebrow title="Geolocators" concept="geolocators" margin="none" />
-            <GeolocatorsPanel event={geo} onChanged={() => onCreditChanged?.()} />
-          </Card>
         ),
+      }}
+      body={{
+        ...fields.body,
         // `noValidate`: IncompleteFormNotice owns required-field feedback.
         form: { id: EDIT_FORM_ID, onSubmit: attemptSubmit, noValidate: true },
       }}

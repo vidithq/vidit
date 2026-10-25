@@ -469,22 +469,34 @@ describe("editing a published geolocation", () => {
     expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
   });
 
-  it("holds the save and More actions in the actions, the note over Location, the geolocators under Details", () => {
+  it("holds the save and More actions in the actions, the note under them, the geolocators beside the byline", () => {
     render(<EditEventPage />);
 
     const rail = screen.getByRole("complementary", { name: "Actions" });
     const save = within(rail).getByRole("button", { name: "Save version 2" });
     const more = within(rail).getByRole("button", { name: "More actions" });
     expect(follows(save, more)).toBe(true);
-    // The note and the geolocators are fields of the side column, not actions.
+    // The note is a field under the actions, not an action, over the body.
     const note = screen.getByRole("textbox", { name: "Version note" });
     expect(rail.contains(note)).toBe(false);
     const location = screen.getByRole("heading", { name: /^Location/ });
-    const details = screen.getByRole("heading", { name: /^Details/ });
+    expect(follows(note, location)).toBe(true);
+    // The title section: the page title, the geolocators toggle, then the Title field, which joins
+    // the form from outside it.
+    const pageTitle = screen.getByRole("heading", { name: "Edit geolocation" });
+    const toggle = screen.getByRole("button", { name: "Manage geolocators" });
+    const title = screen.getByRole("textbox", { name: /Title/ });
+    expect(follows(pageTitle, toggle) && follows(toggle, title)).toBe(true);
+    const form = document.getElementById("event-edit-form") as HTMLFormElement;
+    expect(form.contains(title)).toBe(false);
+    expect((title as HTMLInputElement).form).toBe(form);
+    // The panel opens under the byline, outside the edit form, since it holds a form of its own.
+    expect(screen.queryByLabelText("Invite a geolocator")).toBeNull();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
     const credit = screen.getByRole("heading", { name: /^Geolocators/ });
-    expect(follows(note, location) && follows(details, credit)).toBe(true);
-    // The geolocators hold a form of their own, so they sit outside the edit form.
-    expect(document.getElementById("event-edit-form")!.contains(credit)).toBe(false);
+    expect(follows(toggle, credit) && follows(credit, title)).toBe(true);
+    expect(form.contains(credit)).toBe(false);
     expect(screen.getByLabelText("Invite a geolocator")).toBeInTheDocument();
     // How shared credit works, changes applying on click with no new version, is the title's help.
     expect(

@@ -25,11 +25,11 @@ function Actions({ invited }: { invited: boolean }) {
     owner: { id: "u1", username: "ana" },
     viewer_invite_pending: invited,
   };
-  const { actions, side } = useEventActions({ event, surface: "event" });
+  const { actions } = useEventActions({ event, surface: "event" });
   return (
     <>
-      {actions}
-      {side}
+      {actions?.pinned}
+      {actions?.below}
     </>
   );
 }

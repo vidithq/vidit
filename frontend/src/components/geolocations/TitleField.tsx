@@ -8,11 +8,13 @@ interface TitleFieldProps {
   value: string;
   onChange: (v: string) => void;
   invalid?: boolean;
+  /** The id of the `<form>` the field joins from outside it. */
+  form?: string;
 }
 
 /** The "Title" field (label, `?` help, input), shared by the submit and
  *  detection-edit forms. */
-export function TitleField({ value, onChange, invalid = false }: TitleFieldProps) {
+export function TitleField({ value, onChange, invalid = false, form }: TitleFieldProps) {
   return (
     <div className="space-y-1.5">
       <label
@@ -25,6 +27,7 @@ export function TitleField({ value, onChange, invalid = false }: TitleFieldProps
         id="title"
         type="text"
         required
+        form={form}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="e.g. Strike on ammunition depot, Donetsk"

@@ -77,9 +77,11 @@ export default function EventVersionPage() {
     <EventShell
       title={version.view?.title ?? geo.title}
       byline={<AuthorByline {...creditProps(geo)} coAuthorsAs="avatars" avatar />}
-      actions={<VersionSelector event={geo} selected={number} />}
-      // Version 0 was never published, so nothing approves it.
-      sideTop={number > 0 ? <VersionApprovals event={geo} versionNo={number} /> : null}
+      actions={{
+        pinned: <VersionSelector event={geo} selected={number} />,
+        // Version 0 was never published, so nothing approves it.
+        below: number > 0 ? <VersionApprovals event={geo} versionNo={number} /> : null,
+      }}
       panels={
         <>
           <EventVersionBanner event={geo} version={version} />

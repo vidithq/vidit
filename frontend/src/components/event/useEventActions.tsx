@@ -18,7 +18,8 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { ACCENT_SURFACE } from "@/components/ui/styles";
 import { EventShare } from "@/components/event/EventShare";
-import { GeolocatorInviteCard, GeolocatorsPanel } from "@/components/event/GeolocatorCredit";
+import { GeolocatorInviteCard, GeolocatorsCard } from "@/components/event/GeolocatorCredit";
+import type { EventShellActions } from "@/components/event/EventShell";
 import { useEventApprovals } from "@/components/event/EventApprovals";
 import { VersionSelector } from "@/components/event/VersionSelector";
 import { useReportContent } from "@/components/report/useReportContent";
@@ -26,8 +27,8 @@ import type { EventDetail } from "@/types";
 
 /**
  * The controls of one event, assembled once so no surface hand-assembles a row and controls can't
- * drift between them. They head the page's side column (`docs/design.md`, Event actions and
- * approvals), as a row of icon controls, left to right:
+ * drift between them. They head the page's actions block, top right (`docs/design.md`, Event
+ * actions and approvals), as a row of icon controls, left to right:
  *
  * 1. **The version selector**, on the event page of a published row.
  * 2. **Edit**, an icon, for the owner. Closing and the geolocators live on the edit page.
@@ -38,12 +39,12 @@ import type { EventDetail } from "@/types";
  *    dialog with the open requests and the picker that sends one.
  * 6. **Report** for every reader but the owner.
  *
- * The actions are that row, then **Geolocate** on an open request's page: the page's sticky
- * actions (`PageShell`'s `stickyActions`). The side, under them, holds a published row's approvals
- * on the event page (the stamps, Approve) and a pending geolocator invitation.
+ * The actions are `EventShell`'s actions block: the row, then **Geolocate** on an open request's
+ * page, pinned while the page scrolls; under them, not pinned, a published row's approvals on the
+ * event page (the stamps, Approve) and a pending geolocator invitation.
  *
- * The hook returns nodes rather than rendering them because the actions, the side and the panels
- * land in different slots. Called before a surface's early returns, with `event` null
+ * The hook returns nodes rather than rendering them because the actions and the panels land in
+ * different zones. Called before a surface's early returns, with `event` null
  * while the row loads, so hook order is stable.
  */
 
@@ -85,22 +86,50 @@ export interface EventActionsOptions {
 export interface EventActions {
   /** The panels the row's toggles open, for under the header. */
   panels: ReactNode;
-  /** The page's sticky actions: the row, and Geolocate on a request. */
-  actions: ReactNode;
-  /** The block heading the page's side column, under the actions: the approvals and an
-   *  invitation. */
-  side: ReactNode;
+  /** The actions block: the row and Geolocate on a request, pinned; the approvals and an
+   *  invitation under them. */
+  actions: EventShellActions | undefined;
 }
 
-/** A panel a row toggle opens. It mounts when opened and takes focus then, so a keyboard or
- *  screen reader user lands in it rather than back on the toggle. */
-function TogglePanel({ id, children }: { id: string; children: ReactNode }) {
+/** A panel a toggle opens. It mounts when opened and takes focus then, so a keyboard or screen
+ *  reader user lands in it rather than back on the toggle. */
+export function TogglePanel({ id, children }: { id: string; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => ref.current?.focus(), []);
   return (
     <div ref={ref} id={id} tabIndex={-1} className="outline-none">
       {children}
     </div>
+  );
+}
+
+/** The icon toggle of a panel. The open toggle wears the active-row paint, so the reader sees which
+ *  control the panel belongs to. */
+export function PanelToggle({
+  open,
+  onToggle,
+  label,
+  panelId,
+  icon,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  label: string;
+  panelId: string;
+  icon: ReactNode;
+}) {
+  return (
+    <Button
+      icon
+      variant="ghost"
+      onClick={onToggle}
+      aria-controls={open ? panelId : undefined}
+      aria-expanded={open}
+      aria-label={label}
+      className={open ? ACCENT_SURFACE : ""}
+    >
+      {icon}
+    </Button>
   );
 }
 
@@ -133,7 +162,7 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
   }, [event?.id]);
 
   if (!event || !tiers) {
-    return { panels: null, actions: null, side: null };
+    return { panels: null, actions: undefined };
   }
 
   const isOpenRequest = event.status === "requested";
@@ -151,22 +180,6 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
     answeredFor !== event.id;
   // Reporting your own event says nothing an edit or a close could not.
   const canReport = tiers.utilities && !isAuthor;
-
-  const toggle = (open: boolean, setOpen: (open: boolean) => void, label: string, id: string, icon: ReactNode) => (
-    <Button
-      icon
-      variant="ghost"
-      onClick={() => setOpen(!open)}
-      aria-controls={open ? id : undefined}
-      aria-expanded={open}
-      aria-label={label}
-      // The open toggle wears the active-row paint, so the reader sees which control the panel
-      // belongs to.
-      className={open ? ACCENT_SURFACE : ""}
-    >
-      {icon}
-    </Button>
-  );
 
   const controls = [
     tiers.history && hasPublishedRecord(event) && (
@@ -190,14 +203,24 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
     ),
     tiers.utilities && <EventShare key="share" event={event} />,
     canCollect && (
-      <Fragment key="collect">
-        {toggle(collecting, setCollecting, "Add to collection", COLLECT_PANEL_ID, <CollectionIcon size={14} />)}
-      </Fragment>
+      <PanelToggle
+        key="collect"
+        open={collecting}
+        onToggle={() => setCollecting(!collecting)}
+        label="Add to collection"
+        panelId={COLLECT_PANEL_ID}
+        icon={<CollectionIcon size={14} />}
+      />
     ),
     canSeeCredit && (
-      <Fragment key="credit">
-        {toggle(crediting, setCrediting, "Geolocators", CREDIT_PANEL_ID, <Users size={14} />)}
-      </Fragment>
+      <PanelToggle
+        key="credit"
+        open={crediting}
+        onToggle={() => setCrediting(!crediting)}
+        label="Geolocators"
+        panelId={CREDIT_PANEL_ID}
+        icon={<Users size={14} />}
+      />
     ),
     eventApprovals.requestAction && (
       <Fragment key="request-approval">{eventApprovals.requestAction}</Fragment>
@@ -233,10 +256,7 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
       <>
         {canSeeCredit && crediting && (
           <TogglePanel id={CREDIT_PANEL_ID}>
-            <Card as="section">
-              <SectionEyebrow title="Geolocators" concept="geolocators" margin="none" />
-              <GeolocatorsPanel event={event} onChanged={() => onChanged?.()} />
-            </Card>
+            <GeolocatorsCard event={event} onChanged={() => onChanged?.()} />
           </TogglePanel>
         )}
         {canCollect && collecting && (
@@ -252,25 +272,27 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
         {canReport && report.panel}
       </>
     ),
-    actions: (controls.length > 0 || geolocate) && (
-      <div className="flex flex-col items-end gap-3">
-        {row("justify-end")}
-        {geolocate}
-      </div>
-    ),
-    side: (eventApprovals.summary || invited) && (
-      <div className="space-y-4">
-        {eventApprovals.summary}
-        {invited && (
-          <GeolocatorInviteCard
-            event={event}
-            onAnswered={() => {
-              setAnsweredFor(event.id);
-              onChanged?.();
-            }}
-          />
-        )}
-      </div>
-    ),
+    actions: {
+      pinned: (controls.length > 0 || geolocate) && (
+        <div className="flex flex-col items-end gap-3">
+          {row("justify-end")}
+          {geolocate}
+        </div>
+      ),
+      below: (eventApprovals.summary || invited) && (
+        <div className="space-y-4">
+          {eventApprovals.summary}
+          {invited && (
+            <GeolocatorInviteCard
+              event={event}
+              onAnswered={() => {
+                setAnsweredFor(event.id);
+                onChanged?.();
+              }}
+            />
+          )}
+        </div>
+      ),
+    },
   };
 }

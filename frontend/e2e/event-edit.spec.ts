@@ -35,19 +35,23 @@ test.describe("event edit", () => {
     await expect(page.getByRole("menuitem", { name: "Close this geolocation" })).toBeVisible();
     await page.keyboard.press("Escape");
 
-    // The version note heads the side column, over Location; the geolocators follow Details.
+    // The version note reads under the actions, over Location. The geolocators open in the title
+    // section, between the byline and the title field.
     const note = (await page.getByRole("textbox", { name: "Version note" }).boundingBox())!;
     const location = (await page.getByRole("heading", { name: /^Location/ }).boundingBox())!;
-    const details = (await page.getByRole("heading", { name: /^Details/ }).boundingBox())!;
-    const geolocators = page.getByRole("heading", { name: /^Geolocators/ });
     expect(note.y).toBeLessThan(location.y);
-    expect((await geolocators.boundingBox())!.y).toBeGreaterThan(details.y);
-
-    // Scrolled to the geolocators, the save is still on screen, pinned at the top.
-    await geolocators.scrollIntoViewIfNeeded();
+    const toggle = page.getByRole("button", { name: "Manage geolocators" });
+    await toggle.click();
+    const geolocators = page.getByRole("heading", { name: /^Geolocators/ });
+    const geolocatorsBox = (await geolocators.boundingBox())!;
+    expect(geolocatorsBox.y).toBeGreaterThan((await toggle.boundingBox())!.y);
+    expect(geolocatorsBox.y).toBeLessThan((await title.boundingBox())!.y);
     await expect(page.getByRole("button", { name: "Invite" })).toBeVisible();
-    await expect(save).toBeInViewport({ ratio: 1 });
     await expectNoHorizontalOverflow(page);
+
+    // Scrolled to the details, the save is still on screen, pinned at the top.
+    await page.getByRole("heading", { name: /^Details/ }).scrollIntoViewIfNeeded();
+    await expect(save).toBeInViewport({ ratio: 1 });
   });
 
   test("puts the actions top right, over the location and the details, on a wide screen", async ({

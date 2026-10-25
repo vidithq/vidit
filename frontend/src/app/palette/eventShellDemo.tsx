@@ -8,8 +8,9 @@ import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { cn } from "@/lib/cn";
 
-// The `/palette` demo of `EventShell`: the real shell, every slot a labelled empty box, in the three
-// fillings the app renders. The boxes are demo scaffolding, not a primitive.
+// The `/palette` demo of `EventShell`: the real shell, its three zones (title section, actions block,
+// body) filled with labelled empty boxes, in the three fillings the app renders. The boxes are demo
+// scaffolding, not a primitive.
 
 export type EventShellFilling = "event" | "edit" | "submit";
 
@@ -36,24 +37,33 @@ function Slot({ label, className }: { label: string; className?: string }) {
   );
 }
 
-/** The shell with the slots one filling uses, each an empty box named after its slot. */
+/** The shell's three zones with the slots one filling uses, each an empty box named after its
+ *  zone and slot. */
 export function EventShellSkeleton({ filling }: { filling: EventShellFilling }) {
   const isEvent = filling === "event";
   return (
     <EventShell
-      title={<Slot label="Title" className="h-7" />}
-      byline={isEvent ? <Slot label="Byline" className="h-6" /> : undefined}
+      title={<Slot label="Title section: title" className="h-7" />}
+      byline={
+        filling === "submit" ? undefined : <Slot label="Title section: byline" className="h-6" />
+      }
+      belowTitle={
+        isEvent ? undefined : <Slot label="Title section: title field" className="h-20" />
+      }
       onBack={() => {}}
-      actions={<Slot label="Actions" className="h-9 w-56 max-w-full" />}
-      sideTop={filling === "submit" ? null : <Slot label="Side top" className="h-24" />}
+      actions={{
+        pinned: <Slot label="Actions block: pinned row" className="h-9 w-56 max-w-full" />,
+        below:
+          filling === "submit" ? null : (
+            <Slot label="Actions block: below the row" className="h-24" />
+          ),
+      }}
       panels={isEvent ? <Slot label="Panels" className="h-16" /> : undefined}
       body={{
-        titleField: isEvent ? undefined : <Slot label="Title field" className="h-20" />,
-        sources: <Slot label="Sources" className="h-72" />,
-        proof: <Slot label="Proof" className="h-48" />,
-        location: <Slot label="Location" className="h-64" />,
-        details: <Slot label="Details" className="h-56" />,
-        afterDetails: filling === "edit" ? <Slot label="After details" className="h-32" /> : undefined,
+        sources: <Slot label="Body: sources" className="h-72" />,
+        proof: <Slot label="Body: proof" className="h-48" />,
+        location: <Slot label="Body: location" className="h-64" />,
+        details: <Slot label="Body: details" className="h-56" />,
       }}
     />
   );
