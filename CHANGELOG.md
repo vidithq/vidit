@@ -35,13 +35,18 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - `POST /events/{id}/versions` takes an optional `version_no`, the version the form was loaded at, and answers 409 `version_mismatch` when the event has moved past it.
 - A re-import or a bot re-tag never writes over an event that has a saved version.
 - Profile stats count events per source kind, the source hosts read each event's first source URL, and `GET /tags` lists the tags on live events or their sources.
-- The event page and both event forms share one layout: the title, which a form's Title field replaces, and the geolocators, the actions pinned top right over the approvals or version note, then sources and proof beside location and Details ([#693](https://github.com/vidithq/vidit/pull/693)).
+- The event page and both event forms share one layout: the title, which a form's Title field replaces, and the geolocators, the actions pinned top right over the approvals, then sources and proof beside location and Details ([#693](https://github.com/vidithq/vidit/pull/693)).
 - Submit opens on three cards, Single event, From an X post and Bulk import, in place of the mode switch; the chosen path stays in the address, and the back arrow returns to the cards ([#693](https://github.com/vidithq/vidit/pull/693)).
 - Tags are picked through a search field in the Details card and in each source: it suggests the matching tags as you type and offers to create a missing one, in place of the full tag list ([#693](https://github.com/vidithq/vidit/pull/693)).
 - Latitude and Longitude sit on one line at every width, followed by the map and copy actions as separate buttons, in the Location card and in each source's capture position ([#693](https://github.com/vidithq/vidit/pull/693)).
 - The Conflict and Tags filters of the map, search, the Requests board and the feed are search fields that suggest the conflicts and tags in use as you type, in place of the full list of chips ([#693](https://github.com/vidithq/vidit/pull/693)).
 - A source in the event form reads like the event page's: each link is one row with its post time and archive box, the capture time, position, tags and graphic flag sit under More details, and a missing link shows only after a publish attempt ([#693](https://github.com/vidithq/vidit/pull/693)).
 - The collection forms and the profile and organization edit modes pin Save and Cancel at the top right. A collection's submit counts and flags its missing fields, events join it from a search list, a report opens in a dialog, and removing or leaving a geolocator takes a second click.
+- Both event forms pin their buttons on one line with one look, a count of what each still misses, and a second click to confirm every publish, Publish request included; the list of missing fields reads under the buttons ([#693](https://github.com/vidithq/vidit/pull/693)).
+- Saving a version asks for its optional note in a small panel on the Save button, and the close of the edit form is a red button beside it, in place of the More actions menu ([#693](https://github.com/vidithq/vidit/pull/693)).
+- A lone source in the event form shows its file beside its title, level and kind on a wide screen, and the form's sources, proof, title, byline and labels read like the event page's ([#693](https://github.com/vidithq/vidit/pull/693)).
+- A source with no title shows no Title row, and the source rows read title, level, kind, links, capture time, capture position, then tags, on the page and in the form ([#693](https://github.com/vidithq/vidit/pull/693)).
+- A capped text field counts the characters used against its limit, not the characters left ([#693](https://github.com/vidithq/vidit/pull/693)).
 
 ### Removed
 
@@ -53,6 +58,12 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - Archived copies of the post a detection came from and of the links in a proof body.
 - `POST /events/{id}/geolocate`: `POST /events/{id}/versions` publishes a request or a detection.
 - Answering a request from the submit page (`/submit?request_id=`).
+
+### Fixed
+
+- Version 0 of an event credits who opened the request or the detection, as its history does, not the current owner ([#693](https://github.com/vidithq/vidit/pull/693)).
+- A proof image pasted before publishing no longer loads a broken address as the form closes ([#693](https://github.com/vidithq/vidit/pull/693)).
+- One unread notification and one pending detection read in the singular, and the organization bio placeholder speaks of the organization ([#693](https://github.com/vidithq/vidit/pull/693)).
 
 ## v0.7.4, 2026-10-22
 
