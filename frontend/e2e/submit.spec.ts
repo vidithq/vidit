@@ -221,6 +221,8 @@ test.describe("submit", () => {
     const first = page.getByRole("region", { name: "Source 1" });
     await first.getByLabel("Kind", { exact: true }).selectOption({ label: "Smartphone" });
     await first.getByLabel("Source 1 link 1", { exact: true }).fill("https://t.me/channel/12345");
+    await first.getByRole("button", { name: "More details" }).click();
+    await expect(first.getByLabel("Latitude", { exact: true })).toBeVisible();
     await expectNarrowViewportLayout(page, page.getByRole("button", { name: "Add a source" }));
 
     // Every control of the editor stays inside its tile.
@@ -231,12 +233,28 @@ test.describe("submit", () => {
       expect(box.x).toBeGreaterThanOrEqual(tile.x);
       expect(box.x + box.width).toBeLessThanOrEqual(tile.x + tile.width + 0.5);
     }
-    // The URL field takes the tile's whole width, its remove control under it.
+    // Each link is a card: the URL with its remove control at the card's top right, the post
+    // time and the archive box under the URL.
     const url = (await first.getByLabel("Source 1 link 1", { exact: true }).boundingBox())!;
     const removeLink = (await first.getByRole("button", { name: "Remove source 1 link 1" }).boundingBox())!;
-    expect(url.width).toBeGreaterThan(tile.width * 0.85);
-    expect(removeLink.y).toBeGreaterThanOrEqual(url.y + url.height);
-    await expect(first.getByLabel("Latitude", { exact: true })).toBeVisible();
+    const posted = (await first.getByLabel("Posted (UTC), source 1, t.me").boundingBox())!;
+    const archive = (await first.getByRole("button", { name: "Archive source 1, t.me" }).boundingBox())!;
+    expect(url.width).toBeGreaterThan(tile.width * 0.6);
+    expect(removeLink.x).toBeGreaterThanOrEqual(url.x + url.width);
+    expect(Math.abs(removeLink.y + removeLink.height / 2 - (url.y + url.height / 2))).toBeLessThanOrEqual(1);
+    expect(posted.y).toBeGreaterThanOrEqual(url.y + url.height);
+    expect(archive.y).toBeGreaterThanOrEqual(url.y + url.height);
+    await expect(first.getByText("Posted (UTC)", { exact: true })).toBeHidden();
+    // The post time needs the card's whole width at 320px to show its value; on a wider
+    // phone the archive box sits beside it.
+    await page.setViewportSize({ width: 480, height: 800 });
+    const wider = [
+      (await first.getByLabel("Posted (UTC), source 1, t.me").boundingBox())!,
+      (await first.getByRole("button", { name: "Archive source 1, t.me" }).boundingBox())!,
+    ];
+    expect(wider[1].x).toBeGreaterThanOrEqual(wider[0].x + wider[0].width);
+    expect(Math.abs(wider[1].y + wider[1].height / 2 - (wider[0].y + wider[0].height / 2))).toBeLessThanOrEqual(1);
+    await page.setViewportSize({ width: 320, height: 568 });
 
     // The level options keep their whole labels and the phone tap height.
     for (const option of await first.getByRole("group", { name: "Source 1 level" }).getByRole("button").all()) {
@@ -247,6 +265,47 @@ test.describe("submit", () => {
       const box = (await first.getByRole("button", { name, exact: true }).boundingBox())!;
       expect(box.height, name).toBeGreaterThanOrEqual(36);
     }
+  });
+
+  test("lays each link out on one row under column headers on a wide screen", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/submit?mode=single");
+
+    const first = page.getByRole("region", { name: "Source 1" });
+    await first.getByRole("button", { name: "Add source 1 link" }).click();
+    await first.getByLabel("Source 1 link 1", { exact: true }).fill("https://t.me/channel/12345");
+
+    // URL, post time, archive box, remove: one line, in that order, under their headers.
+    const row = [
+      first.getByLabel("Source 1 link 1", { exact: true }),
+      first.getByLabel("Posted (UTC), source 1, link 1, t.me"),
+      first.getByRole("button", { name: "Archive source 1, link 1, t.me" }),
+      first.getByRole("button", { name: "Remove source 1 link 1" }),
+    ];
+    const boxes = [];
+    for (const cell of row) boxes.push((await cell.boundingBox())!);
+    for (let i = 1; i < boxes.length; i++) {
+      expect(boxes[i].x, `cell ${i + 1} follows cell ${i}`).toBeGreaterThanOrEqual(boxes[i - 1].x + boxes[i - 1].width);
+      expect(Math.abs(boxes[i].y + boxes[i].height / 2 - (boxes[0].y + boxes[0].height / 2))).toBeLessThanOrEqual(1);
+    }
+    const headers = ["URL", "Posted (UTC)", "Archive"];
+    for (const [i, text] of headers.entries()) {
+      const header = (await first.getByText(text, { exact: true }).first().boundingBox())!;
+      expect(Math.abs(header.x - boxes[i].x), `${text} heads its column`).toBeLessThanOrEqual(1);
+      expect(header.y + header.height).toBeLessThanOrEqual(boxes[0].y);
+    }
+    // The second row keeps the first row's columns.
+    const secondPosted = first.getByLabel("Posted (UTC), source 1, link 2, this link");
+    const second = (await secondPosted.boundingBox())!;
+    expect(Math.abs(second.x - boxes[1].x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(second.width - boxes[1].width)).toBeLessThanOrEqual(1);
+
+    // The archive box opens the paste line under its row, above the next row.
+    await row[2].click();
+    const paste = (await first.getByLabel("Archived copy of source 1, link 1, t.me").boundingBox())!;
+    expect(paste.y).toBeGreaterThanOrEqual(boxes[0].y + boxes[0].height);
+    expect(paste.y + paste.height).toBeLessThanOrEqual((await secondPosted.boundingBox())!.y);
+    await expectNoHorizontalOverflow(page);
   });
 
   test("picks, changes and removes a conflict through the search field", async ({ page }) => {
@@ -318,6 +377,7 @@ test.describe("submit", () => {
 
     // A source: a click creates the typed tag and picks it, a chip click removes it.
     const source = page.getByRole("region", { name: "Source 1" });
+    await source.getByRole("button", { name: "More details" }).click();
     const field = source.getByRole("combobox", { name: "Source 1 tags" });
     await field.fill("Rubble");
     const list = page.getByRole("listbox", { name: "Source 1 tags" });
@@ -330,53 +390,61 @@ test.describe("submit", () => {
     await expect(chip).toHaveCount(0);
   });
 
-  // A source's capture time is the longest value a form here asks for, and it
-  // wears a mark. At 320px the field is about 228px wide inside its editor, so
-  // the room the mark leaves is what decides whether the reader can see the
-  // instant they just typed or only the front half of it.
-  test("a filled instant field clears its own mark", async ({ page }) => {
-    await page.goto("/submit?mode=single");
+  // A source's capture time and a link's post time are the longest values a form
+  // here asks for, and they wear a mark. At 320px the capture field is about 228px
+  // wide inside its editor and the post time shares a link card, so the room left
+  // is what decides whether the reader can see the instant they just typed or
+  // only the front half of it.
+  for (const [name, label] of [
+    ["capture time", /^Captured \(UTC\)/],
+    ["link's post time", /^Posted \(UTC\), source 1/],
+  ] as const) {
+    test(`a filled ${name} field clears its own mark`, async ({ page }) => {
+      await page.goto("/submit?mode=single");
 
-    const field = page.getByRole("region", { name: "Source 1" }).getByLabel(/^Captured \(UTC\)/);
-    await expect(field).toBeVisible();
-    await field.fill("2025-01-03T14:20");
+      const source = page.getByRole("region", { name: "Source 1" });
+      await source.getByRole("button", { name: "More details" }).click();
+      const field = source.getByLabel(label).and(page.locator("input"));
+      await expect(field).toBeVisible();
+      await field.fill("2025-01-03T14:20");
 
-    const measured = await field.evaluate((el) => {
-      const input = el as HTMLInputElement;
-      const style = window.getComputedStyle(input);
-      // The room the value gets: the content box less the field's own text
-      // padding on one side and the padding the trailing mark reserves on the
-      // other. `clientWidth` already excludes the border.
-      const textRoomPx =
-        input.clientWidth -
-        Number.parseFloat(style.paddingLeft) -
-        Number.parseFloat(style.paddingRight);
-      // What the value needs, asked of the engine rather than guessed at. A
-      // `datetime-local` paints its value in shadow chrome, in the locale's own
-      // format and with its own field padding, and it reports neither: the
-      // input's `scrollWidth` never exceeds its `clientWidth` however narrow
-      // the box gets, because the shadow edit clips instead of scrolling, so
-      // the clipped value cannot be measured on the field itself. An unsized
-      // clone carrying the same classes and the same value sizes to the
-      // intrinsic width the engine wants for exactly that chrome.
-      const probe = input.cloneNode(true) as HTMLInputElement;
-      probe.value = input.value;
-      probe.style.position = "absolute";
-      probe.style.visibility = "hidden";
-      probe.style.width = "auto";
-      probe.style.padding = "0";
-      probe.style.border = "0";
-      document.body.append(probe);
-      const valuePx = probe.getBoundingClientRect().width;
-      probe.remove();
-      return { textRoomPx, valuePx };
+      const measured = await field.evaluate((el) => {
+        const input = el as HTMLInputElement;
+        const style = window.getComputedStyle(input);
+        // The room the value gets: the content box less the field's own text
+        // padding on one side and the padding the trailing mark reserves on the
+        // other. `clientWidth` already excludes the border.
+        const textRoomPx =
+          input.clientWidth -
+          Number.parseFloat(style.paddingLeft) -
+          Number.parseFloat(style.paddingRight);
+        // What the value needs, asked of the engine rather than guessed at. A
+        // `datetime-local` paints its value in shadow chrome, in the locale's own
+        // format and with its own field padding, and it reports neither: the
+        // input's `scrollWidth` never exceeds its `clientWidth` however narrow
+        // the box gets, because the shadow edit clips instead of scrolling, so
+        // the clipped value cannot be measured on the field itself. An unsized
+        // clone carrying the same classes and the same value sizes to the
+        // intrinsic width the engine wants for exactly that chrome.
+        const probe = input.cloneNode(true) as HTMLInputElement;
+        probe.value = input.value;
+        probe.style.position = "absolute";
+        probe.style.visibility = "hidden";
+        probe.style.width = "auto";
+        probe.style.padding = "0";
+        probe.style.border = "0";
+        document.body.append(probe);
+        const valuePx = probe.getBoundingClientRect().width;
+        probe.remove();
+        return { textRoomPx, valuePx };
+      });
+
+      expect(
+        measured.textRoomPx,
+        `the field leaves ${Math.round(measured.textRoomPx)}px for a value the engine paints in ${Math.round(measured.valuePx)}px: the instant runs under the calendar mark`,
+      ).toBeGreaterThanOrEqual(measured.valuePx);
     });
-
-    expect(
-      measured.textRoomPx,
-      `the field leaves ${Math.round(measured.textRoomPx)}px for a value the engine paints in ${Math.round(measured.valuePx)}px: the instant runs under the calendar mark`,
-    ).toBeGreaterThanOrEqual(measured.valuePx);
-  });
+  }
 
   test("the legacy routes redirect here", async ({ page }) => {
     await page.goto("/geolocations/new");

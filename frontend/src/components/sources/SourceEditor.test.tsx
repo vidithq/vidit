@@ -55,6 +55,9 @@ function Host({
 
 const kindField = () => screen.getByRole("combobox", { name: /^Kind/ });
 
+const details = () => screen.getByRole("button", { name: "More details" });
+const openDetails = () => fireEvent.click(details());
+
 const draftNow = (): SourceDraft =>
   JSON.parse(screen.getByTestId("draft").textContent ?? "{}") as SourceDraft;
 
@@ -178,7 +181,7 @@ describe("SourceEditor", () => {
     expect(screen.queryByText("Incomplete: add a link before publishing")).toBeNull();
   });
 
-  it("archives a link from a mark in its field, with the post time under it", () => {
+  it("archives a link from the archive box in its row, beside its post time", () => {
     render(<Host initial={newSourceDraft()} />);
     fireEvent.change(screen.getByLabelText("Source 1 link 1"), {
       target: { value: "https://t.me/c/1" },
@@ -194,6 +197,38 @@ describe("SourceEditor", () => {
       url: "https://t.me/c/1",
       snapshotUrl: "https://archive.ph/abcde",
     });
+    // The pasted snapshot shows in the box as the copy it will be.
+    expect(
+      screen.getByRole("link", { name: "archive.today copy of source 1, t.me" })
+    ).toHaveAttribute("href", "https://archive.ph/abcde");
+  });
+
+  it("reads in the order of the event page's source block, the rest under More details", () => {
+    render(<Host initial={newSourceDraft()} />);
+    const order = ["File", "Source title", "Level", "Kind", "Links", "More details"].map(
+      (text) => screen.getByText(text, { exact: false, selector: "span, label, button" })
+    );
+    for (let i = 1; i < order.length; i++) {
+      expect(order[i - 1].compareDocumentPosition(order[i])).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING
+      );
+    }
+  });
+
+  it("keeps the secondary fields under a closed More details on a new source", () => {
+    render(<Host initial={newSourceDraft()} />);
+    expect(details()).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("switch", { name: "Source 1 graphic content" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Source 1 tags" })).toBeNull();
+    openDetails();
+    expect(screen.getByLabelText(/^Captured \(UTC\)/, { selector: "input" })).toBeVisible();
+    expect(screen.getByRole("switch", { name: "Source 1 graphic content" })).toBeVisible();
+  });
+
+  it("opens More details on a source that holds one of its fields", () => {
+    render(<Host initial={{ ...newSourceDraft(), capturedAt: "2026-01-01T10:00" }} />);
+    expect(details()).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByLabelText(/^Captured \(UTC\)/, { selector: "input" })).toHaveValue("2026-01-01T10:00");
   });
 
   it("opens the copy a stored link carries, and still offers to replace it", () => {
@@ -243,6 +278,7 @@ describe("SourceEditor", () => {
 
   it("picks a tag of the shared catalogue for this source and removes it", () => {
     render(<Host initial={newSourceDraft()} />);
+    openDetails();
     const field = screen.getByRole("combobox", { name: "Source 1 tags" });
     fireEvent.change(field, { target: { value: "arm" } });
     fireEvent.click(screen.getByRole("option", { name: "armor" }));
@@ -253,6 +289,7 @@ describe("SourceEditor", () => {
 
   it("offers the graphic switch on a new source", () => {
     render(<Host initial={newSourceDraft()} />);
+    openDetails();
     const toggle = screen.getByRole("switch", { name: "Source 1 graphic content" });
     expect(toggle).toBeEnabled();
     fireEvent.click(toggle);

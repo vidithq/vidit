@@ -9,7 +9,12 @@ import { Input } from "@/components/ui/Input";
 import { OutboundLink } from "@/components/ui/OutboundLink";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { WARNING_CALLOUT } from "@/components/ui/styles";
-import { SNAPSHOT_HOSTS, snapshotArchivesAnotherLink, WAYBACK_HOST } from "@/lib/snapshots";
+import {
+  SNAPSHOT_HOSTS,
+  snapshotArchivesAnotherLink,
+  snapshotProvider,
+  WAYBACK_HOST,
+} from "@/lib/snapshots";
 
 interface ArchivedCopiesProps {
   copy: ArchivedLink | null;
@@ -91,7 +96,7 @@ function archivable(url: string): string | null {
  * The archived copy beside an outbound source link: a ghost icon button, accent
  * where a copy exists and opens it, grey and inert where none does.
  *
- * Read only. Recording a copy is an edit (`ArchiveAdornment`,
+ * Read only. Recording a copy is an edit (`ArchiveBox`,
  * `ArchiveSnapshotField`) that files a version.
  *
  * No label or `?` of its own: the accessible name carries the state, and the
@@ -113,10 +118,14 @@ export function ArchivedCopies({ copy, describes }: ArchivedCopiesProps) {
   );
 }
 
-function ArchivedCopyLink({ copy, describes }: { copy: ArchivedLink; describes: string }) {
+function copyLabel(provider: ArchivedLink["provider"], describes: string): string {
   // An unknown provider is still a stored copy: name it generically.
-  const provider: string | undefined = PROVIDER_LABELS[copy.provider];
-  const label = provider ? `${provider} copy of ${describes}` : `Archived copy of ${describes}`;
+  const name: string | undefined = PROVIDER_LABELS[provider];
+  return name ? `${name} copy of ${describes}` : `Archived copy of ${describes}`;
+}
+
+function ArchivedCopyLink({ copy, describes }: { copy: ArchivedLink; describes: string }) {
+  const label = copyLabel(copy.provider, describes);
   return (
     <Tooltip label={label}>
       <OutboundLink
@@ -140,47 +149,70 @@ function MissingCopyMark({ describes }: { describes: string }) {
 }
 
 /**
- * The archive affordance inside a form's URL field. Never grey on a form.
+ * One link's archive box on a form, in the link's row. Never grey on a form.
  *
- * No copy: the `ArchiveRestore` mark opens the paste line. With a copy: the
- * `Archive` mark opens it, plus `ArchiveRestore` to replace a wrong paste.
+ * No copy: **Archive** opens the paste line under the row. A copy (the stored
+ * one, or a pasted snapshot on an allowed host): the copy itself, named for its
+ * service, plus the `ArchiveRestore` mark, which opens the paste line to replace
+ * a wrong paste.
  *
  * Nothing is written here: the pasted value travels with the form and lands in
  * the same write as the event.
  */
-export function ArchiveAdornment({
+export function ArchiveBox({
   describes,
-  copy,
+  snapshot,
   expanded,
   onToggle,
 }: {
   describes: string;
-  copy: ArchivedLink | null;
+  /** What the form posts as the link's `snapshot_url`. */
+  snapshot: string;
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const label = copy
-    ? `Replace the archived copy of ${describes}`
-    : `Archive ${describes}`;
+  const pasted = snapshot.trim();
+  const provider = isSnapshotUrl(pasted) ? snapshotProvider(pasted) : null;
+  if (!provider) {
+    return (
+      <Button
+        variant="ghost"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        aria-label={`Archive ${describes}`}
+      >
+        <ArchiveRestore size={14} />
+        Archive
+      </Button>
+    );
+  }
+  const replace = `Replace the archived copy of ${describes}`;
   return (
-    <>
-      {copy && <ArchivedCopyLink copy={copy} describes={describes} />}
+    <span className="inline-flex items-center gap-0.5">
+      <OutboundLink
+        href={pasted}
+        aria-label={copyLabel(provider, describes)}
+        className={buttonClasses("ghost")}
+      >
+        <ArchiveMark size={14} />
+        {PROVIDER_LABELS[provider]}
+      </OutboundLink>
       <Button
         icon
         variant="ghost"
         onClick={onToggle}
         aria-expanded={expanded}
-        aria-label={label}
-        title={label}
+        aria-label={replace}
+        title={replace}
       >
         <ArchiveRestore size={14} />
       </Button>
-    </>
+    </span>
   );
 }
 
 /**
- * The paste line the mark opens: one field plus the prefilled provider page.
+ * The paste line `ArchiveBox` opens: one field plus the prefilled provider page.
  *
  * No label or hint: the placeholder carries the contract. Accepted hosts read
  * off `SNAPSHOT_HOSTS`.
