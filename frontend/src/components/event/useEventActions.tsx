@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { MapPin, SquarePen, Users } from "lucide-react";
 
@@ -12,13 +12,12 @@ import { COLLECTABLE_STATUSES, CollectionIcon } from "@/lib/collections";
 import { hasPublishedRecord } from "@/lib/events";
 import { AddToCollectionPanel } from "@/components/collections/AddToCollectionPanel";
 import { Button, buttonClasses } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 import { FieldHelp } from "@/components/ui/FieldHelp";
+import { Popover } from "@/components/ui/Popover";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { ACCENT_SURFACE } from "@/components/ui/styles";
 import { EventShare } from "@/components/event/EventShare";
-import { GeolocatorInviteCard, GeolocatorsCard } from "@/components/event/GeolocatorCredit";
+import { GeolocatorInviteCard, GeolocatorsPanel } from "@/components/event/GeolocatorCredit";
 import type { EventShellActions } from "@/components/event/EventShell";
 import { useEventApprovals } from "@/components/event/EventApprovals";
 import { VersionSelector } from "@/components/event/VersionSelector";
@@ -34,7 +33,7 @@ import type { EventDetail } from "@/types";
  * 2. **Edit**, an icon, for the owner. Closing and the geolocators live on the edit page.
  * 3. **Share**.
  * 4. **Add to collection** for the owner and every co-geolocator, and **Geolocators** for a
- *    co-geolocator (where they leave). Each opens a panel under the header.
+ *    co-geolocator (where they leave). Each is a `<Popover>`: its panel floats over the page.
  * 5. **Request approval** for a geolocator of a published row, on the event page. It opens a
  *    dialog with the open requests and the picker that sends one.
  * 6. **Report** for every reader but the owner.
@@ -43,8 +42,8 @@ import type { EventDetail } from "@/types";
  * page, pinned while the page scrolls; under them, not pinned, a published row's approvals on the
  * event page (the stamps, Approve) and a pending geolocator invitation.
  *
- * The hook returns nodes rather than rendering them because the actions and the panels land in
- * different zones. Called before a surface's early returns, with `event` null
+ * The hook returns nodes rather than rendering them because the actions and the report form land
+ * in different zones. Called before a surface's early returns, with `event` null
  * while the row loads, so hook order is stable.
  */
 
@@ -72,9 +71,6 @@ const TIERS: Record<
   request: { flow: true,  edit: true,  collect: false, history: false, utilities: true,  credit: false, approvals: false },
 };
 
-const COLLECT_PANEL_ID = "add-to-collection-panel";
-const CREDIT_PANEL_ID = "geolocators-panel";
-
 export interface EventActionsOptions {
   /** The row to act on. Null while it loads: every node comes back null. */
   event: EventDetail | null;
@@ -84,61 +80,17 @@ export interface EventActionsOptions {
 }
 
 export interface EventActions {
-  /** The panels the row's toggles open, for under the header. */
+  /** The report form, a dialog, and the receipt a sent report leaves, for under the header. */
   panels: ReactNode;
   /** The actions block: the row and Geolocate on a request, pinned; the approvals and an
    *  invitation under them. */
   actions: EventShellActions | undefined;
 }
 
-/** A panel a toggle opens. It mounts when opened and takes focus then, so a keyboard or screen
- *  reader user lands in it rather than back on the toggle. */
-export function TogglePanel({ id, children }: { id: string; children: ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => ref.current?.focus(), []);
-  return (
-    <div ref={ref} id={id} tabIndex={-1} className="outline-none">
-      {children}
-    </div>
-  );
-}
-
-/** The icon toggle of a panel. The open toggle wears the active-row paint, so the reader sees which
- *  control the panel belongs to. */
-export function PanelToggle({
-  open,
-  onToggle,
-  label,
-  panelId,
-  icon,
-}: {
-  open: boolean;
-  onToggle: () => void;
-  label: string;
-  panelId: string;
-  icon: ReactNode;
-}) {
-  return (
-    <Button
-      icon
-      variant="ghost"
-      onClick={onToggle}
-      aria-controls={open ? panelId : undefined}
-      aria-expanded={open}
-      aria-label={label}
-      className={open ? ACCENT_SURFACE : ""}
-    >
-      {icon}
-    </Button>
-  );
-}
-
 export function useEventActions({ event, surface, onChanged }: EventActionsOptions): EventActions {
   const { user } = useAuth();
   // The report control is its own state machine (works signed out, outlives other actions).
   const report = useReportContent("event", event?.id ?? "");
-  const [collecting, setCollecting] = useState(false);
-  const [crediting, setCrediting] = useState(false);
 
   const tiers = event ? TIERS[surface] : null;
   const isAuthor = !!event && user?.id === event.owner.id;
@@ -153,13 +105,6 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
     showsApprovals ? allApprovalsPath(event.id) : null,
   );
   const eventApprovals = useEventApprovals(showsApprovals ? event : null, approvals);
-
-  // This hook survives a client navigation between rows, so per-event state follows the row, not
-  // the mount: otherwise the next row opens with the previous one's panel open.
-  useEffect(() => {
-    setCollecting(false);
-    setCrediting(false);
-  }, [event?.id]);
 
   if (!event || !tiers) {
     return { panels: null, actions: undefined };
@@ -202,25 +147,31 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
       </Tooltip>
     ),
     tiers.utilities && <EventShare key="share" event={event} />,
+    // Keyed by the row: this hook survives a client navigation between rows, and the next row
+    // must not open with the previous one's popover open.
     canCollect && (
-      <PanelToggle
-        key="collect"
-        open={collecting}
-        onToggle={() => setCollecting(!collecting)}
+      <Popover
+        key={`collect-${event.id}`}
         label="Add to collection"
-        panelId={COLLECT_PANEL_ID}
         icon={<CollectionIcon size={14} />}
-      />
+      >
+        {() => (
+          <>
+            <SectionEyebrow title="Add to collection" margin="none" />
+            <AddToCollectionPanel eventId={event.id} />
+          </>
+        )}
+      </Popover>
     ),
     canSeeCredit && (
-      <PanelToggle
-        key="credit"
-        open={crediting}
-        onToggle={() => setCrediting(!crediting)}
-        label="Geolocators"
-        panelId={CREDIT_PANEL_ID}
-        icon={<Users size={14} />}
-      />
+      <Popover key={`credit-${event.id}`} label="Geolocators" icon={<Users size={14} />}>
+        {() => (
+          <>
+            <SectionEyebrow title="Geolocators" concept="geolocators" margin="none" />
+            <GeolocatorsPanel event={event} onChanged={() => onChanged?.()} />
+          </>
+        )}
+      </Popover>
     ),
     eventApprovals.requestAction && (
       <Fragment key="request-approval">{eventApprovals.requestAction}</Fragment>
@@ -252,28 +203,7 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
   );
 
   return {
-    // The panels open under the header, full width. They stack rather than replace each other:
-    // each is its own titled card.
-    panels: (
-      <>
-        {canSeeCredit && crediting && (
-          <TogglePanel id={CREDIT_PANEL_ID}>
-            <GeolocatorsCard event={event} onChanged={() => onChanged?.()} />
-          </TogglePanel>
-        )}
-        {canCollect && collecting && (
-          <TogglePanel id={COLLECT_PANEL_ID}>
-            <Card as="section">
-              <SectionEyebrow title="Add to collection" margin="none" />
-              <AddToCollectionPanel eventId={event.id} />
-            </Card>
-          </TogglePanel>
-        )}
-        {/* No TogglePanel: the report form is a dialog that focuses its own Cancel, and the
-            receipt left after it is a live region. */}
-        {canReport && report.panel}
-      </>
-    ),
+    panels: canReport && report.panel,
     actions: {
       pinned: (controls.length > 0 || geolocate) && (
         <aside aria-label="Actions" className="flex flex-col items-end gap-3">

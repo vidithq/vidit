@@ -89,8 +89,9 @@ export function AddToCollectionPanel({ eventId }: { eventId: string }) {
     <div className="space-y-4">
       {rows.length > 0 ? (
         /* The dividers and row padding are this list's: the described shape
-           carries neither. */
-        <div className="divide-y divide-neutral-800">
+           carries neither. The list scrolls inside the popover, which is fixed to
+           the viewport and cannot grow past it. */
+        <div className="max-h-72 divide-y divide-neutral-800 overflow-y-auto">
           {rows.map((row) => (
             <ToggleRow
               key={row.id}

@@ -37,6 +37,19 @@ describe("<Popover>", () => {
     expect(screen.getByLabelText("Username")).toHaveFocus();
   });
 
+  it("takes focus itself when no field in it does, so Escape still closes it", () => {
+    render(
+      <Popover label="Add to collection" icon={<span>+</span>}>
+        {() => <p>No field here</p>}
+      </Popover>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Add to collection" }));
+    const dialog = screen.getByRole("dialog", { name: "Add to collection" });
+    expect(dialog).toHaveFocus();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("closes on Escape and gives focus back to the trigger", () => {
     render(<Demo />);
     fireEvent.click(trigger());

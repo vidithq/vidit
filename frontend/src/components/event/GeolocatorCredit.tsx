@@ -105,23 +105,6 @@ function CreditRow({
   );
 }
 
-/** The event page's Geolocators panel for a co-geolocator, under its titled card. The owner
- *  manages the geolocators from the edit page's byline (`GeolocatorsByline`). */
-export function GeolocatorsCard({
-  event,
-  onChanged,
-}: {
-  event: EventDetail;
-  onChanged: () => void;
-}) {
-  return (
-    <Card as="section">
-      <SectionEyebrow title="Geolocators" concept="geolocators" margin="none" />
-      <GeolocatorsPanel event={event} onChanged={onChanged} />
-    </Card>
-  );
-}
-
 /**
  * The geolocators of a published event, owner first, as a co-geolocator reads them, with
  * **Leave** on their own row. Credit grants no edit right, so nothing else here acts on the

@@ -245,22 +245,35 @@ describe("the owner's edit", () => {
 });
 
 describe("panels the row opens", () => {
-  it("opens and closes the collection picker, marking its toggle while open", async () => {
+  it("opens the collection picker over the page and closes it on Escape", async () => {
     renderAs(OWNER, { status: "geolocated", surface: "event" });
     const toggle = within(row()).getByRole("button", { name: "Add to collection" });
     fireEvent.click(toggle);
-    expect(screen.getByRole("heading", { name: "Add to collection" })).toBeInTheDocument();
+    const picker = screen.getByRole("dialog", { name: "Add to collection" });
+    expect(within(picker).getByRole("heading", { name: "Add to collection" })).toBeInTheDocument();
     expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await waitFor(() => expect(document.getElementById("add-to-collection-panel")).toHaveFocus());
+    expect(picker).toHaveFocus();
+    // Portaled out of the page flow, so opening it moves nothing.
+    expect(row().contains(picker)).toBe(false);
 
-    fireEvent.click(toggle);
-    expect(screen.queryByRole("heading", { name: "Add to collection" })).toBeNull();
+    fireEvent.keyDown(picker, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Add to collection" })).toBeNull();
+    expect(toggle).toHaveFocus();
+  });
+
+  it("closes the collection picker on an outside click", () => {
+    renderAs(OWNER, { status: "geolocated", surface: "event" });
+    fireEvent.click(within(row()).getByRole("button", { name: "Add to collection" }));
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole("dialog", { name: "Add to collection" })).toBeNull();
   });
 
   it("opens the geolocators panel for a co-geolocator, where they leave", () => {
     renderAs(CO_GEOLOCATOR, { status: "geolocated", surface: "event" });
     fireEvent.click(within(row()).getByRole("button", { name: "Geolocators" }));
-    expect(screen.getByRole("heading", { name: "Geolocators" })).toBeInTheDocument();
+    const panel = screen.getByRole("dialog", { name: "Geolocators" });
+    expect(within(panel).getByRole("heading", { name: "Geolocators" })).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Leave" })).toBeInTheDocument();
   });
 
   it.each<EventStatus>(["requested", "detected"])("offers no geolocators panel on a %s row", (status) => {
