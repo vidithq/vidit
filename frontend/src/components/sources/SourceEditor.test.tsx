@@ -302,3 +302,20 @@ describe("SourceEditor", () => {
     expect(screen.getByRole("button", { name: "What does the graphic flag do?" })).toBeInTheDocument();
   });
 });
+
+describe("SourceEditor as a site image", () => {
+  it("explains the required capture time, not the optional one of an event source", () => {
+    render(
+      <SourceEditor
+        draft={{ ...newSourceDraft(), kind: "satellite", level: "context" }}
+        index={0}
+        variant="site-image"
+        name="Image"
+        update={() => {}}
+        onPickFile={() => {}}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "When was the image captured?" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "What is the capture time?" })).not.toBeInTheDocument();
+  });
+});

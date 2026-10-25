@@ -164,6 +164,7 @@ export function SourceEditor({
     <div className="space-y-1.5">
       <FieldLabel
         {...SOURCE_FIELDS.captured_at}
+        concept={siteImage ? "site_image_captured" : SOURCE_FIELDS.captured_at.concept}
         htmlFor={id("captured_at")}
         invalid={invalid.captured}
       />

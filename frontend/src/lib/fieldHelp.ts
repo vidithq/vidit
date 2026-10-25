@@ -172,6 +172,10 @@ export const FIELD_HELP = {
     text: "The filed image the new contour is drawn from. The contour holds from its capture date, so an older image does not replace a newer zone.",
     label: "Which image shows the contour?",
   },
+  site_image_captured: {
+    text: "Required. When the satellite captured the image (UTC), as the provider dates it. The zone drawn from the image holds from this date, and a reader reopens the image at it.",
+    label: "When was the image captured?",
+  },
   site_image_note: {
     text: "What the image shows, in plain words, such as new sheds or a burn scar. Keep your interpretation for an event.",
     label: "What goes in the note?",
