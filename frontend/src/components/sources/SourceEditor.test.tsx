@@ -69,6 +69,14 @@ describe("SourceEditor", () => {
     expect(kindField()).toBeEnabled();
   });
 
+  it("greys the kind's prompt like a placeholder until a kind is picked", () => {
+    render(<Host initial={newSourceDraft()} />);
+    const grey = () => kindField().classList.contains("text-neutral-600");
+    expect(grey()).toBe(true);
+    fireEvent.change(kindField(), { target: { value: "drone" } });
+    expect(grey()).toBe(false);
+  });
+
   it("names the kind of a source without a file", () => {
     render(<Host initial={newSourceDraft()} />);
     fireEvent.change(kindField(), { target: { value: "article" } });

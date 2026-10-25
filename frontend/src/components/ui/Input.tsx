@@ -160,6 +160,8 @@ export function Select({
         className={cn(
           fieldClass(variant, invalid, ""),
           "w-full appearance-none pr-8 cursor-pointer",
+          // An empty value is the prompt option: grey it like an input placeholder.
+          props.value === "" && "text-neutral-600 [&>option]:text-neutral-100",
         )}
         {...props}
       >
