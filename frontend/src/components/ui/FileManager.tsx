@@ -6,7 +6,7 @@ import { Plus, Upload } from "lucide-react";
 import { ICON_TAP_STEP } from "@/components/ui/Button";
 import { RemoveButton } from "@/components/ui/RemoveButton";
 import { GraphicContentGate } from "@/components/ui/GraphicContentGate";
-import { MediaOverlay } from "@/components/ui/MediaLightbox";
+import { MediaOverlay } from "@/components/ui/MediaOverlay";
 
 export interface FileManagerItem {
   key: string;

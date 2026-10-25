@@ -6,7 +6,7 @@ import { Button } from "./Button";
 import { Card } from "./Card";
 import { cn } from "@/lib/cn";
 import { FORM_ERROR_BANNER } from "./form-styles";
-import { MediaOverlay } from "./MediaLightbox";
+import { MediaOverlay } from "./MediaOverlay";
 
 /**
  * A confirmation step before a final action: a centred dialog over the blurred page that says what

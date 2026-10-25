@@ -1,7 +1,8 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { MediaLightbox, MediaOverlay } from "./MediaLightbox";
+import { MediaLightbox } from "./MediaLightbox";
+import { MediaOverlay } from "./MediaOverlay";
 import type { Media } from "@/types";
 
 const IMAGE: Media = {

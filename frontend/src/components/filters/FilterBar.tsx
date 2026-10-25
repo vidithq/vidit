@@ -6,7 +6,7 @@ import { SlidersHorizontal } from "lucide-react";
 import { ActiveFilterPills, type ActiveFilter } from "@/components/ui/ActiveFilterPills";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { MediaOverlay } from "@/components/ui/MediaLightbox";
+import { MediaOverlay } from "@/components/ui/MediaOverlay";
 import { cn } from "@/lib/cn";
 
 /**

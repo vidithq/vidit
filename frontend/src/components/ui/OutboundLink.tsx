@@ -6,7 +6,7 @@ import Link from "next/link";
 import { httpHostname, linkKind, linkTarget } from "@/lib/outbound";
 import { Button } from "./Button";
 import { Card } from "./Card";
-import { MediaOverlay } from "./MediaLightbox";
+import { MediaOverlay } from "./MediaOverlay";
 import { TEXT_LINK } from "./styles";
 
 type OutboundLinkProps = Omit<
