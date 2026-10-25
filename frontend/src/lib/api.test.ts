@@ -57,3 +57,37 @@ describe("apiFetch and a rejected session", () => {
     expect(session.reportSessionRejected).not.toHaveBeenCalled();
   });
 });
+
+describe("apiFetch request headers", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function sentHeaders(): Record<string, string> {
+    const fetchMock = vi.mocked(fetch);
+    return fetchMock.mock.calls[0][1]?.headers as Record<string, string>;
+  }
+
+  function stubOk() {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 200 })),
+    );
+  }
+
+  it("sends a GET without Content-Type, so the browser needs no preflight", async () => {
+    stubOk();
+    await apiFetch("/tags");
+    expect(sentHeaders()).not.toHaveProperty("Content-Type");
+  });
+
+  it("marks a JSON body as JSON", async () => {
+    stubOk();
+    await apiFetch("/collections", { method: "POST", body: JSON.stringify({ name: "x" }) });
+    expect(sentHeaders()["Content-Type"]).toBe("application/json");
+  });
+
+  it("leaves a multipart body to the browser, which sets the boundary", async () => {
+    stubOk();
+    await apiFetch("/uploads", { method: "POST", body: new FormData() });
+    expect(sentHeaders()).not.toHaveProperty("Content-Type");
+  });
+});

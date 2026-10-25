@@ -88,7 +88,9 @@ async function send(path: string, options?: RequestInit): Promise<Response> {
     ...(options?.headers as Record<string, string>),
   };
 
-  if (!(options?.body instanceof FormData)) {
+  // Only on a JSON body: a cross-origin GET that carries `Content-Type: application/json`
+  // is no longer a CORS simple request, so the browser sends a preflight before it.
+  if (typeof options?.body === "string") {
     headers["Content-Type"] = "application/json";
   }
 
