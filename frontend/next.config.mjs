@@ -169,6 +169,19 @@ const nextConfig = {
           },
         ],
       },
+      {
+        // The map worker's path carries the maplibre-gl version
+        // (`scripts/copy-maplibre-worker.mjs`), so an upgrade changes the URL
+        // and the browser may keep these files for good. `public/` files
+        // otherwise go out with `max-age=0` and revalidate on every map load.
+        source: "/maplibre-gl/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
     ];
   },
 };

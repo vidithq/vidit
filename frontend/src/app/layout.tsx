@@ -2,11 +2,13 @@ import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Montserrat } from "next/font/google";
+import { preconnect } from "react-dom";
 import "./globals.css";
 import { Providers } from "./providers";
 import Sidebar from "@/components/Sidebar";
 import BetaBanner from "@/components/BetaBanner";
 import SessionEndedNotice from "@/components/SessionEndedNotice";
+import { API_URL } from "@/lib/api";
 
 const montserrat = Montserrat({
   subsets: ["latin", "cyrillic"],
@@ -36,6 +38,11 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // Every page calls the API once its JS runs, and media pages read the media host: open both
+  // connections while the JS downloads. `apiFetch` sends credentials, so its preconnect does too.
+  preconnect(new URL(API_URL).origin, { crossOrigin: "use-credentials" });
+  const mediaHost = process.env.NEXT_PUBLIC_MEDIA_HOST;
+  if (mediaHost) preconnect(`https://${mediaHost}`);
   return (
     // The inline script below sets `data-palette` and `data-theme` before hydration; suppress the attribute-mismatch warning on this element.
     <html lang="en" suppressHydrationWarning>

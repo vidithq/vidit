@@ -49,12 +49,7 @@ import {
   ringRadius,
 } from "./stack";
 import { creditProps } from "@/lib/geolocatorCredit";
-
-// CARTO basemap pair. maplibre paint can't read CSS variables, so tiles swap off the theme here.
-const BASEMAP_STYLE = {
-  dark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
-  light: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
-} as const;
+import { BASEMAP_STYLE } from "./basemap";
 
 // Hover ring: dot geometry and the grace margin (px) the pointer may roam before it collapses.
 const SPIDER_DOT_PX = 12;

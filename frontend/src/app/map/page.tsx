@@ -14,6 +14,7 @@ import {
   toBboxParam,
   type MapBounds,
 } from "@/lib/viewport";
+import { preconnectBasemap } from "@/components/map/basemap";
 import { DetailSidePanel } from "@/components/map/DetailSidePanel";
 import { FilterPanel } from "@/components/map/FilterPanel";
 import { useMapState } from "@/contexts/MapStateContext";
@@ -22,6 +23,7 @@ import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
 const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
 
 export default function HomePage() {
+  preconnectBasemap();
   // Navigation-surviving state lives in MapStateContext; the page reads only filter values (setters live with FilterPanel).
   const {
     viewState,
