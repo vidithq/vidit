@@ -7,7 +7,7 @@ import type { EventDetail, EventVersion, EventVersionList } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useCursorList } from "@/hooks/useCursorList";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
-import { eventVersionsPath, eventVersions } from "@/lib/events";
+import { eventVersionsPath, eventVersions, firstVersion } from "@/lib/events";
 import { EventVersionRow } from "@/components/event/EventVersionRow";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
@@ -54,13 +54,13 @@ export default function EventHistoryPage() {
         <>
           <p className="text-[11px] text-neutral-500">
             <span className="text-neutral-300 font-medium">
-              {countLabel(geo.version_no, "version")}
+              {countLabel(geo.version_no - firstVersion(geo) + 1, "version")}
             </span>{" "}
             · newest first
           </p>
           <div className="space-y-2">
             {versions.map((version) => (
-              <EventVersionRow key={version.number} eventId={geo.id} version={version} />
+              <EventVersionRow key={version.number} event={geo} version={version} />
             ))}
           </div>
           <LoadMoreRow walk={walk} />

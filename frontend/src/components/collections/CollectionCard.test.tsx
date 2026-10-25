@@ -30,9 +30,9 @@ describe("CollectionCard", () => {
       <CollectionCard
         collection={collection({
           tags: [
-            { id: "t1", name: "satellite", category: "capture_source" },
-            { id: "t2", name: "rail", category: "free" },
-            { id: "t3", name: "corridor", category: "free" },
+            { id: "t1", name: "satellite" },
+            { id: "t2", name: "rail" },
+            { id: "t3", name: "corridor" },
           ],
         })}
       />,

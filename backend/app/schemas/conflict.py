@@ -9,7 +9,7 @@ class ConflictRead(BaseModel):
     """One row of the conflicts referential on the wire.
 
     ``last_seen_at`` and ``source`` are sync internals and stay off it.
-    ``ongoing`` drives the picker default; ``start_year`` / ``end_year``
+    ``is_ongoing`` drives the picker default; ``start_year`` / ``end_year``
     disambiguate same-named entries; ``tier`` (NULL when unknown) ranks ongoing
     conflicts.
     """
@@ -20,6 +20,6 @@ class ConflictRead(BaseModel):
     start_year: int | None
     end_year: int | None
     tier: ConflictTier | None
-    ongoing: bool
+    is_ongoing: bool
 
     model_config = {"from_attributes": True}

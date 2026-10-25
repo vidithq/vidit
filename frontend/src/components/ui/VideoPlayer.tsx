@@ -70,7 +70,8 @@ const BAR_CONTROL = "px-2.5";
  * `MediaDownloadButton`, the blob-fetch control.
  *
  * **Sizing.** The frame is `object-contain`, so a portrait clip keeps its
- * shape. The volume slider drops out under 448 px of container width (`@max-md`,
+ * shape. `onAspectRatio` reports the clip's shape, for a caller that sizes the
+ * frame to it. The volume slider drops out under 448 px of container width (`@max-md`,
  * the tile decides, not the viewport) because the controls overflow a ~380 px
  * gallery tile and the controller clips the rest.
  *
@@ -85,6 +86,7 @@ export function VideoPlayer({
   compact = false,
   className,
   onExpand,
+  onAspectRatio,
 }: {
   src: string;
   /** What the download control saves: a persisted row, or a plain URL. */
@@ -97,6 +99,8 @@ export function VideoPlayer({
   /** Tile context: replaces the fullscreen button with an expand control that
    *  opens the shared lightbox. Omit in the lightbox. */
   onExpand?: () => void;
+  /** The clip's width over height, once its metadata loads, for a frame sized to the clip. */
+  onAspectRatio?: (ratio: number) => void;
 }) {
   // The failed URL, not a flag: comparing to `src` resets the verdict on a swap.
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
@@ -127,6 +131,10 @@ export function VideoPlayer({
         preload="metadata"
         className="h-full w-full object-contain"
         onError={() => setFailedSrc(src)}
+        onLoadedMetadata={(e) => {
+          const { videoWidth, videoHeight } = e.currentTarget;
+          if (videoWidth > 0 && videoHeight > 0) onAspectRatio?.(videoWidth / videoHeight);
+        }}
         // media-chrome stamps tabindex="-1" on upgrade, which can beat hydration.
         suppressHydrationWarning
       />

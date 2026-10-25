@@ -18,18 +18,17 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.dependencies import get_current_user, get_db
-from app.models.auth_event import (
-    EVENT_FAILED_LOGIN,
-    EVENT_LOGIN,
-    EVENT_LOGOUT,
-    EVENT_PASSWORD_CHANGED,
-    EVENT_PASSWORD_RESET_COMPLETED,
-    EVENT_PASSWORD_RESET_REQUESTED,
-    EVENT_REGISTER_CONFIRMED,
-    EVENT_REGISTER_PENDING,
-    EVENT_REGISTER_RESENT,
+from app.models.audit_log import (
+    ACTION_FAILED_LOGIN,
+    ACTION_LOGIN,
+    ACTION_LOGOUT,
+    ACTION_PASSWORD_CHANGED,
+    ACTION_PASSWORD_RESET_COMPLETED,
+    ACTION_PASSWORD_RESET_REQUESTED,
+    ACTION_REGISTER_CONFIRMED,
+    ACTION_REGISTER_PENDING,
+    ACTION_REGISTER_RESENT,
 )
-from app.models.auth_token import PURPOSE_PASSWORD_RESET
 from app.models.user import User
 from app.ratelimit import limiter
 from app.routers._errors import raise_typed_error
@@ -42,7 +41,7 @@ from app.schemas.recovery import (
     ResetPasswordRequest,
 )
 from app.schemas.user import UserRead
-from app.services import audit, auth_tokens, email, push, registration
+from app.services import audit, email, password_reset_tokens, registration
 from app.services.audit import rate_limit_key
 from app.services.auth import (
     DUMMY_PASSWORD_HASH,
@@ -144,14 +143,13 @@ def register(
             username=body.username,
             password=body.password,
             invite_code=body.invite_code,
-            product_updates=body.product_updates,
         )
     except registration.RegistrationError as exc:
         _raise_registration_error(exc)
 
     audit.log_auth_event(
         db,
-        event=EVENT_REGISTER_PENDING,
+        action=ACTION_REGISTER_PENDING,
     )
     db.commit()
 
@@ -187,7 +185,7 @@ def confirm_registration(
     user.last_seen_at = datetime.now(UTC)
     audit.log_auth_event(
         db,
-        event=EVENT_REGISTER_CONFIRMED,
+        action=ACTION_REGISTER_CONFIRMED,
         user_id=user.id,
     )
     db.commit()
@@ -220,7 +218,7 @@ def resend_confirmation(
     # so the row leaks nothing about which addresses have a pending row.
     audit.log_auth_event(
         db,
-        event=EVENT_REGISTER_RESENT,
+        action=ACTION_REGISTER_RESENT,
         user_id=None,
     )
     db.commit()
@@ -246,29 +244,21 @@ def login(
     db: Session = Depends(get_db),
 ):
     user = db.query(User).filter(User.email == body.email).first()
-    # Always run bcrypt (dummy hash for unknown, soft-deleted or credential-less
-    # users) so every failure branch takes the same time; otherwise response
-    # time is an oracle for known-but-deleted emails.
+    # Always run bcrypt (dummy hash for unknown or soft-deleted users) so every
+    # failure branch takes the same time; otherwise response time is an oracle
+    # for known-but-deleted emails.
     password_hash = (
-        user.password_hash
-        if user is not None and user.deleted_at is None and user.password_hash is not None
-        else DUMMY_PASSWORD_HASH
+        user.password_hash if user is not None and user.deleted_at is None else DUMMY_PASSWORD_HASH
     )
     password_ok = verify_password(body.password, password_hash)
     # The dummy hash's plaintext is public, so a match there must not sign in.
-    if (
-        user is None
-        or user.deleted_at is not None
-        or not user.is_active
-        or user.password_hash is None
-        or not password_ok
-    ):
+    if user is None or user.deleted_at is not None or not user.is_active or not password_ok:
         # Log the matched user_id when there is one, NULL otherwise, so
         # existence is not leaked. A deactivated account is treated like a
         # soft-deleted one.
         audit.log_auth_event(
             db,
-            event=EVENT_FAILED_LOGIN,
+            action=ACTION_FAILED_LOGIN,
             user_id=user.id
             if (user is not None and user.deleted_at is None and user.is_active)
             else None,
@@ -283,7 +273,7 @@ def login(
     user.last_seen_at = datetime.now(UTC)
     audit.log_auth_event(
         db,
-        event=EVENT_LOGIN,
+        action=ACTION_LOGIN,
         user_id=user.id,
     )
     db.commit()
@@ -328,7 +318,7 @@ def logout(
 
     audit.log_auth_event(
         db,
-        event=EVENT_LOGOUT,
+        action=ACTION_LOGOUT,
         user_id=user_id,
     )
     db.commit()
@@ -359,11 +349,10 @@ def _process_forgot_password(user_id, email_address: str) -> None:
         if user is None or user.deleted_at is not None:
             return
 
-        auth_tokens.revoke_all_live_for_user(db, user_id=user.id, purpose=PURPOSE_PASSWORD_RESET)
-        raw_token = auth_tokens.mint(
+        password_reset_tokens.revoke_all_live_for_user(db, user_id=user.id)
+        raw_token = password_reset_tokens.mint(
             db,
             user_id=user.id,
-            purpose=PURPOSE_PASSWORD_RESET,
             ttl_minutes=settings.password_reset_token_minutes,
         )
         db.commit()
@@ -396,7 +385,7 @@ def forgot_password(
     # Audit on both branches; user_id is NULL on the no-op branch so it leaks nothing.
     audit.log_auth_event(
         db,
-        event=EVENT_PASSWORD_RESET_REQUESTED,
+        action=ACTION_PASSWORD_RESET_REQUESTED,
         user_id=user.id if (user is not None and user.deleted_at is None) else None,
     )
     db.commit()
@@ -405,10 +394,7 @@ def forgot_password(
         # No-op branch: the live-user branch only schedules a task before returning.
         return
 
-    # A found user always has an email (lookup is by email); the column is
-    # nullable for legacy rows.
-    if user.email is not None:
-        background_tasks.add_task(_process_forgot_password, user.id, user.email)
+    background_tasks.add_task(_process_forgot_password, user.id, user.email)
 
 
 @router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)
@@ -418,7 +404,7 @@ def reset_password(
     body: ResetPasswordRequest,
     db: Session = Depends(get_db),
 ) -> None:
-    row = auth_tokens.consume(db, body.token, PURPOSE_PASSWORD_RESET)
+    row = password_reset_tokens.consume(db, body.token)
     if row is None:
         # One opaque error for every failure mode, so a probe can't tell
         # whether a leaked token is still live.
@@ -438,10 +424,9 @@ def reset_password(
     # A reset may mean the user never controlled the logged-in devices, so
     # invalidate every outstanding JWT now, not at `exp`.
     bump_token_version(user)
-    push.forget_devices(db, user=user)
     audit.log_auth_event(
         db,
-        event=EVENT_PASSWORD_RESET_COMPLETED,
+        action=ACTION_PASSWORD_RESET_COMPLETED,
         user_id=user.id,
     )
     db.commit()
@@ -466,10 +451,7 @@ def change_password(
 
     The heads-up email is a best-effort background task after the commit.
     """
-    # NULL hash (credential-less account) has no password to re-assert.
-    if current_user.password_hash is None or not verify_password(
-        body.current_password, current_user.password_hash
-    ):
+    if not verify_password(body.current_password, current_user.password_hash):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
 
     # Capture the address before the commit: ``expire_on_commit`` would make a
@@ -481,19 +463,17 @@ def change_password(
     # Bumping `token_version` 401s every JWT minted before now, including this
     # request's; the fresh cookie below keeps this device logged in.
     bump_token_version(current_user)
-    push.forget_devices(db, user=current_user)
     audit.log_auth_event(
         db,
-        event=EVENT_PASSWORD_CHANGED,
+        action=ACTION_PASSWORD_CHANGED,
         user_id=user_id,
     )
     db.commit()
     db.refresh(current_user)
     issue_session_cookies(response, create_access_token(current_user))
 
-    if notify_to is not None:
-        background_tasks.add_task(
-            _send_password_changed_notification_best_effort,
-            user_id=user_id,
-            to=notify_to,
-        )
+    background_tasks.add_task(
+        _send_password_changed_notification_best_effort,
+        user_id=user_id,
+        to=notify_to,
+    )

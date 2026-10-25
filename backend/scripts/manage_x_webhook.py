@@ -3,7 +3,7 @@
 Operator tooling for the bot's webhook delivery path (``routers/webhooks``,
 docs/ingestion.md). One-time setup against prod:
 
-    uv run python scripts/manage_x_webhook.py register https://api.vidit.app/api/v1/webhooks/x
+    uv run python scripts/manage_x_webhook.py register https://<api-host>/api/v1/webhooks/x
     uv run python scripts/manage_x_webhook.py subscribe <webhook_id>
 
 then set ``X_WEBHOOK_ENABLED=true`` on the backend services. ``list`` /

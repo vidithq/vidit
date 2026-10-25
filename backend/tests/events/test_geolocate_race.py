@@ -1,8 +1,8 @@
-"""HTTP-level concurrency on the geolocate transition.
+"""HTTP-level concurrency on the publish of a request.
 
-``services/events.geolocate`` takes the row lock first, then re-checks ``status`` with
-``populate_existing()``, so the loser reads the post-lock ``geolocated`` status and
-gets a clean 409. The first test races two independent ``TestClient`` instances (own
+``services/events.save_version`` takes the row lock first, then compares the posted
+``version_no`` with the re-read row, so the loser reads the post-lock version 1 and
+gets a clean ``409 version_mismatch``. The first test races two independent ``TestClient`` instances (own
 DB sessions, as in
 ``test_registration_pending.py::test_confirm_is_atomic_under_parallel_use``) so the
 requests contend for the lock.
@@ -19,6 +19,7 @@ import json
 import threading
 import time
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -32,12 +33,21 @@ from app.models.event import (
     Event,
     EventGeolocator,
 )
+from app.models.media import Media
+from app.models.source import Source, SourceLink
 from app.models.user import User
 from app.services import evidence_intake
 from app.services.auth import create_access_token, hash_password
 from app.services.auth_cookies import CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE
+from tests._fixtures import fake_sha256
 from tests.conftest import TEST_CSRF_TOKEN, login_as
-from tests.events._helpers import client, proof_file_part, proof_form_field
+from tests.events._helpers import (
+    client,
+    proof_file_part,
+    proof_form_field,
+    source_spec,
+    sources_field,
+)
 
 # Every wait in the shared-loop test is bounded, so a regression fails instead of
 # hanging the suite.
@@ -45,6 +55,8 @@ _WAIT_S = 30
 # How long ``/health`` may take while a writer waits on the row lock: well
 # under the lock timeout, which is how long a stuck loop stays stuck.
 _PROBE_S = LOCK_TIMEOUT_MS / 1000 / 2
+
+_POST_URL = "https://example.com/post"
 
 
 @pytest.fixture
@@ -71,58 +83,59 @@ def third_user(db):
 
 
 def _make_requested_with_media(db, *, author):
-    """A ``requested`` event with its source media; a local copy of
+    """A ``requested`` event with one filed source; a local copy of
     ``test_requests.py::_make_request``."""
-    from datetime import UTC, datetime
-
-    from app.models.media import Media
-
     now = datetime.now(UTC)
     request = Event(
         owner_id=author.id,
         requested_by_id=author.id,
         title="Race target",
-        source_url="https://example.com/post",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         status=STATUS_REQUESTED,
         requested_at=now,
     )
-    db.add(request)
-    db.flush()
-    db.add(
-        Media(
-            event_id=request.id,
-            role="source",
-            storage_url=f"http://localhost:8000/local-storage/request_uploads/{request.id}/x.jpg",
-            media_type="image",
+    request.sources = [
+        Source(
+            level="direct",
+            kind="unknown",
+            links=[SourceLink(url=_POST_URL, posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC))],
+            media=Media(
+                sha256=fake_sha256(),
+                storage_url=(
+                    f"http://localhost:8000/local-storage/request_uploads/{uuid.uuid4()}/x.jpg"
+                ),
+                kind="image",
+            ),
         )
-    )
+    ]
+    db.add(request)
     db.commit()
     db.refresh(request)
     return request
 
 
-def _fulfilment_form(conflict, capture_source_tag, *, title: str) -> dict[str, str]:
+def _fulfilment_form(conflict, request: Event, *, title: str) -> dict[str, str]:
+    """The fulfilment form, keeping the requester's source by ``id`` with its file."""
+    [source] = request.sources
     return {
         "title": title,
         "lat": "48.5",
         "lng": "34.5",
-        "source_url": "https://example.com/post",
-        "event_date": "2026-05-01",
-        "source_posted_at": "2026-05-01T12:00",
-        "tag_ids": json.dumps([str(capture_source_tag.id)]),
+        "occurred_date": "2026-05-01",
+        "version_no": "0",
         "conflict_ids": json.dumps([str(conflict.id)]),
         "proof": proof_form_field(),
+        "sources": sources_field(
+            source_spec(_POST_URL, id=str(source.id), media_id=str(source.media.id))
+        ),
     }
 
 
-def test_concurrent_geolocate_exactly_one_wins(
-    db, author, second_user, third_user, conflict, capture_source_tag
-):
+def test_concurrent_geolocate_exactly_one_wins(db, author, second_user, third_user, conflict):
     """Two analysts fulfil one open request at once: exactly one 200, the other a clean
-    ``409 invalid_state``, never a 500 or two winners."""
+    ``409 version_mismatch``, never a 500 or two winners."""
     request = _make_requested_with_media(db, author=author)
     request_id = request.id
+    form = _fulfilment_form(conflict, request, title="Fulfilled")
 
     statuses: list[int] = []
     bodies: list[dict] = []
@@ -131,10 +144,10 @@ def test_concurrent_geolocate_exactly_one_wins(
     def worker(fulfiller, title: str) -> None:
         c = TestClient(app)
         headers = login_as(c, fulfiller)
-        data = _fulfilment_form(conflict, capture_source_tag, title=title)
+        data = {**form, "title": title}
         barrier.wait(timeout=2)
         response = c.post(
-            f"/api/v1/events/{request_id}/geolocate",
+            f"/api/v1/events/{request_id}/versions",
             headers=headers,
             data=data,
             files=[proof_file_part()],
@@ -154,7 +167,7 @@ def test_concurrent_geolocate_exactly_one_wins(
     assert len(winners) == 1, f"exactly one geolocate must succeed; got {statuses}"
     assert len(losers) == 1, f"the loser must see a clean 409; got {statuses}"
     loser_body = bodies[statuses.index(409)]
-    assert loser_body["detail"]["code"] == "invalid_state"
+    assert loser_body["detail"]["code"] == "version_mismatch"
 
     # Moved exactly once: geolocated, owned by the winner.
     db.expire_all()
@@ -194,13 +207,15 @@ def _lock_waiter_appears(db) -> bool:
 
 
 def test_a_writer_queued_on_the_row_lock_leaves_the_loop_serving(
-    db, author, second_user, third_user, conflict, capture_source_tag, monkeypatch
+    db, author, second_user, third_user, conflict, monkeypatch
 ):
     """Both geolocates share one event loop, as in production. The waiter's lock wait
     must block only its own worker thread: the loop keeps answering ``/health`` while
-    the holder resumes and commits, and the waiter loses on ``invalid_state``. With a
+    the holder resumes and commits, and the waiter loses on ``version_mismatch``. With a
     handler back on the loop, the stall lasts until ``lock_timeout``."""
-    request_id = _make_requested_with_media(db, author=author).id
+    request = _make_requested_with_media(db, author=author)
+    request_id = request.id
+    form = _fulfilment_form(conflict, request, title="")
 
     holding = threading.Event()
     release = threading.Event()
@@ -241,9 +256,9 @@ def test_a_writer_queued_on_the_row_lock_leaves_the_loop_serving(
             send(
                 name,
                 "POST",
-                f"/api/v1/events/{request_id}/geolocate",
+                f"/api/v1/events/{request_id}/versions",
                 headers=_session_headers(fulfiller),
-                data=_fulfilment_form(conflict, capture_source_tag, title=f"By {name}"),
+                data={**form, "title": f"By {name}"},
                 files=[proof_file_part()],
             )
 
@@ -267,7 +282,7 @@ def test_a_writer_queued_on_the_row_lock_leaves_the_loop_serving(
     holder, waiter = responses["holder"], responses["waiter"]
     assert getattr(holder, "status_code", None) == 200, holder
     assert getattr(waiter, "status_code", None) == 409, waiter
-    assert waiter.json()["detail"]["code"] == "invalid_state"
+    assert waiter.json()["detail"]["code"] == "version_mismatch"
 
     db.expire_all()
     row = db.query(Event).filter(Event.id == request_id).one()
@@ -278,21 +293,20 @@ def test_a_writer_queued_on_the_row_lock_leaves_the_loop_serving(
     assert [c.user_id for c in credit] == [second_user.id]
 
 
-def test_a_lock_wait_past_the_timeout_answers_409(
-    db, author, second_user, conflict, capture_source_tag
-):
+def test_a_lock_wait_past_the_timeout_answers_409(db, author, second_user, conflict):
     """A geolocate behind a lock nobody releases answers the typed ``lock_timeout`` 409
     at ``LOCK_TIMEOUT_MS``, not a 500, and writes nothing. It runs in a thread the
     test stops waiting for after ``_WAIT_S``."""
-    request_id = _make_requested_with_media(db, author=author).id
+    request = _make_requested_with_media(db, author=author)
+    request_id = request.id
     headers = login_as(client, second_user)
-    form = _fulfilment_form(conflict, capture_source_tag, title="Never lands")
+    form = _fulfilment_form(conflict, request, title="Never lands")
     responses = []
 
     def geolocate() -> None:
         responses.append(
             client.post(
-                f"/api/v1/events/{request_id}/geolocate",
+                f"/api/v1/events/{request_id}/versions",
                 headers=headers,
                 data=form,
                 files=[proof_file_part()],

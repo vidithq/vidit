@@ -9,14 +9,11 @@ import type { Media } from "@/types";
  *   uploads/<geo>/abc_thumb.jpg  max-dim 400 px, JPEG q80
  * The naming mirrors `storage.derivative_key`; change both.
  *
- * Which rows carry the siblings is the `role`, not the `media_type`: `storage.upload_file` and
- * the detection path write them for a `source` image; `storage.upload_proof_image` passes
- * `produce_derivatives=False`, so a `proof` image has an original only. Rewriting a `proof`
- * url to `_thumb` addresses an object never written: the CDN answers 403 and every card
- * paints a broken picture. Videos have no derivatives either (callers skip this via
- * `media.media_type`, see `displayUrlsFor`).
+ * Only a source image carries the siblings: a proof image (`role: "proof"`) has an original only,
+ * and rewriting its url to `_thumb` addresses an object never written, so the CDN answers 403.
+ * Videos have no derivatives either.
  */
-export interface MediaUrlBundle {
+interface MediaUrlBundle {
   original: string;
   hero: string;
   thumbnail: string;
@@ -60,12 +57,12 @@ export function posterFrameUrl(src: string): string {
   return src.includes("#") ? src : `${src}#t=0.1`;
 }
 
-/** Pick the URL for a Media row at the desired size. Videos and `proof` images fall back to
- *  the original (no derivatives). Use instead of raw `storage_url`. */
-export function displayUrlsFor(
-  media: Pick<Media, "storage_url" | "media_type" | "role">,
-): MediaUrlBundle {
-  if (media.media_type !== "image" || media.role === "proof") {
+/** Pick the URL for a Media row at the desired size. Videos and proof images fall back to the
+ *  original (no derivatives). Use instead of raw `storage_url`. */
+export type DisplayMedia = Pick<Media, "storage_url" | "kind" | "role">;
+
+export function displayUrlsFor(media: DisplayMedia): MediaUrlBundle {
+  if (media.kind !== "image" || media.role === "proof") {
     return {
       original: media.storage_url,
       hero: media.storage_url,

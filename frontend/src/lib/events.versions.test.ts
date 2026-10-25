@@ -9,25 +9,62 @@ import {
   eventVersionHref,
   parseVersionSegment,
   snapshotToEventView,
+  versionLabel,
   type EventVersionFormState,
 } from "./events";
+import type { Source } from "./sources";
+import { snapshotSource, source } from "@/test/eventDetail";
 import type { EventDetail, EventVersion } from "@/types";
+
+const WAYBACK = "https://web.archive.org/web/2026/https://t.me/channel/4242";
+const ARCHIVE_TODAY = "https://archive.ph/two";
+
+const FOOTAGE: Source = source({
+  id: "s1",
+  kind: "drone",
+  captured_at: "2026-05-09T15:40:00Z",
+  links: [
+    {
+      url: "https://t.me/channel/4242",
+      posted_at: "2026-05-09T15:45:00Z",
+      archived: { url: WAYBACK, provider: "wayback", archived_at: "2026-06-01T00:00:00Z" },
+    },
+  ],
+  media: {
+    id: "m1",
+    role: "source",
+    kind: "image",
+    sha256: "0",
+    storage_url: "https://m/source.jpg",
+  },
+});
+
+const MIRRORS: Source = source({
+  id: "s2",
+  level: "context",
+  links: [
+    { url: "https://t.me/mirror/1", posted_at: null, archived: null },
+    {
+      url: "https://t.me/mirror/2",
+      posted_at: null,
+      archived: { url: ARCHIVE_TODAY, provider: "archive_today", archived_at: "2026-06-01T00:00:00Z" },
+    },
+  ],
+});
 
 const CURRENT: EventDetail = {
   id: "e1",
   title: "v3 title",
-  event_coords: { lat: 48.0159, lng: 37.8024 },
-  capture_source_coords: null,
-  archived_source: { url: "https://web.archive.org/x", provider: "wayback" },
-  event_date: "2026-05-09",
-  event_time: "15:45:00",
+  coords: { lat: 48.0159, lng: 37.8024 },
+  occurred_date: "2026-05-09",
+  occurred_time: "15:45:00",
   is_graphic: false,
   status: "geolocated",
   version_no: 3,
   close_reason: null,
   before_closed_status: null,
   owner: { id: "a1", username: "analyst", avatar_url: null },
-  tags: [{ id: "t2", name: "Drone", category: "capture_source" }],
+  tags: [{ id: "t2", name: "Drone" }],
   conflicts: [
     {
       id: "c1",
@@ -35,34 +72,19 @@ const CURRENT: EventDetail = {
       wikidata_id: null,
       start_year: 2022,
       end_year: null,
-      ongoing: true,
+      is_ongoing: true,
       tier: "major",
     },
   ],
-  source_url: "https://t.me/channel/4242",
-  secondary_source_urls: ["https://t.me/mirror/1", "https://t.me/mirror/2"],
-  archived_secondary_sources: [
-    null,
-    { url: "https://archive.ph/two", provider: "archive_today" },
-  ],
-  source_posted_at: "2026-05-09T15:45:00Z",
+  sources: [FOOTAGE, MIRRORS],
   detected_from_url: null,
   detected_via: null,
-  archived_detected_from: null,
   proof: '<img src="https://m/c.jpg">',
   created_at: "2026-06-01T00:00:00Z",
   // Apart from `created_at`: submitted at midnight, published nine hours later; version 1 is the publication.
   geolocated_at: "2026-06-01T09:00:00Z",
   closed_at: null,
-  media: [
-    {
-      id: "m1",
-      role: "source",
-      media_type: "image",
-      storage_url: "https://m/source.jpg",
-    },
-  ],
-  thumbnail: null,
+  thumbnail: FOOTAGE.media,
   requested_by: null,
   geolocators: [],
 };
@@ -88,65 +110,57 @@ function row(
   };
 }
 
-/** The snapshot shape `services/versions.build_snapshot` files. */
+/** The snapshot shape `services/versions.build_snapshot` files: the live row's own sources,
+ *  spelled as the snapshot spells instants, under an older title and proof. */
 function snapshot(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     title: "v2 title",
-    source_url: "https://t.me/channel/4242",
-    source_media: [
+    coords: { lat: 48.0159, lng: 37.8024 },
+    occurred_date: "2026-05-09",
+    occurred_time: "15:45:00",
+    sources: [
       {
-        id: "m1",
-        role: "source",
-        media_type: "image",
-        storage_url: "https://m/source.jpg",
+        ...snapshotSource(FOOTAGE),
+        captured_at: "2026-05-09T15:40:00+00:00",
+        links: [
+          {
+            url: "https://t.me/channel/4242",
+            posted_at: "2026-05-09T15:45:00+00:00",
+            snapshot_url: WAYBACK,
+            archived_at: "2026-06-01T00:00:00+00:00",
+          },
+        ],
       },
+      snapshotSource(MIRRORS),
     ],
-    event_coords: { lat: 48.0159, lng: 37.8024 },
-    capture_source_coords: null,
-    event_date: "2026-05-09",
-    event_time: "15:45:00",
-    source_posted_at: "2026-05-09T15:45:00+00:00",
-    is_graphic: false,
-    secondary_source_urls: ["https://t.me/mirror/2", "https://t.me/mirror/1"],
-    tags: [{ id: "t2", name: "Drone", category: "capture_source" }],
+    tags: [{ id: "t2", name: "Drone" }],
     conflicts: [{ id: "c1", name: "Russian invasion of Ukraine" }],
     proof: '<img src="https://m/b.jpg">',
     proof_media: [
-      {
-        id: "pm1",
-        storage_url: "https://m/b.jpg",
-        media_type: "image",
-        original_filename: null,
-      },
-    ],
-    archives: [
-      {
-        original_url: "https://t.me/channel/4242",
-        origin: "source_url",
-        snapshot_url: "https://web.archive.org/x",
-        provider: "wayback",
-        created_at: "2026-06-01T00:00:00+00:00",
-      },
-      {
-        original_url: "https://t.me/mirror/2",
-        origin: "secondary_source",
-        snapshot_url: "https://archive.ph/two",
-        provider: "archive_today",
-        created_at: "2026-06-01T00:00:00+00:00",
-      },
+      { id: "pm1", storage_url: "https://m/b.jpg", kind: "image", original_filename: null },
     ],
     ...overrides,
   };
 }
 
+/** The snapshot's sources with the first one changed by `patch`. */
+const withFootage = (patch: Record<string, unknown>) => {
+  const [first, ...rest] = snapshot().sources as Record<string, unknown>[];
+  return [{ ...first, ...patch }, ...rest];
+};
+
+/** Everything but the field under test pinned to the live row. */
+const pinned = { title: "v3 title", proof: '<img src="https://m/c.jpg">' };
+
 describe("parseVersionSegment", () => {
   it("reads the number out of a version segment", () => {
+    expect(parseVersionSegment("v0")).toBe(0);
     expect(parseVersionSegment("v1")).toBe(1);
     expect(parseVersionSegment("v42")).toBe(42);
   });
 
   it("refuses anything that is not a version address", () => {
-    for (const segment of ["edit", "history", "v", "v0", "v01", "v-1", "1", "v1x", ""]) {
+    for (const segment of ["edit", "history", "v", "v00", "v01", "v-1", "1", "v1x", ""]) {
       expect(parseVersionSegment(segment)).toBeNull();
     }
   });
@@ -170,7 +184,7 @@ describe("snapshotToEventView", () => {
     expect(view.title).toBe("v2 title");
     expect(view.version_no).toBe(2);
     expect(view.proof).toEqual(snapshot().proof);
-    expect(view.tags).toEqual([{ id: "t2", name: "Drone", category: "capture_source" }]);
+    expect(view.tags).toEqual([{ id: "t2", name: "Drone" }]);
   });
 
   it("keeps the row's identity from the current row", () => {
@@ -178,121 +192,51 @@ describe("snapshotToEventView", () => {
     expect(view.owner).toEqual(CURRENT.owner);
   });
 
-  it("shows the evidence anchor as that version held it", () => {
-    // The anchor is versioned: a version resting on another source renders that source and
-    // media (the media row is gone, so the snapshot's own fragment renders).
-    const superseded = snapshotToEventView(
+  it("shows the sources as that version held them", () => {
+    const older = snapshotToEventView(
       CURRENT,
       row(
         2,
         snapshot({
-          source_url: "https://t.me/channel/1",
-          source_media: [
-            {
-              id: "m0",
-              role: "source",
-              media_type: "video",
-              storage_url: "https://m/old.mp4",
-            },
-          ],
+          sources: withFootage({
+            media: { id: "m0", kind: "video", sha256: "0", storage_url: "https://m/old.mp4" },
+          }),
         })
       )
     );
-    expect(superseded.source_url).toBe("https://t.me/channel/1");
-    expect(superseded.media.map((m) => m.id)).toEqual(["m0"]);
-    expect(superseded.thumbnail?.storage_url).toBe("https://m/old.mp4");
+    expect(older.sources.map((s) => s.media?.storage_url ?? null)).toEqual([
+      "https://m/old.mp4",
+      null,
+    ]);
+    // The preview is the first source file, as the server picks it.
+    expect(older.thumbnail?.storage_url).toBe("https://m/old.mp4");
+    expect(older.sources[0].kind).toBe("drone");
   });
 
-  it("reads each version's anchor off its own snapshot across a history", () => {
-    // Two swaps, three anchors: reading the anchor off the live row would render today's footage
-    // on both older versions and hide each swap from `changedFields`.
-    const v1Media = {
-      id: "m0",
-      role: "source",
-      media_type: "video",
-      storage_url: "https://m/first.mp4",
-    };
-    const v2Media = {
-      id: "m1",
-      role: "source",
-      media_type: "image",
-      storage_url: "https://m/second.jpg",
-    };
-    const v1 = snapshotToEventView(
+  it("previews the first proof image when no source has a file", () => {
+    const fileless = snapshotToEventView(
       CURRENT,
-      row(1, snapshot({ source_url: "https://t.me/channel/1", source_media: [v1Media] }))
+      row(2, snapshot({ sources: [snapshotSource(MIRRORS)] }))
     );
-    const v2 = snapshotToEventView(
-      CURRENT,
-      row(2, snapshot({ source_url: "https://t.me/channel/2", source_media: [v2Media] }))
-    );
-
-    expect([v1.source_url, v2.source_url, CURRENT.source_url]).toEqual([
-      "https://t.me/channel/1",
-      "https://t.me/channel/2",
-      "https://t.me/channel/4242",
-    ]);
-    expect([v1.media[0].id, v2.media[0].id, CURRENT.media[0].id]).toEqual([
-      "m0",
-      "m1",
-      "m1",
-    ]);
-    expect(v1.thumbnail?.storage_url).toBe("https://m/first.mp4");
-
-    // Each swap is attributed only to the edit that made it.
-    expect(changedFields(v2, v1)).toContain("Source URL");
-    expect(changedFields(v2, v1)).toContain("Source media");
-    expect(changedFields(CURRENT, v2)).toContain("Source URL");
-    // v2 already carries the live media, so the last edit moved the URL alone.
-    expect(changedFields(CURRENT, v2)).not.toContain("Source media");
+    expect(fileless.thumbnail?.storage_url).toBe("https://m/b.jpg");
   });
 
-  it("ratchets the graphic flag against the live row", () => {
-    // A version page renders the live media, so the gate can only tighten for an older version.
-    const flagged = { ...CURRENT, is_graphic: true };
-    expect(snapshotToEventView(flagged, row(2, snapshot())).is_graphic).toBe(true);
-    // A version filed while the flag was up keeps it on an unflagged row.
-    expect(
-      snapshotToEventView(CURRENT, row(2, snapshot({ is_graphic: true }))).is_graphic
-    ).toBe(true);
+  it("reads an archived copy's provider off its snapshot host", () => {
+    expect(view.sources[0].links[0].archived).toMatchObject({ url: WAYBACK, provider: "wayback" });
+    expect(view.sources[1].links[1].archived).toMatchObject({ provider: "archive_today" });
+    expect(view.sources[1].links[0].archived).toBeNull();
+  });
+
+  it("ratchets a source's graphic flag against the live source showing the same file", () => {
+    const flagged = { ...CURRENT, sources: [{ ...FOOTAGE, is_graphic: true }, MIRRORS] };
+    const filed = snapshotToEventView(flagged, row(2, snapshot()));
+    expect(filed.sources[0].is_graphic).toBe(true);
+    expect(filed.is_graphic).toBe(true);
     expect(view.is_graphic).toBe(false);
   });
 
-  it("shows the archived copies as that version held them", () => {
-    expect(view.archived_source).toEqual(CURRENT.archived_source);
-    const unarchived = snapshotToEventView(CURRENT, row(2, snapshot({ archives: [] })));
-    expect(unarchived.archived_source).toBeNull();
-    expect(unarchived.archived_secondary_sources).toEqual([null, null]);
-  });
-
-  it("stands the live row's copies in for a version that files none", () => {
-    // A snapshot filed before copies were versioned says nothing about them: not read as "had none".
-    const legacy = { ...snapshot() };
-    delete legacy.archives;
-    const filed = snapshotToEventView(CURRENT, row(2, legacy));
-    expect(filed.archived_source).toEqual(CURRENT.archived_source);
-    expect(filed.archived_secondary_sources).toEqual([
-      { url: "https://archive.ph/two", provider: "archive_today" },
-      null,
-    ]);
-  });
-
-  it("pairs each mirror with the copy archived for that URL, not its position", () => {
-    // Other mirror order: a positional copy would hand mirror 2's snapshot to mirror 1.
-    expect(view.secondary_source_urls).toEqual([
-      "https://t.me/mirror/2",
-      "https://t.me/mirror/1",
-    ]);
-    expect(view.archived_secondary_sources).toEqual([
-      { url: "https://archive.ph/two", provider: "archive_today" },
-      null,
-    ]);
-  });
-
   it("resolves a conflict through the referential and falls back on its stored name", () => {
-    expect(snapshotToEventView(CURRENT, row(2, snapshot())).conflicts[0]).toEqual(
-      CURRENT.conflicts[0]
-    );
+    expect(view.conflicts[0]).toEqual(CURRENT.conflicts[0]);
     const gone = snapshotToEventView(
       CURRENT,
       row(2, snapshot({ conflicts: [{ id: "c9", name: "A deleted conflict" }] }))
@@ -304,10 +248,10 @@ describe("snapshotToEventView", () => {
   it("maps a redacted version's empty snapshot to empty content, not a throw", () => {
     const blanked = snapshotToEventView(CURRENT, row(2, {}, { redacted: true }));
     expect(blanked.title).toBe(CURRENT.title);
-    expect(blanked.event_coords).toBeNull();
+    expect(blanked.coords).toBeNull();
     expect(blanked.proof).toBeNull();
     expect(blanked.tags).toEqual([]);
-    expect(blanked.secondary_source_urls).toEqual([]);
+    expect(blanked.sources).toEqual([]);
   });
 });
 
@@ -315,70 +259,71 @@ describe("changedFields", () => {
   const previous = snapshotToEventView(CURRENT, row(2, snapshot()));
 
   it("names each field the edit moved, in the page's own vocabulary", () => {
-    expect(changedFields(CURRENT, previous)).toEqual([
-      "Title",
-      "Secondary sources",
-      "Proof",
-    ]);
+    expect(changedFields(CURRENT, previous)).toEqual(["Title", "Proof"]);
   });
 
   it("says nothing when nothing moved", () => {
     expect(changedFields(previous, previous)).toEqual([]);
   });
 
-  it("names a corrected evidence anchor", () => {
-    // Both halves are versioned and named separately: correcting the cited link is not replacing
-    // the footage.
-    const unchanged = {
-      title: CURRENT.title,
-      proof: CURRENT.proof,
-      secondary_source_urls: CURRENT.secondary_source_urls,
-    };
-    const otherLink = snapshotToEventView(
-      CURRENT,
-      row(2, snapshot({ ...unchanged, source_url: "https://t.me/channel/1" }))
-    );
-    // A copy covers a link: the one filed against the version's own source is not a copy of today's.
-    expect(changedFields(CURRENT, otherLink)).toEqual(["Source URL", "Archived copies"]);
+  it("reads two spellings of one instant as the same moment", () => {
+    // The snapshot writes `+00:00` where the live row writes `Z`; string comparison would flag
+    // every version.
+    expect(changedFields(CURRENT, previous)).not.toContain("Sources");
+  });
 
-    const otherMedia = snapshotToEventView(
+  it("names a changed source, whatever moved in it", () => {
+    for (const patch of [
+      { kind: "satellite" },
+      { level: "indirect" },
+      { title: "Drone footage" },
+      { capture_position: { lat: 1, lng: 2 } },
+      { media: { id: "m0", kind: "image", sha256: "0", storage_url: "https://m/old.jpg" } },
+    ]) {
+      const before = snapshotToEventView(
+        CURRENT,
+        row(2, snapshot({ ...pinned, sources: withFootage(patch) }))
+      );
+      expect(changedFields(CURRENT, before)).toEqual(["Sources"]);
+    }
+    // A source added since takes its archived copies with it.
+    const added = snapshotToEventView(
+      CURRENT,
+      row(2, snapshot({ ...pinned, sources: [snapshotSource(MIRRORS)] }))
+    );
+    expect(changedFields(CURRENT, added)).toEqual(["Sources", "Archived copies"]);
+  });
+
+  it("reads reordered sources and links as unchanged", () => {
+    const [first, second] = snapshot().sources as Record<string, unknown>[];
+    const reordered = snapshotToEventView(
       CURRENT,
       row(
         2,
         snapshot({
-          ...unchanged,
-          source_media: [
-            {
-              id: "m0",
-              role: "source",
-              media_type: "image",
-              storage_url: "https://m/old.jpg",
-            },
+          ...pinned,
+          sources: [
+            { ...second, links: [...(second.links as unknown[])].reverse() },
+            first,
           ],
         })
       )
     );
-    expect(changedFields(CURRENT, otherMedia)).toEqual(["Source media"]);
-  });
-
-  it("reads two spellings of one instant as the same moment", () => {
-    // The snapshot writes `+00:00` where the live row writes `Z`; string comparison would flag
-    // every version.
-    expect(changedFields(CURRENT, previous)).not.toContain("Source posted");
+    expect(changedFields(CURRENT, reordered)).toEqual([]);
   });
 
   it("compares tags and conflicts by identity, not by name", () => {
     const renamed = snapshotToEventView(
       CURRENT,
-      row(2, snapshot({ tags: [{ id: "t2", name: "UAV", category: "capture_source" }] }))
+      row(2, snapshot({ tags: [{ id: "t2", name: "UAV" }] }))
     );
     expect(changedFields(CURRENT, renamed)).not.toContain("Tags");
   });
 
   it("compares tags and conflicts as sets, the relationship being unordered", () => {
     const tags: EventDetail["tags"] = [
-      { id: "t2", name: "Drone", category: "capture_source" },
-      { id: "t7", name: "Night", category: "free" },
+      { id: "t2", name: "Drone" },
+      { id: "t7", name: "Night" },
     ];
     const conflicts: EventDetail["conflicts"] = [
       CURRENT.conflicts[0],
@@ -393,88 +338,37 @@ describe("changedFields", () => {
     expect(changedFields(version, reordered)).toEqual([]);
   });
 
-  it("names the archived copies a version recorded", () => {
-    // Everything else pinned to the current row, so the copy is the one move.
-    const unchanged = {
-      title: CURRENT.title,
-      proof: CURRENT.proof,
-      secondary_source_urls: CURRENT.secondary_source_urls,
+  it("names the archived copies a version recorded, apart from the sources", () => {
+    const [first, ...rest] = snapshot().sources as Record<string, unknown>[];
+    const unarchived = {
+      ...first,
+      links: (first.links as Record<string, unknown>[]).map((l) => ({
+        ...l,
+        snapshot_url: null,
+        archived_at: null,
+      })),
     };
     const before = snapshotToEventView(
       CURRENT,
-      row(2, snapshot({ ...unchanged, archives: [] }))
+      row(2, snapshot({ ...pinned, sources: [unarchived, ...rest] }))
     );
     expect(changedFields(CURRENT, before)).toEqual(["Archived copies"]);
-
-    // Same copies in another order is not an edit: keyed by link, not position.
-    const reordered = snapshotToEventView(
-      CURRENT,
-      row(
-        2,
-        snapshot({
-          ...unchanged,
-          archives: [...(snapshot().archives as unknown[])].reverse(),
-        })
-      )
-    );
-    expect(changedFields(CURRENT, reordered)).toEqual([]);
   });
 
-  it("names the archived copies when one link's snapshot was corrected", () => {
-    const corrected = snapshotToEventView(
-      CURRENT,
-      row(
-        2,
-        snapshot({
-          title: CURRENT.title,
-          proof: CURRENT.proof,
-          secondary_source_urls: CURRENT.secondary_source_urls,
-          archives: [
-            {
-              original_url: CURRENT.source_url,
-              origin: "source_url",
-              snapshot_url: "https://archive.ph/wrong",
-              provider: "archive_today",
-              created_at: "2026-06-01T00:00:00+00:00",
-            },
-            {
-              original_url: "https://t.me/mirror/2",
-              origin: "secondary_source",
-              snapshot_url: "https://archive.ph/two",
-              provider: "archive_today",
-              created_at: "2026-06-01T00:00:00+00:00",
-            },
-          ],
-        })
-      )
-    );
-    expect(changedFields(CURRENT, corrected)).toEqual(["Archived copies"]);
-  });
-
-  it("names the moved coordinates, dates, graphic flag and camera position", () => {
+  it("names the moved coordinates and dates", () => {
     const before = snapshotToEventView(
       CURRENT,
       row(
         2,
         snapshot({
-          title: CURRENT.title,
-          proof: CURRENT.proof,
-          secondary_source_urls: CURRENT.secondary_source_urls,
-          event_coords: { lat: 1, lng: 2 },
-          capture_source_coords: { lat: 3, lng: 4 },
-          event_date: "2026-01-01",
-          event_time: "09:00:00",
-          is_graphic: true,
+          ...pinned,
+          coords: { lat: 1, lng: 2 },
+          occurred_date: "2026-01-01",
+          occurred_time: "09:00:00",
         })
       )
     );
-    expect(changedFields(CURRENT, before)).toEqual([
-      "Coordinates",
-      "Camera position",
-      "Event date",
-      "Event time",
-      "Graphic flag",
-    ]);
+    expect(changedFields(CURRENT, before)).toEqual(["Coordinates", "Event date", "Event time"]);
   });
 });
 
@@ -491,11 +385,7 @@ describe("eventVersions", () => {
     expect(versions[0].editor).toEqual(BOB);
     expect(versions[0].createdAt).toBe("2026-06-03T00:00:00Z");
     expect(versions[0].note).toBe("fixed the title");
-    expect(versions[0].changed).toEqual([
-      "Title",
-      "Secondary sources",
-      "Proof",
-    ]);
+    expect(versions[0].changed).toEqual(["Title", "Proof"]);
 
     // Version 2 was produced by the edit filed on version 1.
     expect(versions[1].createdAt).toBe("2026-06-02T00:00:00Z");
@@ -537,6 +427,45 @@ describe("eventVersions", () => {
   });
 });
 
+describe("version 0", () => {
+  const PUBLISHED: EventDetail = {
+    ...CURRENT,
+    version_no: 2,
+    version_zero: "request",
+    requested_by: BOB,
+  };
+  const rows = [row(1, snapshot({ title: "v1 title" })), row(0, snapshot({ title: "Asked" }))];
+
+  it("names version 0 after what the event was published from", () => {
+    expect(versionLabel(PUBLISHED, 0)).toBe("Request");
+    expect(versionLabel({ version_zero: "detection" }, 0)).toBe("Detection");
+    expect(versionLabel(PUBLISHED, 2)).toBe("v2");
+  });
+
+  it("walks down to version 0, credited to whoever opened it", () => {
+    const versions = eventVersions(PUBLISHED, rows);
+    expect(versions.map((v) => v.number)).toEqual([2, 1, 0]);
+
+    // Version 1 is the publish, filed on version 0: its byline and date come from that row,
+    // and it compares against what was asked.
+    expect(versions[1].editor).toEqual(BOB);
+    expect(versions[1].createdAt).toBe("2026-06-01T00:00:00Z");
+    expect(versions[1].changed).toContain("Title");
+
+    // Version 0 was opened, not edited: the requester and the creation date.
+    expect(versions[2].view?.title).toBe("Asked");
+    expect(versions[2].view?.status).toBe("requested");
+    expect(versions[2].editor).toEqual(BOB);
+    expect(versions[2].createdAt).toBe(PUBLISHED.created_at);
+    expect(versions[2].changed).toBeNull();
+  });
+
+  it("stops at version 1 for a record with no version 0", () => {
+    const versions = eventVersions({ ...CURRENT, version_no: 2 }, [row(1, snapshot())]);
+    expect(versions.map((v) => v.number)).toEqual([2, 1]);
+  });
+});
+
 describe("eventVersion", () => {
   it("assembles one version from the two rows that describe it", () => {
     const version = eventVersion(CURRENT, 2, {
@@ -569,25 +498,15 @@ describe("hasVersionChanges", () => {
     overrides: Partial<EventVersionFormState> = {}
   ): EventVersionFormState => ({
     title: CURRENT.title,
-    sourceUrl: CURRENT.source_url!,
-    sourceMediaMoved: false,
-    lat: String(CURRENT.event_coords!.lat),
-    lng: String(CURRENT.event_coords!.lng),
-    captureLat: "",
-    captureLng: "",
-    eventDate: CURRENT.event_date!,
+    sourcesMoved: false,
+    lat: String(CURRENT.coords!.lat),
+    lng: String(CURRENT.coords!.lng),
+    eventDate: CURRENT.occurred_date!,
     // `<input type="time">` holds minutes, the API serves seconds.
-    eventTime: CURRENT.event_time!.slice(0, 5),
-    // `toDatetimeLocalUTC` renders the stored instant as a naive UTC clock.
-    sourcePostedAt: "2026-05-09T15:45",
-    isGraphic: CURRENT.is_graphic,
+    eventTime: CURRENT.occurred_time!.slice(0, 5),
     proof: CURRENT.proof,
     tagIds: CURRENT.tags.map((tag) => tag.id),
     conflictIds: CURRENT.conflicts.map((c) => c.id),
-    secondarySourceUrls: [...CURRENT.secondary_source_urls],
-    secondarySnapshotUrls: CURRENT.secondary_source_urls.map(() => ""),
-    sourceSnapshotUrl: "",
-    detectedFromSnapshotUrl: "",
     ...overrides,
   });
 
@@ -595,34 +514,14 @@ describe("hasVersionChanges", () => {
     expect(hasVersionChanges(CURRENT, untouched())).toBe(false);
   });
 
-  it("reads a corrected source URL as a change, and a blank one as none", () => {
-    expect(
-      hasVersionChanges(CURRENT, untouched({ sourceUrl: "https://t.me/channel/9" }))
-    ).toBe(true);
-    // Blank keeps the stored source, as server side; not a correction.
-    expect(hasVersionChanges(CURRENT, untouched({ sourceUrl: "" }))).toBe(false);
+  it("reads a moved source list as a change", () => {
+    // An upload has no stored value until it lands, so the caller's comparison is the whole fact.
+    expect(hasVersionChanges(CURRENT, untouched({ sourcesMoved: true }))).toBe(true);
   });
 
-  it("reads a staged source-media swap as a change", () => {
-    // The file has no URL until it lands, so the staging is the whole fact.
-    expect(hasVersionChanges(CURRENT, untouched({ sourceMediaMoved: true }))).toBe(true);
-  });
-
-  it("reads an untouched lossy input as no change, seconds and all", () => {
-    // The time input drops seconds and the datetime input stops at the minute: a form still
-    // holding what the row seeded it with is untouched and not posted back.
-    const precise: EventDetail = {
-      ...CURRENT,
-      source_posted_at: "2026-05-09T15:45:27Z",
-      event_time: "15:45:27",
-    };
+  it("reads an untouched time as no change, seconds and all", () => {
+    const precise: EventDetail = { ...CURRENT, occurred_time: "15:45:27" };
     expect(hasVersionChanges(precise, untouched())).toBe(false);
-    // Blank reads as no change too, the way the endpoint reads an absent field.
-    expect(hasVersionChanges(precise, untouched({ sourcePostedAt: "" }))).toBe(false);
-    // A minute the analyst actually moved is still a change.
-    expect(
-      hasVersionChanges(precise, untouched({ sourcePostedAt: "2026-05-09T16:00" }))
-    ).toBe(true);
     expect(hasVersionChanges(precise, untouched({ eventTime: "16:00" }))).toBe(true);
   });
 
@@ -630,42 +529,14 @@ describe("hasVersionChanges", () => {
     const moved: Partial<EventVersionFormState>[] = [
       { title: "Corrected title" },
       { lat: "49" },
-      { captureLat: "48.1", captureLng: "37.9" },
       { eventDate: "2026-05-10" },
       { eventTime: "16:00" },
-      { sourcePostedAt: "2026-05-09T16:00" },
-      { isGraphic: true },
       { tagIds: [] },
       { conflictIds: [] },
-      { secondarySourceUrls: ["https://t.me/mirror/1"] },
       { proof: "" },
     ];
     for (const change of moved) {
       expect(hasVersionChanges(CURRENT, untouched(change))).toBe(true);
     }
-  });
-
-  it("counts a new archived copy and ignores a re-paste of the stored one", () => {
-    // Mirror 2 already holds this copy, so pasting it again moves nothing.
-    expect(
-      hasVersionChanges(
-        CURRENT,
-        untouched({ secondarySnapshotUrls: ["", "https://archive.ph/two"] })
-      )
-    ).toBe(false);
-    // Mirror 1 holds none, so a paste beside it is a change on its own.
-    expect(
-      hasVersionChanges(
-        CURRENT,
-        untouched({ secondarySnapshotUrls: ["https://archive.ph/one", ""] })
-      )
-    ).toBe(true);
-    // And a corrected copy of the source is one too.
-    expect(
-      hasVersionChanges(
-        CURRENT,
-        untouched({ sourceSnapshotUrl: "https://web.archive.org/corrected" })
-      )
-    ).toBe(true);
   });
 });

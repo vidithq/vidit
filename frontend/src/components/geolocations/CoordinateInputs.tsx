@@ -3,9 +3,12 @@
 import type { ClipboardEvent } from "react";
 
 import { CoordinateActions } from "@/components/event/CoordinateActions";
-import { FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
 import { coordinatePair, parsePastedCoordinates } from "@/lib/coordinates";
+
+// Half the field's side padding and tight tracking, so a 6-decimal value shows
+// whole beside the actions in the forms' side column and on a 375px phone.
+const FIELD_PADDING = "font-mono tracking-tight px-1.5";
 
 interface CoordinateInputsProps {
   lat: string;
@@ -13,14 +16,14 @@ interface CoordinateInputsProps {
   lng: string;
   setLng: (v: string) => void;
   invalid?: boolean;
-  /** Distinct ids so the camera pair doesn't collide with `lat` / `lng`. */
+  /** Distinct ids so a capture pair doesn't collide with `lat` / `lng`. */
   idPrefix?: string;
-  /** The optional camera pair passes `false`. */
+  /** The optional capture pair passes `false`. */
   required?: boolean;
 }
 
-/** The latitude / longitude input pair, shared by `LocationPicker` (subject and
- *  camera position) and the detection edit form. */
+/** The latitude / longitude input pair, shared by `LocationPicker` (the subject) and each
+ *  `SourceEditor` (its capture position). */
 export function CoordinateInputs({
   lat,
   setLat,
@@ -47,17 +50,11 @@ export function CoordinateInputs({
   const pair = coordinatePair(lat, lng);
 
   return (
-    // The pair's actions ride in the longitude field's trailing adornment. It
-    // takes a fixed 80px on a phone, so two columns would leave a 9-character
-    // value no room at 320px: one column below `sm`.
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <div className="space-y-1.5">
-        <label
-          htmlFor={latId}
-          className={`${FORM_LABEL}${invalid ? ` ${FORM_INVALID_LABEL}` : ""}`}
-        >
-          Latitude
-        </label>
+    // One line at every width, the narrowest source editor at 320px included:
+    // two shrinking columns, then the actions, which take only their own width.
+    // No visible labels: the `aria-label`s name the fields.
+    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-1.5">
+      <div>
         <Input
           id={latId}
           type="text"
@@ -65,18 +62,13 @@ export function CoordinateInputs({
           value={lat}
           onChange={(e) => setLat(e.target.value)}
           onPaste={onPastePair}
+          aria-label="Latitude"
           placeholder="48.015883"
-          className="font-mono"
+          className={FIELD_PADDING}
           invalid={invalid}
         />
       </div>
-      <div className="space-y-1.5">
-        <label
-          htmlFor={lngId}
-          className={`${FORM_LABEL}${invalid ? ` ${FORM_INVALID_LABEL}` : ""}`}
-        >
-          Longitude
-        </label>
+      <div>
         <Input
           id={lngId}
           type="text"
@@ -84,14 +76,15 @@ export function CoordinateInputs({
           value={lng}
           onChange={(e) => setLng(e.target.value)}
           onPaste={onPastePair}
+          aria-label="Longitude"
           placeholder="37.802411"
-          className="font-mono"
+          className={FIELD_PADDING}
           invalid={invalid}
-          // Always mounted so nothing shifts when the pair becomes valid.
-          trailing={
-            <CoordinateActions lat={pair?.lat ?? null} lng={pair?.lng ?? null} />
-          }
         />
+      </div>
+      {/* Always mounted so nothing shifts when the pair becomes valid. */}
+      <div>
+        <CoordinateActions lat={pair?.lat ?? null} lng={pair?.lng ?? null} />
       </div>
     </div>
   );

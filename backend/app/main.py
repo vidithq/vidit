@@ -1,6 +1,7 @@
 import math
 import time
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.encoders import jsonable_encoder
@@ -9,6 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from pydantic.json_schema import models_json_schema
 from slowapi.errors import RateLimitExceeded
 from starlette.types import ASGIApp
 
@@ -26,14 +29,16 @@ from app.routers import (
     events,
     notifications,
     organizations,
-    product_updates,
     search,
     sites,
     social,
+    sources,
     tags,
+    uploads,
     users,
     webhooks,
 )
+from app.schemas.source import SourceCreate
 from app.services import archive_jobs
 from app.services.storage import (
     DEV_STAGING_UPLOAD_PATH,
@@ -45,11 +50,30 @@ configure_logging()
 init_sentry()
 
 
+# Models a multipart write takes as a JSON form field (``routers/events/_common.parse_sources``).
+# No route names them, so the spec lists them for the frontend codegen.
+_FORM_FIELD_MODELS: tuple[type[BaseModel], ...] = (SourceCreate,)
+
+
 class _ViditAPI(FastAPI):
     def build_middleware_stack(self) -> ASGIApp:
         # Wraps Starlette's ServerErrorMiddleware (which ``add_middleware``
         # cannot), so its 500 carries the request id too.
         return RequestIdMiddleware(super().build_middleware_stack())
+
+    def openapi(self) -> dict[str, Any]:
+        if self.openapi_schema is not None:
+            return self.openapi_schema
+        # ``super().openapi`` caches the dict it returns, so the additions persist.
+        schema = super().openapi()
+        _, defs = models_json_schema(
+            [(model, "validation") for model in _FORM_FIELD_MODELS],
+            ref_template="#/components/schemas/{model}",
+        )
+        components = schema.setdefault("components", {}).setdefault("schemas", {})
+        for name, definition in defs.get("$defs", {}).items():
+            components.setdefault(name, definition)
+        return schema
 
 
 app = _ViditAPI(
@@ -222,12 +246,13 @@ for _event_router in events.routers:
 app.include_router(collections.router, prefix="/api/v1/collections", tags=["collections"])
 app.include_router(conflicts.router, prefix="/api/v1/conflicts", tags=["conflicts"])
 app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["notifications"])
-app.include_router(product_updates.router, prefix="/api/v1", tags=["product-updates"])
 app.include_router(organizations.router, prefix="/api/v1/organizations", tags=["organizations"])
 app.include_router(search.router, prefix="/api/v1/search", tags=["search"])
 app.include_router(sites.router, prefix="/api/v1/sites", tags=["sites"])
 app.include_router(social.router, prefix="/api/v1", tags=["social"])
+app.include_router(sources.router, prefix="/api/v1/sources", tags=["sources"])
 app.include_router(tags.router, prefix="/api/v1/tags", tags=["tags"])
+app.include_router(uploads.router, prefix="/api/v1/uploads", tags=["uploads"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
 app.include_router(webhooks.router, prefix="/api/v1/webhooks", tags=["webhooks"])
 

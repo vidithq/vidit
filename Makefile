@@ -1,6 +1,6 @@
 # Vidit - Makefile for local development
 
-.PHONY: help install env db-up db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-detections typology-weights mock-admin import-prod gen-api-types check-dup vulture check-changelog hygiene
+.PHONY: help install env db-up db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-detections typology-weights mock-admin gen-api-types check-dup vulture check-changelog hygiene
 
 help:
 	@echo "Available commands:"
@@ -12,7 +12,6 @@ help:
 	@echo "  make migrate       - Apply database migrations via Alembic"
 	@echo "  make seed          - mock-admin + machine detections from the synthetic archive"
 	@echo "  make seed-detections - Backfill machine 'detected' geolocations from the synthetic archive"
-	@echo "  make import-prod   - Restore the latest production backup into the local dev database"
 	@echo "  make typology-weights - Recompute weights.json + golden fixtures from the local corpus (gitignored)"
 	@echo "  make mock-admin    - Create a mock admin user (admin@vidit.app / admin)"
 	@echo "  make dev-backend   - Run FastAPI dev server (port 8000)"
@@ -39,13 +38,6 @@ typology-weights:
 mock-admin:
 	cd backend && uv run python scripts/mock_admin.py
 
-# Replace the local dev database with the most recent production backup. Reads
-# the daily dump the backup cron writes to S3; see docs/backups.md. Needs
-# BACKUP_S3_BUCKET and AWS_PROFILE in the environment. Pass ARGS=--yes to skip
-# the confirmation.
-import-prod:
-	./backend/scripts/import_prod.sh $(ARGS)
-
 seed: mock-admin seed-detections
 	@echo "Done. admin@vidit.app exists and the synthetic archive's detections are in."
 
@@ -55,7 +47,6 @@ install:
 
 env:
 	@if [ ! -f backend/.env ]; then cp backend/.env.example backend/.env && echo "Created backend/.env"; fi
-	@cd backend && uv run python scripts/ensure_vapid_keys.py
 	@if [ ! -f frontend/.env.local ]; then cp frontend/.env.local.example frontend/.env.local && echo "Created frontend/.env.local"; fi
 
 db-up:

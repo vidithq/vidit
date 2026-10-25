@@ -10,9 +10,10 @@ import {
 } from "@/lib/search";
 
 import type { Conflict, Tag } from "@/types";
+import { CARD_FRAME } from "@/components/ui/Card";
+import { EVENT_STATUS_META } from "@/components/event/StatusBadge";
 import type { ActiveFilter } from "@/components/ui/ActiveFilterPills";
 import { FORM_LABEL } from "@/components/ui/form-styles";
-import { TAP_STEP } from "@/components/ui/Button";
 import { ChipBucket } from "@/components/ui/ChipBucket";
 import { AccountPicker, accountName, analystAccount } from "@/components/ui/AccountPicker";
 import {
@@ -20,13 +21,21 @@ import {
   chipSummary,
   rangeSummary,
 } from "@/components/ui/FilterSection";
-import { Pill } from "@/components/ui/Pill";
+import { ConflictChips, TagChips } from "@/components/ui/TagPicker";
 import type { Concept } from "@/lib/fieldHelp";
+import {
+  LEVEL_LABELS,
+  SOURCE_KIND_LABELS,
+  SOURCE_KINDS,
+  SOURCE_LEVELS,
+  type SourceKind,
+  type SourceLevel,
+} from "@/lib/sources";
 
 /**
  * The event filter panel, shared by the map overlay, the search page, the Requests board and the
- * feed: one component owns the section list (the surface's lead sections, Status, Conflict, Capture
- * source, Source media, Location guess, the surface's date sections, Tags, Author, Approvals), so a vocabulary
+ * feed: one component owns the section list (the surface's lead sections, Status, Conflict, Source
+ * kind, Level, Media, Location guess, the surface's date sections, Tags, Author, Approvals), so a vocabulary
  * change lands on all four. Surfaces differ in their injected sections (`leadSections`,
  * `dateSections`) and in `sections`, the subset they offer (the search page's Collections group is
  * narrowed by `author` alone, and only the board offers Location guess).
@@ -40,7 +49,8 @@ import type { Concept } from "@/lib/fieldHelp";
 export interface EventFilterValues extends ApprovalFilters {
   statuses: string[];
   conflicts: string[];
-  captureSources: string[];
+  sourceKinds: string[];
+  levels: string[];
   tags: string[];
   mediaTypes: string[];
   /** `LOCATION_GUESS_OPTIONS` values; read through `hasCoordsFilter`. */
@@ -51,7 +61,8 @@ export interface EventFilterValues extends ApprovalFilters {
 export const EMPTY_EVENT_FILTERS: EventFilterValues = {
   statuses: [],
   conflicts: [],
-  captureSources: [],
+  sourceKinds: [],
+  levels: [],
   tags: [],
   mediaTypes: [],
   locationGuess: [],
@@ -66,8 +77,9 @@ export type EventFilterPatch = (patch: Partial<EventFilterValues>) => void;
 export type EventFilterSectionName =
   | "status"
   | "conflict"
-  | "capture_source"
-  | "source_media"
+  | "source_kind"
+  | "level"
+  | "media"
   | "location_guess"
   | "tags"
   | "author"
@@ -77,8 +89,9 @@ export type EventFilterSectionName =
 export const ALL_FILTER_SECTIONS: ReadonlyArray<EventFilterSectionName> = [
   "status",
   "conflict",
-  "capture_source",
-  "source_media",
+  "source_kind",
+  "level",
+  "media",
   "tags",
   "author",
   "approval",
@@ -103,17 +116,13 @@ export const eventWindowActive = (w: DateWindows) => !!(w.eventFrom || w.eventTo
 export const addedWindowActive = (w: DateWindows) => !!(w.addedFrom || w.addedTo);
 
 /** A surface-specific section (the date controls) rendered in the accordion at its canonical position. */
-export interface InjectedSection {
+interface InjectedSection {
   title: string;
   concept?: Concept;
   summary: string;
   active: boolean;
   children: ReactNode;
 }
-
-// The free-tag bucket is unbounded: show this many, the rest behind "Show all". Selected tags past
-// the cut always show.
-const TAGS_PREVIEW = 8;
 
 // Location-guess options: a request carrying a guessed point, or a blind one.
 const LOCATION_GUESS_OPTIONS: ReadonlyArray<[string, string]> = [
@@ -130,7 +139,17 @@ export function hasCoordsFilter(locationGuess: string[]): boolean | undefined {
   return locationGuess[0] === "guessed";
 }
 
-// Fixed media-presence options (Media.media_type values).
+// The source kind and level chips, in the generated vocabulary's order.
+const SOURCE_KIND_OPTIONS = SOURCE_KINDS.map((value) => ({
+  id: value,
+  name: value,
+  label: SOURCE_KIND_LABELS[value],
+}));
+const LEVEL_OPTIONS = SOURCE_LEVELS.map((value) => ({ id: value, name: value, label: LEVEL_LABELS[value] }));
+const sourceKindLabel = (value: string) => SOURCE_KIND_LABELS[value as SourceKind] ?? value;
+const levelLabel = (value: string) => LEVEL_LABELS[value as SourceLevel] ?? value;
+
+// Fixed media-presence options (Media.kind values).
 const MEDIA_TYPES: ReadonlyArray<[string, string]> = [
   ["image", "Image"],
   ["video", "Video"],
@@ -139,13 +158,18 @@ const MEDIA_TYPES: ReadonlyArray<[string, string]> = [
 /** The lifecycle statuses this panel offers (Event.status values), in the backend vocabulary's
  * order. Hand-kept mirror of `event_filters.STATUSES` (see AGENTS.md): every status but `closed`,
  * whose retracted rows carry their own surfaces and which the chip could only empty. A search
- * reaches requested rows (the profile's open-requests block links into them). Exported so the
- * search page can gate crafted-URL values to the same vocabulary. */
-export const STATUS_FILTER_OPTIONS: ReadonlyArray<[string, string]> = [
-  ["requested", "Requested"],
-  ["detected", "Detected"],
-  ["geolocated", "Geolocated"],
-];
+ * reaches requested rows (the profile's open-requests block links into them). */
+const FILTER_STATUSES = [
+  "requested",
+  "detected",
+  "geolocated",
+] as const;
+
+/** The status filter's options, each labelled like the status badge (`EVENT_STATUS_META`).
+ *  Exported so the search page can gate crafted-URL values to the same vocabulary. */
+export const STATUS_FILTER_OPTIONS: ReadonlyArray<[string, string]> = FILTER_STATUSES.map(
+  (status) => [status, EVENT_STATUS_META[status].label],
+);
 
 // Value to chip label, shared by the pill row and the section summary.
 const STATUS_FILTER_LABELS: Record<string, string> = Object.fromEntries(STATUS_FILTER_OPTIONS);
@@ -155,15 +179,15 @@ const capitalize = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
 const APPROVED_ONLY = "approved";
 
-/** The removable-pill entries for the common values; surfaces append their date-window entries.
- * The author is not a pill: its chip lives in the Author section. Surfaces count it on top of
- * these entries. */
+/** The removable-pill entries for the common values, one per value; surfaces append their
+ * date-window entries. */
 export function buildActiveFilterPills(
   values: EventFilterValues,
   onPatch: EventFilterPatch
 ): ActiveFilter[] {
   const drop = (key: keyof EventFilterValues, name: string) =>
     onPatch({ [key]: (values[key] as string[]).filter((n) => n !== name) });
+  const author = values.author.trim();
   return [
     ...values.statuses.map((n) => ({
       key: `status:${n}`,
@@ -175,16 +199,24 @@ export function buildActiveFilterPills(
       label: n,
       onRemove: () => drop("conflicts", n),
     })),
-    ...values.captureSources.map((n) => ({
-      key: `capture:${n}`,
-      label: n,
-      onRemove: () => drop("captureSources", n),
+    ...values.sourceKinds.map((n) => ({
+      key: `source_kind:${n}`,
+      label: sourceKindLabel(n),
+      onRemove: () => drop("sourceKinds", n),
+    })),
+    ...values.levels.map((n) => ({
+      key: `level:${n}`,
+      label: levelLabel(n),
+      onRemove: () => drop("levels", n),
     })),
     ...values.tags.map((n) => ({
       key: `tag:${n}`,
       label: n,
       onRemove: () => drop("tags", n),
     })),
+    ...(author
+      ? [{ key: "author", label: `By ${author}`, onRemove: () => onPatch({ author: "" }) }]
+      : []),
     ...values.mediaTypes.map((n) => ({
       key: `media:${n}`,
       label: capitalize(n),
@@ -239,8 +271,7 @@ export function buildDateWindowPills(
   ];
 }
 
-/** How many filters in the shared vocabulary narrow the view: one per pill, plus the author, which
- * counts though it has no pill, so a filtered surface never reads as unfiltered. */
+/** How many filters in the shared vocabulary narrow the view: one per pill. */
 export function countActiveFilters(
   values: EventFilterValues,
   windows: DateWindows
@@ -248,7 +279,8 @@ export function countActiveFilters(
   return (
     values.statuses.length +
     values.conflicts.length +
-    values.captureSources.length +
+    values.sourceKinds.length +
+    values.levels.length +
     values.tags.length +
     values.mediaTypes.length +
     values.locationGuess.length +
@@ -272,7 +304,7 @@ export function EventFilterSections({
   dateSections = [],
   sections = ALL_FILTER_SECTIONS,
 }: {
-  /** Live tag taxonomy driving the capture-source + free chip buckets. */
+  /** Live tag taxonomy the tag field searches. */
   tags: Tag[];
   /** Conflicts carried by >=1 live event (`/conflicts?used=true`). */
   conflicts: Conflict[];
@@ -287,7 +319,6 @@ export function EventFilterSections({
 }) {
   const offers = (name: EventFilterSectionName) => sections.includes(name);
   const approvedById = useId();
-  const [showAllTags, setShowAllTags] = useState(false);
   // The server's author filter is an exact match, so a typed fragment becomes a handle through
   // the typeahead; an ineligible draft is not committed, instead of 422ing.
   const commitAuthor = (name: string) => {
@@ -300,8 +331,9 @@ export function EventFilterSections({
   const isActive: Record<string, boolean> = {
     Status: values.statuses.length > 0,
     Conflict: values.conflicts.length > 0,
-    "Capture source": values.captureSources.length > 0,
-    "Source media": values.mediaTypes.length > 0,
+    "Source kind": values.sourceKinds.length > 0,
+    Level: values.levels.length > 0,
+    Media: values.mediaTypes.length > 0,
     "Location guess": values.locationGuess.length > 0,
     Tags: values.tags.length > 0,
     Author: !!values.author.trim(),
@@ -321,17 +353,7 @@ export function EventFilterSections({
     });
   };
 
-  // Alphabetical so the free-tag "top N" preview is stable across loads.
-  const byName = (a: Tag, b: Tag) => a.name.localeCompare(b.name);
-  const captureSourceTags = tags.filter((t) => t.category === "capture_source").sort(byName);
-  const freeTags = tags.filter((t) => t.category === "free").sort(byName);
-
-  const visibleFreeTags = showAllTags
-    ? freeTags
-    : [
-        ...freeTags.slice(0, TAGS_PREVIEW),
-        ...freeTags.slice(TAGS_PREVIEW).filter((t) => values.tags.includes(t.name)),
-      ];
+  const sortedTags = [...tags].sort((a: Tag, b: Tag) => a.name.localeCompare(b.name));
 
   const renderInjected = (section: InjectedSection) => (
     <FilterSection
@@ -348,7 +370,7 @@ export function EventFilterSections({
   );
 
   return (
-    <div className="bg-neutral-900 rounded-lg border border-neutral-700 px-3">
+    <div className={`${CARD_FRAME} px-3`}>
       {leadSections.map(renderInjected)}
 
       {offers("status") && (
@@ -381,39 +403,56 @@ export function EventFilterSections({
           open={!!openSections["Conflict"]}
           onToggle={() => toggleSection("Conflict")}
         >
-          <ChipBucket
-            options={conflicts}
+          <ConflictChips
+            filter
+            conflicts={conflicts}
             selected={values.conflicts}
-            onToggle={(n) => toggleIn("conflicts", n)}
+            setSelected={(next) => onPatch({ conflicts: next })}
           />
         </FilterSection>
       )}
 
-      {offers("capture_source") && captureSourceTags.length > 0 && (
+      {offers("source_kind") && (
         <FilterSection
-          title="Capture source"
-          concept="capture_source"
-          summary={chipSummary(values.captureSources)}
-          active={isActive["Capture source"]}
-          open={!!openSections["Capture source"]}
-          onToggle={() => toggleSection("Capture source")}
+          title="Source kind"
+          concept="source_kind"
+          summary={chipSummary(values.sourceKinds.map(sourceKindLabel))}
+          active={isActive["Source kind"]}
+          open={!!openSections["Source kind"]}
+          onToggle={() => toggleSection("Source kind")}
         >
           <ChipBucket
-            options={captureSourceTags}
-            selected={values.captureSources}
-            onToggle={(n) => toggleIn("captureSources", n)}
+            options={SOURCE_KIND_OPTIONS}
+            selected={values.sourceKinds}
+            onToggle={(n) => toggleIn("sourceKinds", n)}
           />
         </FilterSection>
       )}
 
-      {offers("source_media") && (
+      {offers("level") && (
         <FilterSection
-          title="Source media"
-          concept="source_media"
+          title="Level"
+          concept="source_level"
+          summary={chipSummary(values.levels.map(levelLabel))}
+          active={isActive.Level}
+          open={!!openSections["Level"]}
+          onToggle={() => toggleSection("Level")}
+        >
+          <ChipBucket
+            options={LEVEL_OPTIONS}
+            selected={values.levels}
+            onToggle={(n) => toggleIn("levels", n)}
+          />
+        </FilterSection>
+      )}
+
+      {offers("media") && (
+        <FilterSection
+          title="Media"
           summary={chipSummary(values.mediaTypes.map(capitalize))}
-          active={isActive["Source media"]}
-          open={!!openSections["Source media"]}
-          onToggle={() => toggleSection("Source media")}
+          active={isActive.Media}
+          open={!!openSections["Media"]}
+          onToggle={() => toggleSection("Media")}
         >
           <ChipBucket
             options={MEDIA_TYPES.map(([value, label]) => ({ id: value, name: value, label }))}
@@ -441,7 +480,7 @@ export function EventFilterSections({
 
       {dateSections.map(renderInjected)}
 
-      {offers("tags") && freeTags.length > 0 && (
+      {offers("tags") && tags.length > 0 && (
         <FilterSection
           title="Tags"
           summary={chipSummary(values.tags)}
@@ -449,19 +488,12 @@ export function EventFilterSections({
           open={!!openSections["Tags"]}
           onToggle={() => toggleSection("Tags")}
         >
-          <ChipBucket
-            options={visibleFreeTags}
+          <TagChips
+            filter
+            tags={sortedTags}
             selected={values.tags}
-            onToggle={(n) => toggleIn("tags", n)}
+            setSelected={(next) => onPatch({ tags: next })}
           />
-          {freeTags.length > TAGS_PREVIEW && (
-            <button
-              onClick={() => setShowAllTags((s) => !s)}
-              className={`mt-2 inline-flex items-center ${TAP_STEP} text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors`}
-            >
-              {showAllTags ? "Show less" : `Show all ${freeTags.length}`}
-            </button>
-          )}
         </FilterSection>
       )}
 
@@ -483,7 +515,6 @@ export function EventFilterSections({
             placeholder="Type a username…"
             aria-label="Author username"
             emptyText="No analyst matches"
-            className="sm:text-[11px]"
           />
         </FilterSection>
       )}
@@ -526,7 +557,6 @@ export function EventFilterSections({
               onClear={() => onPatch({ approvedBy: null })}
               placeholder="Type an analyst or organization…"
               emptyText="No analyst or organization matches"
-              className="sm:text-[11px]"
             />
           </div>
         </FilterSection>

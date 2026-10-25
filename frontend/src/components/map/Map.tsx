@@ -502,7 +502,7 @@ function PinPreviewCard({
               className="w-full"
             />
             <p className="text-[11px] text-neutral-500">
-              {entry.event_date && <>{formatDate(entry.event_date)} </>}
+              {entry.occurred_date && <>{formatDate(entry.occurred_date)} </>}
               <AuthorByline {...creditProps(entry)} size="xs" />
             </p>
           </>

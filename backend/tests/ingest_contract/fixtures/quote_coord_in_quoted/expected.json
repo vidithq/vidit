@@ -2,9 +2,9 @@
   "description": "The OP carries no coordinate; it lives in the quoted tweet's text. A coordinate counts only in the analyst's own text, so nothing is detected: a coordinate that lives only in a third party's post is that party's geolocation.",
   "coords": [],
   "source_url": "https://x.com/raw_feed/status/8200000000000000002",
-  "secondary_source_urls": [],
+  "secondary_sources": [],
   "source_posted_at": "2026-03-01T20:05:00+00:00",
-  "event_date": "2026-03-02",
+  "occurred_date": "2026-03-02",
   "title": "Geolocated the clip below, see the pinned spot",
   "source_media": [
     [

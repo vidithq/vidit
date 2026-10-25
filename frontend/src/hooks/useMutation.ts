@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 
 import { errorMessage } from "@/lib/api";
+import { isSessionRejected } from "@/lib/session";
 
 interface MutationOptions<R, A extends unknown[]> {
   onSuccess?: (result: R, ...args: A) => void | Promise<void>;
@@ -12,7 +13,7 @@ interface MutationOptions<R, A extends unknown[]> {
 
 /** The loading/error/try/catch/finally wrapper for mutation handlers. `run` resolves to the
  * result, or `undefined` if `fn` threw. `setError` surfaces a client-side validation message;
- * `reset` clears it. */
+ * `reset` clears it. A 401 that ended the session leaves `error` null: the session notice says it. */
 export function useMutation<R, A extends unknown[]>(
   fn: (...args: A) => Promise<R>,
   options: MutationOptions<R, A> = {}
@@ -30,7 +31,8 @@ export function useMutation<R, A extends unknown[]>(
       await options.onSuccess?.(result, ...args);
       return result;
     } catch (err) {
-      setError(options.onError?.(err) ?? errorMessage(err, options.fallback));
+      const message = options.onError?.(err) ?? errorMessage(err, options.fallback);
+      setError(isSessionRejected(err) ? null : message);
       return undefined;
     } finally {
       setLoading(false);

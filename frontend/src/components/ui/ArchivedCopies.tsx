@@ -9,12 +9,19 @@ import { Input } from "@/components/ui/Input";
 import { OutboundLink } from "@/components/ui/OutboundLink";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { WARNING_CALLOUT } from "@/components/ui/styles";
-import { SNAPSHOT_HOSTS, snapshotArchivesAnotherLink, WAYBACK_HOST } from "@/lib/snapshots";
+import {
+  GHOSTARCHIVE_HOST,
+  SNAPSHOT_HOSTS,
+  snapshotArchivesAnotherLink,
+  snapshotProvider,
+  WAYBACK_HOST,
+} from "@/lib/snapshots";
+import { SOURCE_URL_MAX_LEN, sourceName } from "@/lib/sources";
 
 interface ArchivedCopiesProps {
   copy: ArchivedLink | null;
-  /** What the copy is of, folded into each accessible name ("the source",
-   *  "mirror 2, t.me"). Build a mirror's value with `mirrorDescription`. */
+  /** What the copy is of, folded into each accessible name ("source 1, t.me",
+   *  "source 2, link 3, x.com"). Build it with `linkDescription`. */
   describes: string;
 }
 
@@ -51,7 +58,7 @@ function savePageUrl(url: string): string {
 }
 
 /** The three services behind those hosts, short enough for the placeholder. */
-const SNAPSHOT_SERVICES = [WAYBACK_HOST, "archive.today", "ghostarchive.org"];
+const SNAPSHOT_SERVICES = [WAYBACK_HOST, "archive.today", GHOSTARCHIVE_HOST];
 
 function hostList(hosts: readonly string[]): string {
   const rest = hosts.slice(0, -1).join(", ");
@@ -66,13 +73,16 @@ const SNAPSHOT_PLACEHOLDER = `Paste a snapshot link (${SNAPSHOT_SERVICES.join(",
 export const SNAPSHOT_HINT = `A snapshot link is an https link on ${hostList(SNAPSHOT_HOSTS)}.`;
 
 /**
- * Whether a pasted value can be a snapshot: `https` on an archive host.
- * The first two checks of `source_archive.validate_snapshot`; the per-provider
- * path shapes stay server side, so true can still be a 400.
+ * Whether a pasted value can be a snapshot: within `SOURCE_URL_MAX_LEN` UTF-8
+ * bytes, `https`, on an archive host. The first three checks of
+ * `source_archive.validate_snapshot`; the per-provider path shapes stay server
+ * side, so true can still be a 400.
  */
 export function isSnapshotUrl(value: string): boolean {
+  const trimmed = value.trim();
+  if (new TextEncoder().encode(trimmed).length > SOURCE_URL_MAX_LEN) return false;
   try {
-    const parsed = new URL(value.trim());
+    const parsed = new URL(trimmed);
     return (
       parsed.protocol === "https:" && SNAPSHOT_HOSTS.includes(parsed.hostname.toLowerCase())
     );
@@ -91,7 +101,7 @@ function archivable(url: string): string | null {
  * The archived copy beside an outbound source link: a ghost icon button, accent
  * where a copy exists and opens it, grey and inert where none does.
  *
- * Read only. Recording a copy is an edit (`ArchiveAdornment`,
+ * Read only. Recording a copy is an edit (`ArchiveBox`,
  * `ArchiveSnapshotField`) that files a version.
  *
  * No label or `?` of its own: the accessible name carries the state, and the
@@ -113,10 +123,14 @@ export function ArchivedCopies({ copy, describes }: ArchivedCopiesProps) {
   );
 }
 
-function ArchivedCopyLink({ copy, describes }: { copy: ArchivedLink; describes: string }) {
+function copyLabel(provider: ArchivedLink["provider"], describes: string): string {
   // An unknown provider is still a stored copy: name it generically.
-  const provider: string | undefined = PROVIDER_LABELS[copy.provider];
-  const label = provider ? `${provider} copy of ${describes}` : `Archived copy of ${describes}`;
+  const name: string | undefined = PROVIDER_LABELS[provider];
+  return name ? `${name} copy of ${describes}` : `Archived copy of ${describes}`;
+}
+
+function ArchivedCopyLink({ copy, describes }: { copy: ArchivedLink; describes: string }) {
+  const label = copyLabel(copy.provider, describes);
   return (
     <Tooltip label={label}>
       <OutboundLink
@@ -139,48 +153,81 @@ function MissingCopyMark({ describes }: { describes: string }) {
   );
 }
 
+// On the wide list (`@xl` of the `LinkListInput` container) one width in every state, so a copy
+// appearing mid typing never narrows the row's other fields; a long service name truncates, and
+// its tooltip carries it whole. A narrow list's card wraps its second line instead.
+const ARCHIVE_BOX = "flex min-w-0 items-center gap-0.5 @xl:w-36";
+
 /**
- * The archive affordance inside a form's URL field. Never grey on a form.
+ * One link's archive box on a form, in the link's row. Never grey on a form.
  *
- * No copy: the `ArchiveRestore` mark opens the paste line. With a copy: the
- * `Archive` mark opens it, plus `ArchiveRestore` to replace a wrong paste.
+ * No copy: the **Archive** icon button (tooltip *Archive*) opens the paste line under the row. A copy (the stored
+ * one, or a pasted snapshot on an allowed host): the copy itself, named for its
+ * service, plus the `ArchiveRestore` mark, which opens the paste line to replace
+ * a wrong paste.
  *
  * Nothing is written here: the pasted value travels with the form and lands in
  * the same write as the event.
  */
-export function ArchiveAdornment({
+export function ArchiveBox({
   describes,
-  copy,
+  snapshot,
   expanded,
   onToggle,
 }: {
   describes: string;
-  copy: ArchivedLink | null;
+  /** What the form posts as the link's `snapshot_url`. */
+  snapshot: string;
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const label = copy
-    ? `Replace the archived copy of ${describes}`
-    : `Archive ${describes}`;
+  const pasted = snapshot.trim();
+  const provider = isSnapshotUrl(pasted) ? snapshotProvider(pasted) : null;
+  if (!provider) {
+    return (
+      <span className={ARCHIVE_BOX}>
+        <Button
+          icon
+          variant="ghost"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          aria-label={`Archive ${describes}`}
+          title="Archive"
+        >
+          <ArchiveRestore size={14} />
+        </Button>
+      </span>
+    );
+  }
+  const replace = `Replace the archived copy of ${describes}`;
   return (
-    <>
-      {copy && <ArchivedCopyLink copy={copy} describes={describes} />}
+    <span className={ARCHIVE_BOX}>
+      <Tooltip label={PROVIDER_LABELS[provider]}>
+        <OutboundLink
+          href={pasted}
+          aria-label={copyLabel(provider, describes)}
+          className={buttonClasses("ghost", { className: "min-w-0" })}
+        >
+          <ArchiveMark size={14} className="shrink-0" />
+          <span className="truncate">{PROVIDER_LABELS[provider]}</span>
+        </OutboundLink>
+      </Tooltip>
       <Button
         icon
         variant="ghost"
         onClick={onToggle}
         aria-expanded={expanded}
-        aria-label={label}
-        title={label}
+        aria-label={replace}
+        title={replace}
       >
         <ArchiveRestore size={14} />
       </Button>
-    </>
+    </span>
   );
 }
 
 /**
- * The paste line the mark opens: one field plus the prefilled provider page.
+ * The paste line `ArchiveBox` opens: one field plus the prefilled provider page.
  *
  * No label or hint: the placeholder carries the contract. Accepted hosts read
  * off `SNAPSHOT_HOSTS`.
@@ -216,6 +263,7 @@ export function ArchiveSnapshotField({
         aria-label={`Archived copy of ${describes}`}
         type="url"
         variant="compact"
+        maxLength={SOURCE_URL_MAX_LEN}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={SNAPSHOT_PLACEHOLDER}
@@ -265,18 +313,19 @@ function SavePageDoor({
   );
 }
 
-export const PRIMARY_SOURCE_DESCRIPTION = "the source";
-
-/** The post a machine detection came from, not the footage source. */
-export const DETECTED_FROM_DESCRIPTION = "the post it was detected from";
-
 /**
- * One mirror's `describes` value: its host, prefixed by position when the list
- * holds more than one, since two mirrors can share a host. A URL with no
+ * One link's `describes` value: its source's position, the link's position when the source
+ * holds more than one, and its host, since two links can share a host. A URL with no
  * parseable host falls back to a literal.
  */
-export function mirrorDescription(hostname: string, index: number, total: number): string {
-  const host = hostname.trim();
-  if (total < 2) return host || "this mirror";
-  return host ? `mirror ${index + 1}, ${host}` : `mirror ${index + 1}`;
+export function linkDescription(
+  sourceIndex: number,
+  hostname: string,
+  linkIndex: number,
+  linkCount: number
+): string {
+  const parts = [sourceName(sourceIndex).toLowerCase()];
+  if (linkCount > 1) parts.push(`link ${linkIndex + 1}`);
+  parts.push(hostname.trim() || "this link");
+  return parts.join(", ");
 }

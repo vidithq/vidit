@@ -50,7 +50,7 @@ export function OrganizationInvites({ slug }: { slug: string }) {
       refresh();
     },
   });
-  const cancel = useMutation((id: string) => cancelOrganizationInvite(slug, id), {
+  const cancel = useMutation((username: string) => cancelOrganizationInvite(slug, username), {
     fallback: "Could not withdraw the invite",
     onSuccess: refresh,
   });
@@ -108,7 +108,7 @@ export function OrganizationInvites({ slug }: { slug: string }) {
       ) : (
         <ul className="space-y-2">
           {pending.map((invite) => (
-            <li key={invite.id}>
+            <li key={invite.user.id}>
               <LinkRow
                 variant="arrow"
                 icon={User}
@@ -123,7 +123,7 @@ export function OrganizationInvites({ slug }: { slug: string }) {
                 value={invite.user.username}
                 meta={
                   <span>
-                    Invited {formatDate(invite.created_at)}
+                    Invited {formatDate(invite.invited_at)}
                     {invite.invited_by ? ` by ${invite.invited_by.username}` : ""}
                   </span>
                 }
@@ -132,7 +132,7 @@ export function OrganizationInvites({ slug }: { slug: string }) {
                 action={
                   <Button
                     variant="ghost"
-                    onClick={() => void cancel.run(invite.id)}
+                    onClick={() => void cancel.run(invite.user.username)}
                     disabled={cancel.loading}
                   >
                     Withdraw

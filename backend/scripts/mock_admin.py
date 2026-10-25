@@ -1,6 +1,5 @@
 import sys
 import uuid
-from datetime import UTC, datetime
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent))
@@ -22,7 +21,6 @@ def main():
             print(f"User {email} already exists. Promoting to admin...")
             user.is_admin = True
             user.is_active = True
-            user.email_verified_at = user.email_verified_at or datetime.now(UTC)
         else:
             print(f"Creating mock admin user: {email} / {password}")
             user = User(
@@ -32,7 +30,6 @@ def main():
                 password_hash=hash_password(password),
                 is_admin=True,
                 is_active=True,
-                email_verified_at=datetime.now(UTC),
             )
             db.add(user)
 

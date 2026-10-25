@@ -125,7 +125,7 @@ export function EventSitesBlock({ event }: { event: EventDetail }) {
       {dialog && (
         <LinkDialog
           title="Link to a site"
-          subtitle={`${event.title}${event.event_date ? ` · ${formatDate(event.event_date)}` : ""}`}
+          subtitle={`${event.title}${event.occurred_date ? ` · ${formatDate(event.occurred_date)}` : ""}`}
           suggestedLabel={`Sites within ${SITE_MARGIN_KM} km of this event`}
           emptySuggestions={`No site within ${SITE_MARGIN_KM} km. Search one by name.`}
           suggestions={suggestions.data?.map(suggestionCandidate) ?? (suggestions.error ? [] : null)}

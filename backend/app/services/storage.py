@@ -539,7 +539,7 @@ async def _upload_with_optional_strip(
     * **Image**: buffered (bounded by ``max_image_size``) off the event loop,
       then :func:`upload_bytes_with_optional_strip`. ``produce_derivatives=False``
       for proof images, which render from the raw URL (derivatives would be
-      unfetched objects locked 365 days under Object Lock).
+      unfetched objects locked for the bucket's Object Lock retention).
     * **Video**: streamed via ``upload`` with no strip (it needs ffmpeg and
       buffering a 95 MiB MP4 would OOM the worker) and no derivatives.
     """
@@ -557,10 +557,13 @@ async def _upload_with_optional_strip(
     return await get_storage().upload(file, key)
 
 
-async def upload_file(file: UploadFile, geolocation_id: UUID) -> UploadResult:
+async def upload_source_file(file: UploadFile) -> UploadResult:
+    """A source file staged ahead of the event write (``services/uploads.stage_upload``).
+
+    The key names no event: one stored object may serve several sources (a copy).
+    """
     ext = safe_storage_extension(file.content_type)
-    key = f"uploads/{geolocation_id}/{uuid4()}{ext}"
-    return await _upload_with_optional_strip(file, key)
+    return await _upload_with_optional_strip(file, f"uploads/{uuid4()}{ext}")
 
 
 def detected_media_key(geolocation_id: UUID, content_type: str) -> str:
@@ -576,7 +579,7 @@ async def upload_proof_image(file: UploadFile, user_id: UUID) -> UploadResult:
 
     Always an image (intake rejects the rest). Skips derivatives: the image
     renders from the raw URL, so hero/thumb would be unfetched objects locked
-    365 days under Object Lock.
+    for the bucket's Object Lock retention.
     """
     ext = safe_storage_extension(file.content_type)
     key = f"proof/{user_id}/{uuid4()}{ext}"
@@ -612,7 +615,7 @@ def render_avatar_jpeg(data: bytes, content_type: str) -> bytes:
 
     Metadata stripped, longer edge fit to ``THUMBNAIL_MAX_DIM``, re-encoded as
     JPEG. One object only: avatars render at 44 px or smaller, so siblings
-    would be unfetched objects locked 365 days under Object Lock.
+    would be unfetched objects locked for the bucket's Object Lock retention.
 
     ``content_type`` must be in :data:`ALLOWED_IMAGE_TYPES` (the caller
     checks; anything else passes through the transforms unchanged).

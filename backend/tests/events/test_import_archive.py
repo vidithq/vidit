@@ -80,11 +80,11 @@ def _upload(author, presign: dict, zip_bytes: bytes):
     )
 
 
-def _enqueue(author, upload_key: str, post_estimate: int | None = 3):
+def _enqueue(author, upload_key: str, estimated_post_count: int | None = 3):
     return client.post(
         "/api/v1/events/import-archive",
         headers=login_as(client, author),
-        json={"upload_key": upload_key, "post_estimate": post_estimate},
+        json={"upload_key": upload_key, "estimated_post_count": estimated_post_count},
     )
 
 
@@ -153,7 +153,7 @@ def test_enqueue_returns_queued_job_for_staged_upload(db, author):
     assert accepted.status_code == 202, accepted.text
     body = accepted.json()
     assert body["status"] == "queued"
-    assert body["post_estimate"] == 3  # the client-supplied strip estimate
+    assert body["estimated_post_count"] == 3  # the client-supplied strip estimate
     assert _counts(body) == {"created": 0, "updated": 0, "skipped": 0, "failed": 0}
 
     job = db.get(ArchiveImportJob, uuid.UUID(body["id"]))
@@ -185,7 +185,7 @@ def test_enqueue_rejects_reused_upload_key(db, author):
 def test_enqueue_requires_auth():
     resp = client.post(
         "/api/v1/events/import-archive",
-        json={"upload_key": "archive-imports/x/y.zip", "post_estimate": 1},
+        json={"upload_key": "archive-imports/x/y.zip", "estimated_post_count": 1},
     )
     assert resp.status_code == 401
 
@@ -235,7 +235,7 @@ def test_import_creates_detected_rows_owned_by_caller(db, author, sent_emails):
     rows = db.query(Event).filter(Event.owner_id == author.id).all()
     assert len(rows) == 1
     assert rows[0].status == "detected"
-    assert rows[0].detected_from_url  # provenance link set
+    assert rows[0].detection.from_url  # provenance link set
 
     assert [e.subject for e in sent_emails] == ["Your X archive import is done"]
     assert author.email == sent_emails[0].to
@@ -361,16 +361,16 @@ def test_worker_reclaims_stale_running_job_and_caps_attempts(db, author, sent_em
     stale = datetime.now(UTC) - archive_jobs.STALE_RUNNING_AFTER * 2
     job.status = "running"
     job.started_at = stale
-    job.attempts = 1
+    job.attempt_count = 1
     db.commit()
 
     claimed = archive_jobs.claim_next(db)
     assert claimed is not None and claimed.id == job.id
-    assert claimed.attempts == 2
+    assert claimed.attempt_count == 2
 
     claimed.status = "running"
     claimed.started_at = stale
-    claimed.attempts = archive_jobs.MAX_ATTEMPTS
+    claimed.attempt_count = archive_jobs.MAX_ATTEMPTS
     db.commit()
     assert archive_jobs.claim_next(db) is None
     db.refresh(job)
@@ -412,13 +412,13 @@ def test_worker_heartbeat_restamps_started_at(db, author, sent_emails, monkeypat
 def test_job_carries_estimate_and_live_progress(db, author, sent_emails):
     accepted = _post(author, _zip_bytes({"tweets.js": _TWEETS}))
     body = accepted.json()
-    assert body["post_estimate"] >= 1
-    assert body["progress_done"] == 0 and body["progress_total"] is None
+    assert body["estimated_post_count"] >= 1
+    assert body["processed_detection_count"] == 0 and body["detection_count"] is None
 
     assert _drain(db) == 1
     polled = client.get(
         f"/api/v1/events/import-archive/{body['id']}", headers=login_as(client, author)
     ).json()
     assert polled["status"] == "done"
-    assert polled["progress_done"] == 1
-    assert polled["progress_total"] == 1
+    assert polled["processed_detection_count"] == 1
+    assert polled["detection_count"] == 1

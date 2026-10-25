@@ -1,8 +1,8 @@
 """End-to-end tests for the social-graph endpoints.
 
 Covers follow and unfollow (idempotent, 404 on an unknown or soft-deleted
-target, auth required), ``GET /feed`` (published geolocations and open
-requests, scope, filters, credit, exclusions, cursor walk), the profile follow counters
+target, auth required), ``GET /feed`` (published geolocations, open
+requests and detections, scope, filters, credit, exclusions, cursor walk), the profile follow counters
 and ``is_following``, and the DB-level ``ck_follows_no_self_follow``.
 """
 
@@ -30,11 +30,13 @@ from app.models.event import (
 )
 from app.models.follow import Follow
 from app.models.media import Media
+from app.models.source import Source, SourceLink
 from app.models.tag import Tag
 from app.models.user import User
 from app.services import social as social_service
 from app.services.auth import hash_password
 from app.services.pagination import MAX_PAGE_SIZE, encode_cursor
+from tests._fixtures import fake_sha256
 from tests.conftest import login_as
 
 client = TestClient(app)
@@ -64,10 +66,20 @@ def _make_geo(db, *, author: User, title: str = "Strike", event: date | None = N
     geo = Event(
         owner_id=author.id,
         title=title,
-        event_coords=from_shape(Point(37.802, 48.012), srid=4326),
-        source_url="https://example.com/proof",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        event_date=event or date.today(),
+        coords=from_shape(Point(37.802, 48.012), srid=4326),
+        sources=[
+            Source(
+                level="direct",
+                kind="smartphone",
+                links=[
+                    SourceLink(
+                        url="https://example.com/proof",
+                        posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+                    )
+                ],
+            )
+        ],
+        occurred_date=event or date.today(),
         geolocated_at=datetime.now(UTC),
     )
     db.add(geo)
@@ -263,7 +275,11 @@ def _make_request(db, *, requester: User, title: str = "Help", at: datetime | No
         owner_id=requester.id,
         requested_by_id=requester.id,
         title=title,
-        source_url="https://example.com/ask",
+        sources=[
+            Source(
+                level="direct", kind="unknown", links=[SourceLink(url="https://example.com/ask")]
+            )
+        ],
         status=STATUS_REQUESTED,
         requested_at=at or datetime.now(UTC),
     )
@@ -273,14 +289,31 @@ def _make_request(db, *, requester: User, title: str = "Help", at: datetime | No
     return request
 
 
+def _make_detection(
+    db, *, owner: User, title: str = "Detection", at: datetime | None = None
+) -> Event:
+    detection = Event(
+        owner_id=owner.id,
+        title=title,
+        coords=from_shape(Point(37.81, 48.02), srid=4326),
+        status=STATUS_DETECTED,
+        detected_at=at or datetime.now(UTC),
+    )
+    db.add(detection)
+    db.commit()
+    db.refresh(detection)
+    return detection
+
+
 def _fulfil(event: Event, *, by: User, at: datetime | None = None) -> None:
     # Read before the writes: refreshing an expired ``by`` autoflushes, and a half-written
     # row trips ``ck_events_coords_status``.
     owner_id = by.id
-    event.event_coords = from_shape(Point(37.8, 48.0), srid=4326)
+    event.coords = from_shape(Point(37.8, 48.0), srid=4326)
     event.geolocated_at = at or datetime.now(UTC)
     event.owner_id = owner_id
     event.status = STATUS_GEOLOCATED
+    event.version_no = 1
 
 
 def _walk(headers: dict, url: str) -> list[dict]:
@@ -335,10 +368,10 @@ def test_feed_following_carries_geolocations_and_requests_credited(db, cleanup):
     stranger_ask = _make_request(db, requester=stranger, title="Stranger ask")
     db.add(
         Media(
-            event_id=geo.id,
-            role="source",
+            sha256=fake_sha256(),
+            source_id=geo.sources[0].id,
             storage_url=f"http://localhost:8000/local-storage/uploads/{geo.id}/thumb.jpg",
-            media_type="image",
+            kind="image",
         )
     )
     db.add(Follow(follower_id=viewer.id, followed_id=analyst.id))
@@ -355,12 +388,12 @@ def test_feed_following_carries_geolocations_and_requests_credited(db, cleanup):
     assert by_title["Ask"]["status"] == STATUS_REQUESTED
     assert by_title["Ask"]["owner"]["username"] == analyst.username
     assert by_title["Ask"]["feed_at"].startswith("2026-05-20T10:00:00")
-    assert by_title["Ask"]["event_coords"] is None
+    assert by_title["Ask"]["coords"] is None
 
     assert by_title["Geo"]["status"] == STATUS_GEOLOCATED
     assert by_title["Geo"]["owner"]["username"] == analyst.username
     assert by_title["Geo"]["feed_at"].startswith("2026-05-20T09:00:00")
-    assert isinstance(by_title["Geo"]["event_coords"]["lat"], (int, float))
+    assert isinstance(by_title["Geo"]["coords"]["lat"], (int, float))
     assert by_title["Geo"]["media"]["storage_url"].endswith("thumb.jpg")
 
     assert by_title["Answered by analyst"]["owner"]["username"] == analyst.username
@@ -393,8 +426,8 @@ def test_feed_all_scope_carries_rows_of_analysts_not_followed(db, cleanup):
 
 
 def test_feed_excludes_unpublished_closed_deleted_and_hidden_rows(db, cleanup):
-    """Each kind keeps its own predicate: a detection is unvouched, a retraction and a
-    withdrawn request are closed, and a soft-deleted or withheld row is out of every read."""
+    """Each kind keeps its own predicate: a retraction, a withdrawn request and a rejected
+    detection are closed, and a soft-deleted or withheld row is out of every read."""
     record_user, record_geo = cleanup
     viewer = _make_user(db, suffix="viewer")
     author = _make_user(db, suffix="author")
@@ -403,8 +436,16 @@ def test_feed_excludes_unpublished_closed_deleted_and_hidden_rows(db, cleanup):
 
     published = _make_geo(db, author=author, title="Published")
     ask = _make_request(db, requester=author, title="Open ask")
-    detection = _make_geo(db, author=author, title="Detection")
-    detection.status = STATUS_DETECTED
+    detection = _make_detection(db, owner=author, title="Detection")
+    rejected = _make_detection(db, owner=author, title="Rejected detection")
+    rejected.status = STATUS_CLOSED
+    rejected.before_closed_status = STATUS_DETECTED
+    rejected.closed_at = datetime.now(UTC)
+    rejected.close_reason = "Not the place."
+    deleted_detection = _make_detection(db, owner=author, title="Deleted detection")
+    deleted_detection.deleted_at = datetime.now(UTC)
+    hidden_detection = _make_detection(db, owner=author, title="Hidden detection")
+    hidden_detection.hidden_at = datetime.now(UTC)
     retracted = _make_geo(db, author=author, title="Retracted")
     retracted.status = STATUS_CLOSED
     retracted.before_closed_status = STATUS_GEOLOCATED
@@ -427,6 +468,9 @@ def test_feed_excludes_unpublished_closed_deleted_and_hidden_rows(db, cleanup):
         published,
         ask,
         detection,
+        rejected,
+        deleted_detection,
+        hidden_detection,
         retracted,
         withdrawn,
         deleted_geo,
@@ -442,25 +486,27 @@ def test_feed_excludes_unpublished_closed_deleted_and_hidden_rows(db, cleanup):
             row.geolocated_at = stamp
         if row.requested_at is not None:
             row.requested_at = stamp
+        if row.detected_at is not None:
+            row.detected_at = stamp
         record_geo(row)
     db.add(Follow(follower_id=viewer.id, followed_id=author.id))
     db.commit()
 
     headers = login_as(client, viewer)
     following = client.get("/api/v1/feed", headers=headers).json()
-    assert {item["title"] for item in following} == {"Published", "Open ask"}
+    assert {item["title"] for item in following} == {"Published", "Open ask", "Detection"}
 
     above_band = encode_cursor(datetime(2998, 1, 1, 0, 1, tzinfo=UTC), uuid.UUID(int=2**128 - 1))
     page = client.get(
         f"/api/v1/feed?scope=all&limit={len(rows)}&cursor={above_band}", headers=headers
     ).json()
     band = {item["title"] for item in page if item["feed_at"].startswith("2998-")}
-    assert band == {"Published", "Open ask"}
+    assert band == {"Published", "Open ask", "Detection"}
 
 
 def test_feed_cursor_walks_mixed_kinds_without_gaps_or_repeats(db, cleanup):
-    """Geolocations and requests interleave on one key, ties broken by id, so a walk
-    two rows at a time serves every row once, in order."""
+    """Geolocations, requests and detections interleave on one key, ties broken by id, so a
+    walk two rows at a time serves every row once, in order."""
     record_user, record_geo = cleanup
     viewer = _make_user(db, suffix="viewer")
     author = _make_user(db, suffix="author")
@@ -474,11 +520,14 @@ def test_feed_cursor_walks_mixed_kinds_without_gaps_or_repeats(db, cleanup):
         rows.append(geo)
         at = datetime(2026, 5, 20, 10 + i, 30, tzinfo=UTC)
         rows.append(_make_request(db, requester=author, title=f"R{i}", at=at))
+        at = datetime(2026, 5, 20, 10 + i, 15, tzinfo=UTC)
+        rows.append(_make_detection(db, owner=author, title=f"D{i}", at=at))
     tie = datetime(2026, 5, 20, 12, 0, tzinfo=UTC)
     tied_geo = _make_geo(db, author=author, title="Tied geo")
     tied_geo.geolocated_at = tie
     rows.append(tied_geo)
     rows.append(_make_request(db, requester=author, title="Tied ask", at=tie))
+    rows.append(_make_detection(db, owner=author, title="Tied detection", at=tie))
     db.add(Follow(follower_id=viewer.id, followed_id=author.id))
     db.commit()
     for row in rows:
@@ -490,7 +539,54 @@ def test_feed_cursor_walks_mixed_kinds_without_gaps_or_repeats(db, cleanup):
     assert set(ids) == {str(row.id) for row in rows}
     keys = [(item["feed_at"], item["id"]) for item in walked]
     assert keys == sorted(keys, reverse=True)
-    assert {item["status"] for item in walked} == {STATUS_GEOLOCATED, STATUS_REQUESTED}
+    assert {item["status"] for item in walked} == {
+        STATUS_GEOLOCATED,
+        STATUS_REQUESTED,
+        STATUS_DETECTED,
+    }
+
+
+def test_feed_carries_detections_by_default_and_kind_narrows_them(db, cleanup):
+    """A detection is in the feed unless ``kind`` leaves it out. ``following`` keeps the
+    detections a followed analyst owns, ``all`` every live one, each keyed on ``detected_at``."""
+    record_user, record_geo = cleanup
+    viewer = _make_user(db, suffix="viewer")
+    analyst = _make_user(db, suffix="analyst")
+    stranger = _make_user(db, suffix="stranger")
+    for user in (viewer, analyst, stranger):
+        record_user(user)
+
+    geo = _make_geo(db, author=analyst, title="Geo")
+    ask = _make_request(db, requester=analyst, title="Ask")
+    detected_at = datetime(2997, 1, 1, 0, 0, 1, tzinfo=UTC)
+    detection = _make_detection(db, owner=analyst, title="Detection", at=detected_at)
+    stranger_detection = _make_detection(
+        db, owner=stranger, title="Stranger detection", at=datetime(2997, 1, 1, 0, 0, 2, tzinfo=UTC)
+    )
+    db.add(Follow(follower_id=viewer.id, followed_id=analyst.id))
+    db.commit()
+    for row in (geo, ask, detection, stranger_detection):
+        record_geo(row)
+    headers = login_as(client, viewer)
+
+    def titles(query: str) -> set[str]:
+        return {item["title"] for item in _walk(headers, f"/api/v1/feed?limit=2&{query}")}
+
+    assert titles("") == {"Geo", "Ask", "Detection"}
+    assert titles("kind=detected") == {"Detection"}
+    assert titles("kind=geolocation&kind=request") == {"Geo", "Ask"}
+    assert titles("kind=request&kind=detected") == {"Ask", "Detection"}
+
+    first = client.get("/api/v1/feed?kind=detected", headers=headers).json()
+    assert first[0]["status"] == STATUS_DETECTED
+    assert first[0]["owner"]["username"] == analyst.username
+    assert first[0]["feed_at"].startswith("2997-01-01T00:00:01")
+
+    above_band = encode_cursor(datetime(2997, 1, 1, 0, 1, tzinfo=UTC), uuid.UUID(int=2**128 - 1))
+    page = client.get(
+        f"/api/v1/feed?scope=all&kind=detected&limit=2&cursor={above_band}", headers=headers
+    ).json()
+    assert [item["title"] for item in page] == ["Stranger detection", "Detection"]
 
 
 @pytest.mark.parametrize("scope", ["following", "all"])
@@ -547,7 +643,7 @@ def test_feed_caps_limit_and_rejects_garbage(db, cleanup):
 
 @pytest.fixture
 def conflict(db):
-    row = Conflict(name=f"conflict-{uuid.uuid4().hex[:8]}", ongoing=True, source="manual")
+    row = Conflict(name=f"conflict-{uuid.uuid4().hex[:8]}", is_ongoing=True, origin="manual")
     db.add(row)
     db.commit()
     yield row
@@ -558,8 +654,8 @@ def conflict(db):
 @pytest.fixture
 def tags(db):
     rows = [
-        Tag(name=f"capture-{uuid.uuid4().hex[:8]}", category="capture_source"),
-        Tag(name=f"tag-{uuid.uuid4().hex[:8]}", category="free"),
+        Tag(name=f"source-tag-{uuid.uuid4().hex[:8]}"),
+        Tag(name=f"tag-{uuid.uuid4().hex[:8]}"),
     ]
     db.add_all(rows)
     db.commit()
@@ -569,11 +665,11 @@ def tags(db):
     db.commit()
 
 
-def test_feed_filters_by_kind_conflict_capture_source_and_tag(db, conflict, tags, cleanup):
+def test_feed_filters_by_kind_conflict_source_kind_level_and_tag(db, conflict, tags, cleanup):
     """``kind`` keeps one kind of row; the taxonomy filters match as on ``GET /events``, in both
-    scopes, and the next-page link carries them."""
+    scopes, and the next-page link carries them. ``tag`` matches a tag on a source too."""
     record_user, record_geo = cleanup
-    capture, free = tags
+    source_tag, free = tags
     viewer = _make_user(db, suffix="viewer")
     analyst = _make_user(db, suffix="analyst")
     record_user(viewer)
@@ -581,11 +677,14 @@ def test_feed_filters_by_kind_conflict_capture_source_and_tag(db, conflict, tags
 
     tagged_geo = _make_geo(db, author=analyst, title="Tagged geo")
     tagged_geo.conflicts = [conflict]
-    tagged_geo.tags = [capture, free]
+    tagged_geo.tags = [free]
+    tagged_geo.sources[0].kind = "drone"
+    tagged_geo.sources[0].tags = [source_tag]
     plain_geo = _make_geo(db, author=analyst, title="Plain geo")
     tagged_ask = _make_request(db, requester=analyst, title="Tagged ask")
     tagged_ask.conflicts = [conflict]
     tagged_ask.tags = [free]
+    tagged_ask.sources[0].level = "indirect"
     plain_ask = _make_request(db, requester=analyst, title="Plain ask")
     db.add(Follow(follower_id=viewer.id, followed_id=analyst.id))
     db.commit()
@@ -605,9 +704,10 @@ def test_feed_filters_by_kind_conflict_capture_source_and_tag(db, conflict, tags
         "Plain ask",
     }
     assert titles(f"conflict={conflict.name}") == {"Tagged geo", "Tagged ask"}
-    assert titles(f"capture_source={capture.name}") == {"Tagged geo"}
-    # A capture-source filter names a capture-source tag: a free tag of the same list misses.
-    assert titles(f"capture_source={free.name}") == set()
+    assert titles("source_kind=drone") == {"Tagged geo"}
+    assert titles("source_kind=drone&source_kind=smartphone") == {"Tagged geo", "Plain geo"}
+    assert titles("level=indirect") == {"Tagged ask"}
+    assert titles(f"tag={source_tag.name}") == {"Tagged geo"}
     assert titles(f"tag={free.name}&kind=request") == {"Tagged ask"}
 
     all_scope = client.get(
@@ -617,6 +717,8 @@ def test_feed_filters_by_kind_conflict_capture_source_and_tag(db, conflict, tags
     assert [item["title"] for item in all_scope.json()] == ["Tagged ask"]
 
     assert client.get("/api/v1/feed?kind=detection", headers=headers).status_code == 422
+    assert client.get("/api/v1/feed?source_kind=tripod", headers=headers).status_code == 422
+    assert client.get("/api/v1/feed?level=primary", headers=headers).status_code == 422
 
 
 # ── GET /users/{username} — follower counters + is_following ─────────────

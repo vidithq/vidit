@@ -7,9 +7,11 @@ import Link from "next/link";
 import { DetectionQueueRow } from "@/components/detections/DetectionQueueRow";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FieldHelp } from "@/components/ui/FieldHelp";
+import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
-import { Button, buttonClasses } from "@/components/ui/Button";
+import { buttonClasses } from "@/components/ui/Button";
+import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import {
@@ -18,6 +20,7 @@ import {
   type PaginatedEventDetails,
 } from "@/lib/events";
 import { detectionsQueueHref, profileHref } from "@/lib/routes";
+import type { EventDetail } from "@/types";
 
 /** The queue's one filter, answered by the server over the whole queue (not just the loaded rows). */
 const FILTERS: { value: DetectionReadiness; label: string }[] = [
@@ -48,9 +51,25 @@ export default function DetectionsPage() {
   }, [user, isOwn, username, router]);
 
   // The filter rides in the path, so a pick refetches server-side instead of hiding rows.
-  const { data, error } = useApiResource<PaginatedEventDetails>(
+  const { data, error, refetch } = useApiResource<PaginatedEventDetails>(
     isOwn ? detectionsPath(page, undefined, filter) : null
   );
+
+  // The server pages by number, so the list appends each page as it lands, keyed by the filter
+  // and the page it answers: page 1 of a filter starts the rows over.
+  const [loaded, setLoaded] = useState<{
+    key: string;
+    rows: EventDetail[];
+    summary: PaginatedEventDetails | null;
+  }>({ key: "", rows: [], summary: null });
+  const pageKey = `${filter}:${page}`;
+  if (data && loaded.key !== pageKey) {
+    setLoaded({
+      key: pageKey,
+      rows: page === 1 ? data.items : [...loaded.rows, ...data.items],
+      summary: data,
+    });
+  }
 
   // A filter change restarts the walk: a page index from one filter can land past the end of another.
   const pick = (next: DetectionReadiness) => {
@@ -64,16 +83,22 @@ export default function DetectionsPage() {
 
   const reviewHref = `${detectionsQueueHref(username)}/review`;
 
+  const summary = loaded.summary;
   let listBody;
-  if (error) {
-    listBody = <p className="text-sm text-neutral-300">{error}</p>;
-  } else if (!data) {
+  if (page === 1 && error) {
+    listBody = (
+      <div className={FORM_ERROR_BANNER} role="alert">
+        {error}
+      </div>
+    );
+  } else if (!summary || (page === 1 && !data)) {
     listBody = <p className="text-sm text-neutral-500">Loading…</p>;
-  } else if (data.ready_total + data.incomplete_total === 0) {
+  } else if (summary.ready_total + summary.incomplete_total === 0) {
     // Reached once the last detection is submitted: nothing links here while the queue is empty.
     listBody = <EmptyState variant="boxed">{NOTHING_HERE.all}</EmptyState>;
   } else {
-    const totalPages = Math.max(1, Math.ceil(data.total / data.per_page));
+    const { rows } = loaded;
+    const loadingMore = page > 1 && !data && !error;
     listBody = (
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -89,43 +114,35 @@ export default function DetectionsPage() {
           </span>
           {/* The whole queue split in two, under every filter and page. */}
           <span className="text-xs text-neutral-500">
-            {data.ready_total} ready · {data.incomplete_total} incomplete
+            {summary.ready_total} ready · {summary.incomplete_total} incomplete
           </span>
         </div>
 
-        {data.items.length === 0 ? (
+        {rows.length === 0 ? (
           <EmptyState variant="boxed">{NOTHING_HERE[filter]}</EmptyState>
         ) : (
           <div className="space-y-2">
-            {data.items.map((detection) => (
+            {rows.map((detection) => (
               <DetectionQueueRow key={detection.id} detection={detection} />
             ))}
           </div>
         )}
 
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between pt-2 text-xs text-neutral-500">
-            <Button
-              variant="secondary"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-            >
-              Previous
-            </Button>
-            {/* Both figures describe the filtered set the pager walks. */}
-            <span>
-              Page {page} of {totalPages} · {data.total}{" "}
-              {filter === "all" ? "pending" : filter}
-            </span>
-            <Button
-              variant="secondary"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages}
-            >
-              Next
-            </Button>
-          </div>
+        {rows.length < summary.total && (
+          // Describes the filtered set the walk pages over.
+          <p className="text-center text-xs text-neutral-500">
+            {rows.length} of {summary.total} {filter === "all" ? "pending" : filter}
+          </p>
         )}
+        <LoadMoreRow
+          walk={{
+            hasMore: rows.length < summary.total,
+            loadingMore,
+            error: page > 1 ? error : null,
+            // A failed page retries itself; otherwise the next page.
+            loadMore: () => (error ? refetch() : setPage((p) => p + 1)),
+          }}
+        />
       </div>
     );
   }
@@ -136,7 +153,7 @@ export default function DetectionsPage() {
       title="Detections"
       subtitle="Detections awaiting a pass. Open a row to work on it, or review them one after another on the same form."
       actions={
-        data && data.ready_total + data.incomplete_total > 0 ? (
+        summary && summary.ready_total + summary.incomplete_total > 0 ? (
           <Link href={reviewHref} className={buttonClasses("primary")}>
             Start reviewing
           </Link>

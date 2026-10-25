@@ -34,16 +34,16 @@ def conflicts_pair(db):
     ongoing = Conflict(
         name=f"ongoing-{suffix}",
         wikidata_id=f"Q9{suffix[:6]}1",
-        ongoing=True,
-        source="sync",
+        is_ongoing=True,
+        origin="sync",
     )
     ended = Conflict(
         name=f"ended-{suffix}",
         wikidata_id=f"Q9{suffix[:6]}2",
         start_year=1990,
         end_year=1995,
-        ongoing=False,
-        source="seed",
+        is_ongoing=False,
+        origin="seed",
     )
     db.add_all([ongoing, ended])
     db.commit()
@@ -63,15 +63,15 @@ def test_list_conflicts_returns_full_referential(conflicts_pair):
     row = by_id[str(ended.id)]
     assert row["start_year"] == 1990
     assert row["end_year"] == 1995
-    assert row["ongoing"] is False
+    assert row["is_ongoing"] is False
     assert row["tier"] is None  # never synced, tier unknown
 
 
 def test_list_conflicts_orders_ongoing_first(conflicts_pair):
     response = client.get("/api/v1/conflicts")
     rows = response.json()
-    first_ended_pos = next(i for i, r in enumerate(rows) if not r["ongoing"])
-    assert all(not r["ongoing"] for r in rows[first_ended_pos:])
+    first_ended_pos = next(i for i, r in enumerate(rows) if not r["is_ongoing"])
+    assert all(not r["is_ongoing"] for r in rows[first_ended_pos:])
 
 
 def test_list_conflicts_used_filters_to_live_events(conflicts_pair, db):
@@ -86,10 +86,8 @@ def test_list_conflicts_used_filters_to_live_events(conflicts_pair, db):
     geo = Event(
         owner_id=owner.id,
         title="used-conflict probe",
-        event_coords=from_shape(Point(30.0, 50.0), srid=4326),
-        source_url="https://example.test/src",
-        event_date=datetime.now(UTC).date(),
-        source_posted_at=datetime.now(UTC),
+        coords=from_shape(Point(30.0, 50.0), srid=4326),
+        occurred_date=datetime.now(UTC).date(),
         geolocated_at=datetime.now(UTC),
     )
     geo.conflicts = [ongoing]

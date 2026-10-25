@@ -102,16 +102,15 @@ def _event(
     *,
     lng: float = LNG,
     lat: float = LAT,
-    event_date: date = date(2025, 3, 1),
+    occurred_date: date = date(2025, 3, 1),
     status: str = STATUS_GEOLOCATED,
 ) -> Event:
     now = datetime.now(UTC)
     event = Event(
         owner_id=owner.id,
         title=f"Event {uuid.uuid4().hex[:8]}",
-        event_coords=from_shape(Point(lng, lat), srid=4326),
-        source_url="https://example.com/source",
-        event_date=event_date,
+        coords=from_shape(Point(lng, lat), srid=4326),
+        occurred_date=occurred_date,
         status=status,
         geolocated_at=now,
         closed_at=now if status == STATUS_CLOSED else None,
@@ -342,7 +341,7 @@ def test_history_orders_by_either_clock(db, users):
         headers=login_as(client, owner),
     )
     assert old_imagery.status_code == 201
-    event = _event(db, owner, event_date=date(2024, 6, 1))
+    event = _event(db, owner, occurred_date=date(2024, 6, 1))
     _link(owner, event, site["id"], "damage")
     client.delete(
         f"/api/v1/events/{event.id}/site-links/{site['id']}", headers=login_as(client, owner)
@@ -409,7 +408,7 @@ def test_a_closed_or_withheld_event_drops_out_of_the_site(db, users):
     assert client.get(f"/api/v1/events/{withheld.id}/site-links").status_code == 404
 
 
-def test_inside_zone_is_measured_against_the_zone_valid_on_the_event_date(db, users):
+def test_inside_zone_is_measured_against_the_zone_valid_on_the_occurred_date(db, users):
     owner = users()
     site = _create_site(owner, _square(0.01), captured_on="2025-01-01")
     client.post(
@@ -418,9 +417,9 @@ def test_inside_zone_is_measured_against_the_zone_valid_on_the_event_date(db, us
         headers=login_as(client, owner),
     )
     # 0.03 degrees east of the centre: outside the small zone, inside the grown one.
-    early = _event(db, owner, lng=LNG + 0.03, event_date=date(2025, 3, 1))
-    late = _event(db, owner, lng=LNG + 0.03, event_date=date(2025, 7, 1))
-    before_all = _event(db, owner, event_date=date(2024, 6, 1))
+    early = _event(db, owner, lng=LNG + 0.03, occurred_date=date(2025, 3, 1))
+    late = _event(db, owner, lng=LNG + 0.03, occurred_date=date(2025, 7, 1))
+    before_all = _event(db, owner, occurred_date=date(2024, 6, 1))
     for event in (early, late, before_all):
         assert _link(owner, event, site["id"]).status_code == 200
 
@@ -448,20 +447,20 @@ def test_corroboration_counts_distinct_linked_event_owners(db, users):
     owner, analyst = users(), users()
     site = _create_site(owner, _square(0.01))
 
-    _link(owner, _event(db, owner, event_date=date(2025, 2, 1)), site["id"], "damage")
-    _link(owner, _event(db, owner, event_date=date(2025, 2, 2)), site["id"], "damage")
+    _link(owner, _event(db, owner, occurred_date=date(2025, 2, 1)), site["id"], "damage")
+    _link(owner, _event(db, owner, occurred_date=date(2025, 2, 2)), site["id"], "damage")
     body = _read(site["id"])
     assert body["corroboration_count"] == 1
     assert body["is_corroborated"] is False
 
-    latest = _event(db, analyst, event_date=date(2025, 4, 1))
+    latest = _event(db, analyst, occurred_date=date(2025, 4, 1))
     _link(analyst, latest, site["id"], "destruction")
     body = _read(site["id"])
     assert body["corroboration_count"] == 2
     assert body["is_corroborated"] is True
     assert body["latest_link_effect"] == {
         "effect": "destruction",
-        "event_date": "2025-04-01",
+        "occurred_date": "2025-04-01",
         "event_id": str(latest.id),
     }
     # The site state stays the observation's.
@@ -533,13 +532,13 @@ def test_map_read_carries_the_owner_and_the_latest_link_effect_on_as_of(db, user
     assert row["owner_id"] == str(owner.id)
     assert row["latest_link_effect"] is None
 
-    damage = _event(db, analyst, lng=lng, event_date=date(2025, 3, 1))
+    damage = _event(db, analyst, lng=lng, occurred_date=date(2025, 3, 1))
     assert _link(analyst, damage, site["id"], "damage").status_code == 200
-    later = _event(db, analyst, lng=lng, event_date=date(2025, 9, 1))
+    later = _event(db, analyst, lng=lng, occurred_date=date(2025, 9, 1))
     assert _link(analyst, later, site["id"], "destruction").status_code == 200
-    closed = _event(db, analyst, lng=lng, event_date=date(2025, 10, 1))
+    closed = _event(db, analyst, lng=lng, occurred_date=date(2025, 10, 1))
     assert _link(analyst, closed, site["id"], "other").status_code == 200
-    unlinked = _event(db, analyst, lng=lng, event_date=date(2025, 11, 1))
+    unlinked = _event(db, analyst, lng=lng, occurred_date=date(2025, 11, 1))
     assert _link(analyst, unlinked, site["id"], "other").status_code == 200
     client.delete(
         f"/api/v1/events/{unlinked.id}/site-links/{site['id']}", headers=login_as(client, analyst)
@@ -551,13 +550,13 @@ def test_map_read_carries_the_owner_and_the_latest_link_effect_on_as_of(db, user
 
     assert on("2025-12-31")["latest_link_effect"] == {
         "effect": "destruction",
-        "event_date": "2025-09-01",
+        "occurred_date": "2025-09-01",
         "event_id": str(later.id),
     }
     # A link whose event is dated after as_of stays out of the map read.
     assert on("2025-06-01")["latest_link_effect"] == {
         "effect": "damage",
-        "event_date": "2025-03-01",
+        "occurred_date": "2025-03-01",
         "event_id": str(damage.id),
     }
     assert on("2025-02-01")["latest_link_effect"] is None

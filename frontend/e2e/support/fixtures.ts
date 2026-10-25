@@ -20,9 +20,9 @@ import type {
   OrganizationMembership,
 } from "@/lib/organizations";
 import type { UserPreferences } from "@/lib/preferences";
-import type { PushConfig } from "@/lib/push";
 import type { PublicProfile, UserStats } from "@/lib/users";
 import type { OrganizationApprovalRequest } from "@/lib/approvalRequests";
+import type { Upload } from "@/lib/sources";
 import type { XHandleState } from "@/lib/xHandle";
 import type {
   Conflict,
@@ -65,11 +65,11 @@ export const SIGNED_IN_USER: User = {
  */
 export const LONG_TAG_NAME = "counterbatteryradarreconnaissance";
 
-export const CURATED_TAGS: Tag[] = [
-  { id: "33333333-3333-4333-8333-333333333331", name: "Drone", category: "capture_source" },
-  { id: "33333333-3333-4333-8333-333333333332", name: "CCTV", category: "capture_source" },
-  { id: "33333333-3333-4333-8333-333333333333", name: "Armour", category: "free" },
-  { id: "33333333-3333-4333-8333-333333333334", name: LONG_TAG_NAME, category: "free" },
+export const TAGS: Tag[] = [
+  { id: "33333333-3333-4333-8333-333333333331", name: "Drone" },
+  { id: "33333333-3333-4333-8333-333333333332", name: "CCTV" },
+  { id: "33333333-3333-4333-8333-333333333333", name: "Armour" },
+  { id: "33333333-3333-4333-8333-333333333334", name: LONG_TAG_NAME },
 ];
 
 export const CONFLICTS: Conflict[] = [
@@ -80,26 +80,17 @@ export const CONFLICTS: Conflict[] = [
     start_year: 2022,
     end_year: null,
     tier: "major",
-    ongoing: true,
+    is_ongoing: true,
   },
 ];
 
 export const EVENT: EventDetail = {
   id: EVENT_ID,
   title: "Armoured column on a residential street near the eastern approach road",
-  event_coords: { lat: 48.4647, lng: 35.0462 },
-  capture_source_coords: null,
-  source_url: "https://x.com/example/status/1234567890123456789",
-  archived_source: {
-    url: "https://web.archive.org/web/20250104120000/https://x.com/example/status/1234567890123456789",
-    provider: "wayback",
-  },
-  secondary_source_urls: [],
-  archived_secondary_sources: [],
+  coords: { lat: 48.4647, lng: 35.0462 },
   proof: "<p>The tree line and the pair of concrete utility poles match the reference imagery, and the roof vents line up with the satellite view.</p>",
-  event_date: "2025-01-03",
-  event_time: "14:20:00",
-  source_posted_at: "2025-01-03T15:05:00Z",
+  occurred_date: "2025-01-03",
+  occurred_time: "14:20:00",
   created_at: "2025-01-04T10:11:00Z",
   geolocated_at: "2025-01-04T10:11:00Z",
   closed_at: null,
@@ -110,7 +101,6 @@ export const EVENT: EventDetail = {
   before_closed_status: null,
   detected_from_url: null,
   detected_via: null,
-  archived_detected_from: null,
   owner: {
     id: SIGNED_IN_USER.id,
     username: SIGNED_IN_USER.username,
@@ -118,26 +108,74 @@ export const EVENT: EventDetail = {
   },
   requested_by: null,
   geolocators: [],
-  media: [
+  sources: [
     {
-      id: "55555555-5555-4555-8555-555555555551",
-      role: "source",
-      media_type: "image",
-      storage_url: MEDIA_URL,
-      original_filename: "street.png",
-      sha256: null,
+      id: "55555555-5555-4555-8555-555555555561",
+      title: "Street footage from a passing car",
+      level: "direct",
+      kind: "dashcam",
+      captured_at: "2025-01-03T14:20:00Z",
+      capture_position: null,
+      is_graphic: false,
+      links: [
+        {
+          url: "https://x.com/example/status/1234567890123456789",
+          posted_at: "2025-01-03T16:02:00Z",
+          archived: {
+            url: "https://web.archive.org/web/20250104120000/https://x.com/example/status/1234567890123456789",
+            provider: "wayback",
+            archived_at: "2025-01-04T12:00:00Z",
+          },
+        },
+      ],
+      tags: [],
+      media: {
+        id: "55555555-5555-4555-8555-555555555551",
+        role: "source",
+        kind: "image",
+        storage_url: MEDIA_URL,
+        original_filename: "street.png",
+        sha256: "0".repeat(64),
+      },
+      warnings: [],
     },
   ],
   thumbnail: {
     id: "55555555-5555-4555-8555-555555555551",
     role: "source",
-    media_type: "image",
+    kind: "image",
     storage_url: MEDIA_URL,
     original_filename: "street.png",
-    sha256: null,
+    sha256: "0".repeat(64),
   },
-  tags: [CURATED_TAGS[0], CURATED_TAGS[2], CURATED_TAGS[3]],
+  tags: [TAGS[0], TAGS[2], TAGS[3]],
   conflicts: CONFLICTS,
+};
+
+/**
+ * The shared event with four sources, which the page lays out as a sideways row. The first
+ * carries a capture position and a second, long link, so its rows hold the longest values a
+ * source card shows.
+ */
+export const EVENT_WITH_SOURCES: EventDetail = {
+  ...EVENT,
+  sources: [1, 2, 3, 4].map((n) => ({
+    ...EVENT.sources[0],
+    id: `55555555-5555-4555-8555-55555555557${n}`,
+    title: `Source footage ${n}`,
+    capture_position: n === 1 ? { lat: 48.464712, lng: 35.046245 } : null,
+    links:
+      n === 1
+        ? [
+            ...EVENT.sources[0].links,
+            {
+              url: "https://www.gettyimages.com/detail/news-photo/residential-street-after-the-strike-2299208753",
+              posted_at: null,
+              archived: null,
+            },
+          ]
+        : EVENT.sources[0].links,
+  })),
 };
 
 /**
@@ -153,8 +191,8 @@ export const REQUESTED_EVENT: EventListItem = {
   before_closed_status: null,
   requested_at: null,
   geolocators: [],
-  event_coords: null,
-  event_date: "2025-01-02",
+  coords: null,
+  occurred_date: "2025-01-02",
   is_graphic: false,
   media: null,
   owner: {
@@ -162,7 +200,7 @@ export const REQUESTED_EVENT: EventListItem = {
     username: SIGNED_IN_USER.username,
     avatar_url: null,
   },
-  tags: [CURATED_TAGS[3]],
+  tags: [TAGS[3]],
   conflicts: CONFLICTS,
 };
 
@@ -214,7 +252,7 @@ export const COLLECTION: Collection = {
   title: "Kupiansk rail corridor: three days of strikes on the eastern approach",
   description: `<p>${COLLECTION_DESCRIPTION}</p>`,
   description_text: COLLECTION_DESCRIPTION,
-  cover: [{ url: MEDIA_URL, media_type: "image", role: "source" }],
+  cover: [{ url: MEDIA_URL, kind: "image", role: "source" }],
   tags: [],
   event_count: 2,
   first_date: "2025-01-03",
@@ -235,8 +273,8 @@ export const COLLECTED_EVENT: EventListItem = {
   before_closed_status: null,
   requested_at: null,
   geolocators: [],
-  event_coords: { lat: 48.4647, lng: 35.0462 },
-  event_date: "2025-01-03",
+  coords: { lat: 48.4647, lng: 35.0462 },
+  occurred_date: "2025-01-03",
   is_graphic: false,
   media: EVENT.thumbnail,
   owner: {
@@ -244,7 +282,7 @@ export const COLLECTED_EVENT: EventListItem = {
     username: SIGNED_IN_USER.username,
     avatar_url: null,
   },
-  tags: [CURATED_TAGS[3]],
+  tags: [TAGS[3]],
   conflicts: CONFLICTS,
 };
 
@@ -262,8 +300,8 @@ export const SECOND_COLLECTED_EVENT: EventListItem = {
   ...COLLECTED_EVENT,
   id: SECOND_COLLECTED_EVENT_ID,
   title: "Damaged locomotive shed at the yard's western end",
-  event_coords: { lat: 48.4712, lng: 35.0588 },
-  event_date: "2025-01-04",
+  coords: { lat: 48.4712, lng: 35.0588 },
+  occurred_date: "2025-01-04",
 };
 
 /** That item's own read, which the player's panel renders on step 2. */
@@ -271,8 +309,8 @@ export const SECOND_COLLECTED_EVENT_DETAIL: EventDetail = {
   ...EVENT,
   id: SECOND_COLLECTED_EVENT_ID,
   title: SECOND_COLLECTED_EVENT.title,
-  event_coords: SECOND_COLLECTED_EVENT.event_coords,
-  event_date: "2025-01-04",
+  coords: SECOND_COLLECTED_EVENT.coords,
+  occurred_date: "2025-01-04",
 };
 
 /** An empty first page of the owner's detection queue, as the sidebar reads it. */
@@ -291,55 +329,18 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   display_defaults: { palette: "orange", theme: "dark", help_tooltips: true },
   display_stored: { palette: null, theme: null, help_tooltips: null },
   notifications: [
-    {
-      kind: "request_fulfilled",
-      channels: { email: true, push: true },
-      defaults: { email: true, push: true },
-    },
-    {
-      kind: "new_follower",
-      channels: { email: false, push: false },
-      defaults: { email: false, push: false },
-    },
-    {
-      kind: "organization_invite",
-      channels: { email: true, push: true },
-      defaults: { email: true, push: true },
-    },
-    {
-      kind: "organization_invite_accepted",
-      channels: { email: false, push: false },
-      defaults: { email: false, push: false },
-    },
-    {
-      kind: "organization_manager_inherited",
-      channels: { email: true, push: true },
-      defaults: { email: true, push: true },
-    },
+    { kind: "request_fulfilled", email: true, default: true },
+    { kind: "new_follower", email: false, default: false },
+    { kind: "organization_invite", email: true, default: true },
+    { kind: "organization_invite_accepted", email: false, default: false },
+    { kind: "organization_manager_inherited", email: true, default: true },
   ],
-  product_updates: false,
   approval_request_audience: "following",
 };
 
-/** The push key every deployment serves: a public example key, never used to send. */
-export const PUSH_CONFIG: PushConfig = {
-  public_key: "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U",
-};
-
-/** A bound handle and a declined change request: the Account card's longest state, with
- *  the admin's reason printed in full. */
-export const X_HANDLE_WITH_DECLINED_REQUEST: XHandleState = {
+/** A bound handle, as the Account card reads it. */
+export const X_HANDLE: XHandleState = {
   x_handle: "osint_hawk_2024",
-  request: {
-    id: "7f6d1a52-0000-4000-8000-000000000001",
-    x_handle: "osint_hawk_2025",
-    reason: null,
-    status: "declined",
-    decline_reason:
-      "Post a reply from the new handle that mentions your Vidit username, then send the request again.",
-    created_at: "2026-10-01T10:00:00Z",
-    decided_at: "2026-10-02T09:00:00Z",
-  },
 };
 
 /** Slug of the organization the signed-in analyst manages. */
@@ -389,12 +390,21 @@ export const INVITE_CANDIDATES: InviteCandidate[] = [
 
 export const ORGANIZATION_INVITES: OrganizationInvite[] = [
   {
-    id: "99999999-9999-4999-8999-999999999993",
     user: { id: "99999999-9999-4999-8999-999999999994", username: "invitee", avatar_url: null },
     invited_by: { id: SIGNED_IN_USER.id, username: SIGNED_IN_USER.username, avatar_url: null },
-    created_at: "2025-05-01T09:00:00Z",
+    invited_at: "2025-05-01T09:00:00Z",
   },
 ];
+
+/** A staged source file, as `POST /uploads` answers it. */
+export const UPLOAD: Upload = {
+  id: "55555555-5555-4555-8555-555555555571",
+  kind: "image",
+  sha256: "0".repeat(64),
+  original_filename: "street.png",
+  storage_url: MEDIA_URL,
+  expires_at: "2099-01-01T00:00:00Z",
+};
 
 /** Nothing unread, as the sidebar's notification row reads it. */
 export const NO_UNREAD: UnreadCount = { count: 0 };
@@ -462,7 +472,7 @@ export const ANALYST_STATS: UserStats = {
   detected_count: 0,
   media_count: 20,
   top_conflicts: [{ name: "Russia-Ukraine", count: 12 }],
-  capture_sources: [{ name: "Drone", count: 8 }],
+  source_kinds: [{ name: "drone", count: 8 }],
   source_hosts: [{ name: "t.me", count: 12 }],
   other_hosts_count: 0,
   no_source_count: 0,
@@ -478,52 +488,37 @@ const SECOND_REVIEWER = {
   avatar_url: null,
 };
 
-/** The live version's approvals on the shared event: one standing review with a note long
- *  enough to wrap, one the organization's long name signs, and fourteen more, so the card's two
+/** The live version's approvals on the shared event: one by an analyst, one the organization's
+ *  long name signs, and fourteen more, so the card's two
  *  rows of stamps fold into a `+N` bubble and the Approvals panel is measured at phone widths. */
 export const EVENT_APPROVALS: Approval[] = [
   {
     id: "66666666-6666-4666-8666-666666666661",
     version_no: 1,
-    verdict: "approve",
     reviewer: SECOND_REVIEWER,
-    note: "The utility poles, the tree line and the roof vents all match the satellite view from the eastern approach.",
     created_at: "2025-01-05T08:30:00Z",
     current: true,
-    revoked_at: null,
-    revoke_reason: null,
-    revoked_as: null,
     organization: null,
   },
   {
     id: "66666666-6666-4666-8666-666666666662",
     version_no: 1,
-    verdict: "approve",
     reviewer: { id: SIGNED_IN_USER.id, username: SIGNED_IN_USER.username, avatar_url: null },
-    note: null,
     created_at: "2025-01-06T08:30:00Z",
     current: true,
-    revoked_at: null,
-    revoke_reason: null,
-    revoked_as: null,
     organization: ORGANIZATION_REF,
   },
   ...Array.from({ length: 14 }, (_, i) => i + 3).map(
     (n): Approval => ({
       id: `66666666-6666-4666-8666-6666666666${String(n).padStart(2, "6")}`,
       version_no: 1,
-      verdict: "approve",
       reviewer: {
         id: `77777777-7777-4777-8777-7777777777${String(n).padStart(2, "7")}`,
         username: `reviewer_${n}`,
         avatar_url: null,
       },
-      note: null,
       created_at: `2025-01-${String(n + 4).padStart(2, "0")}T08:30:00Z`,
       current: true,
-      revoked_at: null,
-      revoke_reason: null,
-      revoked_as: null,
       organization: null,
     }),
   ),
@@ -617,14 +612,14 @@ export const SITE: Site = {
   corroboration_count: 2,
   is_corroborated: true,
   owner: { id: SIGNED_IN_USER.id, username: SIGNED_IN_USER.username, avatar_url: null },
-  latest_link_effect: { effect: "destruction", event_date: "2025-09-02", event_id: EVENT_ID },
+  latest_link_effect: { effect: "destruction", occurred_date: "2025-09-02", event_id: EVENT_ID },
   observations: SITE_OBSERVATIONS,
   linked_events: [
     {
       id: EVENT_ID,
       title: EVENT.title,
-      event_date: "2025-09-02",
-      event_coords: { lat: 20.05, lng: 51.015 },
+      occurred_date: "2025-09-02",
+      coords: { lat: 20.05, lng: 51.015 },
       owner: { id: SIGNED_IN_USER.id, username: SIGNED_IN_USER.username, avatar_url: null },
       effect: "destruction",
       linked_at: "2026-02-01T10:00:00Z",
@@ -652,7 +647,7 @@ export const SITE_HISTORY: SiteHistoryEntry[] = [
     recorded_at: "2026-02-01T10:00:00Z",
     fact_date: "2025-09-02",
     actor: SITE.owner,
-    event: { id: EVENT_ID, title: EVENT.title, event_date: "2025-09-02" },
+    event: { id: EVENT_ID, title: EVENT.title, occurred_date: "2025-09-02" },
     link_effect: "destruction",
     previous_link_effect: "damage",
   },
@@ -662,8 +657,8 @@ export const SITE_NEARBY: SiteNearbyEvent[] = [
   {
     id: COLLECTED_EVENT.id,
     title: COLLECTED_EVENT.title,
-    event_date: "2025-07-01",
-    event_coords: { lat: 19.99, lng: 51.01 },
+    occurred_date: "2025-07-01",
+    coords: { lat: 19.99, lng: 51.01 },
     owner: { id: SIGNED_IN_USER.id, username: SIGNED_IN_USER.username, avatar_url: null },
     distance_m: 1300,
   },

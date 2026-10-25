@@ -49,7 +49,7 @@ def test_typology_resolves_to_expected(typology: str, tmp_path: Path) -> None:
     ] == [[round(lat, _COORD_PLACES), round(lng, _COORD_PLACES)] for lat, lng in expected["coords"]]
     for detection in resolution.detections:
         assert detection.source_url == expected["source_url"]
-        assert detection.secondary_source_urls == expected["secondary_source_urls"]
+        assert loader.secondary_sources_of(detection) == expected["secondary_sources"]
         assert detection.title == expected["title"]
         assert detection.warnings == expected["warnings"]
         assert _roles(detection.source_media) == [list(pair) for pair in expected["source_media"]]
@@ -61,11 +61,11 @@ def test_typology_resolves_to_expected(typology: str, tmp_path: Path) -> None:
         else:
             assert detection.source_posted_at == datetime.fromisoformat(expected_posted)
 
-        expected_date = expected["event_date"]
+        expected_date = expected["occurred_date"]
         if expected_date is None:
-            assert detection.event_date is None
+            assert detection.occurred_date is None
         else:
-            assert detection.event_date == date.fromisoformat(expected_date)
+            assert detection.occurred_date == date.fromisoformat(expected_date)
 
 
 def test_marker_lines_reach_the_proof_as_typed(tmp_path: Path) -> None:
@@ -171,7 +171,7 @@ def test_two_candidate_links_leave_the_source_empty() -> None:
     assert detection.source_posted_at is None
     assert detection.source_media == []
     # Both candidates land as mirrors so the owner can promote one at review.
-    assert detection.secondary_source_urls == [
+    assert [extra.url for extra in detection.secondary_sources] == [
         _TG_URL,
         "https://www.youtube.com/watch?v=FAKEVIDEO01",
     ]
@@ -194,7 +194,7 @@ def test_second_link_becomes_a_secondary_source() -> None:
     )
     detection = _detection([record])
     assert detection.source_url == "https://x.com/front_cam/status/8400000000000000002"
-    assert detection.secondary_source_urls == [_TG_URL]
+    assert [extra.url for extra in detection.secondary_sources] == [_TG_URL]
 
 
 def _links_record(links: list[SourceLink]) -> TweetRecord:
@@ -223,7 +223,7 @@ def test_primary_link_is_not_repeated_as_a_secondary() -> None:
         ]
     )
     assert detection.source_url == f"{status}?s=20"
-    assert detection.secondary_source_urls == []
+    assert [extra.url for extra in detection.secondary_sources] == []
 
 
 def test_tracking_query_spelling_of_the_primary_is_not_a_mirror() -> None:
@@ -233,7 +233,7 @@ def test_tracking_query_spelling_of_the_primary_is_not_a_mirror() -> None:
         [_links_record([SourceLink(video), SourceLink(f"{video}&si=abc123&utm_source=x")])]
     )
     assert detection.source_url == video
-    assert detection.secondary_source_urls == []
+    assert [extra.url for extra in detection.secondary_sources] == []
 
 
 def test_distinct_videos_sharing_a_path_are_two_candidates() -> None:
@@ -242,7 +242,7 @@ def test_distinct_videos_sharing_a_path_are_two_candidates() -> None:
     second = "https://www.youtube.com/watch?v=FAKEVIDEO02"
     detection = _detection([_links_record([SourceLink(first), SourceLink(second)])])
     assert detection.source_url is None
-    assert detection.secondary_source_urls == [first, second]
+    assert [extra.url for extra in detection.secondary_sources] == [first, second]
 
 
 def test_a_maps_link_is_never_a_source() -> None:
@@ -251,7 +251,7 @@ def test_a_maps_link_is_never_a_source() -> None:
         [_links_record([SourceLink("https://www.google.com/maps/@44.6123,33.5221,15z")])]
     )
     assert detection.source_url is None
-    assert detection.secondary_source_urls == []
+    assert [extra.url for extra in detection.secondary_sources] == []
 
 
 def test_an_article_link_is_a_source() -> None:

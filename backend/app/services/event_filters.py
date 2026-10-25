@@ -12,7 +12,7 @@ import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass, fields
 from datetime import date, timedelta
-from typing import Any
+from typing import Any, get_args
 
 from fastapi import HTTPException
 from geoalchemy2.functions import ST_MakeEnvelope, ST_Within
@@ -29,10 +29,10 @@ from app.models.event import (
     STATUS_REQUESTED,
     Event,
     EventGeolocator,
-    EventGeolocatorDeparture,
 )
 from app.models.media import Media
 from app.models.organization import Organization
+from app.models.source import SOURCE_KINDS, Source, SourceLevel
 from app.models.tag import Tag
 from app.models.user import User
 
@@ -102,12 +102,13 @@ def credited_to(user_ids: Iterable[Any] | Select[Any]) -> ColumnElement[bool]:
 
 def ever_credited_ids(event_id: uuid.UUID) -> CompoundSelect:
     """The analysts who hold or held credit on the event: its owner, its co-geolocators and those
-    who lost credit (``event_geolocator_departures``). None of them approves it or is asked to."""
+    who lost credit (a ``departed`` row, or an ``invited`` one that keeps ``departed_at``). None
+    of them approves it or is asked to."""
     return union(
         select(Event.owner_id).where(Event.id == event_id),
-        select(EventGeolocator.user_id).where(EventGeolocator.event_id == event_id),
-        select(EventGeolocatorDeparture.user_id).where(
-            EventGeolocatorDeparture.event_id == event_id
+        select(EventGeolocator.user_id).where(
+            EventGeolocator.event_id == event_id,
+            or_(EventGeolocator.state != "invited", EventGeolocator.departed_at.is_not(None)),
         ),
     )
 
@@ -117,14 +118,16 @@ def published_credited_to(user_ids: Iterable[Any] | Select[Any]) -> ColumnElemen
 
     :func:`credited_to` ORs the owner leg with a correlated EXISTS, which keeps the planner off
     both indexes. Here each leg is its own indexed lookup (``ix_events_owner_id`` and
-    ``ix_event_geolocators_user_created_at``) and the event ids meet in one IN. Reads that count
+    ``ix_event_geolocators_user_id_joined_at``) and the event ids meet in one IN. Reads that count
     only published work use it; :func:`credited_to` stays for the reads that count detected
     and requested rows too.
     """
     owned = aliased(Event)
     credited = union(
         select(owned.id).where(owned.owner_id.in_(user_ids)),
-        select(EventGeolocator.event_id).where(EventGeolocator.user_id.in_(user_ids)),
+        select(EventGeolocator.event_id).where(
+            EventGeolocator.user_id.in_(user_ids), EventGeolocator.state == "active"
+        ),
     )
     return and_(published_events(), Event.id.in_(credited))
 
@@ -137,6 +140,16 @@ def open_requests() -> ColumnElement[bool]:
     :func:`published_events` and a withdrawn one (``closed`` off ``requested``) drops out.
     """
     return Event.status == STATUS_REQUESTED
+
+
+def live_detections() -> ColumnElement[bool]:
+    """The predicate for a machine detection awaiting its owner: ``detected``.
+
+    The detection twin of :func:`open_requests`, read by the feed
+    (:func:`services.social.get_feed`). A submitted detection moves to :func:`published_events`
+    and a rejected one (``closed`` off ``detected``) drops out.
+    """
+    return Event.status == STATUS_DETECTED
 
 
 def collectable_events() -> ColumnElement[bool]:
@@ -195,8 +208,13 @@ def parse_optional_iso_date(raw: str | None, *, field: str) -> date | None:
 # Hand-kept FE mirror: ``lib/search.ts::AUTHOR_FILTER_RE``.
 AUTHOR_FILTER_PATTERN = r"^[A-Za-z0-9_-]{1,50}$"
 
-# Accepted ``media`` filter values (the ``Media.media_type`` domain); a typo returns 422.
+# Accepted ``media`` filter values (the ``Media.kind`` domain); a typo returns 422.
 MEDIA_TYPES = frozenset({"image", "video"})
+
+# Accepted ``source_kind`` and ``level`` filter values (the ``Source.kind`` and
+# ``Source.level`` domains); a typo returns 422.
+SOURCE_KIND_VALUES = frozenset(SOURCE_KINDS)
+LEVEL_VALUES = frozenset(get_args(SourceLevel))
 
 # Accepted ``status`` filter values (the ``Event.status`` domain); a typo returns 422. The
 # predicate only narrows within the caller's view, so a value the view can't contain returns
@@ -255,12 +273,25 @@ def view_predicate(view: str):
 
 
 def validate_media_types(media: list[str] | None) -> None:
-    """422 on a ``media`` value outside the ``Media.media_type`` domain."""
+    """422 on a ``media`` value outside the ``Media.kind`` domain."""
     if media and not set(media) <= MEDIA_TYPES:
         raise HTTPException(
             status_code=422,
             detail=f"media must be one of: {', '.join(sorted(MEDIA_TYPES))}",
         )
+
+
+def validate_source_filters(source_kind: list[str] | None, level: list[str] | None) -> None:
+    """422 on a ``source_kind`` or ``level`` value outside its domain."""
+    for field, values, domain in (
+        ("source_kind", source_kind, SOURCE_KIND_VALUES),
+        ("level", level, LEVEL_VALUES),
+    ):
+        if values and not set(values) <= domain:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{field} must be one of: {', '.join(sorted(domain))}",
+            )
 
 
 def validate_status_filter(status: list[str] | None) -> None:
@@ -345,7 +376,7 @@ def bbox_predicate(bounds: tuple[float, float, float, float]):
     """
     south, west, north, east = bounds
     return ST_Within(
-        Event.event_coords,
+        Event.coords,
         ST_MakeEnvelope(west, south, east, north, 4326),
     )
 
@@ -353,26 +384,34 @@ def bbox_predicate(bounds: tuple[float, float, float, float]):
 def taxonomy_predicates(
     *,
     conflict: list[str] | None = None,
-    capture_source: list[str] | None = None,
+    source_kind: list[str] | None = None,
+    level: list[str] | None = None,
     tag: list[str] | None = None,
 ) -> list[ColumnElement[bool]]:
-    """The ``conflict``, ``capture_source`` and ``tag`` predicates, one per non-empty list.
+    """The ``conflict``, ``source_kind``, ``level`` and ``tag`` predicates, one per non-empty list.
 
     Any-match (OR) within a list, all-match (AND) across lists. ``conflict`` matches the
     ``conflicts`` referential (its own join, so a same-named free tag can't poison it);
-    ``capture_source`` pins the tag's category for the same reason; ``tag`` matches any category.
-    :func:`apply_filters` and the feed (:func:`services.social.get_feed`) both read them.
+    ``source_kind`` and ``level`` keep an event with a source of that kind or level; ``tag``
+    matches a tag on the event or on one of its sources. :func:`apply_filters` and the feed
+    (:func:`services.social.get_feed`) both read them. Callers gate ``source_kind`` and
+    ``level`` through :func:`validate_source_filters`.
     """
     # ``.any(...)`` lowers to EXISTS, so it doesn't row-multiply like a JOIN.
     predicates: list[ColumnElement[bool]] = []
     if conflict:
         predicates.append(Event.conflicts.any(Conflict.name.in_(conflict)))
-    if capture_source:
-        predicates.append(
-            Event.tags.any(and_(Tag.name.in_(capture_source), Tag.category == "capture_source"))
-        )
+    if source_kind:
+        predicates.append(Event.sources.any(Source.kind.in_(source_kind)))
+    if level:
+        predicates.append(Event.sources.any(Source.level.in_(level)))
     if tag:
-        predicates.append(Event.tags.any(Tag.name.in_(tag)))
+        predicates.append(
+            or_(
+                Event.tags.any(Tag.name.in_(tag)),
+                Event.sources.any(Source.tags.any(Tag.name.in_(tag))),
+            )
+        )
     return predicates
 
 
@@ -384,7 +423,6 @@ def _standing_approval(*criteria: ColumnElement[bool]) -> ColumnElement[bool]:
         exists().where(
             EventApproval.event_id == Event.id,
             EventApproval.version_no == Event.version_no,
-            EventApproval.revoked_at.is_(None),
             *criteria,
         ),
     )
@@ -438,10 +476,11 @@ def apply_filters(
     view: str = "located",
     status: list[str] | None = None,
     conflict: list[str] | None = None,
-    capture_source: list[str] | None = None,
+    source_kind: list[str] | None = None,
+    level: list[str] | None = None,
     tag: list[str] | None = None,
-    event_date_from: str | None = None,
-    event_date_to: str | None = None,
+    occurred_date_from: str | None = None,
+    occurred_date_to: str | None = None,
     submitted_from: str | None = None,
     submitted_to: str | None = None,
     author: str | None = None,
@@ -462,13 +501,13 @@ def apply_filters(
     may carry an approximate guess and must not leak into the located catalog. Callers gate
     values through :func:`validate_status_filter`.
 
-    ``conflict``, ``capture_source`` and ``tag`` take lists of names (see
+    ``conflict``, ``source_kind``, ``level`` and ``tag`` take lists of values (see
     :func:`taxonomy_predicates`).
 
     ``approved``, ``approved_by`` and ``approved_by_org`` keep approved events (see
     :func:`approval_predicates`).
 
-    ``has_coords`` splits on ``event_coords``: ``True`` keeps rows with a point (a request's
+    ``has_coords`` splits on ``coords``: ``True`` keeps rows with a point (a request's
     location guess), ``False`` the blind ones, ``None`` both.
     """
     query = query.filter(*visible_events(), view_predicate(view))
@@ -477,19 +516,19 @@ def apply_filters(
         query = query.filter(Event.status.in_(status))
 
     query = query.filter(
-        *taxonomy_predicates(conflict=conflict, capture_source=capture_source, tag=tag)
+        *taxonomy_predicates(conflict=conflict, source_kind=source_kind, level=level, tag=tag)
     )
 
     # Parse dates up front so a typo is a 422, not a Postgres ``InvalidDatetimeFormat`` 500.
-    parsed_event_from = parse_optional_iso_date(event_date_from, field="event_date_from")
-    parsed_event_to = parse_optional_iso_date(event_date_to, field="event_date_to")
+    parsed_event_from = parse_optional_iso_date(occurred_date_from, field="occurred_date_from")
+    parsed_event_to = parse_optional_iso_date(occurred_date_to, field="occurred_date_to")
     parsed_submitted_from = parse_optional_iso_date(submitted_from, field="submitted_from")
     parsed_submitted_to = parse_optional_iso_date(submitted_to, field="submitted_to")
 
     if parsed_event_from:
-        query = query.filter(Event.event_date >= parsed_event_from)
+        query = query.filter(Event.occurred_date >= parsed_event_from)
     if parsed_event_to:
-        query = query.filter(Event.event_date <= parsed_event_to)
+        query = query.filter(Event.occurred_date <= parsed_event_to)
 
     if parsed_submitted_from:
         query = query.filter(Event.created_at >= parsed_submitted_from)
@@ -501,8 +540,14 @@ def apply_filters(
         query = apply_author_filter(query, author)
 
     if media:
-        # EXISTS, so an event with several attachments isn't row-multiplied.
-        query = query.filter(Event.media.any(Media.media_type.in_(media)))
+        # EXISTS, so an event with several files isn't row-multiplied: a source's file or a
+        # proof image.
+        query = query.filter(
+            or_(
+                Event.sources.any(Source.media.has(Media.kind.in_(media))),
+                Event.media.any(Media.kind.in_(media)),
+            )
+        )
 
     query = query.filter(
         *approval_predicates(
@@ -514,9 +559,7 @@ def apply_filters(
         query = query.filter(bbox_predicate(parse_bbox(bbox)))
 
     if has_coords is not None:
-        query = query.filter(
-            Event.event_coords.isnot(None) if has_coords else Event.event_coords.is_(None)
-        )
+        query = query.filter(Event.coords.isnot(None) if has_coords else Event.coords.is_(None))
 
     return query
 
@@ -530,10 +573,11 @@ class EventFilters:
 
     status: list[str] | None = None
     conflict: list[str] | None = None
-    capture_source: list[str] | None = None
+    source_kind: list[str] | None = None
+    level: list[str] | None = None
     tag: list[str] | None = None
-    event_date_from: str | None = None
-    event_date_to: str | None = None
+    occurred_date_from: str | None = None
+    occurred_date_to: str | None = None
     submitted_from: str | None = None
     submitted_to: str | None = None
     author: str | None = None

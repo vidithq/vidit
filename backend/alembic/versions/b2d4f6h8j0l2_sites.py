@@ -1,7 +1,7 @@
 """add sites, site_observations and event_site_links
 
 Revision ID: b2d4f6h8j0l2
-Revises: 361664db5722
+Revises: c4e6a8b0d2f3
 Create Date: 2026-10-20 10:00:00.000000
 
 A site is a named, typed place. Its zone lives on ``site_observations``, one
@@ -28,7 +28,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "b2d4f6h8j0l2"
-down_revision: Union[str, None] = "361664db5722"
+down_revision: Union[str, None] = "c4e6a8b0d2f3"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -1,25 +1,40 @@
 import { describe, expect, it } from "vitest";
 
-import { changesSince, standingApprovalBefore, type Approval } from "./approvals";
+import { approvalBefore, changesSince, type Approval } from "./approvals";
 import { eventDetail, filedVersion } from "@/test/eventDetail";
 
+const base = eventDetail("e1", "Strike on the depot");
 const live = {
-  ...eventDetail("e1", "Strike on the depot"),
+  ...base,
   version_no: 3,
-  archived_source: { url: "https://web.archive.org/web/2026/x", provider: "wayback" as const },
+  sources: [
+    {
+      ...base.sources[0],
+      links: base.sources[0].links.map((l) => ({
+        ...l,
+        archived: {
+          url: "https://web.archive.org/web/2026/x",
+          provider: "wayback" as const,
+          archived_at: "2026-06-01T00:00:00Z",
+        },
+      })),
+    },
+  ],
 };
+// The live row before its link was archived.
+const unarchived = { ...live, sources: base.sources };
 
 describe("changesSince", () => {
   it("names the fields that moved since the approved version", () => {
-    const approved = filedVersion(live, 1, {
+    const approved = filedVersion(unarchived, 1, {
       title: "Strike near the depot",
-      event_coords: { lat: 49.7, lng: 37.6 },
+      coords: { lat: 49.7, lng: 37.6 },
     });
     expect(changesSince(live, approved)).toEqual(["Title", "Coordinates", "Archived copies"]);
   });
 
   it("reads an archive-only change as archived copies alone", () => {
-    expect(changesSince(live, filedVersion(live, 2))).toEqual(["Archived copies"]);
+    expect(changesSince(live, filedVersion(unarchived, 2))).toEqual(["Archived copies"]);
   });
 
   it("cannot compare a redacted version", () => {
@@ -27,13 +42,12 @@ describe("changesSince", () => {
   });
 });
 
-describe("standingApprovalBefore", () => {
-  const approval = (version_no: number, revoked_at: string | null = null) =>
-    ({ version_no, revoked_at }) as Approval;
+describe("approvalBefore", () => {
+  const approval = (version_no: number) => ({ version_no }) as Approval;
 
-  it("picks the latest earlier version still standing", () => {
-    expect(standingApprovalBefore([approval(1), approval(2, "2026-10-15"), approval(3)], 4)).toBe(3);
-    expect(standingApprovalBefore([approval(4)], 4)).toBeNull();
-    expect(standingApprovalBefore([approval(2, "2026-10-15")], 4)).toBeNull();
+  it("picks the latest earlier version approved", () => {
+    expect(approvalBefore([approval(1), approval(3)], 4)).toBe(3);
+    expect(approvalBefore([approval(4)], 4)).toBeNull();
+    expect(approvalBefore([], 4)).toBeNull();
   });
 });

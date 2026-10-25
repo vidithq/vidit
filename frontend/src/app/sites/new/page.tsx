@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CharCounter } from "@/components/ui/CharCounter";
 import { FieldHelp } from "@/components/ui/FieldHelp";
-import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
+import { CountBadge } from "@/components/ui/CountBadge";
+import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import { Input, Select } from "@/components/ui/Input";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { Pill } from "@/components/ui/Pill";
@@ -24,6 +25,7 @@ import { useMapState } from "@/contexts/MapStateContext";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { missingSummary } from "@/lib/events";
 import { zoneFromVertices } from "@/lib/siteZone";
 import {
   EMPTY_OBSERVATION,
@@ -141,15 +143,27 @@ export default function NewSitePage() {
             </li>
           ))}
         </ul>
-        {attempt > 0 && <IncompleteFormNotice key={attempt} missing={missing} />}
+        <IncompleteFormAnnouncer attempt={attempt} missing={attempt > 0 ? missing : []} />
         {create.error && (
           <div className={FORM_ERROR_BANNER} role="alert">
             {create.error}
           </div>
         )}
-        <Button variant="primary" fullWidth disabled={create.loading} onClick={submit}>
-          {create.loading ? "Creating…" : "Create site"}
-        </Button>
+        <CountBadge
+          count={missing.length}
+          label={missingSummary(missing.map((label) => ({ label })))}
+        >
+          {(describedBy) => (
+            <Button
+              variant="primary"
+              disabled={create.loading}
+              aria-describedby={describedBy}
+              onClick={submit}
+            >
+              {create.loading ? "Creating…" : "Create site"}
+            </Button>
+          )}
+        </CountBadge>
       </Card>
       <p className="text-xs text-neutral-500">
         You become the owner of the site. Until another analyst links an event to it, the site shows

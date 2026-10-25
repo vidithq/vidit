@@ -56,8 +56,8 @@ const item = (
 ): EventListItem => ({
   title: "Strike on the rail junction",
   status: "geolocated",
-  event_date: "2026-03-14",
-  event_coords: { lat: 49.71, lng: 37.616 },
+  occurred_date: "2026-03-14",
+  coords: { lat: 49.71, lng: 37.616 },
   before_closed_status: null,
   requested_at: null,
   conflicts: [],
@@ -281,7 +281,7 @@ describe("collectionPoints", () => {
       item({ id: "e2", status: "detected" }),
     ]);
 
-    // [id, lat, lng, event_date, added_date, detected]
+    // [id, lat, lng, occurred_date, added_date, detected]
     expect(points).toEqual([
       ["e1", 49.71, 37.616, "2026-03-14", "2026-03-14", 0],
       ["e2", 49.71, 37.616, "2026-03-14", "2026-03-14", 1],
@@ -289,7 +289,7 @@ describe("collectionPoints", () => {
   });
 
   it("drops an item that carries no coordinates", () => {
-    expect(collectionPoints([item({ id: "e1", event_coords: null })])).toEqual(
+    expect(collectionPoints([item({ id: "e1", coords: null })])).toEqual(
       [],
     );
   });
@@ -338,7 +338,7 @@ describe("the event picker's two sources", () => {
           title_highlight: "Kakhovka dam",
           lat: 46.77,
           lng: 33.37,
-          event_date: "2026-03-14",
+          occurred_date: "2026-03-14",
           is_graphic: false,
           status: "detected",
           owner: { id: "u1", username: "ana", avatar_url: null },
@@ -365,8 +365,8 @@ describe("the event picker's two sources", () => {
         status: "detected",
         media: null,
         is_graphic: false,
-        event_date: "2026-03-14",
-        event_coords: { lat: 46.77, lng: 33.37 },
+        occurred_date: "2026-03-14",
+        coords: { lat: 46.77, lng: 33.37 },
         tags: [],
       },
     ]);
@@ -382,17 +382,17 @@ describe("pickableFromDetail", () => {
       title: "Kakhovka dam",
       status: "geolocated",
       media: [
-        { id: "m1", storage_url: "https://media/one.jpg", media_type: "image" },
-        { id: "m2", storage_url: "https://media/two.jpg", media_type: "image" },
+        { id: "m1", storage_url: "https://media/one.jpg", kind: "image" },
+        { id: "m2", storage_url: "https://media/two.jpg", kind: "image" },
       ],
       thumbnail: {
         id: "m1",
         storage_url: "https://media/one.jpg",
-        media_type: "image",
+        kind: "image",
       },
       is_graphic: true,
-      event_date: "2026-03-14",
-      event_coords: { lat: 46.77, lng: 33.37 },
+      occurred_date: "2026-03-14",
+      coords: { lat: 46.77, lng: 33.37 },
       tags: [{ id: "t1", name: "dam" }],
     } as unknown as Parameters<typeof pickableFromDetail>[0];
 
@@ -404,11 +404,11 @@ describe("pickableFromDetail", () => {
       media: {
         id: "m1",
         storage_url: "https://media/one.jpg",
-        media_type: "image",
+        kind: "image",
       },
       is_graphic: true,
-      event_date: "2026-03-14",
-      event_coords: { lat: 46.77, lng: 33.37 },
+      occurred_date: "2026-03-14",
+      coords: { lat: 46.77, lng: 33.37 },
       tags: [{ id: "t1", name: "dam" }],
     });
   });
@@ -424,18 +424,18 @@ describe("pickableFromDetail", () => {
       thumbnail: {
         id: "p1",
         storage_url: "https://media/proof.jpg",
-        media_type: "image",
+        kind: "image",
       },
       is_graphic: false,
-      event_date: "2026-03-14",
-      event_coords: { lat: 46.77, lng: 33.37 },
+      occurred_date: "2026-03-14",
+      coords: { lat: 46.77, lng: 33.37 },
       tags: [],
     } as unknown as Parameters<typeof pickableFromDetail>[0];
 
     expect(pickableFromDetail(detail).media).toEqual({
       id: "p1",
       storage_url: "https://media/proof.jpg",
-      media_type: "image",
+      kind: "image",
     });
   });
 
@@ -447,8 +447,8 @@ describe("pickableFromDetail", () => {
       media: [],
       thumbnail: null,
       is_graphic: false,
-      event_date: null,
-      event_coords: null,
+      occurred_date: null,
+      coords: null,
       tags: [],
     } as unknown as Parameters<typeof pickableFromDetail>[0];
 

@@ -5,7 +5,7 @@ import { MapPin } from "lucide-react";
 import type { Media } from "@/types";
 import { cn } from "@/lib/cn";
 import { formatDate } from "@/lib/format";
-import { displayUrlsFor, posterFrameUrl } from "@/lib/mediaUrls";
+import { displayUrlsFor, posterFrameUrl, type DisplayMedia } from "@/lib/mediaUrls";
 import { META_LINE, TAPPABLE_HOVER } from "@/components/ui/styles";
 import { GraphicContentGate } from "@/components/ui/GraphicContentGate";
 import { Pill } from "@/components/ui/Pill";
@@ -36,9 +36,8 @@ export function MediaThumb({
   className,
   isGraphic = false,
 }: {
-  /** The kind picks the element; the role tells `displayUrlsFor` whether the
-   *  picture has derivatives. */
-  media?: Pick<Media, "storage_url" | "media_type" | "role">;
+  /** The kind picks the element; `displayUrlsFor` knows whether the picture has derivatives. */
+  media?: DisplayMedia;
   /** Image derivative: 400 px `thumbnail` or 1280 px `hero`. Videos and proof
    *  images have none and ignore it. */
   size?: "thumbnail" | "hero";
@@ -46,7 +45,7 @@ export function MediaThumb({
   isGraphic?: boolean;
 }) {
   const picture = media ? (
-    media.media_type === "image" ? (
+    media.kind === "image" ? (
       // eslint-disable-next-line @next/next/no-img-element
       <img
         src={displayUrlsFor(media)[size]}
@@ -124,17 +123,6 @@ interface EntityCardBaseProps {
   tags?: { id: string; name: string; label?: string }[];
 }
 
-// The row control hangs in the compact row's badge column. The feed card has no
-// such column, so the type refuses the prop there.
-type VariantProps =
-  | {
-      variant?: "compact";
-      /** A control that acts on this row rather than opening it. Renders above
-       *  the stretched link, at the bottom of the badge's column. */
-      action?: ReactNode;
-    }
-  | { variant: "feed"; action?: undefined };
-
 // A card carries one gesture: `detailHref` for the link, `onSelect` for the
 // button.
 type SelectableProps =
@@ -149,8 +137,7 @@ type SelectableProps =
 
 type EntityCardProps = EntityCardBaseProps &
   TitleProps &
-  SelectableProps &
-  VariantProps;
+  SelectableProps & { variant?: "compact" | "feed" };
 
 function formatCoord(lat: number, lng: number): string {
   const latDir = lat >= 0 ? "N" : "S";
@@ -179,7 +166,6 @@ export function EntityCard({
   isGraphic = false,
   author,
   coAuthors = [],
-  action,
   onSelect,
   selectLabel,
   selected = false,
@@ -305,15 +291,7 @@ export function EntityCard({
           </div>
           {tagRow}
         </div>
-        {(badge || action) && (
-          // The badge is inert; the action is lifted above the stretched link
-          // (`relative z-20`) and sits at the bottom right, the far corner from
-          // the row's own destination.
-          <div className="shrink-0 flex items-start justify-between gap-1.5 sm:flex-col sm:items-end">
-            {badge}
-            {action && <div className="relative z-20">{action}</div>}
-          </div>
-        )}
+        {badge && <div className="shrink-0">{badge}</div>}
       </div>
     </div>
   );

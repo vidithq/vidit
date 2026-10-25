@@ -50,10 +50,10 @@ type MosaicTile =
  * tile uses its original, by `role`); a clip fetches nothing.
  */
 async function readTile(tile: CollectionCoverTile, lone: boolean): Promise<MosaicTile> {
-  if (tile.media_type !== "image") return { kind: "video" };
+  if (tile.kind !== "image") return { kind: "video" };
   const urls = displayUrlsFor({
     storage_url: tile.url,
-    media_type: tile.media_type,
+    kind: tile.kind,
     role: tile.role,
   });
   const src = await ogImageDataUri(lone ? urls.hero : urls.thumbnail);

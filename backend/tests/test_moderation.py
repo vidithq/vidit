@@ -5,7 +5,7 @@ against, ``POST /admin/reports/{id}/resolve`` closes one with a verdict that
 may mutate the target, and ``PATCH /admin/events/{id}/moderation`` moves the
 same two fields with no report behind it. A report names an event or a
 collection, so the queue tests cover both and the verdict tests cover which
-ones each kind takes. Every mutation leaves an ``admin_events`` row, which is
+ones each kind takes. Every mutation leaves an ``audit_log`` row, which is
 what these tests pin alongside the state changes.
 """
 
@@ -20,10 +20,11 @@ from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal
 from app.main import app
-from app.models.admin_event import AdminEvent
+from app.models.audit_log import AuditLog
 from app.models.collection import Collection
 from app.models.content_report import ContentReport
 from app.models.event import Event
+from app.models.source import Source, SourceLink
 from app.models.user import User
 from app.services.auth import hash_password
 from tests._fixtures import collection_description
@@ -62,7 +63,7 @@ def admin_user(db):
     yield user
     # Reap this actor's audit rows so the user row deletes cleanly.
     db.expire_all()
-    db.query(AdminEvent).filter(AdminEvent.actor_id == user_id).delete()
+    db.query(AuditLog).filter(AuditLog.actor_id == user_id).delete()
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -93,9 +94,17 @@ def event(db, regular_user):
     row = Event(
         owner_id=regular_user.id,
         title=f"Moderated {uuid.uuid4().hex[:8]}",
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://example.com/source",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
+        sources=[
+            Source(
+                level="direct", kind="unknown", links=[SourceLink(url="https://example.com/source")]
+            ),
+            Source(
+                level="context",
+                kind="unknown",
+                links=[SourceLink(url="https://example.com/context")],
+            ),
+        ],
         geolocated_at=datetime.now(UTC),
     )
     db.add(row)
@@ -144,11 +153,11 @@ def _collection_report(db, collection, *, reason: str = "other") -> ContentRepor
     return row
 
 
-def _audit(db, admin_user, action: str) -> AdminEvent | None:
+def _audit(db, admin_user, action: str) -> AuditLog | None:
     return (
-        db.query(AdminEvent)
-        .filter(AdminEvent.actor_id == admin_user.id, AdminEvent.action == action)
-        .order_by(AdminEvent.created_at.desc())
+        db.query(AuditLog)
+        .filter(AuditLog.actor_id == admin_user.id, AuditLog.action == action)
+        .order_by(AuditLog.created_at.desc())
         .first()
     )
 
@@ -190,7 +199,7 @@ def test_resolve_marked_graphic_sets_the_flag_and_stamps_the_report(db, admin_us
     db.expire_all()
     assert db.query(Event).filter(Event.id == event.id).one().is_graphic is True
     stored = db.query(ContentReport).filter(ContentReport.id == report.id).one()
-    assert stored.resolved_by == admin_user.id
+    assert stored.resolved_by_id == admin_user.id
 
     assert _audit(db, admin_user, "report_resolved").target == {
         "report_id": str(report.id),
@@ -382,7 +391,13 @@ def test_moderation_hides_then_restores_the_event(db, admin_user, event):
     assert db.query(Event).filter(Event.id == event.id).one().hidden_at is None
 
 
+def _source_flags(db, event) -> list[bool]:
+    db.expire_all()
+    return [row.is_graphic for row in db.query(Source).filter(Source.event_id == event.id)]
+
+
 def test_moderation_overrides_the_graphic_flag_both_ways(db, admin_user, event):
+    """The override sets, then clears, the flag on every source of the event."""
     headers = login_as(client, admin_user)
 
     marked = client.patch(
@@ -393,6 +408,7 @@ def test_moderation_overrides_the_graphic_flag_both_ways(db, admin_user, event):
     assert marked.status_code == 200, marked.text
     assert marked.json()["is_graphic"] is True
     assert _audit(db, admin_user, "event_marked_graphic") is not None
+    assert _source_flags(db, event) == [True, True]
 
     cleared = client.patch(
         f"/api/v1/admin/events/{event.id}/moderation",
@@ -403,8 +419,7 @@ def test_moderation_overrides_the_graphic_flag_both_ways(db, admin_user, event):
     assert cleared.json()["is_graphic"] is False
     assert _audit(db, admin_user, "event_unmarked_graphic") is not None
 
-    db.expire_all()
-    assert db.query(Event).filter(Event.id == event.id).one().is_graphic is False
+    assert _source_flags(db, event) == [False, False]
 
 
 def test_moderation_no_op_writes_no_audit_row(db, admin_user, event):
@@ -417,7 +432,7 @@ def test_moderation_no_op_writes_no_audit_row(db, admin_user, event):
     assert response.status_code == 200, response.text
 
     db.expire_all()
-    assert db.query(AdminEvent).filter(AdminEvent.actor_id == admin_user.id).count() == 0, (
+    assert db.query(AuditLog).filter(AuditLog.actor_id == admin_user.id).count() == 0, (
         "a no-op moderation call wrote an audit row"
     )
 

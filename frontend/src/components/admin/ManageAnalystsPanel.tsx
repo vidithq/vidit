@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { Search } from "lucide-react";
+import { useRef, useState } from "react";
 
 import {
   searchUsers,
@@ -9,19 +8,18 @@ import {
   type AdminUser,
   type AdminUserDeleteResponse,
 } from "@/lib/admin";
-import { useMutation } from "@/hooks/useMutation";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
-import { Button } from "@/components/ui/Button";
+import { FORM_LABEL } from "@/components/ui/form-styles";
+import { AccountPicker, analystAccount } from "@/components/ui/AccountPicker";
 import { Card } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
 import { ActionReceipt, PurgeReceipt } from "@/components/admin/ActionReceipt";
 import { UserActionsCard } from "@/components/admin/UserActionsCard";
 import { countLabel } from "@/lib/format";
 
 export function ManageAnalystsPanel() {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<AdminUser[] | null>(null);
+  // The picker hands back an account; the action card needs the admin row it came from.
+  const found = useRef(new Map<string, AdminUser>());
+  const [picked, setPicked] = useState<AdminUser | null>(null);
   const [lastDelete, setLastDelete] = useState<AdminUserDeleteResponse | null>(
     null,
   );
@@ -29,29 +27,15 @@ export function ManageAnalystsPanel() {
     null,
   );
 
-  const searchMutation = useMutation(() => searchUsers(query), {
-    fallback: "Search failed",
-    onSuccess: setResults,
-  });
-  const searching = searchMutation.loading;
-  const error = searchMutation.error;
-
-  const onSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLastDelete(null);
-    setLastPurge(null);
-    await searchMutation.run();
+  const search = async (query: string) => {
+    const users = await searchUsers(query);
+    for (const user of users) found.current.set(user.username, user);
+    return users.map(analystAccount);
   };
 
-  const onUpdated = (u: AdminUser) => {
-    setResults((prev) =>
-      prev ? prev.map((row) => (row.id === u.id ? u : row)) : prev,
-    );
-  };
-
-  const onDeleted = (userId: string, response: AdminUserDeleteResponse) => {
-    // Drop the row: the user is now gone (hard) or hidden from reads (soft).
-    setResults((prev) => (prev ? prev.filter((r) => r.id !== userId) : prev));
+  const onDeleted = (_userId: string, response: AdminUserDeleteResponse) => {
+    // The user is now gone (hard) or hidden from reads (soft).
+    setPicked(null);
     setLastDelete(response);
     setLastPurge(null);
   };
@@ -67,59 +51,43 @@ export function ManageAnalystsPanel() {
         <SectionEyebrow title="Manage analysts" margin="none" />
         <p className="text-xs text-neutral-500 mt-0.5">
           Find any analyst by username or email, including accounts that never
-          came through an invite code, then act on the row: the same actions as
-          the onboarding table above.
+          came through an invite code, then act on the account: the same
+          actions as the onboarding table above.
         </p>
       </header>
 
-      <form
-        onSubmit={onSearch}
-        className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end"
-      >
-        <div>
-          <label className={FORM_LABEL} htmlFor="user-search">
-            Find an analyst (username or email)
-          </label>
-          <Input
-            variant="compact"
+      <div>
+        <label className={FORM_LABEL} htmlFor="user-search">
+          Find an analyst (username or email)
+        </label>
+        <div className="mt-1">
+          <AccountPicker
             id="user-search"
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            search={search}
+            minQueryLength={1}
+            selected={picked ? analystAccount(picked) : null}
+            onSelect={(account) => {
+              if (account.kind !== "analyst") return;
+              setPicked(found.current.get(account.username) ?? null);
+              setLastDelete(null);
+              setLastPurge(null);
+            }}
+            onClear={() => setPicked(null)}
             placeholder="username or email"
-            className="mt-1"
+            emptyText="No analysts match."
           />
         </div>
-        <Button
-          type="submit"
-          variant="secondary"
-          disabled={searching || !query.trim()}
-        >
-          <Search size={12} />
-          {searching ? "Searching…" : "Search"}
-        </Button>
-      </form>
+      </div>
 
-      {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
-
-      {results !== null && (
-        <div className="space-y-2">
-          {results.length === 0 ? (
-            <div className="text-xs text-neutral-500 py-2">
-              No analysts match.
-            </div>
-          ) : (
-            results.map((u) => (
-              <UserActionsCard
-                key={u.id}
-                user={u}
-                onUpdated={onUpdated}
-                onDeleted={onDeleted}
-                onPurged={onPurged}
-              />
-            ))
-          )}
-        </div>
+      {picked && (
+        <UserActionsCard
+          // Keyed by user so form drafts never survive a switch between analysts.
+          key={picked.id}
+          user={picked}
+          onUpdated={setPicked}
+          onDeleted={onDeleted}
+          onPurged={onPurged}
+        />
       )}
 
       {lastDelete && (

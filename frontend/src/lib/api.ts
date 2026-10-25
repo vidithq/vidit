@@ -1,11 +1,12 @@
 import { CSRF_HEADER, readCsrfToken } from "./auth";
 import { nextCursor } from "./pagination";
+import { reportSessionRejected } from "./session";
 
 const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL;
 if (!configuredApiUrl) {
   throw new Error(
     "NEXT_PUBLIC_API_URL must be set at build time. " +
-      "Set it in Vercel project settings (production/preview), " +
+      "Set it in the build environment of your frontend host, " +
       ".env.local (local dev), or as a CI build env."
   );
 }
@@ -16,18 +17,30 @@ export const API_URL: string = configuredApiUrl;
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
+// A 401 from these says nothing about a held session: a wrong password, or the session probe
+// `AuthProvider` reads itself. Any other 401 means the session cookie no longer holds.
+const SESSION_PROBES = new Set(["/auth/login", "/auth/me"]);
+
 /** Thrown by `apiFetch` for any non-2xx. `status` separates a real auth failure (401/403)
  * from a transient one (5xx, network), so a backend hiccup doesn't bounce to `/login`.
  * `code` is the backend's stable identifier for errors worth branching on (e.g.
- * `email_pending_confirmation`); `null` for plain string `detail`s. */
+ * `email_pending_confirmation`); `null` for plain string `detail`s. `sessionRejected` marks a
+ * 401 the session notice already speaks for, so a form shows no message of its own. */
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string | null;
-  constructor(message: string, status: number, code: string | null = null) {
+  readonly sessionRejected: boolean;
+  constructor(
+    message: string,
+    status: number,
+    code: string | null = null,
+    sessionRejected = false,
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
+    this.sessionRejected = sessionRejected;
   }
 }
 
@@ -96,7 +109,10 @@ async function send(path: string, options?: RequestInit): Promise<Response> {
   if (!res.ok) {
     const body = await res.json().catch(() => null);
     const parsed = parseApiError(body, res.status);
-    throw new ApiError(parsed.message, res.status, parsed.code);
+    // A 403 is a refusal to a live session: only a 401 ends it.
+    const sessionRejected =
+      res.status === 401 && !SESSION_PROBES.has(path.split("?")[0]) && reportSessionRejected();
+    throw new ApiError(parsed.message, res.status, parsed.code, sessionRejected);
   }
   return res;
 }

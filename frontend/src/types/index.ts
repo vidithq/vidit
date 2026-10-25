@@ -11,8 +11,6 @@ export type User = Omit<components["schemas"]["UserRead"], "external_links"> & {
 
 export type AuthorRef = components["schemas"]["AuthorRef"];
 
-export type TagCategory = components["schemas"]["TagRead"]["category"];
-
 /** An archive-import job as the owner polls it (queued by `POST /events/import-archive`,
  *  followed by `GET .../{job_id}`); counts are final once `status` is `done`. */
 export type ArchiveImportJob = components["schemas"]["ArchiveImportJobRead"];
@@ -41,8 +39,8 @@ export type BeforeClosedStatus = NonNullable<
  *  rows imported before the column existed. */
 export type DetectedVia = NonNullable<components["schemas"]["EventRead"]["detected_via"]>;
 
-/** Compact point from /events/points: [id, lat, lng, event_date, added_date, detected]. Dates
- *  are ISO `YYYY-MM-DD`; `event_date` is null when unknown (the scrubber skips such points).
+/** Compact point from /events/points: [id, lat, lng, occurred_date, added_date, detected]. Dates
+ *  are ISO `YYYY-MM-DD`; `occurred_date` is null when unknown (the scrubber skips such points).
  *  `detected` is 1 for a machine detection, 0 for geolocated. Every point has coordinates. */
 export type MapPoint = [string, number, number, string | null, string, 0 | 1];
 
@@ -51,7 +49,7 @@ export const POINT_DETECTED_FLAG = 5;
 
 /** Lifecycle status from the `detected` flag. Total because `/events/points` serves live
  *  `geolocated` and `detected` rows only (not `requested` guesses or `closed` rows). */
-export function pointLifecycleStatus(point: MapPoint): EventStatus {
+function pointLifecycleStatus(point: MapPoint): EventStatus {
   return point[POINT_DETECTED_FLAG] === 1 ? "detected" : "geolocated";
 }
 
@@ -68,16 +66,16 @@ export function filterPointsByStatus(points: MapPoint[], statuses: string[]): Ma
 export type TweetImportOutcome = components["schemas"]["TweetImportRead"];
 
 /** One candidate from the submit-form duplicate probe (`GET /events/possible-duplicates`): a
- * soft warning. `source_url` is null on a sourceless `detected` candidate. */
+ * soft warning. `source_urls` is empty on a sourceless `detected` candidate. */
 export type PossibleDuplicate = components["schemas"]["PossibleDuplicateRead"];
 
-/** A stored media row; `sha256` and `original_filename` are null on rows predating those columns. */
+/** A stored media row: a source's file or a proof image. */
 export type Media = components["schemas"]["MediaRead"];
 
 /** Full event detail (`GET /events/{id}`, `GET /events/detections`): the compact `EventList`
- *  card plus source URL, proof body, full media list, provenance and `requested_by`. Covers
- *  every lifecycle state; `event_coords` is null on a request without a guess, and
- *  `source_url` / `source_posted_at` are null on a `detected` row with no declared source. */
+ *  card plus the sources, proof body, provenance and `requested_by`. Covers every lifecycle
+ *  state; `coords` is null on a request without a guess, and `sources` is empty on a
+ *  `detected` row with no declared source. */
 /** `viewer_invite_pending` is per reader: only `GET /events/{id}` computes it, so a row from
  *  any other source may lack it. */
 export type EventDetail = Omit<components["schemas"]["EventRead"], "viewer_invite_pending"> & {
@@ -92,9 +90,8 @@ export type EventVersion = components["schemas"]["EventVersionRead"];
 /** One page of history plus the whole history's size (`total` is not `items.length`). */
 export type EventVersionList = components["schemas"]["EventVersionList"];
 
-/** One link's archived copy (snapshot URL and provider), on `archived_source`,
- *  `archived_detected_from` and each index-aligned entry of `archived_secondary_sources`.
- *  Null means no copy recorded. */
+/** One source link's archived copy (snapshot URL, provider, when it was recorded). Null means
+ *  no copy recorded. */
 export type ArchivedLink = components["schemas"]["ArchivedLinkRead"];
 
 /** Compact event card (`GET /events`). */
@@ -107,8 +104,7 @@ export type SearchType = components["schemas"]["SearchResponse"]["type"];
  * the API (XSS-safe). */
 export type SearchEventHit = components["schemas"]["SearchEventHit"];
 
-/** A requested-view hit: an event card plus `title_highlight`. `source_url` is always set
- *  today (`ck_events_source_url_status`). */
+/** A requested-view hit: an event card plus `title_highlight` and its source URLs. */
 export type SearchRequestHit = components["schemas"]["SearchRequestHit"];
 
 /** An analyst hit; `bio_highlight` is set only when the bio matched. */

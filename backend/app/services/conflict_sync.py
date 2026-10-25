@@ -1,7 +1,7 @@
 """Daily sync of the conflicts referential from Wikipedia's ongoing list.
 
 A conflict is on the community-curated page "List of ongoing armed
-conflicts" iff editors judge it ongoing, which is the product's ``ongoing`` flag.
+conflicts" iff editors judge it ongoing, which is the product's ``is_ongoing`` flag.
 
 Identity is the Wikidata QID resolved from each row's article link, not the
 displayed name: the page renames conflicts often and the QID survives. A
@@ -25,7 +25,7 @@ import httpx
 from bs4 import BeautifulSoup
 from sqlalchemy.orm import Session
 
-from app.models.conflict import Conflict
+from app.models.conflict import Conflict, ConflictTier
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +36,13 @@ _USER_AGENT = "vidit-conflict-sync/1.0 (https://vidit.app)"
 
 # Heading preceding each wikitable -> stored ``ConflictTier``. The skirmishes
 # tier (<100 deaths/year) is excluded as high-churn noise.
-_TIER_BY_HEADING = {"major wars": "major", "minor wars": "minor", "conflicts": "conflict"}
+_TIER_BY_HEADING: dict[str, ConflictTier] = {
+    "major wars": "major",
+    "minor wars": "minor",
+    "conflicts": "conflict",
+}
 
-# Absence tolerated before ``ongoing=false``; absorbs transient renames,
+# Absence tolerated before ``is_ongoing=false``; absorbs transient renames,
 # vandalism reverts and tier flapping.
 GRACE_PERIOD_DAYS = 14
 
@@ -112,7 +116,7 @@ class PageEntry:
     """One top-level conflict as parsed off the page."""
 
     title: str
-    tier: str
+    tier: ConflictTier
     start_year: int | None
 
 
@@ -290,7 +294,7 @@ def sync_conflicts(
                     )
                     continue
                 else:
-                    row = Conflict(name=title, wikidata_id=qid, ongoing=True, source="sync")
+                    row = Conflict(name=title, wikidata_id=qid, is_ongoing=True, origin="sync")
                     db.add(row)
                     result.created += 1
             elif row.name != title:
@@ -305,9 +309,9 @@ def sync_conflicts(
                     row.name = title
                     result.renamed += 1
             # First sighting of a seed row is not a reactivation.
-            if not row.ongoing and row.last_seen_at is not None:
+            if not row.is_ongoing and row.last_seen_at is not None:
                 result.reactivated += 1
-            row.ongoing = True
+            row.is_ongoing = True
             row.last_seen_at = now
             row.tier = entry.tier
             # Fill a gap only: seed years are more precise than the page's.
@@ -319,14 +323,14 @@ def sync_conflicts(
         expired = (
             db.query(Conflict)
             .filter(
-                Conflict.ongoing.is_(True),
+                Conflict.is_ongoing.is_(True),
                 Conflict.last_seen_at.isnot(None),
                 Conflict.last_seen_at < cutoff,
             )
             .all()
         )
         for row in expired:
-            row.ongoing = False
+            row.is_ongoing = False
             result.deactivated += 1
 
         db.commit()

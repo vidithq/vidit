@@ -15,7 +15,7 @@ from app.services import notification_delivery
 from app.services.auth import hash_password
 from tests.conftest import login_as
 from tests.events._helpers import client, notifications_of
-from tests.events.test_requests import _geolocate_fulfilment, _make_request
+from tests.events.test_requests import _geolocate_fulfilment, _kept, _make_request
 
 _FEED = "/api/v1/notifications"
 _UNREAD = "/api/v1/notifications/unread-count"
@@ -62,11 +62,9 @@ def third_user(db):
     db.commit()
 
 
-def test_fulfilment_by_another_analyst_notifies_the_requester(
-    db, author, second_user, conflict, capture_source_tag
-):
+def test_fulfilment_by_another_analyst_notifies_the_requester(db, author, second_user, conflict):
     request = _make_request(db, author=author)
-    response = _geolocate_fulfilment(client, request.id, second_user, conflict, capture_source_tag)
+    response = _geolocate_fulfilment(request.id, second_user, conflict, _kept(request))
     assert response.status_code == 200, response.text
 
     rows = _rows(db, author)
@@ -83,9 +81,9 @@ def test_fulfilment_by_another_analyst_notifies_the_requester(
     assert items[0]["read_at"] is None
 
 
-def test_self_fulfilment_notifies_nobody(db, author, conflict, capture_source_tag):
+def test_self_fulfilment_notifies_nobody(db, author, conflict):
     request = _make_request(db, author=author)
-    response = _geolocate_fulfilment(client, request.id, author, conflict, capture_source_tag)
+    response = _geolocate_fulfilment(request.id, author, conflict, _kept(request))
     assert response.status_code == 200, response.text
     assert _rows(db, author) == []
 
@@ -201,17 +199,19 @@ def _delete(user: User, notification_id: uuid.UUID):
 
 
 def test_delete_drops_unsent_deliveries_and_keeps_sent_ones(db, author, second_user):
-    row = _notify(db, recipient=author, actor=second_user)
+    unsent = _notify(db, recipient=author, actor=second_user)
+    emailed = _notify(db, recipient=author, actor=second_user)
     kept = _notify(db, recipient=author, actor=second_user)
-    queued = NotificationDelivery(notification_id=row.id, channel="push")
+    queued = NotificationDelivery(notification_id=unsent.id)
     sent = NotificationDelivery(
-        notification_id=row.id, channel="email", status="sent", sent_at=datetime.now(UTC)
+        notification_id=emailed.id, status="done", sent_at=datetime.now(UTC)
     )
     db.add_all([queued, sent])
     db.commit()
-    row_id, queued_id, sent_id = row.id, queued.id, sent.id
+    unsent_id, emailed_id, queued_id, sent_id = unsent.id, emailed.id, queued.id, sent.id
 
-    assert _delete(author, row_id).status_code == 204
+    assert _delete(author, unsent_id).status_code == 204
+    assert _delete(author, emailed_id).status_code == 204
     assert [r.id for r in _rows(db, author)] == [kept.id]
     assert db.get(NotificationDelivery, queued_id) is None
     assert db.get(NotificationDelivery, sent_id).notification_id is None

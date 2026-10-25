@@ -21,7 +21,7 @@ def test_settings_s3_backend_requires_bucket_and_region(monkeypatch):
 def test_settings_s3_backend_requires_bucket_when_only_region_set(monkeypatch):
     _clear_storage_env(monkeypatch)
     monkeypatch.setenv("STORAGE_BACKEND", "s3")
-    monkeypatch.setenv("AWS_REGION", "eu-west-3")
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
     with pytest.raises(ValidationError, match="S3_BUCKET"):
         Settings()
 
@@ -29,15 +29,15 @@ def test_settings_s3_backend_requires_bucket_when_only_region_set(monkeypatch):
 def test_settings_full_s3_config_passes(monkeypatch):
     _clear_storage_env(monkeypatch)
     monkeypatch.setenv("STORAGE_BACKEND", "s3")
-    monkeypatch.setenv("AWS_REGION", "eu-west-3")
-    monkeypatch.setenv("S3_BUCKET", "vidit-prod")
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+    monkeypatch.setenv("S3_BUCKET", "example-bucket")
     settings = Settings()
     assert settings.storage_backend == "s3"
 
 
 def test_settings_rejects_bucket_without_s3_backend(monkeypatch):
     _clear_storage_env(monkeypatch)
-    monkeypatch.setenv("S3_BUCKET", "vidit-prod")
+    monkeypatch.setenv("S3_BUCKET", "example-bucket")
     with pytest.raises(ValidationError, match="S3_BUCKET is set"):
         Settings()
 
@@ -111,16 +111,6 @@ def test_a_deployment_refuses_a_localhost_api_url(monkeypatch):
         Settings()
 
 
-@pytest.mark.parametrize(
-    "name", ["PRODUCT_UPDATE_EMAIL_DAILY_CAP", "PRODUCT_UPDATE_EMAIL_BATCH_SIZE"]
-)
-def test_product_update_pacing_refuses_zero(monkeypatch, name):
-    _clear_storage_env(monkeypatch)
-    monkeypatch.setenv(name, "0")
-    with pytest.raises(ValidationError):
-        Settings()
-
-
 def test_default_jwt_secret_with_ipv6_localhost_passes(monkeypatch):
     _clear_storage_env(monkeypatch)
     monkeypatch.delenv("JWT_SECRET", raising=False)
@@ -179,48 +169,17 @@ def test_cors_origin_regex_custom_localhost_substring_kept_on_remote_db(monkeypa
     assert settings.effective_cors_origin_regex == r"^https://localhost-preview\.vidit\.app$"
 
 
-@pytest.mark.parametrize("present", ["VAPID_PRIVATE_KEY", "VAPID_SUBJECT"])
-def test_half_configured_vapid_fails(monkeypatch, present):
-    _clear_storage_env(monkeypatch)
-    for var in ("VAPID_PRIVATE_KEY", "VAPID_SUBJECT"):
-        monkeypatch.delenv(var, raising=False)
-    monkeypatch.setenv(present, "set")
-    with pytest.raises(ValidationError, match="VAPID_PRIVATE_KEY and VAPID_SUBJECT"):
-        Settings()
-
-
-@pytest.mark.parametrize("missing", ["VAPID_PRIVATE_KEY", "VAPID_SUBJECT"])
-def test_a_deployment_refuses_to_start_without_push_keys(monkeypatch, missing):
-    _clear_storage_env(monkeypatch)
-    monkeypatch.setenv("COOKIE_SECURE", "true")
-    monkeypatch.setenv(missing, "")
-    with pytest.raises(ValidationError, match="must be set when COOKIE_SECURE is true"):
-        Settings()
-
-
-def test_push_keys_stay_optional_outside_a_deployment(monkeypatch):
-    _clear_storage_env(monkeypatch)
-    monkeypatch.delenv("COOKIE_SECURE", raising=False)
-    monkeypatch.setenv("VAPID_PRIVATE_KEY", "")
-    monkeypatch.setenv("VAPID_SUBJECT", "")
-    assert Settings().vapid_private_key == ""
-
-
 def test_email_caps_must_leave_room_for_auth_email(monkeypatch):
     _clear_storage_env(monkeypatch)
-    monkeypatch.setenv("NOTIFICATION_EMAIL_DAILY_CAP", "50")
-    monkeypatch.setenv("PRODUCT_UPDATE_EMAIL_DAILY_CAP", "50")
+    monkeypatch.setenv("NOTIFICATION_EMAIL_DAILY_CAP", "100")
     with pytest.raises(ValidationError, match="EMAIL_PROVIDER_DAILY_QUOTA"):
         Settings()
     monkeypatch.setenv("EMAIL_PROVIDER_DAILY_QUOTA", "3000")
-    assert Settings().product_update_email_daily_cap == 50
+    assert Settings().notification_email_daily_cap == 100
 
 
 def _clear_storage_env(monkeypatch):
     for var in ("STORAGE_BACKEND", "AWS_REGION", "S3_BUCKET", "CLOUDFRONT_DOMAIN"):
         monkeypatch.delenv(var, raising=False)
-    # A deployment (COOKIE_SECURE) needs a public API_URL and the push keys; the tests that do
-    # not probe them get them.
+    # A deployment (COOKIE_SECURE) needs a public API_URL; the tests that do not probe it get it.
     monkeypatch.setenv("API_URL", "https://api.vidit.example/api/v1")
-    monkeypatch.setenv("VAPID_PRIVATE_KEY", "set")
-    monkeypatch.setenv("VAPID_SUBJECT", "mailto:ops@vidit.example")

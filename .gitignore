@@ -33,7 +33,6 @@ Thumbs.db
 
 # Local media storage (LocalStorage backend)
 .local-storage/
-.vercel
 
 # MkDocs build output (docs.vidit.app deploy artifact)
 site/

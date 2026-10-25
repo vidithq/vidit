@@ -1,8 +1,8 @@
 """Hold a scheduler service until the database schema reaches the alembic head.
 
-Only the API runs ``alembic upgrade head`` (its Railway pre-deploy), and the
-scheduler services deploy the same commit in parallel, so a worker can start on
-new code against the old schema. A database ahead of the code (a revision the
+Only the ``migrate`` role runs ``alembic upgrade head``, and the scheduler
+roles deploy the same commit in parallel, so a worker can start on new code
+against the old schema. A database ahead of the code (a revision the
 scripts do not know) passes, so a rollback deploy is never held.
 """
 
@@ -51,7 +51,7 @@ def wait_for_schema_head(
             return
         if clock() >= deadline:
             # Exit rather than proceed: new code on the old schema is the error
-            # burst this gate stops, and Railway's ON_FAILURE policy restarts us.
+            # burst this gate stops, and the host's restart policy restarts us.
             sentry_sdk.capture_message(
                 f"schema still at {current}, head is {head}, after {TIMEOUT_SECONDS:.0f}s"
             )

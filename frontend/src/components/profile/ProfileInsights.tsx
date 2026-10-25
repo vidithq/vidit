@@ -1,5 +1,6 @@
 "use client";
 
+import { SOURCE_KIND_LABELS, type SourceKind } from "@/lib/sources";
 import { useEffect, useState, type ReactNode } from "react";
 import { Bot, Camera, MapPin, Swords } from "lucide-react";
 
@@ -20,7 +21,7 @@ function ChartNote({ children }: { children: ReactNode }) {
 
 /**
  * The shape-of-work section on the public profile: two live-status counts and the leading conflict
- * and capture source as four tiles, the source-origin bar, and the month grid, all from
+ * and source kind as four tiles, the source-origin bar, and the month grid, all from
  * `GET /users/{username}/stats`. Renders nothing until stats arrive, for a profile with no events,
  * or after a failed fetch (it never blocks the profile).
  *
@@ -65,7 +66,7 @@ export function ProfileInsights({ username }: { username: string }) {
 
   // The head of each ranked list (ordered count desc then name server-side), all the card prints.
   const topConflict = stats.top_conflicts[0];
-  const topCaptureSource = stats.capture_sources[0];
+  const topKind = stats.source_kinds[0];
 
   return (
     <Card as="section">
@@ -109,23 +110,17 @@ export function ProfileInsights({ username }: { username: string }) {
         />
         <StatTile
           icon={Camera}
-          label="Top capture source"
+          label="Top source kind"
           small
-          value={topCaptureSource ? topCaptureSource.name : "None"}
-          href={
-            topCaptureSource
-              ? profileSearchHref(username, {
-                  capture_source: topCaptureSource.name,
-                })
-              : undefined
-          }
+          value={topKind ? (SOURCE_KIND_LABELS[topKind.name as SourceKind] ?? topKind.name) : "None"}
+          href={topKind ? profileSearchHref(username, { source_kind: topKind.name }) : undefined}
         />
       </StatGrid>
 
       {/* Where the footage came from: the beat an analyst works reads off the hosts. The `?` is the
-          `source_url` definition, not to be confused with the capture source above. */}
+          source links definition, not to be confused with the source kind above. */}
       <div>
-        <SectionEyebrow title="Source origin" concept="source_url" as="h3" margin="none" />
+        <SectionEyebrow title="Source origin" concept="source_links" as="h3" margin="none" />
         <ChartNote>
           The host of each event&apos;s source link. Events naming no source
           have their own share.
@@ -141,7 +136,7 @@ export function ProfileInsights({ username }: { username: string }) {
           the name the field carries on the submit and edit forms; the note settles the ambiguity so the
           reading doesn't depend on the `?`. */}
       <div>
-        <SectionEyebrow title="Event dates" concept="event_date" as="h3" margin="none" />
+        <SectionEyebrow title="Event dates" concept="occurred_date" as="h3" margin="none" />
         <ChartNote>
           The month each event took place, not when it was posted, imported or
           published. It covers the {datedCount}{" "}

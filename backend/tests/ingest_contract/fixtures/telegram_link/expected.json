@@ -7,9 +7,9 @@
     ]
   ],
   "source_url": "https://t.me/somechannel/12345",
-  "secondary_source_urls": [],
+  "secondary_sources": [],
   "source_posted_at": null,
-  "event_date": "2026-03-04",
+  "occurred_date": "2026-03-04",
   "title": "Geolocated 44.612300, 33.522100 airfield perimeter",
   "source_media": [],
   "proof_media": [

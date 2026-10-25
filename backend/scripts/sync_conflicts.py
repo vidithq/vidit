@@ -1,6 +1,6 @@
 """Run one pass of the Wikipedia ongoing-conflicts sync.
 
-For a daily scheduler (e.g. a Railway cron) or by hand. Exits non-zero when the
+For a daily scheduler or by hand. Exits non-zero when the
 page could not be fetched or no longer matches the expected structure, writing
 nothing (``services/conflict_sync``).
     uv run python scripts/sync_conflicts.py

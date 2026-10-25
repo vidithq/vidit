@@ -6,10 +6,9 @@ from sqlalchemy import and_, delete, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.models.admin_event import AdminEvent
 from app.models.approval import EventApproval
 from app.models.archive_import_job import ArchiveImportJob
-from app.models.auth_event import EVENT_LOGIN, AuthEvent
+from app.models.audit_log import ACTION_LOGIN, AuditLog
 from app.models.bot_mention import BotMention
 from app.models.collection import Collection
 from app.models.event import (
@@ -21,6 +20,8 @@ from app.models.event import (
 )
 from app.models.invite_code import InviteCode
 from app.models.media import Media
+from app.models.source import EVIDENCE_LEVELS, Source, SourceLink
+from app.models.upload import Upload
 from app.models.user import User
 from app.schemas.admin import (
     AdminDetectionStatsRead,
@@ -31,14 +32,16 @@ from app.schemas.user import AuthorRef
 from app.services import geolocator_credit, organizations, versions
 from app.services.auth import bump_token_version, generate_invite_code, invite_code_status
 from app.services.evidence_intake import (
-    collect_event_media_keys,
-    collect_media_keys,
-    collect_snapshot_media_keys,
+    StoredObject,
+    event_objects,
     orphaned_source_media,
     prune_unreferenced_proof_media,
+    sweep_snapshot_media,
+    sweep_unreferenced,
 )
 from app.services.pagination import keyset_before
 from app.services.storage import avatar_key_of, sweep_keys
+from app.services.uploads import upload_object
 from app.services.users import x_handle_holder
 
 
@@ -86,8 +89,8 @@ def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInvi
     """Batch the onboarding counters for every redeemer in one pass per source.
 
     Grouped aggregates over ``archive_import_jobs``, ``bot_mentions`` (by lowercased handle),
-    ``events`` and ``auth_events``, so the invite list stays O(1) queries. ``last_seen_at``
-    falls back to the newest ``login`` auth event for rows predating ``users.last_seen_at``.
+    ``events`` and ``audit_log``, so the invite list stays O(1) queries. ``last_seen_at``
+    falls back to the newest ``login`` audit row for rows predating ``users.last_seen_at``.
     """
     if not users:
         return {}
@@ -104,11 +107,11 @@ def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInvi
     bot_by_handle: dict[str, int] = (
         dict(
             db.query(
-                func.lower(BotMention.author_handle),
-                func.coalesce(func.sum(BotMention.events_created), 0),
+                func.lower(BotMention.author_x_handle),
+                func.coalesce(func.sum(BotMention.created_event_count), 0),
             )
-            .filter(func.lower(BotMention.author_handle).in_(handles))
-            .group_by(func.lower(BotMention.author_handle))
+            .filter(func.lower(BotMention.author_x_handle).in_(handles))
+            .group_by(func.lower(BotMention.author_x_handle))
             .all()
         )
         if handles
@@ -129,9 +132,9 @@ def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInvi
     }
     logins: dict[uuid.UUID | None, datetime] = {
         user_id: latest
-        for user_id, latest in db.query(AuthEvent.user_id, func.max(AuthEvent.created_at))
-        .filter(AuthEvent.user_id.in_(ids), AuthEvent.event == EVENT_LOGIN)
-        .group_by(AuthEvent.user_id)
+        for user_id, latest in db.query(AuditLog.actor_id, func.max(AuditLog.created_at))
+        .filter(AuditLog.actor_id.in_(ids), AuditLog.action == ACTION_LOGIN)
+        .group_by(AuditLog.actor_id)
         .all()
     }
 
@@ -142,7 +145,7 @@ def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInvi
             email=u.email,
             is_admin=u.is_admin,
             x_handle=u.x_handle,
-            invite_minting_enabled=u.invite_minting_enabled,
+            is_invite_minting_enabled=u.is_invite_minting_enabled,
             archives_imported=archives.get(u.id, 0),
             bot_detection_count=bot_by_handle.get(u.x_handle, 0) if u.x_handle else 0,
             detected_count=by_status.get((u.id, STATUS_DETECTED), 0),
@@ -162,7 +165,7 @@ def serialize_invite_codes(db: Session, invites: list[InviteCode]) -> list[Admin
             expires_at=invite.expires_at,
             created_at=invite.created_at,
             status=invite_code_status(invite),
-            redeemer=redeemers.get(invite.used_by) if invite.used_by else None,
+            redeemer=redeemers.get(invite.used_by_id) if invite.used_by_id else None,
             used_at=invite.used_at,
             x_handle=invite.x_handle,
             sponsor=(
@@ -196,11 +199,11 @@ def log_admin_event(
     actor_id: uuid.UUID,
     action: str,
     target: dict[str, Any] | None = None,
-) -> AdminEvent:
-    """Append a row to ``admin_events``. No commit: the caller owns the transaction."""
-    event = AdminEvent(actor_id=actor_id, action=action, target=target)
-    db.add(event)
-    return event
+) -> AuditLog:
+    """Append a row to ``audit_log``. No commit: the caller owns the transaction."""
+    row = AuditLog(actor_id=actor_id, action=action, target=target)
+    db.add(row)
+    return row
 
 
 def create_invite_code(
@@ -303,7 +306,7 @@ def delete_invite_code(
     invite = db.query(InviteCode).filter(InviteCode.id == invite_id).first()
     if invite is None:
         return False
-    if invite.used_by is not None:
+    if invite.used_by_id is not None:
         raise InviteCodeUsedError("A redeemed invite code cannot be deleted")
     log_admin_event(
         db,
@@ -393,8 +396,8 @@ def set_invite_minting(
     user = db.query(User).filter(User.id == user_id).with_for_update().first()
     if user is None or user.deleted_at is not None:
         raise UserNotFoundError("User not found")
-    if user.invite_minting_enabled != enabled:
-        user.invite_minting_enabled = enabled
+    if user.is_invite_minting_enabled != enabled:
+        user.is_invite_minting_enabled = enabled
         log_admin_event(
             db,
             actor_id=actor_id,
@@ -530,32 +533,30 @@ def hard_delete_geolocation(
     actor_id: uuid.UUID,
     geolocation_id: uuid.UUID,
 ) -> dict[str, Any]:
-    """GDPR-grade erasure: drop the row, the media rows, and the S3 objects.
+    """GDPR-grade erasure: drop the row, the media rows, and the stored objects.
 
-    Commit-then-sweep, see :func:`services.storage.sweep_keys`. Reachable on soft-deleted rows
-    (soft now, hard later) and on live rows (admin override).
+    Commit-then-sweep, see :func:`services.evidence_intake.sweep_unreferenced`: an object a
+    copy on another event still names stays. Reachable on soft-deleted rows (soft now, hard
+    later) and on live rows (admin override).
     """
     geo = db.query(Event).filter(Event.id == geolocation_id).first()
     if geo is None:
         raise EventNotFoundError("Event not found")
 
-    # Capture S3 keys before the cascade fires: every media row (all roles, derivatives
-    # included), plus the source media a correction superseded, which outlives its row.
-    media_keys = collect_event_media_keys(db, geo)
+    # Read the files before the cascade fires: every media row, plus the source files a
+    # correction dropped, which outlive their rows.
+    objects = event_objects(db, geo)
 
     target = {
         "geolocation_id": str(geo.id),
         "title": geo.title,
-        "media_count": len(geo.media),
+        "media_count": len(objects),
     }
     db.delete(geo)
     log_admin_event(db, actor_id=actor_id, action="geolocation_hard_deleted", target=target)
     db.commit()
 
-    sweep_keys(
-        media_keys,
-        context=f"geolocation {geolocation_id} hard-delete",
-    )
+    sweep_unreferenced(db, objects, context=f"geolocation {geolocation_id} hard-delete")
 
     return target
 
@@ -598,16 +599,14 @@ def redact_version(
         raise VersionNotFoundError("Version not found")
     # Read what this version rendered before it is blanked; the flush puts the redaction ahead
     # of the queries below, so neither counts this row as holding a file alive.
-    superseded_sources = versions.media_fragment(row.snapshot, "source_media")
+    superseded_sources = versions.source_media_of(row.snapshot)
     if not versions.redact_version(db, version=row, actor_id=actor_id):
         return row
     db.flush()
 
-    # The audit entry counts media (one per source image); the sweep takes the keys (a source
-    # image owns two derivatives as well).
-    removed_proof_keys, removed_proof_rows = prune_unreferenced_proof_media(db, event)
+    removed_proofs = prune_unreferenced_proof_media(db, event)
+    db.flush()
     freed_sources = orphaned_source_media(db, event, dropped=superseded_sources)
-    removed_keys = removed_proof_keys + collect_snapshot_media_keys(freed_sources)
     log_admin_event(
         db,
         actor_id=actor_id,
@@ -615,13 +614,15 @@ def redact_version(
         target={
             "geolocation_id": str(event.id),
             "version_no": version_no,
-            "removed_media_count": removed_proof_rows + len(freed_sources),
+            "removed_media_count": len(removed_proofs) + len(freed_sources),
         },
     )
     db.commit()
     db.refresh(row)
 
-    sweep_keys(removed_keys, context=f"event {event.id} version {version_no} redaction")
+    context = f"event {event.id} version {version_no} redaction"
+    sweep_unreferenced(db, removed_proofs, context=context)
+    sweep_snapshot_media(freed_sources, context=context)
     return row
 
 
@@ -722,10 +723,10 @@ def hard_delete_user(
        to its earliest-joined live member
        (:func:`services.organizations.hand_over_manager_roles`), in the same transaction as
        step 1. Delete the analyst's own approvals; those they placed for an organization stay
-       the organization's, with ``reviewer_id`` set to NULL. Delete the user. ``auth_tokens``, their collections (and memberships), their
+       the organization's, with ``reviewer_id`` set to NULL. Delete the user. ``password_reset_tokens``, their collections (and memberships), their
        invitations and their contributor rows on other people's events cascade-drop;
-       ``admin_events.actor_id`` and ``invite_codes.used_by`` flip to NULL (migration
-       f1a3b5c7d9e0), as does ``invite_codes.created_by``, so invite-code rows outlive the
+       ``audit_log.actor_id`` and ``invite_codes.used_by_id`` flip to NULL (migration
+       f1a3b5c7d9e0), as does ``invite_codes.created_by_id``, so invite-code rows outlive the
        user as audit trail.
     5. Commit, then sweep S3 (see :func:`services.storage.sweep_keys`).
     """
@@ -741,12 +742,15 @@ def hard_delete_user(
     # null ``owner_id`` on the rows it no longer owns.
     db.flush()
 
-    # 2. Capture every S3 key the deleted events reference, plus their profile picture
-    # (personal data on the same erasure request, referenced by nothing else once the row is
-    # gone).
-    geo_media_keys: list[str] = []
+    # 2. Capture every file the deleted events name, the account's staged uploads, and its
+    # profile picture (personal data on the same erasure request, referenced by nothing else
+    # once the row is gone).
+    objects: list[StoredObject] = []
     for geo in geolocations:
-        geo_media_keys.extend(collect_event_media_keys(db, geo))
+        objects.extend(event_objects(db, geo))
+    objects.extend(
+        upload_object(upload) for upload in db.query(Upload).filter(Upload.uploader_id == user.id)
+    )
     avatar_key = avatar_key_of(user.avatar_url)
 
     target = {
@@ -754,7 +758,7 @@ def hard_delete_user(
         "username": user.username,
         "geolocation_count": len(geolocations),
         "transferred_count": len(handed_over),
-        "media_count": len(geo_media_keys),
+        "media_count": len(objects),
     }
 
     # 3. Drop events manually so their cascades fire before the user row goes.
@@ -774,11 +778,10 @@ def hard_delete_user(
     log_admin_event(db, actor_id=actor_id, action="user_hard_deleted", target=target)
     db.commit()
 
-    # 5. Best-effort S3 sweep, after the DB transaction is durable.
-    sweep_keys(
-        geo_media_keys + ([avatar_key] if avatar_key else []),
-        context=f"user {user_id} hard-delete",
-    )
+    # 5. Best-effort sweep, after the DB transaction is durable. A file a copy on another
+    # event still names stays.
+    sweep_unreferenced(db, objects, context=f"user {user_id} hard-delete")
+    sweep_keys([avatar_key] if avatar_key else [], context=f"user {user_id} avatar")
 
     return target
 
@@ -791,8 +794,8 @@ def purge_detected_events(
 ) -> dict[str, Any]:
     """Hard-delete every detection a user owns, keeping the account.
 
-    The broken-archive repair: rows and S3 objects (via :func:`collect_media_keys`, derivatives
-    and soft-deleted detections included), leaving the account, geolocations and requests.
+    The broken-archive repair: rows and stored objects (via :func:`event_objects`, soft-deleted
+    detections included), leaving the account, geolocations and requests.
     ``closed`` rows that were once detected stay (the owner acted on them). Same
     commit-then-sweep ordering as :func:`hard_delete_user`.
     """
@@ -802,26 +805,26 @@ def purge_detected_events(
 
     detections = (
         db.query(Event)
-        .options(joinedload(Event.media))
+        .options(selectinload(Event.media), selectinload(Event.sources).selectinload(Source.media))
         .filter(Event.owner_id == user.id, Event.status == STATUS_DETECTED)
         .all()
     )
-    media_keys: list[str] = []
+    objects: list[StoredObject] = []
     for detection in detections:
-        media_keys.extend(collect_media_keys(list(detection.media)))
+        objects.extend(event_objects(db, detection))
 
     target = {
         "user_id": str(user.id),
         "username": user.username,
         "deleted_events": len(detections),
-        "media_count": len(media_keys),
+        "media_count": len(objects),
     }
     for detection in detections:
         db.delete(detection)
     log_admin_event(db, actor_id=actor_id, action="detected_events_purged", target=target)
     db.commit()
 
-    sweep_keys(media_keys, context=f"user {user_id} detected purge")
+    sweep_unreferenced(db, objects, context=f"user {user_id} detected purge")
 
     return target
 
@@ -838,11 +841,11 @@ def detection_quality_stats(db: Session) -> AdminDetectionStatsRead:
        left ``detected``. A soft-deleted ``geolocated`` row is not a reject (it was vouched).
        :func:`app.services.detection._row_disposition` refuses to re-import both shapes.
     2. The live ``detected`` queue (``deleted_at IS NULL``, human rows excluded), counting
-       detections missing a source media, a proof image or a source URL, which the geolocate
-       floor demands.
+       detections missing a source file (on a direct or indirect source), a proof image or a
+       source URL, which the publish floor demands.
     """
-    # A bot-opened request carries ``detected_from_url`` too, so the cohort is the model's own
-    # predicate rather than a second spelling of it.
+    # A bot-opened request carries an ``event_detections`` row too, so the cohort is the
+    # model's own predicate rather than a second spelling of it.
     machine = Event.is_machine_detection
     rejected = or_(
         and_(Event.status == STATUS_CLOSED, Event.before_closed_status == STATUS_DETECTED),
@@ -858,8 +861,9 @@ def detection_quality_stats(db: Session) -> AdminDetectionStatsRead:
     )
 
     pending = and_(Event.status == STATUS_DETECTED, Event.deleted_at.is_(None), machine)
-    has_source = Event.media.any(Media.role == "source")
-    has_proof = Event.media.any(and_(Media.role == "proof", Media.media_type == "image"))
+    has_source = Event.sources.any(and_(Source.level.in_(EVIDENCE_LEVELS), Source.media.has()))
+    has_proof = Event.media.any(Media.kind == "image")
+    has_url = Event.sources.any(Source.links.any(SourceLink.id.isnot(None)))
     (
         pending_total,
         missing_source_media,
@@ -870,7 +874,7 @@ def detection_quality_stats(db: Session) -> AdminDetectionStatsRead:
             func.count(),
             func.count().filter(~has_source),
             func.count().filter(~has_proof),
-            func.count().filter(Event.source_url.is_(None)),
+            func.count().filter(~has_url),
         )
         .filter(pending)
         .one()

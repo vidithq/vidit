@@ -60,6 +60,22 @@ describe("<AvatarStack>", () => {
     expect(onOverflow).toHaveBeenCalled();
   });
 
+  it("puts a remove control on a picture's corner, beside its link", () => {
+    const onClick = vi.fn();
+    render(
+      <AvatarStack
+        items={[{ ...item("maya"), remove: { label: "Delete approval by maya", onClick } }, item("bo")]}
+        label="Approved by"
+      />,
+    );
+    const remove = screen.getByRole("button", { name: "Delete approval by maya" });
+    expect(remove.closest("a")).toBeNull();
+    expect(remove.closest("li")).toContainElement(screen.getByRole("link", { name: "maya" }));
+    expect(screen.getAllByRole("button")).toHaveLength(1);
+    fireEvent.click(remove);
+    expect(onClick).toHaveBeenCalledOnce();
+  });
+
   it("squares an organization's logo", () => {
     render(
       <AvatarStack

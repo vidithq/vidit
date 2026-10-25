@@ -63,7 +63,7 @@ describe("labels", () => {
 
   it("colours a zone only for damage or destruction", () => {
     const link = (effect: "damage" | "destruction" | "other") => ({
-      latest_link_effect: { effect, event_date: null, event_id: "e" },
+      latest_link_effect: { effect, occurred_date: null, event_id: "e" },
     });
     expect(zoneEmphasis(link("damage"))).toBe("damage");
     expect(zoneEmphasis(link("destruction"))).toBe("destruction");

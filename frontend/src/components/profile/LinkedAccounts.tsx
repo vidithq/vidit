@@ -8,11 +8,11 @@ import type { ExternalLinks } from "@/types";
 import { DiscordGlyph, GitHubGlyph, XGlyph } from "@/components/ui/BrandGlyphs";
 import { buttonClasses } from "@/components/ui/Button";
 import { CopyButton } from "@/components/ui/CopyButton";
-import { FIELD_TEXT } from "@/components/ui/Input";
+import { Input } from "@/components/ui/Input";
 import { OutboundLink } from "@/components/ui/OutboundLink";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { Card } from "@/components/ui/Card";
-import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { FORM_LABEL } from "@/components/ui/form-styles";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import type { ProfileEditState } from "./useProfileEdit";
@@ -59,37 +59,29 @@ export function LinkedAccountsFields({ edit }: { edit: ProfileEditState }) {
   if (!edit.editing) return null;
 
   return (
-    <Card>
-      <SectionEyebrow title="Linked accounts" margin="none" />
-      <div className="space-y-2">
+    <Card as="section">
+      <SectionHeading title="Linked accounts" />
+      <div className="space-y-3">
         {LINK_PLATFORMS.map((p) => {
           const Icon = p.Icon;
           return (
-            <div
-              key={p.key}
-              className="flex items-center gap-2 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md transition-colors focus-within:border-orange-500"
-            >
-              <span className="inline-flex shrink-0 text-neutral-500">
-                <Icon size={14} />
-              </span>
-              <div className="flex-1 min-w-0">
-                <label htmlFor={`link-${p.key}`} className={FORM_LABEL}>
-                  {p.label}
-                </label>
-                <input
-                  id={`link-${p.key}`}
-                  type="text"
-                  placeholder={p.hint}
-                  value={edit.draftLinks[p.key] ?? ""}
-                  onChange={(e) =>
-                    edit.setDraftLinks((prev) => ({
-                      ...prev,
-                      [p.key]: e.target.value,
-                    }))
-                  }
-                  className={`block w-full bg-transparent ${FIELD_TEXT} text-neutral-200 placeholder:text-neutral-600 focus:outline-hidden`}
-                />
-              </div>
+            <div key={p.key} className="space-y-1.5">
+              <label htmlFor={`link-${p.key}`} className={FORM_LABEL}>
+                {p.label}
+              </label>
+              <Input
+                id={`link-${p.key}`}
+                type="text"
+                icon={<Icon size={14} />}
+                placeholder={p.hint}
+                value={edit.draftLinks[p.key] ?? ""}
+                onChange={(e) =>
+                  edit.setDraftLinks((prev) => ({
+                    ...prev,
+                    [p.key]: e.target.value,
+                  }))
+                }
+              />
             </div>
           );
         })}
@@ -102,10 +94,10 @@ export function LinkedAccountsFields({ edit }: { edit: ProfileEditState }) {
  * Where to reach the analyst: one ghost icon button per linked platform, the brand mark alone, in
  * the header action cluster right of the handle (above the work, like the event page's share
  * controls). The account each mark reaches is in its `title` and accessible name
- * (`X / Twitter: @LoLManya`). The row is the site's one icon control, the owner's Edit profile
+ * (`X / Twitter: @analyst_example`). The row is the site's one icon control, the owner's Edit profile
  * included.
  *
- * The name prints `displayLinkValue`, not the stored string, so an X value reads `@LoLManya`
+ * The name prints `displayLinkValue`, not the stored string, so an X value reads `@analyst_example`
  * whether stored as a URL or a bare handle.
  *
  * `action` decides what the mark does, never how it looks. `copy` is `<CopyHandle>` (Discord: no

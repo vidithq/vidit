@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from sqlalchemy.orm import Session
 
 from app.cache import points_cache
-from app.dependencies import get_db, require_admin
+from app.dependencies import get_current_user, get_db, require_admin
 from app.models.user import User
 from app.ratelimit import limiter
 from app.routers._errors import raise_typed_error
@@ -36,13 +36,12 @@ from app.schemas.organization import (
     OrganizationRead,
 )
 from app.schemas.report import ContentReportList, ContentReportRead, ContentReportUpdate
-from app.schemas.x_handle_request import AdminXHandleRequestRead, XHandleRequestDecline
 from app.services import admin as admin_service
+from app.services import approvals as approvals_service
 from app.services import maintenance as maintenance_service
 from app.services import organizations as organizations_service
 from app.services import registration as registration_service
 from app.services import reports as reports_service
-from app.services import x_handle_requests
 from app.services.pagination import (
     MAX_PAGE_SIZE,
     decode_cursor,
@@ -59,7 +58,6 @@ _ADMIN_ERROR_STATUS: dict[str, int] = {
     "version_not_found": 404,
     "collection_not_found": 404,
     "x_handle_conflict": 409,
-    "x_handle_request_not_found": 404,
     "invite_code_used": 409,
 }
 
@@ -70,9 +68,11 @@ def _raise_admin_error(exc: admin_service.AdminError) -> NoReturn:
 
 
 @router.get("/me", response_model=AdminMeResponse)
-def admin_me(current_user: User = Depends(require_admin)) -> AdminMeResponse:
-    """Route-guard probe: 200 + ``{is_admin: true}`` for admins, 403 otherwise."""
-    return AdminMeResponse(is_admin=True)
+def admin_me(current_user: User = Depends(get_current_user)) -> AdminMeResponse:
+    """Whether the signed-in analyst is a site admin."""
+    # The one route here open to every analyst: the frontend probes it on each signed-in page,
+    # so a 403 would log a console error for every analyst who is not an admin.
+    return AdminMeResponse(is_admin=current_user.is_admin)
 
 
 @router.get("/detection-stats", response_model=AdminDetectionStatsRead)
@@ -230,6 +230,22 @@ def delete_organization(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.delete("/approvals/{approval_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("60/hour")
+def delete_approval(
+    request: Request,
+    approval_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> Response:
+    """Delete one approval, as themselves or for an organization, and write it to the admin log."""
+    try:
+        approvals_service.delete_as_admin(db, approval_id=approval_id, actor=current_user)
+    except approvals_service.ApprovalError as exc:
+        raise_typed_error(exc, approvals_service.APPROVAL_ERROR_STATUS)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/organizations", response_model=list[AdminOrganizationRead])
 def list_organizations(
     db: Session = Depends(get_db),
@@ -288,55 +304,6 @@ def set_user_invite_minting(
         )
     except admin_service.AdminError as exc:
         _raise_admin_error(exc)
-
-
-@router.get("/x-handle-requests", response_model=list[AdminXHandleRequestRead])
-def list_x_handle_requests(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
-) -> list[AdminXHandleRequestRead]:
-    """Pending X handle change requests on live accounts, oldest first."""
-    return [
-        AdminXHandleRequestRead.model_validate(row) for row in x_handle_requests.list_pending(db)
-    ]
-
-
-@router.post("/x-handle-requests/{request_id}/approve", response_model=AdminUserRead)
-@limiter.limit("60/hour")
-def approve_x_handle_request(
-    request: Request,
-    request_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
-) -> User:
-    """Bind the requested handle through the X handle write path and notify
-    the analyst. 409 when another account holds the handle."""
-    try:
-        return x_handle_requests.approve(db, actor_id=current_user.id, request_id=request_id)
-    except admin_service.AdminError as exc:
-        _raise_admin_error(exc)
-
-
-@router.post(
-    "/x-handle-requests/{request_id}/decline",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-@limiter.limit("60/hour")
-def decline_x_handle_request(
-    request: Request,
-    request_id: uuid.UUID,
-    body: XHandleRequestDecline,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
-) -> Response:
-    """Decline a request with a reason the analyst reads in Settings."""
-    try:
-        x_handle_requests.decline(
-            db, actor_id=current_user.id, request_id=request_id, reason=body.reason
-        )
-    except admin_service.AdminError as exc:
-        _raise_admin_error(exc)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.delete(
@@ -645,19 +612,19 @@ def redact_event_version(
 # ── Maintenance ──────────────────────────────────────────────────────────
 
 
-@router.post("/maintenance/reap-auth-tokens", response_model=AdminMaintenanceResponse)
+@router.post("/maintenance/reap-password-reset-tokens", response_model=AdminMaintenanceResponse)
 @limiter.limit("30/hour")
-def maintenance_reap_auth_tokens(
+def maintenance_reap_password_reset_tokens(
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminMaintenanceResponse:
-    """Drop expired and old-consumed auth_tokens rows."""
+    """Drop expired and old-consumed password_reset_tokens rows."""
     result = maintenance_service.run_logged(
         db,
         actor_id=current_user.id,
-        action="maintenance_reap_auth_tokens",
-        job=maintenance_service.reap_auth_tokens,
+        action="maintenance_reap_password_reset_tokens",
+        job=maintenance_service.reap_password_reset_tokens,
     )
     return AdminMaintenanceResponse(**result)
 

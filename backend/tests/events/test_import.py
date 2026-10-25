@@ -29,6 +29,8 @@ BUSY_ID = "1940000000000000006"
 DRIFT_ID = "1940000000000000007"
 OTHER_AUTHOR_REPLY_ID = "1940000000000000008"
 OTHER_AUTHOR_PARENT_ID = "1940000000000000009"
+SOURCED_ID = "1940000000000000010"
+_TIKTOK = "https://www.tiktok.com/@war/video/7"
 
 BODIES: dict[str, dict] = {
     COORD_ID: {
@@ -48,6 +50,14 @@ BODIES: dict[str, dict] = {
         "created_at": "2026-04-02T12:00:00.000Z",
         "user": {"screen_name": HANDLE},
         "text": "Two impacts\n48.123456, 37.654321\n49.223456, 38.754321",
+    },
+    # A link outside the chase vocabulary: stored link-only, no date, no footage.
+    SOURCED_ID: {
+        "id_str": SOURCED_ID,
+        "created_at": "2026-04-02T10:30:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": "Strike on the depot\n48.123456, 37.654321\nSource: https://t.co/tk",
+        "entities": {"urls": [{"url": "https://t.co/tk", "expanded_url": _TIKTOK}]},
     },
     OTHER_AUTHOR_ID: {
         "id_str": OTHER_AUTHOR_ID,
@@ -142,8 +152,22 @@ def test_your_own_post_creates_a_detection(db, linked_author):
     [detection] = _detections(db, linked_author)
     assert str(detection.id) == body["created"][0]
     assert detection.status == STATUS_DETECTED
-    assert detection.detected_from_url == _url(COORD_ID)
+    assert detection.detection.from_url == _url(COORD_ID)
     assert detection.title == "Strike on the depot"
+
+
+def test_the_declared_source_lands_as_one_direct_source_of_unknown_kind(db, linked_author):
+    response = _post(linked_author, SOURCED_ID)
+
+    assert response.status_code == 200, response.text
+    [event_id] = response.json()["created"]
+    read = client.get(f"/api/v1/events/{event_id}", headers=login_as(client, linked_author))
+    assert read.status_code == 200, read.text
+    [source] = read.json()["sources"]
+    assert source["level"] == "direct"
+    assert source["kind"] == "unknown"
+    assert source["media"] is None
+    assert [(link["url"], link["posted_at"]) for link in source["links"]] == [(_TIKTOK, None)]
 
 
 def test_several_coordinates_land_several_detections_and_a_warning(db, linked_author):

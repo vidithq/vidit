@@ -35,8 +35,8 @@ export default function ResendConfirmationPage() {
             </p>
             <p className="text-[11px] text-neutral-500">
               We deliberately don&apos;t tell you whether the address matched a
-              pending registration — addresses without a live pending row
-              silently receive nothing.
+              pending registration. An address without a live pending row
+              silently receives nothing.
             </p>
             <button
               type="button"

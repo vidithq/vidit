@@ -14,9 +14,6 @@
 # consumer vulture can't trace.
 # ── SQLAlchemy Mapped[...] columns ────────────────────────────────────────────
 # Populated from the DB row on ORM load; no line in app/ reads them by name.
-# ``position`` is read only through the relationship's string order_by.
-position  # app/models/event.py EventSourceLink
-original_filename  # app/models/media.py, and schemas/media.py
 processed_at  # app/models/bot_mention.py, audit stamp written at insert only
 # ``edited_by_id`` is read only through the `edited_by` relationship.
 edited_by_id  # app/models/event.py EventVersion
@@ -26,16 +23,12 @@ email_verified_at  # app/models/user.py, audit stamp written at registration onl
 # Stamped by app code and queried by an operator over SQL, with no wire field
 # or app read. The lifecycle stamps also tie `events.status` to its CHECK
 # constraints (docs/data-model.md).
-resolved_by  # app/models/content_report.py, stamped by services/reports.resolve_report
+resolved_by_id  # app/models/content_report.py, stamped by services/reports.resolve_report
 updated_at  # app/models/event.py, SQLAlchemy ``onupdate`` stamp
 requested_at  # app/models/event.py, state-entry stamp
-detected_at  # app/models/event.py, state-entry stamp
 geolocated_at  # app/models/event.py, state-entry stamp
 finished_at  # app/models/archive_import_job.py, stamped by services/archive_jobs
 added_at  # app/models/collection.py CollectionEvent, stamped when an event joins
-granted_at  # app/models/product_update.py ProductUpdateConsent, the consent record
-sent_by  # app/models/product_update.py ProductUpdate, who sent the announcement
-created_by_id  # app/models/organization.py, stamped by services/organizations.create_organization
 
 # ── ASGI middleware override ──────────────────────────────────────────────────
 # Starlette calls dispatch(); never referenced by name.
@@ -65,6 +58,7 @@ link_effect  # schemas/site.py SiteHistoryEntry
 previous_link_effect  # schemas/site.py SiteHistoryEntry
 archives_imported  # schemas/admin.py AdminInviteRedeemerRead
 bot_detection_count  # schemas/admin.py AdminInviteRedeemerRead
+detected_via  # schemas/event.py EventRead, read from event_detections
 last_seen_at  # schemas/admin.py AdminInviteRedeemerRead
 deleted_events  # schemas/admin.py AdminPurgeDetectedResponse
 media_count  # schemas/admin.py
@@ -72,9 +66,8 @@ pending_registrations_deleted  # schemas/admin.py
 analysts_notified  # schemas/admin.py AdminMaintenanceResponse
 detections_pending  # schemas/admin.py AdminMaintenanceResponse
 digest_send_failures  # schemas/admin.py AdminMaintenanceResponse
-archived_source  # schemas/event.py EventRead
-archived_secondary_sources  # schemas/event.py EventRead
-archived_detected_from  # schemas/event.py EventRead
+source_urls  # schemas/event.py PossibleDuplicateRead + schemas/search.py SearchRequestHit
+event_title  # schemas/source.py SourcePickRead
 machine_total  # schemas/admin.py AdminDetectionStatsRead
 machine_rejected  # schemas/admin.py AdminDetectionStatsRead
 reject_rate  # schemas/admin.py AdminDetectionStatsRead
@@ -98,12 +91,6 @@ display_stored  # schemas/preferences.py UserPreferencesRead
 palette  # schemas/preferences.py, read through model_dump
 theme  # schemas/preferences.py, read through model_dump
 help_tooltips  # schemas/preferences.py, read through model_dump
-daily_cap  # schemas/product_update.py ProductUpdatePreview
-batch_size  # schemas/product_update.py ProductUpdatePreview
-days  # schemas/product_update.py ProductUpdatePreview
-queued  # schemas/product_update.py ProductUpdateProgress, filled by keyword
-sending  # schemas/product_update.py ProductUpdateProgress, filled by keyword
-sent  # schemas/product_update.py ProductUpdateProgress, filled by keyword
 minting_enabled  # schemas/invite_code.py SponsoredInviteCodeList, filled by keyword
 daily_limit  # schemas/invite_code.py SponsoredInviteCodeList, filled by keyword
 minted_today  # schemas/invite_code.py SponsoredInviteCodeList, filled by keyword
@@ -114,7 +101,7 @@ geolocated_count  # schemas/user.py UserStatsRead (wire field)
 detected_count  # schemas/user.py UserStatsRead
 total_events  # schemas/user.py UserStatsRead
 top_conflicts  # schemas/user.py UserStatsRead
-capture_sources  # schemas/user.py UserStatsRead
+source_kinds  # schemas/user.py UserStatsRead
 activity  # schemas/user.py UserStatsRead
 source_hosts  # schemas/user.py UserStatsRead
 other_hosts_count  # schemas/user.py UserStatsRead
@@ -123,19 +110,14 @@ no_source_count  # schemas/user.py UserStatsRead
 # arguments for getattr / hasattr / %-format only. Every wire field above is
 # here for that reason.
 period  # schemas/user.py ActivityBucket (wire field)
-progress_done  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
-progress_total  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
+processed_detection_count  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
+detection_count  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
 redacted  # schemas/event.py EventVersionRead (wire field, built in routers/events/_common.py)
-decline_reason  # models/x_handle_request.py + schemas/x_handle_request.py: decline-stamped, wire-read only
-decided_at  # models/x_handle_request.py + schemas/x_handle_request.py: decline-stamped, wire-read only
 # Written by ``services/versions.redact_version``, read by nothing in ``app/``;
-# the readable trail is the ``admin_events`` row the same write files.
+# the readable trail is the ``audit_log`` row the same write files.
 redacted_by_id  # models/event.py EventVersion
-# Written by ``services/approvals.revoke``; the public read is ``revoked_as``, the role.
-revoked_by_id  # models/approval.py EventApproval
 analysts  # schemas/approval_request.py ApprovalRequestTargetList (wire field)
 approval  # schemas/approval.py OrganizationApprovalRead (wire field)
-last_success_at  # models/push_subscription.py + schemas/push.py: worker-stamped, wire-read only
 viewer_invite_pending  # schemas/event.py EventRead: set by GET /events/{id}, read on the wire
 
 # ── Test-only helper ──────────────────────────────────────────────────────────
@@ -151,3 +133,5 @@ _body  # main.py enforce_request_body_size
 # The SQL half of ``Event.is_machine_detection``, bound by the
 # ``@is_machine_detection.inplace.expression`` decorator.
 _is_machine_detection_expression  # models/event.py Event
+# The SQL half of ``Event.is_graphic``, bound the same way.
+_is_graphic_expression  # models/event.py Event

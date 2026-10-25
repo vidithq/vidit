@@ -117,11 +117,11 @@ def verify_staged_upload(key: str, *, owner_id: uuid.UUID) -> int:
 
 
 def enqueue(
-    db: Session, *, owner: User, upload_key: str, post_estimate: int | None = None
+    db: Session, *, owner: User, upload_key: str, estimated_post_count: int | None = None
 ) -> ArchiveImportJob:
     """Insert the ``queued`` row for an already-staged upload.
 
-    The caller has run :func:`verify_staged_upload`. ``post_estimate`` is the browser's cosmetic
+    The caller has run :func:`verify_staged_upload`. ``estimated_post_count`` is the browser's cosmetic
     volume hint; the worker stamps the exact totals.
     """
     # One key, one job: a retry would otherwise create a second row over the same object, and
@@ -129,7 +129,10 @@ def enqueue(
     if db.query(ArchiveImportJob.id).filter(ArchiveImportJob.zip_key == upload_key).first():
         raise StagedUploadInvalidError("upload_key is already enqueued")
     job = ArchiveImportJob(
-        id=uuid.uuid4(), owner_id=owner.id, zip_key=upload_key, post_estimate=post_estimate
+        id=uuid.uuid4(),
+        owner_id=owner.id,
+        zip_key=upload_key,
+        estimated_post_count=estimated_post_count,
     )
     db.add(job)
     db.commit()
@@ -161,14 +164,14 @@ def claim_next(db: Session) -> ArchiveImportJob | None:
         )
         if job is None:
             return None
-        if job.attempts >= MAX_ATTEMPTS:
+        if job.attempt_count >= MAX_ATTEMPTS:
             # Bury the poison row and keep looking (a loop, so a big backlog can't deepen the
             # stack).
             _finish(db, job, status="failed", error="attempt budget spent")
             _notify_failure_best_effort(db, job)
             continue
         job.status = "running"
-        job.attempts += 1
+        job.attempt_count += 1
         job.started_at = now
         db.commit()
         db.refresh(job)
@@ -248,8 +251,8 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
             def stamp_progress(done: int, total: int) -> None:
                 # Fires between per-row transactions, so the commit never splits one. Batched.
                 if done == total or done == 1 or done % PROGRESS_EVERY == 0:
-                    job.progress_done = done
-                    job.progress_total = total
+                    job.processed_detection_count = done
+                    job.detection_count = total
                     db.commit()
 
             outcome = await backfill_from_archive(
@@ -278,8 +281,6 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
     job.skipped_count = len(outcome.skipped)
     job.failed_count = outcome.failed
     _finish(db, job, status="done")
-    if owner.email is None:
-        return
     # The durable outcome is the job row: a mailer outage must not fail or re-run the import.
     email.send_best_effort(
         email.archive_import_complete_email(
@@ -320,7 +321,7 @@ def _delete_staged_best_effort(key: str) -> None:
 
 def _notify_failure_best_effort(db: Session, job: ArchiveImportJob) -> None:
     owner = db.get(User, job.owner_id)
-    if owner is None or owner.deleted_at is not None or owner.email is None:
+    if owner is None or owner.deleted_at is not None:
         return
     email.send_best_effort(
         email.archive_import_failed_email(to=owner.email), what="archive import failed"

@@ -1,7 +1,7 @@
 // Client-side Sentry init. Mirrors the backend opt-in pattern
 // (`backend/app/main.py`): no DSN → no init → no PII leak, safe to leave unset
 // for local dev and owner-only self-test. Turned on by setting
-// `NEXT_PUBLIC_SENTRY_DSN` on Vercel.
+// `NEXT_PUBLIC_SENTRY_DSN` in the build environment.
 import * as Sentry from "@sentry/nextjs";
 
 import { SENTRY_DATA_COLLECTION } from "./sentry.data-collection";

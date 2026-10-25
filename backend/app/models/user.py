@@ -14,10 +14,8 @@ class User(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
-    # Nullable for historical credential-less rows; every account created today
-    # carries both.
-    email: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
-    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     # The X handle the bot attributes mentions to, lowercased without `@`.
     # Written by registration (invite-bound handle) and
     # `PATCH /admin/users/{id}/x-handle`; not self-serve. UNIQUE: one account per
@@ -25,11 +23,6 @@ class User(Base):
     x_handle: Mapped[str | None] = mapped_column(String(50), unique=True, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    # Written once by registration: when email control was proven. Notification
-    # email goes only to an account that carries it. Legacy rows may hold NULL.
-    email_verified_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
@@ -62,7 +55,7 @@ class User(Base):
     )
 
     # Admin switch over minting invite codes from Settings.
-    invite_minting_enabled: Mapped[bool] = mapped_column(
+    is_invite_minting_enabled: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=text("true"), nullable=False
     )
 
@@ -72,8 +65,8 @@ class User(Base):
     sponsor = relationship(
         "User",
         secondary="invite_codes",
-        primaryjoin="User.id == InviteCode.used_by",
-        secondaryjoin="User.id == InviteCode.created_by",
+        primaryjoin="User.id == InviteCode.used_by_id",
+        secondaryjoin="User.id == InviteCode.created_by_id",
         viewonly=True,
         uselist=False,
     )

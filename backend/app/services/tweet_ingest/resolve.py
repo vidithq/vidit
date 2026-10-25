@@ -24,6 +24,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
+from typing import Literal
 from urllib.parse import parse_qsl, urlencode, urlparse
 
 from .extract import (
@@ -45,10 +46,13 @@ from .urls import (
     NO_HANDLE,
     TWITTER_URL_HOST_RE,
     X_STATUS_URL_RE,
+    ContextKind,
     canonical_tweet_url,
+    context_host,
     hostname,
     telegram_post_url,
     x_status_id,
+    x_status_posted_at,
 )
 
 # Why a thread produced nothing; the bot names it back to the analyst.
@@ -72,8 +76,8 @@ THREAD_TRUNCATED = "thread_truncated"
 # What a created detection still needs from its owner: warnings, not refusals.
 # The first three are what the engine could not settle; the last four are what
 # the row ended up with, raised by ``detection.persist_detections``.
-SOURCE_AMBIGUOUS = "source_ambiguous"  # several candidate links, source left empty
-SOURCE_MISSING = "source_missing"  # no candidate link and no quote
+SOURCE_AMBIGUOUS = "source_ambiguous"  # several footage candidates, each a source of its own
+SOURCE_MISSING = "source_missing"  # no footage candidate: no quote, no link off the context hosts
 SEVERAL_COORDINATES = "several_coordinates"  # one thread, several detections
 SOURCE_FOOTAGE_MISSING = "source_footage_missing"  # a declared source, no footage stored
 SOURCE_FETCH_FAILED = "source_fetch_failed"  # the source could not be read, retries spent
@@ -88,8 +92,8 @@ DUPLICATE_MEDIA = "duplicate_media"  # the row's media is already on another eve
 # about 13 times a plain one).
 WARNING_MESSAGES: dict[str, str] = {
     SEVERAL_COORDINATES: "Several coordinates, one detection each",
-    SOURCE_AMBIGUOUS: "Several possible sources. Pick one at review",
-    SOURCE_MISSING: "No source link in the post. Add one at review",
+    SOURCE_AMBIGUOUS: "Several source links. Move or drop them at review",
+    SOURCE_MISSING: "No footage link in the post. Add one at review",
     SOURCE_FOOTAGE_MISSING: "The source served no footage. Add it at review",
     SOURCE_FETCH_FAILED: "Source unreachable, no footage stored. Add it at review",
     SOURCE_DATE_UNKNOWN: "The source's post date is missing. Add it at review",
@@ -191,13 +195,15 @@ def link_identity(url: str) -> str:
 
 
 def source_candidates(urls: Iterable[str], *, owner_handle: str) -> list[str]:
-    """The deduplicated source candidate URLs among ``urls``, in order.
+    """The deduplicated footage candidate URLs among ``urls``, in order.
 
-    Host-blind: every link is a candidate except three that point at no footage:
+    Host-blind but for a closed list: every link is a candidate except those that point at no
+    footage:
 
     * a status link to ``owner_handle``'s own post;
     * an X link naming no status;
-    * a Google Maps link.
+    * a Google Maps link;
+    * a link on a context host (:data:`urls.CONTEXT_HOSTS`), which :func:`context_links` keeps.
 
     Duplicates collapse on :func:`link_identity`. A candidate is the link as
     written; what may be fetched is the chase's business (``chase.chase_post``).
@@ -207,7 +213,7 @@ def source_candidates(urls: Iterable[str], *, owner_handle: str) -> list[str]:
     for url in urls:
         if _is_own_status_link(url, owner_handle) or _is_non_status_x_link(url):
             continue
-        if _is_coordinate_link(url):
+        if _is_coordinate_link(url) or context_host(url) is not None:
             continue
         key = link_identity(url)
         if key in seen:
@@ -215,6 +221,24 @@ def source_candidates(urls: Iterable[str], *, owner_handle: str) -> list[str]:
         seen.add(key)
         candidates.append(url)
     return candidates
+
+
+def context_links(urls: Iterable[str]) -> list[str]:
+    """The deduplicated links on a context host among ``urls``, in order.
+
+    Never footage, so never a candidate; each becomes a ``context`` source
+    (:func:`resolve_secondary_sources`). A Google Maps link stays out: it is the coordinate.
+    """
+    links: list[str] = []
+    seen: set[str] = set()
+    for url in urls:
+        if _is_coordinate_link(url) or context_host(url) is None:
+            continue
+        key = link_identity(url)
+        if key not in seen:
+            seen.add(key)
+            links.append(url)
+    return links
 
 
 def quoted_posts(thread: list[TweetRecord]) -> list[QuotedTweet]:
@@ -241,16 +265,20 @@ def sole_quote(thread: list[TweetRecord]) -> QuotedTweet | None:
     return posts[0] if len(posts) == 1 else None
 
 
+def _thread_links(thread: list[TweetRecord]) -> list[str]:
+    """Every link the thread names: its quoted posts' permalinks, then its links."""
+    quoted = [canonical_tweet_url(post.tweet_id, post.handle) for post in quoted_posts(thread)]
+    return quoted + [link.url for record in thread for link in record.external_sources]
+
+
 def thread_candidates(thread: list[TweetRecord]) -> list[str]:
-    """The thread's source candidates: quoted posts, then links, through
+    """The thread's footage candidates: quoted posts, then links, through
     :func:`source_candidates` under the head's handle.
 
     X also writes the quoted permalink into the links; both collapse on
     :func:`link_identity`.
     """
-    quoted = [canonical_tweet_url(post.tweet_id, post.handle) for post in quoted_posts(thread)]
-    links = [link.url for record in thread for link in record.external_sources]
-    return source_candidates(quoted + links, owner_handle=thread[0].handle if thread else "")
+    return source_candidates(_thread_links(thread), owner_handle=thread[0].handle if thread else "")
 
 
 def sole_candidate(thread: list[TweetRecord]) -> str | None:
@@ -264,21 +292,60 @@ def sole_candidate(thread: list[TweetRecord]) -> str | None:
     return candidates[0] if len(candidates) == 1 else None
 
 
-def resolve_secondary_sources(thread: list[TweetRecord], source_url: str | None) -> list[str]:
-    """The mirrors: the source candidates the slot did not take.
+@dataclass(frozen=True)
+class LinkSource:
+    """One file-less source an import writes from one link: a footage mirror or a context link.
 
-    The candidate matching ``source_url`` by identity is excluded; when the
-    source was ambiguous every candidate lands here. Blanks and the cap are the
-    normalizer's job.
+    A mirror is ``direct`` and of kind ``unknown`` (the review names it), dated when it is an
+    X status (:func:`urls.x_status_posted_at`). A link on a context host is ``context``, of the
+    host's kind, and titled with the provider's name for an imagery tool.
+    """
+
+    url: str
+    posted_at: datetime | None = None
+    level: Literal["direct", "context"] = "direct"
+    kind: Literal["unknown"] | ContextKind = "unknown"
+    title: str = ""
+
+
+def _link_source(url: str) -> LinkSource:
+    host = context_host(url)
+    if host is not None:
+        return LinkSource(url=url, level="context", kind=host.kind, title=host.title)
+    return LinkSource(url=url, posted_at=x_status_posted_at(url))
+
+
+def resolve_secondary_sources(
+    thread: list[TweetRecord], source_url: str | None
+) -> list[LinkSource]:
+    """The sources beside the declared one: the footage candidates the slot did not take, then
+    the context links, each a source of its own.
+
+    The candidate matching ``source_url`` by identity is excluded; when the source was
+    ambiguous every candidate lands here. Blanks and repeats are dropped, and the list is cut
+    so the declared source and these fit ``models/source.MAX_SOURCES_PER_EVENT``, the footage
+    candidates first.
     """
     primary = link_identity(source_url) if source_url else None
+    links = _thread_links(thread)
+    candidates = source_candidates(links, owner_handle=thread[0].handle if thread else "")
     urls = [
-        candidate for candidate in thread_candidates(thread) if link_identity(candidate) != primary
-    ]
-    # Local import keeps ``tweet_ingest`` importable without the service layer.
-    from app.services.events import truncate_secondary_source_urls
+        candidate for candidate in candidates if link_identity(candidate) != primary
+    ] + context_links(links)
+    # Local import keeps ``tweet_ingest`` importable without the model layer.
+    from app.models.source import MAX_SOURCES_PER_EVENT
 
-    return truncate_secondary_source_urls(urls, source_url)
+    cleaned: list[str] = []
+    for raw in urls:
+        url = raw.strip()
+        if url and url != (source_url or "").strip() and url not in cleaned:
+            cleaned.append(url)
+    return [_link_source(url) for url in cleaned[: MAX_SOURCES_PER_EVENT - 1]]
+
+
+def footage_candidates(sources: list[LinkSource]) -> list[LinkSource]:
+    """The footage mirrors among ``sources``, context links set aside."""
+    return [source for source in sources if source.level == "direct"]
 
 
 def _chased_footage(thread: list[TweetRecord], link: str) -> TelegramFootage | None:
@@ -298,28 +365,37 @@ def _chased_footage(thread: list[TweetRecord], link: str) -> TelegramFootage | N
     )
 
 
-def resolve_source(thread: list[TweetRecord]) -> tuple[str | None, str | None]:
-    """The source URL and its post date (ISO 8601), either may be ``None``.
+def resolve_source(thread: list[TweetRecord]) -> tuple[str | None, datetime | None]:
+    """The source URL and its post date (UTC), either may be ``None``.
 
     A quote outranks links (including a status the acquisition chased into the
     quote slot): the quoted tweet is the source and supplies the date. One quoted
     post takes the slot (:func:`sole_quote`); two different quoted posts are
     ambiguous like two links, so the slot stays empty and both land in the
     mirrors. Failing a quote, the one candidate is the source
-    (:func:`sole_candidate`), dated only if its post was chased.
+    (:func:`sole_candidate`).
+
+    An X status is dated off its id (:func:`urls.x_status_posted_at`), with no fetch; any
+    other source only when its post was chased.
 
     No other signal counts. The head's own post is provenance, never the source.
     """
     quote = sole_quote(thread)
     if quote is not None:
-        return canonical_tweet_url(quote.tweet_id, quote.handle), quote.created_at or None
+        url = canonical_tweet_url(quote.tweet_id, quote.handle)
+        return url, _source_posted_at(url, quote.created_at)
     if quoted_posts(thread):
         return None, None
     link = sole_candidate(thread)
     if link is not None:
         footage = _chased_footage(thread, link)
-        return link, (footage.posted_at if footage is not None else None)
+        return link, _source_posted_at(link, footage.posted_at if footage is not None else None)
     return None, None
+
+
+def _source_posted_at(url: str, served: str | None) -> datetime | None:
+    """The source's post date: an X status's id, else the date its read served (ISO 8601)."""
+    return x_status_posted_at(url) or (_posted_at(served) if served else None)
 
 
 def split_media(thread: list[TweetRecord]) -> tuple[list[ParsedMedia], list[ParsedMedia]]:
@@ -383,7 +459,7 @@ class Detection:
     """One coordinate's worth of a thread: the fields a ``detected`` row needs.
 
     Plain data: ``services/detection.persist_detections`` owns persistence and
-    the ``(detected_from_tweet_id, coordinate)`` idempotency. Detections of one
+    the ``(detected_from_post_id, coordinate)`` idempotency. Detections of one
     thread share source, proof, dates and provenance.
     """
 
@@ -396,20 +472,22 @@ class Detection:
     source_url: str | None
     # The geoloc post: its id is the identity every surface keys on. The id is
     # ``None`` only for a non-numeric one, which no upstream writes.
-    detected_from_tweet_id: int | None
+    detected_from_post_id: int | None
     detected_from_url: str
     # Every post id of the thread, anchor included, in order. Entries anchor
     # differently on one self-thread, so this lets the write path recognise one
     # geolocation whichever entry read it. Non-numeric ids are dropped.
     thread_tweet_ids: tuple[int, ...]
     # Provisional: the geoloc tweet's post date; the owner corrects it at submit.
-    event_date: date | None
-    # UTC, only when known (a dated quote or chased post); never the geoloc tweet's date.
+    occurred_date: date | None
+    # UTC, only when known (an X status's id, a dated quote or chased post); never the geoloc
+    # tweet's date.
     source_posted_at: datetime | None
     # When the analyst posted this geolocation (``detected_post_at``).
     detected_post_at: datetime | None
-    # The mirrors (:func:`resolve_secondary_sources`); prefill the secondary links.
-    secondary_source_urls: list[str] = field(default_factory=list)
+    # The mirrors and context links (:func:`resolve_secondary_sources`), each written as a
+    # source of its own.
+    secondary_sources: list[LinkSource] = field(default_factory=list)
     # role=source (at most one) vs role=proof.
     source_media: list[ParsedMedia] = field(default_factory=list)
     proof_media: list[ParsedMedia] = field(default_factory=list)
@@ -439,14 +517,14 @@ class RequestDraft:
     # UTC, only when the chase served one.
     source_posted_at: datetime | None
     # Provisional: the mirror post's date; corrected at fulfilment.
-    event_date: date | None
+    occurred_date: date | None
     detected_post_at: datetime | None
     # The provenance every entry keys a re-import on; required (a draft without
     # an id is refused), so the write path always has a match leg.
-    detected_from_tweet_id: int
+    detected_from_post_id: int
     detected_from_url: str
     thread_tweet_ids: tuple[int, ...]
-    secondary_source_urls: list[str]
+    secondary_sources: list[LinkSource]
     # Best first: the source's footage, then the analyst's own video.
     # ``events.create_request`` requires a file; the write path takes the first
     # that fetches (as ``detection._resolve_media`` does).
@@ -520,17 +598,18 @@ def own_posts(thread: list[TweetRecord]) -> list[TweetRecord]:
 
 
 def _warnings_for(
-    coords: list[ParsedCoord], source_url: str | None, mirrors: list[str]
+    coords: list[ParsedCoord], source_url: str | None, secondary: list[LinkSource]
 ) -> list[str]:
     """What the resolution could not settle, in reply order.
 
-    An empty source is ambiguous if the mirrors hold candidates, else missing.
+    An empty source is ambiguous if footage candidates remain beside it, else missing: a
+    context link is never footage, so it settles neither.
     """
     warnings: list[str] = []
     if len(coords) > 1:
         warnings.append(SEVERAL_COORDINATES)
     if source_url is None:
-        warnings.append(SOURCE_AMBIGUOUS if mirrors else SOURCE_MISSING)
+        warnings.append(SOURCE_AMBIGUOUS if footage_candidates(secondary) else SOURCE_MISSING)
     return warnings
 
 
@@ -603,14 +682,14 @@ def _thread_detections(
             return [], COORDS_MISSING, None, None
         draft, request_refusal = _request_draft(posts, own_text)
         return [], COORDS_MISSING, draft, request_refusal
-    source_url, source_iso = resolve_source(posts)
+    source_url, source_posted_at = resolve_source(posts)
     source_media, proof_media = split_media(posts)
     detected_post_at = _posted_at(head.created_at)
-    secondary_source_urls = resolve_secondary_sources(posts, source_url)
+    secondary_sources = resolve_secondary_sources(posts, source_url)
     # Derived once: the thread's detections differ only on the coordinate.
     title = derive_title(own_text)
     proof_text = clean_proof_text(own_text)
-    warnings = _warnings_for(scan.coords, source_url, secondary_source_urls)
+    warnings = _warnings_for(scan.coords, source_url, secondary_sources)
     # Every post of the thread (retweets already dropped): what the write path
     # recognises a re-import by.
     thread_tweet_ids = tuple(
@@ -625,13 +704,13 @@ def _thread_detections(
                 title=title,
                 proof_text=proof_text,
                 source_url=source_url,
-                detected_from_tweet_id=_tweet_id(head.tweet_id),
+                detected_from_post_id=_tweet_id(head.tweet_id),
                 detected_from_url=canonical_tweet_url(head.tweet_id, head.handle),
                 thread_tweet_ids=thread_tweet_ids,
-                event_date=_event_date(head.created_at, detected_post_at),
-                source_posted_at=_posted_at(source_iso) if source_iso else None,
+                occurred_date=_event_date(head.created_at, detected_post_at),
+                source_posted_at=source_posted_at,
                 detected_post_at=detected_post_at,
-                secondary_source_urls=secondary_source_urls,
+                secondary_sources=secondary_sources,
                 source_media=source_media,
                 proof_media=proof_media,
                 source_fetch_failed=any(
@@ -678,7 +757,7 @@ def _request_draft(
         return None, None
     if any(post.chase_outcome == "transient_failure" for post in posts):
         return None, None
-    resolved, source_iso = resolve_source(posts)
+    resolved, source_posted_at = resolve_source(posts)
     if resolved is None:
         # Nothing pointed at (no link or quote, or several candidates): keep the flat refusal.
         return None, None
@@ -705,17 +784,17 @@ def _request_draft(
         title=title,
         proof_text=clean_proof_text(own_text),
         source_url=source_url,
-        source_posted_at=_posted_at(source_iso) if source_iso else None,
-        event_date=_event_date(head.created_at, detected_post_at),
+        source_posted_at=source_posted_at,
+        occurred_date=_event_date(head.created_at, detected_post_at),
         detected_post_at=detected_post_at,
-        detected_from_tweet_id=tweet_id,
+        detected_from_post_id=tweet_id,
         detected_from_url=canonical_tweet_url(head.tweet_id, head.handle),
         thread_tweet_ids=tuple(
             post_id
             for post_id in (_tweet_id(post.tweet_id) for post in posts)
             if post_id is not None
         ),
-        secondary_source_urls=resolve_secondary_sources(posts, source_url),
+        secondary_sources=resolve_secondary_sources(posts, source_url),
         footage_candidates=candidates,
         # The chase answered with nothing to take (post gone or restricted).
         # The row is never footage-less, so this only lets the write path tell
@@ -751,7 +830,7 @@ def _posted_at(created_at: str) -> datetime | None:
 
 
 def _event_date(created_at: str, posted_at: datetime | None) -> date | None:
-    """The provisional ``event_date``: the geoloc tweet's post date.
+    """The provisional ``occurred_date``: the geoloc tweet's post date.
 
     Falls back to a valid ``YYYY-MM-DD`` prefix when the time is garbled. An
     unparseable value yields None, never a fabricated epoch.

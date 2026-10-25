@@ -10,9 +10,8 @@ from app.config import settings
 from app.database import SessionLocal
 from app.dependencies import LAST_SEEN_THROTTLE
 from app.main import app
-from app.models.admin_event import AdminEvent
 from app.models.archive_import_job import ArchiveImportJob
-from app.models.auth_event import EVENT_LOGIN, AuthEvent
+from app.models.audit_log import ACTION_LOGIN, AuditLog
 from app.models.bot_mention import BotMention
 from app.models.event import (
     STATUS_CLOSED,
@@ -20,13 +19,16 @@ from app.models.event import (
     STATUS_GEOLOCATED,
     STATUS_REQUESTED,
     Event,
+    EventDetection,
 )
 from app.models.invite_code import InviteCode
 from app.models.media import Media
+from app.models.source import Source, SourceLink
+from app.models.upload import UPLOAD_TTL, Upload
 from app.models.user import User
 from app.services import storage as storage_module
 from app.services.auth import hash_password
-from tests._fixtures import TINY_JPEG, store_bytes
+from tests._fixtures import TINY_JPEG, fake_sha256, store_bytes
 from tests.conftest import login_as
 
 client = TestClient(app)
@@ -63,8 +65,8 @@ def admin_user(db):
     yield user
     # Reap this actor's admin events and redeemed invite codes so the row deletes without FK violations.
     db.expire_all()
-    db.query(AdminEvent).filter(AdminEvent.actor_id == user_id).delete()
-    db.query(InviteCode).filter(InviteCode.used_by == user_id).delete()
+    db.query(AuditLog).filter(AuditLog.actor_id == user_id).delete()
+    db.query(InviteCode).filter(InviteCode.used_by_id == user_id).delete()
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -95,9 +97,10 @@ def test_admin_me_returns_200_for_admin(admin_user):
     assert response.json() == {"is_admin": True}
 
 
-def test_admin_me_returns_403_for_regular_user(regular_user):
+def test_admin_me_answers_false_for_regular_user(regular_user):
     response = client.get("/api/v1/admin/me", headers=login_as(client, regular_user))
-    assert response.status_code == 403
+    assert response.status_code == 200
+    assert response.json() == {"is_admin": False}
 
 
 def test_admin_me_returns_401_for_anonymous():
@@ -133,9 +136,9 @@ def test_create_invite_code_writes_admin_event(admin_user, db):
     invite_id = uuid.UUID(response.json()["id"])
 
     event = (
-        db.query(AdminEvent)
-        .filter(AdminEvent.actor_id == admin_user.id, AdminEvent.action == "invite_created")
-        .order_by(AdminEvent.created_at.desc())
+        db.query(AuditLog)
+        .filter(AuditLog.actor_id == admin_user.id, AuditLog.action == "invite_created")
+        .order_by(AuditLog.created_at.desc())
         .first()
     )
     assert event is not None
@@ -157,9 +160,9 @@ def test_create_invite_code_binds_x_handle_stripped_and_lowercased(admin_user, d
     assert invite.x_handle == "invited_analyst"
 
     event = (
-        db.query(AdminEvent)
-        .filter(AdminEvent.actor_id == admin_user.id, AdminEvent.action == "invite_created")
-        .order_by(AdminEvent.created_at.desc())
+        db.query(AuditLog)
+        .filter(AuditLog.actor_id == admin_user.id, AuditLog.action == "invite_created")
+        .order_by(AuditLog.created_at.desc())
         .first()
     )
     assert event is not None
@@ -304,8 +307,8 @@ def test_delete_invite_code_writes_admin_event_carrying_the_code(admin_user, db)
 
     db.expire_all()
     event = (
-        db.query(AdminEvent)
-        .filter(AdminEvent.actor_id == admin_user.id, AdminEvent.action == "invite_deleted")
+        db.query(AuditLog)
+        .filter(AuditLog.actor_id == admin_user.id, AuditLog.action == "invite_deleted")
         .one()
     )
     assert event.target == {"invite_code_id": created["id"], "code": created["code"]}
@@ -327,7 +330,7 @@ def test_delete_invite_code_revoked_but_unused_is_allowed(admin_user, db):
 def test_delete_invite_code_409_when_redeemed(admin_user, regular_user, db):
     invite = InviteCode(
         code=f"code{uuid.uuid4().hex[:12]}",
-        used_by=regular_user.id,
+        used_by_id=regular_user.id,
         used_at=datetime.now(UTC),
     )
     db.add(invite)
@@ -362,33 +365,33 @@ def test_list_invite_codes_carries_redeemer_onboarding_stats(admin_user, regular
     regular_user.x_handle = handle
     invite = InviteCode(
         code=f"code{uuid.uuid4().hex[:12]}",
-        used_by=regular_user.id,
+        used_by_id=regular_user.id,
         used_at=datetime.now(UTC),
     )
     job = ArchiveImportJob(
         owner_id=regular_user.id, zip_key=f"staging/{uuid.uuid4().hex}.zip", status="done"
     )
     mention = BotMention(
-        mention_tweet_id=uuid.uuid4().hex[:19],
-        author_handle=handle.upper(),
+        mention_post_id=uuid.uuid4().int >> 66,
+        author_x_handle=handle.upper(),
+        status="done",
         outcome="created",
-        events_created=3,
+        created_event_count=3,
     )
     detected = Event(
         owner_id=regular_user.id,
         title=f"Detection {uuid.uuid4().hex[:8]}",
         status=STATUS_DETECTED,
         detected_at=datetime.now(UTC),
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
     )
     geolocated = Event(
         owner_id=regular_user.id,
         title=f"Located {uuid.uuid4().hex[:8]}",
-        event_coords=from_shape(Point(34.6, 48.6), srid=4326),
-        source_url="https://example.com/source",
+        coords=from_shape(Point(34.6, 48.6), srid=4326),
         geolocated_at=datetime.now(UTC),
     )
-    login_event = AuthEvent(user_id=regular_user.id, event=EVENT_LOGIN)
+    login_event = AuditLog(actor_id=regular_user.id, action=ACTION_LOGIN)
     db.add_all([invite, job, mention, detected, geolocated, login_event])
     db.commit()
     try:
@@ -410,7 +413,7 @@ def test_list_invite_codes_carries_redeemer_onboarding_stats(admin_user, regular
         db.query(InviteCode).filter(InviteCode.id == invite.id).delete()
         db.query(ArchiveImportJob).filter(ArchiveImportJob.owner_id == regular_user.id).delete()
         db.query(BotMention).filter(BotMention.id == mention.id).delete()
-        db.query(AuthEvent).filter(AuthEvent.user_id == regular_user.id).delete()
+        db.query(AuditLog).filter(AuditLog.actor_id == regular_user.id).delete()
         regular_user.x_handle = None
         db.commit()
 
@@ -419,7 +422,7 @@ def _redeem(db, user: User) -> InviteCode:
     """Bind a fresh invite code to ``user`` so the onboarding list carries them."""
     invite = InviteCode(
         code=f"code{uuid.uuid4().hex[:12]}",
-        used_by=user.id,
+        used_by_id=user.id,
         used_at=datetime.now(UTC),
     )
     db.add(invite)
@@ -479,11 +482,11 @@ def test_onboarding_row_falls_back_to_the_newest_login_event_when_last_seen_is_n
     """A row predating the column carries no stamp, so the auth log stands in."""
     invite = _redeem(db, regular_user)
     now = datetime.now(UTC)
-    older = AuthEvent(
-        user_id=regular_user.id, event=EVENT_LOGIN, created_at=now - timedelta(days=3)
+    older = AuditLog(
+        actor_id=regular_user.id, action=ACTION_LOGIN, created_at=now - timedelta(days=3)
     )
-    newest = AuthEvent(
-        user_id=regular_user.id, event=EVENT_LOGIN, created_at=now - timedelta(days=1)
+    newest = AuditLog(
+        actor_id=regular_user.id, action=ACTION_LOGIN, created_at=now - timedelta(days=1)
     )
     db.add_all([older, newest])
     db.commit()
@@ -494,7 +497,7 @@ def test_onboarding_row_falls_back_to_the_newest_login_event_when_last_seen_is_n
         assert datetime.fromisoformat(row["redeemer"]["last_seen_at"]) == newest.created_at
     finally:
         db.expire_all()
-        db.query(AuthEvent).filter(AuthEvent.user_id == regular_user.id).delete()
+        db.query(AuditLog).filter(AuditLog.actor_id == regular_user.id).delete()
         db.query(InviteCode).filter(InviteCode.id == invite.id).delete()
         db.commit()
 
@@ -509,8 +512,7 @@ def test_purge_detected_events_sweeps_detections_and_keeps_the_rest(admin_user, 
     geolocated = Event(
         owner_id=regular_user.id,
         title=f"Located {uuid.uuid4().hex[:8]}",
-        event_coords=from_shape(Point(34.6, 48.6), srid=4326),
-        source_url="https://example.com/source",
+        coords=from_shape(Point(34.6, 48.6), srid=4326),
         geolocated_at=datetime.now(UTC),
     )
     db.add_all([detected, geolocated])
@@ -532,9 +534,9 @@ def test_purge_detected_events_sweeps_detections_and_keeps_the_rest(admin_user, 
     assert db.query(User).filter(User.id == regular_user.id).first() is not None
 
     audit = (
-        db.query(AdminEvent)
-        .filter(AdminEvent.actor_id == admin_user.id, AdminEvent.action == "detected_events_purged")
-        .order_by(AdminEvent.created_at.desc())
+        db.query(AuditLog)
+        .filter(AuditLog.actor_id == admin_user.id, AuditLog.action == "detected_events_purged")
+        .order_by(AuditLog.created_at.desc())
         .first()
     )
     assert audit is not None
@@ -635,9 +637,9 @@ def test_set_x_handle_normalizes_and_writes_audit(admin_user, regular_user, db):
     assert refreshed.x_handle == "osint_hawk"
 
     event = (
-        db.query(AdminEvent)
-        .filter(AdminEvent.actor_id == admin_user.id, AdminEvent.action == "x_handle_linked")
-        .order_by(AdminEvent.created_at.desc())
+        db.query(AuditLog)
+        .filter(AuditLog.actor_id == admin_user.id, AuditLog.action == "x_handle_linked")
+        .order_by(AuditLog.created_at.desc())
         .first()
     )
     assert event is not None
@@ -673,9 +675,9 @@ def test_clear_x_handle_with_null(admin_user, regular_user, db):
     assert refreshed.x_handle is None
 
     event = (
-        db.query(AdminEvent)
-        .filter(AdminEvent.actor_id == admin_user.id, AdminEvent.action == "x_handle_cleared")
-        .order_by(AdminEvent.created_at.desc())
+        db.query(AuditLog)
+        .filter(AuditLog.actor_id == admin_user.id, AuditLog.action == "x_handle_cleared")
+        .order_by(AuditLog.created_at.desc())
         .first()
     )
     assert event is not None
@@ -747,15 +749,56 @@ def test_set_x_handle_403_for_regular_user(regular_user):
     assert response.status_code == 403
 
 
+LOCAL = "http://localhost:8000/local-storage"
+
+
+def _media(key: str, kind: str = "image") -> Media:
+    return Media(sha256=fake_sha256(), storage_url=f"{LOCAL}/{key}", kind=kind)
+
+
+def _source(url: str | None = None, *, level: str = "direct", media: Media | None = None) -> Source:
+    """One source with ``url`` as its only link (none when ``None``) and ``media`` as its file."""
+    return Source(
+        level=level,
+        kind="unknown",
+        links=[SourceLink(url=url)] if url is not None else [],
+        media=media,
+    )
+
+
+def _other_user(db) -> User:
+    user = User(
+        username=f"other-{uuid.uuid4().hex[:8]}",
+        email=f"other-{uuid.uuid4().hex}@example.com",
+        password_hash=hash_password("password123"),
+    )
+    db.add(user)
+    db.flush()
+    return user
+
+
+def _swept(monkeypatch) -> list[str]:
+    """The storage keys the admin sweeps hand to ``sweep_keys``, in call order."""
+    swept: list[str] = []
+    monkeypatch.setattr(
+        "app.services.admin.sweep_keys",
+        lambda keys, *, context: swept.extend(keys),
+    )
+    monkeypatch.setattr(
+        "app.services.evidence_intake.sweep_keys",
+        lambda keys, *, context: swept.extend(keys),
+    )
+    return swept
+
+
 @pytest.fixture
 def geolocation(db, regular_user):
     geo = Event(
         owner_id=regular_user.id,
         title=f"Test geo {uuid.uuid4().hex[:8]}",
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://example.com/source",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        event_date=date(2026, 5, 1),
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
+        sources=[_source("https://example.com/source")],
+        occurred_date=date(2026, 5, 1),
         geolocated_at=datetime.now(UTC),
     )
     db.add(geo)
@@ -791,12 +834,12 @@ def test_soft_delete_writes_admin_event(admin_user, geolocation, db):
         headers=login_as(client, admin_user),
     )
     event = (
-        db.query(AdminEvent)
+        db.query(AuditLog)
         .filter(
-            AdminEvent.actor_id == admin_user.id,
-            AdminEvent.action == "geolocation_soft_deleted",
+            AuditLog.actor_id == admin_user.id,
+            AuditLog.action == "geolocation_soft_deleted",
         )
-        .order_by(AdminEvent.created_at.desc())
+        .order_by(AuditLog.created_at.desc())
         .first()
     )
     assert event is not None
@@ -823,10 +866,10 @@ def test_soft_delete_is_idempotent(admin_user, geolocation, db):
 
     # One audit row from the mutation.
     events = (
-        db.query(AdminEvent)
+        db.query(AuditLog)
         .filter(
-            AdminEvent.actor_id == admin_user.id,
-            AdminEvent.action == "geolocation_soft_deleted",
+            AuditLog.actor_id == admin_user.id,
+            AuditLog.action == "geolocation_soft_deleted",
         )
         .all()
     )
@@ -876,33 +919,24 @@ def test_hard_delete_drops_row_and_writes_event(admin_user, geolocation, db):
     assert db.query(Event).filter(Event.id == geo_id).first() is None
 
     event = (
-        db.query(AdminEvent)
-        .filter(AdminEvent.action == "geolocation_hard_deleted")
-        .order_by(AdminEvent.created_at.desc())
+        db.query(AuditLog)
+        .filter(AuditLog.action == "geolocation_hard_deleted")
+        .order_by(AuditLog.created_at.desc())
         .first()
     )
     assert event is not None
     assert event.target["geolocation_id"] == str(geo_id)
 
 
-def test_hard_delete_sweeps_source_image_derivatives(admin_user, geolocation, db, monkeypatch):
-    """GDPR erasure leaves nothing on S3: a ``source`` image's ``_hero`` / ``_thumb`` keys reach the sweep too."""
+def test_hard_delete_sweeps_image_derivatives(admin_user, geolocation, db, monkeypatch):
+    """GDPR erasure leaves nothing on S3: every image's ``_hero`` / ``_thumb`` keys reach the
+    sweep too, a proof image's included."""
     geo_id = geolocation.id
-    db.add(
-        Media(
-            event_id=geo_id,
-            role="source",
-            storage_url=f"http://localhost:8000/local-storage/uploads/{geo_id}/photo.png",
-            media_type="image",
-        )
-    )
+    stem = uuid.uuid4().hex
+    geolocation.sources[0].media = _media(f"uploads/{stem}.png")
+    geolocation.media = [_media(f"proof_images/{stem}.jpg")]
     db.commit()
-
-    swept: list[str] = []
-    monkeypatch.setattr(
-        "app.services.admin.sweep_keys",
-        lambda keys, *, context: swept.extend(keys),
-    )
+    swept = _swept(monkeypatch)
 
     response = client.delete(
         f"/api/v1/admin/events/{geo_id}?hard=true",
@@ -911,10 +945,49 @@ def test_hard_delete_sweeps_source_image_derivatives(admin_user, geolocation, db
     assert response.status_code == 200
 
     assert set(swept) == {
-        f"uploads/{geo_id}/photo.png",
-        f"uploads/{geo_id}/photo_hero.jpg",
-        f"uploads/{geo_id}/photo_thumb.jpg",
+        f"uploads/{stem}.png",
+        f"uploads/{stem}_hero.jpg",
+        f"uploads/{stem}_thumb.jpg",
+        f"proof_images/{stem}.jpg",
+        f"proof_images/{stem}_hero.jpg",
+        f"proof_images/{stem}_thumb.jpg",
     }
+
+
+def test_hard_delete_keeps_a_file_a_copy_on_another_event_names(
+    admin_user, geolocation, db, monkeypatch
+):
+    """A source copied onto another event shares the stored object: erasing one event drops its
+    media row and leaves the object to the copy."""
+    key = f"uploads/{uuid.uuid4().hex}.jpg"
+    geolocation.sources[0].media = _media(key)
+    other = _other_user(db)
+    copy_holder = Event(
+        owner_id=other.id,
+        title=f"Copy {uuid.uuid4().hex[:8]}",
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
+        geolocated_at=datetime.now(UTC),
+        sources=[_source("https://example.com/source", media=_media(key))],
+    )
+    db.add(copy_holder)
+    db.commit()
+    copy_id, other_id = copy_holder.id, other.id
+    swept = _swept(monkeypatch)
+
+    try:
+        response = client.delete(
+            f"/api/v1/admin/events/{geolocation.id}?hard=true",
+            headers=login_as(client, admin_user),
+        )
+        assert response.status_code == 200
+        assert swept == []
+        db.expire_all()
+        assert db.query(Media).filter(Media.storage_url == f"{LOCAL}/{key}").count() == 1
+    finally:
+        db.expire_all()
+        db.query(Event).filter(Event.id == copy_id).delete(synchronize_session=False)
+        db.query(User).filter(User.id == other_id).delete(synchronize_session=False)
+        db.commit()
 
 
 def test_hard_delete_user_sweeps_source_image_derivatives(
@@ -922,12 +995,7 @@ def test_hard_delete_user_sweeps_source_image_derivatives(
 ):
     """Same derivative coverage on user-level erasure."""
     request_id = _seed_request(db, author_id=regular_user.id)
-
-    swept: list[str] = []
-    monkeypatch.setattr(
-        "app.services.admin.sweep_keys",
-        lambda keys, *, context: swept.extend(keys),
-    )
+    swept = _swept(monkeypatch)
 
     response = client.delete(
         f"/api/v1/admin/users/{regular_user.id}?hard=true",
@@ -935,9 +1003,75 @@ def test_hard_delete_user_sweeps_source_image_derivatives(
     )
     assert response.status_code == 200
 
-    assert f"request_uploads/{request_id}/x_hero.jpg" in swept
-    assert f"request_uploads/{request_id}/x_thumb.jpg" in swept
-    assert response.json()["media_count"] == len(swept)
+    assert set(swept) == {
+        f"uploads/{request_id}.jpg",
+        f"uploads/{request_id}_hero.jpg",
+        f"uploads/{request_id}_thumb.jpg",
+    }
+    assert response.json()["media_count"] == 1
+
+
+def test_hard_delete_user_sweeps_their_staged_uploads(admin_user, regular_user, db, monkeypatch):
+    """A file the account staged and no event took yet is erased with it."""
+    key = f"uploads/{uuid.uuid4().hex}.mp4"
+    db.add(
+        Upload(
+            uploader_id=regular_user.id,
+            storage_key=key,
+            kind="video",
+            sha256=fake_sha256(),
+            expires_at=datetime.now(UTC) + UPLOAD_TTL,
+        )
+    )
+    db.commit()
+    swept = _swept(monkeypatch)
+
+    response = client.delete(
+        f"/api/v1/admin/users/{regular_user.id}?hard=true",
+        headers=login_as(client, admin_user),
+    )
+    assert response.status_code == 200
+
+    assert swept == [key]
+    db.expire_all()
+    assert db.query(Upload).filter(Upload.storage_key == key).count() == 0
+
+
+def test_hard_delete_user_keeps_a_file_a_copy_on_another_event_names(
+    admin_user, regular_user, db, monkeypatch
+):
+    """The erasure drops the account's events, but an object a copy on someone else's event
+    still names stays in storage."""
+    request_id = _seed_request(db, author_id=regular_user.id)
+    key = f"uploads/{request_id}.jpg"
+    other = _other_user(db)
+    copy_holder = Event(
+        owner_id=other.id,
+        title=f"Copy {uuid.uuid4().hex[:8]}",
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
+        geolocated_at=datetime.now(UTC),
+        sources=[_source("https://example.com/source", media=_media(key))],
+    )
+    db.add(copy_holder)
+    db.commit()
+    copy_id, other_id = copy_holder.id, other.id
+    swept = _swept(monkeypatch)
+
+    try:
+        response = client.delete(
+            f"/api/v1/admin/users/{regular_user.id}?hard=true",
+            headers=login_as(client, admin_user),
+        )
+        assert response.status_code == 200
+        assert swept == []
+        db.expire_all()
+        assert db.query(Event).filter(Event.id == request_id).first() is None
+        assert db.query(Media).filter(Media.storage_url == f"{LOCAL}/{key}").count() == 1
+    finally:
+        db.expire_all()
+        db.query(Event).filter(Event.id == copy_id).delete(synchronize_session=False)
+        db.query(User).filter(User.id == other_id).delete(synchronize_session=False)
+        db.commit()
 
 
 def test_hard_delete_user_sweeps_their_avatar(admin_user, regular_user, db, monkeypatch, tmp_path):
@@ -1037,12 +1171,12 @@ def test_soft_delete_user_writes_admin_event(admin_user, regular_user, db):
         headers=login_as(client, admin_user),
     )
     event = (
-        db.query(AdminEvent)
+        db.query(AuditLog)
         .filter(
-            AdminEvent.actor_id == admin_user.id,
-            AdminEvent.action == "user_soft_deleted",
+            AuditLog.actor_id == admin_user.id,
+            AuditLog.action == "user_soft_deleted",
         )
-        .order_by(AdminEvent.created_at.desc())
+        .order_by(AuditLog.created_at.desc())
         .first()
     )
     assert event is not None
@@ -1084,9 +1218,9 @@ def test_hard_delete_user_drops_row_and_geolocations(admin_user, regular_user, g
     assert db.query(Event).filter(Event.id == geo_id).first() is None
 
     event = (
-        db.query(AdminEvent)
-        .filter(AdminEvent.action == "user_hard_deleted")
-        .order_by(AdminEvent.created_at.desc())
+        db.query(AuditLog)
+        .filter(AuditLog.action == "user_hard_deleted")
+        .order_by(AuditLog.created_at.desc())
         .first()
     )
     assert event is not None
@@ -1106,10 +1240,9 @@ def test_hard_delete_user_who_requested_a_fulfilled_event(admin_user, regular_us
         owner_id=fulfiller.id,  # ownership transferred to the fulfiller at geolocate
         requested_by_id=regular_user.id,  # the requester we will hard-delete
         title=f"Fulfilled {uuid.uuid4().hex[:8]}",
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://example.com/source",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        event_date=date(2026, 5, 1),
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
+        sources=[_source("https://example.com/source")],
+        occurred_date=date(2026, 5, 1),
         geolocated_at=datetime.now(UTC),
     )
     db.add(event)
@@ -1150,10 +1283,9 @@ def test_soft_delete_user_hides_requested_by_from_reads(admin_user, regular_user
         owner_id=fulfiller.id,
         requested_by_id=regular_user.id,
         title=f"Fulfilled {uuid.uuid4().hex[:8]}",
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://example.com/source",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        event_date=date(2026, 5, 1),
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
+        sources=[_source("https://example.com/source")],
+        occurred_date=date(2026, 5, 1),
         geolocated_at=datetime.now(UTC),
     )
     db.add(event)
@@ -1192,7 +1324,7 @@ def test_hard_delete_user_preserves_invite_codes(admin_user, db):
     db.commit()
     user_id = user.id
 
-    invite = InviteCode(code=f"audit-code-{uuid.uuid4().hex}", used_by=user_id)
+    invite = InviteCode(code=f"audit-code-{uuid.uuid4().hex}", used_by_id=user_id)
     db.add(invite)
     db.commit()
     invite_id = invite.id
@@ -1207,7 +1339,7 @@ def test_hard_delete_user_preserves_invite_codes(admin_user, db):
     assert db.query(User).filter(User.id == user_id).first() is None
     surviving = db.query(InviteCode).filter(InviteCode.id == invite_id).first()
     assert surviving is not None
-    assert surviving.used_by is None
+    assert surviving.used_by_id is None
 
     db.delete(surviving)
     db.commit()
@@ -1330,28 +1462,21 @@ def test_create_unguarded_invite_code_route_is_gone(regular_user):
 
 
 def _seed_request(db, *, author_id: uuid.UUID) -> uuid.UUID:
-    """Inline requested-event fixture (a ``requested`` Event with no location); returns the row id, cleanup cascades from the user."""
+    """Inline requested-event fixture (a ``requested`` Event with no location and one source
+    image at ``uploads/<id>.jpg``); returns the row id, cleanup cascades from the user."""
+    request_id = uuid.uuid4()
     request = Event(
+        id=request_id,
         owner_id=author_id,
         requested_by_id=author_id,
         title=f"Request {uuid.uuid4().hex[:8]}",
-        source_url="https://example.com/post",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        sources=[_source("https://example.com/post", media=_media(f"uploads/{request_id}.jpg"))],
         status=STATUS_REQUESTED,
         requested_at=datetime.now(UTC),
     )
     db.add(request)
-    db.flush()
-    db.add(
-        Media(
-            event_id=request.id,
-            role="source",
-            storage_url=(f"http://localhost:8000/local-storage/request_uploads/{request.id}/x.jpg"),
-            media_type="image",
-        )
-    )
     db.commit()
-    return request.id
+    return request_id
 
 
 def test_soft_delete_user_cascades_to_requested_events(admin_user, regular_user, db):
@@ -1394,9 +1519,14 @@ def test_soft_delete_user_cascade_count_is_idempotent(admin_user, regular_user, 
 
 
 def test_hard_delete_user_drops_requested_events(admin_user, regular_user, db):
-    """GDPR erasure takes the requested events with the user; media cascade via the event FK, the S3 sweep runs after commit and is counted in ``media_count``."""
+    """GDPR erasure takes the requested events with the user; media cascade via the source FK, the S3 sweep runs after commit and is counted in ``media_count``."""
     request_id = _seed_request(db, author_id=regular_user.id)
-    media_id = db.query(Media.id).filter(Media.event_id == request_id).scalar()
+    media_id = (
+        db.query(Media.id)
+        .join(Source, Source.id == Media.source_id)
+        .filter(Source.event_id == request_id)
+        .scalar()
+    )
 
     response = client.delete(
         f"/api/v1/admin/users/{regular_user.id}?hard=true",
@@ -1424,12 +1554,12 @@ def test_soft_delete_user_writes_cascade_count_in_admin_event(admin_user, regula
         headers=login_as(client, admin_user),
     )
     event = (
-        db.query(AdminEvent)
+        db.query(AuditLog)
         .filter(
-            AdminEvent.actor_id == admin_user.id,
-            AdminEvent.action == "user_soft_deleted",
+            AuditLog.actor_id == admin_user.id,
+            AuditLog.action == "user_soft_deleted",
         )
-        .order_by(AdminEvent.created_at.desc())
+        .order_by(AuditLog.created_at.desc())
         .first()
     )
     assert event is not None
@@ -1488,23 +1618,22 @@ def test_reject_rate_counts_closed_detections_not_geolocated(
         before_closed_status=STATUS_DETECTED,
         closed_at=now,
         detected_at=now,
-        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+        detection=EventDetection(from_url=f"https://x.com/a/{uuid.uuid4().hex}"),
     )
     geolocated = Event(
         owner_id=regular_user.id,
         title=f"Geolocated {uuid.uuid4().hex[:8]}",
         status=STATUS_GEOLOCATED,
         geolocated_at=now,
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://example.com/source",
-        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
+        detection=EventDetection(from_url=f"https://x.com/a/{uuid.uuid4().hex}"),
     )
     pending = Event(
         owner_id=regular_user.id,
         title=f"Pending {uuid.uuid4().hex[:8]}",
         status=STATUS_DETECTED,
         detected_at=now,
-        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+        detection=EventDetection(from_url=f"https://x.com/a/{uuid.uuid4().hex}"),
     )
     db.add_all([rejected, geolocated, pending])
     db.commit()
@@ -1529,7 +1658,6 @@ def test_reject_rate_ignores_human_submits(admin_user, regular_user, events_clea
         status=STATUS_CLOSED,
         before_closed_status=STATUS_REQUESTED,
         closed_at=now,
-        source_url="https://example.com/source",
         requested_at=now,
     )
     db.add(human_closed)
@@ -1554,9 +1682,8 @@ def test_reject_rate_ignores_a_bot_opened_request(admin_user, regular_user, even
         before_closed_status=STATUS_REQUESTED,
         closed_at=now,
         requested_at=now,
-        source_url="https://t.me/wilddivision82/351",
-        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
-        detected_via="bot",
+        sources=[_source("https://t.me/example_channel/351")],
+        detection=EventDetection(from_url=f"https://x.com/a/{uuid.uuid4().hex}", via="bot"),
     )
     fulfilled_request = Event(
         owner_id=regular_user.id,
@@ -1565,10 +1692,9 @@ def test_reject_rate_ignores_a_bot_opened_request(admin_user, regular_user, even
         status=STATUS_GEOLOCATED,
         geolocated_at=now,
         requested_at=now,
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://t.me/wilddivision82/352",
-        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
-        detected_via="bot",
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
+        sources=[_source("https://t.me/example_channel/352")],
+        detection=EventDetection(from_url=f"https://x.com/a/{uuid.uuid4().hex}", via="bot"),
     )
     db.add_all([closed_request, fulfilled_request])
     db.commit()
@@ -1579,44 +1705,33 @@ def test_reject_rate_ignores_a_bot_opened_request(admin_user, regular_user, even
     assert after["machine_rejected"] == before["machine_rejected"]
 
 
+def _detection(regular_user, title: str, sources: list[Source], proof: list[Media]) -> Event:
+    now = datetime.now(UTC)
+    return Event(
+        owner_id=regular_user.id,
+        title=f"{title} {uuid.uuid4().hex[:8]}",
+        status=STATUS_DETECTED,
+        detected_at=now,
+        detection=EventDetection(from_url=f"https://x.com/a/{uuid.uuid4().hex}"),
+        sources=sources,
+        media=proof,
+    )
+
+
 def test_pending_quality_counts_missing_pieces(admin_user, regular_user, events_cleanup, db):
-    """The pending counts flag live detections missing a source media, a proof image, or a source URL; a complete one lifts only ``pending``."""
+    """The pending counts flag live detections missing a direct or indirect source with a file,
+    a proof image, or a source with a URL; a complete one lifts only ``pending``."""
     before = _detection_stats(admin_user)
 
-    now = datetime.now(UTC)
-    bare = Event(
-        owner_id=regular_user.id,
-        title=f"Bare {uuid.uuid4().hex[:8]}",
-        status=STATUS_DETECTED,
-        detected_at=now,
-        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
-    )
-    complete = Event(
-        owner_id=regular_user.id,
-        title=f"Complete {uuid.uuid4().hex[:8]}",
-        status=STATUS_DETECTED,
-        detected_at=now,
-        source_url="https://example.com/source",
-        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+    stem = uuid.uuid4().hex
+    bare = _detection(regular_user, "Bare", [], [])
+    complete = _detection(
+        regular_user,
+        "Complete",
+        [_source("https://example.com/source", media=_media(f"x/{stem}-s.jpg"))],
+        [_media(f"x/{stem}-p.jpg")],
     )
     db.add_all([bare, complete])
-    db.flush()
-    db.add_all(
-        [
-            Media(
-                event_id=complete.id,
-                role="source",
-                storage_url=f"http://localhost:8000/local-storage/x/{complete.id}/s.jpg",
-                media_type="image",
-            ),
-            Media(
-                event_id=complete.id,
-                role="proof",
-                storage_url=f"http://localhost:8000/local-storage/x/{complete.id}/p.jpg",
-                media_type="image",
-            ),
-        ]
-    )
     db.commit()
     events_cleanup.extend([bare.id, complete.id])
 
@@ -1626,6 +1741,41 @@ def test_pending_quality_counts_missing_pieces(admin_user, regular_user, events_
     assert after["pending_missing_source_media"] == before["pending_missing_source_media"] + 1
     assert after["pending_missing_proof_image"] == before["pending_missing_proof_image"] + 1
     assert after["pending_missing_source_url"] == before["pending_missing_source_url"] + 1
+
+
+def test_pending_source_media_counts_direct_and_indirect_sources_only(
+    admin_user, regular_user, events_cleanup, db
+):
+    """A file on a context source does not supply the source media; one on an indirect source
+    does. A URL on any source, file or not, supplies the source URL."""
+    before = _detection_stats(admin_user)
+
+    stem = uuid.uuid4().hex
+    context_file = _detection(
+        regular_user,
+        "Context file",
+        [_source("https://example.com/c", level="context", media=_media(f"x/{stem}-c.jpg"))],
+        [_media(f"x/{stem}-cp.jpg")],
+    )
+    indirect_file = _detection(
+        regular_user,
+        "Indirect file",
+        [
+            _source(None, level="indirect", media=_media(f"x/{stem}-i.jpg")),
+            _source("https://example.com/i", level="context"),
+        ],
+        [_media(f"x/{stem}-ip.jpg")],
+    )
+    db.add_all([context_file, indirect_file])
+    db.commit()
+    events_cleanup.extend([context_file.id, indirect_file.id])
+
+    after = _detection_stats(admin_user)
+
+    assert after["pending"] == before["pending"] + 2
+    assert after["pending_missing_source_media"] == before["pending_missing_source_media"] + 1
+    assert after["pending_missing_proof_image"] == before["pending_missing_proof_image"]
+    assert after["pending_missing_source_url"] == before["pending_missing_source_url"]
 
 
 def test_pending_counts_exclude_soft_deleted(admin_user, regular_user, events_cleanup, db):
@@ -1638,7 +1788,7 @@ def test_pending_counts_exclude_soft_deleted(admin_user, regular_user, events_cl
         title=f"Soft-deleted {uuid.uuid4().hex[:8]}",
         status=STATUS_DETECTED,
         detected_at=now,
-        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+        detection=EventDetection(from_url=f"https://x.com/a/{uuid.uuid4().hex}"),
         deleted_at=now,
     )
     db.add(soft_deleted)
@@ -1660,7 +1810,7 @@ def test_reject_rate_counts_soft_deleted_detection(admin_user, regular_user, eve
         title=f"Soft-deleted detection {uuid.uuid4().hex[:8]}",
         status=STATUS_DETECTED,
         detected_at=now,
-        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+        detection=EventDetection(from_url=f"https://x.com/a/{uuid.uuid4().hex}"),
         deleted_at=now,
     )
     db.add(soft_deleted_detection)
@@ -1682,9 +1832,8 @@ def test_reject_rate_ignores_soft_deleted_geolocated(admin_user, regular_user, e
         title=f"Soft-deleted geo {uuid.uuid4().hex[:8]}",
         status=STATUS_GEOLOCATED,
         geolocated_at=now,
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://example.com/source",
-        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
+        detection=EventDetection(from_url=f"https://x.com/a/{uuid.uuid4().hex}"),
         deleted_at=now,
     )
     db.add(soft_deleted_geo)
@@ -1702,33 +1851,14 @@ def test_pending_proof_video_counts_as_missing_proof_image(
     """A pending detection whose only proof media is a video still lacks a proof image (``pending_missing_proof_image``)."""
     before = _detection_stats(admin_user)
 
-    now = datetime.now(UTC)
-    video_proof = Event(
-        owner_id=regular_user.id,
-        title=f"Video proof {uuid.uuid4().hex[:8]}",
-        status=STATUS_DETECTED,
-        detected_at=now,
-        source_url="https://example.com/source",
-        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+    stem = uuid.uuid4().hex
+    video_proof = _detection(
+        regular_user,
+        "Video proof",
+        [_source("https://example.com/source", media=_media(f"x/{stem}-s.jpg"))],
+        [_media(f"x/{stem}-p.mp4", kind="video")],
     )
     db.add(video_proof)
-    db.flush()
-    db.add_all(
-        [
-            Media(
-                event_id=video_proof.id,
-                role="source",
-                storage_url=f"http://localhost:8000/local-storage/x/{video_proof.id}/s.jpg",
-                media_type="image",
-            ),
-            Media(
-                event_id=video_proof.id,
-                role="proof",
-                storage_url=f"http://localhost:8000/local-storage/x/{video_proof.id}/p.mp4",
-                media_type="video",
-            ),
-        ]
-    )
     db.commit()
     events_cleanup.extend([video_proof.id])
 

@@ -34,10 +34,10 @@ export async function generateMetadata({
     found: true,
     title: event.title,
     segments: [
-      event.event_coords
-        ? formatCoordinates(event.event_coords.lat, event.event_coords.lng)
+      event.coords
+        ? formatCoordinates(event.coords.lat, event.coords.lng)
         : null,
-      event.event_date ? formatDate(event.event_date) : null,
+      event.occurred_date ? formatDate(event.occurred_date) : null,
     ],
     owner: event.owner.username,
     url: eventHref(event.id),

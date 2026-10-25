@@ -61,15 +61,11 @@ const APPROVAL = {
   approval: {
     id: "a1",
     version_no: 2,
-    verdict: "approve" as const,
     reviewer: { id: "u1", username: "lead", avatar_url: null },
     organization: { slug: "osw", name: "Open Source Watch", avatar_url: null },
     note: "Skyline matches",
     created_at: "2026-10-15T09:00:00Z",
     current: true,
-    revoked_at: null,
-    revoke_reason: null,
-    revoked_as: null,
   },
 };
 
@@ -89,10 +85,9 @@ const OPEN_REQUEST = {
 };
 
 const INVITE = {
-  id: "i1",
   user: { id: "u4", username: "dee", avatar_url: null },
   invited_by: { id: "u1", username: "lead", avatar_url: null },
-  created_at: "2026-10-15T09:00:00Z",
+  invited_at: "2026-10-15T09:00:00Z",
 };
 
 function serve(org: Organization, members: OrganizationMember[] = MEMBERS) {
@@ -213,7 +208,7 @@ describe("OrganizationPage", () => {
     expect(withdraw.closest("a")).toBeNull();
     fireEvent.click(withdraw);
     await waitFor(() =>
-      expect(apiFetch).toHaveBeenCalledWith("/organizations/osw/invites/i1", { method: "DELETE" }),
+      expect(apiFetch).toHaveBeenCalledWith("/organizations/osw/invites/dee", { method: "DELETE" }),
     );
   });
 

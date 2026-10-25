@@ -4,7 +4,6 @@ Business rules live in ``services/geolocator_credit``; this module maps its type
 """
 
 import uuid
-from typing import NoReturn
 
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.orm import Session
@@ -12,17 +11,12 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.ratelimit import limiter
-from app.routers._errors import raise_typed_error
-from app.routers.events._common import resolve_live_event
+from app.routers.events._common import raise_credit_error, resolve_live_event
 from app.schemas.event import GeolocatorInviteCreate, GeolocatorInviteRead
 from app.services import geolocator_credit
-from app.services.geolocator_credit import GEOLOCATOR_CREDIT_ERROR_STATUS, GeolocatorCreditError
+from app.services.geolocator_credit import GeolocatorCreditError
 
 router = APIRouter()
-
-
-def _raise(exc: GeolocatorCreditError) -> NoReturn:
-    raise_typed_error(exc, GEOLOCATOR_CREDIT_ERROR_STATUS)
 
 
 @router.get("/{geolocation_id}/geolocator-invites", response_model=list[GeolocatorInviteRead])
@@ -57,7 +51,7 @@ def invite_geolocator(
     try:
         return geolocator_credit.invite(db, geo=geo, owner=current_user, username=body.username)
     except GeolocatorCreditError as exc:
-        _raise(exc)
+        raise_credit_error(exc)
 
 
 @router.delete(
@@ -77,7 +71,7 @@ def withdraw_geolocator_invite(
     try:
         geolocator_credit.withdraw(db, geo=geo, owner=current_user, username=username)
     except GeolocatorCreditError as exc:
-        _raise(exc)
+        raise_credit_error(exc)
 
 
 @router.post("/{geolocation_id}/geolocator-invites/accept", status_code=status.HTTP_204_NO_CONTENT)
@@ -93,7 +87,7 @@ def accept_geolocator_invite(
     try:
         geolocator_credit.accept(db, geo=geo, user=current_user)
     except GeolocatorCreditError as exc:
-        _raise(exc)
+        raise_credit_error(exc)
 
 
 @router.post("/{geolocation_id}/geolocator-invites/decline", status_code=status.HTTP_204_NO_CONTENT)
@@ -109,7 +103,7 @@ def decline_geolocator_invite(
     try:
         geolocator_credit.decline(db, geo=geo, user=current_user)
     except GeolocatorCreditError as exc:
-        _raise(exc)
+        raise_credit_error(exc)
 
 
 @router.delete(
@@ -129,4 +123,4 @@ def remove_geolocator(
     try:
         geolocator_credit.remove(db, geo=geo, actor=current_user, username=username)
     except GeolocatorCreditError as exc:
-        _raise(exc)
+        raise_credit_error(exc)

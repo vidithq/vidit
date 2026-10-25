@@ -5,7 +5,6 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Upl
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_current_user, get_current_user_optional, get_db
-from app.models.push_subscription import PushSubscription
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
 from app.routers._errors import raise_typed_error
@@ -19,14 +18,11 @@ from app.schemas.invite_code import (
 )
 from app.schemas.organization import OrganizationMembershipRead
 from app.schemas.preferences import UserPreferencesRead, UserPreferencesUpdate
-from app.schemas.push import PushConfigRead, PushSubscriptionCreate, PushSubscriptionRead
-from app.schemas.user import UserProfile, UserRead, UserStatsRead, UserUpdate
-from app.schemas.x_handle_request import XHandleRead, XHandleRequestCreate
+from app.schemas.user import UserProfile, UserRead, UserStatsRead, UserUpdate, XHandleRead
 from app.services import collections as collections_service
 from app.services import organizations as organizations_service
 from app.services import preferences as preferences_service
-from app.services import push as push_service
-from app.services import social, sponsored_invites, user_stats, x_handle_requests
+from app.services import social, sponsored_invites, user_stats
 from app.services import users as users_service
 from app.services.pagination import page_size
 
@@ -122,90 +118,14 @@ def update_my_preferences(
     return result
 
 
-@router.get("/me/push-config", response_model=PushConfigRead)
-@limiter.limit("60/minute")
-def get_push_config(
-    request: Request,
-    current_user: User = Depends(get_current_user),
-) -> PushConfigRead:
-    """The key a browser subscribes to push with; null on a development server without VAPID keys."""
-    return PushConfigRead(public_key=push_service.public_key())
-
-
-@router.get("/me/push-subscriptions", response_model=list[PushSubscriptionRead])
-@limiter.limit("120/minute")
-def list_push_subscriptions(
-    request: Request,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> list[PushSubscription]:
-    """The devices registered for your push notifications, newest first."""
-    return push_service.list_devices(db, user=current_user)
-
-
-@router.post(
-    "/me/push-subscriptions",
-    response_model=PushSubscriptionRead,
-    status_code=status.HTTP_201_CREATED,
-)
-@limiter.limit("30/minute")
-def register_push_subscription(
-    request: Request,
-    body: PushSubscriptionCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> PushSubscription:
-    """Register this browser for push notifications; registering again refreshes it."""
-    try:
-        row = push_service.register(
-            db, user=current_user, body=body, user_agent=request.headers.get("user-agent")
-        )
-    except push_service.DeviceRevokedError as exc:
-        raise_typed_error(exc, {exc.code: 409})
-    db.commit()
-    return row
-
-
-@router.delete("/me/push-subscriptions/{subscription_id}", status_code=status.HTTP_204_NO_CONTENT)
-@limiter.limit("30/minute")
-def delete_push_subscription(
-    request: Request,
-    subscription_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> None:
-    """Stop push notifications to one of your devices."""
-    if not push_service.unregister(db, user=current_user, subscription_id=subscription_id):
-        raise HTTPException(status_code=404, detail="Push subscription not found")
-    db.commit()
-
-
 @router.get("/me/x-handle", response_model=XHandleRead)
 @limiter.limit("120/minute")
 def get_my_x_handle(
     request: Request,
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> XHandleRead:
-    """The X handle bound to your account, and your change request if any."""
-    return x_handle_requests.read_own(db, user=current_user)
-
-
-@router.put("/me/x-handle-request", response_model=XHandleRead)
-@limiter.limit("10/hour")
-def put_my_x_handle_request(
-    request: Request,
-    body: XHandleRequestCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> XHandleRead:
-    """Ask an admin to bind a new X handle; replaces your earlier request."""
-    try:
-        return x_handle_requests.submit(
-            db, user=current_user, x_handle=body.x_handle, reason=body.reason
-        )
-    except x_handle_requests.XHandleUnchangedError as exc:
-        raise_typed_error(exc, x_handle_requests.SELF_ERROR_STATUS)
+    """The X handle bound to your account. Only an admin links or changes it."""
+    return XHandleRead(x_handle=current_user.x_handle)
 
 
 @router.get("/me/invite-codes", response_model=SponsoredInviteCodeList)
@@ -378,7 +298,7 @@ def get_user_geolocations(
     profile counts the same set. The wider live total is ``total_events`` on
     :func:`get_user_stats`.
 
-    Offset-paged: the profile orders by ``event_date``, which is nullable and
+    Offset-paged: the profile orders by ``occurred_date``, which is nullable and
     editable, so it cannot key a cursor.
     """
     user = _get_live_user_or_404(db, username)

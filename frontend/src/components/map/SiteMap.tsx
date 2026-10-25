@@ -42,7 +42,7 @@ function ZoneLayers({
     () => ({
       type: "FeatureCollection",
       features: outside.map((event) => {
-        const from: [number, number] = [event.event_coords.lng, event.event_coords.lat];
+        const from: [number, number] = [event.coords.lng, event.coords.lat];
         const to = nearestPointOnZone(zone, from);
         return {
           type: "Feature",
@@ -127,7 +127,7 @@ export default function SiteMap({
   onEventClick: (id: string) => void;
 }) {
   const points = useMemo<MapPoint[]>(
-    () => events.map((e) => [e.id, e.event_coords.lat, e.event_coords.lng, e.event_date, "", 0]),
+    () => events.map((e) => [e.id, e.coords.lat, e.coords.lng, e.occurred_date, "", 0]),
     [events],
   );
   const dimmed = useMemo(

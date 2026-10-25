@@ -13,24 +13,24 @@ from app.routers._forms import MAX_ID_LIST_LENGTH, parse_json_id_list, parse_opt
 
 
 def test_parse_optional_iso_time_empty_is_none():
-    assert parse_optional_iso_time("", field="event_time") is None
-    assert parse_optional_iso_time(None, field="event_time") is None
+    assert parse_optional_iso_time("", field="occurred_time") is None
+    assert parse_optional_iso_time(None, field="occurred_time") is None
 
 
 def test_parse_optional_iso_time_parses_naive():
-    assert parse_optional_iso_time("14:30", field="event_time") == time(14, 30)
+    assert parse_optional_iso_time("14:30", field="occurred_time") == time(14, 30)
 
 
 def test_parse_optional_iso_time_rejects_garbage():
     with pytest.raises(HTTPException) as exc:
-        parse_optional_iso_time("not-a-time", field="event_time")
+        parse_optional_iso_time("not-a-time", field="occurred_time")
     assert exc.value.status_code == 422
 
 
 def test_parse_optional_iso_time_rejects_offset_aware():
     # An offset-aware time cannot be normalised to UTC without a date: rejected, not stored without the offset.
     with pytest.raises(HTTPException) as exc:
-        parse_optional_iso_time("14:30+02:00", field="event_time")
+        parse_optional_iso_time("14:30+02:00", field="occurred_time")
     assert exc.value.status_code == 422
 
 
@@ -39,45 +39,28 @@ def test_parse_json_id_list_empty_is_empty_list():
     assert parse_json_id_list("", field="tag_ids") == []
 
 
-def test_parse_json_id_list_as_uuid_coerces_valid_uuids():
+def test_parse_json_id_list_coerces_valid_uuids():
     a, b = uuid.uuid4(), uuid.uuid4()
     raw = json.dumps([str(a), str(b)])
-    assert parse_json_id_list(raw, field="tag_ids", as_uuid=True) == [a, b]
+    assert parse_json_id_list(raw, field="tag_ids") == [a, b]
 
 
-def test_parse_json_id_list_as_uuid_rejects_malformed_element():
+def test_parse_json_id_list_rejects_malformed_element():
     # Must 422, not reach a UUID column as a psycopg DataError (500).
     raw = json.dumps(["not-a-uuid"])
     with pytest.raises(HTTPException) as exc:
-        parse_json_id_list(raw, field="tag_ids", as_uuid=True)
+        parse_json_id_list(raw, field="tag_ids")
     assert exc.value.status_code == 422
-
-
-def test_parse_json_id_list_default_keeps_strings():
-    # remove_media_ids is compared as strings downstream: no UUID coercion.
-    raw = json.dumps(["not-a-uuid", "also-not-a-uuid"])
-    assert parse_json_id_list(raw, field="remove_media_ids") == [
-        "not-a-uuid",
-        "also-not-a-uuid",
-    ]
 
 
 def test_parse_json_id_list_over_cap_rejected():
     raw = json.dumps([str(uuid.uuid4()) for _ in range(MAX_ID_LIST_LENGTH + 1)])
     with pytest.raises(HTTPException) as exc:
-        parse_json_id_list(raw, field="tag_ids", as_uuid=True)
-    assert exc.value.status_code == 422
-
-
-def test_parse_json_id_list_over_cap_rejected_without_uuid_coercion():
-    # The length cap applies regardless of as_uuid.
-    raw = json.dumps([str(i) for i in range(MAX_ID_LIST_LENGTH + 1)])
-    with pytest.raises(HTTPException) as exc:
-        parse_json_id_list(raw, field="remove_media_ids")
+        parse_json_id_list(raw, field="tag_ids")
     assert exc.value.status_code == 422
 
 
 def test_parse_json_id_list_at_cap_is_allowed():
     raw = json.dumps([str(uuid.uuid4()) for _ in range(MAX_ID_LIST_LENGTH)])
-    result = parse_json_id_list(raw, field="tag_ids", as_uuid=True)
+    result = parse_json_id_list(raw, field="tag_ids")
     assert len(result) == MAX_ID_LIST_LENGTH

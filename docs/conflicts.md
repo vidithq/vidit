@@ -18,8 +18,8 @@ flowchart LR
     l1 ~~~ l2 ~~~ l3 ~~~ l4
   end
 
-  cron["`**backend-conflicts**
-  Railway cron 0 6 * * *: sync_conflicts.py, one pass then exit`"]:::spec
+  cron["`**sync-conflicts role**
+  once a day: sync_conflicts.py, one pass then exit`"]:::spec
   page["`**List of ongoing armed conflicts**
   read through the MediaWiki API: the top-level rows of the three top tiers, skirmishes excluded`"]:::spec
   strict{"`**strict parse**
@@ -31,12 +31,12 @@ flowchart LR
   fields["`**tier, start_year, last_seen_at**
   the tier table it sat in; the start year only where NULL; the sighting stamp`"]:::shared
   grace{"`**absent 14 consecutive days?**`"}:::core
-  off["`**ongoing = false**
+  off["`**is_ongoing = false**
   no row is ever deleted, and a row the sync never saw is never touched`"]:::shared
   table[("`**conflicts**
-  source = sync, seed or manual`")]:::store
+  origin = sync, seed or manual`")]:::store
   seed["`**scripts/seed_conflicts.py**
-  once at setup: a Wikidata SPARQL pull of historical conflicts since 1914, source = seed`"]:::spec
+  once at setup: a Wikidata SPARQL pull of historical conflicts since 1914, origin = seed`"]:::spec
 
   cron --> page --> strict
   strict -- "no" --> abort
@@ -56,19 +56,19 @@ Each paragraph below takes one node of the diagram, and the two runners are name
 
 **start_year fill.** The sync parses each row's start-of-conflict year from the page and writes `start_year` only where it is NULL. It never overwrites an existing value, such as the Wikidata seed's years.
 
-**Grace period, never delete.** Disappearance from the page is ambiguous: a conflict may have ended, been renamed, or slid below a tier threshold. A row flips `ongoing=false` only after 14 consecutive days of absence (`last_seen_at`), and rows are never deleted. Rows the sync has never seen (`last_seen_at IS NULL`, such as the manual `Other` row and unseen seed rows) are never touched.
+**Grace period, never delete.** Disappearance from the page is ambiguous: a conflict may have ended, been renamed, or slid below a tier threshold. A row flips `is_ongoing=false` only after 14 consecutive days of absence (`last_seen_at`), and rows are never deleted. Rows the sync has never seen (`last_seen_at IS NULL`, such as the manual `Other` row and unseen seed rows) are never touched.
 
 **Strict-parse abort.** If the page structure stops matching (tier tables missing) or the row count falls outside [15, 80], the sync raises an error and writes nothing, leaving the referential table as it was. The runner exits non-zero.
 
 **The two scripts:**
 
-- `uv run python scripts/seed_conflicts.py [--dry-run]` runs **once at setup**. It performs a Wikidata SPARQL pull of historical conflicts since 1914, about 700 to 850 rows, using a P31 type allowlist: wars, civil wars, armed conflicts, rebellions, insurgencies, and the relevant margins. It excludes battles, operations, and coup attempts. Rows with missing QIDs insert as `source='seed'`, `ongoing=false`. It never modifies existing rows, since the sync owns them. It is idempotent and safe to re-run.
+- `uv run python scripts/seed_conflicts.py [--dry-run]` runs **once at setup**. It performs a Wikidata SPARQL pull of historical conflicts since 1914, about 700 to 850 rows, using a P31 type allowlist: wars, civil wars, armed conflicts, rebellions, insurgencies, and the relevant margins. It excludes battles, operations, and coup attempts. Rows with missing QIDs insert as `origin='seed'`, `is_ongoing=false`. It never modifies existing rows, since the sync owns them. It is idempotent and safe to re-run.
 - `uv run python scripts/sync_conflicts.py` runs one pass of the Wikipedia sync described above, daily through the scheduler below or by hand.
 
-**Scheduler config.** The sync runs as the Railway cron service `backend-conflicts`, on the schedule `0 6 * * *`, with the start command `uv run python scripts/sync_conflicts.py`. It mirrors the [`backend-backup`](backups.md) pattern, and its build, config-as-code path and shared environment are the ones every scheduler service takes (see [`engineering.md`](engineering.md#scheduler-services)). The process makes one pass and exits. A non-zero exit shows on the service's deployment view, and when `SENTRY_DSN` is set, a strict-parse abort is captured to Sentry. A missed run is harmless: the sync is idempotent, and the 14-day grace period absorbs multi-day gaps.
+**Scheduler config.** The sync runs as the `sync-conflicts` [role](engineering.md#backend-roles) of the backend image, once a day. The role takes the variables every scheduler service takes (see [`engineering.md`](engineering.md#scheduler-services)). The process makes one pass and exits. A strict-parse abort exits non-zero, and when `SENTRY_DSN` is set, it is captured to Sentry. A missed run is harmless: the sync is idempotent, and the 14-day grace period absorbs multi-day gaps.
 
 ## See also
 
 - [`data-model.md`](data-model.md#conflicts) for the `conflicts` / `event_conflicts` columns.
 - [`api.md`](api.md#get-conflicts) for the referential on the wire.
-- [`engineering.md`](engineering.md#scheduler-services) for the other Railway scheduler services.
+- [`engineering.md`](engineering.md#backend-roles) for the other backend roles and their schedules.

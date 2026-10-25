@@ -1,48 +1,42 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { MapPin, SquarePen, Users } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
-import { cn } from "@/lib/cn";
+import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
+import { useMutation } from "@/hooks/useMutation";
 import { allApprovalsPath, type ApprovalList } from "@/lib/approvals";
 import { COLLECTABLE_STATUSES, CollectionIcon } from "@/lib/collections";
 import { hasPublishedRecord } from "@/lib/events";
+import { creditedAuthors, removeGeolocator } from "@/lib/geolocatorCredit";
+import { eventEditHref } from "@/lib/routes";
 import { AddToCollectionPanel } from "@/components/collections/AddToCollectionPanel";
-import { Button, buttonClasses } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { AuthorByline } from "@/components/ui/AuthorByline";
+import { Button, DANGER_CONFIRM, buttonClasses } from "@/components/ui/Button";
 import { FieldHelp } from "@/components/ui/FieldHelp";
+import { Popover } from "@/components/ui/Popover";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { ACCENT_SURFACE } from "@/components/ui/styles";
 import { EventShare } from "@/components/event/EventShare";
-import { GeolocatorInviteCard, GeolocatorsPanel } from "@/components/event/GeolocatorCredit";
-import { ApprovalsCard } from "@/components/event/ApprovalsCard";
+import { GeolocatorInviteCard } from "@/components/event/GeolocatorCredit";
+import type { EventShellActions } from "@/components/event/EventShell";
+import { useEventApprovals } from "@/components/event/EventApprovals";
 import { VersionSelector } from "@/components/event/VersionSelector";
 import { useReportContent } from "@/components/report/useReportContent";
 import type { EventDetail } from "@/types";
 
 /**
  * The controls of one event, assembled once so no surface hand-assembles a row and controls can't
- * drift between them. They live in the page's right rail (`docs/design.md`, Event actions and
- * Approvals card), as a row of icon controls, left to right:
+ * drift between them. The order and the audience of each control are in `docs/design.md` (Event
+ * actions and approvals).
  *
- * 1. **The version selector**, on the event page of a published row.
- * 2. **Edit**, an icon, for the owner. Closing and the geolocators live on the edit page.
- * 3. **Share**.
- * 4. **Add to collection** for the owner and every co-geolocator, and **Geolocators** for a
- *    co-geolocator (where they leave). Each opens a panel at the top of the main column.
- * 5. **Report** for every reader but the owner.
- *
- * On the event page the rail is that row, then a pending geolocator invitation, then the Approvals
- * card of a published row (status, approvals, Approve, approval requests). On the request page it
- * is the Actions card: the row, then **Geolocate** on an open request.
- *
- * The hook returns nodes rather than rendering them because the rail and the panels land in
- * different slots. Called before a surface's early returns, with `event` null while the row
- * loads, so hook order is stable.
+ * The hook returns nodes rather than rendering them because the actions and the report form land
+ * in different zones. Called before a surface's early returns, with `event` null
+ * while the row loads, so hook order is stable.
  */
 
 /** Which detail page is asking, which is what selects the controls. */
@@ -51,7 +45,7 @@ export type ActionSurface = "event" | "request";
 // One flag per control family per surface. `utilities` is Share and Report, which any reader of
 // the record may use. `flow` is geolocating an open request. `edit` is the owner's way to the edit
 // page. `collect` shelves the row on one of the reader's collections. `history` (the version
-// selector), `credit` and `approvals` (the Approvals card) belong to the event page, the one
+// selector), `credit` and `approvals` (the approvals under the row) belong to the event page, the one
 // surface serving the published record.
 const TIERS: Record<
   ActionSurface,
@@ -69,11 +63,7 @@ const TIERS: Record<
   request: { flow: true,  edit: true,  collect: false, history: false, utilities: true,  credit: false, approvals: false },
 };
 
-const COLLECT_PANEL_ID = "add-to-collection-panel";
-const CREDIT_PANEL_ID = "geolocators-panel";
-const REPORT_PANEL_ID = "report-panel";
-
-export interface EventActionsOptions {
+interface EventActionsOptions {
   /** The row to act on. Null while it loads: every node comes back null. */
   event: EventDetail | null;
   surface: ActionSurface;
@@ -81,31 +71,18 @@ export interface EventActionsOptions {
   onChanged?: () => void;
 }
 
-export interface EventActions {
-  /** The panels the rail's toggles open, for the top of the main column. */
+interface EventActions {
+  /** The report form, a dialog, and the receipt a sent report leaves, for under the header. */
   panels: ReactNode;
-  /** The page's right rail. */
-  rail: ReactNode;
-}
-
-/** A panel a rail toggle opens. It mounts when opened and takes focus then, so a keyboard or
- *  screen reader user lands in it rather than back on the toggle. */
-function TogglePanel({ id, children }: { id: string; children: ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => ref.current?.focus(), []);
-  return (
-    <div ref={ref} id={id} tabIndex={-1} className="outline-none">
-      {children}
-    </div>
-  );
+  /** The actions block: the row and Geolocate on a request, pinned; the approvals and an
+   *  invitation under them. */
+  actions: EventShellActions | undefined;
 }
 
 export function useEventActions({ event, surface, onChanged }: EventActionsOptions): EventActions {
   const { user } = useAuth();
   // The report control is its own state machine (works signed out, outlives other actions).
   const report = useReportContent("event", event?.id ?? "");
-  const [collecting, setCollecting] = useState(false);
-  const [crediting, setCrediting] = useState(false);
 
   const tiers = event ? TIERS[surface] : null;
   const isAuthor = !!event && user?.id === event.owner.id;
@@ -119,16 +96,10 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
   const approvals = useApiResource<ApprovalList>(
     showsApprovals ? allApprovalsPath(event.id) : null,
   );
-
-  // This hook survives a client navigation between rows, so per-event state follows the row, not
-  // the mount: otherwise the next row opens with the previous one's panel open.
-  useEffect(() => {
-    setCollecting(false);
-    setCrediting(false);
-  }, [event?.id]);
+  const eventApprovals = useEventApprovals(showsApprovals ? event : null, approvals);
 
   if (!event || !tiers) {
-    return { panels: null, rail: null };
+    return { panels: null, actions: undefined };
   }
 
   const isOpenRequest = event.status === "requested";
@@ -147,30 +118,9 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
   // Reporting your own event says nothing an edit or a close could not.
   const canReport = tiers.utilities && !isAuthor;
 
-  const toggle = (open: boolean, setOpen: (open: boolean) => void, label: string, id: string, icon: ReactNode) => (
-    <Button
-      icon
-      variant="ghost"
-      onClick={() => setOpen(!open)}
-      aria-controls={open ? id : undefined}
-      aria-expanded={open}
-      aria-label={label}
-      // The open toggle wears the active-row paint, so the reader sees which control the panel
-      // belongs to.
-      className={open ? ACCENT_SURFACE : ""}
-    >
-      {icon}
-    </Button>
-  );
-
   const controls = [
     tiers.history && hasPublishedRecord(event) && (
-      <VersionSelector
-        key="versions"
-        eventId={event.id}
-        liveVersion={event.version_no}
-        selected={event.version_no}
-      />
+      <VersionSelector key="versions" event={event} selected={event.version_no} />
     ),
     canEdit && (
       // A published record is corrected by adding a version, a request is overwritten: the
@@ -180,7 +130,7 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
         label={event.status === "geolocated" ? "Edit (saves a new version)" : "Edit"}
       >
         <Link
-          href={`/events/${event.id}/edit`}
+          href={eventEditHref(event.id)}
           className={buttonClasses("ghost", { icon: true })}
           aria-label="Edit"
         >
@@ -189,88 +139,148 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
       </Tooltip>
     ),
     tiers.utilities && <EventShare key="share" event={event} />,
+    // Keyed by the row: this hook survives a client navigation between rows, and the next row
+    // must not open with the previous one's popover open.
     canCollect && (
-      <Fragment key="collect">
-        {toggle(collecting, setCollecting, "Add to collection", COLLECT_PANEL_ID, <CollectionIcon size={14} />)}
-      </Fragment>
+      <Popover
+        key={`collect-${event.id}`}
+        label="Add to collection"
+        icon={<CollectionIcon size={14} />}
+      >
+        {() => (
+          <>
+            <SectionEyebrow title="Add to collection" margin="none" />
+            <AddToCollectionPanel eventId={event.id} />
+          </>
+        )}
+      </Popover>
     ),
     canSeeCredit && (
-      <Fragment key="credit">
-        {toggle(crediting, setCrediting, "Geolocators", CREDIT_PANEL_ID, <Users size={14} />)}
-      </Fragment>
+      <Popover key={`credit-${event.id}`} label="Geolocators" icon={<Users size={14} />}>
+        {() => (
+          <>
+            <SectionEyebrow title="Geolocators" concept="geolocators" margin="none" />
+            <GeolocatorsPanel event={event} onChanged={() => onChanged?.()} />
+          </>
+        )}
+      </Popover>
+    ),
+    eventApprovals.requestAction && (
+      <Fragment key="request-approval">{eventApprovals.requestAction}</Fragment>
     ),
     canReport && <Fragment key="report">{report.trigger}</Fragment>,
   ].filter(Boolean);
 
-  const row = (className?: string) =>
-    controls.length > 0 && (
-      <div
-        role="group"
-        aria-label="Event actions"
-        className={cn("flex flex-wrap items-center gap-1.5", className)}
-      >
-        {controls}
-      </div>
-    );
-
-  const eventRail = (
-    <div className="space-y-4">
-      {row("lg:justify-end")}
-      {invited && (
-        <GeolocatorInviteCard
-          event={event}
-          onAnswered={() => {
-            setAnsweredFor(event.id);
-            onChanged?.();
-          }}
-        />
-      )}
-      {showsApprovals && <ApprovalsCard event={event} approvals={approvals} />}
-    </div>
-  );
-
+  // `max-sm:pr-2`: the `?` grows its tap area 8px past its glyph on a phone, which stays inside
+  // the row's right edge.
   const geolocate = tiers.flow && isOpenRequest && (
-    <span className="inline-flex items-center gap-1.5">
-      <Link href={`/submit?request_id=${event.id}`} className={buttonClasses("primary")}>
+    <span className="inline-flex items-center gap-1.5 max-sm:pr-2">
+      <Link href={eventEditHref(event.id)} className={buttonClasses("primary")}>
         <MapPin size={14} />
         Geolocate
       </Link>
       <FieldHelp concept="geolocate_request" />
     </span>
   );
-  const requestRail =
-    controls.length > 0 || geolocate ? (
-      <Card as="section">
-        <SectionEyebrow title="Actions" margin="none" />
-        {row()}
-        {geolocate}
-      </Card>
-    ) : null;
 
   return {
-    // The panels open at the top of the main column, beside the rail's row. They stack rather
-    // than replace each other: each is its own titled card.
-    panels: (
-      <>
-        {canSeeCredit && crediting && (
-          <TogglePanel id={CREDIT_PANEL_ID}>
-            <Card as="section">
-              <SectionEyebrow title="Geolocators" concept="geolocators" margin="none" />
-              <GeolocatorsPanel event={event} onChanged={() => onChanged?.()} />
-            </Card>
-          </TogglePanel>
-        )}
-        {canCollect && collecting && (
-          <TogglePanel id={COLLECT_PANEL_ID}>
-            <Card as="section">
-              <SectionEyebrow title="Add to collection" margin="none" />
-              <AddToCollectionPanel eventId={event.id} />
-            </Card>
-          </TogglePanel>
-        )}
-        {canReport && report.panel && <TogglePanel id={REPORT_PANEL_ID}>{report.panel}</TogglePanel>}
-      </>
-    ),
-    rail: surface === "event" ? eventRail : requestRail,
+    panels: canReport && report.panel,
+    actions: {
+      pinned: (controls.length > 0 || geolocate) && (
+        <div className="flex flex-col items-end gap-3">
+          {controls.length > 0 && (
+            <div
+              role="group"
+              aria-label="Event actions"
+              className="flex flex-wrap items-center justify-end gap-1.5"
+            >
+              {controls}
+            </div>
+          )}
+          {geolocate}
+        </div>
+      ),
+      below: (eventApprovals.summary || invited) && (
+        <div className="space-y-4">
+          {eventApprovals.summary}
+          {invited && (
+            <GeolocatorInviteCard
+              event={event}
+              onAnswered={() => {
+                setAnsweredFor(event.id);
+                onChanged?.();
+              }}
+            />
+          )}
+        </div>
+      ),
+    },
   };
+}
+
+/** One credited analyst. The reader's own row carries **Leave**, which takes their credit away,
+ * so it arms in place: the first click turns the button into its confirm, and the second runs
+ * it. */
+function CreditRow({
+  author,
+  leave,
+}: {
+  author: { username: string; avatar_url?: string | null };
+  leave?: { run: () => void; disabled: boolean };
+}) {
+  const { armed, trigger, controlRef } = useConfirmAction(() => leave?.run(), {
+    timeoutMs: ARM_MS,
+    dismissOnOutside: true,
+  });
+  return (
+    <div className="flex items-center justify-between gap-2 py-2">
+      <AuthorByline author={author} avatar className="text-sm min-w-0" />
+      {leave && (
+        <Button
+          ref={controlRef}
+          variant="danger"
+          className={armed ? DANGER_CONFIRM : ""}
+          onClick={trigger}
+          disabled={leave.disabled}
+        >
+          {armed ? "Confirm leave" : "Leave"}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The geolocators of a published event, owner first, as a co-geolocator reads them, with
+ * **Leave** on their own row. Credit grants no edit right, so nothing else here acts on the
+ * event.
+ */
+function GeolocatorsPanel({ event, onChanged }: { event: EventDetail; onChanged: () => void }) {
+  const { user } = useAuth();
+  const leave = useMutation((name: string) => removeGeolocator(event.id, name), {
+    fallback: "Failed to update the geolocators",
+    onSuccess: onChanged,
+  });
+  return (
+    <div className="space-y-4">
+      <div className="divide-y divide-neutral-800">
+        {creditedAuthors(event).map((author) => (
+          <CreditRow
+            key={author.id}
+            author={author}
+            leave={
+              author.username === user?.username
+                ? { run: () => void leave.run(author.username), disabled: leave.loading }
+                : undefined
+            }
+          />
+        ))}
+      </div>
+      {leave.error && (
+        <div className={FORM_ERROR_BANNER} role="alert">
+          {leave.error}
+        </div>
+      )}
+    </div>
+  );
 }

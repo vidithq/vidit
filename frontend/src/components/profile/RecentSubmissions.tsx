@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { EntityCard } from "@/components/ui/EntityCard";
 import { TEXT_LINK } from "@/components/ui/styles";
+import { submitHref } from "@/lib/routes";
 import { buttonClasses } from "@/components/ui/Button";
 import { profileSearchHref } from "@/lib/search";
 import type { PublicProfile } from "@/lib/users";
@@ -38,12 +39,15 @@ export function RecentSubmissions({
         <div className="basis-56 grow min-w-0 space-y-1">
           <SectionEyebrow title="Recent submissions" margin="none" />
           {/* Gated on the rows this block renders, not `geolocations_count`: a count from a different
-              request could promise "latest geolocations" above an empty list (a failed feed read). */}
-          <p className="text-xs text-neutral-500">
-            {submissions.length > 0
-              ? `${profile.username}'s latest geolocations, newest first.`
-              : "No geolocations yet."}
-          </p>
+              request could promise "latest geolocations" above an empty list (a failed feed read).
+              The owner's empty block says it once, in the empty state below. */}
+          {(submissions.length > 0 || !isOwn) && (
+            <p className="text-xs text-neutral-500">
+              {submissions.length > 0
+                ? `${profile.username}'s latest geolocations, newest first.`
+                : "No geolocations yet."}
+            </p>
+          )}
         </div>
         {submissions.length > 0 && (
           // Mirrors backend `event_filters.published_events()`: `status=geolocated` makes the expansion serve the
@@ -72,21 +76,21 @@ export function RecentSubmissions({
               badge={entry.status ? <StatusBadge status={entry.status} /> : undefined}
               media={entry.media ?? undefined}
               isGraphic={entry.is_graphic}
-              date={entry.event_date ?? undefined}
-              coords={entry.event_coords}
+              date={entry.occurred_date ?? undefined}
+              coords={entry.coords}
               tags={entry.tags}
             />
           ))}
         </div>
       ) : (
         // Own profile, nothing submitted: the freshly-invited analyst gets a next action. A visitor gets
-        // nothing more, since the heading already reads "No geolocations yet."
+        // the heading alone, which reads "No geolocations yet."
         isOwn && (
           <EmptyState
             variant="plain"
             lead="No geolocations submitted yet."
             cta={
-              <Link href="/submit" className={`text-xs ${TEXT_LINK}`}>
+              <Link href={submitHref("single")} className={`text-xs ${TEXT_LINK}`}>
                 Submit your first geolocation →
               </Link>
             }

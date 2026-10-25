@@ -138,8 +138,8 @@ def test_sync_creates_rows_keyed_by_qid(db):
     assert result.created == len(_NAMES)
     row = db.query(Conflict).filter(Conflict.wikidata_id == _QID_BY_NAME[_NAMES[0]]).one()
     assert row.name == _NAMES[0]
-    assert row.ongoing is True
-    assert row.source == "sync"
+    assert row.is_ongoing is True
+    assert row.origin == "sync"
     assert row.last_seen_at is not None
     assert row.tier == "major"
     assert row.start_year == 2020
@@ -152,8 +152,8 @@ def test_sync_updates_tier_but_never_clobbers_start_year(db):
     seeded = Conflict(
         name=_NAMES[0],
         wikidata_id=_QID_BY_NAME[_NAMES[0]],
-        ongoing=True,
-        source="seed",
+        is_ongoing=True,
+        origin="seed",
         start_year=1998,
         tier="major",
     )
@@ -192,7 +192,7 @@ def test_sync_renames_in_place_on_same_qid(db):
 
 @pytest.mark.usefixtures("_clean_test_conflicts")
 def test_sync_adopts_qidless_row_with_same_name(db):
-    manual = Conflict(name=_NAMES[0], ongoing=True, source="manual")
+    manual = Conflict(name=_NAMES[0], is_ongoing=True, origin="manual")
     db.add(manual)
     db.commit()
     manual_id = manual.id
@@ -212,11 +212,11 @@ def test_sync_deactivates_after_grace_and_spares_unseen_rows(db):
     stale = Conflict(
         name=_NAMES[0],
         wikidata_id=_QID_BY_NAME[_NAMES[0]],
-        ongoing=True,
-        source="sync",
+        is_ongoing=True,
+        origin="sync",
         last_seen_at=datetime.now(UTC) - timedelta(days=GRACE_PERIOD_DAYS + 1),
     )
-    never_seen = Conflict(name=_NAMES[1], ongoing=True, source="manual")
+    never_seen = Conflict(name=_NAMES[1], is_ongoing=True, origin="manual")
     db.add_all([stale, never_seen])
     db.commit()
     stale_id, never_seen_id = stale.id, never_seen.id
@@ -228,9 +228,9 @@ def test_sync_deactivates_after_grace_and_spares_unseen_rows(db):
 
     assert result.deactivated == 1
     db.expire_all()
-    assert db.query(Conflict).filter(Conflict.id == stale_id).one().ongoing is False
+    assert db.query(Conflict).filter(Conflict.id == stale_id).one().is_ongoing is False
     # Never synced (last_seen_at NULL): immune to the grace period.
-    assert db.query(Conflict).filter(Conflict.id == never_seen_id).one().ongoing is True
+    assert db.query(Conflict).filter(Conflict.id == never_seen_id).one().is_ongoing is True
 
 
 @pytest.mark.usefixtures("_clean_test_conflicts")
@@ -238,8 +238,8 @@ def test_sync_within_grace_keeps_row_ongoing(db):
     recent = Conflict(
         name=_NAMES[0],
         wikidata_id=_QID_BY_NAME[_NAMES[0]],
-        ongoing=True,
-        source="sync",
+        is_ongoing=True,
+        origin="sync",
         last_seen_at=datetime.now(UTC) - timedelta(days=2),
     )
     db.add(recent)
@@ -251,7 +251,7 @@ def test_sync_within_grace_keeps_row_ongoing(db):
 
     assert result.deactivated == 0
     db.expire_all()
-    assert db.query(Conflict).filter(Conflict.id == recent_id).one().ongoing is True
+    assert db.query(Conflict).filter(Conflict.id == recent_id).one().is_ongoing is True
 
 
 @pytest.mark.usefixtures("_clean_test_conflicts")
@@ -282,8 +282,8 @@ def test_sync_aborts_before_deactivation_when_qid_resolution_fails(db):
     stale = Conflict(
         name=_NAMES[0],
         wikidata_id=_QID_BY_NAME[_NAMES[0]],
-        ongoing=True,
-        source="sync",
+        is_ongoing=True,
+        origin="sync",
         last_seen_at=datetime.now(UTC) - timedelta(days=GRACE_PERIOD_DAYS + 1),
     )
     db.add(stale)
@@ -298,7 +298,7 @@ def test_sync_aborts_before_deactivation_when_qid_resolution_fails(db):
 
     db.rollback()
     db.expire_all()
-    assert db.query(Conflict).filter(Conflict.id == stale_id).one().ongoing is True
+    assert db.query(Conflict).filter(Conflict.id == stale_id).one().is_ongoing is True
 
 
 def test_sync_aborts_writing_nothing_on_parse_failure(db):
@@ -306,7 +306,7 @@ def test_sync_aborts_writing_nothing_on_parse_failure(db):
         return httpx.Response(200, json={"parse": {"text": "<p>not the page</p>"}})
 
     marker = f"pre-existing-{uuid.uuid4().hex[:8]}"
-    row = Conflict(name=marker, ongoing=True, source="manual")
+    row = Conflict(name=marker, is_ongoing=True, origin="manual")
     db.add(row)
     db.commit()
     row_id = row.id
@@ -318,7 +318,7 @@ def test_sync_aborts_writing_nothing_on_parse_failure(db):
         ):
             sync_conflicts(db, client=client)
         db.expire_all()
-        assert db.query(Conflict).filter(Conflict.id == row_id).one().ongoing is True
+        assert db.query(Conflict).filter(Conflict.id == row_id).one().is_ongoing is True
     finally:
         db.rollback()
         db.execute(Conflict.__table__.delete().where(Conflict.id == row_id))

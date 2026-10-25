@@ -26,7 +26,7 @@ export const archiveTooLarge = () =>
 /** Rough bytes per `tweets.js` record; feeds only the cosmetic post estimate. */
 const BYTES_PER_TWEET_ESTIMATE = 1500;
 
-export interface StrippedArchive {
+interface StrippedArchive {
   file: File;
   /** Cosmetic volume hint: `tweets.js` bytes over the per-record average, at least 1. */
   postEstimate: number;

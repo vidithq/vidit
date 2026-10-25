@@ -4,11 +4,13 @@ import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
+import { CountBadge } from "@/components/ui/CountBadge";
+import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import type { DrawState } from "@/components/map/ZoneDrawMap";
 import { useMutation } from "@/hooks/useMutation";
+import { missingSummary } from "@/lib/events";
 import { positionsBounds, zoneFromVertices, zoneVertices } from "@/lib/siteZone";
 import {
   EMPTY_OBSERVATION,
@@ -62,19 +64,27 @@ export function AddObservationPanel({
       </p>
       <ZoneEditor state={draw} onChange={setDraw} sites={reference} bounds={bounds} />
       <ObservationFields draft={draft} onChange={setDraft} today={today} />
-      {attempt > 0 && <IncompleteFormNotice key={attempt} missing={missing} />}
+      <IncompleteFormAnnouncer attempt={attempt} missing={attempt > 0 ? missing : []} />
       {save.error && <div className={FORM_ERROR_BANNER}>{save.error}</div>}
       <div className="flex flex-wrap gap-3">
-        <Button
-          variant="primary"
-          disabled={save.loading}
-          onClick={() => {
-            if (missing.length > 0) setAttempt((n) => n + 1);
-            else void save.run();
-          }}
+        <CountBadge
+          count={missing.length}
+          label={missingSummary(missing.map((label) => ({ label })))}
         >
-          {save.loading ? "Saving…" : "Save observation"}
-        </Button>
+          {(describedBy) => (
+            <Button
+              variant="primary"
+              disabled={save.loading}
+              aria-describedby={describedBy}
+              onClick={() => {
+                if (missing.length > 0) setAttempt((n) => n + 1);
+                else void save.run();
+              }}
+            >
+              {save.loading ? "Saving…" : "Save observation"}
+            </Button>
+          )}
+        </CountBadge>
         <Button variant="ghost" disabled={save.loading} onClick={onCancel}>
           Cancel
         </Button>

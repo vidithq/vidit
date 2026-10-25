@@ -40,12 +40,9 @@ const BOB = { id: "u2", username: "bob", avatar_url: null };
 const EVENT: EventDetail = {
   id: "e1",
   title: "v3 title",
-  event_coords: { lat: 48.01, lng: 37.8 },
-  capture_source_coords: null,
-  archived_source: null,
-  event_date: "2026-06-01",
-  event_time: null,
-  source_posted_at: "2026-05-30T14:32:00Z",
+  coords: { lat: 48.01, lng: 37.8 },
+  occurred_date: "2026-06-01",
+  occurred_time: null,
   is_graphic: false,
   status: "geolocated",
   version_no: 3,
@@ -53,18 +50,14 @@ const EVENT: EventDetail = {
   before_closed_status: null,
   detected_from_url: null,
   detected_via: null,
-  archived_detected_from: null,
   owner: OWNER,
   tags: [],
   conflicts: [],
-  source_url: "https://t.me/channel/12345",
-  secondary_source_urls: [],
-  archived_secondary_sources: [],
+  sources: [{ id: "s1", title: "", level: "direct", kind: "unknown", captured_at: null, capture_position: null, is_graphic: false, links: [{ url: "https://t.me/channel/12345", posted_at: null, archived: null }], tags: [], media: null, warnings: [] }],
   proof: "",
   created_at: "2026-06-01T10:00:00Z",
   geolocated_at: "2026-06-01T10:00:00Z",
   closed_at: null,
-  media: [],
   thumbnail: null,
   requested_by: null,
   geolocators: [],
@@ -89,13 +82,10 @@ function version(
 
 const snapshot = (title: string): Record<string, unknown> => ({
   title,
-  event_coords: { lat: 49.5, lng: 30.2 },
-  capture_source_coords: null,
-  event_date: "2026-06-01",
-  event_time: null,
-  source_posted_at: "2026-05-30T14:32:00+00:00",
+  coords: { lat: 49.5, lng: 30.2 },
+  occurred_date: "2026-06-01",
+  occurred_time: null,
   is_graphic: false,
-  secondary_source_urls: [],
   tags: [],
   conflicts: [],
   proof: "",
@@ -103,15 +93,17 @@ const snapshot = (title: string): Record<string, unknown> => ({
 });
 
 let rows: Record<number, EventVersion>;
+let current: EventDetail;
 
 function resource(path: string): unknown {
-  if (path === "/events/e1") return EVENT;
+  if (path === "/events/e1") return current;
   const match = path.match(/^\/events\/e1\/versions\/([0-9]+)$/);
   return match ? rows[Number(match[1])] : null;
 }
 
 beforeEach(() => {
   segment = "v2";
+  current = EVENT;
   viewer.id = null;
   replace.mockClear();
   notFound.mockClear();
@@ -137,6 +129,10 @@ describe("EventVersionPage", () => {
 
   it("shows the version on screen as selected in the header's version selector", () => {
     render(<EventVersionPage />);
+    // The pinned selector reads in the page's Actions landmark, like every surface's writes.
+    expect(screen.getByRole("complementary", { name: "Actions" })).toContainElement(
+      screen.getByRole("button", { name: "v2: choose a version" })
+    );
     fireEvent.click(screen.getByRole("button", { name: "v2: choose a version" }));
     const current = screen.getByRole("menuitem", { name: "v2" });
     expect(current.getAttribute("aria-current")).toBe("page");
@@ -151,6 +147,30 @@ describe("EventVersionPage", () => {
     const banner = screen.getByText(/Version 1 of 3/);
     expect(banner.textContent).toContain("published by");
     expect(banner.textContent).toContain("ana");
+  });
+
+  it("names version 0 after the detection the event was published from", () => {
+    current = { ...EVENT, version_zero: "detection" };
+    rows[0] = version(0, snapshot("As imported"));
+    segment = "v0";
+    render(<EventVersionPage />);
+    expect(screen.getByRole("heading", { name: "As imported" })).toBeTruthy();
+    const banner = screen.getByText(/The detection this event was published from/);
+    expect(banner.textContent).toContain("imported by");
+    expect(banner.textContent).toContain("ana");
+    // It reads as the detection it was, and the selector names it so.
+    expect(screen.getByText("Detected")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Detection: choose a version" })).toBeTruthy();
+  });
+
+  it("credits version 0 of a request to its asker, as the history does, not to the owner", () => {
+    current = { ...EVENT, version_zero: "request", requested_by: BOB };
+    rows[0] = version(0, snapshot("As asked"));
+    segment = "v0";
+    render(<EventVersionPage />);
+    const header = screen.getByRole("heading", { name: "As asked" }).closest("header")!;
+    expect(header.textContent).toContain("bob");
+    expect(header.textContent).not.toContain("ana");
   });
 
   it("serves a redacted version as its banner and a notice, with no content", () => {

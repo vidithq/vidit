@@ -2,19 +2,26 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { DetectionQueueRow } from "./DetectionQueueRow";
+import { source } from "@/test/eventDetail";
 import type { EventDetail } from "@/types";
+
+const MEDIA = {
+  id: "m1",
+  role: "source" as const,
+  storage_url: "/local-storage/evidence.jpg",
+  kind: "image" as const,
+  sha256: "0".repeat(64),
+};
+
+const SOURCE = source({ media: MEDIA });
 
 function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   return {
     id: "d1",
     title: "Strike near Bakhmut",
-    event_coords: { lat: 48.5, lng: 37.8 },
-    capture_source_coords: null,
-    archived_source: null,
-    archived_detected_from: null,
-    event_date: "2026-06-01",
-    event_time: null,
-    source_posted_at: "2026-05-30T14:32:00Z",
+    coords: { lat: 48.5, lng: 37.8 },
+    occurred_date: "2026-06-01",
+    occurred_time: null,
     status: "detected",
     version_no: 1,
     is_graphic: false,
@@ -25,27 +32,12 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     owner: { id: "u1", username: "ana" },
     tags: [],
     conflicts: [],
-    source_url: "https://t.me/channel/12345",
-    secondary_source_urls: [],
-    archived_secondary_sources: [],
+    sources: [SOURCE],
     proof: '<img src="https://cdn.test/p.jpg">',
     created_at: "2026-06-02T10:00:00Z",
     geolocated_at: null,
     closed_at: null,
-    media: [
-      {
-        id: "m1",
-        storage_url: "/local-storage/evidence.jpg",
-        media_type: "image",
-        role: "source",
-      },
-    ],
-    thumbnail: {
-      id: "m1",
-      storage_url: "/local-storage/evidence.jpg",
-      media_type: "image",
-      role: "source",
-    },
+    thumbnail: MEDIA,
     requested_by: null,
     geolocators: [],
     ...overrides,
@@ -55,8 +47,8 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
 describe("DetectionQueueRow", () => {
   it("badges a detection carrying the whole evidence floor as ready to review", () => {
     render(<DetectionQueueRow detection={detectionFixture()} />);
-    // "Ready to review", never a bare "Ready": the detection still needs the conflict and capture
-    // source. The queue filter's `?` explains the state, so the row has nothing to hover or press.
+    // "Ready to review", never a bare "Ready": the detection still needs the conflict and the
+    // source kind. The queue filter's `?` explains the state, so the row has nothing to hover or press.
     expect(screen.getByText("Ready to review")).toBeInTheDocument();
     expect(screen.queryByText("Ready")).not.toBeInTheDocument();
     expect(screen.queryByRole("button")).toBeNull();
@@ -98,7 +90,7 @@ describe("DetectionQueueRow", () => {
       <DetectionQueueRow
         detection={detectionFixture({
           proof: "<p></p>",
-          media: [],
+          sources: [{ ...SOURCE, media: null }],
         })}
       />
     );
@@ -109,10 +101,10 @@ describe("DetectionQueueRow", () => {
   it("says so when the detection declares no source and no event date", () => {
     render(
       <DetectionQueueRow
-        detection={detectionFixture({ source_url: null, event_date: null })}
+        detection={detectionFixture({ sources: [], occurred_date: null })}
       />
     );
-    expect(screen.getByText("Missing: Source URL")).toBeInTheDocument();
+    expect(screen.getByText("Missing: Source file")).toBeInTheDocument();
     expect(screen.getByText("No event date")).toBeInTheDocument();
     // A source-less detection says so rather than rendering an empty host.
     expect(screen.getByText("To confirm")).toBeInTheDocument();

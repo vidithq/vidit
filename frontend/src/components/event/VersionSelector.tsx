@@ -2,43 +2,50 @@
 
 import { ChevronDown, History } from "lucide-react";
 
-import { eventHistoryHref, eventVersionHref } from "@/lib/events";
+import { eventHistoryHref, eventVersionHref, firstVersion, versionLabel } from "@/lib/events";
 import { ActionMenu, type ActionMenuItem } from "@/components/ui/ActionMenu";
 import { eventHref } from "@/lib/routes";
+import type { EventDetail } from "@/types";
 
 /**
  * The version a published event's page shows, as a compact *v2* button in the header, opening a
- * list as wide as the button: the event's versions newest first (*v2*, *v1*), the one on screen
- * marked, then **History**. The live version opens the canonical `/events/{id}`, an older one
- * `/events/{id}/vN`. It shows on a single-version event too, so the version on screen is always
- * named.
+ * list as wide as the button: the event's versions newest first (*v2*, *v1*, then *Detection* or
+ * *Request* for a version 0), the one on screen marked, then **History**. The live version opens
+ * the canonical `/events/{id}`, an older one `/events/{id}/vN`. It shows on a single-version
+ * event too, so the version on screen is always named.
  */
 export function VersionSelector({
-  eventId,
-  liveVersion,
+  event,
   selected,
 }: {
-  eventId: string;
-  liveVersion: number;
+  event: Pick<EventDetail, "id" | "version_no" | "version_zero">;
   /** The version on screen. */
   selected: number;
 }) {
-  const versions: ActionMenuItem[] = Array.from({ length: liveVersion }, (_, i) => {
-    const n = liveVersion - i;
-    return {
-      key: `v${n}`,
-      label: `v${n}`,
-      href: n === liveVersion ? eventHref(eventId) : eventVersionHref(eventId, n),
-      current: n === selected,
-    };
-  });
+  const first = firstVersion(event);
+  const versions: ActionMenuItem[] = Array.from(
+    { length: event.version_no - first + 1 },
+    (_, i) => {
+      const n = event.version_no - i;
+      return {
+        key: `v${n}`,
+        label: versionLabel(event, n),
+        href: n === event.version_no ? eventHref(event.id) : eventVersionHref(event.id, n),
+        current: n === selected,
+      };
+    }
+  );
+  const name = versionLabel(event, selected);
+  // A list of vN entries fits the button. A version 0 entry names the request or the detection,
+  // which a vN button cannot hold, so that list takes the menu's own width.
+  const compact = first === 1;
   return (
     <ActionMenu
-      label={`v${selected}: choose a version`}
-      text={`v${selected}`}
+      label={`${name}: choose a version`}
+      text={name}
       icon={<ChevronDown size={14} />}
       menuLabel="Versions"
-      matchTriggerWidth
+      matchTriggerWidth={compact}
       items={[
         ...versions,
         // A vN button is narrower than the icon and the word: the entry shows its icon alone.
@@ -46,8 +53,8 @@ export function VersionSelector({
           key: "history",
           label: "History",
           icon: <History size={14} />,
-          href: eventHistoryHref(eventId),
-          iconOnly: true,
+          href: eventHistoryHref(event.id),
+          iconOnly: compact,
         },
       ]}
     />

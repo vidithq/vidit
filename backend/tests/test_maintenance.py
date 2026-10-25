@@ -15,12 +15,12 @@ from shapely.geometry import Point
 
 from app.database import SessionLocal
 from app.main import app
-from app.models.admin_event import AdminEvent
-from app.models.auth_token import (
-    PURPOSE_PASSWORD_RESET,
-    AuthToken,
+from app.models.audit_log import AuditLog
+from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event, EventDetection
+from app.models.password_reset_token import (
+    PasswordResetToken,
 )
-from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event
+from app.models.source import Source, SourceLink
 from app.models.user import User
 from app.services import maintenance as maintenance_service
 from app.services.auth import hash_password
@@ -59,7 +59,7 @@ def admin_user(db):
     user_id = user.id
     yield user
     db.expire_all()
-    db.query(AdminEvent).filter(AdminEvent.actor_id == user_id).delete()
+    db.query(AuditLog).filter(AuditLog.actor_id == user_id).delete()
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -80,35 +80,31 @@ def regular_user(db):
     db.commit()
 
 
-# ── reap_auth_tokens ───────────────────────────────────────────────────
+# ── reap_password_reset_tokens ───────────────────────────────────────────────────
 
 
-def test_reap_auth_tokens_drops_expired_and_old_consumed(db, regular_user):
+def test_reap_password_reset_tokens_drops_expired_and_old_consumed(db, regular_user):
     now = datetime.now(UTC)
 
-    expired = AuthToken(
+    expired = PasswordResetToken(
         user_id=regular_user.id,
         token_hash=f"exp-{uuid.uuid4().hex}",
-        purpose=PURPOSE_PASSWORD_RESET,
         expires_at=now - timedelta(hours=1),
     )
-    live = AuthToken(
+    live = PasswordResetToken(
         user_id=regular_user.id,
         token_hash=f"live-{uuid.uuid4().hex}",
-        purpose=PURPOSE_PASSWORD_RESET,
         expires_at=now + timedelta(hours=1),
     )
-    old_consumed = AuthToken(
+    old_consumed = PasswordResetToken(
         user_id=regular_user.id,
         token_hash=f"old-{uuid.uuid4().hex}",
-        purpose=PURPOSE_PASSWORD_RESET,
         expires_at=now - timedelta(days=60),
         consumed_at=now - timedelta(days=45),
     )
-    fresh_consumed = AuthToken(
+    fresh_consumed = PasswordResetToken(
         user_id=regular_user.id,
         token_hash=f"fresh-{uuid.uuid4().hex}",
-        purpose=PURPOSE_PASSWORD_RESET,
         expires_at=now - timedelta(days=1),
         consumed_at=now - timedelta(hours=2),
     )
@@ -122,20 +118,22 @@ def test_reap_auth_tokens_drops_expired_and_old_consumed(db, regular_user):
         fresh_consumed.id,
     )
 
-    result = maintenance_service.reap_auth_tokens(db)
+    result = maintenance_service.reap_password_reset_tokens(db)
     assert result["expired"] >= 1
     assert result["old_consumed"] >= 1
 
     db.expire_all()
-    assert db.query(AuthToken).filter(AuthToken.id == expired_id).first() is None
-    assert db.query(AuthToken).filter(AuthToken.id == old_id).first() is None
-    assert db.query(AuthToken).filter(AuthToken.id == live_id).first() is not None
-    assert db.query(AuthToken).filter(AuthToken.id == fresh_id).first() is not None
+    assert db.query(PasswordResetToken).filter(PasswordResetToken.id == expired_id).first() is None
+    assert db.query(PasswordResetToken).filter(PasswordResetToken.id == old_id).first() is None
+    assert db.query(PasswordResetToken).filter(PasswordResetToken.id == live_id).first() is not None
+    assert (
+        db.query(PasswordResetToken).filter(PasswordResetToken.id == fresh_id).first() is not None
+    )
 
 
-def test_reap_auth_tokens_endpoint_for_admin(admin_user, db):
+def test_reap_password_reset_tokens_endpoint_for_admin(admin_user, db):
     response = client.post(
-        "/api/v1/admin/maintenance/reap-auth-tokens",
+        "/api/v1/admin/maintenance/reap-password-reset-tokens",
         headers=login_as(client, admin_user),
     )
     assert response.status_code == 200
@@ -144,20 +142,20 @@ def test_reap_auth_tokens_endpoint_for_admin(admin_user, db):
     assert "old_consumed" in body
 
     event = (
-        db.query(AdminEvent)
+        db.query(AuditLog)
         .filter(
-            AdminEvent.actor_id == admin_user.id,
-            AdminEvent.action == "maintenance_reap_auth_tokens",
+            AuditLog.actor_id == admin_user.id,
+            AuditLog.action == "maintenance_reap_password_reset_tokens",
         )
-        .order_by(AdminEvent.created_at.desc())
+        .order_by(AuditLog.created_at.desc())
         .first()
     )
     assert event is not None
 
 
-def test_reap_auth_tokens_endpoint_403_for_regular_user(regular_user):
+def test_reap_password_reset_tokens_endpoint_403_for_regular_user(regular_user):
     response = client.post(
-        "/api/v1/admin/maintenance/reap-auth-tokens",
+        "/api/v1/admin/maintenance/reap-password-reset-tokens",
         headers=login_as(client, regular_user),
     )
     assert response.status_code == 403
@@ -189,9 +187,13 @@ def _detection(db, owner, **kwargs) -> Event:
     row = Event(
         owner_id=owner.id,
         title=f"Detection {uuid.uuid4().hex[:8]}",
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://x.com/a/status/1",
-        detected_from_url="https://x.com/a/status/1",
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
+        sources=[
+            Source(
+                level="direct", kind="unknown", links=[SourceLink(url="https://x.com/a/status/1")]
+            )
+        ],
+        detection=EventDetection(from_url="https://x.com/a/status/1"),
         status=STATUS_DETECTED,
         detected_at=datetime.now(UTC),
         **kwargs,
@@ -221,6 +223,7 @@ def test_digest_counts_only_unpublished_real_work(db, detection_owner):
     _detection(db, detection_owner, deleted_at=datetime.now(UTC))
     published = _detection(db, detection_owner)
     published.status = STATUS_GEOLOCATED
+    published.version_no = 1
     published.geolocated_at = datetime.now(UTC)
     db.commit()
 
@@ -297,12 +300,12 @@ def test_send_completion_digests_endpoint_for_admin(admin_user, db, monkeypatch)
     assert "detections_pending" in body
 
     event = (
-        db.query(AdminEvent)
+        db.query(AuditLog)
         .filter(
-            AdminEvent.actor_id == admin_user.id,
-            AdminEvent.action == "maintenance_send_completion_digests",
+            AuditLog.actor_id == admin_user.id,
+            AuditLog.action == "maintenance_send_completion_digests",
         )
-        .order_by(AdminEvent.created_at.desc())
+        .order_by(AuditLog.created_at.desc())
         .first()
     )
     assert event is not None

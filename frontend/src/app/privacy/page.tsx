@@ -56,24 +56,10 @@ export default function PrivacyPage() {
               agent appears in it.
             </li>
             <li>
-              <span className="text-neutral-100">Release email consent</span>:
-              whether you asked for emails about major releases, when, where
-              (sign-up or settings), and when you withdrew it. Each grant and
-              withdrawal is kept as a record, and each email sent is logged
-              with its delivery status.
-            </li>
-            <li>
               <span className="text-neutral-100">Reports</span>: the reason,
               the optional report text and, if the report comes from an
               account, that account&apos;s identifier. An anonymous report is
               not linked to anyone.
-            </li>
-            <li>
-              <span className="text-neutral-100">Push notification devices</span>:
-              for each browser or app where you turn on push notifications, the
-              address its push service gave it, its encryption keys, its user
-              agent and when it last received a notification. Turning push off on
-              the device deletes the record.
             </li>
             <li>
               <span className="text-neutral-100">Connection data</span>: your
@@ -94,12 +80,6 @@ export default function PrivacyPage() {
             <li>
               Maintain your account, authenticate you and send you service
               emails (registration confirmation, password reset).
-            </li>
-            <li>
-              With your consent only, email you once per major release of
-              Vidit, never for a patch. Consent is off unless you turn it on.
-              Withdraw it at any time in Settings or with the unsubscribe link
-              in each of these emails, which works without signing in.
             </li>
             <li>
               Publish the content you submit and attribute it to its author.
@@ -169,11 +149,6 @@ export default function PrivacyPage() {
             hosting, file storage, service email delivery, aggregate audience
             measurement and error reporting. The content you publish is, by
             nature, public.
-          </p>
-          <p className={PARAGRAPH}>
-            A push notification travels through the push service of your
-            browser&apos;s vendor (Google, Mozilla, Apple or Microsoft). It is
-            encrypted for your device, so that service cannot read it.
           </p>
         </Card>
 

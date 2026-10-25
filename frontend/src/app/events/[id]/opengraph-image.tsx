@@ -64,10 +64,10 @@ export default async function EventOpenGraphImage({
   }
 
   const event = read.data;
-  const coords = event.event_coords;
+  const coords = event.coords;
   const byline = [
     ogTruncate(event.owner.username, 24),
-    event.event_date ? formatDate(event.event_date) : null,
+    event.occurred_date ? formatDate(event.occurred_date) : null,
   ]
     .filter(Boolean)
     .join("  ·  ");
@@ -105,7 +105,7 @@ export default async function EventOpenGraphImage({
             </div>
           </div>
 
-          {/* A coordless row (a request served by id) has no point to frame. */}
+          {/* A row without coordinates has no point to frame. */}
           {coords ? (
             <OgMiniMap
               lat={coords.lat}

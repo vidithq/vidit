@@ -157,25 +157,6 @@ def test_login_answers_a_lone_surrogate_like_a_wrong_password(user_with_password
     assert response.json() == wrong.json()
 
 
-def test_login_refuses_a_profile_without_a_password(db):
-    user = User(
-        username=f"cookie-{uuid.uuid4().hex[:8]}",
-        email=f"{uuid.uuid4().hex}@example.com",
-        password_hash=None,
-    )
-    db.add(user)
-    db.commit()
-    try:
-        # The plaintext of the hash such a profile is checked against.
-        body = {"email": user.email, "password": "dummy-password-for-timing-equalisation"}
-        response = _client().post("/api/v1/auth/login", json=body)
-        assert response.status_code == 401
-        assert SESSION_COOKIE not in response.cookies
-    finally:
-        db.delete(user)
-        db.commit()
-
-
 def test_validation_error_does_not_echo_the_input():
     password = "pw-1234"
     response = _client().post(

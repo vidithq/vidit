@@ -5,7 +5,7 @@ from typing import Literal
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.database import Base
+from app.database import Base, literal_check
 
 # Lifecycle of one uploaded archive. ``queued``: staged. ``running``: claimed
 # by a worker pass (reclaimed past the stale window, ``services/archive_jobs``).
@@ -35,13 +35,13 @@ class ArchiveImportJob(Base):
     status: Mapped[ArchiveImportJobStatus] = mapped_column(
         String(10), nullable=False, default="queued", index=True
     )
-    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    # ``post_estimate`` is a display hint from the zip metadata at enqueue. The
-    # worker stamps ``progress_total`` once the exact detection count is known
-    # and batches ``progress_done``.
-    post_estimate: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    progress_done: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    progress_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # ``estimated_post_count`` is a display hint from the zip metadata at enqueue. The
+    # worker stamps ``detection_count`` once the exact detection count is known
+    # and batches ``processed_detection_count``.
+    estimated_post_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    processed_detection_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    detection_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Import counts, final once ``done`` (see ``detection.Outcome``).
     created_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     updated_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -55,3 +55,7 @@ class ArchiveImportJob(Base):
     )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        literal_check("status", ArchiveImportJobStatus, "ck_archive_import_jobs_status_valid"),
+    )

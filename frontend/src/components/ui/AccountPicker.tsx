@@ -1,22 +1,12 @@
 "use client";
 
-import {
-  useId,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-  type KeyboardEvent,
-} from "react";
-import { createPortal } from "react-dom";
+import { useRef, useState } from "react";
 import { X } from "lucide-react";
 
-import { cn } from "@/lib/cn";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import { Avatar } from "./Avatar";
-import { Input } from "./Input";
+import { Combobox } from "./Combobox";
 import { Pill } from "./Pill";
-import { TOOLTIP_SURFACE } from "./styles";
 
 export type Account =
   | { kind: "analyst"; username: string; avatar_url?: string | null }
@@ -42,29 +32,6 @@ function matches(account: Account, query: string): boolean {
 
 // Not a fetch per keystroke, but up by the time typing stops.
 const SEARCH_DEBOUNCE_MS = 250;
-
-const ROW =
-  "flex w-full min-h-9 cursor-pointer items-center gap-2 rounded px-2.5 py-1.5 text-sm text-neutral-200";
-const STATUS_ROW = "px-2.5 py-1.5 text-xs text-neutral-500";
-
-const LIST_MAX_HEIGHT = 240;
-const LIST_GAP = 4;
-const VIEWPORT_MARGIN = 8;
-
-// Fixed to the viewport from a portal, so an `overflow` ancestor (a card, a scrolling rail) cannot
-// clip the list. It opens above the field when the room below is short and the room above larger.
-function placeList(field: DOMRect): CSSProperties {
-  const below = window.innerHeight - field.bottom - LIST_GAP - VIEWPORT_MARGIN;
-  const above = field.top - LIST_GAP - VIEWPORT_MARGIN;
-  const up = below < LIST_MAX_HEIGHT && above > below;
-  return {
-    position: "fixed",
-    left: field.left,
-    width: field.width,
-    maxHeight: Math.min(LIST_MAX_HEIGHT, up ? above : below),
-    ...(up ? { bottom: window.innerHeight - field.top + LIST_GAP } : { top: field.bottom + LIST_GAP }),
-  };
-}
 
 // Hidden from assistive tech: the row names the account, and the initial fallback would prefix it.
 function AccountAvatar({ account, size }: { account: Account; size: string }) {
@@ -127,11 +94,9 @@ export function AccountPicker({
   autoFocus,
   className,
 }: AccountPickerProps) {
-  const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(!!autoFocus);
-  const [active, setActive] = useState(0);
   // `accounts` is null when the request failed. Keyed by its query, so rows never belong to an
   // older one.
   const [result, setResult] = useState<{
@@ -172,61 +137,10 @@ export function AccountPicker({
   const rows = options
     ? options.filter((account) => matches(account, q))
     : (current?.accounts ?? []);
-  const activeIndex = Math.min(active, rows.length - 1);
-  const shown = open && ready;
-  const optionId = (index: number) => `${listId}-${index}`;
-
-  // Null until measured on the client, which also keeps the portal out of the server render.
-  const [placement, setPlacement] = useState<CSSProperties | null>(null);
-  useLayoutEffect(() => {
-    if (!shown) return;
-    const place = () => {
-      const field = inputRef.current;
-      if (field) setPlacement(placeList(field.getBoundingClientRect()));
-    };
-    place();
-    window.addEventListener("scroll", place, true);
-    window.addEventListener("resize", place);
-    return () => {
-      window.removeEventListener("scroll", place, true);
-      window.removeEventListener("resize", place);
-    };
-  }, [shown]);
 
   const close = () => {
     setQuery("");
     setOpen(false);
-  };
-
-  const choose = (account: Account) => {
-    onSelect(account);
-    close();
-  };
-
-  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    switch (e.key) {
-      case "ArrowDown":
-      case "ArrowUp": {
-        e.preventDefault();
-        if (!shown) return setOpen(true);
-        if (rows.length === 0) return;
-        const step = e.key === "ArrowDown" ? 1 : -1;
-        return setActive((activeIndex + step + rows.length) % rows.length);
-      }
-      case "Enter":
-        e.preventDefault();
-        if (shown && !loading && rows[activeIndex]) return choose(rows[activeIndex]);
-        if (onSubmitText && q) {
-          onSubmitText(q);
-          close();
-        }
-        return;
-      case "Escape":
-        if (open) {
-          e.preventDefault();
-          setOpen(false);
-        }
-    }
   };
 
   if (selected) {
@@ -250,77 +164,50 @@ export function AccountPicker({
   }
 
   return (
-    <div className="w-full">
-      <Input
-        ref={inputRef}
-        id={id}
-        aria-label={ariaLabel}
-        role="combobox"
-        aria-autocomplete="list"
-        aria-expanded={shown}
-        aria-controls={listId}
-        aria-activedescendant={
-          shown && !loading && rows[activeIndex] ? optionId(activeIndex) : undefined
-        }
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setActive(0);
-          setOpen(true);
-          onQueryChange?.();
-        }}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
-        onKeyDown={onKeyDown}
-        placeholder={placeholder}
-        autoComplete="off"
-        autoFocus={autoFocus}
-        className={className}
-      />
-      {shown &&
-        placement &&
-        createPortal(
-          <div
-            // Keeps focus in the field, so a click on a row lands before the blur closes the list.
-            onMouseDown={(e) => e.preventDefault()}
-            style={placement}
-            className={cn("z-[2000] overflow-y-auto rounded-md p-1", TOOLTIP_SURFACE)}
-          >
-            <ul id={listId} role="listbox" aria-label={ariaLabel} className="space-y-0.5">
-              {!loading &&
-                rows.map((account, index) => (
-                  <li
-                    key={accountKey(account)}
-                    id={optionId(index)}
-                    role="option"
-                    aria-selected={index === activeIndex}
-                    onClick={() => choose(account)}
-                    onMouseEnter={() => setActive(index)}
-                    className={cn(ROW, index === activeIndex && "bg-neutral-700")}
-                  >
-                    <AccountAvatar account={account} size="size-6" />
-                    <span className="min-w-0 truncate">{accountName(account)}</span>
-                    {account.kind === "organization" && " "}
-                    {account.kind === "organization" && (
-                      <span className="min-w-0 truncate text-xs text-neutral-500">
-                        {account.slug}
-                      </span>
-                    )}
-                  </li>
-                ))}
-            </ul>
-            {(loading || failed || rows.length === 0 || current?.note) && (
-              <p role="status" className={STATUS_ROW}>
-                {loading
-                  ? "Searching…"
-                  : failed
-                    ? "Could not load suggestions"
-                    : (current?.note ?? emptyText)}
-              </p>
-            )}
-          </div>,
-          document.body,
-        )}
-    </div>
+    <Combobox
+      inputRef={inputRef}
+      id={id}
+      aria-label={ariaLabel}
+      placeholder={placeholder}
+      autoFocus={autoFocus}
+      className={className}
+      query={query}
+      onQueryChange={(next) => {
+        setQuery(next);
+        onQueryChange?.();
+      }}
+      open={open && ready}
+      onOpenChange={setOpen}
+      options={loading ? [] : rows}
+      optionKey={accountKey}
+      renderOption={(account) => (
+        <>
+          <AccountAvatar account={account} size="size-6" />
+          <span className="min-w-0 truncate">{accountName(account)}</span>
+          {account.kind === "organization" && " "}
+          {account.kind === "organization" && (
+            <span className="min-w-0 truncate text-xs text-neutral-500">{account.slug}</span>
+          )}
+        </>
+      )}
+      onPick={(account) => {
+        onSelect(account);
+        close();
+      }}
+      onSubmitText={
+        onSubmitText &&
+        ((text) => {
+          onSubmitText(text);
+          close();
+        })
+      }
+      status={
+        loading
+          ? "Searching…"
+          : failed
+            ? "Could not load suggestions"
+            : (current?.note ?? (rows.length === 0 ? emptyText : null))
+      }
+    />
   );
 }

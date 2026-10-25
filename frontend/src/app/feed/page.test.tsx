@@ -25,7 +25,7 @@ vi.mock("@/hooks/useApiResource", () => ({
   useApiResource: (path: string | null) => {
     const data =
       path === "/tags"
-        ? [{ id: "t1", name: "airstrike", category: "free" }]
+        ? [{ id: "t1", name: "airstrike" }]
         : path === "/conflicts?used=true"
           ? [{ id: "c1", name: "Russo-Ukrainian war" }]
           : path
@@ -62,8 +62,8 @@ function item(extra: Partial<FeedItem>): FeedItem {
   return {
     id: "e1",
     title: "Strike on a depot",
-    event_coords: null,
-    event_date: null,
+    coords: null,
+    occurred_date: null,
     is_graphic: false,
     status: "geolocated",
     before_closed_status: null,
@@ -128,7 +128,7 @@ describe("FeedPage", () => {
   it("cards a request and a geolocation, each linked and credited by kind", () => {
     walk.items = [
       item({ id: "r1", title: "Where is this bridge", status: "requested", owner: BOB }),
-      item({ id: "g1", title: "Strike on a depot", event_coords: { lat: 48.01, lng: 37.8 } }),
+      item({ id: "g1", title: "Strike on a depot", coords: { lat: 48.01, lng: 37.8 } }),
     ];
     render(<FeedPage />);
 
@@ -242,11 +242,11 @@ describe("FeedPage", () => {
     expect(screen.getByText("You have reached the end of the feed")).toBeInTheDocument();
   });
 
-  it("puts the title first, names both dates, and keys the taxonomy without Unknown", () => {
+  it("puts the title first, names both dates, and keys the conflict, tags plain", () => {
     walk.items = [
       item({
         id: "g1",
-        event_date: "2009-08-25",
+        occurred_date: "2009-08-25",
         feed_at: "2026-10-03T09:00:00Z",
         conflicts: [
           {
@@ -255,15 +255,11 @@ describe("FeedPage", () => {
             wikidata_id: null,
             start_year: 2014,
             end_year: null,
-            ongoing: true,
+            is_ongoing: true,
             tier: "major",
           },
         ],
-        tags: [
-          { id: "t1", name: "Smartphone", category: "capture_source" },
-          { id: "t2", name: "Unknown", category: "capture_source" },
-          { id: "t3", name: "airstrike", category: "free" },
-        ],
+        tags: [{ id: "t3", name: "airstrike" }],
       }),
       item({ id: "r1", title: "Where is this bridge", status: "requested", feed_at: "2026-10-04T09:00:00Z" }),
     ];
@@ -281,12 +277,82 @@ describe("FeedPage", () => {
     expect(within(card).getByText("Conflict:").parentElement).toHaveTextContent(
       "Conflict:Russo-Ukrainian war",
     );
-    expect(within(card).getByText("Capture source:").parentElement).toHaveTextContent(
-      "Capture source:Smartphone",
-    );
-    expect(within(card).getAllByText("Capture source:")).toHaveLength(1);
-    expect(within(card).queryByText("Unknown")).toBeNull();
+    // A card carries no source, so it names no source kind.
+    expect(within(card).queryByText("Kind:")).toBeNull();
     expect(within(card).getByText("airstrike")).toBeInTheDocument();
+  });
+
+  it("cards a detection with its badge and date, linked to its event page", () => {
+    walk.items = [
+      item({ id: "d1", title: "Imported strike", status: "detected", feed_at: "2026-10-05T09:00:00Z" }),
+    ];
+    render(<FeedPage />);
+
+    expect(screen.getByRole("link", { name: "Imported strike" })).toHaveAttribute(
+      "href",
+      "/events/d1",
+    );
+    expect(screen.getByText("Detected")).toBeInTheDocument();
+    expect(screen.getByText("Detected 5 Oct 2026")).toBeInTheDocument();
+  });
+
+  it("shows detections by default and hides them from the Kind switch", () => {
+    walk.items = [item({})];
+    render(<FeedPage />);
+    expect(lastPath()).toBe("/feed?scope=following");
+    const rail = screen.getByRole("complementary", { name: "Filters" });
+    fireEvent.click(within(rail).getByRole("button", { name: "Toggle Kind" }));
+    const toggle = within(rail).getByRole("switch", { name: "Show detections" });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(toggle);
+    expect(lastPath()).toBe("/feed?scope=following&kind=geolocation&kind=request");
+    expect(within(rail).getByRole("switch", { name: "Show detections" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    expect(screen.getByRole("button", { name: "Filters (1)" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTitle("Remove filter: Detections hidden"));
+    expect(lastPath()).toBe("/feed?scope=following");
+  });
+
+  it("sends only the chosen kinds and disables the detections switch while a chip is selected", () => {
+    walk.items = [item({})];
+    render(<FeedPage />);
+    const rail = screen.getByRole("complementary", { name: "Filters" });
+    fireEvent.click(within(rail).getByRole("button", { name: "Toggle Kind" }));
+    const toggle = () => within(rail).getByRole("switch", { name: "Show detections" });
+
+    fireEvent.click(within(rail).getByRole("button", { name: "Requests" }));
+    expect(lastPath()).toBe("/feed?scope=following&kind=request");
+    expect(toggle()).toBeDisabled();
+
+    fireEvent.click(within(rail).getByRole("button", { name: "Geolocations" }));
+    expect(lastPath()).toBe("/feed?scope=following&kind=request&kind=geolocation");
+
+    fireEvent.click(within(rail).getByRole("button", { name: "Requests" }));
+    fireEvent.click(within(rail).getByRole("button", { name: "Geolocations" }));
+    expect(lastPath()).toBe("/feed?scope=following");
+    expect(toggle()).toBeEnabled();
+  });
+
+  it("keeps the switch off across a chip choice, and shows its pill only while it applies", () => {
+    walk.items = [item({})];
+    render(<FeedPage />);
+    const rail = screen.getByRole("complementary", { name: "Filters" });
+    fireEvent.click(within(rail).getByRole("button", { name: "Toggle Kind" }));
+    fireEvent.click(within(rail).getByRole("switch", { name: "Show detections" }));
+    expect(screen.getByTitle("Remove filter: Detections hidden")).toBeInTheDocument();
+
+    fireEvent.click(within(rail).getByRole("button", { name: "Requests" }));
+    expect(lastPath()).toBe("/feed?scope=following&kind=request");
+    expect(screen.queryByTitle("Remove filter: Detections hidden")).toBeNull();
+    expect(screen.getByRole("button", { name: "Filters (1)" })).toBeInTheDocument();
+
+    fireEvent.click(within(rail).getByRole("button", { name: "Requests" }));
+    expect(lastPath()).toBe("/feed?scope=following&kind=geolocation&kind=request");
+    expect(screen.getByTitle("Remove filter: Detections hidden")).toBeInTheDocument();
   });
 
   it("narrows the walk from the rail: kind, conflict and tag", () => {
@@ -299,9 +365,11 @@ describe("FeedPage", () => {
     expect(lastPath()).toBe("/feed?scope=following&kind=request");
 
     fireEvent.click(within(rail).getByRole("button", { name: "Toggle Conflict" }));
-    fireEvent.click(within(rail).getByRole("button", { name: "Russo-Ukrainian war" }));
+    fireEvent.focus(within(rail).getByRole("combobox", { name: "Conflict" }));
+    fireEvent.click(screen.getByRole("option", { name: /^Russo-Ukrainian war/ }));
     fireEvent.click(within(rail).getByRole("button", { name: "Toggle Tags" }));
-    fireEvent.click(within(rail).getByRole("button", { name: "airstrike" }));
+    fireEvent.focus(within(rail).getByRole("combobox", { name: "Tags" }));
+    fireEvent.click(screen.getByRole("option", { name: "airstrike" }));
     expect(lastPath()).toBe(
       "/feed?scope=following&kind=request&conflict=Russo-Ukrainian+war&tag=airstrike",
     );

@@ -8,7 +8,9 @@ import {
   FORM_LABEL_COMPACT,
 } from "@/components/ui/form-styles";
 import { Button } from "@/components/ui/Button";
+import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import { Input } from "@/components/ui/Input";
+import { blankFields, useIncompleteForm } from "@/hooks/useIncompleteForm";
 
 interface SingleEmailFlowProps {
   /** POST target; receives `{ email }` (trimmed). */
@@ -34,6 +36,7 @@ export function SingleEmailFlow({
 }: SingleEmailFlowProps) {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
+  const incomplete = useIncompleteForm<"email">();
 
   const submit = useMutation(
     () =>
@@ -56,6 +59,7 @@ export function SingleEmailFlow({
           setEmail("");
           setSent(false);
           submit.reset();
+          incomplete.clearIncomplete();
         })}
       </>
     );
@@ -63,23 +67,37 @@ export function SingleEmailFlow({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const missing = blankFields([{ key: "email", label: "Email", value: email }]);
+    if (missing.length) {
+      submit.reset();
+      incomplete.flagIncomplete(missing);
+      return;
+    }
+    incomplete.clearIncomplete();
     await submit.run();
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} noValidate className="space-y-4">
+      <IncompleteFormAnnouncer
+        attempt={incomplete.validationAttempt}
+        missing={incomplete.missingFields.map((m) => m.label)}
+      />
       {errorMessage && (
         <div className={FORM_ERROR_BANNER}>{errorMessage}</div>
       )}
 
       <div className="space-y-1">
-        <label htmlFor="email" className={FORM_LABEL_COMPACT}>
+        <label
+          htmlFor="email"
+          className={incomplete.labelClass("email", FORM_LABEL_COMPACT)}
+        >
           Email
         </label>
         <Input
           id="email"
+          invalid={incomplete.invalidKeys.has("email")}
           type="email"
-          required
           autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}

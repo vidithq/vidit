@@ -3,12 +3,12 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from sqlalchemy import (
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
     String,
     Text,
-    UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -66,14 +66,21 @@ class Organization(Base):
         literal_check(
             "approval_request_audience",
             ApprovalRequestAudience,
-            "ck_organizations_approval_request_audience",
+            "ck_organizations_approval_request_audience_valid",
         ),
     )
 
 
+# Where an analyst stands in an organization. ``invited``: an org manager asked
+# them to join. ``active``: a member. Declining or a withdrawal deletes the
+# row, and so does leaving. ``ck_organization_members_state_valid`` pins it.
+OrganizationMemberState = Literal["invited", "active"]
+
+
 class OrganizationMember(Base):
-    """One analyst's membership. The pair PK keeps one role per analyst and
-    organization; an index on ``user_id`` serves "which organizations is X in?"."""
+    """One analyst's standing in one organization, one row per pair: a pending
+    invitation, or a membership with its role. Accepting turns the row
+    ``active``. An index on ``user_id`` serves "which organizations is X in?"."""
 
     __tablename__ = "organization_members"
 
@@ -83,48 +90,28 @@ class OrganizationMember(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
-    role: Mapped[OrganizationRole] = mapped_column(String(20), nullable=False)
-    joined_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
+    # The org manager who sent the invitation; NULL for an org manager a site
+    # admin appointed, and once the inviter's account is erased.
+    invited_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    state: Mapped[OrganizationMemberState] = mapped_column(String(20), nullable=False)
+    # The role the analyst holds once ``active``; an invitation joins as ``member``.
+    role: Mapped[OrganizationRole] = mapped_column(String(20), nullable=False)
+    invited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    joined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    user = relationship("User")
+    user = relationship("User", foreign_keys=[user_id])
+    invited_by = relationship("User", foreign_keys=[invited_by_id])
     organization = relationship("Organization")
 
     __table_args__ = (
         literal_check("role", OrganizationRole, "ck_organization_members_role_valid"),
+        literal_check("state", OrganizationMemberState, "ck_organization_members_state_valid"),
+        CheckConstraint(
+            "(state <> 'invited' OR invited_at IS NOT NULL)"
+            " AND (state <> 'active' OR joined_at IS NOT NULL)",
+            name="ck_organization_members_state_stamp",
+        ),
         Index("ix_organization_members_user_id", "user_id"),
-    )
-
-
-class OrganizationInvite(Base):
-    """A pending invitation. Accepting turns it into a membership and declining
-    drops it, so a row exists only while the invitee has not answered."""
-
-    __tablename__ = "organization_invites"
-
-    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    organization_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
-    )
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
-    invited_by_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
-
-    user = relationship("User", foreign_keys=[user_id])
-    invited_by = relationship("User", foreign_keys=[invited_by_id])
-
-    __table_args__ = (
-        UniqueConstraint("organization_id", "user_id", name="uq_organization_invites_pair"),
-        Index("ix_organization_invites_user_id", "user_id"),
     )

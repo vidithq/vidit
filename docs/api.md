@@ -1,6 +1,6 @@
 # API reference
 
-Base URL: `/api/v1`. All responses are JSON. FastAPI also serves the generated schema at `/openapi.json`, which is what [`frontend/src/lib/api-types.ts`](../frontend/src/lib/api-types.ts) is generated from.
+Base URL: `/api/v1`. All responses are JSON. FastAPI also serves the generated schema at `/openapi.json`, which is what [`frontend/src/lib/api-types.ts`](../frontend/src/lib/api-types.ts) is generated from. Field names follow the [schema naming convention](engineering.md#schema-naming-convention).
 
 ```mermaid
 flowchart LR
@@ -67,7 +67,7 @@ Every request passes the middleware chain, then the guards its route declares, t
 
 **Request id.** Every response carries an `X-Request-ID` header, a 500 included. Send your own `X-Request-ID` of 1 to 64 characters from `A-Z`, `a-z`, `0-9`, `.`, `_`, and `-`, with at least one letter or digit, and the response echoes it. The API replaces any other value with an id of its own. The backend logs every line of the request under that id, so quote it when you report a failed request.
 
-**Auth audit log.** Each `/auth/*` endpoint writes an [`auth_events`](data-model.md#auth_events) row as a best-effort side effect. An audit failure never breaks the auth flow.
+**Auth audit log.** Each `/auth/*` endpoint writes an [`audit_log`](data-model.md#audit_log) row as a best-effort side effect. An audit failure never breaks the auth flow.
 
 ---
 
@@ -97,16 +97,16 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/events/import-archive/{job_id}` | 🔒 | Poll your import job (status + import counts) |
 | GET | `/events/{id}` | 🌐 | Full event detail, any lifecycle state |
 | POST | `/events/{id}/report` | 🌐 | Report an event for moderation (anonymous allowed) |
-| POST | `/events` | 🔒 | Create an event born `geolocated` (multipart, uploads media) |
+| POST | `/uploads` | 🔒 | Stage one source file for a later event write (multipart, one file) |
+| POST | `/events` | 🔒 | Create an event born `geolocated` (multipart) |
 | POST | `/events/requests` | 🔒 | Open a request (multipart); creates a `requested` event |
-| POST | `/events/{id}/request` | 🔒 | Correct an open request, owner only; overwrites it in place, no version filed |
-| POST | `/events/{id}/geolocate` | 🔒 | Give an event a vouched location: `requested` \| `detected` → `geolocated` |
+| POST | `/events/{id}/request` | 🔒 | Correct an open request, owner only; overwrites it in place at version 0 |
 | POST | `/events/batch-complete` | 🔒 | Publish a selection of your detections in one call (per-row verdicts) |
-| POST | `/events/{id}/versions` | 🔒 | Correct a published event, owner only; files the version it supersedes |
+| POST | `/events/{id}/versions` | 🔒 | Publish a request or a detection, or correct a published event; files the version it supersedes |
 | GET | `/events/{id}/versions` | 🌐 | The event's superseded versions, newest first |
 | GET | `/events/{id}/versions/{version_no}` | 🌐 | One superseded version, by its number |
 | POST | `/events/{id}/close` | 🔒 | Withdraw, reject or retract an event, owner only (→ `closed`) |
-| GET | `/events/detections` | 🔒 | Your `detected` events awaiting a geolocate (paginated, filterable on readiness) |
+| GET | `/events/detections` | 🔒 | Your `detected` events awaiting a publish (paginated, filterable on readiness) |
 | GET | `/events/{id}/collections` | 🔒 | Your collections, each saying whether this event is on it (credited analysts only) |
 | GET | `/events/{id}/geolocator-invites` | 🔒 | Pending invitations to share the event's credit: all for the owner, yours otherwise |
 | POST | `/events/{id}/geolocator-invites` | 🔒 | Invite an analyst to share a published event's credit, owner only |
@@ -115,8 +115,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/events/{id}/geolocator-invites/decline` | 🔒 | Decline your invitation |
 | DELETE | `/events/{id}/geolocators/{username}` | 🔒 | Remove a co-geolocator (owner), or leave as one |
 | GET | `/events/{id}/approvals` | 🌐 | The approvals of one version (the live one by default), of every version (`all_versions=true`), or one analyst's across versions |
-| POST | `/events/{id}/approvals` | 🔒 | Approve the live version of a published event you are not credited on, as yourself or for an organization you manage |
-| POST | `/events/{id}/approvals/{approval_id}/revoke` | 🔒 | Revoke an approval, with an optional public reason: your own, your organization's as one of its members, or any as a site admin |
+| POST | `/events/{id}/approvals` | 🔒 | Approve the live version of a published event you are not credited on, as yourself or for an organization you are a member of |
 | GET | `/events/{id}/approval-requests` | 🔒 | Open approval requests: all for the event's geolocators, yours and your organizations' otherwise |
 | GET | `/events/{id}/approval-request-targets` | 🔒 | The analysts and organizations you can ask to approve the event now, geolocators only |
 | POST | `/events/{id}/approval-requests` | 🔒 | Ask an analyst or an organization to approve a published event you geolocated |
@@ -146,8 +145,8 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/search` | 🌐 | Free-text search across geolocations / requests / collections / users / organizations |
 | GET | `/search/authors` | 🌐 | Username typeahead for the author filter and the co-geolocator invite |
 | **Tags** | | | |
-| GET | `/tags` | 🌐 | List tags (defaults to ones referenced by live geos) |
-| POST | `/tags` | 🔒 | Create a free tag (curated categories rejected) |
+| GET | `/tags` | 🌐 | List the tags on live events or their sources |
+| POST | `/tags` | 🔒 | Create a tag, or get the one already named so |
 | **Conflicts** | | | |
 | GET | `/conflicts` | 🌐 | List the conflict referential (`?used=true` narrows to conflicts on live events) |
 | **Users** | | | |
@@ -158,12 +157,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/users/me/avatar` | 🔒 | Remove your profile picture |
 | GET | `/users/me/preferences` | 🔒 | Your display and notification preferences, each beside its default |
 | PATCH | `/users/me/preferences` | 🔒 | Change some of your preferences |
-| GET | `/users/me/push-config` | 🔒 | The key a browser subscribes to push notifications with |
-| GET | `/users/me/push-subscriptions` | 🔒 | The devices registered for your push notifications, newest first |
-| POST | `/users/me/push-subscriptions` | 🔒 | Register this browser for push notifications |
-| DELETE | `/users/me/push-subscriptions/{id}` | 🔒 | Stop push notifications to one of your devices |
-| GET | `/users/me/x-handle` | 🔒 | The X handle bound to your account, and your change request |
-| PUT | `/users/me/x-handle-request` | 🔒 | Ask an admin to bind a new X handle (replaces your earlier request) |
+| GET | `/users/me/x-handle` | 🔒 | The X handle an admin bound to your account |
 | GET | `/users/me/invite-codes` | 🔒 | The invite codes you minted, newest first, and your daily quota |
 | POST | `/users/me/invite-codes` | 🔒 | Mint a single-use invite code bound to the invitee's X handle |
 | POST | `/users/me/invite-codes/{id}/revoke` | 🔒 | Revoke an active invite code you minted, keeping its row |
@@ -178,8 +172,6 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/notifications/read` | 🔒 | Mark the listed notifications read |
 | DELETE | `/notifications/{id}` | 🔒 | Delete one of your notifications |
 | GET/POST | `/notifications/unsubscribe` | 🌐 | Send to the confirmation page / turn off one kind of notification email, named by a signed token |
-| **Product updates** | | | |
-| POST | `/product-updates/unsubscribe` | 🌐 | Withdraw consent to product update emails, named by a signed token |
 | **Organizations** | | | |
 | GET | `/organizations/{slug}` | 🌐 | An organization's public profile |
 | GET | `/organizations/{slug}/members` | 🌐 | Its members, org managers first |
@@ -190,18 +182,18 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/organizations/{slug}/invites` | 🔒 | Pending invites (managers) |
 | GET | `/organizations/{slug}/invite-candidates` | 🔒 | The mutual follows you can invite (managers) |
 | POST | `/organizations/{slug}/invites` | 🔒 | Invite an analyst in mutual follow (org managers) |
-| DELETE | `/organizations/{slug}/invites/{invite_id}` | 🔒 | Withdraw a pending invite (managers) |
+| DELETE | `/organizations/{slug}/invites/{username}` | 🔒 | Withdraw a pending invite (managers) |
 | POST | `/organizations/{slug}/invite/accept` | 🔒 | Accept your invite |
 | POST | `/organizations/{slug}/invite/decline` | 🔒 | Decline your invite |
 | PATCH | `/organizations/{slug}/members/{username}` | 🔒 | Change a member's role (managers) |
 | DELETE | `/organizations/{slug}/members/{username}` | 🔒 | Remove a member, or leave |
 | **Feed** | | | |
-| GET | `/feed` | 🔒 | Published geolocations and open requests, from followed analysts or everyone |
+| GET | `/feed` | 🔒 | Published geolocations, open requests and machine detections, from followed analysts or everyone |
 | **Webhooks** | | | |
 | GET | `/webhooks/x` | 🌐 | X webhook CRC challenge (HMAC answer, no DB) |
 | POST | `/webhooks/x` | 🌐 | Receive an X Account Activity delivery (signature-verified) and queue bot mentions |
 | **Admin** (collapsed below) | | | |
-| GET | `/admin/me` | 🛡️ | `is_admin` probe |
+| GET | `/admin/me` | 🔒 | `is_admin` probe, answered for every analyst |
 | GET | `/admin/detection-stats` | 🛡️ | Machine-extraction quality: reject-rate + pending missing-piece counts |
 | POST/GET | `/admin/invite-codes` | 🛡️ | Mint / list invite codes |
 | POST | `/admin/invite-codes/{id}/revoke` | 🛡️ | Revoke an invite code, keeping its row |
@@ -217,18 +209,12 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/admin/collections/{id}` | 🛡️ | Withhold a collection from public view (the takedown alias of the PATCH above) |
 | PATCH | `/admin/users/{id}/x-handle` | 🛡️ | Link / clear the bot-attribution X handle |
 | PATCH | `/admin/users/{id}/invite-minting` | 🛡️ | Turn minting invite codes from Settings on or off for one analyst |
-| GET | `/admin/x-handle-requests` | 🛡️ | Pending X handle change requests, oldest first |
-| POST | `/admin/x-handle-requests/{id}/approve` | 🛡️ | Bind the requested handle and notify the analyst |
-| POST | `/admin/x-handle-requests/{id}/decline` | 🛡️ | Decline a request with a reason and notify the analyst |
-| GET | `/admin/product-updates` | 🛡️ | Every product update sent, newest first, with its delivery progress |
-| POST | `/admin/product-updates/preview` | 🛡️ | Render the announcement and count its recipients, sending nothing |
-| POST | `/admin/product-updates/test` | 🛡️ | Email the announcement to your own address |
-| POST | `/admin/product-updates` | 🛡️ | Send the announcement to the analysts who consented |
+| DELETE | `/admin/approvals/{approval_id}` | 🛡️ | Delete one approval; its reviewer or organization can approve that version again |
 | GET | `/admin/reports` | 🛡️ | The moderation queue: event and collection reports, open ones first |
 | POST | `/admin/reports/{id}/resolve` | 🛡️ | Close one report with a verdict, applying it to what the report names |
 | PATCH | `/admin/events/{id}/moderation` | 🛡️ | Set an event's graphic flag / takedown directly, no report behind it |
 | POST | `/admin/events/{id}/versions/{version_no}/redact` | 🛡️ | Blank one filed version, keeping its number |
-| POST | `/admin/maintenance/reap-*` | 🛡️ | Cron-style reapers (auth tokens, pending regs) |
+| POST | `/admin/maintenance/reap-*` | 🛡️ | Cron-style reapers (password reset tokens, pending registrations) |
 | POST | `/admin/maintenance/send-completion-digests` | 🛡️ | Email each analyst the count of detections awaiting completion |
 
 The admin console has no panel for the `/admin/maintenance/*` routes. Call them with an admin session cookie.
@@ -263,8 +249,10 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST /events/import-archive/presign` | 10/hour |
 | `POST /events/import-archive` | 10/hour |
 | `GET /events/import-archive/{job_id}` | 60/min |
+| `POST /uploads` | 30/min |
+| `POST /sources/check` | 120/min |
 | `POST /events`, `POST /events/requests`, `POST /events/{id}/request` | 30/min |
-| `POST /events/{id}/geolocate`, `POST /events/{id}/versions` | 30/min |
+| `POST /events/{id}/versions` | 30/min |
 | `POST /events/batch-complete` | 10/min |
 | `POST /events/{id}/close` | 60/min |
 | `POST /events/{id}/report` | 10/hour (per IP only, anonymous allowed) |
@@ -272,7 +260,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST /events/{id}/geolocator-invites`, `DELETE /events/{id}/geolocator-invites/{username}` | 30/hour |
 | `POST /events/{id}/geolocator-invites/accept`, `POST /events/{id}/geolocator-invites/decline`, `DELETE /events/{id}/geolocators/{username}` | 60/min |
 | `GET /events/{id}/approvals` | 120/min |
-| `POST /events/{id}/approvals`, `POST /events/{id}/approvals/{approval_id}/revoke` | 60/min |
+| `POST /events/{id}/approvals` | 60/min |
 | `GET /events/{id}/approval-requests`, `GET /events/{id}/approval-request-targets` | 120/min |
 | `POST /events/{id}/approval-requests` | 30/hour, plus the daily cap in [Approval requests](#approval-requests) |
 | `POST /events/{id}/approval-requests/{request_id}/decline` | 60/min |
@@ -299,11 +287,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST`/`DELETE /users/{username}/follow` | 60/min |
 | `GET /users/me/preferences` | 120/min |
 | `PATCH /users/me/preferences` | 60/min |
-| `GET /users/me/push-config` | 60/min |
-| `GET /users/me/push-subscriptions` | 120/min |
-| `POST /users/me/push-subscriptions`, `DELETE /users/me/push-subscriptions/{id}` | 30/min |
 | `GET /users/me/x-handle` | 120/min |
-| `PUT /users/me/x-handle-request` | 10/hour |
 | `GET /users/me/invite-codes` | 120/min |
 | `POST /users/me/invite-codes` | 30/hour, plus the daily quota in [`POST /users/me/invite-codes`](#post-usersmeinvite-codes) |
 | `POST /users/me/invite-codes/{id}/revoke` | 30/hour |
@@ -318,22 +302,16 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `PUT`/`DELETE /organizations/{slug}/avatar` | 20/min |
 | `GET /organizations/{slug}/invites`, `GET /organizations/{slug}/invite-candidates`, `GET /organizations/{slug}/approval-requests` | 60/min |
 | `POST /organizations/{slug}/invites` | 30/hour |
-| `DELETE /organizations/{slug}/invites/{invite_id}` | 60/min |
+| `DELETE /organizations/{slug}/invites/{username}` | 60/min |
 | `POST /organizations/{slug}/invite/accept`, `POST /organizations/{slug}/invite/decline` | 30/min |
 | `PATCH`/`DELETE /organizations/{slug}/members/{username}` | 60/min |
-| **Product updates** | |
-| `POST /product-updates/unsubscribe` | 30/min (anonymous allowed) |
 | **Admin** 🛡️ | |
 | `POST /admin/invite-codes` · `POST /admin/organizations` · `POST /admin/organizations/{slug}/managers` · `DELETE /admin/organizations/{slug}` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
-| `POST /admin/invite-codes/{id}/revoke` · `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `PATCH /admin/users/{id}/invite-minting` · `DELETE /admin/events/{id}` | 60/hour |
+| `POST /admin/invite-codes/{id}/revoke` · `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `PATCH /admin/users/{id}/invite-minting` · `DELETE /admin/events/{id}` · `DELETE /admin/approvals/{approval_id}` | 60/hour |
 | `POST /admin/reports/{id}/resolve` · `PATCH /admin/events/{id}/moderation` · `POST /admin/events/{id}/versions/{version_no}/redact` · `PATCH /admin/collections/{id}/moderation` · `DELETE /admin/collections/{id}` | 60/hour |
-| `POST /admin/x-handle-requests/{id}/approve` · `POST /admin/x-handle-requests/{id}/decline` | 60/hour |
 | `POST /admin/maintenance/reap-*` · `POST /admin/maintenance/send-completion-digests` | 30/hour |
-| `GET /admin/product-updates` | 120/min |
-| `POST /admin/product-updates/preview` | 60/hour |
-| `POST /admin/product-updates/test` · `POST /admin/product-updates` | 10/hour |
 
-The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list, `/admin/organizations` list, `/admin/reports` list, `/admin/x-handle-requests` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: both are HMAC-gated.
+The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list, `/admin/organizations` list, `/admin/reports` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: both are HMAC-gated.
 
 ### Per-user read quota
 
@@ -367,12 +345,9 @@ Stage a registration. Anonymous. **This call creates no `users` row.** The submi
   "username": "kalush",
   "email": "kalush@example.com",
   "password": "••••••••",
-  "invite_code": "abc123",
-  "product_updates": false
+  "invite_code": "abc123"
 }
 ```
-
-`product_updates` is optional and defaults to `false`. `true` records a consent to [product update emails](#product-updates) at the time of this request, and confirmation copies it to the new account with source `sign_up`.
 
 **Response 202:**
 ```json
@@ -502,7 +477,7 @@ Anonymous. Consumes a reset token and sets a new password. Tokens are single-use
 | Status | Meaning |
 |--------|---------|
 | 204 | Password updated |
-| 400 | Token unknown, expired, already consumed, or wrong purpose, one opaque error for all four |
+| 400 | Token unknown, expired or already consumed, one opaque error for all three |
 | 422 | `new_password` outside the [password rules](#password-rules); the token stays unconsumed |
 
 ### `POST /auth/change-password` 🔒
@@ -558,9 +533,9 @@ flowchart LR
   open --> req
   imp --> det
   create --> geo
-  req -->|"`**POST /events/{id}/request**, owner edit, no version`"| req
-  req -->|"`**POST /events/{id}/geolocate**, anyone`"| geo
-  det -->|"`**POST /events/{id}/geolocate**, **POST /events/batch-complete**, owner`"| geo
+  req -->|"`**POST /events/{id}/request**, owner edit, stays version 0`"| req
+  req -->|"`**POST /events/{id}/versions**, anyone, files version 0`"| geo
+  det -->|"`**POST /events/{id}/versions**, **POST /events/batch-complete**, owner, files version 0`"| geo
   geo -->|"`**POST /events/{id}/versions**, owner, files a version`"| geo
   req -->|"`**POST /events/{id}/close**, withdraw`"| closed
   det -->|"`**POST /events/{id}/close**, reject`"| closed
@@ -571,48 +546,49 @@ flowchart LR
 
 ### Event form fields
 
-Five multipart endpoints take the event form. Each posts the whole row state at once. This table states every field once; each endpoint section lists only its own rules.
+Four multipart endpoints take the event form. Each posts the whole row state at once, its sources included. This table states every field once; each endpoint section lists only its own rules.
 
-Columns: **create** [`POST /events`](#post-events), **requests** [`POST /events/requests`](#post-eventsrequests), **request** [`POST /events/{id}/request`](#post-eventsidrequest), **geolocate** [`POST /events/{id}/geolocate`](#post-eventsidgeolocate), **versions** [`POST /events/{id}/versions`](#post-eventsidversions). Values: **req** required; **opt** optional; **keep** optional, and a blank or omitted value keeps what the row holds; **floor** optional on the wire, required by the [evidence floor](#evidence-floor); **no** not accepted, ignored if sent.
+Columns: **create** [`POST /events`](#post-events), **requests** [`POST /events/requests`](#post-eventsrequests), **request** [`POST /events/{id}/request`](#post-eventsidrequest), **versions** [`POST /events/{id}/versions`](#post-eventsidversions). Values: **req** required; **opt** optional; **floor** optional on the wire, required by the [evidence floor](#evidence-floor); **no** not accepted, ignored if sent.
 
-| Field | Rule | create | requests | request | geolocate | versions |
-|---|---|---|---|---|---|---|
-| `title` | 1 to 255 characters | req | req | req | req | req |
-| `lat`, `lng` | Subject point. Latitude in [-90, 90], longitude in [-180, 180]. Both or neither; on request, posting neither clears the guess | req | opt | opt | req | req |
-| `capture_source_lat`, `capture_source_lng` | Camera position. Both or neither | opt | opt | opt | opt | opt |
-| `source_url` | The footage origin, at most 2000 characters | req | req | req | req | keep |
-| `source_snapshot_url` | The [archived copy](#archived-copies) of `source_url`, at most 2000 characters | opt | opt | opt | opt | opt |
-| `detected_from_snapshot_url` | The archived copy of `detected_from_url` | no | no | no | no | opt |
-| `secondary_source_urls` | Repeated field, one per mirror, each at most 2000 characters. Normalized: stripped, blanks and duplicates dropped, an entry equal to `source_url` dropped, order kept. More than 10 after normalization is `too_many_source_links`. Replaces the stored list | opt | opt | opt | opt | opt |
-| `secondary_snapshot_urls` | Repeated field, the archived copy of each mirror, aligned with `secondary_source_urls` by position. Send an empty value for a mirror you did not archive | opt | opt | opt | opt | opt |
-| `event_date` | `YYYY-MM-DD`. Blank stores NULL | opt | opt | opt | opt | opt |
-| `event_time` | `HH:MM`, UTC. Blank stores NULL. Independent of `event_date` | opt | opt | opt | opt | opt |
-| `source_posted_at` | `YYYY-MM-DDTHH:MM`, read as UTC: when the source posted the media | req | req | keep | req | keep |
-| `proof` | An HTML string, sanitized on the [rich text](#rich-text) rules. A `placeholder://<filename>` src resolves against `proof_files`; an already-uploaded URL passes through | opt | opt | opt | opt | opt |
-| `tag_ids` | JSON array of tag ids. Replaces the tag set | floor | opt | opt | floor | floor |
-| `conflict_ids` | JSON array of [conflict](#conflicts) ids. Replaces the conflict set | floor | opt | opt | floor | floor |
-| `is_graphic` | `true` when the footage shows death, injury or human remains. Defaults to `false`. Ratchets: `false` never clears a set flag; only [`PATCH /admin/events/{id}/moderation`](#patch-admineventsidmoderation) clears it | opt | opt | opt | opt | opt |
-| `note` | At most 280 characters, stored on the version this edit supersedes | no | no | no | no | opt |
-| `file` | Exactly one source file (image or video) | req | req | no | no | no |
-| `remove_media_ids` | JSON array of source media ids to drop | no | no | opt | opt | opt |
-| `files` | Replacement source media, 0 or 1. Kept plus new must total exactly one | no | no | opt | opt | opt |
-| `proof_files` | The proof body's inline images, matched to its `placeholder://` srcs by filename | opt | opt | opt | opt | opt |
+| Field | Rule | create | requests | request | versions |
+|---|---|---|---|---|---|
+| `title` | 1 to 255 characters | req | req | req | req |
+| `lat`, `lng` | Subject point. Latitude in [-90, 90], longitude in [-180, 180]. Both or neither; on request, posting neither clears the guess | req | opt | opt | req |
+| `sources` | JSON array of [`SourceCreate`](#sources): the event's whole source list, which replaces the stored one. Required on the wire; the floor decides what it must hold | req | req | req | req |
+| `occurred_date` | `YYYY-MM-DD`. Blank stores NULL | opt | opt | opt | opt |
+| `occurred_time` | `HH:MM`, UTC. Blank stores NULL. Independent of `occurred_date` | opt | opt | opt | opt |
+| `proof` | An HTML string, sanitized on the [rich text](#rich-text) rules. A `placeholder://<filename>` src resolves against `proof_files`; an already-uploaded URL passes through | opt | opt | opt | opt |
+| `tag_ids` | JSON array of tag ids. Replaces the event's tag set. A source's tags travel in its `tag_ids` | opt | opt | opt | opt |
+| `conflict_ids` | JSON array of [conflict](#conflicts) ids. Replaces the conflict set | floor | opt | opt | floor |
+| `note` | At most 280 characters, stored on the version this edit supersedes | no | no | no | opt |
+| `version_no` | The version the form was loaded at. A row that moved past it is `409 version_mismatch` | no | no | no | opt |
+| `proof_files` | The proof body's inline images, matched to its `placeholder://` srcs by filename | opt | opt | opt | opt |
+| `geolocator_invites` | JSON array of `GeolocatorInviteCreate` (`{"username": "bo"}`), at most 10 entries. See [Invitations on the publish](#invitations-on-the-publish). On **versions**, a publish only | opt | no | no | opt |
 
-`status`, `requested_by` and the provenance columns (`detected_from_url` among them) accept no field on any of the five. No write moves `detected_from_url`.
+`status`, `requested_by` and the [detection provenance](data-model.md#event_detections) (`detected_from_url` among it) accept no field on any of the four. No write moves `detected_from_url`. A source's file never travels in the event form: it uploads first, through [`POST /uploads`](#post-uploads).
 
 #### Evidence floor
 
-`POST /events`, `geolocate`, `versions` and [`POST /events/batch-complete`](#post-eventsbatch-complete) check the post-write state against one floor, before any upload:
+`POST /events`, `versions` and [`POST /events/batch-complete`](#post-eventsbatch-complete) check the post-write state against one floor, before anything is written:
 
-1. Exactly one source media.
-2. At least one image in the `proof` body.
-3. At least one [conflict](#conflicts) and at least one tag of category `capture_source` (see [Tags](#tags)). Both domains ship an escape value (conflict `"Other"`, `capture_source` `"Unknown"`), so the floor is always satisfiable. A miss is `tag_requirements_not_met`.
+1. A `direct` or `indirect` source: none is `source_required`, and none with a file is `source_file_required`. A `context` source may be a URL only.
+2. At least one [conflict](#conflicts): `conflict_required`. The `"Other"` conflict keeps the rule satisfiable. No tag is required.
+3. At least one image in the `proof` body: `proof_image_required`.
 
-A `geolocated` row also always carries coordinates and a `source_url`. The two request paths require only the source file; the curated floor binds at the geolocate.
+A `geolocated` row also always carries coordinates. The two request writes check only the first rule: a direct or indirect source with a file. Every write, requests included, needs a `kind` on every source. `unknown` is a valid kind, and a missing one is a 422.
+
+#### Invitations on the publish
+
+The two writes that publish, `POST /events` and a publish through `versions`, invite the analysts in `geolocator_invites` to share the event's credit. The invitations are written in the publish's transaction, right after the event becomes `geolocated`, with you as its owner.
+
+- Each username is checked in order, with the refusals and codes of [`POST /events/{id}/geolocator-invites`](#post-eventsidgeolocator-invites): `user_not_found` (404), `already_geolocator`, `already_invited` and `too_many_geolocators` (409). A repeated username is `already_invited`.
+- A refusal rolls back the whole write: no event is created or published, and no invitation or notification is written.
+- Each invitation writes the same `co_geolocator_invite` [notification](#notifications) as the invite endpoint.
+- A correction of a `geolocated` event takes no `geolocator_invites`: a non-empty list is `409 invalid_state`. Invite through [`POST /events/{id}/geolocator-invites`](#post-eventsidgeolocator-invites) instead.
 
 #### Archived copies
 
-`source_snapshot_url`, `secondary_snapshot_urls` and `detected_from_snapshot_url` are checked and stored in the same transaction as the write, on the terms [`archival.md`](archival.md) states. A rejected paste is a 400 with one of the `snapshot_*` codes or `original_url_not_on_event`, and nothing is written. A mirror's copy is paired with its mirror before normalization, so a copy whose mirror normalization drops is dropped with it.
+A link's `snapshot_url` is checked and stored in the same transaction as the write, on the terms [`archival.md`](archival.md) states. A rejected paste is a 400 with one of the `snapshot_*` codes, and nothing is written. A link posted without `snapshot_url` holds no copy after the write.
 
 #### Proof-image ceiling
 
@@ -633,31 +609,210 @@ The plain-text projection (`sanitize.html_text`) measures the description cap an
 
 At publish, the server sanitizes the body first, uploads `proof_files`, and then rewrites each `placeholder://` src to the stored URL.
 
+### Sources
+
+An event holds up to 10 [sources](data-model.md#sources), and none is the main one. Each is one block of the event form: a file, the URLs it was posted at, and what is known about its capture. Every event write posts the whole list as the `sources` field.
+
+```mermaid
+flowchart LR
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`a request the form sends`"]:::spec
+    l2["`what a source names`"]:::shared
+    l3["`the check before anything is written`"]:::core
+    l4[("`a store`")]:::store
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
+  end
+
+  upload["`**POST /uploads**
+  one file per request; answers an UploadRead id`"]:::spec
+  spec_new["`**upload_id**
+  a staged file of yours, consumed by the write`"]:::shared
+  spec_copy["`**media_id**
+  a file of this event: the source's own is kept, another source's is copied`"]:::shared
+  spec_id["`**id**
+  a stored source of this event, updated in place`"]:::shared
+  write["`**the event write**
+  multipart: sources as JSON, proof_files as file parts`"]:::spec
+  plan["`**plan_sources**, **check_publish_floor**
+  caps, ids, files, links and snapshots, then the floor of this write`"]:::core
+  rows[("`**sources**, **source_links**, **media**
+  the stored list follows the posted one: missing sources are deleted`")]:::store
+
+  upload --> spec_new --> write
+  spec_copy --> write
+  spec_id --> write
+  write --> plan --> rows
+```
+
+**`SourceCreate`**, one entry of the `sources` array:
+
+```json
+{
+  "id": null,
+  "title": "Drone footage of the strike",
+  "level": "direct",
+  "kind": "drone",
+  "captured_at": "2026-03-15T14:20",
+  "capture_position": { "lat": 48.12, "lng": 37.45 },
+  "is_graphic": false,
+  "links": [
+    { "url": "https://t.me/channel/12345", "posted_at": "2026-03-15T18:05", "snapshot_url": null },
+    { "url": "https://x.com/mirror_handle/status/1234567890" }
+  ],
+  "tag_ids": ["uuid"],
+  "upload_id": "uuid",
+  "media_id": null
+}
+```
+
+| Field | Rule |
+|---|---|
+| `id` | A stored source of this event, to update in place. Omit it, or send `null`, to create a source. An id that is not one of the event's sources, or that repeats, is `source_not_found` |
+| `title` | Optional, at most 255 characters, stripped. `""` is no title |
+| `level` | Required. `direct` (the act while it happens), `indirect` (its direct consequences, after the fact) or `context` (anything else). See [`data-model.md`](data-model.md#sources) |
+| `kind` | Required. Where the source comes from: `smartphone`, `camera` (a handheld or press camera), `static_camera` (CCTV or a webcam), `drone`, `aircraft` (a plane or a helicopter, historical aerial photos included), `satellite`, `dashcam`, `body_cam`, `article`, `official_statement`, `other` or `unknown`. Whether its file is a photo or a video is the file's own `kind` (`media.kind`). Use `unknown` when the provenance is uncertain |
+| `captured_at` | `YYYY-MM-DDTHH:MM`, read as UTC: when the media was captured. Optional |
+| `capture_position` | `{lat, lng}`: where a capture was shot from. Optional; a value out of range is `invalid_coordinates`. A document kind (`article`, `official_statement`, `other`) carries none: the write drops a posted one |
+| `is_graphic` | `true` when the media shows death, injury or human remains. Defaults to `false`. On a stored source it only rises: `false` keeps a set flag, and only [`PATCH /admin/events/{id}/moderation`](#patch-admineventsidmoderation) clears it |
+| `links` | 1 to 10 URLs, each `{url, posted_at, snapshot_url}`. `url` is at most 2000 characters; `posted_at` (`YYYY-MM-DDTHH:MM`, UTC) is when the media was posted there; `snapshot_url` is the link's [archived copy](#archived-copies). Each URL is stripped, and blanks and repeats are dropped before the count |
+| `tag_ids` | The source's tags, from the catalogue events use. An unknown id is ignored |
+| `upload_id` | A file you staged through [`POST /uploads`](#post-uploads). The write consumes it: the staged row becomes the source's file |
+| `media_id` | A stored file of one of this event's sources. The source's own file keeps it; another source's file is copied: a new file row on the same stored object, and the source takes that source's `is_graphic`. A file of another event is `source_media_not_found` |
+
+A source names one file, through `upload_id` or `media_id`, or none; both is a 422. Every other field outside this table is a 422 too. `/openapi.json` lists `SourceCreate` and `SourceLinkCreate` among its component schemas.
+
+**The posted list replaces the stored one.** An entry with `id` updates that source in place, an entry without one creates a source, and a stored source the list leaves out is deleted with its links, tags and file row. Its stored object stays while another file row or a readable version names it ([`data-model.md`](data-model.md#media)). A source's links are replaced whole too, so post back each link's `snapshot_url` to keep its copy. The order is derived (level, then `captured_at`), so the posted order is not stored.
+
+**Every source a person writes needs a URL.** A source posted with no link left after the blanks and repeats are dropped is `source_link_required`. Machine sources may lack one until they are published.
+
+### Imagery warnings
+
+A source of kind `satellite` or `aircraft` carries `warnings`: what keeps a reader from reopening its image at its date, checked against the [imagery providers](imagery.md). Each warning is `{code, message, url}`; `url` names the link it is about, `null` the whole source, and `message` is the sentence the form shows. A warning never blocks a write or a publication. Every other kind carries `[]`.
+
+| Code | Case |
+|---|---|
+| `short_link` | A link on a shortener host. Store the expanded link |
+| `provider_not_reopenable` | A link on a provider no reader can reopen at the image's date: a dateless basemap, an account-only viewer, a composite or a closed service. The message names the provider to use instead |
+| `permalink_shape` | A link on an accepted provider that lacks what reopens the image, such as the date or the release. The message names what is missing |
+| `provider_unknown` | No link opens a listed provider, and a link on an unlisted host carries no archived copy. One per source |
+| `capture_date_missing` | No `captured_at`. One per source |
+
+The form runs the same check while the analyst types, through [`POST /sources/check`](#post-sourcescheck).
+
 ### Event write errors
 
 The error table every event form endpoint shares. Each endpoint section names which of its rows apply and adds its own.
 
 | Status | Code | Case |
 |---|---|---|
-| 400 | (plain string) | Empty or whitespace-only `title` or `source_url` |
-| 400 | `invalid_coordinates` | A coordinate out of range, or half of a pair |
-| 400 | `media_required` | No source media, or the write would leave none |
+| 400 | (plain string) | Empty or whitespace-only `title` |
+| 400 | `invalid_coordinates` | A coordinate out of range, or half of a pair, on the event or a source's `capture_position` |
 | 400 | `invalid_proof` | `proof` exceeds a [rich text](#rich-text) cap |
 | 400 | `proof_image_required` | No image in the final proof body |
-| 400 | `tag_requirements_not_met` | No conflict, or no `capture_source` tag |
-| 400 | `too_many_source_links` | More than 10 `secondary_source_urls` after normalization |
-| 400 | `invalid_file` | Disallowed type or size, or a proof src naming another event's image |
-| 400 | `evidence_processing_failed` | An image the server refuses (see [File limits](#file-limits)), or a failed upload |
+| 400 | `conflict_required` | No conflict |
+| 400 | `source_required` | No `direct` or `indirect` source |
+| 400 | `source_file_required` | No `direct` or `indirect` source carries a file |
+| 400 | `source_link_required` | A source with no URL left after blanks and repeats are dropped |
+| 400 | `invalid_source_url` | A source URL that is not an `http` or `https` link with a host |
+| 400 | `too_many_sources` | More than 10 sources |
+| 400 | `too_many_source_links` | More than 10 URLs on one source, after blanks and repeats are dropped |
+| 400 | `source_not_found` | A source `id` that is not one of the event's sources, or that repeats |
+| 400 | `source_media_not_found` | A `media_id` that names no file of this event's sources |
+| 400 | `upload_not_found` | An `upload_id` that does not exist or is not yours, or that another write already consumed |
+| 400 | `upload_expired` | An `upload_id` past its `expires_at`. Upload the file again |
+| 400 | `invalid_file` | A proof file of a disallowed type or size, or a proof src naming another event's image |
+| 400 | `evidence_processing_failed` | A proof image the server refuses (see [File limits](#file-limits)), or a failed upload |
 | 400 | `proof_files_mismatch` | A `placeholder://` src with no matching `proof_files` upload, or the reverse |
-| 400 | `source_url_required` | A blank `source_url` where the row must carry one |
-| 400 | `snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url`, `snapshot_not_a_snapshot_code`, `original_url_not_on_event` | A rejected [archived copy](#archived-copies) |
+| 400 | `snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url`, `snapshot_not_a_snapshot_code` | A rejected [archived copy](#archived-copies) |
 | 403 | | You are not the owner (where the endpoint is owner-only) |
 | 404 | `event_not_found` | Unknown or soft-deleted event |
 | 409 | `invalid_state` | The row is not in a state this endpoint accepts |
-| 409 | `source_media_conflict` | A concurrent write raced past the one-source-per-event index |
+| 409 | `version_mismatch` | `POST /events/{id}/versions` only: the posted `version_no` is not the live version. Reload the event |
 | 413 | | The body exceeds the platform cap (`max_video_size + max_proof_images_per_event × max_image_size + 10 MB`). The middleware checks it before the body is read, and the 413 carries CORS headers |
-| 422 | `too_many_files` | Over the [proof-image ceiling](#proof-image-ceiling), or kept plus new source media over one |
-| 422 | | A missing required field, `title` over 255 characters, `source_url` or one `secondary_source_urls` item over 2000 characters, or a malformed `event_date`, `event_time` or `source_posted_at` |
+| 422 | `too_many_files` | Over the [proof-image ceiling](#proof-image-ceiling) |
+| 422 | | A missing required field, `title` over 255 characters, a malformed `occurred_date` or `occurred_time`, or a `sources` entry that fails its schema: an unknown field, a missing `kind`, a value outside `level` or `kind`, a URL over 2000 characters, a malformed instant, or both `upload_id` and `media_id`. The `loc` of each entry starts with `["body", "sources", <index>]` |
+
+### `POST /uploads` 🔒
+
+Stage one source file before the event write that uses it: the first layer of the two-layer upload. Each file travels on its own request, so a request carries at most one video. A source of a later event write names the returned `id` as its `upload_id`.
+
+**Request body (`multipart/form-data`):** one `file` part, an image or a video within the [file limits](#file-limits).
+
+**Response 201:** an `UploadRead`.
+```json
+{
+  "id": "uuid",
+  "kind": "video",
+  "sha256": "f7c3bcd13f00e8a4b2d4e9b3f1a2c5d6e7f8901234567890abcdef1234567890",
+  "original_filename": "IMG_2034.MOV",
+  "storage_url": "https://<cloudfront-domain>/uploads/….mp4",
+  "expires_at": "2026-03-17T09:42:00Z"
+}
+```
+
+`storage_url` lets the form preview the file. Only you can reference the upload. It expires 24 hours after it was staged: an event write naming it after `expires_at` is `upload_expired`, and the import worker deletes it within the hour after that. A write that takes it consumes it, so a second write naming it is `upload_not_found`.
+
+**Errors:**
+| Status | Code | Case |
+|---|---|---|
+| 400 | `invalid_file` | Disallowed type or size |
+| 400 | `evidence_processing_failed` | An image the server refuses (see [File limits](#file-limits)), or a failed upload |
+| 429 | `too_many_uploads` | You already hold 20 unexpired staged files no event uses. Submit the form that uses them, or wait for them to expire |
+
+### `POST /sources/check` 🔒
+
+The imagery provider check of a source as the form holds it: the provider each link opens and the [warnings](#imagery-warnings) the source would carry once saved. Writes nothing. The event form calls it once typing pauses on a `satellite` or `aircraft` source.
+
+**Request body (JSON):**
+```json
+{
+  "kind": "satellite",
+  "captured_at": "2024-07-12T10:00",
+  "links": [
+    { "url": "https://earth.google.com/web/@47.0951,37.5413,50a,2000d,35y,0h,0t,0r", "snapshot_url": null }
+  ]
+}
+```
+
+`kind` is `satellite` or `aircraft`. `captured_at` and each link's `snapshot_url` are optional and read as in [`SourceCreate`](#sources); a `snapshot_url` is not validated here, only its presence counts.
+
+**Response 200:** a `SourceCheckRead`.
+```json
+{
+  "links": [
+    {
+      "url": "https://earth.google.com/web/@47.0951,37.5413,50a,2000d,35y,0h,0t,0r",
+      "provider": {
+        "id": "google_earth",
+        "name": "Google Earth web",
+        "group": "accepted",
+        "credit": "Google and every provider listed in Data attribution",
+        "help": "Turn on historical imagery, step to the capture day and copy the link: it carries the date. Google Earth Pro has no link, so reopen the same date in Google Earth web."
+      }
+    }
+  ],
+  "warnings": [
+    {
+      "code": "permalink_shape",
+      "message": "Google Earth web: The link carries no imagery date. Turn on historical imagery, step to the capture day, and copy the link again.",
+      "url": "https://earth.google.com/web/@47.0951,37.5413,50a,2000d,35y,0h,0t,0r"
+    }
+  ]
+}
+```
+
+`provider` is `null` for an unlisted link. `group` is `accepted`, `other`, `aircraft_archive` or `not_reopenable`; `credit` is `""` for `not_reopenable`. [`imagery.md`](imagery.md) lists every provider.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 422 | A `kind` other than `satellite` or `aircraft`, more than 100 links, a URL over 2000 characters, or an unknown field |
 
 ### `GET /events`
 
@@ -669,16 +824,17 @@ List one lifecycle view, newest or oldest first, as `EventList` cards (no full p
 | `view` | string | `located` (default, the catalog: `geolocated` + `detected` rows, plus a `closed` row whose `before_closed_status` was `detected`) or `requested` (the open-call queue: `requested` rows, plus a `closed` row whose `before_closed_status` was `requested`). A retraction (`closed` off `geolocated`) is in neither and is reachable by its own URL. Anything else → 422. |
 | `status` | string (repeatable) | Narrows within the view, for example `?view=requested&status=closed`. Repeat to OR within the bucket. Values outside `requested` / `detected` / `geolocated` / `closed` return 422; a value the view can't contain returns an empty list. |
 | `conflict` | string (repeatable) | Filter by [conflict](#conflicts) name (`conflicts.name`). OR within the bucket, AND across buckets. |
-| `capture_source` | string (repeatable) | Filter by tag name of category `capture_source`. Same OR / AND semantics. |
-| `tag` | string (repeatable) | Filter by tag name, any category. Same OR / AND semantics. |
+| `source_kind` | string (repeatable) | Keeps an event with a source of this [kind](#sources): `smartphone`, `camera`, `static_camera`, `drone`, `aircraft`, `satellite`, `dashcam`, `body_cam`, `article`, `official_statement`, `other` or `unknown`. Same OR / AND semantics. Any other value returns 422. |
+| `level` | string (repeatable) | Keeps an event with a source of this evidence level: `direct`, `indirect` or `context`. Same OR / AND semantics. Any other value returns 422. |
+| `tag` | string (repeatable) | Filter by tag name, on the event or on one of its sources. Same OR / AND semantics. |
 | `bbox` | string | `south,west,north,east` (four comma-separated floats). 422 on malformed input; latitudes in [-90, 90], longitudes in [-180, 180], south ≤ north, west ≤ east. |
-| `event_date_from` / `event_date_to` | date (YYYY-MM-DD) | Inclusive event-date range. Malformed values return 422. |
+| `occurred_date_from` / `occurred_date_to` | date (YYYY-MM-DD) | Inclusive event-date range. Malformed values return 422. |
 | `submitted_from` / `submitted_to` | date (YYYY-MM-DD) | Inclusive submission-date range. Malformed values return 422. |
 | `author` | string | Exact, case-insensitive match on the username of any analyst the event credits: its owner or one of its [geolocators](#shared-credit) (pick real handles via [`GET /search/authors`](#get-searchauthors)). Restricted to `[A-Za-z0-9_-]{1,50}`; any other character returns 422. |
-| `approved` | bool | `true` keeps a `geolocated` event whose live version holds a standing approval (not revoked), an analyst's or an organization's. An approval of an earlier version does not count. See [Approvals](#approvals). |
-| `approved_by` | string | Keeps a `geolocated` event that the analyst with this username (exact, case-insensitive) approved as themselves on its live version, with the approval standing. An approval they placed for an organization does not count. Same `[A-Za-z0-9_-]{1,50}` rule as `author`. |
-| `approved_by_org` | string | Keeps a `geolocated` event that the organization with this slug approved on its live version, with the approval standing. Same character rule. |
-| `has_coords` | bool | `true` keeps rows with an `event_coords` point (on the `requested` view, a request carrying a location guess); `false` keeps rows without one. Omit it for both. |
+| `approved` | bool | `true` keeps a `geolocated` event whose live version holds an approval, an analyst's or an organization's. An approval of an earlier version does not count. See [Approvals](#approvals). |
+| `approved_by` | string | Keeps a `geolocated` event that the analyst with this username (exact, case-insensitive) approved as themselves on its live version. An approval they placed for an organization does not count. Same `[A-Za-z0-9_-]{1,50}` rule as `author`. |
+| `approved_by_org` | string | Keeps a `geolocated` event that the organization with this slug approved on its live version. Same character rule. |
+| `has_coords` | bool | `true` keeps rows with a `coords` point (on the `requested` view, a request carrying a location guess); `false` keeps rows without one. Omit it for both. |
 | `sort` | string | `newest` (default) orders by `created_at DESC, id DESC`; `oldest` orders by `created_at ASC, id ASC`. Both orders are total, so a cursor walk serves every row once. Anything else → 422. |
 | `limit` | int | Rows per page. See [Pagination](#pagination). |
 | `cursor` | string | Opaque cursor from the previous page's `Link: rel="next"` header. See [Pagination](#pagination). |
@@ -689,8 +845,8 @@ List one lifecycle view, newest or oldest first, as `EventList` cards (no full p
   {
     "id": "uuid",
     "title": "Strike on depot, Donetsk",
-    "event_coords": { "lat": 48.123, "lng": 37.456 },
-    "event_date": "2026-03-15",
+    "coords": { "lat": 48.123, "lng": 37.456 },
+    "occurred_date": "2026-03-15",
     "is_graphic": false,
     "status": "geolocated",
     "before_closed_status": null,
@@ -700,15 +856,16 @@ List one lifecycle view, newest or oldest first, as `EventList` cards (no full p
     "media": {
       "id": "uuid",
       "role": "source",
-      "storage_url": "https://…/uploads/.../photo.jpg",
-      "media_type": "image"
+      "storage_url": "https://…/uploads/….jpg",
+      "kind": "image",
+      "sha256": "…",
+      "original_filename": "photo.jpg"
     },
     "tags": [
-      { "id": "uuid", "name": "Drone", "category": "capture_source" },
-      { "id": "uuid", "name": "airstrike", "category": "free" }
+      { "id": "uuid", "name": "airstrike" }
     ],
     "conflicts": [
-      { "id": "uuid", "name": "Russian invasion of Ukraine", "wikidata_id": "Q110999040", "start_year": 2022, "end_year": null, "ongoing": true, "tier": "major" }
+      { "id": "uuid", "name": "Russian invasion of Ukraine", "wikidata_id": "Q110999040", "start_year": 2022, "end_year": null, "is_ongoing": true, "tier": "major" }
     ]
   }
 ]
@@ -716,13 +873,13 @@ List one lifecycle view, newest or oldest first, as `EventList` cards (no full p
 
 **Response headers:** `Link: <…&cursor=…>; rel="next"` when a further page exists.
 
-`event_coords` is `null` on a coordinate-less `requested` row. `geolocators` is the event's credit line, as on [`GET /events/{id}`](#get-eventsid). `requested_at` is when the row entered `requested`, and `null` on a row that was never a request; the Requests board counts a request's age from it. `is_graphic` is `true` when the author, or an admin overriding the author, flagged the footage as showing death, injury or human remains. A withheld event (`hidden_at` set, see [`GET /events/{id}`](#get-eventsid)) never appears. `media` is the card thumbnail: the event's `source` attachment, else its first `proof` image, else `null`; a proof video is never picked. `backend/app/services/thumbnails.py` holds that rule for every card surface. `conflicts` uses the `ConflictRead` shape of [`GET /conflicts`](#get-conflicts).
+`coords` is `null` on a coordinate-less `requested` row. `geolocators` is the event's credit line, as on [`GET /events/{id}`](#get-eventsid). `requested_at` is when the row entered `requested`, and `null` on a row that was never a request; the Requests board counts a request's age from it. `is_graphic` is `true` when any of the event's sources is flagged as showing death, injury or human remains. A withheld event (`hidden_at` set, see [`GET /events/{id}`](#get-eventsid)) never appears. `media` is the card thumbnail: the file of the first source that has one, in source order, else the first proof image, else `null`; a proof video is never picked. `backend/app/services/thumbnails.py` holds that rule for every card surface. `tags` are the event's own; a card carries no source. `conflicts` uses the `ConflictRead` shape of [`GET /conflicts`](#get-conflicts).
 
 ---
 
 ### `GET /events/points`
 
-Compact `[id, lat, lng, event_date, added_date, detected]` tuples for client-side clustering, with no joins and no pagination. `event_date` and `added_date` are ISO `YYYY-MM-DD` (`added_date` is the `created_at` calendar day); `event_date` is `null` when unknown. `detected` is `1` for a machine-detected row and `0` for a `geolocated` one. Located rows only, so `requested` events never appear.
+Compact `[id, lat, lng, occurred_date, added_date, detected]` tuples for client-side clustering, with no joins and no pagination. `occurred_date` and `added_date` are ISO `YYYY-MM-DD` (`added_date` is the `created_at` calendar day); `occurred_date` is `null` when unknown. `detected` is `1` for a machine-detected row and `0` for a `geolocated` one. Located rows only, so `requested` events never appear.
 
 `bbox` is **required**, and nothing caps its area. Unlike on `GET /events`, an empty `?bbox=` is a rejection here, not an omitted filter. The server snaps `bbox` outward onto a fixed 0.05° grid before keying and querying, so two viewports inside one cell share a cache entry and get the payload of the snapped box, which contains the box requested. Results are cached in memory for 60 s per snapped `bbox` and filter combination; the response carries `X-Cache: HIT|MISS` and `Cache-Control: public, max-age=30`.
 
@@ -731,13 +888,13 @@ Compact `[id, lat, lng, event_date, added_date, detected]` tuples for client-sid
 | Param | Type | Description |
 |-------|------|-------------|
 | `bbox` | string, **required** | Same shape and validation as on `GET /events`. Missing, empty, or malformed → 422. A box crossing the antimeridian is not modeled; widen it to the full longitude range. |
-| `media` | string (repeatable) | `?media=image&media=video` matches an event carrying any attachment of a listed type. Values outside `image` / `video` → 422. |
-| `conflict`, `capture_source`, `tag`, `event_date_from`, `event_date_to`, `submitted_from`, `submitted_to`, `author`, `approved`, `approved_by`, `approved_by_org` | | Same semantics as on [`GET /events`](#get-events). |
+| `media` | string (repeatable) | `?media=image&media=video` matches an event carrying a source file or a proof image of a listed type. Values outside `image` / `video` → 422. |
+| `conflict`, `source_kind`, `level`, `tag`, `occurred_date_from`, `occurred_date_to`, `submitted_from`, `submitted_to`, `author`, `approved`, `approved_by`, `approved_by_org` | | Same semantics as on [`GET /events`](#get-events). |
 
 | Status | Meaning |
 |--------|---------|
 | 200 | Points inside `bbox` |
-| 422 | `bbox` missing or malformed, a malformed date filter, or a `media`, `author`, `approved_by` or `approved_by_org` value outside its domain |
+| 422 | `bbox` missing or malformed, a malformed date filter, or a `media`, `source_kind`, `level`, `author`, `approved_by` or `approved_by_org` value outside its domain |
 
 **Response 200:**
 ```json
@@ -753,15 +910,15 @@ Compact `[id, lat, lng, event_date, added_date, detected]` tuples for client-sid
 
 Soft-warning probe for the submit form: geolocations that might describe the same event. Advisory only; it never blocks a submission.
 
-Match rule: within about 500 m geodesic of the proposed `(lat, lng)` **and** either the same source-URL host or the same `event_date`. The host leg also matches an existing event's secondary source links. A scheme-stripped URL (`t.me/channel/12345`) still yields a host. A malformed host or date disables that leg, and no usable leg returns `[]`.
+Match rule: within about 500 m geodesic of the proposed `(lat, lng)` **and** either a source URL on the same host or the same `occurred_date`. The host leg matches any URL of any source of an existing event. A scheme-stripped URL (`t.me/channel/12345`) still yields a host. A malformed host or date disables that leg, and no usable leg returns `[]`.
 
 **Query params:**
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `lat` | float | yes | Latitude (-90 to 90) of the prospective submission. |
 | `lng` | float | yes | Longitude (-180 to 180). |
-| `source_url` | string | no | Source URL for the host leg. |
-| `event_date` | string (YYYY-MM-DD) | no | Compared exactly for the date leg. |
+| `source_url` | string | no | One source URL the form holds, for the host leg. |
+| `occurred_date` | string (YYYY-MM-DD) | no | Compared exactly for the date leg. |
 
 **Response 200:** up to 10 candidates, nearest first.
 ```json
@@ -769,9 +926,9 @@ Match rule: within about 500 m geodesic of the proposed `(lat, lng)` **and** eit
   {
     "id": "uuid",
     "title": "Strike on depot, Donetsk",
-    "event_coords": { "lat": 48.123, "lng": 37.456 },
-    "event_date": "2026-05-01",
-    "source_url": "https://t.me/somechannel/12345",
+    "coords": { "lat": 48.123, "lng": 37.456 },
+    "occurred_date": "2026-05-01",
+    "source_urls": ["https://t.me/somechannel/12345"],
     "distance_m": 55.4,
     "owner": { "id": "uuid", "username": "kalush" }
   }
@@ -784,7 +941,7 @@ Match rule: within about 500 m geodesic of the proposed `(lat, lng)` **and** eit
 
 Import one of your own X posts. The route runs the shared detection engine over the post and writes one detection, owned by you, per coordinate the post carries. The bot and the archive backfill run the same engine and write path (see [`ingestion.md`](ingestion.md#the-contract)).
 
-**Own posts only.** The post's author must equal the X handle linked to your account (`users.x_handle`, compared case-insensitively). A post by anyone else, or a caller with no linked handle, returns `400 not_your_post`. Submit third-party footage through [`POST /events`](#post-events) with a `source_url` instead.
+**Own posts only.** The post's author must equal the X handle linked to your account (`users.x_handle`, compared case-insensitively). A post by anyone else, or a caller with no linked handle, returns `400 not_your_post`. Submit third-party footage through [`POST /events`](#post-events) with a source instead.
 
 [`ingestion.md`](ingestion.md#what-acquisition-reads) states which posts acquisition reads. Responses from X's public syndication endpoint are cached in memory for 1 h per post id.
 
@@ -850,9 +1007,9 @@ Step two: enqueue the staged archive for the backfill worker. The upload **is th
 
 The backend reads only the tweets allowlist (`tweets.js`, `tweets_media/`) and never reads DMs, email, account data, or `deleted-*`. Re-uploading is idempotent ([re-import](ingestion.md#re-import)). A detection with no recoverable media lands media-incomplete.
 
-**Request:** JSON. `upload_key` comes from the presign. `post_estimate` (optional, ≥ 1) is a display hint for the queued job; the worker stamps the exact totals.
+**Request:** JSON. `upload_key` comes from the presign. `estimated_post_count` (optional, ≥ 1) is a display hint for the queued job; the worker stamps the exact totals.
 ```json
-{ "upload_key": "archive-imports/<user-id>/<uuid>.zip", "post_estimate": 1240 }
+{ "upload_key": "archive-imports/<user-id>/<uuid>.zip", "estimated_post_count": 1240 }
 ```
 
 **Response 202:** an `ArchiveImportJobRead`.
@@ -860,9 +1017,9 @@ The backend reads only the tweets allowlist (`tweets.js`, `tweets_media/`) and n
 {
   "id": "uuid",
   "status": "queued",
-  "post_estimate": 1240,
-  "progress_done": 0,
-  "progress_total": null,
+  "estimated_post_count": 1240,
+  "processed_detection_count": 0,
+  "detection_count": null,
   "created": 0, "updated": 0, "skipped": 0, "failed": 0,
   "error": null,
   "created_at": "2026-07-17T12:00:00Z"
@@ -883,7 +1040,7 @@ The backend reads only the tweets allowlist (`tweets.js`, `tweets_media/`) and n
 One archive-import job. Owner only: another user's job id reads as 404. Poll it until `status` is terminal.
 
 - `status` moves `queued` → `running` → `done` | `failed`.
-- `post_estimate` is the enqueue-time hint. Once the worker knows the exact detection count, it stamps `progress_total` and advances `progress_done` as rows land.
+- `estimated_post_count` is the enqueue-time hint. Once the worker knows the exact detection count, it stamps `detection_count` and advances `processed_detection_count` as rows land.
 - `created`, `updated`, `skipped` and `failed` are final once `done`, and every detection lands in exactly one. The [re-import rule](ingestion.md#re-import) states which.
 - A `failed` job keeps what landed before the failure; re-uploading skips it and continues. `error` is a terse operator-facing reason.
 
@@ -902,21 +1059,47 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
 {
   "id": "uuid",
   "title": "Strike on depot, Donetsk",
-  "event_coords": { "lat": 48.123, "lng": 37.456 },
-  "capture_source_coords": null,
-  "source_url": "https://t.me/channel/12345",
-  "archived_source": {
-    "url": "https://web.archive.org/web/20260316094500/https://t.me/channel/12345",
-    "provider": "wayback"
-  },
-  "secondary_source_urls": ["https://x.com/mirror_handle/status/1234567890"],
-  "archived_secondary_sources": [
-    { "url": "https://archive.ph/aBcDe", "provider": "archive_today" }
+  "coords": { "lat": 48.123, "lng": 37.456 },
+  "sources": [
+    {
+      "id": "uuid",
+      "title": "",
+      "level": "direct",
+      "kind": "drone",
+      "captured_at": null,
+      "capture_position": null,
+      "is_graphic": false,
+      "links": [
+        {
+          "url": "https://t.me/channel/12345",
+          "posted_at": "2026-03-14T18:05:00Z",
+          "archived": {
+            "url": "https://web.archive.org/web/20260316094500/https://t.me/channel/12345",
+            "provider": "wayback",
+            "archived_at": "2026-03-16T09:45:00Z"
+          }
+        },
+        {
+          "url": "https://x.com/mirror_handle/status/1234567890",
+          "posted_at": null,
+          "archived": null
+        }
+      ],
+      "tags": [],
+      "media": {
+        "id": "uuid",
+        "role": "source",
+        "storage_url": "https://<cloudfront-domain>/uploads/….mp4",
+        "kind": "video",
+        "sha256": "f7c3bcd13f00e8a4b2d4e9b3f1a2c5d6e7f8901234567890abcdef1234567890",
+        "original_filename": "IMG_2034.MOV"
+      },
+      "warnings": []
+    }
   ],
   "proof": "<p>Matched the ridgeline and the pylon.</p><img src=\"https://media.example/proof/…jpg\">",
-  "event_date": "2026-03-15",
-  "event_time": "14:30:00",
-  "source_posted_at": "2026-03-14T18:05:00Z",
+  "occurred_date": "2026-03-15",
+  "occurred_time": "14:30:00",
   "created_at": "2026-03-16T09:42:00Z",
   "geolocated_at": "2026-03-16T09:42:00Z",
   "closed_at": null,
@@ -927,51 +1110,41 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
   "before_closed_status": null,
   "detected_from_url": null,
   "detected_via": null,
-  "archived_detected_from": null,
   "owner": { "id": "uuid", "username": "kalush" },
   "requested_by": null,
   "geolocators": [
     { "id": "uuid", "username": "kalush" }
   ],
-  "media": [
-    {
-      "id": "uuid",
-      "role": "source",
-      "storage_url": "https://d10w3bld05vsky.cloudfront.net/uploads/.../video.mp4",
-      "media_type": "video",
-      "sha256": "f7c3bcd13f00e8a4b2d4e9b3f1a2c5d6e7f8901234567890abcdef1234567890",
-      "original_filename": "IMG_2034.MOV"
-    }
-  ],
-  "thumbnail": { "…": "same MediaRead shape as media[]" },
+  "thumbnail": { "…": "MediaRead, as in sources[].media" },
   "tags": [
-    { "id": "uuid", "name": "Drone", "category": "capture_source" }
+    { "id": "uuid", "name": "airstrike" }
   ],
   "conflicts": [
-    { "id": "uuid", "name": "Russian invasion of Ukraine", "wikidata_id": "Q110999040", "start_year": 2022, "end_year": null, "ongoing": true, "tier": "major" }
+    { "id": "uuid", "name": "Russian invasion of Ukraine", "wikidata_id": "Q110999040", "start_year": 2022, "end_year": null, "is_ongoing": true, "tier": "major" }
   ]
 }
 ```
 
 | Field | Meaning |
 |---|---|
-| `event_coords` | The subject point. `null` on a coordinate-less `requested` event; every `geolocated` row carries it |
-| `capture_source_coords` | The optional camera position |
-| `source_url`, `source_posted_at` | `null` on a `detected` row with no declared source; a `requested` or `geolocated` row always carries a `source_url` |
-| `archived_source` | The archived copy of `source_url`: `url` is the snapshot, `provider` is `wayback` or `archive_today`. `null` until the owner records one (see [`archival.md`](archival.md)) |
-| `secondary_source_urls` | The ordered mirrors, empty when there are none |
-| `archived_secondary_sources` | Same length and order as `secondary_source_urls`; entry `i` covers mirror `i`, on the terms of `archived_source` |
-| `archived_detected_from` | The archived copy of `detected_from_url`, on the same terms; `null` for a human submit |
-| `detected_via` | The ingest entry that produced a machine detection: `bot`, `paste` or `archive`. Stamped once at creation; `null` for a human submit and for machine rows older than the field |
+| `coords` | The subject point. `null` on a coordinate-less `requested` event; every `geolocated` row carries it |
+| `sources` | Every source, as `SourceRead`, in the derived order: `direct`, then `indirect`, then `context`, then by `captured_at` with unknown last. Empty on a detection that declared none. A published row always carries a `direct` or `indirect` source with a file |
+| `sources[].links` | The source's URLs, ordered by `posted_at` with unknown last. `archived` is the link's archived copy: `url` is the snapshot, `provider` is `wayback`, `archive_today` or `ghostarchive`, read off the snapshot's host, and `archived_at` is when it was recorded. `null` until an analyst records one (see [`archival.md`](archival.md)) |
+| `sources[].media` | The source's file, `null` for a source that is only URLs. A proof image lives inline in the `proof` HTML as an `img` src |
+| `sources[].media.role` | `source` for a source's file, `proof` for a proof image, derived from the row's parent. Every `MediaRead` carries it, `thumbnail` and snapshot `proof_media` included. Only a `source` image has `_hero` / `_thumb` derivatives, so read a `proof` `storage_url` as is |
+| `sources[].kind` | `unknown` on a machine source until review |
+| `sources[].warnings` | On a `satellite` or `aircraft` source, what keeps a reader from reopening its image. See [Imagery warnings](#imagery-warnings). Every write answers them too |
+| `detected_from_url` | The post an imported row came from; `null` for a human submit. Read from the event's [`event_detections`](data-model.md#event_detections) row. Not a source |
+| `detected_via` | The ingest entry that produced a machine detection: `bot`, `paste` or `archive`. Stamped once at creation; `null` for a human submit and for a machine row that names no entry. Read from the `event_detections` row |
 | `requested_by` | The analyst who opened the request; `null` on a directly created event |
-| `geolocators` | Who vouched the location, oldest first: the owner and every analyst who accepted an [invitation](#shared-credit). Empty until the first geolocate. A soft-deleted analyst is left out |
+| `geolocators` | Who vouched the location, oldest first: the owner and every analyst who accepted an [invitation](#shared-credit). Empty until the publish. A soft-deleted analyst is left out |
 | `viewer_invite_pending` | `true` when you are signed in and hold a pending [invitation](#shared-credit) to share the event's credit; the event page shows the invitation card from it. `false` for anyone else, and on the responses of the write verbs |
-| `version_no` | `1` until the owner corrects the event, then one higher per [correction](#post-eventsidversions) |
+| `version_no` | `0` while the event is a request or a detection, `1` once it is published, then one higher per [correction](#post-eventsidversions). An event created published starts at `1` |
+| `version_zero` | What version 0 of the event is: `request` or `detection`, the row the event was published from or still is. `null` when the history holds no version 0: an event created published, or one published before the publish filed version 0. Served by `GET /events/{id}` and the write responses; `null` on list reads |
 | `geolocated_at` | When the row became `geolocated`; `null` before publication |
 | `close_reason`, `before_closed_status` | `null` while the event is open |
-| `media` | The `source` attachment only. A `proof` image lives inline in the `proof` HTML as an `img` src |
 | `thumbnail` | The card thumbnail, on the rule of [`GET /events`](#get-events) |
-| `is_graphic` | `true` when the footage is flagged as showing death, injury or human remains |
+| `is_graphic` | `true` when any source is flagged as showing death, injury or human remains. Derived from the sources; each source carries its own flag |
 
 **Errors:**
 | Code | Case |
@@ -982,7 +1155,7 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
 
 ### `POST /events/{id}/report` 🌐
 
-Report an event for moderation. Anonymous allowed; a signed-in reporter is recorded as `reporter_user_id`.
+Report an event for moderation. Anonymous allowed; a signed-in reporter is recorded as `reporter_id`.
 
 **Request body:**
 ```json
@@ -1002,7 +1175,7 @@ Report an event for moderation. Anonymous allowed; a signed-in reporter is recor
   "collection": null,
   "reason": "graphic_not_flagged",
   "details": "Shows a body at 0:14, no graphic-content warning on the card.",
-  "reporter_user_id": null,
+  "reporter_id": null,
   "created_at": "2026-08-12T09:14:00Z",
   "resolved_at": null,
   "resolution": null
@@ -1020,19 +1193,19 @@ One report names one target: `event_id` here, or `collection` from [`POST /colle
 
 ### `POST /events` 🔒
 
-Create an event directly, born `geolocated`. To open a request without coordinates, use [`POST /events/requests`](#post-eventsrequests). To give an existing `requested` or `detected` event a location, use [`POST /events/{id}/geolocate`](#post-eventsidgeolocate).
+Create an event directly, born `geolocated`. To open a request without coordinates, use [`POST /events/requests`](#post-eventsrequests). To publish an existing `requested` or `detected` event, use [`POST /events/{id}/versions`](#post-eventsidversions).
 
 **Request body (`multipart/form-data`):** the [event form](#event-form-fields), **create** column. The [evidence floor](#evidence-floor) applies.
 
-**Response 201:** an [`EventRead`](#get-eventsid), `"status": "geolocated"`, with `requested_by: null` and you in `geolocators`.
+**Response 201:** an [`EventRead`](#get-eventsid), `"status": "geolocated"`, with `requested_by: null` and you in `geolocators`. The analysts in `geolocator_invites` hold pending invitations (see [Invitations on the publish](#invitations-on-the-publish)).
 
-**Errors:** the [event write errors](#event-write-errors), except the plain-string 400, `source_url_required`, 403, 404 and `invalid_state`.
+**Errors:** the [event write errors](#event-write-errors), except the plain-string 400, `source_not_found`, 403, 404 and `invalid_state`, plus the [invitation refusals](#invitations-on-the-publish).
 
 ---
 
 ### `GET /events/detections` 🔒
 
-Your queue of machine-`detected` events awaiting a geolocate, newest first. Scoped to you; it never exposes another analyst's rows. Items are the full [`EventRead`](#get-eventsid), so the queue shows the evidence and what each row is missing without a per-row fetch. `requested_by` is always `null` here.
+Your queue of machine-`detected` events awaiting a publish, newest first. Scoped to you; it never exposes another analyst's rows. Items are the full [`EventRead`](#get-eventsid), so the queue shows the evidence and what each row is missing without a per-row fetch. `requested_by` is always `null` here.
 
 **Query params:** `page` and `per_page` (offset-paged, see [Pagination](#pagination)), and:
 
@@ -1040,12 +1213,12 @@ Your queue of machine-`detected` events awaiting a geolocate, newest first. Scop
 |-------|------|-------------|
 | `readiness` | string | `all` (default), `ready`, or `incomplete`. Any other value returns 422. |
 
-**Readiness.** A detection is `ready` when it carries a `source` media row, a non-blank `source_url`, coordinates, and a proof body with at least one image, so only a conflict and a `capture_source` tag stand between it and a publish. `incomplete` is the exact complement. The filter runs in SQL over the whole queue, not over the loaded page.
+**Readiness.** A detection is `ready` when it carries coordinates, a `direct` or `indirect` source with a file, no source without a URL, and a proof body with at least one image, so only a conflict and a source kind stand between it and a publish. `incomplete` is the exact complement. The filter runs in SQL over the whole queue, not over the loaded page.
 
 **Response 200:**
 ```json
 {
-  "items": [ { "id": "uuid", "status": "detected", "media": [], "tags": [] } ],
+  "items": [ { "id": "uuid", "status": "detected", "sources": [], "tags": [] } ],
   "total": 248,
   "page": 1,
   "per_page": 20,
@@ -1065,62 +1238,44 @@ Your queue of machine-`detected` events awaiting a geolocate, newest first. Scop
 
 ### `POST /events/requests` 🔒
 
-Open a request: create a `requested` event. One source file is required. Coordinates, the camera point, tags, conflicts and the event date are optional, and the proof body may carry images or none. You are recorded as both `owner` and `requested_by`; `requested_by` survives the later geolocate.
+Open a request: create a `requested` event. A `direct` or `indirect` source with a file is required, and every source needs a URL and a kind. Coordinates, tags, conflicts and the event date are optional, and the proof body may carry images or none. You are recorded as both `owner` and `requested_by`; `requested_by` survives the later publish. The request is version 0 until it is published.
 
 **Request body (`multipart/form-data`):** the [event form](#event-form-fields), **requests** column.
 
-**Response 201:** an [`EventRead`](#get-eventsid), `"status": "requested"`, with `event_coords` and `capture_source_coords` `null` unless you sent a guess.
+**Response 201:** an [`EventRead`](#get-eventsid), `"status": "requested"`, with `coords` `null` unless you sent a guess.
 
-**Errors:** the [event write errors](#event-write-errors), except `proof_image_required`, `tag_requirements_not_met`, `source_url_required`, 403, 404, `invalid_state` and `source_media_conflict`.
+**Errors:** the [event write errors](#event-write-errors), except `proof_image_required`, `conflict_required`, `source_not_found`, 403, 404 and `invalid_state`.
 
 ---
 
 ### `POST /events/{id}/request` 🔒
 
-Correct an open request in place. Owner only, and only while `requested`. **No version is filed:** the row keeps its id, `requested_at`, `requested_by` and provenance columns, moves `updated_at`, and stays at `version_no` 1. Correct a published row through [`POST /events/{id}/versions`](#post-eventsidversions). Answering the request is [`POST /events/{id}/geolocate`](#post-eventsidgeolocate), which anyone may call.
+Correct an open request in place. Owner only, and only while `requested`. **No version is filed:** the row keeps its id, `requested_at`, `requested_by` and provenance columns, moves `updated_at`, and stays at `version_no` 0. Publishing the request is [`POST /events/{id}/versions`](#post-eventsidversions), which anyone may call.
 
 **Request body (`multipart/form-data`):** the [event form](#event-form-fields), **request** column. Rules specific to this path:
 
-- `source_url` is the requester's evidence anchor. A fulfiller cannot rewrite it, so this is the one write that moves it before publication.
-- `source_posted_at` keeps the stored instant when blank, NULL included, so you can correct a bot-opened request whose source date was never read (see [`ingestion.md`](ingestion.md#the-bot)).
-- The source media moves on `remove_media_ids` + `files`. The row must still carry exactly one source media afterwards. The replaced media's objects are deleted.
+- `sources` replaces the request's sources, on the floor of a request: a `direct` or `indirect` source with a file. Post each stored source's `id` to keep it, and its file's `media_id` to keep the file.
+- A file the write drops is deleted with its object, unless another file row still names it.
 
-**Response 200:** an [`EventRead`](#get-eventsid), still `"status": "requested"` and `"version_no": 1`.
+**Response 200:** an [`EventRead`](#get-eventsid), still `"status": "requested"` and `"version_no": 0`.
 
-**Errors:** the [event write errors](#event-write-errors), except `proof_image_required`, `tag_requirements_not_met` and `source_url_required`. 403 means you are not the owner. 409 `invalid_state` means the row is not `requested`.
-
----
-
-### `POST /events/{id}/geolocate` 🔒
-
-Give an event a vouched location: `requested` | `detected` → `geolocated`, writing your whole edited form in one transaction under a row lock. A concurrent geolocate on the same row serializes, and the loser gets 409. A `detected` row is owner-only, and this is the only write to it. A `requested` event is answerable by anyone, and you become its `owner` (`requested_by` keeps the original poster). When you fulfil someone else's request, the same transaction writes a `request_fulfilled` [notification](#notifications) for them.
-
-**Request body (`multipart/form-data`):** the [event form](#event-form-fields), **geolocate** column. The [evidence floor](#evidence-floor) applies to the post-geolocate state. Rules specific to this path:
-
-- On a `requested` row, the server ignores `source_url` and keeps the request's own, and files `source_snapshot_url` against that kept URL. The requester moves it through [`POST /events/{id}/request`](#post-eventsidrequest).
-- On a `detected` row with no declared source, a blank `source_url` is `source_url_required`.
-- `secondary_source_urls` is never ignored: the submitted list replaces the stored one on both row kinds.
-- Dropped source media is deleted with its object, since nothing is versioned before publication.
-
-**Response 200:** an [`EventRead`](#get-eventsid), `"status": "geolocated"`, with you added to `geolocators`.
-
-**Errors:** the [event write errors](#event-write-errors), except the plain-string 400. 403 means a detection you do not own. 409 `invalid_state` means the row is not `requested` or `detected`.
+**Errors:** the [event write errors](#event-write-errors), except `proof_image_required` and `conflict_required`. 403 means you are not the owner. 409 `invalid_state` means the row is not `requested`.
 
 ---
 
 ### `POST /events/batch-complete` 🔒
 
-Publish a selection of your own detections in one call: the bulk form of the `detected` → `geolocated` transition. **JSON, not multipart**: nothing uploads and no other field is written. The call supplies only what the machine can't judge: the conflicts, once for the selection, and one `capture_source` tag per row.
+Publish a selection of your own detections in one call: the bulk form of the `detected` → `geolocated` transition. **JSON, not multipart**: nothing uploads and no other field is written. The call supplies only what the machine can't judge: the conflicts, once for the selection, and one source kind per row.
 
-Each row runs in its own transaction against the [evidence floor](#evidence-floor). A row that fails rolls back alone and stays a detection; the rest still publish. A published row credits you in `event_geolocators`. Owner only: every targeted detection must be yours.
+Each row runs in its own transaction against the [evidence floor](#evidence-floor). A row that fails rolls back alone and stays a detection; the rest still publish. A published row files the detection as version 0, becomes version 1, and credits you in `event_geolocators`. Owner only: every targeted detection must be yours.
 
 **Request body:**
 ```json
 {
   "conflict_ids": ["3f1c…"],
   "rows": [
-    { "event_id": "9a2b…", "capture_source_tag_id": "77de…" },
-    { "event_id": "5c04…", "capture_source_tag_id": "9b31…" }
+    { "event_id": "9a2b…", "kind": "smartphone" },
+    { "event_id": "5c04…", "kind": "drone" }
   ]
 }
 ```
@@ -1128,7 +1283,7 @@ Each row runs in its own transaction against the [evidence floor](#evidence-floo
 | Field | Type | Description |
 |-------|------|-------------|
 | `conflict_ids` | UUID[] | 1 to 10 [conflicts](#conflicts), applied to every row, replacing the conflicts the detections held |
-| `rows` | object[] | 1 to 100 rows, one per `event_id` (a repeated id is a 422). `event_id` is a `detected` row you own. `capture_source_tag_id` replaces the row's `capture_source` tag; its other tags stay |
+| `rows` | object[] | 1 to 100 rows, one per `event_id` (a repeated id is a 422). `event_id` is a `detected` row you own. `kind` is one of the [source kinds](#sources) and goes onto every source of the detection that carries a file; a value outside the list is a 422 |
 
 **Response 200:** verdicts in submission order.
 ```json
@@ -1147,58 +1302,63 @@ A `200` does not mean every row published; read `published` and `failed`. A fail
 
 | `code` | Case |
 |--------|------|
-| `source_url_required` | The detection carries no source URL |
-| `coordinates_required` | The detection carries no point |
-| `media_required` | The detection carries no `source` media row |
-| `proof_image_required` | The stored proof body holds no image |
-| `tag_requirements_not_met` | The row's `capture_source_tag_id` is unknown or not a `capture_source` tag |
+| `event_not_found` | Hard-deleted, soft-deleted or withheld by an admin |
 | `invalid_state` | The row is no longer `detected` |
-| `event_not_found` | Hard-deleted, or soft-deleted by an admin |
+| `coordinates_required` | The detection carries no point |
+| `proof_image_required` | The stored proof body holds no image |
+| `source_link_required` | A source of the detection carries no URL |
+| `source_required` | The detection carries no `direct` or `indirect` source |
+| `source_file_required` | No `direct` or `indirect` source of the detection carries a file |
 | `internal_error` | A database failure on that row alone. The detection is untouched and retriable as-is |
 
 **Errors** (whole call, evaluated before any row publishes):
 | Code | Case |
 |------|------|
-| 400 | `tag_requirements_not_met`: no `conflict_ids` entry resolves to a live conflict |
+| 400 | `conflict_required`: no `conflict_ids` entry resolves to a live conflict |
 | 403 | A targeted detection belongs to another analyst; nothing is published |
-| 422 | Empty `conflict_ids` or `rows`, over 10 conflicts, over 100 rows, a repeated `event_id`, or a malformed UUID |
+| 422 | Empty `conflict_ids` or `rows`, over 10 conflicts, over 100 rows, a repeated `event_id`, a malformed UUID, or a `kind` outside the list |
 
 ---
 
 ### `POST /events/{id}/versions` 🔒
 
-Correct a published event. Owner only, and only while `geolocated`. The write files the pre-edit state as a version, applies your form, and moves the event to the next `version_no`, in one transaction under a row lock, so two concurrent edits take their numbers in order. Before publication, edit a row through [`POST /events/{id}/request`](#post-eventsidrequest) or [`POST /events/{id}/geolocate`](#post-eventsidgeolocate).
+Publish a request or a detection, or correct a published event. The write files the pre-edit state as a version, applies your form, and moves the event to the next `version_no`, in one transaction under a row lock, so two concurrent writes take their numbers in order.
+
+**Publish.** A `requested` or `detected` event is version 0. Writing to it files it as version 0, the request or the detection as it stood, and the event becomes `geolocated` at version 1, stamped `geolocated_at`, with you added to `geolocators`. A detection is owner-only. A request is anyone's to publish: you become its `owner`, `requested_by` keeps the original poster, and when you publish someone else's request the same transaction writes a `request_fulfilled` [notification](#notifications) for them. A publish always changes the status, so `nothing_changed` does not apply to it. A publish also invites the analysts in `geolocator_invites` (see [Invitations on the publish](#invitations-on-the-publish)). A detection's sources come from the import with kind `unknown`; name each source's kind, and give every source a URL. The requester's own edit of an open request stays in place at version 0 through [`POST /events/{id}/request`](#post-eventsidrequest).
+
+**Correction.** A `geolocated` event is owner-only.
+
+**Concurrency.** Post `version_no`, the version your form was loaded at. When the row has moved past it, because a racing publish or edit landed first, the write answers `409 version_mismatch` before the ownership check, and nothing is written.
 
 **Request body (`multipart/form-data`):** the [event form](#event-form-fields), **versions** column. The [evidence floor](#evidence-floor) is re-checked against the post-edit state.
 
-**Editability.** Every field the publish form wrote is editable and versioned, the evidence anchor included: the title, both coordinate sets, the event date and time, `source_posted_at`, `is_graphic`, the tags, the conflicts, the proof body, the secondary source links, `source_url`, and the source media. The version records the `source_url` and source media it supersedes. `detected_from_url` is the one field no write moves.
+**Editability.** Every field the publish form wrote is editable and versioned, the sources included: the title, the coordinates, the event date and time, the tags, the conflicts, the proof body, and every source with its links, tags, kind, capture time, capture position, graphic flag and file. The version records each source as it stood, its file included. `detected_from_url` is the one field no write moves.
 
-**Archived copies.** `source_snapshot_url`, `detected_from_snapshot_url` and `secondary_snapshot_urls` archive a link without changing it. Each lands in the version this call produces, and a save whose only change is a copy files a version like any other. `detected_from_snapshot_url` on a row with no provenance link is `original_url_not_on_event`. See [`archival.md`](archival.md).
+**Archived copies.** A link's `snapshot_url` archives that link without changing it. The copy lands in the version this call produces, and a save whose only change is a copy files a version like any other. See [`archival.md`](archival.md).
 
-**Approvals.** The new version ends every current [approval](#approvals) of the event, and the same transaction writes a `re_approve_requested` notification for each analyst whose approval stood and for each live member of an organization whose approval stood.
+**Approvals.** The new version ends every current [approval](#approvals) of the event, and the same transaction writes a `re_approve_requested` notification for each analyst who approved the superseded version and for each live member of an organization that approved it.
 
 Rules specific to this path:
 
-- `source_url`: blank or omitted keeps the stored URL; whitespace-only is `source_url_required`.
-- `nothing_changed` (409): the edit moves no versioned field and no archived copy. `note` is not a versioned field. The check runs before any upload.
-- `version_limit` (409): the event already carries 100 versions. A save whose only change is archived copies is exempt.
-- `remove_media_ids` drops the source media row but keeps its object, which the filed version renders.
+- `nothing_changed` (409): the edit moves no versioned field, no source and no archived copy. Sources compare by content, not by position: their fields, their links, their tag ids and the stored file they name. `note` is not a versioned field. The check runs before any write. A new `upload_id` always counts as a change.
+- `version_limit` (409): the event already carries 100 versions. A save whose only change is a link's archived copy is exempt.
+- A source the edit drops, or a file it replaces, loses its row but keeps its object, which the filed version renders.
 
 **Media and history.**
 
 - A proof image the new body drops is deleted, row and object, unless a readable past version displays it.
-- A replaced source media object stays until the event is deleted or the last readable version naming it is [redacted](#post-admineventsidversionsversion_noredact).
-- An already-uploaded src in `proof` must be one of this event's own images (a proof image, its source media, or a source media a past version names). Any other stored image is `invalid_file`.
+- A dropped source file stays until the event is deleted or the last readable version naming it is [redacted](#post-admineventsidversionsversion_noredact), and longer while another file row names it.
+- An already-uploaded src in `proof` must be one of this event's own images (a proof image, a source's file, or a source file a past version names). Any other stored image is `invalid_file`.
 
-**Response 200:** an [`EventRead`](#get-eventsid), with `version_no` one higher.
+**Response 200:** an [`EventRead`](#get-eventsid), with `version_no` one higher: `"status": "geolocated"` and `"version_no": 1` after a publish.
 
-**Errors:** the [event write errors](#event-write-errors), except the plain-string 400, plus `nothing_changed` and `version_limit` above. 403 means you are not the owner. 409 `invalid_state` means the row is not `geolocated`. A `note` over 280 characters is a 422.
+**Errors:** the [event write errors](#event-write-errors), except the plain-string 400, plus `nothing_changed`, `version_limit` and `version_mismatch` above. 403 means a detection or a published event you do not own. 409 `invalid_state` means the row is `closed`, or a correction posted `geolocator_invites`. A publish adds the [invitation refusals](#invitations-on-the-publish). A `note` over 280 characters, or a negative `version_no`, is a 422.
 
 ---
 
 ### `GET /events/{id}/versions` 🌐
 
-The event's superseded versions, newest first. Public, like the event. The live row is the current version and is not listed, so an event nobody has corrected answers with an empty list. Cursor-paged (see [Pagination](#pagination)); `total` is the whole history, not the page.
+The event's superseded versions, newest first. Public, like the event. The live row is the current version and is not listed, so an event nobody has published from a request or a detection, and nobody has corrected, answers with an empty list. Cursor-paged (see [Pagination](#pagination)); `total` is the whole history, not the page.
 
 **Query parameters:** `limit` and `cursor`, see [Pagination](#pagination).
 
@@ -1215,28 +1375,33 @@ The event's superseded versions, newest first. Public, like the event. The live 
       "redacted": false,
       "snapshot": {
         "title": "Strike on depot, Donetsk",
-        "source_url": "https://t.me/channel/12345",
-        "source_media": [ { "…": "MediaRead, as in media[] on GET /events/{id}" } ],
-        "event_coords": { "lat": 48.123, "lng": 37.456 },
-        "capture_source_coords": null,
-        "event_date": "2026-03-15",
-        "event_time": "14:30:00",
-        "source_posted_at": "2026-03-14T18:05:00+00:00",
-        "is_graphic": false,
-        "secondary_source_urls": [],
-        "tags": [{ "id": "uuid", "name": "Drone", "category": "capture_source" }],
+        "coords": { "lat": 48.123, "lng": 37.456 },
+        "occurred_date": "2026-03-15",
+        "occurred_time": "14:30:00",
+        "sources": [
+          {
+            "title": "",
+            "level": "direct",
+            "kind": "drone",
+            "captured_at": null,
+            "capture_position": null,
+            "is_graphic": false,
+            "links": [
+              {
+                "url": "https://t.me/channel/12345",
+                "posted_at": "2026-03-14T18:05:00+00:00",
+                "snapshot_url": "https://web.archive.org/web/20260316094500/https://t.me/channel/12345",
+                "archived_at": "2026-03-16T09:45:00+00:00"
+              }
+            ],
+            "tags": [],
+            "media": { "…": "MediaRead, as in sources[].media on GET /events/{id}" }
+          }
+        ],
+        "tags": [{ "id": "uuid", "name": "airstrike" }],
         "conflicts": [{ "id": "uuid", "name": "Russian invasion of Ukraine" }],
         "proof": "<p>Matched the ridgeline.</p><img src=\"https://media.example/proof/…jpg\">",
-        "proof_media": [ { "…": "MediaRead" } ],
-        "archives": [
-          {
-            "original_url": "https://t.me/channel/12345",
-            "origin": "source_url",
-            "snapshot_url": "https://web.archive.org/web/20260316094500/https://t.me/channel/12345",
-            "provider": "wayback",
-            "created_at": "2026-03-16T09:45:00+00:00"
-          }
-        ]
+        "proof_media": [ { "…": "MediaRead" } ]
       }
     }
   ],
@@ -1244,11 +1409,10 @@ The event's superseded versions, newest first. Public, like the event. The live 
 }
 ```
 
-- `version_no` is the version the row **holds**. An event at `version_no` 3 answers with snapshots 2 and 1.
+- `version_no` is the version the row **holds**. An event at `version_no` 3 answers with snapshots 2 and 1, and with snapshot 0 too when it was published from a request or a detection.
 - `edited_by` is the analyst whose edit superseded that version, `null` once their account is erased. `note` is their optional line, `null` when they left none. `created_at` is when the edit happened.
 - `redacted` is `true` on a version an admin [blanked](#post-admineventsidversionsversion_noredact). It keeps its number, `created_at` and `edited_by`, and serves `{}` as `snapshot` with `note` `null`.
-- `snapshot` carries the editable fields as they stood. Tags and conflicts carry their names beside their ids. `source_media` and `proof_media` carry each media whole, because the row may be gone. `archives` lists the archived copies held at that version, one per link, sorted by `original_url`.
-- Every snapshot names `source_url` and `source_media`. A snapshot filed before another field was versioned omits that field; read it from the live row.
+- `snapshot` carries the editable fields as they stood. Tags and conflicts carry their names beside their ids. `sources` holds each source in the order the event then read, with its links, their archived copies, its tags and its file; a source entry carries no `id`, and the snapshot stores `snapshot_url` where the live read serves `archived`. Each `media` and `proof_media` entry is carried whole, because the row may be gone.
 
 **Errors:**
 | Code | Case |
@@ -1273,7 +1437,7 @@ One superseded version by its number, the read behind a `/events/{id}/vN` addres
 
 ### `GET /events/{id}/collections` 🔒
 
-Your collections, each saying whether this event is already on it. Only an analyst the event credits, its owner or a [co-geolocator](#shared-credit), may put it on a collection, so anyone else gets a 403. Empty collections are listed; withheld collections are not.
+Your collections, each saying whether this event is already on it. Only an analyst the event credits, its owner or a [co-geolocator](#shared-credit), may put it on a collection, so anyone else gets a 403. Empty collections are listed; withheld collections and collections [pending erasure](#delete-collectionsid) are not.
 
 **Response 200:**
 ```json
@@ -1353,20 +1517,17 @@ flowchart LR
   the owner removes, a co-geolocator leaves`"]:::spec
   erase["`**DELETE /admin/users/{id}?hard=true**`"]:::spec
   accept["`**accept**
-  deletes the invitation, credits the invitee, calls revoke_approvals_on_join`"]:::core
+  turns the invited row active, calls delete_approvals_on_join`"]:::core
   handover["`**hand_over_owned_events**
   owner_id moves to the earliest live co-geolocator`"]:::core
-  invites[("`**event_geolocator_invites**
-  pending only`")]:::store
   credits[("`**event_geolocators**
-  the credit`")]:::store
+  one row per analyst and event: invited, active or departed`")]:::store
   credited["`**credited_to**
   profile, stats, feed, author filter, collections`"]:::shared
 
-  invite --> invites
-  drop --> invites
+  invite --> credits
+  drop --> credits
   answer --> accept
-  accept --> invites
   accept --> credits
   remove --> credits
   erase --> handover
@@ -1376,9 +1537,9 @@ flowchart LR
 
 An event's geolocators are the analysts it credits. The owner is always one of them; any other is an analyst the owner invited who accepted. Credit grants no write right: editing, filing a version, closing and inviting stay with the owner. Every read that lists an analyst's work matches any credited analyst: the profile count and feed, the profile stats, the follow feed, the `author` filter of [`GET /events`](#get-events) and [`GET /search`](#get-search), the author typeahead, and the collection add check.
 
-- **Invitation.** The owner of a `geolocated` event invites an analyst by username. The invitation waits in `event_geolocator_invites`, and the invitee receives a `co_geolocator_invite` [notification](#notifications). An event holds at most 10 live geolocators and pending invitations together, a soft-deleted analyst not counted (`MAX_EVENT_GEOLOCATORS` in [`services/geolocator_credit.py`](../backend/app/services/geolocator_credit.py)).
-- **Answer.** Accepting deletes the invitation and credits the invitee in one transaction, which also revokes the invitee's own [approvals](#approvals) of the event (`revoke_approvals_on_join`) and deletes the open [approval requests](#approval-requests) addressed to them. Declining or a withdrawal deletes the invitation.
-- **Removal.** The owner removes a co-geolocator, who receives a `co_geolocator_removed` notification, or a co-geolocator leaves. The owner cannot leave. The removed analyst's collections drop the event in the same transaction, and an `event_geolocator_departures` row records the departure: a former geolocator never [approves](#approvals) the event or receives an [approval request](#approval-requests) for it. The open approval requests the analyst sent about the event are withdrawn (`status` `withdrawn`), since only a geolocator asks for one; they keep counting toward the daily cap.
+- **Invitation.** The owner of a `geolocated` event invites an analyst by username. The invitation waits as an `invited` row in [`event_geolocators`](data-model.md#event_geolocators), and the invitee receives a `co_geolocator_invite` [notification](#notifications). An event holds at most 10 `active` geolocators and `invited` invitations together, a soft-deleted analyst not counted (`MAX_EVENT_GEOLOCATORS` in [`services/geolocator_credit.py`](../backend/app/services/geolocator_credit.py)).
+- **Answer.** Accepting turns the invitation into credit, the row `active`, in one transaction, which also deletes the invitee's [approvals](#approvals) of the event (`delete_approvals_on_join`) and deletes the open [approval requests](#approval-requests) addressed to them. Declining or a withdrawal deletes the invitation, or returns a former geolocator's row to `departed`.
+- **Removal.** The owner removes a co-geolocator, who receives a `co_geolocator_removed` notification, or a co-geolocator leaves. The owner cannot leave. The removed analyst's collections drop the event in the same transaction, and the analyst's row turns `departed`: a former geolocator never [approves](#approvals) the event or receives an [approval request](#approval-requests) for it. The open approval requests the analyst sent about the event are withdrawn (`status` `withdrawn`), since only a geolocator asks for one; they keep counting toward the daily cap.
 - **Erasure.** A hard delete of the owner's account hands the event, unless it is soft-deleted, to the earliest live co-geolocator; see [`DELETE /admin/users/{id}`](#delete-adminusersid).
 
 Every write locks the event row first, so an invitation, its answer and an erasure on the same event serialize. A soft-deleted or withheld event answers 404 on every route below.
@@ -1390,7 +1551,7 @@ Pending invitations on the event, oldest first. The owner reads every one; anyon
 **Response 200:**
 ```json
 [
-  { "user": { "id": "uuid", "username": "bo", "avatar_url": null }, "created_at": "2026-10-15T09:00:00Z" }
+  { "user": { "id": "uuid", "username": "bo", "avatar_url": null }, "invited_at": "2026-10-15T09:00:00Z" }
 ]
 ```
 
@@ -1490,84 +1651,75 @@ flowchart LR
   approve["`**POST /events/{id}/approvals**
   version_no: the version you read
   organization: the slug you approve for`"]:::spec
-  revokeep["`**POST /events/{id}/approvals/{approval_id}/revoke**
-  the reviewer, a member of the organization or a site admin`"]:::spec
+  admindel["`**DELETE /admin/approvals/{approval_id}**
+  a site admin`"]:::spec
   edit["`**POST /events/{id}/versions**
   any saved version, archive-only included`"]:::spec
   accept["`**POST /events/{id}/geolocator-invites/accept**`"]:::spec
   place["`**approve**
-  locks the event, refuses geolocators, non-admins and a stale version`"]:::core
-  revoke["`**revoke**
-  stamps revoked_at, revoked_as and an optional public reason`"]:::core
+  locks the event, refuses geolocators, non-members and a stale version`"]:::core
+  delete["`**delete_as_admin**
+  deletes the row and writes an approval_deleted audit_log row`"]:::core
   file["`**file_version**
   the live version moves on`"]:::core
-  join["`**revoke_approvals_on_join**`"]:::core
+  join["`**delete_approvals_on_join**`"]:::core
   rows[("`**event_approvals**
-  one per analyst and version, one standing per organization and version`")]:::store
+  one per analyst and version, one per organization and version`")]:::store
   received["`**approval_received**
-  to the owner, hidden once the approval is revoked`"]:::shared
-  revoked["`**approval_revoked**
-  to the owner`"]:::shared
+  to the owner and the requesters, deleted with the approval`"]:::shared
   again["`**re_approve_requested**
-  to each reviewer, and each member of an organization, whose approval stood`"]:::shared
+  to each reviewer, and each member of an organization, that approved the superseded version`"]:::shared
 
   approve --> place --> rows
   place --> received
-  revokeep --> revoke --> rows
-  revoke --> revoked
+  admindel --> delete --> rows
+  delete -.-> received
   edit --> file --> again
   accept --> join --> rows
+  join -.-> received
 ```
 
-An approval is a dated attestation that one version of a published event holds. It binds to the pair `(event_id, version_no)` and is **current** while that version is the event's live version and nobody revoked it. Saving a new version ends every current approval of the event without changing its row, an archive-only save included. The approval stays readable on the version it covered, and the live version shows none until someone approves it again.
+An approval is a dated attestation that one version of a published event holds. It binds to the pair `(event_id, version_no)` and is **current** while that version is the event's live version. An approval is final. Saving a new version ends every current approval of the event without changing its row, an archive-only save included. The approval stays readable on the version it covered, and the live version shows none until someone approves it again.
 
 - **Who approves.** Any signed-in analyst except the event's current and former geolocators: its owner, every analyst credited through [shared credit](#shared-credit), and every analyst who left the credit or was removed from it. The analyst who opened a fulfilled request is not a geolocator, so they may approve it. A closed event takes no new approval and keeps the ones it has.
 - **Organization approvals.** Any member of an [organization](#organizations), whatever their role, approves in its name by sending the organization's slug. The approval records the member as its `reviewer`. A member who is or was a geolocator of the event cannot approve it for any organization. An analyst outside the organization cannot approve in its name. A member who leaves or is removed leaves the organization's past approvals as they are.
-- **One standing approval per analyst and version.** An analyst holds at most one standing approval of a version. After revoking their own approval, the reviewer can approve the version again, and the revoked row stays as history beside the new one. A revocation by a site admin, or the one written when the reviewer joined the geolocators, closes the version to them (409 `reapproval_refused`). An organization holds one standing approval per version: after an org manager revokes it, an org manager can approve that version again; after a site admin revokes it, the organization cannot. An analyst's own approval and the one they place for an organization are separate.
-- **Re-approval.** Each new version writes a `re_approve_requested` [notification](#notifications) for every analyst whose approval of the superseded version stood, and for every live member of an organization whose approval of it stood, with the organization on the row. A revoked approval asks nothing.
-- **Revocation.** The reviewer revokes their own approval. Any member of the organization revokes any approval placed in its name, and the organization can approve the version again afterwards; a reviewer who left the organization cannot revoke it. Only a site admin's revocation closes the version to the organization. A site admin revokes any approval, which writes an `approval_revoked` audit row. The reason is optional and public. A revoked approval keeps its row, its version and its reason, and `revoked_as` names the role that revoked it, never the person. The owner receives an `approval_revoked` [notification](#notifications), and the `approval_received` notifications of that approval leave every feed.
-- **Joining the geolocators.** Accepting a [co-geolocator invitation](#post-eventsidgeolocator-invitesaccept) revokes every standing approval the invitee gave the event, on every version and for every organization, with the reason "Joined the geolocators of this event".
+- **One approval per analyst and version.** An analyst approves a version once (409 `already_approved` afterwards). An organization approves a version once, through any of its members. An analyst's own approval and the one they place for an organization are separate.
+- **Re-approval.** Each new version writes a `re_approve_requested` [notification](#notifications) for every analyst who approved the superseded version, and for every live member of an organization that approved it, with the organization on the row.
+- **Deletion by a site admin.** [`DELETE /admin/approvals/{approval_id}`](#delete-adminapprovalsapproval_id) deletes one approval. The `approval_received` notifications that reported it go with it. The reviewer, or the organization, can approve that version again.
+- **Joining the geolocators.** Accepting a [co-geolocator invitation](#post-eventsidgeolocator-invitesaccept) deletes every approval the invitee gave the event, on every version and for every organization.
 
-Every write locks the event row first, so an approval, a revocation and a new version on the same event serialize.
+Every write locks the event row first, so an approval, a deletion and a new version on the same event serialize.
 
 **Approval shape (`ApprovalRead`):**
 ```json
 {
   "id": "uuid",
   "version_no": 2,
-  "verdict": "approve",
   "reviewer": { "id": "uuid", "username": "bo", "avatar_url": null },
   "organization": { "slug": "open-source-watch", "name": "Open Source Watch", "avatar_url": null },
-  "note": "Skyline and road junction match.",
   "created_at": "2026-10-15T09:00:00Z",
-  "current": true,
-  "revoked_at": null,
-  "revoke_reason": null,
-  "revoked_as": null
+  "current": true
 }
 ```
 
 | Field | Meaning |
 |---|---|
-| `verdict` | Always `approve` |
 | `reviewer` | The analyst who approved; for an organization's approval, the member who placed it, or `null` once that account is soft-deleted or erased, since the approval stays the organization's |
 | `organization` | The organization the approval speaks for, `null` for an analyst's own approval |
-| `note` | The reviewer's optional note, at most 280 characters; `null` when none was left |
-| `current` | `true` while `version_no` is the live version of a `geolocated` event and the approval is not revoked; a closed event keeps its approvals, none current |
-| `revoked_at` | `null` until the approval is revoked, then when |
-| `revoke_reason` | The public reason given at revocation; `null` when none was given, and always `null` on an approval that is not revoked |
-| `revoked_as` | `null` until revoked, then the role that revoked it: `reviewer`, `organization_member` (another member of the organization) or `site_admin` |
+| `current` | `true` while `version_no` is the live version of a `geolocated` event; a closed event keeps its approvals, none current |
+
+The web app asks you to confirm before it sends [`POST /events/{id}/approvals`](#post-eventsidapprovals), since the approval is final.
 
 ### `GET /events/{id}/approvals`
 
-The approvals of the event, revoked ones included, ordered by version and then oldest first. At most 500 approvals are returned, the newest ones, so a read of every version keeps the live version's (`MAX_APPROVALS_LISTED` in [`services/approvals.py`](../backend/app/services/approvals.py)); filter by `version_no` or `reviewer` to read past it. An analyst's approval whose reviewer is soft-deleted is left out. An organization's approval stays whatever became of the member who placed it, with `reviewer` set to `null` once that account is soft-deleted or erased. Visibility as [`GET /events/{id}`](#get-eventsid).
+The approvals of the event, ordered by version and then oldest first. At most 500 approvals are returned, the newest ones, so a read of every version keeps the live version's (`MAX_APPROVALS_LISTED` in [`services/approvals.py`](../backend/app/services/approvals.py)); filter by `version_no` or `reviewer` to read past it. An analyst's approval whose reviewer is soft-deleted is left out. An organization's approval stays whatever became of the member who placed it, with `reviewer` set to `null` once that account is soft-deleted or erased. Visibility as [`GET /events/{id}`](#get-eventsid).
 
 **Query params:**
 
 | Param | Meaning |
 |---|---|
 | `version_no` | Keep one version. Omitted without `reviewer` or `all_versions`, it is the live version. |
-| `all_versions` | `true` lists every version's approvals. The event page reads the list this way for its Approvals card. |
+| `all_versions` | `true` lists every version's approvals. The event page reads the list this way for its approvals. |
 | `reviewer` | Keep one analyst's own approvals, by username, 1 to 50 characters, without the ones they placed for an organization. Without `version_no`, every version is listed. |
 
 **Response 200 (`ApprovalList`):**
@@ -1578,7 +1730,7 @@ The approvals of the event, revoked ones included, ordered by version and then o
 | Field | Meaning |
 |---|---|
 | `items` | The approval shapes |
-| `viewer_can_approve` | `true` when you are signed in, the event is published, and you never held credit on it, so you may approve it as yourself or for an organization you manage. `false` for an anonymous caller, an unpublished event, and a current or former geolocator. Whether you already reviewed the live version reads from `items`. |
+| `viewer_can_approve` | `true` when you are signed in, the event is published, and you never held credit on it, so you may approve it as yourself or for an organization you are a member of. `false` for an anonymous caller, an unpublished event, and a current or former geolocator. Whether you already reviewed the live version reads from `items`. |
 
 **Errors:**
 | Code | Case |
@@ -1589,9 +1741,9 @@ The approvals of the event, revoked ones included, ordered by version and then o
 
 ### `POST /events/{id}/approvals` 🔒
 
-Approve the live version of a published event, as yourself or for an organization you manage.
+Approve the live version of a published event, as yourself or for an organization you are a member of. The approval is final.
 
-**Body:** `{ "version_no": 2, "note": "Skyline and road junction match.", "organization": "open-source-watch" }`. `version_no` is the version you read. `note` is optional, at most 280 characters; a blank note is stored as `null`. `organization` is optional: the slug of an organization you are a member of, to approve in its name.
+**Body:** `{ "version_no": 2, "organization": "open-source-watch" }`. `version_no` is the version you read. `organization` is optional: the slug of an organization you are a member of, to approve in its name. The body rejects unknown fields.
 
 **Response 201:** the new approval. It resolves every open [approval request](#approval-requests) its target received for the event: you, or the organization. The owner, and each geolocator whose request it resolves, receives an `approval_received` notification, with the organization on the row for an organization's approval.
 
@@ -1600,26 +1752,8 @@ Approve the live version of a published event, as yourself or for an organizatio
 |------|------|
 | 403 | `geolocator_cannot_approve`: you are or were a geolocator of the event. `not_organization_member`: you are not a member of `organization` |
 | 404 | `organization_not_found`: no organization has that slug. Also an unknown, soft-deleted or withheld event |
-| 409 | `invalid_state`: the event is not `geolocated`. `version_mismatch`: `version_no` is not the live version; reload the event. `already_approved`: your approval of this version, or the organization's, stands. `reapproval_refused`: a site admin revoked that approval of this version, or it was revoked when you joined the geolocators |
-| 422 | `version_no` missing or below 1, or `note` over 280 characters |
-
----
-
-### `POST /events/{id}/approvals/{approval_id}/revoke` 🔒
-
-Revoke an approval of the event. The reviewer revokes their own; a member revokes any approval placed for their organization; a site admin revokes any, on a withheld event too, which answers 404 to everyone else.
-
-**Body (optional):** `{ "reason": "The shadows point the other way." }`. The body and `reason` are optional; `reason` is at most 2000 characters, surrounding whitespace is stripped, and a blank reason is stored as `null`. A reason is public.
-
-**Response 200:** the revoked approval. The event's owner receives an `approval_revoked` notification, which names the approval's reviewer or organization and never who revoked it.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 403 | `revoke_forbidden`: you are not the reviewer, not a member of the organization the approval speaks for, and not a site admin |
-| 404 | `approval_not_found`: no approval with that id on this event. Also an unknown, soft-deleted or withheld event |
-| 409 | `already_revoked` |
-| 422 | `reason` over 2000 characters |
+| 409 | `invalid_state`: the event is not `geolocated`. `version_mismatch`: `version_no` is not the live version; reload the event. `already_approved`: your approval of this version, or the organization's, exists |
+| 422 | `version_no` missing or below 1, or an unknown field |
 
 ---
 
@@ -1682,7 +1816,7 @@ flowchart LR
 A geolocator of a published event asks an analyst or an [organization](#organizations) to approve its live version. The request lands in the notifications of the analyst, or of every live member of the organization, and stays open until the target approves the event or declines the request, or the requester loses their credit on the event, which withdraws it.
 
 - **Who asks.** A geolocator of the event: its owner or an accepted co-geolocator. The event must be `geolocated`.
-- **Who is asked.** An analyst who can approve the event: not one of its current or former geolocators, whose approval of the live version does not stand and was not revoked by someone else. An organization with a live member outside the event's current and former geolocators, whose approval of the live version does not stand and was not revoked by a site admin.
+- **Who is asked.** An analyst who can approve the event: not one of its current or former geolocators, who have not approved the live version. An organization with a live member outside the event's current and former geolocators, which has not approved the live version.
 - **The audience.** The analyst asked decides who may send them requests, with `approval_request_audience` in [`PATCH /users/me/preferences`](#patch-usersmepreferences). `following`, the default, admits the analysts they follow; following them does not count. `everyone` admits any signed-in analyst. `nobody` admits no one. An organization's org managers set the same value for the organization with [`PATCH /organizations/{slug}`](#patch-organizationsslug), where `following` admits an analyst whom any live org manager follows. A refused request returns 403 `requests_not_accepted` with one message for every audience, so the refusal never tells you which rule the target chose.
 - **Limits.** One open request per requester, target and event. After the target declines, the same requester cannot ask the same target about the same event for 7 days (409 `recently_declined`). A requester sends at most `APPROVAL_REQUEST_DAILY_CAP` requests (default 20) in a trailing 24 hours, resolved ones included, so declining and asking again does not lift the cap.
 - **Resolution.** An approval of the event, on any version, resolves every open request its target received for the event: an analyst's own approval resolves the requests to that analyst, and an organization's approval the requests to the organization. Each requester receives an `approval_received` notification. The analyst asked, or any org manager of the organization asked, declines the request, and the requester receives an `approval_request_declined` notification naming the org manager and the organization. Accepting a [co-geolocator invitation](#post-eventsidgeolocator-invitesaccept) deletes the open requests addressed to the new geolocator.
@@ -1726,7 +1860,7 @@ The open approval requests on the event, oldest first. A geolocator of the event
 
 ### `GET /events/{id}/approval-request-targets` 🔒
 
-The analysts and organizations to suggest for approval of the event, at most 20 of each. Analysts: live, outside the event's current and former geolocators, whose approval of the live version neither stands nor was revoked by someone else, hold no open request from you on it and declined none in the last 7 days, and who follow you and take requests, or whose username is `q` exactly. Organizations: with a live org manager outside the current and former geolocators, without a standing approval of the live version, an open request from you on it or one it declined in the last 7 days, and followed by one of its org managers while it takes requests, or whose slug is `q` exactly; by name. The list never reveals an `everyone` audience: an exact match is listed whatever its audience, and asking it may still return `requests_not_accepted`. When `q` is the exact username of a live analyst, or else the exact slug of an organization, that the list leaves out, `refusal` holds the reason the request would get (a geolocator, already approved, already asked, or declined in the last 7 days); otherwise it is `null`. The audience is never a `refusal`.
+The analysts and organizations to suggest for approval of the event, at most 20 of each. Analysts: live, outside the event's current and former geolocators, who have not approved the live version, hold no open request from you on it and declined none in the last 7 days, and who follow you and take requests, or whose username is `q` exactly. Organizations: with a live org manager outside the current and former geolocators, that have not approved the live version, hold no open request from you on it and declined none in the last 7 days, and are followed by one of its org managers while it takes requests, or whose slug is `q` exactly; by name. The list never reveals an `everyone` audience: an exact match is listed whatever its audience, and asking it may still return `requests_not_accepted`. When `q` is the exact username of a live analyst, or else the exact slug of an organization, that the list leaves out, `refusal` holds the reason the request would get (a geolocator, already approved, already asked, or declined in the last 7 days); otherwise it is `null`. The audience is never a `refusal`.
 
 **Query params:** `q`, up to 50 characters: a case-insensitive substring of the username, prefix matches first, or of the organization's name or slug.
 
@@ -1747,14 +1881,14 @@ Ask an analyst or an organization to approve the live version of the event.
 
 **Body:** `{ "username": "bo" }` for an analyst, or `{ "organization": "open-source-watch" }` for an organization. Exactly one of the two; both or neither is a 422.
 
-**Response 201:** the new request. The analyst asked, or every live member of the organization asked, receives an `approval_request_received` notification, with the organization on the row. Each email counts toward the requester's per-actor daily email cap, so a request to a large organization reaches the remaining members through the notifications list and push alone once the cap is reached.
+**Response 201:** the new request. The analyst asked, or every live member of the organization asked, receives an `approval_request_received` notification, with the organization on the row. Each email counts toward the requester's per-actor daily email cap, so a request to a large organization reaches the remaining members through the notifications list alone once the cap is reached.
 
 **Errors:**
 | Code | Case |
 |------|------|
 | 403 | `not_a_geolocator`: you are not a geolocator of the event. `target_is_geolocator`: the analyst is a geolocator of the event, or every live member of the organization is. `requests_not_accepted`: the target's audience does not admit you |
 | 404 | `user_not_found`: no live analyst with that username. `organization_not_found`: no organization has that slug. Also an unknown, soft-deleted or withheld event |
-| 409 | `invalid_state`: the event is not `geolocated`. `already_approved`: the analyst's or the organization's approval of the live version stands, or a revocation by someone else closed the version to them. `already_requested`: you have an open request to this target on this event. `recently_declined`: this target declined your request on this event less than 7 days ago |
+| 409 | `invalid_state`: the event is not `geolocated`. `already_approved`: the analyst or the organization already approved the live version. `already_requested`: you have an open request to this target on this event. `recently_declined`: this target declined your request on this event less than 7 days ago |
 | 429 | `daily_cap_reached`: you sent the daily cap of requests |
 
 ---
@@ -1775,7 +1909,7 @@ Decline an approval request addressed to you, or to an organization you are a me
 
 ## Search
 
-Full-text discovery across five result groups: `geolocations` (located view: `geolocated` and `detected` rows with coordinates), `requests` (`requested` rows), `collections`, `users`, and `organizations`. Matching uses the Postgres `simple` dictionary, and the response is grouped by entity. Search does not index `source_url` or proof content.
+Full-text discovery across five result groups: `geolocations` (located view: `geolocated` and `detected` rows with coordinates), `requests` (`requested` rows), `collections`, `users`, and `organizations`. Matching uses the Postgres `simple` dictionary, and the response is grouped by entity. Proof content is not searched.
 
 ### `GET /search` 🌐
 
@@ -1785,7 +1919,7 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
 | `q` | string | Free-text query. |
 | `type` | enum | `all` (default), `event` (both event groups), `geolocation`, `request`, `collection`, `user`, or `organization`. Anything else → 422. |
 | `limit` | int | Per-group cap. 1 ≤ `limit` ≤ 50, default 20. |
-| *filter set* | | The event filters of [`GET /events`](#get-events): `status`, `conflict`, `capture_source`, `tag`, `media` (repeatable), `event_date_from` / `event_date_to`, `submitted_from` / `submitted_to`, `author`, `approved`, `approved_by`, `approved_by_org`. They scope the two event groups; a `status` value a group's view can't contain empties that group. |
+| *filter set* | | The event filters of [`GET /events`](#get-events): `status`, `conflict`, `source_kind`, `level`, `tag`, `media` (repeatable), `occurred_date_from` / `occurred_date_to`, `submitted_from` / `submitted_to`, `author`, `approved`, `approved_by`, `approved_by_org`. They scope the two event groups; a `status` value a group's view can't contain empties that group. |
 
 **Rules.**
 
@@ -1793,7 +1927,8 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
 - An empty `q` with an active filter enters **browse mode**: the filtered view, newest first, with plain titles as their own highlight.
 - Any active filter empties the users and organizations groups.
 - The collections group reads one filter, `author`, which narrows it to that analyst's collections. Any other active filter empties it. With an empty `q`, `author` lists the analyst's collections newest first.
-- A collection hit matches on its title and `description_text` together. It is the full [`CollectionRead`](#get-collectionsid) and carries no `*_highlight` field. A withheld collection, one whose owner is soft-deleted, and one holding nothing showable are absent.
+- An event hit matches on its title, on a source's title, or on a source URL that contains `q` as a case-insensitive substring, so a pasted link finds the events that cite it. The title highlight and the rank read the event title only.
+- A collection hit matches on its title and `description_text` together. It is the full [`CollectionRead`](#get-collectionsid) and carries no `*_highlight` field. A withheld collection, one [pending erasure](#delete-collectionsid), one whose owner is soft-deleted, and one holding nothing showable are absent.
 - An organization hit matches on its name, slug and bio together. It carries the public fields of the [organization page](#get-organizationsslug) header: no approval request audience and no creator. `member_count` counts live members.
 - Ranking is `ts_rank` descending, then `created_at` descending.
 - Every group excludes soft-deleted rows.
@@ -1809,13 +1944,13 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
       "title": "Strike on warehouse complex, Donetsk Oblast",
       "title_highlight": "Strike on warehouse complex, Donetsk Oblast",
       "lat": 48.01, "lng": 37.80,
-      "event_date": "2026-04-15",
+      "occurred_date": "2026-04-15",
       "is_graphic": false,
       "status": "geolocated",
       "owner": { "id": "uuid", "username": "osint_analyst" },
       "geolocators": [{ "id": "uuid", "username": "osint_analyst" }],
-      "media": [{ "id": "uuid", "role": "source", "storage_url": "…", "media_type": "image" }],
-      "tags": [{ "id": "uuid", "name": "airstrike", "category": "free" }]
+      "media": [{ "id": "uuid", "role": "source", "storage_url": "…", "kind": "image", "sha256": "…", "original_filename": null }],
+      "tags": [{ "id": "uuid", "name": "airstrike" }]
     }
   ],
   "requests": [
@@ -1823,12 +1958,12 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
       "id": "uuid",
       "title": "Footage from Kharkiv area, can someone place it?",
       "title_highlight": "Footage from Kharkiv area, can someone place it?",
-      "source_url": "https://twitter.com/…",
+      "source_urls": ["https://twitter.com/…"],
       "status": "requested",
       "created_at": "2026-04-12T08:00:00Z",
       "is_graphic": false,
       "owner": { "id": "uuid", "username": "kharkiv_osint" },
-      "media": [{ "id": "uuid", "role": "source", "storage_url": "…", "media_type": "image" }],
+      "media": [{ "id": "uuid", "role": "source", "storage_url": "…", "kind": "image", "sha256": "…", "original_filename": null }],
       "tags": []
     }
   ],
@@ -1862,6 +1997,7 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
 ```
 
 - `media` on both event groups holds at most one row, the card thumbnail of [`GET /events`](#get-events).
+- `source_urls` on a request hit lists every URL of every source of the request, in source order.
 - `bio_highlight` is `null` when only the username, or an organization's name or slug, matched.
 - Groups you did not request through `type` come back as empty arrays.
 - `total` holds each group's match count before the `limit` cap, in browse mode too.
@@ -1870,7 +2006,7 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
 **Errors:**
 | Code | Case |
 |------|------|
-| 422 | `type` outside the allowed set, or `limit` outside [1, 50] |
+| 422 | `type` outside the allowed set, `limit` outside [1, 50], or a `source_kind` or `level` value outside its domain |
 
 ---
 
@@ -1887,23 +2023,17 @@ Username typeahead for the `author` filter, which is an exact match. Case-insens
 
 ## Tags
 
+One catalogue of free tags, shared by events and their sources. Conflicts are not tags: see [`GET /conflicts`](#get-conflicts). Where a source comes from is its `kind`, not a tag.
+
 ### `GET /tags`
 
-List tags. By default, returns only tags referenced by at least one **live** geolocation. Returned whole, not paged (see [Pagination](#pagination)).
-
-**Query params:**
-| Param | Type | Description |
-|-------|------|-------------|
-| `category` | string | `capture_source` or `free` |
-| `curated` | bool | When `true`, return the full curated `capture_source` taxonomy whatever its usage. |
-
-Conflicts are not tags: see [`GET /conflicts`](#get-conflicts).
+List the tags on at least one **live** event (not deleted, not withheld) or on one of its sources, ordered by name. Returned whole, not paged (see [Pagination](#pagination)). Takes no query params.
 
 **Response 200:** an array of `TagRead`.
 ```json
 [
-  { "id": "uuid", "name": "Drone", "category": "capture_source" },
-  { "id": "uuid", "name": "airstrike", "category": "free" }
+  { "id": "uuid", "name": "airstrike" },
+  { "id": "uuid", "name": "power grid" }
 ]
 ```
 
@@ -1911,27 +2041,18 @@ Conflicts are not tags: see [`GET /conflicts`](#get-conflicts).
 
 ### `POST /tags` 🔒
 
-Create a tag. Only `free` tags are creatable; `capture_source` is server-managed.
+Create a tag.
 
 **Request body:**
 ```json
-{
-  "name": "drone strike",
-  "category": "free"
-}
+{ "name": "drone strike" }
 ```
 
 `name` is stripped of surrounding whitespace, then must be 1 to 100 characters; empty or whitespace-only is a 422. Name matching is case-sensitive, like the DB unique constraint: `Drone` and `drone` are distinct tags.
 
 **Response 201:** the new `TagRead`.
 
-**Response 200:** a tag with this name already exists in the same category. The response is that existing `TagRead`, and no row is created.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 403 | `category` is not `free` |
-| 409 | A tag with this name exists under another category |
+**Response 200:** a tag with this name already exists, in use or not. The response is that existing `TagRead`, and no row is created.
 
 ---
 
@@ -1939,7 +2060,7 @@ Create a tag. Only `free` tags are creatable; `capture_source` is server-managed
 
 ### `GET /conflicts`
 
-List the conflict referential, `ongoing` first, then by name. Server-managed (see [`conflicts.md`](conflicts.md)); there is no create endpoint. The default returns every row, ongoing and ended. Returned whole, not paged (see [Pagination](#pagination)).
+List the conflict referential, `is_ongoing` first, then by name. Server-managed (see [`conflicts.md`](conflicts.md)); there is no create endpoint. The default returns every row, ongoing and ended. Returned whole, not paged (see [Pagination](#pagination)).
 
 **Query params:**
 | Param | Type | Description |
@@ -1949,8 +2070,8 @@ List the conflict referential, `ongoing` first, then by name. Server-managed (se
 **Response 200:** an array of `ConflictRead`.
 ```json
 [
-  { "id": "uuid", "name": "Russian invasion of Ukraine", "wikidata_id": "Q110999040", "start_year": 2022, "end_year": null, "ongoing": true, "tier": "major" },
-  { "id": "uuid", "name": "Western Sahara conflict", "wikidata_id": "Q1152920", "start_year": 1970, "end_year": null, "ongoing": false, "tier": null }
+  { "id": "uuid", "name": "Russian invasion of Ukraine", "wikidata_id": "Q110999040", "start_year": 2022, "end_year": null, "is_ongoing": true, "tier": "major" },
+  { "id": "uuid", "name": "Western Sahara conflict", "wikidata_id": "Q1152920", "start_year": 1970, "end_year": null, "is_ongoing": false, "tier": null }
 ]
 ```
 
@@ -2009,7 +2130,8 @@ Report a collection for moderation. Same body, `reason` values and anonymous rul
   "collection": {
     "id": "uuid",
     "title": "Zaporizhzhia plant",
-    "owner": { "id": "uuid", "username": "analyst", "avatar_url": "https://…/avatars/…jpg" }
+    "owner": { "id": "uuid", "username": "analyst", "avatar_url": "https://…/avatars/…jpg" },
+    "deleted_at": null
   }
 }
 ```
@@ -2019,7 +2141,7 @@ The report lands in the [`GET /admin/reports`](#get-adminreports) queue. A colle
 **Errors:**
 | Code | Case |
 |------|------|
-| 404 | `collection_not_found`: unknown id, already withheld, or owned by a soft-deleted account, one answer for all three. An admin gets it too |
+| 404 | `collection_not_found`: unknown id, already withheld, pending erasure, or owned by a soft-deleted account, one answer for all four. An admin gets it too |
 
 ---
 
@@ -2036,12 +2158,12 @@ One collection's header: owner, title, description, tags, item count, and the da
   "description": "<p>Strikes and their aftermath at the plant, 2025 to 2026.</p>",
   "description_text": "Strikes and their aftermath at the plant, 2025 to 2026.",
   "cover": [
-    { "url": "https://…/uploads/geo/…jpg", "media_type": "image", "role": "source" },
-    { "url": "https://…/uploads/geo/…mp4", "media_type": "video", "role": "source" }
+    { "url": "https://…/uploads/…jpg", "kind": "image", "role": "source" },
+    { "url": "https://…/uploads/…mp4", "kind": "video", "role": "source" }
   ],
   "tags": [
-    { "id": "uuid", "name": "satellite", "category": "capture_source" },
-    { "id": "uuid", "name": "power grid", "category": "free" }
+    { "id": "uuid", "name": "nuclear plant" },
+    { "id": "uuid", "name": "power grid" }
   ],
   "event_count": 12,
   "first_date": "2026-03-01",
@@ -2056,16 +2178,16 @@ All computed fields are computed per read over the events the collection shows, 
 |---|---|
 | `description_text` | The description's plain-text projection |
 | `event_count` | How many events the collection shows |
-| `first_date`, `last_date` | The smallest and largest `event_date` among them; both `null` when none carries a date |
-| `cover` | Zero to four tiles, in item order, skipping graphic items, each the item's card media (an image preferred over a clip). `media_type` is `image` or `video`. `role` is `source` or `proof`; a `proof` `url` has no `_hero` / `_thumb` derivatives, so read it as is |
-| `tags` | The union of the items' tags (`TagRead`), ordered by `category` then `name`. A collection carries no tag of its own |
+| `first_date`, `last_date` | The smallest and largest `occurred_date` among them; both `null` when none carries a date |
+| `cover` | Zero to four tiles, in item order, skipping graphic items, each the item's card media (an image preferred over a clip). `kind` is `image` or `video`. `role` is `source` for a source's file or `proof` for a proof image; a `proof` `url` has no `_hero` / `_thumb` derivatives, so read it as is |
+| `tags` | The union of the tags of the items and of their sources (`TagRead`), ordered by `name`. A collection carries no tag of its own |
 
-A withheld collection (`hidden_at`, see [`PATCH /admin/collections/{id}/moderation`](#patch-admincollectionsidmoderation)) answers 404 for everyone but an admin, its owner included. So does a collection whose owner is soft-deleted.
+A withheld collection (`hidden_at`, see [`PATCH /admin/collections/{id}/moderation`](#patch-admincollectionsidmoderation)) answers 404 for everyone but an admin, its owner included. So do a collection [pending erasure](#delete-collectionsid) and a collection whose owner is soft-deleted.
 
 **Errors:**
 | Code | Case |
 |------|------|
-| 404 | `collection_not_found`: unknown, withheld, or the owner is soft-deleted |
+| 404 | `collection_not_found`: unknown, withheld, pending erasure, or the owner is soft-deleted |
 
 ---
 
@@ -2090,6 +2212,8 @@ Write your collection's title and description. Owner only. Both fields are requi
 ### `DELETE /collections/{id}` 🔒
 
 Drop your collection and its memberships. Owner only. The events it held are untouched.
+
+While an open [content report](#post-collectionsidreport) names the collection, the delete only marks it pending erasure (`collections.deleted_at`). The response is the same 204. The collection answers 404 at once for everyone but an admin, its owner included, and leaves every list and search. A moderator still reads it in full from the [report queue](#get-adminreports). Resolving the last open report on it, whatever the verdict, erases it. A collection that no open report names is erased at once.
 
 **Response 204:** no body.
 
@@ -2210,7 +2334,7 @@ The sites whose zone valid on a date meets a bounding box, for the map. Newest s
     "observation_effect": "observed_no_change",
     "corroboration_count": 2,
     "is_corroborated": true,
-    "latest_link_effect": { "effect": "damage", "event_date": "2026-07-09", "event_id": "uuid" },
+    "latest_link_effect": { "effect": "damage", "occurred_date": "2026-07-09", "event_id": "uuid" },
     "owner_id": "uuid"
   }
 ]
@@ -2222,7 +2346,7 @@ The sites whose zone valid on a date meets a bounding box, for the map. Newest s
 | `observed_on`, `imagery_provider`, `observation_effect` | `captured_on`, `imagery_provider` and `effect` of that observation |
 | `corroboration_count` | The number of distinct owners of the events linked to the site now |
 | `is_corroborated` | `true` when at least one of those owners is not the site's owner |
-| `latest_link_effect` | The `effect` of the linked event with the latest `event_date` on or before `as_of`, with that date and the event's id. The later link wins a tie. `null` when no linked event carries such a date. It sits beside the observed state and never changes it |
+| `latest_link_effect` | The `effect` of the linked event with the latest `occurred_date` on or before `as_of`, with that date and the event's id. The later link wins a tie. `null` when no linked event carries such a date. It sits beside the observed state and never changes it |
 | `owner_id` | The id of the site's owner |
 
 `corroboration_count` and `is_corroborated` describe the links now, whatever `as_of` is. `latest_link_effect` reads the links now but skips an event dated after `as_of`, so a date in the past never shows a later effect.
@@ -2315,7 +2439,7 @@ One site: its current zone and state, every observation, and the events linked t
   "corroboration_count": 1,
   "is_corroborated": true,
   "owner": { "id": "uuid", "username": "analyst", "avatar_url": null },
-  "latest_link_effect": { "effect": "damage", "event_date": "2026-07-09", "event_id": "uuid" },
+  "latest_link_effect": { "effect": "damage", "occurred_date": "2026-07-09", "event_id": "uuid" },
   "observations": [
     {
       "id": "uuid",
@@ -2333,8 +2457,8 @@ One site: its current zone and state, every observation, and the events linked t
     {
       "id": "uuid",
       "title": "Strike on the north apron",
-      "event_date": "2026-07-09",
-      "event_coords": { "lat": 47.49, "lng": 34.6 },
+      "occurred_date": "2026-07-09",
+      "coords": { "lat": 47.49, "lng": 34.6 },
       "owner": { "id": "uuid", "username": "geolocator", "avatar_url": null },
       "effect": "damage",
       "linked_at": "2026-08-02T10:00:00Z",
@@ -2353,10 +2477,10 @@ The state fields of [`GET /sites`](#get-sites) describe the current zone here, a
 | Field | Meaning |
 |---|---|
 | `observations` | Every observation, oldest `captured_on` first, `created_at` breaking ties. `author` is `null` once that account is erased |
-| `linked_events` | The linked events that are `geolocated` and neither soft-deleted nor withheld, oldest `event_date` first, an event without a date last |
+| `linked_events` | The linked events that are `geolocated` and neither soft-deleted nor withheld, oldest `occurred_date` first, an event without a date last |
 | `linked_events[].inside_zone` | `true` when the event's point lies in the measured zone |
 | `linked_events[].distance_m` | Metres from the event's point to the measured zone, `null` when `inside_zone` is `true` |
-| `linked_events[].measured_observation_id` | The observation whose zone the event was measured against: the one valid on the event's `event_date`, the earliest one when the event predates every observation, or the latest one when the event has no date |
+| `linked_events[].measured_observation_id` | The observation whose zone the event was measured against: the one valid on the event's `occurred_date`, the earliest one when the event predates every observation, or the latest one when the event has no date |
 | `linked_events[].linked_at` | When the live link opened. After an effect change it is the time of the change |
 
 **Errors:**
@@ -2379,7 +2503,7 @@ The site's history as one feed of dated facts, computed from the site, its obser
 Each entry carries two clocks:
 
 - **`recorded_at`:** when the fact entered Vidit.
-- **`fact_date`:** when it happened on the ground. It is the `captured_on` of an observation and the `event_date` of a link entry, and `null` for `site_created` or an event without a date.
+- **`fact_date`:** when it happened on the ground. It is the `captured_on` of an observation and the `occurred_date` of a link entry, and `null` for `site_created` or an event without a date.
 
 `order=recorded` sorts by `recorded_at`. `order=fact` sorts by `fact_date`, with `recorded_at` breaking ties, and places an entry whose `fact_date` is `null` on the day it was recorded. Imagery found after the fact keeps its capture date, so the two orders differ.
 
@@ -2393,7 +2517,7 @@ Each entry carries two clocks:
     "observation_id": "uuid", "observation_effect": "observed_no_change", "imagery_provider": "sentinel_2" },
   { "kind": "link_effect_changed", "recorded_at": "2026-08-03T08:00:00Z", "fact_date": "2026-07-09",
     "actor": { "id": "uuid", "username": "geolocator", "avatar_url": null },
-    "event": { "id": "uuid", "title": "Strike on the north apron", "event_date": "2026-07-09" },
+    "event": { "id": "uuid", "title": "Strike on the north apron", "occurred_date": "2026-07-09" },
     "link_effect": "destruction", "previous_link_effect": "damage" }
 ]
 ```
@@ -2460,8 +2584,8 @@ The events that may belong to the site but are not linked to it: visible `geoloc
   {
     "id": "uuid",
     "title": "Fire at the fuel depot",
-    "event_date": "2026-07-10",
-    "event_coords": { "lat": 47.52, "lng": 34.6 },
+    "occurred_date": "2026-07-10",
+    "coords": { "lat": 47.52, "lng": 34.6 },
     "owner": { "id": "uuid", "username": "geolocator", "avatar_url": null },
     "distance_m": 1840.5
   }
@@ -2626,7 +2750,7 @@ Aggregated shape of an analyst's work, computed over existing columns.
   "total_events": 3,
   "media_count": 2,
   "top_conflicts": [{ "name": "Russo-Ukrainian War", "count": 2 }],
-  "capture_sources": [{ "name": "dashcam", "count": 1 }],
+  "source_kinds": [{ "name": "dashcam", "count": 1 }],
   "source_hosts": [{ "name": "x.com", "count": 1 }, { "name": "t.me", "count": 1 }],
   "other_hosts_count": 0,
   "no_source_count": 1,
@@ -2636,9 +2760,10 @@ Aggregated shape of an analyst's work, computed over existing columns.
 
 Every field describes one population: the visible events (`deleted_at IS NULL`, `hidden_at IS NULL`) in `geolocated` or `detected` that credit the analyst, as owner or as a [co-geolocator](#shared-credit). That set is `total_events`. `requested` and `closed` rows take part in no aggregate.
 
-- `top_conflicts` and `capture_sources` hold at most 5 entries, ordered by count descending, then name.
-- `source_hosts` groups the set by the host of `source_url`, lowercased, with a leading `www.` removed. At most 5 entries, ordered by count descending, then host. `other_hosts_count` counts events on any further host. `no_source_count` counts events whose `source_url` is null or has no readable host. The five counts plus those two add up to `total_events`.
-- `activity` buckets `event_date` by calendar month, from the analyst's earliest dated event to the latest, oldest first, zero-filled. `period` is `YYYY-MM`. An event with no `event_date` takes no bucket. The span covers at most the 10 most recent calendar years and then starts at January of the oldest year shown; events outside it still count in every other aggregate.
+- `media_count` counts the files of the set: source files and proof images.
+- `top_conflicts` and `source_kinds` hold at most 5 entries, ordered by count descending, then name. `source_kinds` counts events per kind their sources name, so an event with sources of two kinds counts under both; `name` is the kind value. `unknown` is left out.
+- `source_hosts` groups the set by the host of each event's first source URL (the first link of its first source, in source order), lowercased, with a leading `www.` removed. At most 5 entries, ordered by count descending, then host. `other_hosts_count` counts events on any further host. `no_source_count` counts events with no source URL, or one with no readable host. The five counts plus those two add up to `total_events`.
+- `activity` buckets `occurred_date` by calendar month, from the analyst's earliest dated event to the latest, oldest first, zero-filled. `period` is `YYYY-MM`. An event with no `occurred_date` takes no bucket. The span covers at most the 10 most recent calendar years and then starts at January of the oldest year shown; events outside it still count in every other aggregate.
 
 [`design.md`](design.md#public-profile) describes how the profile renders these fields.
 
@@ -2690,7 +2815,7 @@ The body rejects unknown fields, `avatar_url` among them. The profile picture ch
 
 ### `PUT /users/me/avatar` 🔒
 
-Upload your profile picture. The backend strips the image's metadata, resizes it so its longer edge fits 400 px, re-encodes it as JPEG, and stores one object under `avatars/{user_id}/`. It then points `users.avatar_url` at that object and deletes the picture it replaced, under the retention rules in the Media row of [`engineering.md`](engineering.md#deployment).
+Upload your profile picture. The backend strips the image's metadata, resizes it so its longer edge fits 400 px, re-encodes it as JPEG, and stores one object under `avatars/{user_id}/`. It then points `users.avatar_url` at that object and deletes the picture it replaced, under the bucket's Object Lock retention (see *Media bucket* in [`engineering.md`](engineering.md#deployment)).
 
 **Body:** `multipart/form-data` with a single `file` field. Accepts `image/jpeg`, `image/png`, and `image/webp` within the image [file limits](#file-limits), which set a lower pixel limit for a profile picture. Video types are rejected.
 
@@ -2705,7 +2830,7 @@ Upload your profile picture. The backend strips the image's metadata, resizes it
 
 ### `DELETE /users/me/avatar` 🔒
 
-Remove your profile picture. Clears `users.avatar_url` and deletes the stored object, under the retention rules in the Media row of [`engineering.md`](engineering.md#deployment). Idempotent: removing a picture you do not have returns 200.
+Remove your profile picture. Clears `users.avatar_url` and deletes the stored object, under the bucket's Object Lock retention (see *Media bucket* in [`engineering.md`](engineering.md#deployment)). Idempotent: removing a picture you do not have returns 200.
 
 **Response 200:** the updated `UserRead`, with `avatar_url` null.
 
@@ -2722,33 +2847,21 @@ Your display and notification preferences. Each value is the one in effect: your
   "display_defaults": { "palette": "orange", "theme": "dark", "help_tooltips": true },
   "display_stored": { "palette": "rose", "theme": "light", "help_tooltips": null },
   "notifications": [
-    {
-      "kind": "request_fulfilled",
-      "channels": { "email": false, "push": true },
-      "defaults": { "email": true, "push": true }
-    },
-    {
-      "kind": "new_follower",
-      "channels": { "email": false, "push": false },
-      "defaults": { "email": false, "push": false }
-    }
+    { "kind": "request_fulfilled", "email": false, "default": true },
+    { "kind": "new_follower", "email": false, "default": false }
   ],
-  "product_updates": false,
   "approval_request_audience": "following"
 }
 ```
 
-`product_updates` is `true` while you hold a current consent to [product update emails](#product-updates). It has no default to fall back to: consent is never presumed.
-
-`display_stored` holds only the display values your account has saved, `null` where it has none, so a client can tell a saved value from a default. `notifications` lists every registered notification kind, in registry order. `channels` holds the delivery channels besides the in-app notifications list, which is always on and has no switch. With `email` on, Vidit also emails that kind to your verified address. With `push` on, Vidit also sends it as a push notification to every device you registered (see [Notifications](#notifications)).
+`display_stored` holds only the display values your account has saved, `null` where it has none, so a client can tell a saved value from a default. `notifications` lists every registered notification kind, in registry order. `email` says whether Vidit emails that kind to your account address, and `default` is the value you get while you have not moved the switch. The in-app notifications list shows every kind and has no switch (see [Notifications](#notifications)).
 
 | Field | Values |
 |-------|--------|
 | `display.palette` | `orange`, `blue`, `emerald`, `violet`, `rose` |
 | `display.theme` | `dark`, `light` |
 | `display.help_tooltips` | `true` shows the `?` field help |
-| `notifications[].kind` | `request_fulfilled`, `new_follower`, `x_handle_request_approved`, `x_handle_request_declined`, `co_geolocator_invite`, `co_geolocator_removed`, `ownership_transferred`, `organization_invite`, `organization_invite_accepted`, `organization_manager_inherited`, `re_approve_requested`, `approval_received`, `approval_revoked`, `approval_request_received`, `approval_request_declined`, `organization_approval_removed` |
-| `notifications[].channels` | `email`, `push` |
+| `notifications[].kind` | `request_fulfilled`, `new_follower`, `co_geolocator_invite`, `co_geolocator_removed`, `ownership_transferred`, `organization_invite`, `organization_invite_accepted`, `organization_manager_inherited`, `re_approve_requested`, `approval_received`, `approval_request_received`, `approval_request_declined`, `organization_approval_removed` |
 | `approval_request_audience` | Who may send you an [approval request](#approval-requests): `following` (the default), `everyone`, `nobody` |
 
 ---
@@ -2761,185 +2874,36 @@ Change some of your preferences. The first write creates your stored row.
 ```json
 {
   "display": { "theme": "light", "palette": null },
-  "notifications": { "request_fulfilled": { "email": false } },
-  "product_updates": true,
+  "notifications": { "request_fulfilled": false },
   "approval_request_audience": "everyone"
 }
 ```
 
-- `product_updates: true` grants the consent to product update emails with source `settings`, and `false` withdraws it. Granting while a consent is current changes nothing, so the original grant time stays.
 - In `display`, an omitted field keeps its stored value, and `null` clears it so it reads the default again.
-- In `notifications`, each entry sets channels of one kind. A value equal to the kind's default drops your override, so only differences from the defaults are stored, and a later change of a default reaches you if you never moved that switch.
+- In `notifications`, each entry turns the email of one kind on (`true`) or off (`false`). A value equal to the kind's default drops your override, so only differences from the defaults are stored, and a later change of a default reaches you if you never moved that switch.
 - `approval_request_audience` sets who may send you an approval request. Omit it or send `null` to keep the stored value.
 
-The body rejects unknown fields, unknown kinds, unknown channels, and display or audience values outside the table above.
+The body rejects unknown fields, unknown kinds, non-boolean switches, and display or audience values outside the table above.
 
 **Response 200:** the updated preferences, in the shape of [`GET /users/me/preferences`](#get-usersmepreferences).
 
 **Errors:**
 | Code | Case |
 |------|------|
-| 422 | An unknown field, kind, channel, display value or audience |
-
----
-
-### `GET /users/me/push-config` 🔒
-
-The key a browser needs to subscribe to push notifications from this deployment.
-
-**Response 200:**
-```json
-{ "public_key": "BCVx...base64url" }
-```
-
-`public_key` is the VAPID application server key, base64url-encoded. A deployment always has one. It is `null` only on a development server started without VAPID keys.
-
----
-
-### `GET /users/me/push-subscriptions` 🔒
-
-The devices registered for your push notifications, newest first. Each item has the shape of the [`POST /users/me/push-subscriptions`](#post-usersmepush-subscriptions) response, and never carries the endpoint.
-
-A password change or a password reset deletes every device of the account.
-
----
-
-### `POST /users/me/push-subscriptions` 🔒
-
-Register this browser for push notifications. The body is the browser's `PushSubscription.toJSON()`; `expirationTime` is ignored. The `User-Agent` header is stored with the device.
-
-**Body:**
-```json
-{
-  "endpoint": "https://fcm.googleapis.com/fcm/send/...",
-  "expirationTime": null,
-  "keys": { "p256dh": "BNc...", "auth": "tBH..." }
-}
-```
-
-- `endpoint` is an https URL on a browser push service: `fcm.googleapis.com`, `updates.push.services.mozilla.com`, `web.push.apple.com`, or a host under `.push.apple.com` or `.notify.windows.com`.
-- `keys.p256dh` is a base64url uncompressed P-256 public key (65 bytes) and `keys.auth` a base64url 16-byte secret.
-
-`resync: true` marks a registration the page makes by itself: it answers 409 `device_revoked` for a device you revoked, which only an explicit registration (`resync` omitted or false) brings back. Registering an endpoint again refreshes its keys and returns the same `id`. An endpoint registered by another account moves to yours, since one browser holds one subscription. An account holds at most 10 devices: registering one more deletes the oldest.
-
-**Response 201:**
-```json
-{
-  "id": "3f0c...",
-  "user_agent": "Mozilla/5.0 ...",
-  "created_at": "2026-10-15T09:00:00Z",
-  "last_success_at": null
-}
-```
-
-The response never carries the endpoint: anyone who holds it can push to the device.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 409 | `device_revoked`: a `resync` of a device you revoked |
-| 422 | An endpoint off the push services, or malformed keys |
-
----
-
-### `DELETE /users/me/push-subscriptions/{id}` 🔒
-
-Stop push notifications to one of your devices. The device stays revoked: this browser's own `resync` registration of it answers 409 until you enable push on it again.
-
-**Response 204:** no body.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 404 | No device with this id on your account |
+| 422 | An unknown field, kind, non-boolean switch, display value or audience |
 
 ---
 
 ### `GET /users/me/x-handle` 🔒
 
-The X handle bound to your account, which the Vidit bot and the archive import use to credit posts to you, and your change request if you have one. Only an admin writes the bound handle.
+The X handle bound to your account, which the Vidit bot and the archive import use to credit posts to you. Only an admin writes the bound handle, through [`PATCH /admin/users/{id}/x-handle`](#patch-adminusersidx-handle).
 
 **Response 200:**
 ```json
-{
-  "x_handle": "osint_hawk",
-  "request": {
-    "id": "8c0e…",
-    "x_handle": "new_hawk",
-    "reason": "I renamed my X account",
-    "status": "declined",
-    "decline_reason": "Post from the new handle first",
-    "created_at": "2026-10-01T10:00:00Z",
-    "decided_at": "2026-10-02T09:00:00Z"
-  }
-}
+{ "x_handle": "osint_hawk" }
 ```
 
-`x_handle` is `null` when no handle is bound. `request` is `null` when you have no request. `status` is `pending` or `declined`; `decline_reason` and `decided_at` are set exactly when it is `declined`. An approved request leaves no row: its handle is the bound one.
-
----
-
-### `PUT /users/me/x-handle-request` 🔒
-
-Ask an admin to bind a new X handle to your account.
-
-```mermaid
-flowchart LR
-  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
-  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
-  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
-  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
-
-  subgraph legend [Legend]
-    direction LR
-    l1["`an analyst endpoint`"]:::spec
-    l2["`an admin endpoint`"]:::shared
-    l3["`the one write path of the bound handle`"]:::core
-    l4[("`a stored value`")]:::store
-    l1 ~~~ l2 ~~~ l3 ~~~ l4
-  end
-
-  put["`**PUT /users/me/x-handle-request**
-  replaces your earlier request`"]:::spec
-  req[("`**x_handle_requests**
-  one row per analyst`")]:::store
-  approve["`**POST …/approve**
-  deletes the request`"]:::shared
-  decline["`**POST …/decline**
-  the reason stays on the request`"]:::shared
-  write["`**set_user_x_handle**
-  conflict check, audit row`"]:::core
-  handle[("`**users.x_handle**`")]:::store
-  notes[("`**notifications**
-  x_handle_request_approved or _declined`")]:::store
-
-  put --> req
-  req --> approve
-  req --> decline
-  approve --> write
-  write --> handle
-  approve --> notes
-  decline --> notes
-```
-
-You hold at most one request. A new one replaces your earlier request, pending or declined, under a new `id`. An approval binds the handle through the same write path as [`PATCH /admin/users/{id}/x-handle`](#patch-adminusersidx-handle) and deletes the request. A decline keeps the request with the admin's reason, which [`GET /users/me/x-handle`](#get-usersmex-handle) returns until you file another one. Either decision writes a [notification](#notifications).
-
-The request does not check whether another account holds the handle: the admin's approval does, so the endpoint does not reveal who holds which handle.
-
-**Body:**
-```json
-{ "x_handle": "@new_hawk", "reason": "I renamed my X account" }
-```
-
-`x_handle` is normalized like [`PATCH /admin/users/{id}/x-handle`](#patch-adminusersidx-handle). `reason` is optional, at most 500 characters; a blank reason is stored as `null`.
-
-**Response 200:** your handle and the new request, in the shape of [`GET /users/me/x-handle`](#get-usersmex-handle).
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 409 `x_handle_unchanged` | The handle is already bound to your account |
-| 422 | A handle outside `^[a-z0-9_]{1,15}$` after normalization, a reason over 500 characters, or an unknown field |
+`x_handle` is `null` when no handle is bound.
 
 ---
 
@@ -3004,13 +2968,13 @@ flowchart LR
   revoke["`**POST /admin/invite-codes/{id}/revoke**`"]:::shared
   selfrevoke["`**POST /users/me/invite-codes/{id}/revoke**
   your own active code`"]:::spec
-  flag[("`**users.invite_minting_enabled**`")]:::store
+  flag[("`**users.is_invite_minting_enabled**`")]:::store
   code[("`**invite_codes**
-  created_by is the sponsor`")]:::store
-  audit[("`**admin_events**
+  created_by_id is the sponsor`")]:::store
+  audit[("`**audit_log**
   invite_sponsored, invite_revoked`")]:::store
   confirm["`**confirm_pending_registration**
-  copies x_handle, stamps used_by`"]:::core
+  copies x_handle, stamps used_by_id`"]:::core
   account[("`**users**
   x_handle, sponsor through the code`")]:::store
 
@@ -3027,9 +2991,9 @@ flowchart LR
 
 The code behaves like one an admin mints through [`POST /admin/invite-codes`](#post-admininvite-codes): single use, no expiry, and redemption copies the bound handle onto the new account's `users.x_handle`. If another account or an organization holds the handle by then, the account is created without the link. The mint does not check whether another account holds the handle, so the endpoint does not reveal which handle has an account.
 
-`invite_codes.created_by` records you as the sponsor. The account created from the code reads its sponsor through that row, and the admin console shows the sponsor per account and per code. You revoke an active code you minted through [`POST /users/me/invite-codes/{id}/revoke`](#post-usersmeinvite-codesidrevoke), and an admin revokes any code through [`POST /admin/invite-codes/{id}/revoke`](#post-admininvite-codesidrevoke).
+`invite_codes.created_by_id` records you as the sponsor. The account created from the code reads its sponsor through that row, and the admin console shows the sponsor per account and per code. You revoke an active code you minted through [`POST /users/me/invite-codes/{id}/revoke`](#post-usersmeinvite-codesidrevoke), and an admin revokes any code through [`POST /admin/invite-codes/{id}/revoke`](#post-admininvite-codesidrevoke).
 
-You mint at most 5 codes per UTC day. Every code minted since 00:00 UTC counts, revoked or used. Each mint writes an `admin_events` row with action `invite_sponsored`, `actor_id` set to you, and target `{"invite_code_id": …, "x_handle": …}`.
+You mint at most 5 codes per UTC day. Every code minted since 00:00 UTC counts, revoked or used. Each mint writes an `audit_log` row with action `invite_sponsored`, `actor_id` set to you, and target `{"invite_code_id": …, "x_handle": …}`.
 
 **Body:**
 ```json
@@ -3053,7 +3017,7 @@ You mint at most 5 codes per UTC day. Every code minted since 00:00 UTC counts, 
 
 Revoke an active invite code you minted, for example one bound to the wrong handle. The endpoint sets `revoked_at` through the same service as [`POST /admin/invite-codes/{id}/revoke`](#post-admininvite-codesidrevoke). The row stays and lists as `revoked` in [`GET /users/me/invite-codes`](#get-usersmeinvite-codes).
 
-The revoke works while an admin keeps minting off for your account. A revoked code still counts against the daily quota of the day you minted it. Each revoke writes an `admin_events` row with action `invite_revoked`, `actor_id` set to you, and target `{"invite_code_id": …}`.
+The revoke works while an admin keeps minting off for your account. A revoked code still counts against the daily quota of the day you minted it. Each revoke writes an `audit_log` row with action `invite_revoked`, `actor_id` set to you, and target `{"invite_code_id": …}`.
 
 **Response 200:** the revoked code, in the shape of an `items` entry of [`GET /users/me/invite-codes`](#get-usersmeinvite-codes).
 
@@ -3077,7 +3041,7 @@ An analyst's published geolocations: live rows with `status = "geolocated"` that
 
 ### `GET /users/{username}/collections`
 
-One analyst's collections, newest first. A reader gets the collections that show at least one event; the owner gets all of theirs, empty ones included. `total` counts the same set. Withheld collections are in neither. Offset-paged (see [Pagination](#pagination)).
+One analyst's collections, newest first. A reader gets the collections that show at least one event; the owner gets all of theirs, empty ones included. `total` counts the same set. Withheld collections and collections pending erasure are in neither. Offset-paged (see [Pagination](#pagination)).
 
 **Query params:** `page` and `per_page`, see [Pagination](#pagination).
 
@@ -3148,25 +3112,23 @@ flowchart LR
     l1 ~~~ l2 ~~~ l3 ~~~ l4
   end
 
-  geolocate["`**POST /events/{id}/geolocate**
-  on a request: request_fulfilled to the analyst who opened it`"]:::spec
+  publish["`**POST /events/{id}/versions**
+  publishing a request: request_fulfilled to the analyst who opened it`"]:::spec
   follow["`**POST /users/{username}/follow**
   new_follower to the followed analyst, once per follower`"]:::spec
-  xhandle["`**POST /admin/x-handle-requests/{id}/approve** and **/decline**
-  x_handle_request_approved or _declined to the requester`"]:::spec
   credit["`**geolocator_credit**
   co_geolocator_invite, co_geolocator_removed, ownership_transferred`"]:::spec
   orgs["`**organizations**
   organization_invite, organization_invite_accepted, organization_manager_inherited,
   organization_approval_removed`"]:::spec
   approvals["`**approvals** and **file_version**
-  approval_received, approval_revoked, re_approve_requested`"]:::spec
+  approval_received, re_approve_requested`"]:::spec
   reviews["`**approval_requests**
   approval_request_received, approval_request_declined`"]:::spec
   rows[("`**notifications**
   written in the action's transaction`")]:::store
   visible["`**_visible_rows**
-  hides a row whose event is deleted or hidden, whose actor is soft-deleted, or whose approval is revoked`"]:::core
+  hides a row whose event is deleted or hidden, or whose actor is soft-deleted`"]:::core
   list["`**GET /notifications**
   newest first, each row with its read_at`"]:::shared
   count["`**GET /notifications/unread-count**
@@ -3178,13 +3140,12 @@ flowchart LR
   readat[("`**notifications.read_at**
   per row; NULL is unread`")]:::store
   queue[("`**notification_deliveries**
-  one row per channel to send on`")]:::store
+  at most one row per notification, for the email`")]:::store
   worker["`**notification_delivery.drain**
   re-checks the switch and the filter, sends after the action commits`"]:::core
 
-  geolocate --> rows
+  publish --> rows
   follow --> rows
-  xhandle --> rows
   credit --> rows
   orgs --> rows
   approvals --> rows
@@ -3200,18 +3161,14 @@ flowchart LR
   delete --> rows
 ```
 
-An action that concerns another analyst writes a [`notifications`](data-model.md#notifications) row in its own transaction, so a rolled-back action leaves no row. Nobody is notified of their own action. Every read passes the same filter: a row whose event is soft-deleted or taken down, or whose actor is soft-deleted or deactivated, is hidden from the list and the count, including when that happens after the row was written. An `approval_received` row is hidden the same way once the approval it reports is revoked. Read state is per row: `read_at` is NULL until `POST /notifications/read` names the row, which the notifications page does for the unread rows it shows. A row whose action commits after the list was read stays unread, whatever its `created_at`. `DELETE /notifications/{id}` removes one of your rows for good.
+An action that concerns another analyst writes a [`notifications`](data-model.md#notifications) row in its own transaction, so a rolled-back action leaves no row. Nobody is notified of their own action. Every read passes the same filter: a row whose event is soft-deleted or taken down, or whose actor is soft-deleted or deactivated, is hidden from the list and the count, including when that happens after the row was written. Read state is per row: `read_at` is NULL until `POST /notifications/read` names the row, which the notifications page does for the unread rows it shows. A row whose action commits after the list was read stays unread, whatever its `created_at`. `DELETE /notifications/{id}` removes one of your rows for good.
 
-When your email switch for the kind is on and your address is verified, the same transaction queues an email. The worker sends it after the action commits, so a provider failure never fails the action. At send time the worker skips the email if the switch is now off or the filter would hide the row. Notification email has a daily cap, in total and per recipient, and a queued email older than 48 hours is dropped. The emails an analyst sends straight at someone (`co_geolocator_invite`, `organization_invite`, `approval_request_received`) are capped per actor in a trailing 24 hours too: past the cap, the row still reaches the notifications list and push, but queues no email. Fan-out an action sets off, such as re-approval requests after a new version, is neither capped nor counted. The email links to the item and to Settings, and its `List-Unsubscribe` header turns that kind off by email in one click ([`POST /notifications/unsubscribe`](#post-notificationsunsubscribe)). The queue and the caps are in [`engineering.md`](engineering.md#email).
-
-When your push switch for the kind is on and you registered at least one device, the same transaction queues a push. The worker sends it to each of your devices, with a title, a short body and the path a click opens. Push has no daily cap. The delivery path is in [`engineering.md`](engineering.md#web-push).
+When your email switch for the kind is on, the same transaction queues an email to your account address. The in-app list shows every kind whatever the switch says. The worker sends it after the action commits, so a provider failure never fails the action. At send time the worker skips the email if the switch is now off or the filter would hide the row. Notification email has a daily cap, in total and per recipient, and a queued email older than 48 hours is dropped. The emails an analyst sends straight at someone (`co_geolocator_invite`, `organization_invite`, `approval_request_received`) are capped per actor in a trailing 24 hours too: past the cap, the row still reaches the notifications list, but queues no email. Fan-out an action sets off, such as re-approval requests after a new version, is neither capped nor counted. The email links to the item and to Settings, and its `List-Unsubscribe` header turns that kind off by email in one click ([`POST /notifications/unsubscribe`](#post-notificationsunsubscribe)). The queue and the caps are in [`engineering.md`](engineering.md#email).
 
 | Kind | Emitted when | `actor` | `event` | `organization` |
 |------|--------------|---------|---------|----------------|
-| `request_fulfilled` | Another analyst geolocates a request you opened | the fulfiller | the request | null |
+| `request_fulfilled` | Another analyst publishes a request you opened | the fulfiller | the request | null |
 | `new_follower` | An analyst follows you for the first time | the follower | null | null |
-| `x_handle_request_approved` | An admin approves your [X handle request](#put-usersmex-handle-request) | null | null | null |
-| `x_handle_request_declined` | An admin declines your X handle request | null | null | null |
 | `co_geolocator_invite` | The owner of a published event invites you to share its credit, unless an invitation to the same event reached you in the last 7 days | the owner | the event | null |
 | `co_geolocator_removed` | The owner of an event removes you from its geolocators | the owner | the event | null |
 | `ownership_transferred` | An event you share passes to you because its owner's account was removed or erased | null | the event | null |
@@ -3219,11 +3176,10 @@ When your push switch for the kind is on and you registered at least one device,
 | `organization_invite_accepted` | An analyst accepts your organization invite | the new member | null | the organization |
 | `organization_manager_inherited` | You become org manager because the last one's account was removed | null | null | the organization |
 | `re_approve_requested` | The owner saves a new version of an event whose superseded version you, or an organization you are a member of, approved; a member who holds or held credit on the event is not asked | the owner | the event | the organization, or null for your own approval |
-| `approval_received` | An analyst approves your event, or an event whose approval you requested, as themselves or for an organization; hidden once that approval is revoked | the reviewer | the event | the organization, or null |
-| `approval_revoked` | An approval of your event is revoked through [`POST /events/{id}/approvals/{approval_id}/revoke`](#post-eventsidapprovalsapproval_idrevoke); email and push are off by default | the approval's reviewer, or null on an organization's approval whose reviewer's account is erased | the event | the organization, or null |
+| `approval_received` | An analyst approves your event, or an event whose approval you requested, as themselves or for an organization; the row goes when the approval is deleted | the reviewer | the event | the organization, or null |
 | `approval_request_received` | A geolocator asks you, or an organization you are a member of, to approve their event; a member who holds or held credit on the event is not asked | the requester | the event | the organization asked, or null |
 | `approval_request_declined` | The analyst or the organization you asked declines to approve your event | the analyst asked, or the member who declined | the event | the organization asked, or null |
-| `organization_approval_removed` | A site admin deletes an organization whose standing approval your event held; one row per event | null | the event | null; `organization_name` names it |
+| `organization_approval_removed` | A site admin deletes an organization whose approval your event held; one row per event | null | the event | null; `organization_name` names it |
 
 A declined or withdrawn organization invite writes no row. `organization` is `{ "slug", "name", "avatar_url" }`. `organization_name` is set on an `organization_approval_removed` row only, since the organization it names no longer exists.
 
@@ -3279,7 +3235,7 @@ Mark the listed notifications read by setting their `read_at`. Only your own row
 
 ### `DELETE /notifications/{id}` 🔒
 
-Delete one of your notifications. Its `queued` and `skipped` delivery rows go with it, so a queued email or push for it is never sent. A delivery that may have reached the provider (`sending`, `sent` or `failed`) stays with a NULL `notification_id`, so the daily email cap keeps counting it. The row leaves the list and the unread count.
+Delete one of your notifications. Its `queued` and `skipped` delivery rows go with it, so a queued email for it is never sent. A delivery that may have reached the provider (`running`, `done` or `failed`) stays with a NULL `notification_id`, so the daily email cap keeps counting it. The row leaves the list and the unread count.
 
 **Response 204:** no body.
 
@@ -3332,12 +3288,12 @@ flowchart LR
   org manager only`"]:::spec
   mutual["`**is_mutual_follow**
   inviter and invitee follow each other`"]:::core
-  pending[("`**organization_invites**
-  one per analyst and organization`")]:::store
+  pending[("`**organization_members**
+  state invited: one row per analyst and organization`")]:::store
   accept["`**POST .../invite/accept**`"]:::shared
   decline["`**POST .../invite/decline**`"]:::shared
   members[("`**organization_members**
-  role: manager or member`")]:::store
+  state active, role: manager or member`")]:::store
   manage["`**PATCH** or **DELETE .../members/{username}**
   role change, removal, leave`"]:::spec
   last["`**_guard_last_manager**
@@ -3353,7 +3309,7 @@ flowchart LR
 An organization is a collective with its own public profile. [`data-model.md`](data-model.md#organizations) describes the storage. On the wire:
 
 - **Creation:** a site admin creates each organization and names its first org manager, who joins without an invite.
-- **Roles:** `manager` (an org manager) and `member`. The role gates the membership powers: inviting, removing and promoting members, and setting the approval request audience. Every member, whatever the role, acts in the organization's name: placing and revoking its [approvals](#approvals) and answering its [approval requests](#approval-requests).
+- **Roles:** `manager` (an org manager) and `member`. The role gates the membership powers: inviting, removing and promoting members, and setting the approval request audience. Every member, whatever the role, acts in the organization's name: placing its [approvals](#approvals) and answering its [approval requests](#approval-requests).
 - **Approvals and approval requests:** the organization page lists the approvals placed in its name ([`GET /organizations/{slug}/approvals`](#get-organizationsslugapprovals)) and, for its members, the open approval requests addressed to it ([`GET /organizations/{slug}/approval-requests`](#get-organizationsslugapproval-requests) 🔒). Its org managers choose who may send it a request with `approval_request_audience`.
 - **Managers:** an org manager manages their organization: profile edit, pending invites, role changes and removals. A site admin manages any organization the same way. Only an org manager invites.
 - **Entry:** by invitation only. An org manager invites an analyst who follows them and whom they follow, and the invitee accepts or declines.
@@ -3413,7 +3369,7 @@ The members, org managers first, then by join date. Anonymous callers are allowe
 
 ### `GET /organizations/{slug}/approvals`
 
-The approvals placed in the organization's name, newest first, revoked ones included, at most 100 per page. Follow the `Link: rel="next"` cursor for the next page. An approval of an event a public reader cannot see is left out. Every other approval stays whatever became of the org manager who placed it, with `reviewer` set to `null` once that account is soft-deleted or erased. Anonymous callers are allowed.
+The approvals placed in the organization's name, newest first, at most 100 per page. Follow the `Link: rel="next"` cursor for the next page. An approval of an event a public reader cannot see is left out. Every other approval stays whatever became of the org manager who placed it, with `reviewer` set to `null` once that account is soft-deleted or erased. Anonymous callers are allowed.
 
 **Query params:** `limit` (default and maximum 100), `cursor`.
 
@@ -3457,7 +3413,7 @@ Remove the organization's picture and its stored object. Managers only.
 
 Pending invites, newest first. Managers only.
 
-**Response 200:** a list of `{ "id", "user": AuthorRef, "invited_by": AuthorRef | null, "created_at" }`.
+**Response 200:** a list of `{ "user": AuthorRef, "invited_by": AuthorRef | null, "invited_at" }`. An invite has no id: the organization and the invitee's username name it.
 
 ---
 
@@ -3481,11 +3437,11 @@ Invite an analyst. Org managers only. Writes an `organization_invite` [notificat
 
 ---
 
-### `DELETE /organizations/{slug}/invites/{invite_id}` 🔒
+### `DELETE /organizations/{slug}/invites/{username}` 🔒
 
-Withdraw a pending invite. Managers only. Nobody is notified.
+Withdraw the pending invite of the analyst with that username. Managers only. Nobody is notified.
 
-**Response 204:** no body.
+**Response 204:** no body. **Errors:** `not_organization_manager`, `invite_not_found` (the analyst holds no pending invite, or is unknown or soft-deleted).
 
 ---
 
@@ -3531,23 +3487,24 @@ Remove a member, or leave when `username` is your own. Removing someone else tak
 
 ### `GET /feed` 🔒
 
-Two kinds of row, newest first: a geolocation an analyst published and a request an analyst has open. Cursor-paged (see [Pagination](#pagination)).
+Three kinds of row, newest first: a geolocation an analyst published, a request an analyst has open, and a machine detection. Cursor-paged (see [Pagination](#pagination)).
 
 | Kind | Rows | Feed timestamp |
 |---|---|---|
 | Geolocation | `status = geolocated`, the set [`GET /users/{username}/events`](#get-usersusernameevents) serves | `geolocated_at` |
 | Request | `status = requested` | `requested_at` |
+| Detection | `status = detected` | `detected_at` |
 
-A geolocation credits every geolocator: `owner` and `geolocators`. A request credits `owner`, its requester, since ownership moves only when a request is geolocated.
+A geolocation credits every geolocator: `owner` and `geolocators`. A request credits `owner`, its requester, since ownership moves only when a request is geolocated. A detection credits `owner`, the analyst whose post was imported.
 
-A detection, a retraction and a withdrawn request are in neither kind. A soft-deleted or withheld event never appears, and neither does the work of a soft-deleted account. A fulfilled request leaves the request kind and enters the geolocation kind, credited to the analyst who geolocated it.
+A retraction, a withdrawn request and a rejected detection are in no kind. A soft-deleted or withheld event never appears, and neither does the work of a soft-deleted account. A fulfilled request leaves the request kind and a submitted detection leaves the detection kind; each enters the geolocation kind, credited to the analyst who geolocated it.
 
 **Query params:**
 | Param | Type | Description |
 |-------|------|-------------|
-| `scope` | string | `following` (default) keeps the geolocations crediting an analyst you follow and the requests one of them opened, and is empty when you follow nobody. `all` keeps every row. Anything else returns 422. |
-| `kind` | string (repeatable) | `geolocation` or `request` keeps that kind of row. Both, or none, keep both. Anything else returns 422. |
-| `conflict`, `capture_source`, `tag` | string (repeatable) | Same semantics as on [`GET /events`](#get-events). |
+| `scope` | string | `following` (default) keeps the geolocations crediting an analyst you follow and the requests and detections one of them owns, and is empty when you follow nobody. `all` keeps every row. Anything else returns 422. |
+| `kind` | string (repeatable) | `geolocation`, `request` or `detected` keeps that kind of row. Omitted, it keeps all three. Anything else returns 422. |
+| `conflict`, `source_kind`, `level`, `tag` | string (repeatable) | Same semantics as on [`GET /events`](#get-events). |
 | `approved`, `approved_by`, `approved_by_org` | | Same semantics as on [`GET /events`](#get-events). |
 | `limit` | int | Rows per page, default 10. See [Pagination](#pagination). |
 | `cursor` | string | Opaque cursor from the previous page's `Link: rel="next"` header. See [Pagination](#pagination). |
@@ -3558,8 +3515,8 @@ A detection, a retraction and a withdrawn request are in neither kind. A soft-de
   {
     "id": "uuid",
     "title": "Where is this bridge?",
-    "event_coords": null,
-    "event_date": "2026-03-15",
+    "coords": null,
+    "occurred_date": "2026-03-15",
     "is_graphic": false,
     "status": "requested",
     "before_closed_status": null,
@@ -3576,39 +3533,20 @@ A detection, a retraction and a withdrawn request are in neither kind. A soft-de
 
 **Response headers:** `Link: <…&cursor=…>; rel="next"` when a further page exists.
 
-`status` tells the two kinds apart. `feed_at` is the row's feed timestamp. Rows are ordered by `feed_at DESC, id DESC`, one total order across both kinds, so a walk never repeats or skips a row.
-
----
-
-## Product updates
-
-A product update email announces one major release (`MAJOR.MINOR.0`) to the analysts who consented: at sign-up, in Settings through [`PATCH /users/me/preferences`](#patch-usersmepreferences), and only with a verified address. It is not a [notification](#notifications) kind. An admin sends it from the [admin endpoints](#get-adminproduct-updates) and the worker delivers it under its own daily cap ([`engineering.md`](engineering.md#product-update-emails)).
-
-### `POST /product-updates/unsubscribe`
-
-Withdraw the consent named by a signed token. Anonymous and exempt from the CSRF check: the token is the authorization. Every product update email carries the token twice: in the visible link to the `/unsubscribe` page, and in the `List-Unsubscribe` header, which a mail client posts one-click (`List-Unsubscribe-Post: List-Unsubscribe=One-Click`). The request body is ignored.
-
-**Query params:** `token`, from the email.
-
-The token carries no expiry. It stops working only when `JWT_SECRET` rotates. Idempotent: an account with no current consent answers the same.
-
-**Response 204:** no body.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 400 | `invalid_unsubscribe_token`: the token does not verify |
+`status` tells the three kinds apart. `feed_at` is the row's feed timestamp, `created_at` when that stamp is missing. Rows are ordered by `feed_at DESC, id DESC`, one total order across the three kinds, so a walk never repeats or skips a row.
 
 ---
 
 ## Admin
 
-All routes below are mounted under `/admin` and gated by the `require_admin` dependency, which layers on `get_current_user`, so a deactivated admin (`is_active=false`) loses access immediately. A path naming an unknown id returns 404. Each state-changing route appends an `admin_events` row, named under its endpoint. Outside `/admin`, the `viewer_*` fields a route returns follow the caller's own role, so being a site admin does not set them.
+All routes below are mounted under `/admin` and, except `GET /admin/me`, gated by the `require_admin` dependency, which layers on `get_current_user`, so a deactivated admin (`is_active=false`) loses access immediately. A path naming an unknown id returns 404. Each state-changing route appends an `audit_log` row, named under its endpoint. Outside `/admin`, the `viewer_*` fields a route returns follow the caller's own role, so being a site admin does not set them.
 
 <details>
 <summary>Admin endpoints. Expand for contracts.</summary>
 
-### `GET /admin/me` 🛡️
+### `GET /admin/me` 🔒
+
+Answers every signed-in analyst with their own role, so the frontend reads it on every page without a refused request. An anonymous call returns 401.
 
 **Response 200:**
 ```json
@@ -3617,11 +3555,11 @@ All routes below are mounted under `/admin` and gated by the `require_admin` dep
 
 ### `GET /admin/detection-stats` 🛡️
 
-Quality signal on the machine-extraction pipeline. A **machine detection** is an event imported from X (the archive backfill or the bot), identified by `detected_from_url` being set. Read-only, no audit row.
+Quality signal on the machine-extraction pipeline. A **machine detection** is an event imported from X (the archive backfill or the bot), identified by an [`event_detections`](data-model.md#event_detections) row. Read-only, no audit row.
 
 - **`machine_rejected`** counts machine detections dismissed before publication: closed out of `detected` (`before_closed_status = "detected"`), or soft-deleted while `detected`. That includes the pending detections of a soft-deleted account. A detection that was ever promoted to `geolocated` is not a reject.
 - **`reject_rate`** is `machine_rejected / machine_total` as a 0 to 1 ratio, `0` when there are no machine detections. Both counts cover every machine row, soft-deleted or not.
-- **`pending_*`** profile the live `detected` queue (`deleted_at IS NULL`, machine rows only): detections missing a source media, a proof image, or a `source_url`.
+- **`pending_*`** profile the live `detected` queue (`deleted_at IS NULL`, machine rows only): detections missing a file on a `direct` or `indirect` source (`pending_missing_source_media`), a proof image, or any source URL (`pending_missing_source_url`).
 
 **Response 200:**
 ```json
@@ -3675,7 +3613,7 @@ List invite codes, newest first, including exhausted, revoked and expired ones. 
       "email": "hawk@example.com",
       "is_admin": false,
       "x_handle": "osint_hawk",
-      "invite_minting_enabled": true,
+      "is_invite_minting_enabled": true,
       "archives_imported": 1,
       "bot_detection_count": 3,
       "detected_count": 12,
@@ -3689,9 +3627,9 @@ List invite codes, newest first, including exhausted, revoked and expired ones. 
 - `status` is one of `active`, `exhausted`, `revoked`, `expired`, computed at read time. `redeemer` is `null` until the code is used.
 - `sponsor` is the analyst who minted the code from Settings through [`POST /users/me/invite-codes`](#post-usersmeinvite-codes). It is `null` for an admin-minted code, and once the sponsor's account is erased.
 - `archives_imported` counts `done` archive-import jobs.
-- `bot_detection_count` sums `bot_mentions.events_created` for the account's X handle (case-insensitive), a total that later deletes do not reduce.
+- `bot_detection_count` sums `bot_mentions.created_event_count` for the account's X handle (case-insensitive), a total that later deletes do not reduce.
 - `detected_count` and `geolocated_count` count the live events the account owns in that status.
-- `last_seen_at` is the account's most recent authenticated request, refreshed at most once per 15 minutes and stamped at sign-in. It falls back to the newest `login` auth event, and is `null` when neither exists.
+- `last_seen_at` is the account's most recent authenticated request, refreshed at most once per 15 minutes and stamped at sign-in. It falls back to the newest `login` row of the [`audit_log`](data-model.md#audit_log), and is `null` when neither exists.
 
 ### `POST /admin/invite-codes/{id}/revoke` 🛡️
 
@@ -3720,21 +3658,21 @@ Case-insensitive substring match on username or email. `%` and `_` match themsel
     "email": "tester2@example.com",
     "is_admin": false,
     "x_handle": "tester2",
-    "invite_minting_enabled": true,
+    "is_invite_minting_enabled": true,
     "sponsor": { "id": "…", "username": "geo_owl", "avatar_url": null },
     "created_at": "…"
   }
 ]
 ```
 
-`sponsor` is the analyst who minted the code the account was created from, read through that `invite_codes` row. It is `null` for an account created from an admin-minted code, and once the sponsor's account is erased. `invite_minting_enabled` is the switch [`PATCH /admin/users/{id}/invite-minting`](#patch-adminusersidinvite-minting) moves.
+`sponsor` is the analyst who minted the code the account was created from, read through that `invite_codes` row. It is `null` for an account created from an admin-minted code, and once the sponsor's account is erased. `is_invite_minting_enabled` is the switch [`PATCH /admin/users/{id}/invite-minting`](#patch-adminusersidinvite-minting) moves.
 
 ### `DELETE /admin/users/{id}` 🛡️
 
 Remove a user. Both modes invalidate the points cache. Audited as `user_soft_deleted` or `user_hard_deleted`.
 
 - **Soft delete** (default) sets `users.deleted_at`, passes every owned live event another live analyst is credited on to the earliest of them, who receives an `ownership_transferred` notification, and soft-deletes every other live event the user owns. `transferred_events` counts the events handed over. The user can no longer log in (an opaque 401, like wrong credentials), and their profile answers 404. Idempotent: a repeat keeps the original timestamp.
-- **Hard delete** (`?hard=true`, GDPR erasure) drops the user row, every event and [collection](#collections) they owned, then sweeps their storage objects (event media of both roles and the profile picture). An owned event that credits another live analyst is kept instead: it passes to the earliest of them by credit time, with its media, versions and files, and that analyst receives an `ownership_transferred` notification that does not name the erased user. A soft-deleted co-geolocator is skipped. An event the user's soft delete hid (its `deleted_at` equals the user's) passes too and is restored; an event soft-deleted on its own is never handed over: it is deleted and swept like an uncredited one. Their own approvals go; an approval they placed for an organization stays the organization's, with `reviewer` set to `null`. Invite codes they issued or used survive with the reference set to NULL. The DB commits before the storage sweep.
+- **Hard delete** (`?hard=true`, GDPR erasure) drops the user row, every event and [collection](#collections) they owned, then sweeps their storage objects (source files, proof images, the files they staged through [`POST /uploads`](#post-uploads), and the profile picture). An object another file row still names stays. An owned event that credits another live analyst is kept instead: it passes to the earliest of them by credit time, with its media, versions and files, and that analyst receives an `ownership_transferred` notification that does not name the erased user. A soft-deleted co-geolocator is skipped. An event the user's soft delete hid (its `deleted_at` equals the user's) passes too and is restored; an event soft-deleted on its own is never handed over: it is deleted and swept like an uncredited one. Their own approvals go; an approval they placed for an organization stays the organization's, with `reviewer` set to `null`. Invite codes they issued or used survive with the reference set to NULL. The DB commits before the storage sweep.
 - **Both modes** hand an organization's org manager role to its earliest-joined live member when the user was its last live org manager (see [Organizations](#organizations)). On a hard delete, this and the event hand-over commit in one transaction.
 
 **Response 200:**
@@ -3773,7 +3711,7 @@ Hard-delete every detection the user owns, soft-deleted ones included (rows, med
 Remove an event. Both modes invalidate the points cache. Audited as `geolocation_soft_deleted` or `geolocation_hard_deleted`.
 
 - **Soft delete** (default) sets `deleted_at`; rows and storage objects stay, and every public read filters the event out. Idempotent: a repeat keeps the original timestamp and appends no audit row.
-- **Hard delete** (`?hard=true`, GDPR erasure) drops the row and its media rows, then deletes the storage objects, including superseded source objects its versions name. The DB commits before the storage sweep; a per-key storage failure is logged and swallowed.
+- **Hard delete** (`?hard=true`, GDPR erasure) drops the row, its sources and its media rows, then deletes the storage objects, including the dropped source files its versions name. An object a copy on another event still names stays. The DB commits before the storage sweep; a per-key storage failure is logged and swallowed.
 
 **Response 200:**
 ```json
@@ -3823,7 +3761,7 @@ Withhold a collection: the alias of [`PATCH /admin/collections/{id}/moderation`]
 
 ### `PATCH /admin/users/{id}/x-handle` 🛡️
 
-Link or clear the X handle the bot attributes mentions to. Registration also copies an invite-bound handle; this endpoint repairs one that failed to link at redemption. A non-null value is normalized (single leading `@` stripped, lowercased) and must match `^[a-z0-9_]{1,15}$`; `null` clears the link. Audited as `x_handle_linked` or `x_handle_cleared`.
+Link or clear the X handle the bot attributes mentions to. Registration copies an invite-bound handle; this endpoint links any other handle and repairs one that failed to link at redemption. An analyst cannot change their own handle. A non-null value is normalized (single leading `@` stripped, lowercased) and must match `^[a-z0-9_]{1,15}$`; `null` clears the link. Audited as `x_handle_linked` or `x_handle_cleared`.
 
 **Request body:**
 ```json
@@ -3853,56 +3791,16 @@ Turn minting invite codes from Settings ([`POST /users/me/invite-codes`](#post-u
 
 **Response 422:** a missing or non-boolean `enabled`, or an unknown field.
 
-### `GET /admin/x-handle-requests` 🛡️
+### `DELETE /admin/approvals/{approval_id}` 🛡️
 
-Pending [X handle requests](#put-usersmex-handle-request) on live accounts, oldest first. Unpaged: an analyst holds at most one request.
-
-**Response 200:**
-```json
-[
-  {
-    "id": "8c0e…",
-    "user": { "id": "…", "username": "ana", "email": "ana@example.com", "is_admin": false, "x_handle": "osint_hawk", "created_at": "…" },
-    "x_handle": "new_hawk",
-    "reason": "I renamed my X account",
-    "created_at": "2026-10-01T10:00:00Z"
-  }
-]
-```
-
-`user` is the `AdminUserRead` of the requester, so `user.x_handle` is the handle the request replaces.
-
-### `POST /admin/x-handle-requests/{id}/approve` 🛡️
-
-Bind the requested handle to the requester through the write path of [`PATCH /admin/users/{id}/x-handle`](#patch-adminusersidx-handle), with its conflict check and its `x_handle_linked` audit row. In the same transaction, the request is deleted and the requester gets an `x_handle_request_approved` [notification](#notifications). A refused approval changes nothing and leaves the request pending.
-
-**Response 200:** the requester's updated `AdminUserRead`.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 404 `x_handle_request_not_found` | No pending request has that `id`: unknown, replaced by a newer request, or already decided |
-| 404 `user_not_found` | The requester is soft-deleted |
-| 409 `x_handle_conflict` | Another account or an organization holds the handle |
-
-### `POST /admin/x-handle-requests/{id}/decline` 🛡️
-
-Decline a request. The requester reads the reason in Settings and gets an `x_handle_request_declined` [notification](#notifications). Audited as `x_handle_request_declined`.
-
-**Body:**
-```json
-{ "reason": "Post from the new handle first" }
-```
-
-`reason` is required, at most 500 characters, and not blank.
+Delete one approval, an analyst's own or one placed for an organization. An approval is final, so a site admin deletes one that should not stand. The `approval_received` notifications that reported it go with it, and the reviewer or the organization can approve that version again. The route works on any event, a withheld one included. Audited as `approval_deleted` (target `geolocation_id`, `approval_id`, `reviewer_id`, `organization_id`, `version_no`).
 
 **Response 204:** no body.
 
 **Errors:**
 | Code | Case |
 |------|------|
-| 404 `x_handle_request_not_found` | No pending request has that `id` |
-| 422 | A missing, blank, or over-long reason |
+| 404 | `approval_not_found`: no approval has that id |
 
 ### `POST /admin/organizations` 🛡️
 
@@ -3929,7 +3827,7 @@ Create an organization and name its first org manager, who joins at once without
 
 ### `DELETE /admin/organizations/{slug}` 🛡️
 
-Delete an organization. Site admins only. In one transaction, after locking the organization row, the service deletes the approvals given in its name, the approval requests addressed to it, its pending invites, its memberships and the organization itself; the notifications that name it go with it. The owner of each event that held a standing approval of the organization receives one `organization_approval_removed` notification per event, with email and push off by default. After the commit, the organization's picture is swept from storage. Audited as `organization_deleted` (target `organization_id`, `slug`, `name`, `approvals_removed`, `approval_requests_removed`, `members_removed`). The admin panel asks you to type the slug before it sends the request.
+Delete an organization. Site admins only. In one transaction, after locking the organization row, the service deletes the approvals given in its name, the approval requests addressed to it, its pending invites, its memberships and the organization itself; the notifications that name it go with it. The owner of each event that held an approval of the organization receives one `organization_approval_removed` notification per event, with email off by default. After the commit, the organization's picture is swept from storage. Audited as `organization_deleted` (target `organization_id`, `slug`, `name`, `approvals_removed`, `approval_requests_removed`, `members_removed`). The admin panel asks you to type the slug before it sends the request.
 
 **Response 204:** no body.
 
@@ -3965,13 +3863,15 @@ The moderation queue: open reports first, then newest first within each group, e
 
 **Response 200:** `{items, total, page, per_page}`, whose `items` are [`ContentReportRead`](#post-eventsidreport).
 
-- `resolved_at` and `resolution` are both `null` while a report is open and both set once it is resolved. The resolving admin is recorded in `admin_events`, not on the wire.
-- A row names one target. `event_id` carries the event's id. `collection` carries the collection's current title and owner, read at queue time.
-- Both are `null` when the target is gone (a hard-deleted event, or a collection erased with its owner). Such a report takes only `dismissed`.
+- `resolved_at` and `resolution` are both `null` while a report is open and both set once it is resolved. The resolving admin is recorded in `audit_log`, not on the wire.
+- A row names one target. `event_id` carries the event's id. `collection` carries the collection's current title and owner, read at queue time, and `deleted_at`, the time its owner deleted it while a report was open, or `null`. Such a collection takes every verdict a live one takes.
+- Both are `null` when the target is gone (a hard-deleted event, or an erased collection). Such a report takes only `dismissed`.
 
 ### `POST /admin/reports/{id}/resolve` 🛡️
 
 Close one report with a verdict and apply it to the target. A report is resolved once; a second resolve is a 409. Audited as `report_resolved` (target `report_id`, `event_id`, `collection_id`, `resolution`). A verdict that changes the target also appends `event_marked_graphic`, `event_hidden` or `collection_hidden`, as the direct admin verbs do. Invalidates the points cache when the verdict hides an event.
+
+On a collection [pending erasure](#delete-collectionsid), the verdict on the last open report erases the collection after applying, and appends `collection_erased` (target `collection_id`, `title`). The resolved report then carries `collection: null`.
 
 **Request body:**
 ```json
@@ -3980,7 +3880,7 @@ Close one report with a verdict and apply it to the target. A report is resolved
 
 `resolution` is one of:
 
-- `marked_graphic`: sets the event's `is_graphic`. Events only, since a collection holds no footage of its own.
+- `marked_graphic`: sets `is_graphic` on every source of the event. Events only, since a collection holds no footage of its own.
 - `hidden`: withholds the target, stamping `events.hidden_at` or `collections.hidden_at`.
 - `dismissed`: closes the report and leaves the target untouched.
 
@@ -3996,7 +3896,7 @@ Close one report with a verdict and apply it to the target. A report is resolved
 
 ### `PATCH /admin/events/{id}/moderation` 🛡️
 
-Set an event's moderation state directly, with no report behind it. The only verb that can undo a takedown or clear `is_graphic`. Both fields are optional and independent: `null` or omitted leaves that axis as it is, and a value equal to the stored one writes nothing and appends no audit row. Audited as `event_marked_graphic`, `event_unmarked_graphic`, `event_hidden` or `event_unhidden`, one row per axis that changed. Invalidates the points cache when `hidden` changes.
+Set an event's moderation state directly, with no report behind it. The only verb that can undo a takedown or clear a graphic flag. `is_graphic` sets or clears the flag on every source of the event; an event with no source has no flag to move. Both fields are optional and independent: `null` or omitted leaves that axis as it is, and a value equal to the stored one writes nothing and appends no audit row. Audited as `event_marked_graphic`, `event_unmarked_graphic`, `event_hidden` or `event_unhidden`, one row per axis that changed. Invalidates the points cache when `hidden` changes.
 
 **Request body:**
 ```json
@@ -4023,7 +3923,7 @@ Set an event's moderation state directly, with no report behind it. The only ver
 
 Blank one filed version. [`event_versions`](data-model.md#event_versions) is append-only and a version number is a public address, so redaction sets `snapshot` to `{}` and `note` to `null` and keeps the row, `version_no`, `created_at` and `edited_by`. [`GET /events/{id}/versions`](#get-eventsidversions) keeps listing it with `redacted: true`.
 
-A redacted version holds no evidence alive. A proof image that no readable version and no current proof body references is deleted, row and object. So is the storage object of a source media this version alone named. Audited as `event_version_redacted`.
+A redacted version holds no evidence alive. A proof image that no readable version and no current proof body references is deleted, row and object. So is the storage object of a source file this version alone named, unless a `media` row still names it. Audited as `event_version_redacted`.
 
 Idempotent: redacting an already-redacted version returns it unchanged and appends no audit row.
 
@@ -4035,9 +3935,9 @@ Idempotent: redacting an already-redacted version returns it unchanged and appen
 | 403 | Not an admin, the event's owner included |
 | 404 | `geolocation_not_found`: unknown or soft-deleted event. `version_not_found`: no version under that number |
 
-### `POST /admin/maintenance/reap-auth-tokens` 🛡️
+### `POST /admin/maintenance/reap-password-reset-tokens` 🛡️
 
-Drop expired and old consumed `auth_tokens` rows. Audited as `maintenance_reap_auth_tokens`.
+Drop expired and old consumed `password_reset_tokens` rows. Audited as `maintenance_reap_password_reset_tokens`.
 
 **Response 200:**
 ```json
@@ -4066,92 +3966,6 @@ Email every analyst holding unpublished detections one message with the count an
 ```json
 { "analysts_notified": 4, "detections_pending": 137, "digest_send_failures": 0 }
 ```
-
-### `GET /admin/product-updates` 🛡️
-
-Every [product update](#product-updates) sent, newest first, with its delivery progress.
-
-**Response 200:**
-```json
-{
-  "items": [
-    {
-      "id": "…",
-      "label": "1.4.0",
-      "title": "Collections and approvals",
-      "link_url": "https://vidit.app/about",
-      "created_at": "2026-10-15T09:00:00Z",
-      "recipient_count": 75,
-      "progress": { "queued": 45, "sending": 0, "sent": 28, "failed": 0, "skipped": 2 }
-    }
-  ]
-}
-```
-
-`progress` counts the delivery rows by status. The statuses are in [`data-model.md`](data-model.md#product_update_deliveries).
-
-### `POST /admin/product-updates/preview` 🛡️
-
-Render an announcement as you would receive it, and count the analysts it would reach now.
-
-**Body:**
-```json
-{
-  "label": "1.4.0",
-  "title": "Collections and approvals",
-  "body": "Vidit 1.4 is out.\n\n- Collections\n- Approvals",
-  "link_url": "https://vidit.app/about"
-}
-```
-
-- `label` matches `MAJOR.MINOR.0`, so a patch release is refused.
-- `title` holds 1 to 120 characters and `body` 1 to 5000.
-- In `body`, a blank line starts a paragraph, and a paragraph whose lines all start with `- ` is a list.
-- `link_url` is optional, an http or https URL.
-
-**Response 200:**
-```json
-{
-  "subject": "Vidit 1.4.0: Collections and approvals",
-  "html": "<!doctype html>…",
-  "text": "Collections and approvals\n\n…",
-  "recipients": 75,
-  "daily_cap": 30,
-  "batch_size": 10,
-  "days": 3
-}
-```
-
-`recipients` counts the analysts with a current consent, a verified address and a live active account. `days` is how many trailing-24-hour windows `PRODUCT_UPDATE_EMAIL_DAILY_CAP` needs to send to all of them.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 422 | A label that is not `MAJOR.MINOR.0`, an empty or over-long field, or a link that is not http or https |
-
-### `POST /admin/product-updates/test` 🛡️
-
-Email the announcement to your own address, at once and outside the daily caps. Same body as the preview.
-
-**Response 204:** no body.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 409 | `email_unverified`: your address carries no `email_verified_at` |
-| 502 | `test_send_failed`: the provider did not accept the email |
-
-### `POST /admin/product-updates` 🛡️
-
-Send the announcement. Same body as the preview. One transaction records the announcement, writes one delivery row per analyst the preview counts, and writes an `admin_events` row `product_update_sent` with the label and the recipient count. The worker sends the emails afterwards, at most `PRODUCT_UPDATE_EMAIL_BATCH_SIZE` per pass and `PRODUCT_UPDATE_EMAIL_DAILY_CAP` in any 24 hours. Each label is sent once.
-
-**Response 201:** the announcement, in the shape of one [`GET /admin/product-updates`](#get-adminproduct-updates) item, with every row `queued`.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 409 | `product_update_already_sent`: the label was already sent |
-| 422 | As for the preview |
 
 </details>
 
@@ -4183,12 +3997,14 @@ One Account Activity delivery.
 - The `x-twitter-webhooks-signature` header must carry `sha256=<base64(HMAC-SHA256(consumer_secret, raw_body))>`, compared in constant time. A mismatch is a 401.
 - A body over 512 KiB is a 413, before the body is read.
 - A valid signature always answers 200, because a non-2xx makes X retry and eventually deactivate the webhook. A foreign `for_user_id`, a non-mention event, and the bot's own posts are ignored.
-- Mentions are queued in [`bot_webhook_events`](data-model.md#bot_webhook_events); the import worker runs the pipeline.
+- Mentions are queued as `queued` rows in [`bot_mentions`](data-model.md#bot_mentions), with `ON CONFLICT (mention_post_id) DO NOTHING`; the import worker runs the pipeline. A redelivered mention, or one the hourly catch-up already queued, adds no row.
 
 **Response 200:**
 ```json
 { "queued": 1 }
 ```
+
+`queued` counts the mentions newly inserted by this delivery.
 
 **Response 503:** the consumer secret or the bot user id is not configured.
 
@@ -4208,8 +4024,8 @@ One Account Activity delivery.
 | [`GET /notifications`](#get-notifications) | cursor | `created_at DESC, id DESC` | 100 | 100 |
 | [`GET /feed`](#get-feed) | cursor | `feed_at DESC, id DESC` | 10 | 100 |
 | [`GET /organizations/{slug}/approvals`](#get-organizationsslugapprovals) | cursor | `created_at DESC, id DESC` | 100 | 100 |
-| [`GET /collections/{id}/events`](#get-collectionsidevents) | cursor | `event_date, event_time, created_at, id` ascending; a missing date or time sorts last | 100 | 100 |
-| [`GET /users/{username}/events`](#get-usersusernameevents) | offset | `event_date DESC`, then `created_at DESC, id DESC` | 20 | 100 |
+| [`GET /collections/{id}/events`](#get-collectionsidevents) | cursor | `occurred_date, occurred_time, created_at, id` ascending; a missing date or time sorts last | 100 | 100 |
+| [`GET /users/{username}/events`](#get-usersusernameevents) | offset | `occurred_date DESC`, then `created_at DESC, id DESC` | 20 | 100 |
 | [`GET /users/{username}/collections`](#get-usersusernamecollections) | offset | newest first | 20 | 100 |
 | [`GET /events/detections`](#get-eventsdetections) | offset | `created_at DESC` | 20 | 100 |
 | `GET /admin/reports` | offset | open first, then newest | 20 | 100 |
@@ -4223,7 +4039,7 @@ One Account Activity delivery.
 **Cursor-paged lists.** Send `limit` and `cursor`. A page whose next page holds at least one row carries a `Link` header:
 
 ```
-Link: <https://api.vidit.app/api/v1/events?view=requested&cursor=WyIyMDI2LTA4LTExVDA5OjE0OjIyKzAwOjAwIiwiOWY0…Il0>; rel="next"
+Link: <https://<api-host>/api/v1/events?view=requested&cursor=WyIyMDI2LTA4LTExVDA5OjE0OjIyKzAwOjAwIiwiOWY0…Il0>; rel="next"
 ```
 
 The URL carries the whole query the page was minted under, so a walk stays inside one filter set. No header means no further rows. CORS exposes the header to browser clients. The cursor is opaque: it encodes the position of the page's last row in a total ordering, so rows inserted mid-walk never cause a repeat or a skip. A cursor that decodes cleanly is honored whoever minted it; it carries no authorization, and every filter on the request still applies. A cursor-paged list returns a bare array, except `GET /events/{id}/versions`, which returns `{items, total}`.
@@ -4265,4 +4081,4 @@ The server decodes each image before it stores it. The content must be JPEG, PNG
 - The width times the height in its header exceeds the pixel limit. The check runs before any pixel is decoded.
 - It is animated. Upload it as a video instead.
 
-An event upload returns 400 `evidence_processing_failed` for a refused image, and `PUT /users/me/avatar` returns 422 `invalid_avatar`.
+`POST /uploads` and an event write's proof images return 400 `evidence_processing_failed` for a refused image, and `PUT /users/me/avatar` returns 422 `invalid_avatar`.

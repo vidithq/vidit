@@ -14,7 +14,7 @@ const NAME_MAX = 20;
 
 const AVATAR_PX = 160;
 
-export interface PortfolioStat {
+interface PortfolioStat {
   value: string;
   label: string;
 }

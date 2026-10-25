@@ -85,24 +85,20 @@ export default function EditCollectionPage() {
   if (items === null) return <PageLoading />;
 
   return (
-    <PageShell
-      back
-      backFallback={collectionHref(collection.id)}
+    <CollectionDetailsForm
       title="Edit collection"
-    >
-      <CollectionDetailsForm
-        username={user.username}
-        initialTitle={collection.title}
-        initialDescription={collection.description}
-        initialEvents={items}
-        submitLabel="Save collection"
-        busy={save.loading}
-        error={save.error}
-        onSubmit={(title, description, eventIds) =>
-          void save.run(title, description, eventIds)
-        }
-        onCancel={() => router.push(collectionHref(collection.id))}
-      />
-    </PageShell>
+      backFallback={collectionHref(collection.id)}
+      username={user.username}
+      initialTitle={collection.title}
+      initialDescription={collection.description}
+      initialEvents={items}
+      submitLabel="Save collection"
+      busy={save.loading}
+      error={save.error}
+      onSubmit={(title, description, eventIds) =>
+        void save.run(title, description, eventIds)
+      }
+      onCancel={() => router.push(collectionHref(collection.id))}
+    />
   );
 }

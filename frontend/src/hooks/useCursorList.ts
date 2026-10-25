@@ -15,6 +15,9 @@ interface PagedResult<T> {
  *  it keeps one identity (a hook dependency; a fresh closure would refetch forever). */
 const bareArray = (payload: unknown): unknown[] => payload as unknown[];
 
+type Page<P> = { items: P; nextCursor: string | null };
+const linkCursor = (page: Page<unknown>): string | null => page.nextCursor;
+
 /**
  * Declarative GET for a cursor-paged list: first page on mount and path change, further pages
  * appended on `loadMore`. The counterpart of `useApiResource` for capped lists (max 100 rows):
@@ -26,6 +29,9 @@ const bareArray = (payload: unknown): unknown[] => payload as unknown[];
  * changes `loadMore`'s identity; memoize it anyway. `reload` refetches the first page and
  * drops the walk, for callers whose writes change the set. `rows` reads rows out of a wrapped
  * payload (`{items, total}`) and needs a stable identity: pass a module-level function.
+ * `next` picks the next cursor off a page and defaults to the `Link` cursor. An offset-paged
+ * endpoint (`{items, total, page, per_page}`, no `Link`) passes one that reads the payload, with a
+ * stable identity too.
  *
  * Each new path or `reload` starts a new walk: until its first page lands the hook reports
  * `loading` with no rows and no cursor, and a page fetched for an earlier walk never appends.
@@ -36,7 +42,8 @@ const bareArray = (payload: unknown): unknown[] => payload as unknown[];
  */
 export function useCursorList<T, P = T[]>(
   buildPath: (cursor: string | null) => string,
-  rows: (payload: P) => T[] = bareArray as (payload: P) => T[]
+  rows: (payload: P) => T[] = bareArray as (payload: P) => T[],
+  next: (page: Page<P>) => string | null = linkCursor
 ): {
   items: T[];
   error: string | null;
@@ -76,7 +83,7 @@ export function useCursorList<T, P = T[]>(
         if (controller.signal.aborted) return;
         setResult({
           items: rows(page.items),
-          cursor: page.nextCursor,
+          cursor: next(page),
           error: null,
           generation,
         });
@@ -95,7 +102,7 @@ export function useCursorList<T, P = T[]>(
       moreRequest.current?.abort();
       moreRequest.current = null;
     };
-  }, [firstPath, generation, rows]);
+  }, [firstPath, generation, rows, next]);
 
   const fresh = result.generation === generation ? result : null;
   const cursor = fresh?.cursor ?? null;
@@ -117,7 +124,7 @@ export function useCursorList<T, P = T[]>(
             : {
                 ...prev,
                 items: [...prev.items, ...rows(page.items)],
-                cursor: page.nextCursor,
+                cursor: next(page),
                 // A retry that lands clears the failed page's message.
                 error: null,
               }
@@ -140,7 +147,7 @@ export function useCursorList<T, P = T[]>(
         // the flag.
         setLoadingMore(false);
       });
-  }, [buildPath, cursor, generation, loadingMore, rows]);
+  }, [buildPath, cursor, generation, loadingMore, rows, next]);
 
   const reload = useCallback(() => setReloadToken((n) => n + 1), []);
 

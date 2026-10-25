@@ -153,13 +153,13 @@ def zones_at(as_of: date | None) -> Subquery:
 
 
 def _latest_link_at(as_of: date | None) -> Any:
-    """Per site, the live link to a dated linkable event with the latest ``event_date`` on or
+    """Per site, the live link to a dated linkable event with the latest ``occurred_date`` on or
     before ``as_of`` (any date when ``None``), the later link winning a tie. Correlates to
     ``Site``."""
     query = (
         select(
             EventSiteLink.effect.label("effect"),
-            Event.event_date.label("event_date"),
+            Event.occurred_date.label("occurred_date"),
             Event.id.label("event_id"),
         )
         .join(Event, Event.id == EventSiteLink.event_id)
@@ -167,13 +167,13 @@ def _latest_link_at(as_of: date | None) -> Any:
             EventSiteLink.site_id == Site.id,
             live_links(),
             site_linkable_events(),
-            Event.event_date.is_not(None),
+            Event.occurred_date.is_not(None),
         )
     )
     if as_of is not None:
-        query = query.where(Event.event_date <= as_of)
+        query = query.where(Event.occurred_date <= as_of)
     return (
-        query.order_by(Event.event_date.desc(), EventSiteLink.linked_at.desc(), Event.id.desc())
+        query.order_by(Event.occurred_date.desc(), EventSiteLink.linked_at.desc(), Event.id.desc())
         .limit(1)
         .lateral("latest_link")
     )
@@ -231,7 +231,7 @@ def _site_states(
             corroboration_count,
             corroborated,
             latest.c.effect,
-            latest.c.event_date,
+            latest.c.occurred_date,
             latest.c.event_id,
         )
         .join(zone, zone.c.site_id == Site.id)
@@ -258,7 +258,7 @@ def _site_states(
                 "latest_link_effect": None
                 if link_event_id is None
                 else LatestLinkEffect(
-                    effect=link_effect, event_date=link_date, event_id=link_event_id
+                    effect=link_effect, occurred_date=link_date, event_id=link_event_id
                 ),
             },
         )
@@ -327,11 +327,11 @@ def _observations(db: Session, criterion: ColumnElement[bool]) -> list[SiteObser
 def _linked_events(db: Session, site_id: uuid.UUID) -> list[SiteLinkedEventRead]:
     """Visible linked events, each measured against the observation valid on its date.
 
-    The lateral pick orders the observations at or before ``event_date`` (all of them for an
+    The lateral pick orders the observations at or before ``occurred_date`` (all of them for an
     undated event) latest first, then the later ones earliest first, and keeps the first row.
     """
     obs = aliased(SiteObservation)
-    valid = or_(Event.event_date.is_(None), obs.captured_on <= Event.event_date)
+    valid = or_(Event.occurred_date.is_(None), obs.captured_on <= Event.occurred_date)
     measured = (
         select(obs.id.label("observation_id"), obs.zone.label("zone"))
         .where(obs.site_id == site_id)
@@ -350,26 +350,26 @@ def _linked_events(db: Session, site_id: uuid.UUID) -> list[SiteLinkedEventRead]
             Event,
             EventSiteLink.effect,
             EventSiteLink.linked_at,
-            ST_Y(Event.event_coords),
-            ST_X(Event.event_coords),
+            ST_Y(Event.coords),
+            ST_X(Event.coords),
             measured.c.observation_id,
-            func.ST_Covers(measured.c.zone, Event.event_coords),
-            func.ST_Distance(cast(Event.event_coords, Geography), cast(measured.c.zone, Geography)),
+            func.ST_Covers(measured.c.zone, Event.coords),
+            func.ST_Distance(cast(Event.coords, Geography), cast(measured.c.zone, Geography)),
         )
         .select_from(EventSiteLink)
         .join(Event, Event.id == EventSiteLink.event_id)
         .join(measured, true())
         .options(joinedload(Event.owner))
         .filter(EventSiteLink.site_id == site_id, live_links(), site_linkable_events())
-        .order_by(Event.event_date.asc().nulls_last(), Event.created_at.asc())
+        .order_by(Event.occurred_date.asc().nulls_last(), Event.created_at.asc())
         .all()
     )
     return [
         SiteLinkedEventRead(
             id=event.id,
             title=event.title,
-            event_date=event.event_date,
-            event_coords=CoordsRead(lat=lat, lng=lng),
+            occurred_date=event.occurred_date,
+            coords=CoordsRead(lat=lat, lng=lng),
             owner=event.owner,
             effect=effect,
             linked_at=linked_at,
@@ -486,13 +486,13 @@ def nearby_events(db: Session, *, site: Site, margin_m: float) -> list[SiteNearb
     """Visible events within ``margin_m`` metres of the current zone and not linked to it,
     nearest first."""
     zone = _current_zone_geography(site.id)
-    point = cast(Event.event_coords, Geography)
+    point = cast(Event.coords, Geography)
     distance = func.ST_Distance(point, zone)
     linked = exists().where(
         EventSiteLink.site_id == site.id, EventSiteLink.event_id == Event.id, live_links()
     )
     rows = (
-        db.query(Event, ST_Y(Event.event_coords), ST_X(Event.event_coords), distance)
+        db.query(Event, ST_Y(Event.coords), ST_X(Event.coords), distance)
         .options(joinedload(Event.owner))
         .filter(site_linkable_events(), ~linked, func.ST_DWithin(point, zone, margin_m))
         .order_by(distance.asc(), Event.id)
@@ -503,8 +503,8 @@ def nearby_events(db: Session, *, site: Site, margin_m: float) -> list[SiteNearb
         SiteNearbyEventRead(
             id=event.id,
             title=event.title,
-            event_date=event.event_date,
-            event_coords=CoordsRead(lat=lat, lng=lng),
+            occurred_date=event.occurred_date,
+            coords=CoordsRead(lat=lat, lng=lng),
             owner=event.owner,
             distance_m=float(dist),
         )
@@ -521,17 +521,13 @@ def suggest_sites(
     With ``q``: the visible sites whose name contains it, at any distance. ``distance_m`` is
     null for an event without a point.
     """
-    if event.event_coords is None and not q:
+    if event.coords is None and not q:
         return []
     current = zones_at(None)
     criteria: list[ColumnElement[bool]] = [*visible_sites()]
     distance: ColumnElement[Any] = null()
-    if event.event_coords is not None:
-        point = (
-            select(cast(Event.event_coords, Geography))
-            .where(Event.id == event.id)
-            .scalar_subquery()
-        )
+    if event.coords is not None:
+        point = select(cast(Event.coords, Geography)).where(Event.id == event.id).scalar_subquery()
         zone = cast(current.c.zone, Geography)
         distance = func.ST_Distance(zone, point)
         if not q:
@@ -677,7 +673,7 @@ def site_history(db: Session, *, site: Site, order: str) -> list[SiteHistoryEntr
     closed = {(link.event_id, link.unlinked_at) for link in links if link.unlinked_at}
     for link in links:
         event = SiteHistoryEvent(
-            id=link.event.id, title=link.event.title, event_date=link.event.event_date
+            id=link.event.id, title=link.event.title, occurred_date=link.event.occurred_date
         )
         if link.unlinked_at is not None and (link.event_id, link.unlinked_at) in opened:
             successor = opened[(link.event_id, link.unlinked_at)]
@@ -685,7 +681,7 @@ def site_history(db: Session, *, site: Site, order: str) -> list[SiteHistoryEntr
                 SiteHistoryEntry(
                     kind="link_effect_changed",
                     recorded_at=successor.linked_at,
-                    fact_date=event.event_date,
+                    fact_date=event.occurred_date,
                     actor=successor.linked_by,
                     event=event,
                     link_effect=successor.effect,
@@ -697,7 +693,7 @@ def site_history(db: Session, *, site: Site, order: str) -> list[SiteHistoryEntr
                 SiteHistoryEntry(
                     kind="event_unlinked",
                     recorded_at=link.unlinked_at,
-                    fact_date=event.event_date,
+                    fact_date=event.occurred_date,
                     actor=link.unlinked_by,
                     event=event,
                     link_effect=link.effect,
@@ -708,7 +704,7 @@ def site_history(db: Session, *, site: Site, order: str) -> list[SiteHistoryEntr
                 SiteHistoryEntry(
                     kind="event_linked",
                     recorded_at=link.linked_at,
-                    fact_date=event.event_date,
+                    fact_date=event.occurred_date,
                     actor=link.linked_by,
                     event=event,
                     link_effect=link.effect,

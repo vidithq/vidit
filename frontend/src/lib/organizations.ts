@@ -12,7 +12,7 @@ export type Organization = Omit<
 export type OrganizationMember = components["schemas"]["OrganizationMemberRead"];
 export type OrganizationInvite = components["schemas"]["OrganizationInviteRead"];
 export type OrganizationMembership = components["schemas"]["OrganizationMembershipRead"];
-export type OrganizationRole = OrganizationMember["role"];
+type OrganizationRole = OrganizationMember["role"];
 export type OrganizationCreate = components["schemas"]["OrganizationCreate"];
 export type OrganizationUpdate = components["schemas"]["OrganizationUpdate"];
 export type InviteCandidate = AuthorRef;
@@ -81,8 +81,8 @@ export function inviteToOrganization(
   });
 }
 
-export function cancelOrganizationInvite(slug: string, inviteId: string): Promise<void> {
-  return apiFetch<void>(`${organizationPath(slug)}/invites/${inviteId}`, {
+export function cancelOrganizationInvite(slug: string, username: string): Promise<void> {
+  return apiFetch<void>(`${organizationPath(slug)}/invites/${encodeURIComponent(username)}`, {
     method: "DELETE",
   });
 }

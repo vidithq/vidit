@@ -12,7 +12,7 @@ import type { CollectionCoverTile } from "@/lib/collections";
  */
 const IMAGE: CollectionCoverTile = {
   url: "https://media.example/uploads/geo/abc.jpg",
-  media_type: "image",
+  kind: "image",
   role: "source",
 };
 
@@ -65,7 +65,7 @@ describe("CollectionCover", () => {
     render(
       <CollectionCover
         cover={[
-          { url: "https://media.example/clip.mp4", media_type: "video", role: "source" },
+          { url: "https://media.example/clip.mp4", kind: "video", role: "source" },
           IMAGE,
         ]}
       />,
@@ -85,7 +85,7 @@ describe("CollectionCover", () => {
         cover={[
           {
             url: "https://media.example/proof/u1/inline.jpg",
-            media_type: "image",
+            kind: "image",
             role: "proof",
           },
         ]}

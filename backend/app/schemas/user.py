@@ -162,6 +162,12 @@ class UserRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class XHandleRead(BaseModel):
+    """Body of ``GET /users/me/x-handle``."""
+
+    x_handle: str | None
+
+
 class UserProfile(BaseModel):
     """Public profile payload for ``GET /users/{username}``.
 
@@ -185,7 +191,7 @@ class UserProfile(BaseModel):
 
 
 class TagCount(BaseModel):
-    """One (name, count) entry for a conflict, capture-source or source-host tally."""
+    """One (name, count) entry for a conflict, source-kind or source-host tally."""
 
     name: str
     count: int
@@ -206,12 +212,15 @@ class UserStatsRead(BaseModel):
     ``total_events``; every other field describes it. ``requested`` and
     ``closed`` rows take part in no aggregate.
 
-    ``source_hosts`` breaks the set down by ``source_url`` host (lowercased,
-    leading ``www.`` removed): top hosts, with ``other_hosts_count`` the tail
-    and ``no_source_count`` the events with no readable host. The three sum to
-    ``total_events``.
+    ``source_kinds`` counts the events per kind their sources name, ``unknown`` left out (an
+    event with sources of two kinds counts under both).
 
-    ``activity`` counts ``event_date`` per calendar month over the analyst's
+    ``source_hosts`` breaks the set down by the host of each event's first
+    source URL (lowercased, leading ``www.`` removed): top hosts, with
+    ``other_hosts_count`` the tail and ``no_source_count`` the events with no
+    readable host. The three sum to ``total_events``.
+
+    ``activity`` counts ``occurred_date`` per calendar month over the analyst's
     span, earliest first, zero-filled, empty when no event carries a date.
     """
 
@@ -220,7 +229,7 @@ class UserStatsRead(BaseModel):
     total_events: int
     media_count: int
     top_conflicts: list[TagCount]
-    capture_sources: list[TagCount]
+    source_kinds: list[TagCount]
     source_hosts: list[TagCount]
     other_hosts_count: int
     no_source_count: int

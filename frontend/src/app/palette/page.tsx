@@ -11,9 +11,7 @@ import {
   BookOpen,
   Bot,
   Camera,
-  Check,
   ChevronDown,
-  Circle,
   Copy,
   Download,
   ExternalLink,
@@ -21,18 +19,31 @@ import {
   Mail,
   MapPin,
   MessageCircle,
+  Save,
   Search as SearchIcon,
   Swords,
-  Trash2,
   Upload,
   X,
 } from "lucide-react";
 
 import type { Conflict, EventDetail, EventStatus, Media, Tag } from "@/types";
 import { PageShell } from "@/components/ui/PageShell";
-import { AccountPicker, type Account } from "@/components/ui/AccountPicker";
+import { AccountPicker, analystAccount, type Account } from "@/components/ui/AccountPicker";
+import { Popover } from "@/components/ui/Popover";
+import {
+  PUBLISHING_LABEL,
+  PUBLISH_CONFIRM,
+  PublishActions,
+  REQUEST_CONFIRM,
+  SAVING_LABEL,
+  publishGeolocationButton,
+  requestWriteButton,
+  usePublishAction,
+} from "@/components/geolocations/PublishActions";
+import { Combobox } from "@/components/ui/Combobox";
 import { ActionMenu } from "@/components/ui/ActionMenu";
 import { CopyButton } from "@/components/ui/CopyButton";
+import { CountBadge } from "@/components/ui/CountBadge";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { PageWithRail } from "@/components/ui/PageWithRail";
@@ -45,17 +56,22 @@ import {
   GitHubGlyph,
   XGlyph,
 } from "@/components/ui/BrandGlyphs";
-import { TagPicker } from "@/components/ui/TagPicker";
+import { ConflictChips, TagChips, TagPicker } from "@/components/ui/TagPicker";
+import { FieldLabel } from "@/components/ui/FieldLabel";
+import { RemoveButton } from "@/components/ui/RemoveButton";
 import { EntityCard } from "@/components/ui/EntityCard";
 import { CollectionCover } from "@/components/collections/CollectionCover";
 import { DetectionQueueRow } from "@/components/detections/DetectionQueueRow";
-import { EventDetailBody } from "@/components/event/EventDetailBody";
+import { EventDetailBody, eventPageSlots } from "@/components/event/EventDetailBody";
+import { EventLayout } from "@/components/event/EventLayout";
+import { EventShellPreview } from "./eventShellDemo";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { SectionHeading } from "@/components/ui/SectionHeading";
-import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
+import { DetailCard, DetailPills, DetailRow } from "@/components/ui/DetailRow";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { OutboundLink } from "@/components/ui/OutboundLink";
 import { StatTile, StatGrid } from "@/components/ui/StatTile";
+import { HorizontalScroller } from "@/components/ui/HorizontalScroller";
 import { IconTile } from "@/components/ui/IconTile";
 import { ActivityHeatmap } from "@/components/ui/ActivityHeatmap";
 import { SourceHostBar } from "@/components/ui/SourceHostBar";
@@ -70,8 +86,9 @@ import { ProgressSteps } from "@/components/ui/ProgressSteps";
 import { ActiveFilterPills } from "@/components/ui/ActiveFilterPills";
 import { ChipBucket } from "@/components/ui/ChipBucket";
 import { FilterSection, chipSummary } from "@/components/ui/FilterSection";
-import { ToggleMatrix } from "@/components/ui/ToggleMatrix";
 import { ToggleRow } from "@/components/ui/ToggleRow";
+import { ChoiceRow } from "@/components/ui/ChoiceRow";
+import { SwatchPicker } from "@/components/ui/SwatchPicker";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { Avatar } from "@/components/ui/Avatar";
@@ -84,17 +101,20 @@ import { MediaGallery } from "@/components/ui/MediaGallery";
 import { MediaDownloadButton } from "@/components/ui/MediaDownloadButton";
 import { MediaLightbox } from "@/components/ui/MediaLightbox";
 import { VideoPlayer } from "@/components/ui/VideoPlayer";
-import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
-import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
+import { TaxonomyLoadError } from "@/components/geolocations/TaxonomyLoadError";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { SourceBlock, SourceBlocks } from "@/components/sources/SourceBlock";
+import { SourcesField } from "@/components/sources/SourcesField";
+import { SOURCE_FIELDS, sourceDraftFrom, type Source, type SourceDraft } from "@/lib/sources";
+import { EVENT_FIELDS } from "@/lib/events";
+import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import {
-  ArchiveAdornment,
+  ArchiveBox,
   ArchivedCopies,
   ArchiveSnapshotField,
-  DETECTED_FROM_DESCRIPTION,
-  PRIMARY_SOURCE_DESCRIPTION,
-  mirrorDescription,
+  linkDescription,
 } from "@/components/ui/ArchivedCopies";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import {
@@ -111,8 +131,10 @@ import {
   TOOLTIP_SURFACE,
 } from "@/components/ui/styles";
 import { Button, buttonClasses, DANGER_CONFIRM } from "@/components/ui/Button";
-import { CoordinateActions } from "@/components/event/CoordinateActions";
+import { CoordinateActions, CoordinateValue } from "@/components/event/CoordinateActions";
+import { CoordinateInputs } from "@/components/geolocations/CoordinateInputs";
 import { DateTimeInput } from "@/components/ui/DateTimeInput";
+import { Disclosure } from "@/components/ui/Disclosure";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Switch } from "@/components/ui/Switch";
 import { ProofSection } from "@/components/ui/ProofSection";
@@ -167,14 +189,82 @@ const MOCK_TAGS = [
   { id: "2", name: "Drone" },
 ];
 
+// A drone clip's source, shown on every detail surface: a file, two links, one archived.
+const MOCK_SOURCE: Source = {
+  id: "s1",
+  title: "Drone footage of the strike",
+  level: "direct",
+  kind: "drone",
+  captured_at: "2026-05-09T15:40:00Z",
+  capture_position: { lat: 48.0201, lng: 37.7951 },
+  is_graphic: false,
+  links: [
+    {
+      url: "https://t.me/channel/4242",
+      posted_at: "2026-05-09T15:45:00Z",
+      archived: {
+        url: "https://web.archive.org/web/20260601120000/https://t.me/channel/4242",
+        provider: "wayback",
+        archived_at: "2026-06-01T12:00:00Z",
+      },
+    },
+    { url: "https://www.youtube.com/watch?v=mirror2", posted_at: null, archived: null },
+  ],
+  tags: [{ id: "t4", name: "armor" }],
+  media: {
+    id: "m1",
+    role: "source",
+    storage_url: "/opengraph-image",
+    kind: "image",
+    sha256: "0".repeat(64),
+    original_filename: "strike.jpg",
+  },
+  warnings: [],
+};
+
+// A context source: an article, a URL only and no file.
+const MOCK_CONTEXT_SOURCE: Source = {
+  ...MOCK_SOURCE,
+  id: "s2",
+  title: "",
+  level: "context",
+  kind: "article",
+  captured_at: null,
+  capture_position: null,
+  links: [{ url: "https://news.example/article", posted_at: null, archived: null }],
+  tags: [],
+  media: null,
+};
+
+// Reference imagery whose link no reader can reopen at its date: the provider check's warnings.
+const MOCK_SATELLITE_SOURCE: Source = {
+  ...MOCK_CONTEXT_SOURCE,
+  id: "s3",
+  kind: "satellite",
+  links: [
+    { url: "https://earth.google.com/web/@48.0201,37.7951,50a", posted_at: null, archived: null },
+  ],
+  warnings: [
+    {
+      code: "permalink_shape",
+      message:
+        "Google Earth web: The link carries no imagery date. Turn on historical imagery, step to the capture day, and copy the link again.",
+      url: "https://earth.google.com/web/@48.0201,37.7951,50a",
+    },
+    {
+      code: "capture_date_missing",
+      message: "Give the capture date: a reader needs it to reopen the same image.",
+      url: null,
+    },
+  ],
+};
+
 // A full geolocation, for the detail body + detection card.
 const MOCK_DETAIL: EventDetail = {
   id: "demo",
   title: "Strike on a depot, Donetsk",
-  event_coords: { lat: 48.0159, lng: 37.8024 },
-  capture_source_coords: null,
-  archived_source: null,
-  event_date: "2026-05-09",
+  coords: { lat: 48.0159, lng: 37.8024 },
+  occurred_date: "2026-05-09",
   is_graphic: false,
   status: "geolocated",
   version_no: 1,
@@ -185,10 +275,7 @@ const MOCK_DETAIL: EventDetail = {
     username: "analyst",
     avatar_url: null,
   },
-  tags: [
-    { id: "t2", name: "Drone", category: "capture_source" },
-    { id: "t3", name: "Donetsk", category: "free" },
-  ],
+  tags: [{ id: "t3", name: "Donetsk" }],
   conflicts: [
     {
       id: "c1",
@@ -196,27 +283,18 @@ const MOCK_DETAIL: EventDetail = {
       wikidata_id: null,
       start_year: 2022,
       end_year: null,
-      ongoing: true,
+      is_ongoing: true,
       tier: "major",
     },
   ],
-  source_url: "https://t.me/channel/4242",
-  // Two mirrors so the detail body's collapsed Secondary sources row shows.
-  secondary_source_urls: [
-    "https://t.me/mirror/1",
-    "https://www.youtube.com/watch?v=mirror2",
-  ],
-  archived_secondary_sources: [null, null],
-  event_time: "15:45:00",
-  source_posted_at: "2026-05-09T15:45:00Z",
+  sources: [MOCK_SOURCE, MOCK_CONTEXT_SOURCE],
+  occurred_time: "15:45:00",
   detected_from_url: null,
   detected_via: null,
-  archived_detected_from: null,
   proof: null,
   created_at: "2026-06-01T00:00:00Z",
   geolocated_at: "2026-06-03T10:00:00Z",
   closed_at: null,
-  media: [],
   thumbnail: null,
   requested_by: null,
   geolocators: [],
@@ -230,16 +308,8 @@ const MOCK_DETECTION_READY: EventDetail = {
   ...MOCK_DETAIL,
   id: "detection-ready",
   status: "detected",
-  source_url: "https://t.me/channel/12345",
   proof: '<img src="/local-storage/demo.jpg">',
-  media: [
-    {
-      id: "m1",
-      storage_url: "/local-storage/demo.jpg",
-      media_type: "image",
-      role: "source",
-    },
-  ],
+  sources: [{ ...MOCK_SOURCE, kind: "unknown" }],
 };
 
 const MOCK_DETECTION_ONE_MISSING: EventDetail = {
@@ -253,44 +323,25 @@ const MOCK_DETECTION_SEVERAL_MISSING: EventDetail = {
   ...MOCK_DETECTION_ONE_MISSING,
   id: "detection-several-missing",
   title: "Smoke over a treeline, location unclear",
-  media: [],
-  source_url: null,
+  sources: [],
 };
 
-// The same detail body with a real source captured at both providers, a
-// provenance link archived at archive.today, plus one mirror archived and one
-// with no copy yet.
+// The same detail body with a provenance link, as an imported row carries it.
 const MOCK_DETAIL_ARCHIVED: EventDetail = {
   ...MOCK_DETAIL,
-  source_url: "https://t.me/channel/12345",
-  archived_source: {
-    url: "https://web.archive.org/web/20260601120000/https://t.me/channel/12345",
-    provider: "wayback",
-  },
   detected_from_url: "https://x.com/analyst/status/1234567890",
-  archived_detected_from: { url: "https://archive.ph/fghij", provider: "archive_today" },
-  archived_secondary_sources: [
-    {
-      url: "https://web.archive.org/web/20260601120100/https://t.me/mirror/1",
-      provider: "wayback",
-    },
-    null,
-  ],
 };
 
 // The lighter geolocation-card payload (feed / recent-submissions shape).
 const MOCK_CARD_GEO = {
   id: "demo",
   title: "Strike on a depot near Donetsk",
-  event_date: "2026-05-09",
+  occurred_date: "2026-05-09",
   status: "detected" as EventStatus,
   lat: 48.0159,
   lng: 37.8024,
   owner: { username: "analyst" },
-  tags: [
-    { id: "t2", name: "Drone", category: "capture_source" as const },
-    { id: "t3", name: "Donetsk", category: "free" as const },
-  ],
+  tags: [{ id: "t3", name: "Donetsk" }],
 };
 
 // Four tiles for the collection mosaic, the shape `GET /collections/{id}`
@@ -298,15 +349,10 @@ const MOCK_CARD_GEO = {
 // items. The app's own OG image stands in for the stored media, extensionless
 // so `displayUrlsFor` finds no sibling and every size resolves to it.
 const MOCK_COVER_TILES = [
-  { url: "/opengraph-image", media_type: "image" as const, role: "source" as const },
-  { url: "/opengraph-image", media_type: "image" as const, role: "source" as const },
-  { url: "/opengraph-image", media_type: "image" as const, role: "source" as const },
-  { url: "/opengraph-image", media_type: "image" as const, role: "source" as const },
-];
-
-const MOCK_CURATED: Tag[] = [
-  { id: "cs1", name: "Drone", category: "capture_source" },
-  { id: "cs2", name: "Satellite", category: "capture_source" },
+  { url: "/opengraph-image", kind: "image" as const, role: "source" as const },
+  { url: "/opengraph-image", kind: "image" as const, role: "source" as const },
+  { url: "/opengraph-image", kind: "image" as const, role: "source" as const },
+  { url: "/opengraph-image", kind: "image" as const, role: "source" as const },
 ];
 
 // A small slice of the conflicts referential for the TagPicker's typeahead:
@@ -319,7 +365,7 @@ const MOCK_CONFLICTS: Conflict[] = [
     wikidata_id: null,
     start_year: 2022,
     end_year: null,
-    ongoing: true,
+    is_ongoing: true,
     tier: "major",
   },
   {
@@ -328,7 +374,7 @@ const MOCK_CONFLICTS: Conflict[] = [
     wikidata_id: null,
     start_year: 2023,
     end_year: null,
-    ongoing: true,
+    is_ongoing: true,
     tier: "minor",
   },
   {
@@ -337,7 +383,7 @@ const MOCK_CONFLICTS: Conflict[] = [
     wikidata_id: null,
     start_year: 1982,
     end_year: 1982,
-    ongoing: false,
+    is_ongoing: false,
     tier: null,
   },
   {
@@ -346,7 +392,7 @@ const MOCK_CONFLICTS: Conflict[] = [
     wikidata_id: null,
     start_year: null,
     end_year: null,
-    ongoing: true,
+    is_ongoing: true,
     tier: null,
   },
 ];
@@ -360,12 +406,20 @@ export default function PalettePage() {
   const [segMode, setSegMode] = useState<"soft" | "hard">("soft");
   const [swOn, setSwOn] = useState(true);
   const [tpTags, setTpTags] = useState<Tag[]>([
-    { id: "f1", name: "donetsk", category: "free" },
+    { id: "f1", name: "donetsk" },
+    { id: "f2", name: "armor" },
+    { id: "f3", name: "drone" },
+    { id: "f4", name: "artillery" },
   ]);
   const [tpSelected, setTpSelected] = useState<string[]>([]);
   const [tpConflictSel, setTpConflictSel] = useState<string[]>([]);
   const [links, setLinks] = useState<string[]>(["https://t.me/channel/12345"]);
-  const [linkCopies, setLinkCopies] = useState<string[]>([""]);
+  const [paletteSources, setPaletteSources] = useState<SourceDraft[]>(() => [
+    sourceDraftFrom(MOCK_SOURCE),
+    sourceDraftFrom(MOCK_CONTEXT_SOURCE),
+    sourceDraftFrom(MOCK_SATELLITE_SOURCE),
+  ]);
+  const [confirmOpen, setConfirmOpen] = useState<"accent" | "danger" | null>(null);
 
   return (
     <PageShell
@@ -436,10 +490,10 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="ARMED_RING" usage="The armed half of a two-click confirm on a control that stays put: a ring plus a neutral plate, so the button reads as changed without moving or resizing anything. Applied via className over any variant, paired with useConfirmAction (which owns the arming, the timeout, and the Escape / outside-click exits) and a label that says what the next click does. Every armed control that is not the loud red point of no return uses it: the event share row's detection link, the detection form's Submit. DANGER_CONFIRM is the destructive counterpart.">
+          <Item name="ARMED_RING" usage="The armed half of a two-click confirm on a control that stays put: a ring plus a neutral plate, so the button reads as changed without moving or resizing anything. Applied via className over any variant, paired with useConfirmAction (which owns the arming, the timeout, and the Escape / outside-click exits) and a label that says what the next click does. Every armed control that is not the loud red point of no return uses it: the event share row's detection link, the event forms' publish buttons (through PublishActions). DANGER_CONFIRM is the destructive counterpart.">
             <div className="flex items-center gap-3">
               <Button variant="primary" className={ARMED_RING}>
-                Confirm submit
+                Confirm
               </Button>
               <Button icon variant="ghost" className={ARMED_RING} aria-label="Copy coordinates" title="Copy coordinates">
                 <Copy size={15} />
@@ -447,7 +501,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="WARNING_CALLOUT" usage="Amber caution surface: duplicate probe, tag-load failure, import notice, admin armed confirms. Colour only; callers add rounded-md + their own padding.">
+          <Item name="WARNING_CALLOUT" usage="Amber caution surface: duplicate probe, tag-load failure, import notice. Colour only; callers add rounded-md + their own padding.">
             <div className={`rounded-md px-4 py-3 text-sm ${WARNING_CALLOUT}`}>
               Heads up, check this before submitting.
             </div>
@@ -520,7 +574,14 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<ActionMenu>" usage="A trigger that opens a short list of links (role=menu): the event header's version selector (v2 with a chevron: every version newest first as v3, v2, v1, then History as its icon). The trigger is the ghost button, label as its aria-label and tooltip: icon-only by default, or `text` printed before the icon, in which case label starts with that text. menuLabel names the list when it differs from the trigger. Each item is a link with an optional icon and `current` for the link to the page on screen (the active-row paint plus aria-current, focused when the menu opens); `iconOnly` prints the icon alone, with the label as its accessible name and a Tooltip, for a list too narrow to print it. A click or Enter opens on the current item (or the first), ArrowUp on the trigger opens on the last; arrows, Home and End move, Space or Enter follows a link, Escape closes and returns focus to the trigger, Tab or an outside click closes. The list opens under the trigger aligned to its right edge, 14rem wide, shifts sideways to stay 8px inside the viewport, and scrolls past 20rem. `matchTriggerWidth` (off by default) makes it exactly as wide as the trigger, for a compact picker.">
+          <Item name="<RemoveButton>" usage="The one remove control (components/ui/RemoveButton.tsx): a red dangerGhost icon <Button> named by what it removes (label), the name showing as its tooltip. The icon is the rule: a trash (Trash2) when the removal asks for a confirmation first, a second click or a dialog (confirms), a cross (X) when it is instant. A source editor's remove (trash, it arms), a link row's remove (cross), a notification's delete (cross, it is instant), a FileManager tile's remove (cross, every file removal there is a draft change, as a corner disc), an AvatarStack picture's remove disc (trash when it opens a ConfirmDialog: a published co-geolocator, a pending invitation, an approval stamp; cross for a draft pick) and the edit form's Close (trash, it opens CloseEventDialog).">
+            <div className="flex items-center gap-2">
+              <RemoveButton label="Remove link 2" />
+              <RemoveButton confirms label="Remove source 2" />
+            </div>
+          </Item>
+
+          <Item name="<ActionMenu>" usage="A trigger that opens a short list of links or actions (role=menu): the event header's version selector (v2 with a chevron: every version newest first as v3, v2, v1, then History as its icon), the edit page's More actions (an ellipsis holding the close), and the admin user card and invite rows (an ellipsis holding the secondary and destructive actions, each destructive one opening a ConfirmDialog). The trigger is the ghost button, label as its aria-label and tooltip: icon-only by default, or `text` printed before the icon, in which case label starts with that text. menuLabel names the list when it differs from the trigger. Each item is a link (`href`) or an action (`onSelect`, a button that closes the menu, gives focus back to the trigger, then runs), with an optional icon and `current` for the link to the page on screen (the active-row paint plus aria-current, focused when the menu opens); `iconOnly` prints the icon alone, with the label as its accessible name and a Tooltip, for a list too narrow to print it. A click or Enter opens on the current item (or the first), ArrowUp on the trigger opens on the last; arrows, Home and End move, Space or Enter follows a link, Escape closes and returns focus to the trigger, Tab or an outside click closes. The list opens under the trigger aligned to its right edge, 14rem wide, shifts sideways to stay 8px inside the viewport, and scrolls past 20rem. `matchTriggerWidth` (off by default) makes it exactly as wide as the trigger, for a compact picker. It renders in a portal fixed to the viewport and follows the trigger on scroll, so a box that scrolls sideways never clips it.">
             <Variant label="default width">
               <ActionMenu
                 label="Open the list"
@@ -548,7 +609,32 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<Tooltip>" usage="The label of an icon-only control in a TOOLTIP_SURFACE bubble, while a mouse rests on it or the keyboard focuses it; a touch never opens it, so a tap leaves nothing standing. Placement and dismissal (Escape, scroll, resize, an outside click) are usePinnedPopover's, and it never pins. <Button icon> renders its button through TooltipButton, so every icon button gets it with no call-site change: the tip is `title` when it differs from the name (a longer hint) and the aria-label otherwise, and the native title is dropped so no second tooltip appears. An icon link (buttonClasses on a Link or an a) wraps itself in <Tooltip label>, a display: contents span that leaves the layout alone. The bubble is aria-hidden, since the control's accessible name already says it.">
+          <Item name="<Popover>" usage="An icon button that opens a small panel anchored under it (role=dialog, named by label), for a control too small to sit in the page: the account picker behind the event forms' byline add button, and the event page's Add to collection and Geolocators. The panel floats over the page in a TOOLTIP_SURFACE bubble, 18rem wide, so nothing in the page moves when it opens. It renders in a portal fixed to the viewport, starts at the trigger's left edge, shifts sideways to stay 8px inside the viewport, and follows the trigger on scroll. The trigger is the ghost icon button with label as its aria-label and tooltip, in the active-row paint while open. children is a function handed the close, so a pick can close it; a field with autoFocus takes focus when it opens, or else the panel does, so Escape always reaches it. Escape closes it and returns focus to the trigger; an outside click closes it, and a click in a list a control in the panel owns (the Combobox list, portaled out) counts as inside. compact makes the trigger a 24px square on a desktop that takes no more height than a 20px line (the byline's add button). <PopoverPanel> is the panel alone, for a caller that owns its trigger: mounted while open, anchored under anchorRef, its left edge on the anchor's or, with align=end, its right edge on the anchor's, and onClose handed whether to return focus (Escape) or not (an outside press). The edit form's Save version N opens the version note in one, through PublishActions.">
+            <Variant label="the byline's add button: an account picker">
+              <Popover label="Invite a geolocator" icon={<UserPlus size={14} />}>
+                {(close) => (
+                  <AccountPicker
+                    aria-label="Invite a geolocator"
+                    options={[analystAccount({ username: "bo" }), analystAccount({ username: "cy" })]}
+                    onSelect={close}
+                    placeholder="Username"
+                    emptyText="No analyst matches."
+                    autoFocus
+                  />
+                )}
+              </Popover>
+            </Variant>
+            <Variant label="compact, on a byline's line">
+              <span className="inline-flex items-center gap-2 text-sm text-neutral-400">
+                by ana
+                <Popover label="Invite a geolocator" icon={<UserPlus size={12} />} compact>
+                  {() => <p className="px-1 text-xs text-neutral-500">The picker goes here.</p>}
+                </Popover>
+              </span>
+            </Variant>
+          </Item>
+
+          <Item name="<Tooltip>" usage="The label of an icon-only control in a TOOLTIP_SURFACE bubble, while a mouse rests on it or the keyboard focuses it; a touch never opens it, so a tap leaves nothing standing, except with tapToShow (the AvatarStack pictures, the CountBadge count), where a touch's first tap pins the bubble and the second follows the link. underParent hangs the bubble under the wrapper's parent rather than under the control (a CountBadge's list under the button it counts for). Placement and dismissal (Escape, scroll, resize, an outside click) are usePinnedPopover's. <Button icon> renders its button through TooltipButton, so every icon button gets it with no call-site change: the tip is `title` when it differs from the name (a longer hint) and the aria-label otherwise, and the native title is dropped so no second tooltip appears. An icon link (buttonClasses on a Link or an a) wraps itself in <Tooltip label>, a display: contents span that leaves the layout alone. The bubble is aria-hidden, since the control's accessible name already says it.">
             <Variant label="icon button (hover or tab to it)">
               <Button icon variant="ghost" aria-label="Copy coordinates">
                 <Copy size={14} />
@@ -567,8 +653,25 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<CopyButton>" usage="The one copy confirmation: an icon button whose mark turns into a check while `copied` holds (useCopyToClipboard times it, 1.5 s) and fades back after, with no fade under prefers-reduced-motion. The accessible name never changes, since a changing name is re-announced as a new control; `announce` reaches screen readers through a sibling aria-live region, with no visible text. Worn by Copy coordinates, a profile's copied handle, and Share where the browser has no share sheet (Link copied).">
-            <PaletteCopyButton />
+          <Item name="<CountBadge>" usage="A red count on a control's top-right corner of what it still lacks: the missing conditions on Publish geolocation and Publish request on submit, on Publish in the edit form of a request or a detection, and the fields a collection's Create or Save still refuses. The count is a danger <Pill> on a button beside the control, never inside it, and the wrapper keeps 8px clear on the right for its overhang. Its label (2 missing: Title, Conflict) is the badge's accessible name and shows under the control in a <Tooltip tapToShow underParent> on hover or keyboard focus, or on a tap on a touch screen, where the badge's hit area grows to about 36px up and into the control's corner; a tap on the control itself still acts. The control's aria-describedby points at a hidden copy of the label, so it says what is missing. No badge at a count of 0.">
+            <Variant label="hover or tab to the count">
+              <CountBadge count={2} label="2 missing: Title, Conflict">
+                {(describedBy) => (
+                  <Button variant="primary" aria-describedby={describedBy}>
+                    Publish
+                  </Button>
+                )}
+              </CountBadge>
+            </Variant>
+          </Item>
+
+          <Item name="<CopyButton>" usage="The one copy confirmation: an icon button whose mark turns into a check while `copied` holds (useCopyToClipboard times it, 1.5 s) and fades back after, with no fade under prefers-reduced-motion. The accessible name never changes, since a changing name is re-announced as a new control; `announce` reaches screen readers through a sibling aria-live region, with no visible text. Worn by Copy coordinates, a profile's copied handle, and Share where the browser has no share sheet (Link copied). The secondary `variant` boxes the button, for a copy that stands beside a field as its own item (Copy coordinates).">
+            <Variant label="ghost (default)">
+              <PaletteCopyButton />
+            </Variant>
+            <Variant label='variant="secondary"'>
+              <PaletteCopyButton variant="secondary" />
+            </Variant>
           </Item>
 
           <Item name="<ActiveFilterPills>" usage="The one rendering of active filters: a row of removable accent chips (label + ×), shared by the map's filter overlay and the search page so active filter state reads identically everywhere. Entries are {key, label, icon?, onRemove}; `onClearAll` adds a quiet clear-everything affordance once two or more filters are on. Renders nothing when the list is empty.">
@@ -579,19 +682,23 @@ export default function PalettePage() {
             <PaletteFilterSection />
           </Item>
 
-          <Item name="<ChipBucket>" usage="A multi-select chip bucket for one filter family (conflicts, capture sources, tags, media types): every option a <Pill>, selected ones filled accent, click toggles membership. Any-match within the bucket; combining buckets is AND on the server.">
+          <Item name="<ChipBucket>" usage="A multi-select chip bucket for one small fixed filter family (status, source kind, level, media, location guess, Approved only, the feed's Kind): every option a <Pill>, selected ones filled accent, click toggles membership. Any-match within the bucket; combining buckets is AND on the server. An open catalogue (conflicts, tags) takes the filter search fields instead.">
             <PaletteChipBucket />
           </Item>
 
-          <Item name="<ToggleRow>" usage="An on/off row: the whole row is the switch (role + click), the <Switch> rendering as its visual span, and it takes the phone tap step. `description` picks the shape: without one the row is the filter toggle, a micro uppercase label on a divided list; with one it is a settings preference, the label at reading size over a line saying what the preference does. The accessible name is the label alone (aria-labelledby on it), never the paragraph under it. `className` carries the caller's own divider and spacing. PreferenceText, exported beside it, is that label-over-description text, shared by the described row and each <ToggleMatrix> row.">
+          <Item name="<ConflictChips filter> / <TagChips filter>" usage="The Conflict and Tags sections of the shared filter panel: the event form's search fields in filter mode. Each picks by name, the value the URL carries, from the panel's own catalogue of values in use (GET /conflicts?used=true, GET /tags), shows the picks as accent chips that remove on click, and keeps a picked name its catalogue lacks on show. The conflict field offers every conflict in use, ended ones included, with no label row and no switch; the tag field has no Create row and never calls POST /tags.">
+            <PaletteFilterSearchFields />
+          </Item>
+
+          <Item name="<ToggleRow>" usage="An on/off row: the whole row is the switch (role + click), the <Switch> rendering as its visual span, and it takes the phone tap step. `description` picks the shape: without one the row is the filter toggle, a micro uppercase label on a divided list; with one it is a settings preference, the label at reading size over a line saying what the preference does. The accessible name is the label alone (aria-label), never the paragraph under it, which is its description. `className` carries the caller's own divider and spacing. `disabled` reads the state but refuses the toggle, dimmed, with a `description` saying why (the feed's Show detections while a kind chip is selected). Settings lists one described row per notification kind, its Email switch.">
             <PaletteToggleRow />
           </Item>
 
-          <Item name="<ToggleMatrix>" usage="Several booleans per row, one per column: the column headers once at the top, each row's label and description on the left and one switch per column on the right. Each switch is its own 36px button, the <Switch> as its visual span, named '<row label>, <column label>'. A cell in `disabled` keeps its state, leaves the tab order and is described by its reason, printed once under the rows however many cells share it. Columns hold a one-word header, so two switches stay on the row at 320px.">
-            <PaletteToggleMatrix />
+          <Item name="<ChoiceRow>" usage="A pick-one preference row, the <ToggleRow> shape for a setting with a few named choices: the label at reading size over a line saying what the setting does, and a <SegmentedControl> named by the label. Beside the text from sm up; below sm the bar drops under it and takes the full column. `className` carries the caller's own divider and spacing. Settings and the organization page both render Accept approval requests from through it.">
+            <PaletteChoiceRow />
           </Item>
 
-          <Item name="<Pill>" usage="One pill for the whole family (status, tag, filter, badge) at one size. `tone` = accent | secondary | neutral | danger | warning, mirroring the <Button> tones (secondary is the accent outline, no fill); warning is the `WARNING_CALLOUT` paint, for a site link effect of damage beside the danger tone of a destruction. A static <span> by default; pass `onClick` and it becomes an interactive chip (a <button> that brightens on hover), the caller driving the tone off its active state. `label` makes a key/value pill, the key muted before the value (`Conflict: Russo-Ukrainian war`), for a field whose name the value alone does not carry; lib/cardTags.ts keys a card's conflicts and capture sources and drops an Unknown value. className merges via cn (caller wins on a conflicting utility); keep it to orthogonal extras, the size stays one.">
+          <Item name="<Pill>" usage="One pill for the whole family (status, tag, filter, badge) at one size. `tone` = accent | secondary | neutral | danger | warning, mirroring the <Button> tones (secondary is the accent outline, no fill); warning is the `WARNING_CALLOUT` paint, for a site link effect of damage beside the danger tone of a destruction. A static <span> by default; pass `onClick` and it becomes an interactive chip (a <button> that brightens on hover), the caller driving the tone off its active state. `label` makes a key/value pill, the key muted before the value (`Conflict: Russo-Ukrainian war`), for a field whose name the value alone does not carry; lib/cardTags.ts keys a card's conflicts; a source block keys its kind and drops an Unknown value. className merges via cn (caller wins on a conflicting utility); keep it to orthogonal extras, the size stays one.">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] text-neutral-600 self-center w-12">static</span>
@@ -606,7 +713,7 @@ export default function PalettePage() {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] text-neutral-600 self-center w-12">keyed</span>
                 <Pill label="Conflict">Russo-Ukrainian war</Pill>
-                <Pill label="Capture source">Smartphone</Pill>
+                <Pill label="Kind">Smartphone</Pill>
                 <Pill>airstrike</Pill>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -622,27 +729,10 @@ export default function PalettePage() {
                 ))}
                 <span className="text-[11px] text-neutral-600 self-center">← click</span>
               </div>
-              {/* Readiness tick-list (submit): a met vs pending pair per tone, so
-                  the marked-state loudness can be compared side by side. */}
-              <div className="space-y-1.5">
-                {(["accent", "secondary", "neutral"] as const).map((t) => (
-                  <div key={t} className="flex flex-wrap items-center gap-2">
-                    <span className="text-[11px] text-neutral-600 self-center w-12">
-                      {t}
-                    </span>
-                    <Pill tone={t} icon={<Check size={12} strokeWidth={2.5} />}>
-                      Coordinates
-                    </Pill>
-                    <Pill tone="neutral" icon={<Circle size={9} strokeWidth={2} />}>
-                      Proof image
-                    </Pill>
-                  </div>
-                ))}
-              </div>
             </div>
           </Item>
 
-          <Item name="<SegmentedControl>" usage="Exclusive-choice bar: submit mode (single / bulk import), admin delete mode (soft / hard), the detections queue filter, the feed scope (following / all). tone=danger paints a destructive option's active state red; fullWidth stretches the track at every width, and below sm the track always stretches. A one-word label that needs a sentence takes a <FieldHelp> beside the bar, never hover text of its own.">
+          <Item name="<SegmentedControl>" usage="Exclusive-choice bar: submit mode (single / bulk import), admin delete mode (soft / hard), the detections queue filter, the feed scope (following / all). tone=danger paints a destructive option's active state red; fullWidth stretches the track at every width, and below sm the track always stretches, each option starting from its label's width so the longest label stays whole. A one-word label that needs a sentence takes a <FieldHelp> beside the bar, never hover text of its own.">
             <div className="space-y-3">
               <SegmentedControl
                 aria-label="Preview mode"
@@ -663,6 +753,10 @@ export default function PalettePage() {
                 onChange={setSegMode}
               />
             </div>
+          </Item>
+
+          <Item name="<SwatchPicker>" usage="Pick-one-colour field: round swatches in an ARIA radiogroup named by `aria-label`. The selected swatch is the one tab stop (the first while none is), the arrow keys move focus and selection together and wrap, Home and End jump to the ends, and a click selects. The selected swatch wears a light ring and the focused one an accent ring. A 36px target below sm, a 24px disc from sm up. Settings → Display uses it for the accent colour.">
+            <PaletteSwatchPicker />
           </Item>
 
           <Item name="<Switch>" usage="The one boolean toggle: settings rows (md), map filter rows (sm). as='span' renders the visual only, for a parent that owns the click (whole-row toggles). disabled reads the state but refuses the toggle, for a value this surface cannot change (the edit form's ratcheted graphic-content flag).">
@@ -689,7 +783,7 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Forms" />
 
-          <Item name="<Input> (+ FORM_INVALID_FIELD, FieldAdornment, TRAILING_ROOM, LOCKED_FIELD)" usage="The one form field: variant (default / compact / locked) + invalid + icon + trailing. `<Input invalid>` is sugar over the FORM_INVALID_FIELD red-outline token; the same raw token flags non-input surfaces too (media dropzone, proof editor, section cards). `icon` overlays a leading icon at the leading edge, inert. `trailing` is the field's own action slot at the other edge, centred on the field's height and taking the pointer: the map and copy marks of a longitude field, the picker of a <DateTimeInput>, the archive mark of a URL field. Each one is a ghost icon button, the site's one icon control, set a hair apart so two hover plates read as two controls; the field is one height across the three variants so that 32px square sits inside any of them with a 3px gutter, and the text padding grows by TRAILING_ROOM so a long value never runs under them, both figures stepping together on a phone. FIELD_TEXT is the one field type size, 16px below `sm` and 14px above, run by all three variants and by <Select> and <Textarea>, since Mobile Safari zooms a page in on a field under 16px and never zooms back out. `trailingFromSm` is for a field too narrow on a phone to hold both its value and a 36px mark (the instant field at 320px): the slot renders from `sm` up only and the field takes its room there only, so what the mark acts on has to stay reachable without it, the way a date field falls back to a tap opening the engine's picker. FieldAdornment + TRAILING_ROOM are exported for the one field that is not an input: <LockedUrl> renders a frozen value as an anchor in LOCKED_FIELD, the locked variant's box without its not-allowed cursor, and clears the same adornment by the same amount. Native props + className pass through.">
+          <Item name="<Input> (+ FORM_INVALID_FIELD, FieldAdornment, TRAILING_ROOM, LOCKED_FIELD)" usage="The one form field: variant (default / compact / locked) + invalid + icon + trailing. `<Input invalid>` is sugar over the FORM_INVALID_FIELD red-outline token; the same raw token flags non-input surfaces too (media dropzone, proof editor, section cards). `icon` overlays a leading icon at the leading edge, inert. `trailing` is the field's own action slot at the other edge, centred on the field's height and taking the pointer: the picker of a <DateTimeInput>, the Wayback Machine door of a snapshot field. Each one is a ghost icon button, the site's one icon control, set a hair apart so two hover plates read as two controls; the field is one height across the three variants so that 32px square sits inside any of them with a 3px gutter, and the text padding grows by TRAILING_ROOM so a long value never runs under them, both figures stepping together on a phone. FIELD_TEXT is the one field type size, 16px below `sm` and 14px above, run by all three variants and by <Select> and <Textarea>, since Mobile Safari zooms a page in on a field under 16px and never zooms back out. `trailingFromSm` is for a field too narrow on a phone to hold both its value and a 36px mark (the instant field at 320px): the slot renders from `sm` up only and the field takes its room there only, so what the mark acts on has to stay reachable without it, the way a date field falls back to a tap opening the engine's picker. FieldAdornment + TRAILING_ROOM are exported for the one field that is not an input: <LockedUrl> renders a frozen value as an anchor in LOCKED_FIELD, the locked variant's box without its not-allowed cursor, and clears the same adornment by the same amount. Native props + className pass through.">
             <div className="w-full max-w-sm space-y-2">
               <Variant label="default">
                 <Input placeholder="Type here..." />
@@ -699,9 +793,12 @@ export default function PalettePage() {
               </Variant>
               <Variant label="trailing (the field's own actions)">
                 <Input
-                  placeholder="48.015883"
-                  className="font-mono"
-                  trailing={<CoordinateActions lat={48.015883} lng={37.802411} />}
+                  placeholder="https://t.me/channel/12345"
+                  trailing={
+                    <Button icon variant="ghost" aria-label="Clear the field">
+                      <X size={14} />
+                    </Button>
+                  }
                 />
               </Variant>
               <Variant label='variant="compact" (admin rows)'>
@@ -739,14 +836,14 @@ export default function PalettePage() {
               </Variant>
               <Variant label="invalid">
                 <Select invalid defaultValue="">
-                  <option value="">Pick a capture source</option>
+                  <option value="">Pick a kind</option>
                   <option value="drone">Drone</option>
                 </Select>
               </Variant>
             </div>
           </Item>
 
-          <Item name="<DateTimeInput>" usage="A date, a time or an instant: the native control wearing the site's own mark. The browser draws its picker button in engine chrome at engine size, which on the dark field reads as a foreign element; the brick sets `.picker-glyph` (globals.css hides that button, Webkit/Chromium only) and puts a ghost icon button in the field's trailing slot instead, Calendar for anything picking a day and Clock for a time of day, opening the same native picker through showPicker() and falling back to focusing the field. One brick for the event date, the event time and the source post time, on the submit form and the edit form alike. It also owns `has-value`, the class globals.css mutes an empty field's dd/mm/yyyy placeholder off, so no call site derives it. A date field too narrow for an adornment (the search filters, the map scrubber) stays a bare Input of type date and keeps the native button. The mark is a desktop affordance: below `sm` a field cannot hold both a 36px button and the value of an instant, so the slot stands down (`trailingFromSm`) and a tap on the field opens the engine's picker.">
+          <Item name="<DateTimeInput>" usage="A date, a time or an instant: the native control wearing the site's own mark. The browser draws its picker button in engine chrome at engine size, which on the dark field reads as a foreign element; the brick sets `.picker-glyph` (globals.css hides that button, Webkit/Chromium only) and puts a ghost icon button in the field's trailing slot instead, Calendar for anything picking a day and Clock for a time of day, opening the same native picker through showPicker() and falling back to focusing the field. One brick for the event date, the event time, a source's capture time and each link's post time, on every event form. It also owns `has-value`, the class globals.css mutes an empty field's dd/mm/yyyy placeholder off, so no call site derives it. A date field too narrow for an adornment (the search filters, the map scrubber) stays a bare Input of type date and keeps the native button. The mark is a desktop affordance: below `sm` a field cannot hold both a 36px button and the value of an instant, so the slot stands down (`trailingFromSm`) and a tap on the field opens the engine's picker.">
             <div className="w-full max-w-sm space-y-2">
               <Variant label='type="date" (empty)'>
                 <DateTimeInput type="date" value="" onChange={() => {}} />
@@ -767,58 +864,101 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<LinkListInput>" usage="An ordered list of URL fields with a remove per row and one add button: the submit / edit forms' Secondary sources. `max` mirrors the server cap and disables add at the ceiling. Blank rows are the caller's to drop at assembly. `companion` gives every row a second value plus a mark inside the row's URL field (`trailing`) and a line under it (`render`), all three kept index-aligned through adds and removals: on the source forms that is the <ArchiveAdornment> / <ArchiveSnapshotField> pair, so a mirror is archived where it is typed. The list owns which rows are expanded for the same reason it owns the values, and a row seeded with a companion value opens showing it.">
-            <div className="w-full max-w-sm space-y-4">
-              <Variant label="editable (max 3 here)">
-                <LinkListInput
-                  values={links}
+          <Item name="<CoordinateInputs>" usage="The latitude and longitude pair of every event form (components/geolocations/CoordinateInputs.tsx): the Location card's subject point and each source's capture position. One line at every width, the 320px source editor included: Latitude and Longitude share the room in two shrinking columns with no visible label (each field is named by its aria-label and shows an example value as its placeholder), and <CoordinateActions> follows them as its own two boxes, centred on the fields. The fields run half the usual side padding and tight tracking, so a 6-decimal value shows whole from 375px up and in the forms' side column. A paste that reads as a pair (lat, lng, or a Google Maps URL) fills both fields from either one. `idPrefix` keeps a capture pair's ids apart from the subject's; `required={false}` for the optional capture pair; `invalid` reddens both fields.">
+            <PaletteCoordinateInputs />
+          </Item>
+
+          <Item name="<CoordinateActions> / <CoordinateValue>" usage="The two things anyone does with a coordinate pair (components/event/CoordinateActions.tsx): View on Maps (a new tab) and Copy coordinates (the 6-decimal pair, through <CopyButton>). Two outlined icon buttons, each its own box, everywhere they appear: after the two fields of <CoordinateInputs> and on the event page's Coordinates row. A null pair (half-typed or out of bounds) keeps both in place, disabled and grey; the map link becomes a disabled button then. `small` is the 24px desktop square for a dense row. <CoordinateValue> is a reading row's value: the pair, then the actions; `compact` fits a narrow card on one line, 4 decimals and the small actions.">
+            <Variant label="a complete pair">
+              <CoordinateActions lat={48.015883} lng={37.802411} />
+            </Variant>
+            <Variant label="half-typed (disabled)">
+              <CoordinateActions lat={null} lng={null} />
+            </Variant>
+            <Variant label="small">
+              <CoordinateActions lat={48.015883} lng={37.802411} small />
+            </Variant>
+            <Variant label="<CoordinateValue>">
+              <CoordinateValue lat={48.015883} lng={37.802411} />
+            </Variant>
+          </Item>
+
+          <Item name="<LinkListInput>" usage="An ordered list of links, one row each, with one add button: each source editor's Links. A row is the URL field, the caller's `columns`, then the remove control (a red dangerGhost cross), so the control sits at the end of the row it removes. `heading` (default Links) labels the list and carries the caller's help: it is the URL column's header on a wide list and a label above the cards on a narrow one, red while `invalid`. A row is the caller's own value, read and written through `urlOf` / `withUrl`, so what else it carries (a post time, an archived copy) moves with it through adds and removals. `max` mirrors the server cap and disables add at the ceiling. Blank rows are the caller's to drop at assembly. Each other column names its header and its grid track; `expansion` is a line across the row while the row is toggled open, and every row starts closed. On a source editor the columns are the post time and the <ArchiveBox>, and the expansion is the <ArchiveSnapshotField> paste line. The list is its own container: from `@xl` (36rem) the rows share one grid under a header line, so each column keeps one width down the list. Narrower, each row is a small card: the URL with the remove control at the card's top right, the columns wrapping under it.">
+            <div className="w-full space-y-4">
+              <Variant label="with a post time and an archive box per row (a wide list)">
+                <LinkListInput<string>
+                  rows={links}
                   onChange={setLinks}
+                  urlOf={(url) => url}
+                  withUrl={(_, url) => url}
+                  blank={() => ""}
                   max={3}
-                  itemLabel="Secondary source"
+                  itemLabel="Link"
                   placeholder="https://x.com/user/status/12345"
+                  heading={
+                    <>
+                      Links <FieldHelp concept="source_links" />
+                    </>
+                  }
+                  columns={[
+                    {
+                      header: "Posted (UTC)",
+                      width: "13rem",
+                      cell: ({ index }) => (
+                        <DateTimeInput
+                          type="datetime-local"
+                          variant="compact"
+                          aria-label={`Posted (UTC), link ${index + 1}`}
+                          value=""
+                          onChange={() => {}}
+                        />
+                      ),
+                    },
+                    {
+                      header: "Archive",
+                      width: "auto",
+                      cell: ({ index, row, expanded, toggle }) => (
+                        <ArchiveBox
+                          describes={linkDescription(0, safeHostname(row), index, links.length)}
+                          snapshot={index === 0 ? "https://archive.ph/abcde" : ""}
+                          expanded={expanded}
+                          onToggle={toggle}
+                        />
+                      ),
+                    },
+                  ]}
+                  expansion={({ index, row }) => (
+                    <ArchiveSnapshotField
+                      link={row}
+                      describes={linkDescription(0, safeHostname(row), index, links.length)}
+                      value=""
+                      onChange={() => {}}
+                    />
+                  )}
                 />
               </Variant>
-              <Variant label="with a companion field per row">
-                <LinkListInput
-                  values={links}
-                  onChange={setLinks}
-                  max={3}
-                  itemLabel="Secondary source"
-                  placeholder="https://x.com/user/status/12345"
-                  companion={{
-                    values: linkCopies,
-                    onChange: setLinkCopies,
-                    trailing: ({ index, url, expanded, toggle }) => (
-                      <ArchiveAdornment
-                        describes={mirrorDescription(
-                          safeHostname(url),
-                          index,
-                          links.length
-                        )}
-                        copy={null}
-                        expanded={expanded}
-                        onToggle={toggle}
-                      />
-                    ),
-                    render: ({ index, url, value, onChange }) => (
-                      <ArchiveSnapshotField
-                        link={url}
-                        describes={mirrorDescription(
-                          safeHostname(url),
-                          index,
-                          links.length
-                        )}
-                        value={value}
-                        onChange={onChange}
-                      />
-                    ),
-                  }}
-                />
+              <Variant label="URLs only, in a narrow column: each row a card (max 3 here)">
+                <div className="max-w-sm">
+                  <LinkListInput<string>
+                    rows={links}
+                    onChange={setLinks}
+                    urlOf={(url) => url}
+                    withUrl={(_, url) => url}
+                    blank={() => ""}
+                    max={3}
+                    itemLabel="Link"
+                    placeholder="https://x.com/user/status/12345"
+                  />
+                </div>
               </Variant>
             </div>
           </Item>
 
-          <Item name="FORM_LABEL (+ _COMPACT, LABEL_TEXT, FORM_INVALID_LABEL)" usage="Field labels, kept separate from <Input>. LABEL_TEXT is the bare 11px uppercase text (FORM_LABEL minus block) for block hosts: table head rows, group headings, the error-digest label. FORM_INVALID_LABEL is FORM_INVALID_FIELD's label-side companion: every required field appends it to its own label (or SectionHeading's title) alongside the input's FORM_INVALID_FIELD outline, so the two always turn red together.">
+          <Item name="<Disclosure>" usage="A ghost toggle, a chevron and a label, that shows or hides a block of secondary fields under it: a source editor's **More details** (capture time, capture position, tags, graphic flag). The parent owns `open` and `onToggle`, so it decides the first state (a source editor opens it when a field inside holds a value). The block stays mounted while closed (`hidden`), so a field keeps what it holds; `aria-expanded` and `aria-controls` tie the toggle to it.">
+            <PaletteDisclosure />
+          </Item>
+
+          <Item name="FORM_LABEL (+ _COMPACT, LABEL_TEXT, FORM_INVALID_LABEL)" usage="Field labels, kept separate from <Input>. LABEL_TEXT is the bare 11px uppercase text (FORM_LABEL minus block) for block hosts: table head rows, group headings, the error-digest label. FORM_INVALID_LABEL is FORM_INVALID_FIELD's label-side companion: every required field appends it to its own label alongside the input's FORM_INVALID_FIELD outline, so the two always turn red together.">
             <div className="space-y-2">
               <label className={FORM_LABEL}>Field label</label>
               <label className={FORM_LABEL_COMPACT}>Compact label</label>
@@ -828,7 +968,18 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<CharCounter>" usage="The room left in a capped free-text field: `remaining / cap`, red once the value runs over. One counter for every capped field, so the profile bio, a collection's title and a collection's description cannot spell the same reading three ways. It states what is left rather than what is used, and it turns red exactly when the submit refuses the value, so the colour and the disabled button always agree. The figure alone, no label and no box: a caller sits it at the far end of the field's label row.">
+          <Item name="<FieldLabel>" usage="The label row over a form control, the edit side of a field table (EVENT_FIELDS in lib/events.ts, SOURCE_FIELDS in lib/sources.ts) whose read side is <DetailRow>: spread the table entry ({ label, concept }) into either, so a field reads under one name with one ? on the page and in the form. The words, then the ? outside the <label> (so the field's accessible name is the words alone), then trailing (a <CharCounter>, a LockedHint). htmlFor makes the words a <label>; without it they are a span, for a control that names itself (a segmented control, a switch, a file slot). invalid turns the row red with FORM_INVALID_LABEL. Every event form label, the source editor's, and the version note's take it.">
+            <div className="w-full max-w-sm space-y-3">
+              <FieldLabel {...EVENT_FIELDS.occurred_date} htmlFor="palette-field-label" />
+              <FieldLabel {...EVENT_FIELDS.coordinates} invalid />
+              <FieldLabel
+                {...SOURCE_FIELDS.title}
+                trailing={<CharCounter length={12} max={200} />}
+              />
+            </div>
+          </Item>
+
+          <Item name="<CharCounter>" usage="How much of a capped free-text field is used: `length / cap`, red once the value runs over. One counter for every capped free-text field (the profile bio, a collection's title and description, the event title, the close reason, the report details), so no two spell the reading differently. It turns red exactly when the submit refuses the value, so the colour and the count on the submit always agree. The figure alone, no label and no box: a caller sits it at the far end of the field's label row.">
             <div className="flex w-full max-w-sm items-center justify-between gap-2">
               <label className={FORM_LABEL}>Bio</label>
               <CharCounter length={120} max={500} />
@@ -847,16 +998,18 @@ export default function PalettePage() {
             <div className={`${FORM_SUCCESS_BANNER} max-w-sm`}>Saved.</div>
           </Item>
 
-          <Item name="LIST_TILE" usage="One item of an admin list: a pending X handle request, a report, a detection stat, the user actions. A bordered tile on the panel; the caller adds the spacing between its lines.">
+          <Item name="LIST_TILE" usage="One item of a list: a source block or a source editor, a report, a detection stat, the user actions. A bordered tile on the panel; the caller adds the spacing between its lines.">
             <div className={`${LIST_TILE} max-w-sm space-y-2 text-sm text-neutral-300`}>
               <p>@osint_hawk_2025</p>
               <p className="text-xs text-neutral-500">Requested 2 days ago</p>
             </div>
           </Item>
 
-          <Item name="<IncompleteFormNotice>" usage="Lists all unmet required fields at once (submit / validate / request)">
-            <div className="w-full max-w-sm">
-              <IncompleteFormNotice missing={["Coordinates", "Conflict", "Proof"]} />
+          <Item name="<IncompleteFormAnnouncer>" usage="Reads every unmet required field to a screen reader in one sentence, on each blocked attempt (submit / validate / request, the collection form, and the sign-in, registration, password and invite forms). It shows nothing: the fields and labels turn red in place and a publish button's CountBadge lists them. A polite live region (role=status, sr-only) stays mounted, and attempt (useIncompleteForm's validationAttempt) re-keys the sentence so a repeat attempt is read again. Every form sets noValidate; the blank fields come from blankFields and the key set from useIncompleteForm.">
+            <div className="w-full max-w-sm text-xs text-neutral-500">
+              Visually hidden. Its sentence here: Fill in the required fields before continuing:
+              Coordinates, Conflict, Proof.
+              <IncompleteFormAnnouncer missing={["Coordinates", "Conflict", "Proof"]} attempt={1} />
             </div>
           </Item>
 
@@ -869,12 +1022,11 @@ export default function PalettePage() {
             </span>
           </Item>
 
-          <Item name="<TagPicker>" usage="Conflict typeahead (ongoing by default, ended behind the switch) + curated/free tag selection (Pill chips + inline free-tag creation); submit / edit">
-            <div className="w-full max-w-2xl">
+          <Item name="<TagPicker>" usage="The classification fields of every event form, last in its Details card: the conflicts, then the tags as <TagChips>. The conflict field shows the picked conflicts as accent chips that remove on click, over a <Combobox> named Conflict that lists nothing at rest and, on focus or typing, the ongoing conflicts whose name holds the typed text (case-insensitive), by tier then name, with Other pinned last and always offered. The Include ended conflicts switch on the label row adds the ended ones. <TagChips> shows the picked tags as accent chips that remove on click, over a <Combobox> that suggests the other tags of the one catalogue whose name holds the typed text (case-insensitive) and, when no tag bears the exact typed name, ends the list with Create &quot;name&quot;, which creates the tag and picks it. The list stays open after a pick. Each source editor renders <TagChips> alone, named for its source (Source 1 tags). The conflict field is <ConflictChips>; with filter, both fields serve the filter panel (see the filter search fields).">
+            <div className="w-full max-w-2xl space-y-4">
               <TagPicker
                 tags={tpTags}
                 setTags={setTpTags}
-                curatedTags={MOCK_CURATED}
                 selectedTagIds={tpSelected}
                 setSelectedTagIds={setTpSelected}
                 conflicts={MOCK_CONFLICTS}
@@ -884,7 +1036,11 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<AccountPicker>" usage="The one way to pick an analyst or an organization: a combobox field (role=combobox over a role=listbox) whose rows show the picture (a circle for an analyst, a rounded square for an organization), the name and, for an organization, its slug muted. `options` filters a local list by name and handle; `search` runs the caller's request 250ms after typing stops, once the query holds `minQueryLength` characters, and a `note` it returns (why an exact match is left out) shows as a muted row. Loading, a failed search and `emptyText` are muted rows too. ArrowUp and ArrowDown move and wrap, Enter takes the highlighted row or hands the typed text to `onSubmitText` when no row is up (an exact username), Escape, Tab or an outside click closes. With `selected`, the pick shows as an accent chip that `onClear` removes; without it, the field empties after each pick. The list spans the field's width and scrolls past 15rem. It renders in a portal fixed to the viewport, so a card or a scrolling rail never clips it, and it opens above the field when the room below is shorter than 15rem and the room above is larger. Consumers: the approval request, the search Author filter, the co-geolocator invite, the organization invite and the admin org manager fields.">
+          <Item name="<Combobox>" usage="The keyboard and the list of every typeahead: a role=combobox <Input> over a role=listbox list in a portal fixed to the viewport, painted with TOOLTIP_SURFACE, as wide as the field, scrolling past 15rem and opening above the field when the room below is short, following the field on every frame and kept inside the viewport. The caller owns the query, the open state, the filtered options and how a row renders; a status string shows as a muted row. ArrowUp and ArrowDown move and wrap, Enter picks the highlighted row or hands the text to onSubmitText, Escape or a blur closes. pillOption shows a row inside a neutral <Pill>, the chip a pick becomes: every conflict and tag row, never the Create row. <AccountPicker>, <ConflictChips>, <TagChips>, the admin event field and the collection picker's Add events build on it.">
+            <PaletteCombobox />
+          </Item>
+
+          <Item name="<AccountPicker>" usage="The one way to pick an analyst or an organization: a combobox field (role=combobox over a role=listbox) whose rows show the picture (a circle for an analyst, a rounded square for an organization), the name and, for an organization, its slug muted. `options` filters a local list by name and handle; `search` runs the caller's request 250ms after typing stops, once the query holds `minQueryLength` characters, and a `note` it returns (why an exact match is left out) shows as a muted row. Loading, a failed search and `emptyText` are muted rows too. ArrowUp and ArrowDown move and wrap, Enter takes the highlighted row or hands the typed text to `onSubmitText` when no row is up (an exact username), Escape, Tab or an outside click closes. With `selected`, the pick shows as an accent chip that `onClear` removes; without it, the field empties after each pick. The list spans the field's width and scrolls past 15rem. It renders in a portal fixed to the viewport, so a card or a scrolling rail never clips it, and it opens above the field when the room below is shorter than 15rem and the room above is larger. Consumers: the approval request, the search Author filter, the co-geolocator invite, the organization invite, the admin org manager fields and the admin analyst search.">
             <PaletteAccountPicker />
           </Item>
         </section>
@@ -927,7 +1083,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<AvatarStack>" usage="A row of 28px pictures: the approval stamps in the event page's Approvals card and the organization logos in a profile header, oldest first, overlapping by default; spacing=gap sets them apart and wraps them onto further lines (the Approvals card). An organization (variant=organization) takes the rounded square, an analyst the circle. Each picture is a link to its href (the profile or the organization's page) named by its label, which a <Tooltip> shows on hover or keyboard focus (the handle on a stamp, the role on a logo). At most max (5 by default) show; the rest fold into a +N bubble, a button when onOverflow is set (the Approvals card expands its full approval list) and plain text otherwise. Renders nothing for an empty list.">
+          <Item name="<AvatarStack>" usage="A row of 28px pictures: the approval stamps under the event page's actions and the organization logos in a profile header, oldest first, overlapping by default; spacing=gap sets them apart and wraps them onto further lines (the approval stamps). checked puts a 14px check badge in the reader's accent on each picture's bottom-right corner, ringed in the page colour (the approval stamps). An organization (variant=organization) takes the rounded square, an analyst the circle. Each picture is a link to its href (the profile or the organization's page) named by its label, which a <Tooltip tapToShow> shows on hover or keyboard focus, or on a first tap on a touch screen, where the second tap follows the link (who approved which version when, on a stamp; the role on a logo). An item's remove puts a 20px remove disc on the picture's top-right corner, revealed by HOVER_REVEAL on hover or keyboard focus and pinned visible on a touch screen, where its hit area is a 36px square up and right of the disc and the picture takes room for it (a site admin's delete of a stamp, a co-geolocator taken off the edit form's byline). muted fades a picture to half opacity, for an account not credited yet (a pending co-geolocator invitation). size=sm takes the 20px picture of a page byline with a 16px remove disc: the event page's co-geolocators (through AuthorByline) and an event form's managed ones are the same pictures at the same gap, so the two bylines line up; size=xs is the 16px picture of a card's byline. Only overlapping pictures take the page-colour ring; set apart, a picture takes the focus ring alone. trailing follows the last picture on its line, out of the list's items (the approvals' ?). At most max (5 by default) show; the rest fold into a +N bubble, a button when onOverflow is set and plain text otherwise; the approval stamps pass every item, so no count shows. Renders nothing for an empty list.">
             <Variant label="analysts and an organization, max=3 with onOverflow (+N opens the panel)">
               <AvatarStack
                 label="Approved by"
@@ -937,15 +1093,43 @@ export default function PalettePage() {
                 items={paletteApprovalStamps(PALETTE_APPROVERS.slice(0, 5))}
               />
             </Variant>
-            <Variant label="spacing=gap: pictures set apart, wrapping onto a second line (the event page's Approvals card)">
+            <Variant label="spacing=gap and checked: pictures set apart with an accent check, wrapping onto a second line (the event page's approval stamps)">
               <div className="w-56">
                 <AvatarStack
                   label="Approved by"
                   max={PALETTE_APPROVERS.length}
                   spacing="gap"
+                  checked
                   items={paletteApprovalStamps(PALETTE_APPROVERS)}
                 />
               </div>
+            </Variant>
+            <Variant label="remove on each item: hover or focus a picture for its corner control (a site admin's stamps)">
+              <AvatarStack
+                label="Approved by"
+                spacing="gap"
+                checked
+                items={paletteApprovalStamps(PALETTE_APPROVERS.slice(0, 3)).map((stamp) => ({
+                  ...stamp,
+                  remove: { label: `Delete approval by ${stamp.name}`, onClick: () => {} },
+                }))}
+              />
+            </Variant>
+            <Variant label="muted with remove: pending co-geolocators on an event form's byline">
+              <AvatarStack
+                label="Co-geolocators"
+                spacing="gap"
+                max={Infinity}
+                items={["bo", "cy"].map((name) => ({
+                  key: name,
+                  name,
+                  variant: "analyst" as const,
+                  label: `${name}, invitation pending`,
+                  href: "/palette",
+                  muted: true,
+                  remove: { label: `Withdraw the invitation of ${name}`, onClick: () => {} },
+                }))}
+              />
             </Variant>
             <Variant label="organization logos with role labels (the profile header)">
               <AvatarStack
@@ -964,7 +1148,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<AuthorByline>" usage="The 'by user' assembly: detail-page subtitles, map panel header, detail body Author row. size=xs for the dense panel; prefix=false when the slot's label already says Author; avatar leads with the profile picture on the detail-page signature slots. coAuthors credits more analysts after the lead (the geolocators an event shares, from creditProps), each as its picture and name side by side, with no visible separator; a screen reader hears ana, bo and cy. coAuthorsAs=avatars keeps the lead as picture and name and shows each co-author as a picture alone, linked, named by its handle and showing it in a Tooltip: the feed and list cards and the event page header. link=false drops the anchor for a slot that is already one click (a version-history row under its stretched link), where a nested link is a target the mouse and the keyboard disagree about. A name with its own href links there instead of a profile: organizationByline turns an organization into one (its picture, its name, its page), as on an organization's approval and an approval request to it.">
+          <Item name="<AuthorByline>" usage="The 'by user' assembly: detail-page subtitles, map panel header, detail body Author row. size=xs for the dense panel; prefix=false when the slot's label already says Author; avatar leads with the profile picture on the detail-page signature slots. coAuthors credits more analysts after the lead (the geolocators an event shares, from creditProps), each as its picture and name side by side, with no visible separator; a screen reader hears ana, bo and cy. coAuthorsAs=avatars keeps the lead as picture and name and shows the co-authors as an <AvatarStack> (sm on a page, xs on a card), each picture linked, named by its handle and showing it in a tooltip: the feed and list cards and the event page header. BYLINE_GAP is the one gap of a credit line, which the event form's managed byline shares, so the read and edit bylines line up. link=false drops the anchor for a slot that is already one click (a version-history row under its stretched link), where a nested link is a target the mouse and the keyboard disagree about. A name with its own href links there instead of a profile: organizationByline turns an organization into one (its picture, its name, its page), as on an organization's approval and an approval request to it.">
             <Variant label="avatar (detail-page signature)">
               <span className="text-sm text-neutral-400">
                 <AuthorByline author={MOCK_DETAIL.owner} avatar />
@@ -1031,91 +1215,81 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<SourceLabel>" usage="Source display: the stored URL shortened to its host, with italic fallbacks for a null URL (To confirm) and a value the parser gives no host for (no source)">
+          <Item name="<SourceLabel>" usage="Source display: the stored URL shortened to its host without a leading www., the full URL in the link's title (the Detected from row, a source block's links), with italic fallbacks for a null URL (To confirm) and a value the parser gives no host for (no source)">
             <SourceLabel url="https://t.me/some_channel/4242" variant="inline" />
+            <SourceLabel url="https://www.t.me/some_channel/4242/" variant="link" />
             <SourceLabel url={null} variant="inline" />
           </Item>
 
           <Item
             name="<ArchivedCopies>"
-            usage="The archived copy beside an outbound source link, on the event detail surfaces: the primary Source row, the Detected from row, and every expanded secondary mirror. One copy per link, from whichever service produced it, so the affordance is a single lucide mark: the Archive box, one mark for archiving in every state and for every provider, never the services' own logos. Provider identity lives in the accessible name of the stored copy, never in the shape. It is one ghost icon button in exactly two states, and colour says which: accent where a copy exists and the mark opens it, grey and disabled where none does, for every reader including the event's owner. Recording a copy is an edit, so it happens on the forms through <ArchiveAdornment> + <ArchiveSnapshotField> and files a version; nothing here writes. The mark carries no `?` of its own: the row's field concept explains it (source_url, secondary_source_urls, detected_from), so an expanded list of ten mirrors shows one explanation rather than ten. It sits `self-center` because those rows align their text on the baseline, where the square hangs low. Every mark looks alike across the page, so the accessible name carries the state and the target both: PRIMARY_SOURCE_DESCRIPTION for the source, DETECTED_FROM_DESCRIPTION for the provenance link, mirrorDescription(host, index, total) for a mirror, which leads with the position whenever the list holds more than one (two mirrors on one host would otherwise share a name) and falls back to a literal for a URL with no host."
+            usage="The archived copy beside each link of a source block, on the event detail surfaces. One copy per link, from whichever service produced it, so the affordance is a single lucide mark: the Archive box, one mark for archiving in every state and for every provider, never the services' own logos. Provider identity lives in the accessible name of the stored copy, never in the shape. It is one ghost icon button in exactly two states, and colour says which: accent where a copy exists and the mark opens it, grey and disabled where none does, for every reader including the event's owner. Recording a copy is an edit, so it happens on the forms through <ArchiveBox> + <ArchiveSnapshotField> and files a version; nothing here writes. The mark carries no `?` of its own: the source_links concept explains it once, so a source with ten links shows one explanation rather than ten. It sits `self-center` because those rows align their text on the baseline, where the square hangs low. Every mark looks alike across the page, so the accessible name carries the state and the target both: linkDescription(source, host, link, total) leads with the source's position, adds the link's position whenever the source holds more than one (two links on one host would otherwise share a name) and falls back to a literal for a URL with no host."
           >
-            <Variant label="a stored copy named for the Wayback Machine (primary source)">
+            <Variant label="a stored copy named for the Wayback Machine (a source's one link)">
               <span className="text-sm text-neutral-300">
                 t.me
                 <ArchivedCopies
                   copy={{
                     url: "https://web.archive.org/web/20260601120000/https://t.me/channel/12345",
                     provider: "wayback",
+                    archived_at: "2026-06-01T12:00:00Z",
                   }}
-                  describes={PRIMARY_SOURCE_DESCRIPTION}
+                  describes={linkDescription(0, "t.me", 0, 1)}
                 />
               </span>
             </Variant>
-            <Variant label="a stored copy named for archive.today, same mark (mirror 2 of a multi-mirror list)">
+            <Variant label="a stored copy named for archive.today, same mark (link 2 of a source)">
               <span className="text-sm text-neutral-300">
                 t.me
                 <ArchivedCopies
-                  copy={{ url: "https://archive.ph/abcde", provider: "archive_today" }}
-                  describes={mirrorDescription("t.me", 1, 2)}
+                  copy={{
+                    url: "https://archive.ph/abcde",
+                    provider: "archive_today",
+                    archived_at: "2026-06-01T12:00:00Z",
+                  }}
+                  describes={linkDescription(0, "t.me", 1, 2)}
                 />
               </span>
             </Variant>
             <Variant label="no copy yet: grey and inert, for every reader">
               <span className="text-sm text-neutral-300">
                 x.com
-                <ArchivedCopies copy={null} describes={DETECTED_FROM_DESCRIPTION} />
+                <ArchivedCopies copy={null} describes={linkDescription(1, "x.com", 0, 1)} />
               </span>
             </Variant>
           </Item>
 
           <Item
-            name="<ArchiveAdornment>"
-            usage="The archive mark a link on a form carries, inside the URL field itself (<Input trailing>, or <LockedUrl trailing> where the value is frozen). One mark per link, where the link is typed, so archiving is not a block under the field. On a form it is never grey: whatever state the link is in there is something to do with it. No copy yet is the ArchiveRestore mark, which opens the paste line under the field; a link that already has one carries the Archive mark opening the stored copy (the same mark and name the event page shows) with ArchiveRestore beside it, since one link holds one copy and a wrong paste has to be replaceable. Every name folds in `describes`, because a form carries several of these and they look alike. Nothing is written here: the paste travels with the form."
+            name="<ArchiveBox>"
+            usage="One link's archive box on a form, in the link's row after its post time (a <LinkListInput> column). On a form it is never grey: whatever state the link is in there is something to do with it. No copy yet is an icon-only ghost button, the ArchiveRestore mark with an Archive tooltip, which opens the paste line under the row. A copy (the stored one, or a pasted snapshot on an allowed host) shows as itself: the Archive mark and the service's name, opening the copy under the accessible name the event page gives it, with ArchiveRestore beside it, since one link holds one copy and a wrong paste has to be replaceable. On a wide link list the box is 9rem wide in every state, so a copy appearing never narrows the row's other fields; a long service name truncates and its tooltip shows it whole. Every name folds in `describes`, because a form carries several of these and they look alike. Nothing is written here: the paste travels with the form."
           >
-            <Variant label="no copy yet: the mark opens the paste line">
-              <div className="w-full max-w-sm">
-                <Input
-                  type="url"
-                  defaultValue="https://t.me/channel/12345"
-                  trailing={
-                    <ArchiveAdornment
-                      describes={PRIMARY_SOURCE_DESCRIPTION}
-                      copy={null}
-                      expanded={false}
-                      onToggle={() => {}}
-                    />
-                  }
-                />
-              </div>
+            <Variant label="no copy yet: the Archive icon opens the paste line">
+              <ArchiveBox
+                describes={linkDescription(0, "t.me", 0, 1)}
+                snapshot=""
+                expanded={false}
+                onToggle={() => {}}
+              />
             </Variant>
-            <Variant label="a copy exists: it opens, and the second mark replaces it">
-              <div className="w-full max-w-sm">
-                <Input
-                  type="url"
-                  defaultValue="https://t.me/channel/12345"
-                  trailing={
-                    <ArchiveAdornment
-                      describes={PRIMARY_SOURCE_DESCRIPTION}
-                      copy={{ url: "https://archive.ph/abcde", provider: "archive_today" }}
-                      expanded={false}
-                      onToggle={() => {}}
-                    />
-                  }
-                />
-              </div>
+            <Variant label="a copy exists: it opens, and the mark beside it replaces it">
+              <ArchiveBox
+                describes={linkDescription(0, "t.me", 0, 1)}
+                snapshot="https://archive.ph/abcde"
+                expanded={false}
+                onToggle={() => {}}
+              />
             </Variant>
           </Item>
 
           <Item
             name="<ArchiveSnapshotField>"
-            usage="The line the mark opens, directly under the URL field it archives: one field and nothing else. No label, no optional marker, no sentence, because the placeholder states the whole contract and names the three archiving services behind SNAPSHOT_HOSTS. The trailing mark opens web.archive.org/save/<link> for the value currently typed above, so archiving a corrected URL is a re-click; it is the one place on a form a mark goes grey, since a link that does not parse has no page to open. isSnapshotUrl / SNAPSHOT_HINT are the client-side check (https + an allowed archive host) and the one sentence explaining it, reused by the forms to refuse a publish before the upload. Under the field, at most one more line: a red refusal for a value that cannot be a snapshot, or an amber WARNING_CALLOUT naming both URLs when the paste reads as a copy of a different link (snapshotArchivesAnotherLink). The warning blocks nothing, which is why its comparison may be loose; the server checks where a snapshot lives, never what it captured. Nothing is written here: the paste travels with the form as `source_snapshot_url` or as this row's `secondary_snapshot_urls` entry."
+            usage="The line <ArchiveBox> opens, across the row of the link it archives: one field and nothing else. No label, no optional marker, no sentence, because the placeholder states the whole contract and names the three archiving services behind SNAPSHOT_HOSTS. The trailing mark opens web.archive.org/save/<link> for the value currently typed above, so archiving a corrected URL is a re-click; it is the one place on a form a mark goes grey, since a link that does not parse has no page to open. isSnapshotUrl / SNAPSHOT_HINT are the client-side check (https + an allowed archive host) and the one sentence explaining it, reused by the forms to refuse a publish before the upload. Under the field, at most one more line: a red refusal for a value that cannot be a snapshot, or an amber WARNING_CALLOUT naming both URLs when the paste reads as a copy of a different link (snapshotArchivesAnotherLink). The warning blocks nothing, which is why its comparison may be loose; the server checks where a snapshot lives, never what it captured. Nothing is written here: the paste travels with the form as the link's `snapshot_url`."
           >
             <div className="w-full max-w-sm space-y-2">
               <Variant label="a link is typed: the door is live">
                 <ArchiveSnapshotField
                   link="https://t.me/channel/12345"
-                  describes={PRIMARY_SOURCE_DESCRIPTION}
+                  describes={linkDescription(0, "t.me", 0, 1)}
                   value=""
                   onChange={() => {}}
                 />
@@ -1123,7 +1297,7 @@ export default function PalettePage() {
               <Variant label="no usable link yet: the door is inert">
                 <ArchiveSnapshotField
                   link=""
-                  describes={PRIMARY_SOURCE_DESCRIPTION}
+                  describes={linkDescription(0, "t.me", 0, 1)}
                   value=""
                   onChange={() => {}}
                 />
@@ -1131,7 +1305,7 @@ export default function PalettePage() {
               <Variant label="a paste that cannot be a snapshot">
                 <ArchiveSnapshotField
                   link="https://t.me/channel/12345"
-                  describes={PRIMARY_SOURCE_DESCRIPTION}
+                  describes={linkDescription(0, "t.me", 0, 1)}
                   value="https://example.com/not-an-archive"
                   onChange={() => {}}
                 />
@@ -1139,15 +1313,15 @@ export default function PalettePage() {
               <Variant label="a snapshot of some other link: a warning, not a refusal">
                 <ArchiveSnapshotField
                   link="https://t.me/channel/12345"
-                  describes={PRIMARY_SOURCE_DESCRIPTION}
+                  describes={linkDescription(0, "t.me", 0, 1)}
                   value="https://web.archive.org/web/20260601120000/https://t.me/channel/999"
                   onChange={() => {}}
                 />
               </Variant>
-              <Variant label="one mirror's line">
+              <Variant label="a second link's line">
                 <ArchiveSnapshotField
                   link="https://rumble.com/v-mirror"
-                  describes={mirrorDescription("rumble.com", 1, 2)}
+                  describes={linkDescription(0, "rumble.com", 1, 2)}
                   value=""
                   onChange={() => {}}
                 />
@@ -1155,7 +1329,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<Dot>" usage="The orange notification dot: the rail's identity row, the profile's detections entry, the map filter panel's in-flight pulse. Position / ring / size via className.">
+          <Item name="<Dot>" usage="The orange notification dot: the rail's identity row, the profile's detections entry, the map filter panel's in-flight pulse, the position dots of a carousel <HorizontalScroller> (grey except the current one). Position / ring / size / colour via className.">
             <Variant label="bare">
               <Dot />
             </Variant>
@@ -1175,7 +1349,7 @@ export default function PalettePage() {
             </span>
           </Item>
 
-          <Item name="<MediaGallery>" usage="The detail-surface media block: geoloc detail + map panel + request detail. variant=page (2-up hero grid) / panel (stacked thumbnails); one marked empty box, shown here through the shared TileNotice. A video tile is <VideoPlayer>, whose own bar already covers play, download and the expand control, so a clip carries no floating tile control at all. An image tile is cropped, so the tile itself opens <MediaLightbox> at hero resolution, and its download floats in the corner under HOVER_REVEAL. The card-sized media slot is private to <EntityCard> (its no-media box shows in the detection demo below).">
+          <Item name="<MediaGallery>" usage="The detail-surface media block: geoloc detail + map panel + request detail. variant=page (hero tiles, a lone one at full width, 2-up from two) / panel (stacked thumbnails); grow gives each page tile a 16:9 box at the full width instead of the fixed height (a lone source's file), and a video tile then takes the clip's own aspect ratio, centered, at most 28rem tall and at least 20rem wide; one marked empty box, shown here through the shared TileNotice. A video tile is <VideoPlayer>, whose own bar already covers play, download and the expand control, so a clip carries no floating tile control at all. An image tile is cropped, so the tile itself opens <MediaLightbox> at hero resolution, and its download floats in the corner under HOVER_REVEAL. The card-sized media slot is private to <EntityCard> (its no-media box shows in the detection demo below).">
             <div className="w-full max-w-sm">
               <MediaGallery media={[]} alt="demo" />
             </div>
@@ -1237,12 +1411,12 @@ export default function PalettePage() {
                 <StatTile icon={MapPin} label="Geolocated" value={42} href="/search?type=event&status=geolocated" />
                 <StatTile icon={Bot} label="Detected" value={128} href="/search?type=event&status=detected" />
                 <StatTile icon={Swords} label="Top conflict" small value="Russo-Ukrainian War" href="/search?type=event&conflict=Russo-Ukrainian+War" />
-                <StatTile icon={Camera} label="Top capture source" small value="None" />
+                <StatTile icon={Camera} label="Top source kind" small value="None" />
               </StatGrid>
             </div>
           </Item>
 
-          <Item name="<IconTile>" usage="An icon, a title and an optional one-line note in a bordered tile (TILE, with TILE_TITLE on the heading): the chooser on /import and the concept rows on /guide. `href` makes the whole tile one next/link with TAPPABLE_HOVER and an accent title on hover; without it the tile is inert. The caller passes the glyph as a node, so a brand mark such as XGlyph fits. The first tile below is linked, the second is inert.">
+          <Item name="<IconTile>" usage="An icon, a title and an optional one-line note in a bordered tile (TILE, with TILE_TITLE on the heading): the chooser on /import, the entry chooser on /submit and the concept rows on /guide. `href` makes the whole tile one next/link with TAPPABLE_HOVER and an accent title on hover; without it the tile is inert. The caller passes the glyph as a node, so a brand mark such as XGlyph fits. The first tile below is linked, the second is inert.">
             <div className="grid w-full max-w-xl gap-3 sm:grid-cols-2">
               <IconTile icon={<Archive size={13} strokeWidth={1.8} />} title="Upload your X archive" note="Your whole history, once." href="/import#archive" />
               <IconTile icon={<ClipboardCheck size={13} strokeWidth={1.8} />} title="Request approval" note="Ask an analyst or an organization to approve yours." />
@@ -1438,15 +1612,7 @@ export default function PalettePage() {
                 href="/palette"
                 external={false}
                 action={
-                  <Button
-                    icon
-                    variant="dangerGhost"
-                    className="text-neutral-500 hover:text-red-400"
-                    aria-label="Delete notification"
-                    title="Delete"
-                  >
-                    <Trash2 size={14} />
-                  </Button>
+                  <RemoveButton label="Delete notification" />
                 }
               />
               <LinkRow
@@ -1472,17 +1638,22 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SectionHeading>" usage="Form section heading (Details, Location, Tags...)">
-            <SectionHeading title="Source media" concept="source_media" />
-            <SectionHeading title="Proof" concept="section_proof" />
+          <Item name="<SectionHeading>" usage="Form section heading inside the section's card (a collection's Details, a profile's Bio). An event form's sections take the event page's <SectionEyebrow> above the card instead.">
+            <SectionHeading title="Linked accounts" />
           </Item>
 
-          <Item name="<SectionEyebrow>" usage="Detail page + card/panel headings (uppercase eyebrow)">
+          <Item name="<SectionEyebrow>" usage="Detail page + card/panel headings (uppercase eyebrow), and every event form section's heading (Sources, Proof, Location, Details), which sits on the page above the card like the event page's. `invalid` turns it red with FORM_INVALID_LABEL when a publish attempt flags the section.">
             <Variant label="as=h2 (page)">
               <SectionEyebrow title="Details" concept="section_details" />
             </Variant>
+            <Variant label="invalid (a form section, flagged)">
+              <SectionEyebrow title="Sources" concept="sources" invalid />
+            </Variant>
             <Variant label="no concept">
               <SectionEyebrow title="Geolocators" />
+            </Variant>
+            <Variant label="besideScroller (a row as tall as a HorizontalScroller header)">
+              <SectionEyebrow title="Location" concept="section_location" besideScroller />
             </Variant>
           </Item>
         </section>
@@ -1491,26 +1662,49 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Containers & states" />
 
-          <Item name="<Card>" usage="Panels: settings, admin, profile, form sections. One rhythm (space-y-4) for all.">
+          <Item name="<Card>" usage="Panels: settings, admin, profile, form sections, each source editor. One rhythm (space-y-4) for all. `aria-label` names a `section` card as a region (Source N). dense is the reading density (p-4) every card of the event page and of an event form takes. CARD_FRAME is the paint (surface, radius, border) Card, DetailCard, the stat tiles and the map panel share.">
             <Card className="w-48">
               <p className="text-xs text-neutral-300">Content</p>
               <p className="text-xs text-neutral-500">Second line</p>
             </Card>
           </Item>
 
-          <Item name="<DetailCard> + <DetailRow>" usage="Geoloc & request detail pages (label / value)">
-            <div className="w-full max-w-md">
+          <Item name="<DetailCard> + <DetailRow> + <DetailPills>" usage="Label / value rows on the event and request detail pages and on each source block. <DetailCard> takes an optional `lead` slot above the rows (a source's file), `leadBeside` to put that slot left of the rows (3:2, LEAD_BESIDE_SPLIT, which a lone source editor shares) once the card is 42rem wide, falling back to the slot on top when narrower, and a `label` that makes it a named region. <DetailRow> takes `wrapLabel`, for a value that holds one line at its full width: the label wraps instead when the row runs short (a source's Capture position). <DetailPills> is a row value made of pills (conflicts, tags), wrapping flush right.">
+            <div className="w-full max-w-md space-y-4">
               <DetailCard>
                 <DetailRow label="Status" concept="status">
                   <StatusBadge status="geolocated" />
                 </DetailRow>
-                <DetailRow label="Source" concept="source_url" value="t.me/channel/123" />
+                <DetailRow label="Event date" concept="occurred_date" value="9 May 2026" />
                 <DetailRow label="Coordinates" concept="coordinates" value="48.0159, 37.8024" />
               </DetailCard>
+              <DetailCard lead={<p className="text-sm text-neutral-500">Lead slot</p>}>
+                <DetailRow label="Title" value="Drone footage of the strike" />
+                <DetailRow label="Capture position" align="center" wrapLabel>
+                  <CoordinateValue lat={48.0201} lng={37.7951} compact />
+                </DetailRow>
+                <DetailRow label="Tags" align="start">
+                  <DetailPills items={[{ id: "t1", name: "armor" }, { id: "t2", name: "night" }]} />
+                </DetailRow>
+              </DetailCard>
+            </div>
+            <div className="w-full max-w-3xl">
+              <Variant label="leadBeside">
+                <DetailCard
+                  leadBeside
+                  lead={<div className="aspect-video rounded-lg border border-neutral-700 bg-neutral-800" />}
+                >
+                  <DetailRow label="Title" value="Drone footage of the strike" />
+                  <DetailRow label="Captured" value="1 Jun 2026, 09:30 UTC" />
+                  <DetailRow label="Tags" align="start">
+                    <DetailPills items={[{ id: "t1", name: "armor" }]} />
+                  </DetailRow>
+                </DetailCard>
+              </Variant>
             </div>
           </Item>
 
-          <Item name="<ProofSection>" usage="Proof section on geoloc + request detail: eyebrow + bordered box">
+          <Item name="<ProofSection>" usage="The proof's card under the Proof eyebrow EventLayout draws, on the event page and every event form: <Card> at p-4, a reading surface. editor frames the form's proof editor (ProofEditor bare, which draws no frame of its own) and takes the field's focus border; invalid adds the red outline a publish attempt sets.">
             <div className="w-full max-w-xl">
               <ProofSection>
                 <div className="text-sm text-neutral-300 leading-relaxed">
@@ -1518,6 +1712,13 @@ export default function PalettePage() {
                 </div>
               </ProofSection>
             </div>
+            <Variant label="editor invalid">
+              <div className="w-full max-w-xl">
+                <ProofSection editor invalid>
+                  <div className="text-sm text-neutral-500">The proof editor sits here.</div>
+                </ProofSection>
+              </div>
+            </Variant>
           </Item>
 
           <Item name="<EmptyState>" usage="The one empty-state grammar. boxed: empty list pages (requests, search). plain: headline + hint + CTA inside an existing container (detections, recent submissions). invite: dashed first-run hero (feed). One variant per site.">
@@ -1557,7 +1758,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<PageWithRail>" usage="A main column plus a sticky 17.5rem right rail from lg up. PageShell composes it from its rail prop and widens its column to max-w-6xl, so the main column keeps the 53rem reading width: the filter rail of the feed, the Requests board and search, the edit page's actions and geolocators. `header` heads the main column beside the rail rather than above both (PageShell's headerInColumn: the event, version, request and organization pages, whose rail opens top right with the page's actions), and comes first below lg, so a stacked rail lands under the title. The rail sticks at its resting top, so it never moves when the page scrolls, and scrolls on its own once taller than the viewport. Below lg it stacks above the column (narrow=&quot;stacked&quot;), below it (narrow=&quot;below&quot;, the edit page, so Save follows the fields) or leaves the page (narrow=&quot;hidden&quot;, where FilterBar's Filters (N) button opens the same panel full screen). No rail: one full-width column.">
+          <Item name="<PageWithRail>" usage="A main column plus a sticky 17.5rem right rail from lg up. PageShell composes it from its rail prop and widens its column to max-w-6xl, so the main column keeps the 53rem reading width: the filter rail of the feed, the Requests board and search. `header` heads the main column beside the rail rather than above both (PageShell's headerInColumn: the organization page, whose rail opens top right with an invited viewer's answer), and comes first below lg, so a stacked rail lands under the title. The rail sticks at its resting top, so it never moves when the page scrolls, and scrolls on its own once taller than the viewport. Below lg it stacks above the column (narrow=&quot;stacked&quot;), below it (narrow=&quot;below&quot;, for a rail that acts on the column) or leaves the page (narrow=&quot;hidden&quot;, where FilterBar's Filters (N) button opens the same panel full screen). No rail: one full-width column.">
             <div className="w-full space-y-4">
               <Variant label="rail beside the column">
                 <PageWithRail
@@ -1593,7 +1794,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<LoadMoreRow>" usage="The one foot of a useCursorList list (requests, feed, version history, invite codes): Load more while a next page exists, a spinner while it loads, a failed page's message above Try again, nothing once the walk ends. `infinite` loads the next page as the row nears the viewport and pauses after a failure until the click.">
+          <Item name="<LoadMoreRow>" usage="The one foot of a paged list (requests, feed, version history, invite codes, the admin reports queue, and the detections queue, whose pages are numbered): Load more while a next page exists, a spinner while it loads, a failed page's message above Try again, nothing once the walk ends. `infinite` loads the next page as the row nears the viewport and pauses after a failure until the click.">
             <div className="w-full space-y-4">
               <Variant label="idle">
                 <LoadMoreRow walk={{ hasMore: true, loadingMore: false, loadMore: () => {}, error: null }} />
@@ -1609,9 +1810,9 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<CuratedTagsError>" usage="Submit & edit forms (curated tags failed to load)">
+          <Item name="<TaxonomyLoadError>" usage="Event forms (the conflicts failed to load)">
             <div className="w-full max-w-xl">
-              <CuratedTagsError onRetry={() => {}} />
+              <TaxonomyLoadError onRetry={() => {}} />
             </div>
           </Item>
 
@@ -1638,7 +1839,7 @@ export default function PalettePage() {
                 badge={<StatusBadge status="geolocated" />}
                 author={MOCK_CARD_GEO.owner}
                 dates={[
-                  { label: "Event", date: MOCK_CARD_GEO.event_date },
+                  { label: "Event", date: MOCK_CARD_GEO.occurred_date },
                   { label: "Published", date: "2026-05-11" },
                 ]}
                 coords={{ lat: 48.0159, lng: 37.8024 }}
@@ -1656,7 +1857,7 @@ export default function PalettePage() {
                 badge={<StatusBadge status="geolocated" />}
                 author={MOCK_CARD_GEO.owner}
                 coAuthors={[{ username: "bo" }]}
-                date={MOCK_CARD_GEO.event_date}
+                date={MOCK_CARD_GEO.occurred_date}
                 coords={{ lat: 48.0159, lng: 37.8024 }}
                 tags={MOCK_CARD_GEO.tags}
               />
@@ -1687,34 +1888,26 @@ export default function PalettePage() {
                 title={MOCK_DETAIL.title}
                 badge={<StatusBadge status="detected" />}
                 author={{ username: MOCK_DETAIL.owner.username }}
-                date={MOCK_DETAIL.event_date ?? undefined}
-                coords={MOCK_DETAIL.event_coords}
+                date={MOCK_DETAIL.occurred_date ?? undefined}
+                coords={MOCK_DETAIL.coords}
                 tags={MOCK_DETAIL.tags}
               />
             </div>
           </Item>
 
-          <Item name="<EntityCard variant=compact>: a collection item" usage="One item of a collection, held on its edit page's picker: the same compact card with three differences the props carry. `author` is omitted, so the row drops its byline, because a collection is one analyst's own set and the page header names them once. `action` holds a control that acts on the row rather than opening it (here the picker's remove, red because it is the one thing on the row that takes something away), rendered above the stretched link at the bottom of the badge's column, so it takes its own click, sits in the corner furthest from the title and leaves the rest of the row navigating. The collection's own page reads the same row with no `action`: taking an item off is an edit act, not something the reading page offers. `uniformHeight={false}` drops the catalogue height floor, since every row here carries the same two lines and the floor would print a band of empty space under each of them: the row stands on its media column and the text centres against it.">
+          <Item name="<EntityCard variant=compact>: a collection item" usage="One item of a collection, on its page's Events list (<CollectionItemCard> with onSelect): the same compact card with three differences the props carry. `author` is omitted, so the row drops its byline, because a collection is one analyst's own set and the page header names them once. onSelect swaps the link for a button that moves the player to the row, and `selected` marks the row it stands on. `uniformHeight={false}` drops the catalogue height floor, since every row here carries the same two lines and the floor would print a band of empty space under each of them: the row stands on its media column and the text centres against it. The write pages show a held item as the feed card instead (<CollectionItemCard> without onSelect), one at a time in a carousel <HorizontalScroller>, with a red Remove under it.">
             <div className="w-full max-w-xl">
               <EntityCard
                 variant="compact"
-                detailHref="/events/demo"
                 title={MOCK_CARD_GEO.title}
                 badge={<StatusBadge status="geolocated" />}
-                date={MOCK_CARD_GEO.event_date}
+                date={MOCK_CARD_GEO.occurred_date}
                 coords={{ lat: 48.0159, lng: 37.8024 }}
                 tags={MOCK_CARD_GEO.tags}
                 uniformHeight={false}
-                action={
-                  <Button
-                    icon
-                    variant="dangerGhost"
-                    aria-label="Remove from this collection"
-                    title="Remove from collection"
-                  >
-                    <X size={14} />
-                  </Button>
-                }
+                onSelect={() => {}}
+                selected
+                selectLabel={`Read this collection from ${MOCK_CARD_GEO.title}`}
               />
             </div>
           </Item>
@@ -1757,24 +1950,125 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<EventDetailBody>" usage="Geoloc detail page + map panel (page/panel variant)">
-            <div className="w-full max-w-2xl space-y-4">
-              <Variant label="source with no archival record yet (the icon pair renders nothing)">
-                <EventDetailBody geo={MOCK_DETAIL} variant="page" />
+          <Item name="<EventShell>" usage="The one shell of an event (components/event/EventShell.tsx): the event page and the request page render it through EventReadPage (with EventByline, the byline built from the row), a version page directly, and the edit form and the submit form through EventFormShell (the fields, the form's props and the hidden announcer wired once); each only fills its three zones. Built on PageShell. The title section heads the main column: Back (the real arrow, in the gutter from lg up, in the menu chip below sm), then the title and the byline. On a form the Title field (titleField) takes the title's place, and the page name stays the h1 for assistive tech only. The byline is one line: the owner, the co-geolocators and pending invitees as AvatarStack pictures with their remove discs, then a Popover that holds the account picker; on a published edit it manages the geolocators, on the submit form and a request's or a detection's publish form it picks the co-geolocators the publish invites. Nothing opens in the page, so nothing moves. The actions block is top right: its pinned row stays at the top right while the page scrolls, and what reads below it scrolls with the page (the approvals and an invitation on the event page, a version's approvals, a form's hidden IncompleteFormAnnouncer). The body is EventLayout (components/event/EventLayout.tsx, a PageColumns on the 65:35 PAGE_COLUMNS_SPLIT): Sources and Proof in the main column, Location then Details in the side column. EventLayout draws every section's eyebrow from EVENT_SECTIONS, red on a flagged slot, with the slot's aside beside it, and levels the side column's first eyebrow with the sources row's 32px header. Panels take the full width between the title section and the body (the panels the actions open, a version's banner). The demo renders the real shell inline, inside its own PageFrame, so it follows the window's breakpoints: narrow the window to see the phone order, where the Back arrow moves to the menu chip. Switch the filling to see which slots each surface uses; Open as a page shows the same skeleton at /palette/event-shell.">
+            <EventShellPreview />
+          </Item>
+
+          <Item name="<EventDetailBody> / eventPageSlots" usage="An event's read-only fields, one field set for two surfaces. eventPageSlots fills EventShell's body on the event, version and request pages: the source blocks then the proof in the main column, the location slot (eventLocation, the map and its Coordinates row) then the Details card in the side column. <EventDetailBody> is the map panel's body: one column, the source blocks, the Details rows, then the proof.">
+            <div className="w-full space-y-4">
+              <Variant label="eventPageSlots, in EventLayout">
+                <EventLayout {...eventPageSlots(MOCK_DETAIL)} />
               </Variant>
-              <Variant label="source + archived copies (expand Secondary sources for the one-provider and failed mirrors)">
-                <EventDetailBody geo={MOCK_DETAIL_ARCHIVED} variant="page" />
+              <Variant label="EventDetailBody, an imported row with its provenance link">
+                <div className="w-[380px] max-w-full space-y-4">
+                  <EventDetailBody geo={MOCK_DETAIL_ARCHIVED} />
+                </div>
               </Variant>
             </div>
           </Item>
 
+          <Item name="<SourceBlock> / <SourceBlocks>" usage="One source of an event on a reading surface (components/sources/SourceBlock.tsx), read like the event's Details card: a <DetailCard> region named Source N, its file in the lead slot through <MediaGallery> (behind its own <GraphicContentGate> when this source is flagged, a No file box without one, and no file area at all on a context source without one), then <DetailRow>s in the order of the editor's fields: Title, Level as a <Pill>, Kind (the kind label, then the file's kind after a middle dot when there is a file: Drone · video, Article; an Unknown kind shows the file's kind alone, or no row without a file), Links (N) (right-aligned, each link through <SourceLabel> (its host, the full URL in the title) followed by its <ArchivedCopies> mark, with Posted and its UTC date and time (the date alone at exactly midnight UTC) or Date unknown under it), Captured, Capture position (the compact <CoordinateValue>: 4 decimals and the small <CoordinateActions> on one line, under wrapLabel) and Tags as <DetailPills>. A row with no value drops out, Title included. The map panel keeps a LIST_TILE with bare compact rows. `wide` grows the file and sets it beside the rows (<DetailCard leadBeside>). <SourceBlocks> renders the event's blocks in API order: a <SourcesRow> on the event page (eventPageSlots), a lone source taking the whole row as one wide block, and a vertical stack under Sources in the map panel (<EventDetailBody>). <SourcesRow> is the one sources row of the page and every form: a <HorizontalScroller> under a Sources (N) eyebrow, its header holding the arrows from two sources and the caller's actions (a form's Add a source), invalid turning the eyebrow red and note printing why in the header row.">
+            <div className="w-full max-w-2xl">
+              <SourceBlocks sources={[MOCK_SOURCE, MOCK_CONTEXT_SOURCE]} alt="Strike on a depot" />
+            </div>
+            <div className="w-full max-w-4xl">
+              <SourceBlocks sources={[MOCK_SOURCE]} alt="Strike on a depot" />
+            </div>
+          </Item>
+
+          <Item name="<SourceWarnings> / <SourceImageryCheck>" usage="The imagery provider check of a satellite or aircraft source (components/sources/). <SourceWarnings> lists a source's warnings, one amber WARNING_CALLOUT line each, led by the host of the link it is about; it blocks nothing and renders nothing without a warning. <SourceBlock> renders it after the links from SourceRead.warnings. <SourceImageryCheck> sits under the links of a <SourceEditor> of kind Satellite or Aircraft: it runs POST /sources/check once typing pauses, names each reopenable provider a link opens with its reopening help and its credit, then lists the same warnings the saved source would carry.">
+            <div className="w-full max-w-md">
+              <SourceBlock source={MOCK_SATELLITE_SOURCE} index={2} alt="Strike on a depot" />
+            </div>
+          </Item>
+
+          <Item name="<HorizontalScroller>" usage="A row of same-width items that scrolls sideways (components/ui/HorizontalScroller.tsx): native overflow scrolling with one snap point per item, so a swipe moves it, focusable so the arrow keys scroll it. In the row variant, a lone item takes the full width, two items fit once the row is 32rem wide, and below that one fits and the next peeks. With more than one item, the header shows the shown range (1 to 2 of 5) and previous and next ghost icon buttons that scroll by one item, without smoothing under prefers-reduced-motion, go inert at the ends, and step on the left and right keys. The carousel variant shows one item at full width, the position (2 / 3) between the buttons, and one dot per item under the row, the current one accent; a dot shows its item. `actions` adds header controls after the buttons at any item count, and a ref's show(index) scrolls an item into view. The event page's sources and <SourcesField> are the row consumers; the collection picker's held events are the carousel consumer.">
+            <div className="w-full max-w-2xl">
+              <HorizontalScroller
+                heading={<SectionEyebrow margin="none" title="Sources (3)" />}
+                label="Sources"
+                previousLabel="Previous source"
+                nextLabel="Next source"
+              >
+                {[MOCK_SOURCE, MOCK_CONTEXT_SOURCE, MOCK_SOURCE].map((source, index) => (
+                  <SourceBlock key={index} source={source} index={index} alt="Strike on a depot" />
+                ))}
+              </HorizontalScroller>
+            </div>
+            <Variant label="carousel">
+              <div className="w-full max-w-md">
+                <HorizontalScroller
+                  variant="carousel"
+                  heading={<SectionEyebrow margin="none" title="Sources" />}
+                  label="Sources"
+                  previousLabel="Previous source"
+                  nextLabel="Next source"
+                  dotLabel={(index) => `Show source ${index + 1}`}
+                >
+                  {[MOCK_SOURCE, MOCK_CONTEXT_SOURCE, MOCK_SATELLITE_SOURCE].map((source, index) => (
+                    <SourceBlock key={index} source={source} index={index} alt="Strike on a depot" />
+                  ))}
+                </HorizontalScroller>
+              </div>
+            </Variant>
+          </Item>
+
+          <Item name="<SourcesField> / <SourceEditor>" usage="The Sources section of every event form (components/sources/): one <SourceEditor> per source, each a <Card>, in the order of the event page's source block: the file slot (MediaManager on <FileManager>, one full-width tile; a pick uploads at once through POST /uploads), the Title (named Source N title), the level (<SegmentedControl>) on its own line and the kind (<Select>, required on every source) under it, the links (<LinkListInput> under Links (N), one row per link with its post time and <ArchiveBox>, Add a link under them, then <SourceImageryCheck> on a satellite or aircraft source), then More details (<Disclosure>, open when a field inside holds a value): Captured (<DateTimeInput>, UTC), the capture position (CoordinateInputs, hidden for an article, an official statement or another document), the tags (<TagChips>) and Graphic content (<Switch> with its ?, locked on a flagged stored source). Each label's ? sits beside its <label>, never inside it. The section has no card of its own: its Sources (N) <SectionEyebrow> header row sits on the page like the event page's, and a missing file's red line sits in that row, so no editor moves down. It lays the editors out in a row <HorizontalScroller> like the event page's sources, a lone editor at full width with its file beside its title, level and kind once the card is 42rem wide (like <DetailCard leadBeside>), the links and More details under both, and two or more side by side with the row's peek, every editor mounted, with Add a source (capped at 10) in its header; Add a source scrolls the new editor into view, the red trash icon (per editor, from two) arms on the first click and removes on the second, then shows the neighbour, and a publish attempt shows the first editor with a gap.">
+            <div className="w-full max-w-2xl">
+              <SourcesField
+                sources={paletteSources}
+                setSources={setPaletteSources}
+                tags={tpTags}
+                setTags={setTpTags}
+                invalidKeys={new Set()}
+              />
+            </div>
+          </Item>
+
+          <Item name="<PublishActions>" usage="The pinned writes of the event forms (components/geolocations/PublishActions.tsx), the submit form's and the edit form's: an aside named Actions, one right-aligned line of buttons that never wraps, each with a <CountBadge> of what it still misses and dimmed while short (it stays clickable, so a click flags the gaps), its icon from lg up, then the ? and the caller's trailing control (the edit form's red close). usePublishAction runs the caller's checks on every click, then writes at once, or arms on a first click with confirm (the button reads Confirm with ARMED_RING, its sentence in a live region, and the second click writes), or with ask opens a <PopoverPanel> under the button whose own confirm writes (the version note). helpFromSm hides the ? below sm, for a line that fills a 320px phone. The error banner follows the line as an alert; lead heads the block (a review pass's position and Skip). Both forms build their buttons from the same presets and wording: publishGeolocationButton (primary, MapPin, Publishing…), requestWriteButton (secondary, Megaphone), PUBLISH_CONFIRM and REQUEST_CONFIRM for the armed sentences, PUBLISHING_LABEL and SAVING_LABEL for the busy labels. useEventWrite (components/geolocations/useEventWrite.ts) feeds them: one mutation and one gate order per write, and writeGroup reads a form's writes as one banner.">
+            <PalettePublishActions />
+          </Item>
+
+          <Item name="<ConfirmDialog>" usage="The confirmation step before a final action: a centred MediaOverlay dialog with a Card, its title, a body saying what the action does and what cannot be undone, then Cancel (the initial focus, so Enter on open sends nothing) and the primary confirm. Cancel, Escape and a backdrop click close it; the caller owns the request, and `busy` and `error` show it in flight and refused, while `confirmDisabled` holds the confirm until an input the dialog carries is complete. `tone` is accent by default; `danger` paints the border and the confirm red (the danger Button) for an action that deletes, removes or closes something: closing an event, every admin delete, purge and invite revoke, deleting an organization or an approval, removing a co-geolocator or withdrawing an invitation, and hiding a report whose owner deleted it. Approve opens it in accent, since an approval is final but destroys nothing, Request approval opens it over the open requests and the picker of whom to ask, and the report flag opens it over the reason and the details.">
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={() => setConfirmOpen("accent")}>
+                Approve
+              </Button>
+              <Button variant="danger" onClick={() => setConfirmOpen("danger")}>
+                Delete approval
+              </Button>
+            </div>
+            {confirmOpen === "accent" && (
+              <ConfirmDialog
+                title="Approve this version?"
+                confirmLabel="Approve"
+                onConfirm={() => setConfirmOpen(null)}
+                onCancel={() => setConfirmOpen(null)}
+              >
+                <p>You approve version 2 of this geolocation.</p>
+                <p>An approval is final.</p>
+              </ConfirmDialog>
+            )}
+            {confirmOpen === "danger" && (
+              <ConfirmDialog
+                title="Delete this approval?"
+                confirmLabel="Delete approval"
+                tone="danger"
+                onConfirm={() => setConfirmOpen(null)}
+                onCancel={() => setConfirmOpen(null)}
+              >
+                <p>You delete the approval of version 2 by maya. This cannot be undone.</p>
+              </ConfirmDialog>
+            )}
+          </Item>
+
           <Item name="Not rendered (runtime state required)" usage="Genuinely impractical to mock here">
             <ul className="text-[11px] text-neutral-500 space-y-1 list-disc pl-4">
-              <li><span className="font-mono text-neutral-400">FileManager / MediaManager</span>: upload, needs real pending files</li>
+              <li><span className="font-mono text-neutral-400">FileManager / MediaManager</span>: upload, needs real pending files (a source editor above shows a stored file)</li>
               <li><span className="font-mono text-neutral-400">BetaBanner</span>: a {"<Pill tone=\"accent\">"} in a <code>position: fixed</code> wrapper, already visible bottom-right from <code>sm</code> up; below <code>sm</code> the same pill rides the nav drawer via {"<BetaBanner inline>"}</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span>: the primary nav, auth/route-driven, always on screen. Two shapes: a fixed rail on the left edge from <code>sm</code> up (glyphs, or glyphs plus labels once expanded), and below <code>sm</code> a floating chip in the top-left corner that opens the same rail as a drawer over the page</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span> chip and drawer: the rail&apos;s own phone shape, rendered by that component rather than a <code>components/ui/</code> primitive, so there is nothing here to reuse. The chip&apos;s open control is a deliberate one-off too: a 44px neutral thumb target, which {"<Button icon>"} does not offer (36px, accent or red)</li>
-              <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page: one container on every app page, its left edge at one x and a max-w-6xl column centred on the screen from lg up, 53rem reading width without a rail and max-w-6xl with one (PageShell&apos;s <code>rail</code>); PageShell&apos;s <code>controls</code> slot puts a view&apos;s segmented control under the title, left-aligned (the feed scope, the Requests sort, the submit mode); PageShell&apos;s <code>headerInColumn</code> puts the header (back, title, byline) at the top of the main column beside the rail, so the rail opens top right with the page&apos;s actions (the event, version, request and organization pages); PageShell&apos;s <code>back</code> arrow parks in the gutter left of the title from lg up and sticks there at the top of the viewport while the page scrolls, level with the rail; <span className="font-mono text-neutral-400">PageCenter</span> (from PageFrame) is the one centred full-screen block, on the same rail inset</li>
+              <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page (PAGE_TITLE_TEXT is the title&apos;s type, which a form&apos;s Title field takes in its place): one container on every app page, its left edge at one x and a max-w-6xl column centred on the screen from lg up, 53rem reading width without a rail and max-w-6xl with one (PageShell&apos;s <code>rail</code>); PageShell&apos;s <code>controls</code> slot puts a view&apos;s segmented control under the title, left-aligned (the feed scope, the Requests sort),  PageShell&apos;s <code>titleField</code> puts a form&apos;s Title field in the title&apos;s place and keeps the title as a visually hidden h1 (set by EventShell alone); PageShell&apos;s <code>stickyActions</code> puts the page&apos;s actions at the top right of the header, in the aside named Actions it renders, the header keeping their room, and pins them at the top right of the column once the title scrolls away, on a surface (set by EventShell, the profile and organization edit modes and the collection forms); PageShell&apos;s <code>onBack</code> replaces Back&apos;s history walk (on a /submit path, back to the chooser); PageShell&apos;s <code>headerInColumn</code> puts the header (back, title, byline) at the top of the main column beside the rail, so the rail opens top right (the organization page); PageShell&apos;s <code>headerSide</code> lays the header out in <code>PageColumns</code>, a 65:35 main and side column from lg up, its side heading the side column under the sticky actions, and the body continues in <code>EventLayout</code> on the same split (<code>PAGE_COLUMNS_SPLIT</code>) (set by EventShell alone, see its entry); PageShell&apos;s <code>back</code> arrow parks in the gutter left of the title from lg up and sticks there at the top of the viewport while the page scrolls, level with the rail; <span className="font-mono text-neutral-400">PageCenter</span> (from PageFrame) is the one centred full-screen block, on the same rail inset</li>
             </ul>
           </Item>
         </section>
@@ -1815,8 +2109,8 @@ const PALETTE_MEDIA: Media = {
   id: "palette-demo",
   role: "source",
   storage_url: "/opengraph-image",
-  media_type: "image",
-  sha256: null,
+  kind: "image",
+  sha256: "0".repeat(64),
   original_filename: "demo.png",
 };
 
@@ -1829,13 +2123,24 @@ const PALETTE_MEDIA: Media = {
 const PALETTE_VIDEO_SRC =
   process.env.NEXT_PUBLIC_DEMO_VIDEO_URL ?? "/palette-demo-placeholder.mp4";
 
-function PaletteCopyButton() {
+function PaletteCoordinateInputs() {
+  const [lat, setLat] = useState("48.015883");
+  const [lng, setLng] = useState("37.802411");
+  return (
+    <div className="w-full max-w-xs">
+      <CoordinateInputs idPrefix="palette_" lat={lat} setLat={setLat} lng={lng} setLng={setLng} />
+    </div>
+  );
+}
+
+function PaletteCopyButton({ variant }: { variant?: "secondary" }) {
   const { copied, copy } = useCopyToClipboard();
   return (
     <CopyButton
       label="Copy coordinates"
       announce="Coordinates copied"
       icon={<Copy size={14} />}
+      variant={variant}
       copied={copied}
       onClick={() => void copy("48.500000, 37.800000")}
     />
@@ -1886,6 +2191,38 @@ const PALETTE_ACCOUNTS: Account[] = [
   { kind: "organization", slug: "open-source-watch", name: "Open Source Watch" },
 ];
 
+const PALETTE_CITIES = ["Kharkiv", "Kherson", "Kyiv", "Lviv", "Odesa"];
+
+function PaletteCombobox() {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [picked, setPicked] = useState<string | null>(null);
+  const needle = query.trim().toLowerCase();
+  const options = PALETTE_CITIES.filter((city) => city.toLowerCase().includes(needle));
+  return (
+    <div className="w-full max-w-xs space-y-2">
+      <Combobox
+        aria-label="Pick a city"
+        placeholder="Search cities"
+        query={query}
+        onQueryChange={setQuery}
+        open={open}
+        onOpenChange={setOpen}
+        options={options}
+        optionKey={(city) => city}
+        renderOption={(city) => city}
+        onPick={(city) => {
+          setPicked(city);
+          setQuery("");
+          setOpen(false);
+        }}
+        status={options.length === 0 ? "No city matches" : null}
+      />
+      <p className="text-xs text-neutral-500">Picked: {picked ?? "none"}</p>
+    </div>
+  );
+}
+
 function PaletteAccountPicker() {
   const [picked, setPicked] = useState<Account | null>(null);
   return (
@@ -1925,20 +2262,110 @@ function PaletteAccountPicker() {
   );
 }
 
+function PalettePublishActions() {
+  const [note, setNote] = useState("");
+  const publish = usePublishAction({
+    check: () => true,
+    write: () => undefined,
+    confirm: PUBLISH_CONFIRM,
+  });
+  const request = usePublishAction({
+    check: () => true,
+    write: () => undefined,
+    confirm: REQUEST_CONFIRM,
+  });
+  const save = usePublishAction({ check: () => true, write: () => undefined, ask: true });
+  return (
+    <div className="w-full max-w-md space-y-4">
+      <Variant label="two arming publishes, the first short (the submit form)">
+        <PublishActions
+          disabled={false}
+          help="action_submit"
+          buttons={[
+            publishGeolocationButton(
+              { action: publish, busy: false, missing: [{ key: "proof", label: "Proof" }] },
+              "Publish geolocation",
+            ),
+            requestWriteButton({ action: request, busy: false }, "Publish request", PUBLISHING_LABEL),
+          ]}
+        />
+      </Variant>
+      <Variant label="a save that asks for a note (a published edit)">
+        <PublishActions
+          disabled={false}
+          buttons={[
+            {
+              action: save,
+              label: "Save version 3",
+              busyLabel: SAVING_LABEL,
+              busy: false,
+              variant: "primary",
+              icon: <Save size={14} strokeWidth={2} />,
+              ask: {
+                label: "Version note",
+                content: (
+                  <>
+                    <Input
+                      aria-label="Version note"
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      placeholder="What changed, and why"
+                      autoFocus
+                    />
+                    <div className="flex justify-end">
+                      <Button variant="primary" onClick={save.confirmAsk}>
+                        Save version 3
+                      </Button>
+                    </div>
+                  </>
+                ),
+              },
+            },
+          ]}
+          trailing={
+            <RemoveButton confirms label="Close this geolocation" />
+          }
+        />
+      </Variant>
+    </div>
+  );
+}
+
+function PaletteDisclosure() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="w-full max-w-sm">
+      <Disclosure label="More details" open={open} onToggle={() => setOpen((o) => !o)}>
+        <div className="space-y-1.5">
+          <label htmlFor="palette-disclosure-captured" className={FORM_LABEL}>
+            Captured (UTC)
+          </label>
+          <DateTimeInput
+            id="palette-disclosure-captured"
+            type="datetime-local"
+            value=""
+            onChange={() => {}}
+          />
+        </div>
+      </Disclosure>
+    </div>
+  );
+}
+
 function PaletteFilterSection() {
   const [open, setOpen] = useState(true);
   const [selected, setSelected] = useState<string[]>(["Drone"]);
   return (
     <div className="w-72 bg-neutral-900 rounded-lg border border-neutral-700 px-3">
       <FilterSection
-        title="Capture source"
+        title="Source kind"
         summary={chipSummary(selected)}
         active={selected.length > 0}
         open={open}
         onToggle={() => setOpen((o) => !o)}
       >
         <ChipBucket
-          options={["Drone", "Dashcam", "CCTV"].map((n) => ({ id: n, name: n }))}
+          options={["Drone", "Dashcam", "Static camera"].map((n) => ({ id: n, name: n }))}
           selected={selected}
           onToggle={(n) =>
             setSelected((prev) => (prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n]))
@@ -1962,37 +2389,56 @@ function PaletteChipBucket() {
   );
 }
 
-const PALETTE_MATRIX_COLUMNS = [
-  { id: "email", label: "Email" },
-  { id: "push", label: "Push" },
-];
-
-function PaletteToggleMatrix() {
-  const [on, setOn] = useState<Record<string, Record<string, boolean>>>({
-    follower: { email: true, push: false },
-    invite: { email: true, push: true },
-    credit: { email: false, push: false },
-  });
+function PaletteChoiceRow() {
+  const [value, setValue] = useState<"following" | "everyone" | "nobody">("following");
   return (
-    <div className="w-full max-w-80 bg-neutral-900 rounded-lg border border-neutral-700 p-3">
-      <ToggleMatrix
-        columns={PALETTE_MATRIX_COLUMNS}
-        rows={[
-          { id: "follower", label: "New follower", description: "Someone follows you.", on: on.follower },
-          {
-            id: "invite",
-            label: "Geolocator invitation",
-            description: "Someone invites you to share the credit.",
-            on: on.invite,
-            disabled: { push: "No device of yours receives push yet." },
-          },
-          { id: "credit", label: "Credit removed", description: "An owner removes you.", on: on.credit },
+    <div className="w-full max-w-lg bg-neutral-900 rounded-lg border border-neutral-700 p-3">
+      <ChoiceRow
+        label="Accept requests from"
+        description="Who can ask you."
+        options={[
+          { value: "following", label: "People I follow" },
+          { value: "everyone", label: "Everyone" },
+          { value: "nobody", label: "Nobody" },
         ]}
-        onToggle={(row, column, next) =>
-          setOn((prev) => ({ ...prev, [row]: { ...prev[row], [column]: next } }))
-        }
+        value={value}
+        onChange={setValue}
       />
     </div>
+  );
+}
+
+function PaletteFilterSearchFields() {
+  const [conflicts, setConflicts] = useState<string[]>(["Russian invasion of Ukraine"]);
+  const [tags, setTags] = useState<string[]>([]);
+  return (
+    <div className="w-72 space-y-4 bg-neutral-900 rounded-lg border border-neutral-700 p-3">
+      <ConflictChips
+        filter
+        conflicts={MOCK_CONFLICTS}
+        selected={conflicts}
+        setSelected={setConflicts}
+      />
+      <TagChips filter tags={MOCK_TAGS} selected={tags} setSelected={setTags} />
+    </div>
+  );
+}
+
+function PaletteSwatchPicker() {
+  const [value, setValue] = useState("orange");
+  return (
+    <SwatchPicker
+      aria-label="Preview accent color"
+      options={[
+        { value: "orange", label: "Orange", color: "#f97316" },
+        { value: "blue", label: "Blue", color: "#3b82f6" },
+        { value: "emerald", label: "Emerald", color: "#10b981" },
+        { value: "violet", label: "Violet", color: "#8b5cf6" },
+        { value: "rose", label: "Rose", color: "#f43f5e" },
+      ]}
+      value={value}
+      onChange={setValue}
+    />
   );
 }
 
@@ -2010,6 +2456,15 @@ function PaletteToggleRow() {
           description="The small ? icons that explain each field and section."
           on={described}
           onToggle={() => setDescribed((v) => !v)}
+        />
+      </div>
+      <div className="bg-neutral-900 rounded-lg border border-neutral-700 p-3">
+        <ToggleRow
+          label="Show detections"
+          description="Applies while no kind is selected."
+          on
+          disabled
+          onToggle={() => {}}
         />
       </div>
     </div>

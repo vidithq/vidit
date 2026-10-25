@@ -68,17 +68,17 @@ describe("CoordinateInputs", () => {
     ).toBeInTheDocument();
   });
 
-  // Both controls are icon-only, named from the label, so they take no width from
-  // the field.
   it("names the map link on the control itself, beside the fields", () => {
     render(<CoordinateInputs {...baseProps} lat="48.015883" lng="37.802411" />);
     const link = screen.getByRole("link", { name: "View on Maps" });
     expect(link).toHaveTextContent("");
     // The shared tooltip carries the name, so no native title shows a second one.
     expect(link).not.toHaveAttribute("title");
+    // Its own item on the fields' line, not an adornment inside the longitude field.
+    expect(screen.getByLabelText("Longitude").parentElement).not.toContainElement(link);
   });
 
-  // Greyed, not gone: the cell keeps one width.
+  // Greyed, not gone: the line keeps one width.
   it.each([
     ["half-typed", "48.01", ""],
     ["out of bounds", "91", "37.8"],
@@ -104,7 +104,7 @@ describe("CoordinateInputs", () => {
     ).toBeEnabled();
   });
 
-  it("keeps the camera pair's field ids distinct from the subject's", () => {
+  it("keeps the capture pair's field ids distinct from the subject's", () => {
     render(<CoordinateInputs {...baseProps} idPrefix="capture_" required={false} />);
     expect(document.getElementById("capture_lat")).toBeInTheDocument();
     expect(document.getElementById("capture_lng")).toBeInTheDocument();

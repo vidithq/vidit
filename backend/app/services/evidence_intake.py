@@ -1,32 +1,33 @@
-"""Shared evidence-intake orchestration for media-backed submissions.
+"""Shared evidence-intake orchestration: proof images, and the sweep of stored objects.
 
-Every write that attaches files to an event funnels through
-:func:`attach_evidence_and_commit`: validate the batch, upload the source file
-and proof images to S3 with key tracking, attach one ``Media`` row per file,
-rewrite the proof body's ``placeholder://`` srcs, drop proof rows the body no
-longer references, then commit-or-sweep. Event services own only their
-type-specific rules.
+Every event write funnels its proof body through :func:`attach_evidence_and_commit`:
+validate the proof images, upload them with key tracking, attach one ``Media`` row per image,
+rewrite the body's ``placeholder://`` srcs, drop proof rows the body no longer references,
+then commit-or-sweep. A source's file is not uploaded here: it is staged before the write
+(``services/uploads``) and attached by ``services/events/sources``.
 
-Proof images travel inside the multipart submit: the proof HTML references a
-not-yet-uploaded file as ``placeholder://<filename>`` and the file arrives in
-``proof_files``. Matching is by sanitised original filename; a placeholder
-with no file, or a file no placeholder references, is a 400 and nothing
-uploads. ``sweep_keys`` on commit failure is best-effort.
+Proof images travel inside the multipart submit: the proof HTML references a not-yet-uploaded
+file as ``placeholder://<filename>`` and the file arrives in ``proof_files``. Matching is by
+sanitised original filename; a placeholder with no file, or a file no placeholder references,
+is a 400 and nothing uploads.
 
-Errors are :class:`EvidenceIntakeError` subclasses with stable ``.code``
-strings, mapped to HTTP status by each router (seed map:
-:data:`EVIDENCE_INTAKE_ERROR_STATUS`). A service's own domain errors subclass
-it, so a router catches one base.
+Several ``media`` rows may name one stored object (a source added to another event is copied
+by row, not by object), so a write never deletes an object outright: :func:`sweep_unreferenced`
+deletes the ones no ``media`` row and no readable version still names, after the commit.
+
+Errors are :class:`EvidenceIntakeError` subclasses with stable ``.code`` strings, mapped to
+HTTP status by each router (seed map: :data:`EVIDENCE_INTAKE_ERROR_STATUS`). A service's own
+domain errors subclass it, so a router catches one base.
 """
 
 from __future__ import annotations
 
 import logging
 from collections.abc import Iterable, Mapping
-from typing import Any, cast
+from typing import Any, NamedTuple
 
 from fastapi import UploadFile
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -44,7 +45,6 @@ from app.services.storage import (
     get_storage,
     safe_original_filename,
     sweep_keys,
-    upload_file,
     upload_proof_image,
     validate_file,
 )
@@ -66,10 +66,6 @@ class TooManyFilesError(EvidenceIntakeError):
     code = "too_many_files"
 
 
-class MediaRequiredError(EvidenceIntakeError):
-    code = "media_required"
-
-
 class InvalidFileError(EvidenceIntakeError):
     code = "invalid_file"
 
@@ -84,21 +80,104 @@ class ProofFilesMismatchError(EvidenceIntakeError):
     code = "proof_files_mismatch"
 
 
-class SourceMediaConflictError(EvidenceIntakeError):
-    """A second ``source`` row raced past the cap (``uq_media_source_per_event`` backstop)."""
-
-    code = "source_media_conflict"
-
-
 # Each router spreads this, then adds its own domain codes.
 EVIDENCE_INTAKE_ERROR_STATUS: dict[str, int] = {
     "too_many_files": 422,
-    "media_required": 400,
     "invalid_file": 400,
     "evidence_processing_failed": 400,
     "proof_files_mismatch": 400,
-    "source_media_conflict": 409,
 }
+
+
+class StoredObject(NamedTuple):
+    """One stored file a sweep may delete: its URL, and its kind (a video has no derivatives)."""
+
+    storage_url: str
+    kind: str
+
+
+def media_objects(rows: Iterable[Media]) -> list[StoredObject]:
+    return [StoredObject(m.storage_url, m.kind) for m in rows]
+
+
+def snapshot_objects(entries: Iterable[Mapping[str, Any]]) -> list[StoredObject]:
+    """The source files a set of snapshot media fragments name (``versions.media_entry``)."""
+    return [
+        StoredObject(entry["storage_url"], str(entry.get("kind", "")))
+        for entry in entries
+        if isinstance(entry.get("storage_url"), str)
+    ]
+
+
+def event_objects(db: Session, event: Event) -> list[StoredObject]:
+    """Every stored file the event names: its proof images, its sources' files, and the source
+    files its readable history renders. Deduplicated by URL."""
+    objects = media_objects(event.media)
+    objects += media_objects(source.media for source in event.sources if source.media)
+    objects += snapshot_objects(versions.referenced_source_media(db, event.id))
+    return list({obj.storage_url: obj for obj in objects}.values())
+
+
+def _object_keys(obj: StoredObject) -> list[str]:
+    """Every storage key one object owns, derivatives included.
+
+    Every object but a video takes its hero / thumb keys with it, whatever its role or a kind
+    the snapshot lacks: a proof image stored with derivatives must not leave them behind, and
+    deleting a key that does not exist is a no-op on both backends. A foreign URL resolves to no
+    key and is logged and skipped.
+    """
+    key = get_storage().key_from_url(obj.storage_url)
+    if key is None:
+        logger.warning("Unrecognised storage_url %s, skipping the delete", obj.storage_url)
+        return []
+    if obj.kind == "video":
+        return [key]
+    return [key, derivative_key(key, "hero"), derivative_key(key, "thumb")]
+
+
+def unreferenced(db: Session, urls: Iterable[str]) -> set[str]:
+    """The URLs among ``urls`` that no ``media`` row and no readable version's source names.
+
+    Read after the commit that dropped the rows, so a copy on another event, or a version
+    that still renders the file, keeps the object.
+    """
+    candidates = set(urls)
+    if not candidates:
+        return set()
+    held = set(db.scalars(select(Media.storage_url).where(Media.storage_url.in_(candidates))).all())
+    held |= set(
+        db.scalars(
+            text(
+                "SELECT DISTINCT s.value -> 'media' ->> 'storage_url' FROM event_versions v "
+                "CROSS JOIN LATERAL jsonb_array_elements("
+                "COALESCE(v.snapshot -> 'sources', '[]'::jsonb)) s "
+                "WHERE v.redacted_at IS NULL "
+                "AND s.value -> 'media' ->> 'storage_url' = ANY(:urls)"
+            ),
+            {"urls": sorted(candidates)},
+        ).all()
+    )
+    return candidates - held
+
+
+def sweep_unreferenced(
+    db: Session,
+    objects: Iterable[StoredObject],
+    *,
+    context: str,
+    keep: set[str] | None = None,
+) -> None:
+    """Delete the objects nothing names any more (:func:`unreferenced`), best-effort.
+
+    Call after the commit. ``keep`` adds URLs to hold back, such as the images a proof body
+    still displays.
+    """
+    by_url = {obj.storage_url: obj for obj in objects if obj.storage_url not in (keep or set())}
+    free = unreferenced(db, by_url)
+    sweep_keys(
+        [key for url in by_url if url in free for key in _object_keys(by_url[url])],
+        context=context,
+    )
 
 
 def _match_proof_files(
@@ -133,16 +212,16 @@ def _match_proof_files(
             raise ProofFilesMismatchError(f"No uploaded proof file matches placeholder: {name}")
         referenced.add(name)
         pairs.append((src, matched))
-    unreferenced = set(files_by_name) - referenced
-    if unreferenced:
+    unreferenced_files = set(files_by_name) - referenced
+    if unreferenced_files:
         raise ProofFilesMismatchError(
-            "Proof files not referenced by the proof body: " + ", ".join(sorted(unreferenced))
+            "Proof files not referenced by the proof body: " + ", ".join(sorted(unreferenced_files))
         )
     return pairs
 
 
-def _displayed_proof_srcs(proof: str) -> set[str]:
-    """The already-uploaded proof-image URLs a proof body displays (placeholders excluded)."""
+def displayed_proof_srcs(proof: str) -> set[str]:
+    """The already-uploaded image URLs a proof body displays (placeholders excluded)."""
     return {s for s in extract_image_srcs(proof) if not s.startswith(PROOF_PLACEHOLDER_PREFIX)}
 
 
@@ -152,24 +231,19 @@ def _history_pinned_srcs(db: Session, event: Event) -> set[str]:
     A proof image a past version still shows survives, row and object, after
     the current body drops it, so history stays renderable.
 
-    Version 1 has no snapshot, so it pays no query. Precondition:
-    ``services/versions.file_version`` has already bumped ``version_no`` and
-    staged this write's snapshot, so the superseded version's images aren't
-    swept by the same write.
+    An unpublished row (version 0) has no snapshot, so it pays no query.
+    Precondition: ``services/versions.file_version`` has already bumped
+    ``version_no`` and staged this write's snapshot, so the superseded
+    version's images aren't swept by the same write.
     """
-    if event.version_no <= 1:
+    if event.version_no == 0:
         return set()
     return versions.referenced_media_urls(db, event.id)
 
 
 def _history_pinned_source_srcs(db: Session, event: Event) -> set[str]:
-    """The source-media URLs this event's readable snapshots render.
-
-    The source twin of :func:`_history_pinned_srcs`: an anchor swap deletes the
-    replaced row, so only the snapshots name that object (see
-    ``services/versions.referenced_source_media``).
-    """
-    if event.version_no <= 1:
+    """The source-file URLs this event's readable snapshots render."""
+    if event.version_no == 0:
         return set()
     return {
         url
@@ -183,19 +257,20 @@ def _reject_foreign_proof_srcs(db: Session, event: Event, displayed_srcs: set[st
 
     The sanitiser (``services/sanitize._safe_image_src``) checks where a URL
     lives, not whose it is. A src this storage layer wrote (``key_from_url``
-    resolves it) must be one of THIS event's media rows; otherwise event B could
+    resolves it) must be one of THIS event's files; otherwise event B could
     embed A's image and A's next edit would sweep it from under B.
 
-    Both roles count as own: a proof body may cite the event's source frame, and
-    only ``proof`` rows are diffed, so a cited source row is never swept. A
-    superseded source counts too (its row is gone but its object still renders),
-    via :func:`_history_pinned_source_srcs`.
+    A proof body may cite one of the event's source files: only ``proof`` rows
+    are diffed, so a cited source file is never dropped by the diff. A source
+    file a past version renders counts too, via :func:`_history_pinned_source_srcs`.
 
     Srcs the storage layer did not write (relative paths, dev external https)
     are left to the sanitiser.
     """
     storage = get_storage()
-    own = {m.storage_url for m in event.media} | _history_pinned_source_srcs(db, event)
+    own = {m.storage_url for m in event.media}
+    own |= {source.media.storage_url for source in event.sources if source.media is not None}
+    own |= _history_pinned_source_srcs(db, event)
     foreign = sorted(
         src for src in displayed_srcs if src not in own and storage.key_from_url(src) is not None
     )
@@ -205,40 +280,31 @@ def _reject_foreign_proof_srcs(db: Session, event: Event, displayed_srcs: set[st
 
 def _drop_unreferenced_proof_media(
     db: Session, event: Event, kept_srcs: set[str]
-) -> tuple[list[str], int]:
-    """Delete the ``proof`` media rows outside ``kept_srcs``.
-
-    Returns ``(keys, dropped)``: the orphaned S3 keys and the deleted row count.
-    They differ because a foreign ``storage_url`` resolves to no key.
+) -> list[StoredObject]:
+    """Delete the ``proof`` media rows outside ``kept_srcs`` and return what they named.
 
     Rows only, staged in the caller's transaction; objects are swept after the
     commit, so a rollback never orphans a file a row still points at.
     """
-    removed_keys: list[str] = []
-    dropped = 0
+    removed: list[StoredObject] = []
     for m in list(event.media):
-        if m.role != "proof" or m.storage_url in kept_srcs:
+        if m.storage_url in kept_srcs:
             continue
-        removed_keys += _object_keys(
-            m.storage_url, role=m.role, media_type=m.media_type, label=f"Media row {m.id}"
-        )
-        dropped += 1
+        removed.append(StoredObject(m.storage_url, m.kind))
         db.delete(m)
-    return removed_keys, dropped
+    return removed
 
 
-def prune_unreferenced_proof_media(db: Session, event: Event) -> tuple[list[str], int]:
-    """Drop the proof rows nothing renders any more.
-
-    Returns the ``(keys, dropped)`` pair of :func:`_drop_unreferenced_proof_media`.
+def prune_unreferenced_proof_media(db: Session, event: Event) -> list[StoredObject]:
+    """Drop the proof rows nothing renders any more and return what they named.
 
     Standalone form of the diff in :func:`attach_evidence_and_commit`, for
     ``services/versions.redact_version``, which can leave an image no readable
     version or current body points at.
 
-    Staged, not committed: the caller commits, then sweeps the keys.
+    Staged, not committed: the caller commits, then sweeps.
     """
-    kept = _displayed_proof_srcs(event.proof) | _history_pinned_srcs(db, event)
+    kept = displayed_proof_srcs(event.proof) | _history_pinned_srcs(db, event)
     return _drop_unreferenced_proof_media(db, event, kept)
 
 
@@ -246,44 +312,37 @@ async def attach_evidence_and_commit(
     db: Session,
     *,
     event: Event,
-    source_files: list[UploadFile],
     proof_html: str | None,
     proof_files: list[UploadFile],
     sweep_context: str,
+    removed: list[StoredObject] | None = None,
 ) -> None:
-    """Upload + attach an event's evidence, rewrite its proof body, commit.
+    """Upload + attach an event's proof images, rewrite its proof body, commit, sweep.
 
-    ``event`` must already be flushed (its id feeds the S3 keys and the
-    ``Media`` FK), and the caller must delete AND flush any replaced ``source``
-    rows first, so the partial unique index isn't tripped mid-flush.
+    ``event`` must already be flushed (its id feeds the ``Media`` FK), and its sources already
+    written (``services/events/sources.apply_sources``), whose dropped files arrive in
+    ``removed``.
 
-    * ``source_files`` (0 or 1, the caller enforces it) land as
-      ``Media(role='source')`` under ``uploads/<event>/``.
-    * ``proof_html`` is the sanitised incoming proof HTML, or ``None`` to
-      keep ``event.proof``. Its ``placeholder://`` srcs are matched to
-      ``proof_files`` (see :func:`_match_proof_files`), uploaded without
-      derivatives, rewritten to public URLs, and get ``Media(role='proof')``
-      rows. Already-uploaded URLs pass through (the edit flow) and must name
-      this event's own images (see :func:`_reject_foreign_proof_srcs`). Proof
-      rows the final body no longer shows, and no readable snapshot displays, are
-      deleted and their objects swept post-commit.
+    ``proof_html`` is the sanitised incoming proof HTML, or ``None`` to keep ``event.proof``.
+    Its ``placeholder://`` srcs are matched to ``proof_files`` (see :func:`_match_proof_files`),
+    uploaded without derivatives, rewritten to public URLs, and get proof ``Media`` rows.
+    Already-uploaded URLs pass through (the edit flow) and must name this event's own images
+    (see :func:`_reject_foreign_proof_srcs`). Proof rows the final body no longer shows, and no
+    readable snapshot displays, are deleted.
 
     ``max_proof_images_per_event`` is checked twice before anything reaches S3:
     on ``proof_files`` alone (an over-ceiling batch should not cost a decode per
     file), then on what the final body displays, which bounds the event.
 
-    Every file is validated up front so a bad file can't strand its siblings
-    in S3. The commit is inside the try, so a commit failure also sweeps the
-    orphaned objects; an ``IntegrityError`` on ``uq_media_source_per_event``
-    becomes :class:`SourceMediaConflictError` (409).
+    Every file is validated up front so a bad file can't strand its siblings in S3. The commit
+    is inside the try, so a commit failure also sweeps the new objects. After the commit, the
+    dropped proof images and ``removed`` are swept where nothing names them any more
+    (:func:`sweep_unreferenced`), sparing what the final proof body displays.
 
     Raises :class:`TooManyFilesError` (the proof body would display more than
-    ``max_proof_images_per_event`` images), :class:`InvalidFileError` (a file
-    fails ``validate_file``, a non-image in ``proof_files``, or a proof src
-    naming another event's stored image),
-    :class:`ProofFilesMismatchError`, or
-    :class:`EvidenceProcessingFailedError` (the uploader raises
-    ``EvidenceProcessingError``).
+    ``max_proof_images_per_event`` images), :class:`InvalidFileError` (a non-image in
+    ``proof_files``, or a proof src naming another event's stored image),
+    :class:`ProofFilesMismatchError`, or :class:`EvidenceProcessingFailedError`.
     """
     if len(proof_files) > settings.max_proof_images_per_event:
         raise TooManyFilesError(
@@ -291,13 +350,6 @@ async def attach_evidence_and_commit(
             f"this request carries {len(proof_files)}"
         )
 
-    # Validate every file before any upload.
-    source_types: list[str] = []
-    for file in source_files:
-        try:
-            source_types.append(validate_file(file))
-        except ValueError as exc:
-            raise InvalidFileError(str(exc)) from exc
     for file in proof_files:
         try:
             kind = validate_file(file)
@@ -313,16 +365,14 @@ async def attach_evidence_and_commit(
 
     # Diff against the FINAL body (incoming, else the row's), plus history.
     final_proof = proof_html if proof_html is not None else event.proof
-    displayed_srcs = _displayed_proof_srcs(final_proof)
+    displayed_srcs = displayed_proof_srcs(final_proof)
     _reject_foreign_proof_srcs(db, event, displayed_srcs)
     kept_srcs = displayed_srcs | _history_pinned_srcs(db, event)
 
     # Cap what the new body displays (images it still shows plus new files).
     # The batch alone lets an event grow past the cap; counting kept rows
     # would charge for images pinned only by old versions.
-    displayed_proof_rows = sum(
-        1 for m in event.media if m.role == "proof" and m.storage_url in displayed_srcs
-    )
+    displayed_proof_rows = sum(1 for m in event.media if m.storage_url in displayed_srcs)
     total_displayed = displayed_proof_rows + len(proof_files)
     if total_displayed > settings.max_proof_images_per_event:
         raise TooManyFilesError(
@@ -331,7 +381,7 @@ async def attach_evidence_and_commit(
             f"({displayed_proof_rows} already uploaded, {len(proof_files)} new)"
         )
 
-    removed_proof_keys, _dropped_proof_rows = _drop_unreferenced_proof_media(db, event, kept_srcs)
+    dropped = _drop_unreferenced_proof_media(db, event, kept_srcs)
     # Flush deletes before the inserts so a same-URL re-add can't collide.
     db.flush()
     storage = get_storage()
@@ -339,26 +389,6 @@ async def attach_evidence_and_commit(
     # Tracked so a mid-batch failure can sweep them on rollback.
     uploaded_keys: list[str] = []
     try:
-        for file, media_type in zip(source_files, source_types, strict=True):
-            try:
-                result = await upload_file(file, event.id)
-            except EvidenceProcessingError as exc:
-                raise EvidenceProcessingFailedError(str(exc)) from exc
-            db.add(
-                Media(
-                    event_id=event.id,
-                    role="source",
-                    storage_url=result.url,
-                    media_type=media_type,
-                    sha256=result.sha256,
-                    original_filename=safe_original_filename(file.filename),
-                )
-            )
-            key = storage.key_from_url(result.url)
-            if key is not None:
-                uploaded_keys.append(key)
-                uploaded_keys.extend(result.derivative_keys)
-
         src_by_placeholder: dict[str, str] = {}
         for placeholder_src, file in proof_pairs:
             try:
@@ -369,9 +399,8 @@ async def attach_evidence_and_commit(
             db.add(
                 Media(
                     event_id=event.id,
-                    role="proof",
                     storage_url=result.url,
-                    media_type="image",
+                    kind="image",
                     sha256=result.sha256,
                     original_filename=safe_original_filename(file.filename),
                 )
@@ -386,107 +415,41 @@ async def attach_evidence_and_commit(
 
         # Inside the try so a commit failure also sweeps orphans.
         db.commit()
-    except IntegrityError as exc:
-        # Explicit: a later query could autoflush the partially-added rows.
-        db.rollback()
-        sweep_keys(uploaded_keys, context=sweep_context)
-        if "uq_media_source_per_event" in str(exc.orig):
-            raise SourceMediaConflictError(
-                "The event already carries a source media (concurrent edit)"
-            ) from exc
-        raise
     except Exception:
         db.rollback()
         sweep_keys(uploaded_keys, context=sweep_context)
         raise
 
-    # Best-effort. Proof uploads skip derivatives, so the key is the whole footprint.
-    sweep_keys(removed_proof_keys, context=f"{sweep_context} (removed proof images)")
-
-
-def _object_keys(storage_url: str, *, role: str, media_type: str, label: str) -> list[str]:
-    """Every S3 key one media's storage URL owns, derivatives included.
-
-    Hero / thumb derivatives exist only for ``source`` images. A foreign URL
-    resolves to no key and is logged and skipped. ``label`` names the item in
-    that log line.
-    """
-    key = get_storage().key_from_url(storage_url)
-    if key is None:
-        logger.warning("%s has unrecognised storage_url %s, skipping S3 delete", label, storage_url)
-        return []
-    if role != "source" or media_type != "image":
-        return [key]
-    return [key, derivative_key(key, "hero"), derivative_key(key, "thumb")]
-
-
-def collect_media_keys(media_rows: list[Media]) -> list[str]:
-    """S3 keys for a set of ``Media`` rows, derivatives included.
-
-    Used by the admin hard delete and the GDPR erasures.
-    """
-    return [
-        key
-        for m in media_rows
-        for key in _object_keys(
-            m.storage_url, role=m.role, media_type=m.media_type, label=f"Media row {m.id}"
-        )
-    ]
-
-
-def collect_snapshot_media_keys(entries: Iterable[Mapping[str, Any]]) -> list[str]:
-    """S3 keys for a set of snapshot media fragments, derivatives included.
-
-    The row-less twin of :func:`collect_media_keys`: an anchor swap deletes the
-    replaced ``source`` row, so only the snapshot resolves those objects. An
-    entry missing a needed field resolves to no key, like a foreign URL.
-    """
-    return [
-        key
-        for entry in entries
-        if isinstance(entry.get("storage_url"), str)
-        for key in _object_keys(
-            cast(str, entry["storage_url"]),
-            role=str(entry.get("role", "source")),
-            media_type=str(entry.get("media_type", "")),
-            label=f"Version media {entry.get('id')}",
-        )
-    ]
-
-
-def collect_event_media_keys(db: Session, event: Event) -> list[str]:
-    """Every S3 key deleting this event orphans: its media, and its history's.
-
-    The snapshots add the superseded source objects, which outlive their row so
-    ``/vN`` keeps rendering. Deduplicated, since an early version names media
-    the row still carries.
-    """
-    keys = collect_media_keys(list(event.media))
-    keys += collect_snapshot_media_keys(versions.referenced_source_media(db, event.id))
-    return list(dict.fromkeys(keys))
+    sweep_unreferenced(
+        db,
+        dropped + (removed or []),
+        context=f"{sweep_context} (removed files)",
+        keep=displayed_proof_srcs(event.proof),
+    )
 
 
 def orphaned_source_media(
     db: Session, event: Event, *, dropped: Iterable[Mapping[str, Any]]
 ) -> list[Mapping[str, Any]]:
-    """The superseded source media nothing renders any more.
+    """The source files of a redacted snapshot that nothing renders any more.
 
     The source leg of a redaction, beside :func:`prune_unreferenced_proof_media`.
-    ``dropped`` is the ``source_media`` fragment of the snapshot that stopped
-    being readable. An entry survives while another readable version names it,
-    the live row carries it, or the published proof body displays it; the rest
-    are returned for sweeping. Call after the redaction is flushed. Resolve the
-    objects via :func:`collect_snapshot_media_keys`.
+    ``dropped`` is the media of the sources the snapshot held. An entry survives while another
+    readable version or any ``media`` row names it (:func:`unreferenced`), or the event's proof
+    body displays it; the rest are returned for sweeping. Call after the redaction is flushed.
 
     The proof-body keep is not redundant: a proof may cite the superseded
     source frame, and sweeping it would blank an image the published record
     renders.
     """
-    kept = {m.storage_url for m in event.media}
-    kept |= _displayed_proof_srcs(event.proof)
-    kept |= {
-        url
-        for entry in versions.referenced_source_media(db, event.id)
-        if isinstance(url := entry.get("storage_url"), str)
-    }
-    return [entry for entry in dropped if entry.get("storage_url") not in kept]
+    entries = [entry for entry in dropped if isinstance(entry.get("storage_url"), str)]
+    free = unreferenced(db, (entry["storage_url"] for entry in entries))
+    free -= displayed_proof_srcs(event.proof)
+    return [entry for entry in entries if entry["storage_url"] in free]
+
+
+def sweep_snapshot_media(entries: Iterable[Mapping[str, Any]], *, context: str) -> None:
+    """Delete the objects of snapshot media already known to be free (:func:`orphaned_source_media`)."""
+    sweep_keys(
+        [key for obj in snapshot_objects(entries) for key in _object_keys(obj)], context=context
+    )

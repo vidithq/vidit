@@ -11,7 +11,7 @@ export const CONFLICT_OTHER_NAME = "Other";
  */
 export function conflictLabel(c: Conflict): string {
   if (c.start_year === null || /\d{4}/.test(c.name)) return c.name;
-  const end = c.ongoing ? "present" : c.end_year;
+  const end = c.is_ongoing ? "present" : c.end_year;
   const suffix =
     end === null || end === c.start_year
       ? `${c.start_year}`

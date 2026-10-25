@@ -3,11 +3,12 @@ import { describe, expect, it, vi, beforeEach, type Mock } from "vitest";
 import {
   createEvent,
   createEventRequest,
-  geolocateEvent,
-  parseCaptureCoords,
+  parseGuessCoords,
   saveVersion,
-  type EventCreateInput,
+  updateEventRequest,
+  type EventWriteInput,
 } from "./events";
+import type { SourceCreate } from "./sources";
 import { apiFetch } from "./api";
 
 vi.mock("./api", () => ({ apiFetch: vi.fn() }));
@@ -19,329 +20,125 @@ beforeEach(() => {
   mockFetch.mockResolvedValue({ id: "e1" });
 });
 
-/** The FormData the last apiFetch call carried. */
-function lastBody(): FormData {
-  const [, options] = mockFetch.mock.calls.at(-1) as [string, RequestInit];
-  return options.body as FormData;
+/** The path and FormData the last apiFetch call carried. */
+function lastCall(): [string, FormData] {
+  const [path, options] = mockFetch.mock.calls.at(-1) as [string, RequestInit];
+  return [path, options.body as FormData];
 }
+const lastBody = () => lastCall()[1];
 
 const pngA = new File(["a"], "a.png", { type: "image/png" });
 const pngB = new File(["b"], "b.png", { type: "image/png" });
-const vid = new File(["v"], "clip.mp4", { type: "video/mp4" });
 
-const createInput: EventCreateInput = {
+const SOURCE: SourceCreate = {
+  id: null,
+  title: "",
+  level: "direct",
+  kind: "drone",
+  captured_at: null,
+  capture_position: { lat: 50.1, lng: 30.2 },
+  is_graphic: false,
+  links: [{ url: "https://t.me/c/1", posted_at: "2026-01-02T10:00", snapshot_url: null }],
+  tag_ids: [],
+  upload_id: "u1",
+  media_id: null,
+};
+
+const input: EventWriteInput = {
   title: "Strike on depot",
   lat: 48.5,
   lng: 37.8,
-  source_url: "https://t.me/c/1",
-  event_date: "2026-01-02",
-  source_posted_at: "2026-01-01T00:00",
+  sources: [SOURCE],
+  occurred_date: "2026-01-02",
   proof: "",
   tag_ids: ["t1"],
   conflict_ids: ["c1"],
-  files: [vid],
   proof_files: [pngA, pngB],
 };
 
-describe("parseCaptureCoords", () => {
+describe("parseGuessCoords", () => {
   it("returns both halves when both are numeric", () => {
-    expect(parseCaptureCoords("50.1", "30.2")).toEqual({
-      capture_source_lat: 50.1,
-      capture_source_lng: 30.2,
-    });
+    expect(parseGuessCoords("50.1", "30.2")).toEqual({ lat: 50.1, lng: 30.2 });
   });
 
-  it("drops a lone / half-typed pair (both-or-neither)", () => {
-    expect(parseCaptureCoords("50.1", "")).toEqual({});
-    expect(parseCaptureCoords("", "30.2")).toEqual({});
-    expect(parseCaptureCoords("", "")).toEqual({});
-    expect(parseCaptureCoords("abc", "30.2")).toEqual({});
-  });
-
-  it("rejects a partially-numeric value rather than truncating it", () => {
-    // `parseFloat("50.1abc")` would be 50.1; a clean-number parse clears it.
-    expect(parseCaptureCoords("50.1abc", "30.2")).toEqual({});
-    expect(parseCaptureCoords("50.1", "30.2xyz")).toEqual({});
+  it("drops a lone or half-typed pair, and a partially-numeric value", () => {
+    expect(parseGuessCoords("50.1", "")).toEqual({});
+    expect(parseGuessCoords("abc", "30.2")).toEqual({});
+    expect(parseGuessCoords("50.1abc", "30.2")).toEqual({});
   });
 });
 
-describe("createEvent multipart", () => {
-  it("attaches every proof file under proof_files[]", async () => {
-    await createEvent(createInput);
+describe("the event write body", () => {
+  it("posts the whole source list as one JSON field, and no source file", async () => {
+    await createEvent(input);
     const body = lastBody();
-    expect(body.getAll("proof_files")).toEqual([pngA, pngB]);
-    expect(body.get("file")).toBe(vid); // create sends the source under singular `file`
+    expect(JSON.parse(String(body.get("sources")))).toEqual([SOURCE]);
+    expect(body.get("file")).toBeNull();
     expect(body.getAll("files")).toEqual([]);
+  });
+
+  it("posts an empty source list rather than none", async () => {
+    await createEventRequest({ ...input, sources: [] });
+    expect(lastBody().get("sources")).toBe("[]");
+  });
+
+  it("attaches every proof file under proof_files", async () => {
+    await createEvent(input);
+    expect(lastBody().getAll("proof_files")).toEqual([pngA, pngB]);
   });
 
   it("posts the proof as its HTML string, unencoded", async () => {
     const proof = '<p>See</p><img src="placeholder://a.png">';
-    await createEvent({ ...createInput, proof });
+    await createEvent({ ...input, proof });
     expect(lastBody().get("proof")).toBe(proof);
   });
 
-  it("appends one secondary_source_urls entry per link, in order", async () => {
-    await createEvent({
-      ...createInput,
-      secondary_source_urls: ["https://x.com/u/status/2", "https://t.me/c/3"],
-    });
-    expect(lastBody().getAll("secondary_source_urls")).toEqual([
-      "https://x.com/u/status/2",
-      "https://t.me/c/3",
-    ]);
-  });
-
-  it("trims links and drops the rows left blank", async () => {
-    await createEvent({
-      ...createInput,
-      secondary_source_urls: ["  https://t.me/c/3  ", "", "   "],
-    });
-    expect(lastBody().getAll("secondary_source_urls")).toEqual([
-      "https://t.me/c/3",
-    ]);
-  });
-
-  it("sends no secondary_source_urls part when none are given", async () => {
-    await createEvent(createInput);
-    expect(lastBody().has("secondary_source_urls")).toBe(false);
-    await createEvent({ ...createInput, secondary_source_urls: [] });
-    expect(lastBody().has("secondary_source_urls")).toBe(false);
-  });
-
-  it("posts one archived-copy entry per surviving mirror, aligned with it", async () => {
-    await createEvent({
-      ...createInput,
-      secondary_source_urls: ["https://t.me/c/3", "https://x.com/u/status/2"],
-      secondary_snapshot_urls: ["", "  https://archive.ph/abcde  "],
-    });
-    const body = lastBody();
-    expect(body.getAll("secondary_source_urls")).toEqual([
-      "https://t.me/c/3",
-      "https://x.com/u/status/2",
-    ]);
-    // Blank where that mirror was not archived, so position i names mirror i.
-    expect(body.getAll("secondary_snapshot_urls")).toEqual([
-      "",
-      "https://archive.ph/abcde",
-    ]);
-  });
-
-  it("drops a blank mirror row together with its copy", async () => {
-    await createEvent({
-      ...createInput,
-      secondary_source_urls: ["   ", "https://t.me/c/3"],
-      secondary_snapshot_urls: ["https://archive.ph/orphan", "https://archive.ph/abcde"],
-    });
-    const body = lastBody();
-    expect(body.getAll("secondary_source_urls")).toEqual(["https://t.me/c/3"]);
-    expect(body.getAll("secondary_snapshot_urls")).toEqual(["https://archive.ph/abcde"]);
-  });
-
-  it("sends a blank copy entry per mirror when none were pasted", async () => {
-    await createEvent({
-      ...createInput,
-      secondary_source_urls: ["https://t.me/c/3"],
-    });
-    expect(lastBody().getAll("secondary_snapshot_urls")).toEqual([""]);
-  });
-
-  it("posts the archived copy of the source when one was pasted", async () => {
-    await createEvent({
-      ...createInput,
-      source_snapshot_url: "  https://archive.ph/abcde  ",
-    });
-    // Trimmed, like every other pasted URL on the form.
-    expect(lastBody().get("source_snapshot_url")).toBe("https://archive.ph/abcde");
-  });
-
-  it("sends no source_snapshot_url part when nothing was pasted", async () => {
-    await createEvent(createInput);
-    expect(lastBody().has("source_snapshot_url")).toBe(false);
-    await createEvent({ ...createInput, source_snapshot_url: "   " });
-    expect(lastBody().has("source_snapshot_url")).toBe(false);
-  });
-
-  it("encodes tag_ids and conflict_ids as JSON arrays", async () => {
-    await createEvent(createInput);
-    const body = lastBody();
-    expect(body.get("tag_ids")).toBe(JSON.stringify(["t1"]));
-    expect(body.get("conflict_ids")).toBe(JSON.stringify(["c1"]));
-  });
-
-  it("omits conflict_ids when none are selected", async () => {
-    await createEvent({ ...createInput, conflict_ids: [] });
+  it("encodes tag_ids and conflict_ids as JSON arrays, and omits empty ones", async () => {
+    await createEvent(input);
+    expect(lastBody().get("tag_ids")).toBe('["t1"]');
+    expect(lastBody().get("conflict_ids")).toBe('["c1"]');
+    await createEvent({ ...input, tag_ids: [], conflict_ids: [] });
+    expect(lastBody().has("tag_ids")).toBe(false);
     expect(lastBody().has("conflict_ids")).toBe(false);
   });
 
-  it("omits the camera point when it isn't set", async () => {
-    await createEvent(createInput);
-    const body = lastBody();
-    expect(body.has("capture_source_lat")).toBe(false);
-    expect(body.has("capture_source_lng")).toBe(false);
+  it("omits occurred_date and occurred_time when unknown", async () => {
+    await createEvent({ ...input, occurred_date: undefined });
+    expect(lastBody().has("occurred_date")).toBe(false);
+    expect(lastBody().has("occurred_time")).toBe(false);
   });
 
-  it("omits event_date when the date is unknown", async () => {
-    await createEvent({ ...createInput, event_date: undefined });
-    expect(lastBody().has("event_date")).toBe(false);
-  });
-
-  it("sends both camera halves together (both-or-neither)", async () => {
-    await createEvent({
-      ...createInput,
-      ...parseCaptureCoords("50.1", "30.2"),
-    });
-    const body = lastBody();
-    expect(body.get("capture_source_lat")).toBe("50.1");
-    expect(body.get("capture_source_lng")).toBe("30.2");
+  it("sends the subject point both-or-neither", async () => {
+    await createEventRequest({ ...input, lat: undefined, lng: undefined });
+    expect(lastBody().has("lat")).toBe(false);
+    expect(lastBody().has("lng")).toBe(false);
+    await createEventRequest(input);
+    expect(lastBody().get("lat")).toBe("48.5");
+    expect(lastBody().get("lng")).toBe("37.8");
   });
 });
 
-describe("saveVersion multipart", () => {
-  /** The version form: the geolocate form, whole, anchor included. */
-  const versionInput = { ...createInput, remove_media_ids: [] };
-
-  it("carries the evidence anchor, so a published source can be corrected", async () => {
-    mockFetch.mockResolvedValue({ id: "e1", status: "geolocated" });
-    await saveVersion("e1", {
-      ...versionInput,
-      source_url: "https://t.me/c/9",
-      remove_media_ids: ["m1"],
-      files: [vid],
-    });
-    const body = lastBody();
-    expect(body.get("source_url")).toBe("https://t.me/c/9");
-    expect(body.get("remove_media_ids")).toBe(JSON.stringify(["m1"]));
-    expect(body.getAll("files")).toEqual([vid]);
-    const [path] = mockFetch.mock.calls.at(-1) as [string];
-    expect(path).toBe("/events/e1/versions");
+describe("the event write endpoints", () => {
+  it.each([
+    ["create", () => createEvent(input), "/events"],
+    ["request", () => createEventRequest(input), "/events/requests"],
+    ["request edit", () => updateEventRequest("e1", input), "/events/e1/request"],
+    ["version", () => saveVersion("e1", { ...input, version_no: 0 }), "/events/e1/versions"],
+  ])("%s posts to its endpoint", async (_name, write, path) => {
+    await write();
+    expect(lastCall()[0]).toBe(path);
+    expect(lastBody().has("sources")).toBe(true);
   });
 
-  it("omits an untouched removal list rather than posting an empty one", async () => {
-    mockFetch.mockResolvedValue({ id: "e1", status: "geolocated" });
-    await saveVersion("e1", versionInput);
-    expect(lastBody().has("remove_media_ids")).toBe(false);
+  it("carries a trimmed version note, and none when blank", async () => {
+    await saveVersion("e1", { ...input, version_no: 1, note: "  moved the pin  " });
+    expect(lastBody().get("note")).toBe("moved the pin");
+    await saveVersion("e1", { ...input, version_no: 1, note: "   " });
+    expect(lastBody().has("note")).toBe(false);
   });
 
-  it("omits a blank source_posted_at so the published instant survives", async () => {
-    // An absent field means "keep": posting "" would wipe the instant on a title correction.
-    mockFetch.mockResolvedValue({ id: "e1", status: "geolocated" });
-    await saveVersion("e1", { ...versionInput, source_posted_at: "" });
-    expect(lastBody().has("source_posted_at")).toBe(false);
-  });
-
-  it("posts a source_posted_at the editor filled in", async () => {
-    mockFetch.mockResolvedValue({ id: "e1", status: "geolocated" });
-    await saveVersion("e1", { ...versionInput, source_posted_at: "2026-02-03T04:05" });
-    expect(lastBody().get("source_posted_at")).toBe("2026-02-03T04:05");
-  });
-
-  it("carries a mirror's archived copy, so one edit files one version", async () => {
-    mockFetch.mockResolvedValue({ id: "e1", status: "geolocated" });
-    await saveVersion("e1", {
-      ...versionInput,
-      secondary_source_urls: ["https://t.me/c/3"],
-      secondary_snapshot_urls: ["https://archive.ph/abcde"],
-    });
-    expect(lastBody().getAll("secondary_snapshot_urls")).toEqual([
-      "https://archive.ph/abcde",
-    ]);
-  });
-});
-
-describe("geolocateEvent multipart", () => {
-  it("carries proof_files, remove_media_ids, and the camera point", async () => {
-    mockFetch.mockResolvedValue({ id: "e1", status: "geolocated" });
-    await geolocateEvent("e1", {
-      ...createInput,
-      remove_media_ids: ["m1", "m2"],
-      ...parseCaptureCoords("50.1", "30.2"),
-    });
-    const body = lastBody();
-    expect(body.getAll("proof_files")).toEqual([pngA, pngB]);
-    expect(body.get("remove_media_ids")).toBe(JSON.stringify(["m1", "m2"]));
-    expect(body.get("capture_source_lat")).toBe("50.1");
-    const [path] = mockFetch.mock.calls.at(-1) as [string];
-    expect(path).toBe("/events/e1/geolocate");
-  });
-
-  it("carries the archived copy pasted on the edit form", async () => {
-    mockFetch.mockResolvedValue({ id: "e1", status: "geolocated" });
-    await geolocateEvent("e1", {
-      ...createInput,
-      remove_media_ids: [],
-      source_snapshot_url: "https://archive.ph/abcde",
-    });
-    expect(lastBody().get("source_snapshot_url")).toBe("https://archive.ph/abcde");
-  });
-
-  it("carries the secondary source links (the transition replaces the list)", async () => {
-    mockFetch.mockResolvedValue({ id: "e1", status: "geolocated" });
-    await geolocateEvent("e1", {
-      ...createInput,
-      remove_media_ids: [],
-      secondary_source_urls: ["https://t.me/c/3"],
-    });
-    expect(lastBody().getAll("secondary_source_urls")).toEqual([
-      "https://t.me/c/3",
-    ]);
-  });
-});
-
-describe("createEventRequest multipart", () => {
-  it("posts the camera point and no proof_files part when none supplied", async () => {
-    mockFetch.mockResolvedValue({ id: "e1", status: "requested" });
-    await createEventRequest({
-      title: "Footage wanted",
-      source_url: "https://t.me/c/2",
-      source_posted_at: "2026-01-01T00:00",
-      files: [vid],
-      proof_files: [],
-      ...parseCaptureCoords("50.1", "30.2"),
-    });
-    const body = lastBody();
-    expect(body.get("capture_source_lat")).toBe("50.1");
-    expect(body.get("capture_source_lng")).toBe("30.2");
-    expect(body.has("proof_files")).toBe(false);
-  });
-
-  it("posts the archived copy a request's poster made", async () => {
-    // One form posts either shape, so the paste survives the choice.
-    mockFetch.mockResolvedValue({ id: "e1", status: "requested" });
-    await createEventRequest({
-      title: "Footage wanted",
-      source_url: "https://t.me/c/2",
-      source_snapshot_url: "https://archive.ph/abcde",
-      source_posted_at: "2026-01-01T00:00",
-      files: [vid],
-      proof_files: [],
-    });
-    expect(lastBody().get("source_snapshot_url")).toBe("https://archive.ph/abcde");
-  });
-
-  it("posts the secondary source links a request declares", async () => {
-    mockFetch.mockResolvedValue({ id: "e1", status: "requested" });
-    await createEventRequest({
-      title: "Footage wanted",
-      source_url: "https://t.me/c/2",
-      secondary_source_urls: ["https://x.com/u/status/4", ""],
-      source_posted_at: "2026-01-01T00:00",
-      files: [vid],
-      proof_files: [],
-    });
-    expect(lastBody().getAll("secondary_source_urls")).toEqual([
-      "https://x.com/u/status/4",
-    ]);
-  });
-
-  it("uploads proof_files when a request carries proof images", async () => {
-    mockFetch.mockResolvedValue({ id: "e2", status: "requested" });
-    await createEventRequest({
-      title: "Started, not finished",
-      source_url: "https://t.me/c/3",
-      source_posted_at: "2026-01-01T00:00",
-      files: [vid],
-      proof_files: [pngA, pngB],
-    });
-    expect(lastBody().getAll("proof_files")).toEqual([pngA, pngB]);
+  it("names the version the form was loaded at", async () => {
+    await saveVersion("e1", { ...input, version_no: 0 });
+    expect(lastBody().get("version_no")).toBe("0");
   });
 });

@@ -7,7 +7,7 @@
  * pre-paint inline script reads, and the value a signed-out reader keeps.
  */
 
-export interface AttributePreference<T extends string> {
+interface AttributePreference<T extends string> {
   /** The stored value, or the fallback when absent / invalid / server-side. */
   get(): T;
   /** The value this browser saved, or `null` when it saved none (or an invalid one). */

@@ -20,7 +20,7 @@ import {
 /** Map-page state that survives navigating away and back: lifted into the root layout's
  * provider so returning from a deep page restores the view, selected point and filters. */
 
-export interface ViewState {
+interface ViewState {
   latitude: number;
   longitude: number;
   zoom: number;

@@ -13,21 +13,18 @@ import {
 } from "@/lib/events";
 import { useMutation } from "@/hooks/useMutation";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { CharCounter } from "@/components/ui/CharCounter";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Select, Textarea } from "@/components/ui/Input";
-import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import {
-  FORM_ERROR_BANNER,
-  FORM_LABEL,
-  FORM_SUCCESS_BANNER,
-} from "@/components/ui/form-styles";
+import { FORM_LABEL, FORM_SUCCESS_BANNER } from "@/components/ui/form-styles";
 
 /**
  * The reader's "something is wrong with this" control, on every detail surface. One state machine,
  * two nodes: `trigger` is the red flag icon button closing the utilities tier next to the share
- * controls, and `panel` is the form it opens, rendered in the surface's body where a select and
- * textarea fit. `useEventActions` assembles both into the event cluster, and the collection page
- * into its own.
+ * controls, and `panel` is the `ConfirmDialog` it opens (the reason, the details, then **Cancel**
+ * and **Send report**), or the receipt once a report lands, rendered in the surface's body.
+ * `useEventActions` assembles both into the event cluster, and the collection page into its own.
  *
  * Icon-only like the share pair: `aria-label` plus `title` carry the name. Red because reporting
  * is the destructive-in-intent act a reader can do to a published claim: the `danger` variant of
@@ -39,7 +36,7 @@ import {
  *
  * The bucket is a `<Select>`, not a `<SegmentedControl>`: five options, two long, don't fit one
  * exclusive-choice track. The reporter's words are optional, since the bucket is often the whole
- * report.
+ * report; the details' `?` says so rather than the label.
  *
  * One hook for both reportable kinds, parameterised by `kind`: the two endpoints take the same
  * body under the same cap, so a second copy would be a second place for the buckets and the
@@ -47,7 +44,7 @@ import {
  */
 
 /** What this report is filed against. Mirrors the two report routes. */
-export type ReportTargetKind = "event" | "collection";
+type ReportTargetKind = "event" | "collection";
 
 // The call per kind and the noun the copy uses, keyed by the union so a third target fails `tsc` here.
 const SUBMIT: Record<
@@ -65,10 +62,6 @@ const NOUN: Record<ReportTargetKind, string> = {
 
 // The select's order, from the shared label map so the form and the admin queue name buckets alike.
 const REASONS = Object.keys(REPORT_REASON_LABELS) as ContentReportReason[];
-
-// The trigger (header) and form (body) aren't DOM siblings, so `aria-controls` ties them. One id
-// for both kinds: a page reports one thing.
-const FORM_ID = "report-content-form";
 
 export function useReportContent(
   kind: ReportTargetKind,
@@ -130,12 +123,10 @@ export function useReportContent(
       variant="dangerGhost"
       aria-label="Report"
       title="Report"
-      aria-expanded={open}
-      // Only while the form is mounted: `aria-controls` to an absent id is a dangling reference.
-      aria-controls={open ? FORM_ID : undefined}
+      aria-haspopup="dialog"
       onClick={() => {
         reportMutation.reset();
-        setOpen((prev) => !prev);
+        setOpen(true);
       }}
     >
       <Flag size={14} />
@@ -147,75 +138,60 @@ export function useReportContent(
   return {
     trigger,
     panel: (
-      <div id={FORM_ID}>
-        <Card as="section">
-          <header>
-            <SectionEyebrow
-              title={`Report this ${NOUN[kind]}`}
-              margin="none"
-            />
-            <p className="text-xs text-neutral-500 mt-0.5">
-              No account needed. Say what is wrong with it and an admin reviews
-              the {NOUN[kind]}.
-            </p>
-          </header>
+      <ConfirmDialog
+        title={`Report this ${NOUN[kind]}`}
+        confirmLabel="Send report"
+        busyLabel="Sending…"
+        busy={busy}
+        error={reportMutation.error}
+        onConfirm={() => void reportMutation.run()}
+        onCancel={() => setOpen(false)}
+      >
+        <p>
+          No account needed. Say what is wrong with it and an admin reviews the{" "}
+          {NOUN[kind]}.
+        </p>
 
-          <div className="space-y-1.5">
+        <div className="space-y-1.5 pt-1">
+          <span className="flex items-center gap-1.5">
             <label htmlFor="report_reason" className={FORM_LABEL}>
               Reason
             </label>
-            <Select
-              id="report_reason"
-              value={reason}
-              onChange={(e) => setReason(e.target.value as ContentReportReason)}
-              className="max-w-xs"
-            >
-              {REASONS.map((value) => (
-                <option key={value} value={value}>
-                  {REPORT_REASON_LABELS[value]}
-                </option>
-              ))}
-            </Select>
-          </div>
+            <FieldHelp concept="report_reason" />
+          </span>
+          <Select
+            id="report_reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value as ContentReportReason)}
+          >
+            {REASONS.map((value) => (
+              <option key={value} value={value}>
+                {REPORT_REASON_LABELS[value]}
+              </option>
+            ))}
+          </Select>
+        </div>
 
-          <div className="space-y-1.5">
-            <label htmlFor="report_details" className={FORM_LABEL}>
-              Details (optional)
-            </label>
-            <Textarea
-              id="report_details"
-              rows={3}
-              maxLength={REPORT_DETAILS_MAX_LEN}
-              value={details}
-              onChange={(e) => setDetails(e.target.value)}
-              placeholder="Anything the admin needs to judge this, in your own words."
-            />
-          </div>
-
-          {reportMutation.error && (
-            <div className={FORM_ERROR_BANNER} role="alert">
-              {reportMutation.error}
-            </div>
-          )}
-
-          <div className="flex items-center gap-3">
-            <Button
-              variant="primary"
-              onClick={() => void reportMutation.run()}
-              disabled={busy}
-            >
-              {busy ? "Sending…" : "Send report"}
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => setOpen(false)}
-              disabled={busy}
-            >
-              Cancel
-            </Button>
-          </div>
-        </Card>
-      </div>
+        <div className="space-y-1.5 pt-1">
+          <span className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5">
+              <label htmlFor="report_details" className={FORM_LABEL}>
+                Details
+              </label>
+              <FieldHelp concept="report_details" />
+            </span>
+            <CharCounter length={details.length} max={REPORT_DETAILS_MAX_LEN} />
+          </span>
+          <Textarea
+            id="report_details"
+            rows={3}
+            maxLength={REPORT_DETAILS_MAX_LEN}
+            value={details}
+            onChange={(e) => setDetails(e.target.value)}
+            placeholder="Anything the admin needs to judge this, in your own words."
+          />
+        </div>
+      </ConfirmDialog>
     ),
   };
 }

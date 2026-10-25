@@ -48,7 +48,7 @@ import {
 const SiteMap = dynamic(() => import("@/components/map/SiteMap"), { ssr: false });
 
 function nearbyCandidate(event: SiteNearbyEvent): LinkCandidate {
-  const date = event.event_date ? formatDate(event.event_date) : "Undated";
+  const date = event.occurred_date ? formatDate(event.occurred_date) : "Undated";
   return { id: event.id, label: event.title, meta: `${date} · ${formatDistance(event.distance_m)} from the zone` };
 }
 
@@ -68,7 +68,7 @@ export default function SitePage() {
     if (!site) return null;
     return positionsBounds([
       ...site.observations.flatMap((o) => zoneVertices(o.zone)),
-      ...site.linked_events.map((e) => [e.event_coords.lng, e.event_coords.lat] as [number, number]),
+      ...site.linked_events.map((e) => [e.coords.lng, e.coords.lat] as [number, number]),
     ]);
   }, [site]);
 
@@ -166,8 +166,8 @@ export default function SitePage() {
               <DetailRow label="Latest linked event" align="center">
                 <span className="flex flex-wrap items-center justify-end gap-2 text-sm">
                   <Link href={eventHref(site.latest_link_effect.event_id)} className={TEXT_LINK}>
-                    {site.latest_link_effect.event_date
-                      ? formatDate(site.latest_link_effect.event_date)
+                    {site.latest_link_effect.occurred_date
+                      ? formatDate(site.latest_link_effect.occurred_date)
                       : "Undated event"}
                   </Link>
                   <LinkEffectPill effect={site.latest_link_effect.effect} />
@@ -248,7 +248,7 @@ export default function SitePage() {
                   external={false}
                   href={eventHref(event.id)}
                   value={event.title}
-                  meta={`${event.event_date ? formatDate(event.event_date) : "Undated"} · ${event.owner.username} · ${
+                  meta={`${event.occurred_date ? formatDate(event.occurred_date) : "Undated"} · ${event.owner.username} · ${
                     event.distance_m === 0 ? "inside the zone" : `${formatDistance(event.distance_m)} from the zone`
                   }`}
                 />
@@ -276,7 +276,7 @@ export default function SitePage() {
               .map((e) => ({
                 id: e.id,
                 label: e.title,
-                meta: e.event_date ? formatDate(e.event_date) : "Undated",
+                meta: e.occurred_date ? formatDate(e.occurred_date) : "Undated",
               }));
           }}
           onLink={async (eventId, effect) => {

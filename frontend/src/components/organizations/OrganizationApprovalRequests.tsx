@@ -17,9 +17,9 @@ import {
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { ChoiceRow } from "@/components/ui/ChoiceRow";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { eventHref } from "@/lib/routes";
 
@@ -95,22 +95,14 @@ export function OrganizationApprovalRequests({
   return (
     <Card as="section">
       <SectionEyebrow title="Approval requests" margin="none" />
-      {/* Stacks below `sm`, where the three choices take the full column. */}
       {org.viewer_can_manage && (
-        <div className="flex max-sm:flex-col max-sm:items-stretch items-center justify-between gap-4">
-          <div>
-            <p className="text-sm text-neutral-200">Accept approval requests from</p>
-            <p className="text-xs text-neutral-500">
-              Who can ask {org.name} to approve their geolocation.
-            </p>
-          </div>
-          <SegmentedControl
-            aria-label="Accept approval requests from"
-            options={ORGANIZATION_AUDIENCE_OPTIONS}
-            value={org.approval_request_audience ?? APPROVAL_REQUEST_AUDIENCE_DEFAULT}
-            onChange={(value) => void audience.run(value)}
-          />
-        </div>
+        <ChoiceRow
+          label="Accept approval requests from"
+          description={`Who can ask ${org.name} to approve their geolocation.`}
+          options={ORGANIZATION_AUDIENCE_OPTIONS}
+          value={org.approval_request_audience ?? APPROVAL_REQUEST_AUDIENCE_DEFAULT}
+          onChange={(value) => void audience.run(value)}
+        />
       )}
       {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
       {requests.data && rows.length === 0 && (

@@ -29,11 +29,13 @@ from tests.events._helpers import (
     client,
     proof_file_part,
     proof_form_field,
+    source_spec,
+    sources_field,
 )
 from tests.events.conftest import _delete_user_and_events
 
-# One geo tweet like a real export entry. It declares no source, so ``source_url`` stays
-# NULL until geolocate.
+# One geo tweet like a real export entry. It declares no source URL, so the detection holds
+# no source until geolocate.
 _TWEET_ID = "9001"
 _TWEETS_JS = (
     "window.YTD.tweets.part0 = "
@@ -97,9 +99,7 @@ def _extract_token(text: str) -> str:
     return text[idx:end]
 
 
-def test_gold_path_register_import_geolocate_publish(
-    db, email_recorder, invite_code, conflict, capture_source_tag
-):
+def test_gold_path_register_import_geolocate_publish(db, email_recorder, invite_code, conflict):
     handle = f"gold{uuid.uuid4().hex[:8]}"
     user_id = None
     try:
@@ -147,7 +147,7 @@ def test_gold_path_register_import_geolocate_publish(
         accepted = client.post(
             "/api/v1/events/import-archive",
             headers=auth_headers,
-            json={"upload_key": presign["upload_key"], "post_estimate": 1},
+            json={"upload_key": presign["upload_key"], "estimated_post_count": 1},
         )
         assert accepted.status_code == 202, accepted.text
         assert accepted.json()["status"] == "queued"
@@ -173,12 +173,12 @@ def test_gold_path_register_import_geolocate_publish(
         assert row.status == STATUS_DETECTED
         # Provenance names the X account the invite linked, not the Vidit
         # username: the permalink has to open the analyst's actual post.
-        assert row.detected_from_url == f"https://x.com/{invite_code.x_handle}/status/{_TWEET_ID}"
-        assert row.detected_via == "archive"
-        assert row.source_url is None  # the tweet declared no source
+        assert row.detection.from_url == f"https://x.com/{invite_code.x_handle}/status/{_TWEET_ID}"
+        assert row.detection.via == "archive"
+        assert row.sources == []  # the tweet declared no source
         assert row.proof is not None  # the tweet text became the proof body
         media = db.query(Media).filter(Media.event_id == row.id).all()
-        assert [(m.role, m.media_type) for m in media] == [("proof", "image")]
+        assert [(m.role, m.kind) for m in media] == [("proof", "image")]
         assert media[0].sha256  # content-hashed at persist
         event_id = str(row.id)
 
@@ -189,7 +189,7 @@ def test_gold_path_register_import_geolocate_publish(
         detail = client.get(f"/api/v1/events/{event_id}")
         assert detail.status_code == 200
         assert detail.json()["status"] == STATUS_DETECTED
-        assert detail.json()["detected_from_url"] == row.detected_from_url
+        assert detail.json()["detected_from_url"] == row.detection.from_url
 
         points = {p[0]: p for p in client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").json()}
         assert points[event_id][5] == 1  # the ``detected`` marker flag
@@ -197,41 +197,52 @@ def test_gold_path_register_import_geolocate_publish(
         queue = client.get("/api/v1/events/detections", headers=auth_headers)
         assert event_id in {r["id"] for r in queue.json()["items"]}
 
-        # ── 4. The owner geolocates over the evidence floor ─────────────
+        # ── 4. The owner publishes over the evidence floor ──────────────
+        staged = client.post(
+            "/api/v1/uploads",
+            headers=auth_headers,
+            files={"file": ("footage.jpg", TINY_JPEG, "image/jpeg")},
+        )
+        assert staged.status_code == 201, staged.text
         geolocated = client.post(
-            f"/api/v1/events/{event_id}/geolocate",
+            f"/api/v1/events/{event_id}/versions",
             data={
                 "title": "Depot strike, verified",
                 "lat": "48.213",
                 "lng": "37.512",
-                "source_url": f"https://x.com/{handle}/status/{_TWEET_ID}",
-                "event_date": "2025-11-12",
-                "source_posted_at": "2025-11-12T14:33",
+                "occurred_date": "2025-11-12",
+                "version_no": "0",
                 "proof": proof_form_field(),
-                "tag_ids": json.dumps([str(capture_source_tag.id)]),
                 "conflict_ids": json.dumps([str(conflict.id)]),
+                "sources": sources_field(
+                    source_spec(
+                        f"https://x.com/{handle}/status/{_TWEET_ID}",
+                        posted_at="2025-11-12T14:33",
+                        upload_id=staged.json()["id"],
+                    )
+                ),
             },
-            files=[
-                ("files", ("footage.jpg", TINY_JPEG, "image/jpeg")),
-                proof_file_part(),
-            ],
+            files=[proof_file_part()],
             headers=auth_headers,
         )
         assert geolocated.status_code == 200, geolocated.text
         body = geolocated.json()
         assert body["status"] == STATUS_GEOLOCATED
+        assert body["version_no"] == 1
         assert [g["username"] for g in body["geolocators"]] == [handle]
+        [source] = body["sources"]
+        assert source["kind"] == "smartphone" and source["media"]["kind"] == "image"
 
-        # Frozen: a second geolocate 409s.
+        # Frozen: a second publish from the version 0 form 409s.
         frozen = client.post(
-            f"/api/v1/events/{event_id}/geolocate",
+            f"/api/v1/events/{event_id}/versions",
             data={
                 "title": "x",
                 "lat": "1",
                 "lng": "1",
-                "source_url": "https://example.com/s",
-                "event_date": "2025-11-12",
-                "source_posted_at": "2025-11-12T14:33",
+                "occurred_date": "2025-11-12",
+                "version_no": "0",
+                "sources": sources_field(source_spec("https://example.com/s")),
             },
             headers=auth_headers,
         )
@@ -247,11 +258,11 @@ def test_gold_path_register_import_geolocate_publish(
     finally:
         client.cookies.clear()
         if user_id is not None:
-            # The confirm stamped ``used_by``; detach it so the user row (and
+            # The confirm stamped ``used_by_id``; detach it so the user row (and
             # everything hanging off it) can go, then the fixture drops the
             # invite itself.
-            db.query(InviteCode).filter(InviteCode.used_by == user_id).update(
-                {InviteCode.used_by: None}, synchronize_session=False
+            db.query(InviteCode).filter(InviteCode.used_by_id == user_id).update(
+                {InviteCode.used_by_id: None}, synchronize_session=False
             )
             db.commit()
             _delete_user_and_events(db, user_id)

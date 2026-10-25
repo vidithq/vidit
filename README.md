@@ -93,7 +93,6 @@ The technical reference lives in [`docs/`](docs/) (start at [docs/index.md](docs
 ```bash
 make init        # install + env + db-up + migrate (one-shot bootstrap)
 make seed        # mock-admin + machine detections from the committed synthetic archive
-make import-prod # replace the local DB with the latest production backup (see docs/backups.md)
 make dev         # FastAPI :8000 + Next.js :3000 in parallel
 make dev-worker  # background worker (optional; without it, queued emails, archive uploads and bot webhooks wait)
 make test        # backend pytest
@@ -103,13 +102,13 @@ make test        # backend pytest
 
 ### Prerequisites
 
-- Docker (for PostgreSQL + PostGIS; local and prod both run `postgis/postgis:16-3.4`, see [`docs/backups.md`](docs/backups.md))
+- Docker (for PostgreSQL + PostGIS; local dev runs `postgis/postgis:16-3.4`, see [`docs/backups.md`](docs/backups.md))
 - Python 3.12+ and [uv](https://github.com/astral-sh/uv)
 - Node.js 20+ and npm
 
 ### Secrets
 
-`make init` copies `.env.example` → `.env` (backend) and `.env.local.example` → `.env.local` (frontend), and gives `backend/.env` a development VAPID key pair for push notifications when it has none. Defaults are wired for `localhost`; every var is documented inline in [`backend/.env.example`](backend/.env.example) and [`frontend/.env.local.example`](frontend/.env.local.example). API docs auto-served at <http://localhost:8000/docs>.
+`make init` copies `.env.example` → `.env` (backend) and `.env.local.example` → `.env.local` (frontend). Defaults are wired for `localhost`; every var is documented inline in [`backend/.env.example`](backend/.env.example) and [`frontend/.env.local.example`](frontend/.env.local.example). API docs auto-served at <http://localhost:8000/docs>.
 
 ### Bootstrap an account
 

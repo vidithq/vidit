@@ -20,11 +20,11 @@ from fastapi.testclient import TestClient
 from app.config import settings
 from app.database import SessionLocal
 from app.main import app
-from app.models.auth_token import PURPOSE_PASSWORD_RESET, AuthToken
+from app.models.password_reset_token import PasswordResetToken
 from app.models.user import User
 from app.routers import auth as auth_router
 from app.services import auth as auth_service
-from app.services import auth_tokens, email
+from app.services import email, password_reset_tokens
 from app.services.auth_cookies import CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE
 from tests.conftest import TEST_CSRF_TOKEN, login_as
 
@@ -182,10 +182,9 @@ def test_change_password_invalidates_other_sessions_but_keeps_current_cookie_ali
 
 
 def _mint_reset_token(db, user: User) -> str:
-    raw = auth_tokens.mint(
+    raw = password_reset_tokens.mint(
         db,
         user_id=user.id,
-        purpose=PURPOSE_PASSWORD_RESET,
         ttl_minutes=settings.password_reset_token_minutes,
     )
     db.commit()
@@ -226,9 +225,9 @@ def test_reset_password_rejects_soft_deleted_user_with_live_token(client, user_f
     # The token row stays unconsumed.
     db.expire_all()
     row = (
-        db.query(AuthToken)
-        .filter(AuthToken.user_id == user.id, AuthToken.purpose == PURPOSE_PASSWORD_RESET)
-        .order_by(AuthToken.created_at.desc())
+        db.query(PasswordResetToken)
+        .filter(PasswordResetToken.user_id == user.id)
+        .order_by(PasswordResetToken.created_at.desc())
         .first()
     )
     assert row is not None

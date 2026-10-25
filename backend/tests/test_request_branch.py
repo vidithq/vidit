@@ -22,7 +22,7 @@ from app.services.tweet_ingest.records import ParsedMedia, QuotedTweet, SourceLi
 from app.services.tweet_ingest.resolve import resolve_threads
 from tests._fixtures import tweet_record
 
-_TELEGRAM = SourceLink(url="https://t.me/wilddivision82/351", shortlink="https://t.co/fakeTG")
+_TELEGRAM = SourceLink(url="https://t.me/example_channel/351", shortlink="https://t.co/fakeTG")
 _YOUTUBE = SourceLink(
     url="https://www.youtube.com/watch?v=FAKEVIDEO01", shortlink="https://t.co/fakeYT"
 )
@@ -33,7 +33,7 @@ _X_PROFILE = SourceLink(url="https://x.com/front_owl", shortlink="https://t.co/f
 _VIDEO = ParsedMedia(kind="video", remote_url="https://video.twimg.com/v.mp4", origin="op")
 
 # A real mirror post: words, channel link and re-uploaded clip on one line, no coordinate.
-_MIRROR_TEXT = 'Trabajo de "Wild Division" de la 82ª Brigada https://t.co/fakeTG'
+_MIRROR_TEXT = "Trabajo de la unidad de drones cerca del puente https://t.co/fakeTG"
 
 
 def _rec(**kw: object) -> TweetRecord:
@@ -56,10 +56,10 @@ def test_a_mirror_post_with_a_telegram_link_and_a_video_drafts_a_request() -> No
     draft = _draft([_rec(text=_MIRROR_TEXT, media=[_VIDEO], external_sources=[_TELEGRAM])])
 
     assert draft is not None
-    assert draft.source_url == "https://t.me/wilddivision82/351"
+    assert draft.source_url == "https://t.me/example_channel/351"
     assert draft.footage_candidates == [_VIDEO]
-    assert draft.title.startswith('Trabajo de "Wild Division"')
-    assert draft.detected_from_tweet_id == 9200000000000000001
+    assert draft.title.startswith("Trabajo de la unidad de drones")
+    assert draft.detected_from_post_id == 9200000000000000001
     assert draft.detected_from_url == "https://x.com/analyst/status/9200000000000000001"
     # A pure thread fetches nothing, so the source's date is unknown.
     assert draft.source_posted_at is None
@@ -241,12 +241,12 @@ def test_a_coordinate_in_the_quoted_post_drafts_nothing() -> None:
 
 
 def test_two_spellings_of_one_telegram_post_draft_one_source_url() -> None:
-    """The source is stored canonical: dedup compares ``source_url`` as a string
+    """The source is stored canonical: dedup compares a source link's URL as a string
     (``detection._match_legs``), so ``www.`` and share parameters must not change it."""
     spellings = [
-        "https://t.me/wilddivision82/351",
-        "https://www.t.me/wilddivision82/351?single",
-        "http://t.me/wilddivision82/351?comment=9",
+        "https://t.me/example_channel/351",
+        "https://www.t.me/example_channel/351?single",
+        "http://t.me/example_channel/351?comment=9",
     ]
     stored = set()
     for index, url in enumerate(spellings):
@@ -263,7 +263,7 @@ def test_two_spellings_of_one_telegram_post_draft_one_source_url() -> None:
         assert draft is not None
         stored.add(draft.source_url)
 
-    assert stored == {"https://t.me/wilddivision82/351"}
+    assert stored == {"https://t.me/example_channel/351"}
 
 
 def test_an_x_status_link_is_stored_canonical() -> None:

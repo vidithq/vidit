@@ -4,7 +4,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.models.event import SOURCE_URL_MAX_LENGTH, TITLE_MAX_LENGTH
+from app.models.event import TITLE_MAX_LENGTH
 from app.models.site import (
     OBSERVATION_EFFECT_DEFAULT,
     ImageryProvider,
@@ -12,6 +12,7 @@ from app.models.site import (
     ObservationEffect,
     SiteType,
 )
+from app.models.source import SOURCE_URL_MAX_LENGTH
 from app.schemas.event import CoordsRead
 from app.schemas.user import AuthorRef
 
@@ -136,11 +137,11 @@ class SiteObservationRead(BaseModel):
 
 
 class LatestLinkEffect(BaseModel):
-    """The effect of the most recent visible linked event, by ``event_date``, on or before the
+    """The effect of the most recent visible linked event, by ``occurred_date``, on or before the
     read's date."""
 
     effect: LinkEffect
-    event_date: date | None
+    occurred_date: date | None
     event_id: uuid.UUID
 
 
@@ -148,15 +149,15 @@ class SiteLinkedEventRead(BaseModel):
     """One visible event linked to the site.
 
     ``inside_zone`` and ``distance_m`` are measured against
-    ``measured_observation_id``: the observation valid on ``event_date``, or the
+    ``measured_observation_id``: the observation valid on ``occurred_date``, or the
     earliest one when the event predates them all, or the latest one when the
     event has no date. ``distance_m`` is null inside the zone.
     """
 
     id: uuid.UUID
     title: str
-    event_date: date | None
-    event_coords: CoordsRead
+    occurred_date: date | None
+    coords: CoordsRead
     owner: AuthorRef
     effect: LinkEffect
     linked_at: datetime
@@ -216,8 +217,8 @@ class SiteNearbyEventRead(BaseModel):
 
     id: uuid.UUID
     title: str
-    event_date: date | None
-    event_coords: CoordsRead
+    occurred_date: date | None
+    coords: CoordsRead
     owner: AuthorRef
     distance_m: float
 
@@ -253,7 +254,7 @@ SiteHistoryKind = Literal[
 class SiteHistoryEvent(BaseModel):
     id: uuid.UUID
     title: str
-    event_date: date | None
+    occurred_date: date | None
 
 
 class SiteHistoryEntry(BaseModel):

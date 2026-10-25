@@ -1,6 +1,6 @@
 # Source archival
 
-Source tweets get deleted and accounts get suspended, which destroys exactly the evidence the catalog preserves. An archived copy keeps a dead original readable, and the analyst who owns the event is who makes it.
+Posts get deleted and accounts get suspended, which destroys exactly the evidence the catalog preserves. An archived copy keeps a dead original readable. Each copy sits on one URL of one [source](data-model.md#sources), and the analyst who writes the event's sources is who records it.
 
 ```mermaid
 flowchart LR
@@ -18,24 +18,24 @@ flowchart LR
     l1 ~~~ l2 ~~~ l3 ~~~ l4
   end
 
-  links["`**source_archive.collect_links**
-  the four origins: source_url, secondary_source, detected_from, proof_link`"]:::shared
-  mark["`**ArchiveAdornment**
-  the mark inside the field holding the link`"]:::spec
+  links["`**a source's links**
+  every URL of every source block in the event form`"]:::shared
+  mark["`**ArchiveBox**
+  the archive box in the row holding the URL`"]:::spec
   save["`**web.archive.org/save/&lt;link&gt;**
   opened prefilled, in the analyst's own browser; another provider is opened by hand`"]:::spec
   paste["`**ArchiveSnapshotField**
-  the snapshot pasted back under that field`"]:::spec
-  post["`**the write carrying it**
-  source_snapshot_url, secondary_snapshot_urls, detected_from_snapshot_url`"]:::shared
+  the snapshot pasted back under that row`"]:::spec
+  post["`**the event write**
+  sources[].links[].snapshot_url, beside the URL it archives`"]:::shared
   check["`**validate_snapshot**
-  https, a host on PROVIDER_HOSTS, that provider's path shape; a rejection is a 400 and nothing publishes`"]:::core
-  row[("`**source_archives**
-  UNIQUE (event_id, original_url): one copy per link, provider inferred from the host`")]:::store
+  https, a host on PROVIDER_HOSTS, that provider's path shape; a rejection is a 400 and nothing is written`"]:::core
+  row[("`**source_links**
+  snapshot_url and archived_at on the link row: one copy per link`")]:::store
   version["`**file_version**
-  on a published row: files the superseded version, changed field Archived copies`"]:::shared
+  on a published row: files the superseded version; a save that only archives is exempt from the ceiling`"]:::shared
   read["`**ArchivedCopies**
-  accent where a copy exists and it opens it, grey and inert where none does`"]:::spec
+  accent where a copy exists and it opens it, grey and inert where none does; provider read off the host`"]:::spec
 
   links --> mark --> save --> paste --> post --> check --> row
   post --> version
@@ -46,59 +46,19 @@ Each paragraph below takes one region of the diagram: why the capture runs in th
 
 **The capture happens in the analyst's browser, not on the server.** Save Page Now refuses `x.com`, the host of most sources, from a server, and archive.today has no API and bans a host that submits in bursts; both work from a browser. The form opens `https://web.archive.org/save/<link>` prefilled, because its replay URL names the captured link and so lets the paste field warn about a mis-paste, and the paste field takes a snapshot from every host in the table below.
 
-**Scope.** The table tracks the event's `source_url`, its [secondary source links](data-model.md#event_source_links) (the analyst-submitted mirrors, which carry the same link-rot risk as the primary), its `detected_from_url` (the analyst's own post a machine detection came from, which is the provenance of the geolocation claim), and every `http(s)` href carried by a link in the proof body's HTML. [`source_archive.collect_links`](../backend/app/services/source_archive.py) is the one home for that walk, reading the proof body through [`sanitize.extract_link_hrefs`](../backend/app/services/sanitize.py). Each row records where its link came from in `origin` (`source_url`, `secondary_source`, `detected_from`, `proof_link`); a URL reachable from more than one is one link, kept under the first of those it appears in. Every link goes through [`sanitize.safe_link_href`](../backend/app/services/sanitize.py) (the same allowlist the proof editor writes against) plus a 2000-byte ceiling matching the `source_url` column. Analyst profile external links are out of scope, since they represent identity rather than evidence.
+**Scope.** Every URL of every source of the event, whatever the source's [level](data-model.md#sources): each [`source_links`](data-model.md#source_links) row can hold one copy. The post a machine detection was imported from (`detected_from_url`) and the links inside the proof body are not sources, so they carry no copy. Analyst profile external links are out of scope too, since they represent identity rather than evidence.
 
-**One copy per link, from whichever service produced it.** [`source_archives`](data-model.md#source_archives) is unique on `(event_id, original_url)`, and the row holds one `snapshot_url` plus the `provider` that produced it. Two snapshots of one link is redundancy nobody reads back, and a resubmission by the owner overwrites the slot instead of competing with it, which is how a wrong paste is corrected. There is no queue state, no attempt counter and no per-provider slot: a row exists because a copy exists.
+**One copy per link, from whichever service produced it.** The link row holds one `snapshot_url` and the `archived_at` it was recorded at; `ck_source_links_archive_stamp` keeps the two together. Two snapshots of one link is redundancy nobody reads back, and a new paste replaces the stored one, which is how a wrong paste is corrected. The provider is not stored: the read derives it from the snapshot's host (`source_archive.provider_of`). There is no queue state and no attempt counter: a copy exists because an analyst recorded it.
 
-**A copy is recorded through the forms, and only through the forms.** There is no standalone archive endpoint: the paste rides the write that stores or corrects the link it covers, so a copy on a published record is a version like any other change to that record. [`api.md`](api.md#post-eventsidversions) lists which write takes which snapshot field. `detected_from_url` is immutable once the detection exists, so only the published-row edit archives it. A proof citation carries no paste field; a row lands under origin `proof_link` only when the reconcile below re-files a source copy the analyst moved into the proof body. **A `requested` or `closed` row has no archive path**: its poster records the source copy at submit, and a closed row takes no further write.
+**A copy is recorded through the event forms, and only through them.** There is no standalone archive endpoint. The paste is the `snapshot_url` of a link in the `sources` list, which every event write posts whole: [`POST /events`](api.md#post-events), the two request writes and [`POST /events/{id}/versions`](api.md#post-eventsidversions), which publishes and corrects. Because the write posts the whole list, a link posted without its `snapshot_url` loses its copy, so a form posts back the copy each link already holds. **A `closed` row has no archive path**, since it takes no further write.
 
-**On a published event, recording a copy is a tracked change.** Which of a `geolocated` record's links are archived is part of what that record says, so the edit carrying the paste files the superseded version as an [`event_versions`](data-model.md#event_versions) row and moves `version_no` on. The version's changed-field list names it *Archived copies*, and each version's snapshot carries the copies it held, so `/events/{id}/vN` renders them as they stood. A re-paste of the copy a link already carries moves nothing and files nothing: the comparison folds the two URLs through `same_snapshot`, dropping the scheme, the host case, a leading `www.` and a trailing slash, so a spelling picked up in a browser is not read as a correction. A save whose only change is archived copies is exempt from the [version ceiling](data-model.md#event_versions), so an original that dies while the row sits at 100 versions stays archivable. Below publication (`requested`, `detected`) nothing is versioned, so the copy is stored on its own.
+**On a published event, recording a copy is a tracked change.** Which of a `geolocated` record's links are archived is part of what that record says, so the edit carrying the paste files the superseded version as an [`event_versions`](data-model.md#event_versions) row and moves `version_no` on. Each version's snapshot carries every link's `snapshot_url` and `archived_at`, so `/events/{id}/vN` renders the copies as they stood. A re-paste of the copy a link already carries moves nothing and files nothing, and keeps its `archived_at`: the comparison folds the two URLs through `same_snapshot`, dropping the scheme, the host case, a leading `www.` and a trailing slash, so a spelling picked up in a browser is not read as a correction. A save whose only change is a link's copy is exempt from the [version ceiling](data-model.md#event_versions), so an original that dies while the row sits at 100 versions stays archivable. Below publication (`requested`, `detected`) nothing is versioned, so the copy is stored on its own.
 
-**Archival starts at the submit form, not after publication.** A link is most archivable while the analyst still has it open, so every link the form declares carries the archive affordance ([`design.md`](design.md#source-links) describes the UI). The pastes post as `source_snapshot_url`, as `secondary_snapshot_urls` (one entry per mirror, aligned with `secondary_source_urls` by position) and as `detected_from_snapshot_url`, which only [`POST /events/{id}/versions`](api.md#post-eventsidversions) declares. Each runs `validate_snapshot` and lands in the same transaction as the event, filed under origin `source_url`, `secondary_source` or `detected_from`. The pairing runs before the mirrors are normalized, so a copy stays on the link it was pasted under; a copy whose mirror the write drops is dropped with it, and a copy filed against a mirror an edit removes is deleted with that mirror, the version it superseded keeping it readable. A rejected paste publishes nothing: the analyst fixes it and submits the same form again. The fields are optional and sit in no publish floor.
+**Archival starts at the submit form, not after publication.** A link is most archivable while the analyst still has it open, so every link row of every source block carries the archive box ([`design.md`](design.md#source-blocks) describes the UI). Each pasted snapshot runs `validate_snapshot` and lands on its link row in the same transaction as the event. A rejected paste writes nothing: the analyst fixes it and submits the same form again. The field is optional and sits in no publish floor.
 
-**A copy always matches the source URL it is filed against.**
+**A copy stays on the link it was pasted with.** The copy is a column of the link row, so no write can leave a copy describing a link the event no longer declares. A write that drops a link, or the source holding it, drops its copy with it, and on a published event the version that write files keeps the copy readable. A link whose URL changes is a new link and starts without a copy unless the same write pastes one.
 
-```mermaid
-flowchart TB
-  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
-  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
-  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
-
-  subgraph legend [Legend]
-    direction LR
-    l1["`what the event ends up carrying`"]:::spec
-    l2["`a step`"]:::shared
-    l3["`the decisive question`"]:::core
-    l1 ~~~ l2 ~~~ l3
-  end
-
-  write["`**any write storing a source URL**
-  submit, geolocate, or a version on a published row`"]:::shared
-  held["`**the copy filed under origin source_url**
-  the one the event carried before this write`"]:::shared
-  q1{"`**is its original_url still the event's source_url?**`"}:::core
-  keep["`**a copy that matches**
-  the slot holds a snapshot of the link the event now declares`"]:::spec
-  q2{"`**does the event still carry that URL at all?**
-  a mirror, or a citation in the proof body`"}:::core
-  refile["`**re-filed**
-  origin becomes secondary_source or proof_link`"]:::spec
-  drop["`**deleted**
-  no stale copy survives an edit that moved the source`"]:::spec
-  fresh["`**a source_snapshot_url pasted with the same write**
-  fills the slot back in`"]:::shared
-
-  write --> held --> q1
-  q1 -- "yes" --> keep
-  q1 -- "no" --> q2
-  q2 -- "yes" --> refile
-  q2 -- "no" --> drop
-  write --> fresh --> keep
-```
-
-The source URL is editable at every point of the lifecycle, a correction on a published row included, so an edit can leave a snapshot describing a link the event no longer declares. Every write that stores a source URL therefore reconciles the copy filed under origin `source_url`: if that copy's `original_url` is no longer the event's `source_url`, it is re-filed under the origin the URL now has (the analyst moved it to the mirrors, or cited it in the proof) or deleted when the event no longer carries the URL at all. An edit that changes the source and pastes no new snapshot thus leaves the event with **no** archived source rather than a stale one; pasting a `source_snapshot_url` with the same write fills the slot back in. The reconcile reads the links the event carries at that moment, so the mirrors are the submitted ones while the proof body is still the stored one (a write applies its new proof at commit).
-
-**What counts as a snapshot.** The server checks where a snapshot lives, not what it captured. The byte ceiling matches the one the `source_url` column carries. The host is also what infers the provider.
+**What counts as a snapshot.** The server checks where a snapshot lives, not what it captured. The byte ceiling matches the 2000-character cap on a source URL. The host is also what names the provider on the read.
 
 ```mermaid
 flowchart TD
@@ -147,15 +107,13 @@ flowchart TD
     ga -- "shape fails" --> e6
   end
 
-  member{"`the link the paste sits beside is one the event carries?`"}:::core
-  row[("`**stage_snapshot** writes **source_archives**
-  upsert on event_id plus original_url; on a published event the edit files a version`")]:::store
+  row[("`**source_links**
+  the copy and archived_at land on the link row it was posted with; on a published event the edit files a version`")]:::store
 
   e1["`snapshot_url_too_long`"]:::reject
   e2["`snapshot_url_invalid`"]:::reject
   e3["`snapshot_url_not_https`"]:::reject
   e4["`snapshot_provider_not_allowed`"]:::reject
-  e7["`original_url_not_on_event`"]:::reject
 
   note["`nothing verifies **what** the snapshot captured; the form warns, without blocking, on a paste that visibly replays another link`"]:::aside
 
@@ -168,11 +126,9 @@ flowchart TD
   https -- yes --> host
   host -- no --> e4
   host -- yes --> shape
-  shape --> wb --> member
-  shape --> at --> member
-  shape --> ga --> member
-  member -- no --> e7
-  member -- yes --> row
+  shape --> wb --> row
+  shape --> at --> row
+  shape --> ga --> row
   row -.- note
 ```
 
@@ -184,7 +140,7 @@ flowchart TD
 
 archive.today serves one set of snapshots under six interchangeable domains, so all six read as one provider. A `/newest/<link>` lookup fails the shape check, because it resolves to whatever the service holds today rather than to one fixed capture.
 
-**Which link a snapshot archives is the analyst's to get right.** The short-code and id forms embed nothing, so an archive.today code and a Ghostarchive id give the server nothing to compare. The replay forms carry the captured link in the spelling the platform used at capture time (`youtu.be`, `twitter.com`, `t.me/s/`), so a string comparison would refuse correct snapshots, and fetching archive.today from a server gets the deployment banned. So the paste is trusted: it comes from the authenticated owner of the event, whose own catalog entry a wrong link degrades, and the host allowlist plus the path shape is what bounds the abuse.
+**Which link a snapshot archives is the analyst's to get right.** The short-code and id forms embed nothing, so an archive.today code and a Ghostarchive id give the server nothing to compare. The replay forms carry the captured link in the spelling the platform used at capture time (`youtu.be`, `twitter.com`, `t.me/s/`), so a string comparison would refuse correct snapshots, and fetching archive.today from a server gets the deployment banned. So the paste is trusted: it comes from the authenticated analyst writing the event, whose own catalog entry a wrong link degrades, and the host allowlist plus the path shape is what bounds the abuse.
 
 **The forms warn before they post.** A pasted snapshot that visibly replays a link other than the one it sits under raises an amber line under the paste field naming both URLs ([`lib/snapshots.ts`](../frontend/src/lib/snapshots.ts) → `snapshotArchivesAnotherLink`). It reads both path forms that embed an original, `web.archive.org/web/<timestamp>/<link>` and `archive.today/<timestamp>/<link>`. The comparison folds the scheme, the host case, a leading `www.`, a trailing slash, the platform spellings above and X's `s` and `t` share parameters. It blocks nothing, which is what lets it be loose: a wrong warning costs a sentence the analyst ignores.
 
@@ -192,10 +148,9 @@ archive.today serves one set of snapshots under six interchangeable domains, so 
 
 Every rejection is a 400 carrying the code the diagram names for the failed check.
 
-**Read surface.** `EventRead.archived_source` carries the archived copy of the event's own `source_url` as `{url, provider}`. `archived_secondary_sources` carries the same per mirror, index-aligned with `secondary_source_urls`, and `archived_detected_from` carries it for the provenance link (see [`api.md`](api.md#get-eventsid)). All three are `null` when no copy has been recorded. The event detail surface renders them through [`ArchivedCopies`](../frontend/src/components/ui/ArchivedCopies.tsx), read-only for every reader including the owner ([`design.md`](design.md#source-links)). Proof-link copies are stored but not rendered inline.
+**Read surface.** Each link of a [`SourceRead`](api.md#get-eventsid) carries `archived`: `{url, provider, archived_at}` once a copy is recorded, `null` before. The event detail surfaces render it through [`ArchivedCopies`](../frontend/src/components/ui/ArchivedCopies.tsx) beside each link of each source block, read-only for every reader including the owner ([`design.md`](design.md#source-blocks)).
 
 ## See also
 
-- [`api.md`](api.md#post-eventsidversions) for the write contract, and [`GET /events/{id}`](api.md#get-eventsid) for the read shape.
-- [`data-model.md`](data-model.md#source_archives) for the `source_archives` columns.
-- [`ingestion.md`](ingestion.md#re-import) for what a re-import does to a detection's archived copies.
+- [`api.md`](api.md#sources) for the write contract, and [`GET /events/{id}`](api.md#get-eventsid) for the read shape.
+- [`data-model.md`](data-model.md#source_links) for the `source_links` columns.

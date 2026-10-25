@@ -7,18 +7,20 @@ import hashlib
 import hmac
 import json
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import or_
 
+import app.services.bot as bot_service
 from app.config import settings
 from app.main import app
 from app.models.bot_mention import BotMention
-from app.models.bot_webhook_event import BotWebhookEvent
 from app.models.event import Event
 from app.models.user import User
-from app.services.bot import drain_webhook_events, run_bot_once
+from app.services.bot import catch_up, drain_mentions
 from app.services.tweet_ingest.syndication import _cache_clear
 
 client = TestClient(app)
@@ -75,6 +77,10 @@ BODIES = {
 }
 
 
+# A post id no fixture body uses, for rows the drain must refuse.
+_POISON_ID = 9_199_999_999_999_999_999
+
+
 def _sign(body: bytes) -> str:
     digest = hmac.new(CONSUMER_SECRET.encode(), body, hashlib.sha256).digest()
     return "sha256=" + base64.b64encode(digest).decode("ascii")
@@ -112,12 +118,12 @@ def _post_payload(payload: dict, signature: str | None = None) -> httpx.Response
 
 def _queued_mentions(db) -> list[dict]:
     rows = (
-        db.query(BotWebhookEvent)
-        .filter(BotWebhookEvent.status == "queued")
-        .order_by(BotWebhookEvent.created_at)
+        db.query(BotMention)
+        .filter(BotMention.status == "queued")
+        .order_by(BotMention.created_at)
         .all()
     )
-    return [row.mention for row in rows]
+    return [row.payload for row in rows]
 
 
 def _syndication_client() -> httpx.Client:
@@ -145,7 +151,7 @@ async def _drain(db):
     posted: list[dict[str, object]] = []
     liked: list[dict[str, object]] = []
     with _syndication_client() as syn, _write_client(posted, liked) as write:
-        outcome = await drain_webhook_events(db, syndication_client=syn, x_write_client=write)
+        outcome = await drain_mentions(db, syndication_client=syn, x_write_client=write)
     return outcome, posted, liked
 
 
@@ -191,10 +197,9 @@ def _cleanup():
     yield
     session = SessionLocal()
     try:
-        session.query(BotWebhookEvent).delete(synchronize_session=False)
-        session.query(BotMention).filter(BotMention.mention_tweet_id.in_(list(BODIES))).delete(
-            synchronize_session=False
-        )
+        session.query(BotMention).filter(
+            or_(BotMention.mention_post_id.in_(list(BODIES)), BotMention.status != "done")
+        ).delete(synchronize_session=False)
         owner = session.query(User).filter(User.x_handle == HANDLE).first()
         if owner is not None:
             session.query(Event).filter(Event.owner_id == owner.id).delete(
@@ -365,7 +370,7 @@ def test_delivery_over_batch_cap_is_truncated(db):
 
     cap = webhooks_module._MAX_EVENTS_PER_DELIVERY
     events = [
-        _tweet_create_event(str(9500000000000000000 + i), text="@viditbot hi")
+        _tweet_create_event(str(9150000000000000000 + i), text="@viditbot hi")
         for i in range(cap + 1)
     ]
     resp = _post_payload({"for_user_id": BOT_USER_ID, "tweet_create_events": events})
@@ -417,16 +422,15 @@ async def test_drain_creates_detection_and_replies(db, linked_owner):
 
     outcome, posted, liked = await _drain(db)
 
-    assert outcome.events_created == 1
+    assert outcome.created_event_count == 1
     assert liked == []  # the like ack is gone: the reply is the only gesture
     (payload,) = posted
     assert payload["reply"] == {"in_reply_to_tweet_id": COORD_ID}
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == COORD_ID).one()
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == COORD_ID).one()
     assert ledger.outcome == "created"
-    assert ledger.reply_tweet_id == "888"
-    row = db.query(BotWebhookEvent).one()
-    assert row.status == "done"
-    assert row.attempts == 1
+    assert ledger.reply_post_id == 888
+    assert (ledger.status, ledger.attempt_count, ledger.payload) == ("done", 1, None)
+    assert ledger.processed_at is not None
 
 
 async def test_drain_failure_path_posts_the_diagnosis_to_linked_author(db, linked_owner):
@@ -457,11 +461,11 @@ async def test_drain_unlinked_author_is_fully_silent(db):
     assert outcome.no_account == 1
     assert posted == []
     assert liked == []
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == COORD_ID).one()
+    ledger = db.query(BotMention).filter(BotMention.mention_post_id == COORD_ID).one()
     assert ledger.outcome == "no_account"
 
 
-async def test_webhook_then_poll_is_already_handled(db, linked_owner):
+async def test_webhook_then_catch_up_is_already_handled(db, linked_owner):
     _post_payload(
         {"for_user_id": BOT_USER_ID, "tweet_create_events": [_tweet_create_event(COORD_ID)]}
     )
@@ -477,67 +481,103 @@ async def test_webhook_then_poll_is_already_handled(db, linked_owner):
             },
         )
 
-    with (
-        httpx.Client(transport=httpx.MockTransport(poll_handler)) as read,
-        _syndication_client() as syn,
-    ):
-        outcome = await run_bot_once(db, syndication_client=syn, x_read_client=read)
+    with httpx.Client(transport=httpx.MockTransport(poll_handler)) as read:
+        outcome = catch_up(db, x_read_client=read)
 
     assert outcome.already_handled == 1
-    assert outcome.events_created == 0
-    assert db.query(BotMention).filter(BotMention.mention_tweet_id == COORD_ID).count() == 1
+    drained, posted, _ = await _drain(db)
+    assert drained.mentions_processed == 0 and posted == []
+    assert db.query(BotMention).filter(BotMention.mention_post_id == COORD_ID).count() == 1
+
+
+def test_a_redelivery_queues_the_mention_once(db):
+    body = {"for_user_id": BOT_USER_ID, "tweet_create_events": [_tweet_create_event(COORD_ID)]}
+    assert _post_payload(body).json() == {"queued": 1}
+    assert _post_payload(body).json() == {"queued": 0}
+    assert len(_queued_mentions(db)) == 1
 
 
 async def test_poison_row_lands_failed_after_attempt_budget(db):
     # A row whose attempts budget is already spent is buried, not retried.
-    row = BotWebhookEvent(mention={"nonsense": True}, attempts=3)
+    row = BotMention(
+        mention_post_id=_POISON_ID,
+        author_x_handle=HANDLE,
+        payload={"nonsense": True},
+        attempt_count=3,
+    )
     db.add(row)
     db.commit()
 
     outcome, posted, liked = await _drain(db)
 
-    assert outcome.mentions_seen == 0
+    assert outcome.mentions_processed == 0
     db.refresh(row)
     assert row.status == "failed"
 
 
-def test_claim_flips_status_so_a_second_worker_skips_it(db):
-    from app.database import SessionLocal
-    from app.services.bot import _claim_webhook_event
-
-    row = BotWebhookEvent(mention={"tweet_id": COORD_ID})
+async def test_a_malformed_payload_lands_failed(db):
+    row = BotMention(mention_post_id=_POISON_ID, author_x_handle=HANDLE, payload={"nonsense": True})
     db.add(row)
     db.commit()
 
-    claimed = _claim_webhook_event(db)
+    outcome, _, _ = await _drain(db)
+
+    assert outcome.mentions_processed == 0
+    db.refresh(row)
+    assert (row.status, row.attempt_count, row.outcome) == ("failed", 1, None)
+
+
+async def test_a_row_left_running_by_a_dead_worker_is_claimed_again(db, linked_owner):
+    _post_payload(
+        {"for_user_id": BOT_USER_ID, "tweet_create_events": [_tweet_create_event(COORD_ID)]}
+    )
+    row = db.query(BotMention).filter(BotMention.mention_post_id == COORD_ID).one()
+    row.status = "running"
+    row.attempt_count = 1
+    row.processed_at = datetime.now(UTC) - bot_service.STALE_RUNNING_AFTER - timedelta(minutes=1)
+    db.commit()
+
+    outcome, _, _ = await _drain(db)
+
+    assert outcome.created_event_count == 1
+    db.refresh(row)
+    assert (row.status, row.attempt_count, row.outcome) == ("done", 2, "created")
+
+
+def test_claim_flips_status_so_a_second_worker_skips_it(db):
+    from app.database import SessionLocal
+
+    row = BotMention(mention_post_id=_POISON_ID, author_x_handle=HANDLE, payload={})
+    db.add(row)
+    db.commit()
+
+    claimed = bot_service._claim(db)
     assert claimed is not None
-    assert claimed.status == "processing"
-    assert claimed.attempts == 1
+    assert claimed.status == "running"
+    assert claimed.attempt_count == 1
 
     other = SessionLocal()
     try:
-        assert _claim_webhook_event(other) is None
+        assert bot_service._claim(other) is None
     finally:
         other.close()
 
 
 async def test_drain_exception_requeues_the_claimed_row(db, monkeypatch):
-    import app.services.bot as bot_service
-
     async def _boom(*_args, **_kwargs):
         raise RuntimeError("pipeline died")
 
-    monkeypatch.setattr(bot_service, "process_single_mention", _boom)
+    monkeypatch.setattr(bot_service, "_process_claimed", _boom)
     _post_payload(
         {"for_user_id": BOT_USER_ID, "tweet_create_events": [_tweet_create_event(COORD_ID)]}
     )
 
     with pytest.raises(RuntimeError):
-        await drain_webhook_events(db)
+        await drain_mentions(db)
 
-    row = db.query(BotWebhookEvent).one()
+    row = db.query(BotMention).filter(BotMention.mention_post_id == COORD_ID).one()
     assert row.status == "queued"  # retryable, bounded by the attempt budget
-    assert row.attempts == 1
+    assert row.attempt_count == 1
 
 
 async def test_gesture_budget_spans_drain_passes(db, linked_owner, monkeypatch):

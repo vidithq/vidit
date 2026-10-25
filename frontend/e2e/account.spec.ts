@@ -41,24 +41,66 @@ test.describe("settings", () => {
     const updatePassword = page.getByRole("button", { name: "Update password" });
     await expectNarrowViewportLayout(page, updatePassword);
   });
-  test("keeps each notification row's switches on the row", async ({ context, page }) => {
+  test("gives each notification kind one email switch within the row", async ({ context, page }) => {
     await grantSession(context);
     await mockApi(page);
     await page.goto("/settings");
 
-    const switches = page.getByRole("switch", { name: /, (Email|Push)$/ });
-    await expect(switches.first()).toBeVisible();
-    await expect(page.getByRole("switch", { name: /, Push$/ })).toHaveCount(
-      await page.getByRole("switch", { name: /, Email$/ }).count(),
-    );
+    const kinds = page.getByRole("switch", { name: "Request fulfilled" });
+    await expect(kinds).toHaveCount(1);
+    await expect(kinds).toHaveAttribute("aria-checked", "true");
     const viewportWidth = page.viewportSize()!.width;
-    for (const cell of await switches.all()) {
-      await cell.scrollIntoViewIfNeeded();
-      const box = (await cell.boundingBox())!;
-      expect(box.width).toBeGreaterThanOrEqual(36);
+    for (const name of ["Request fulfilled", "New follower", "Organization invite"]) {
+      const row = page.getByRole("switch", { name });
+      await row.scrollIntoViewIfNeeded();
+      const box = (await row.boundingBox())!;
       expect(box.height).toBeGreaterThanOrEqual(36);
       expect(box.x + box.width).toBeLessThanOrEqual(viewportWidth);
     }
+    // The longest option, *People I follow*, keeps its whole label at 320px.
+    const senders = page.getByRole("group", { name: "Accept approval requests from" });
+    for (const option of await senders.getByRole("button").all()) {
+      const fits = await option.evaluate((el) => el.scrollWidth <= el.clientWidth);
+      expect(fits, `${await option.textContent()} is cut`).toBe(true);
+    }
     await expectNoHorizontalOverflow(page);
+  });
+
+  test("flags every blank password field at once instead of a native bubble", async ({
+    context,
+    page,
+  }) => {
+    await grantSession(context);
+    await mockApi(page);
+    await page.goto("/settings");
+
+    await page.getByLabel("New password", { exact: true }).fill("a-new-password");
+    await page.getByRole("button", { name: "Update password" }).click();
+
+    // No box on the page: the fields turn red, and a screen reader hears the list.
+    await expect(page.getByRole("alert").filter({ hasText: "Fill in" })).toHaveCount(0);
+    await expect(
+      page.getByRole("status").filter({ hasText: "Fill in the required fields" }),
+    ).toHaveText(
+      "Fill in the required fields before continuing: Current password, Confirm new password.",
+    );
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test("moves the accent colour with the arrow keys", async ({ context, page }) => {
+    await grantSession(context);
+    await mockApi(page);
+    await page.goto("/settings");
+
+    const swatches = page.getByRole("radiogroup", { name: "Accent color" }).getByRole("radio");
+    const checked = swatches.and(page.locator("[aria-checked=true]"));
+    const first = swatches.first();
+    await first.focus();
+    await page.keyboard.press("ArrowRight");
+
+    await expect(swatches.nth(1)).toBeFocused();
+    await expect(checked).toHaveCount(1);
+    await expect(swatches.nth(1)).toHaveAttribute("aria-checked", "true");
+    await expect(first).toHaveAttribute("aria-checked", "false");
   });
 });
