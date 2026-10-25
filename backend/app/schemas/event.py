@@ -314,6 +314,12 @@ class PaginatedEvents(BaseModel):
     per_page: int
 
 
+class DetectionCount(BaseModel):
+    """``GET /events/detections/count``: the caller's whole Detections queue."""
+
+    count: int
+
+
 class PaginatedEventDetails(BaseModel):
     """Full-detail paginated events: the owner Detections-queue payload.
 

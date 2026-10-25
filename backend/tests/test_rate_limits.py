@@ -226,6 +226,7 @@ _QUOTA_ROUTES = [
     "/api/v1/events/{geolocation_id}",
     "/api/v1/events/points",
     "/api/v1/events/detections",
+    "/api/v1/events/detections/count",
     "/api/v1/events/possible-duplicates",
     "/api/v1/events/{geolocation_id}/approvals",
     "/api/v1/search",

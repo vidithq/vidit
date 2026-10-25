@@ -63,6 +63,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/^\/auth\/login$/, SIGNED_IN_USER],
   [/^\/admin\/me$/, { is_admin: false }],
   [/^\/events\/detections$/, EMPTY_DETECTIONS],
+  [/^\/events\/detections\/count$/, { count: 0 }],
   [/^\/users\/me\/preferences$/, DEFAULT_PREFERENCES],
   [/^\/users\/me\/x-handle$/, X_HANDLE],
   [/^\/notifications\/unread-count$/, NO_UNREAD],

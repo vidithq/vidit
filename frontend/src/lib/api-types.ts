@@ -1006,6 +1006,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/events/detections/count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Count Detections
+         * @description How many of your ``detected`` events await a publish.
+         *
+         *     The ``total`` of ``GET /events/detections?readiness=all`` in one count, for
+         *     a badge that shows no row.
+         */
+        get: operations["count_detections_api_v1_events_detections_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events/import-archive": {
         parameters: {
             query?: never;
@@ -1123,7 +1146,8 @@ export interface paths {
          *     are ISO ``YYYY-MM-DD`` (``added_date`` is the ``created_at`` day);
          *     ``occurred_date`` is ``null`` when unknown. ``detected`` is a 1/0 flag, not a
          *     status string, to keep the payload small. Cached in memory for 60s per
-         *     snapped bbox + filter combination (:func:`snap_bbox`).
+         *     snapped bbox + filter combination (:func:`snap_bbox`), gzipped once with
+         *     the raw bytes.
          */
         get: operations["list_points_api_v1_events_points_get"];
         put?: never;
@@ -3515,6 +3539,14 @@ export interface components {
             lat: number;
             /** Lng */
             lng: number;
+        };
+        /**
+         * DetectionCount
+         * @description ``GET /events/detections/count``: the caller's whole Detections queue.
+         */
+        DetectionCount: {
+            /** Count */
+            count: number;
         };
         /** DisplayPreferences */
         DisplayPreferences: {
@@ -6548,6 +6580,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PaginatedEventDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    count_detections_api_v1_events_detections_count_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetectionCount"];
                 };
             };
             /** @description Validation Error */

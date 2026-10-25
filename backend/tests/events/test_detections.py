@@ -200,3 +200,25 @@ def test_detections_readiness_rejects_an_unknown_value(author):
     assert response.status_code == 422
     assert "readiness must be one of" in response.json()["detail"]
     assert client.get(f"{_URL}?readiness=", headers=headers).status_code == 422
+
+
+def test_detections_count_requires_authentication(db, author):
+    _detected(db, author)
+    assert client.get(f"{_URL}/count").status_code == 401
+
+
+def test_detections_count_matches_the_queue_total(db, author, second_user):
+    """The badge count is the queue's ``readiness=all`` total: the caller's live
+    ``detected`` rows, ready or not, and nothing else."""
+    _mixed_queue(db, author)
+    _make_geo(db, author=author, status=STATUS_GEOLOCATED)
+    _detected(db, author, deleted=True)
+    _detected(db, second_user)
+    headers = login_as(client, author)
+
+    count = client.get(f"{_URL}/count", headers=headers)
+    queue = client.get(f"{_URL}?readiness=all&per_page=1", headers=headers)
+
+    assert count.status_code == 200
+    assert count.json() == {"count": queue.json()["total"]}
+    assert count.json()["count"] == len(READINESS_CASES)

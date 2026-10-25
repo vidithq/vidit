@@ -28,6 +28,7 @@ from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
 from app.routers.events._common import SOURCE_LOAD, build_event_list, build_event_read
 from app.schemas.event import (
+    DetectionCount,
     EventList,
     EventListSort,
     PaginatedEventDetails,
@@ -346,6 +347,30 @@ def list_events(
     return [build_event_list(geo, lat=lat, lng=lng) for geo, lat, lng in rows]
 
 
+def _owned_detections(user: User) -> tuple[ColumnElement[bool], ...]:
+    """The rows of ``user``'s Detections queue: live ``detected`` events they own."""
+    return (Event.owner_id == user.id, Event.status == STATUS_DETECTED, *visible_events())
+
+
+@router.get("/detections/count", response_model=DetectionCount)
+@authenticated_read_quota
+@limiter.limit("120/minute")
+def count_detections(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DetectionCount:
+    """How many of your ``detected`` events await a publish.
+
+    The ``total`` of ``GET /events/detections?readiness=all`` in one count, for
+    a badge that shows no row.
+    """
+    count = (
+        db.query(func.count()).select_from(Event).filter(*_owned_detections(current_user)).scalar()
+    )
+    return DetectionCount(count=count or 0)
+
+
 @router.get("/detections", response_model=PaginatedEventDetails)
 @authenticated_read_quota
 @limiter.limit("120/minute")
@@ -384,11 +409,7 @@ def list_detections(
     # non-positive LIMIT / negative OFFSET would be a Postgres 500).
     per_page = page_size(per_page)
 
-    detected = (
-        Event.owner_id == current_user.id,
-        Event.status == STATUS_DETECTED,
-        *visible_events(),
-    )
+    detected = _owned_detections(current_user)
     ready = detection_ready_predicate()
 
     # Both counts in one ``FILTER`` pass; the filtered total derives from them.

@@ -100,6 +100,12 @@ export function detectionsPath(
   return `/events/detections?page=${page}&per_page=${perPage}&readiness=${readiness}`;
 }
 
+/** `GET /events/detections/count`: the queue's `readiness=all` total without its rows, for the
+ *  sidebar badge. */
+export const DETECTIONS_COUNT_PATH = "/events/detections/count";
+
+export type DetectionCount = components["schemas"]["DetectionCount"];
+
 export function detectionsReviewPath(): string {
   return detectionsPath(1, DETECTIONS_REVIEW_QUEUE);
 }

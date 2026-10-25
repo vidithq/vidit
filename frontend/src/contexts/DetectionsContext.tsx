@@ -4,10 +4,7 @@ import { createContext, useContext, type ReactNode } from "react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
-import {
-  detectionsPath,
-  type PaginatedEventDetails,
-} from "@/lib/events";
+import { DETECTIONS_COUNT_PATH, type DetectionCount } from "@/lib/events";
 
 interface DetectionsValue {
   /** Count of the signed-in user's `detected` events awaiting submission; 0 when logged out or none. */
@@ -25,12 +22,12 @@ const DetectionsContext = createContext<DetectionsValue>({
  * the endpoint is owner-scoped, so it always reflects the signed-in user. */
 export function DetectionsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const { data, refetch } = useApiResource<PaginatedEventDetails>(
-    user ? detectionsPath(1, 1) : null
+  const { data, refetch } = useApiResource<DetectionCount>(
+    user ? DETECTIONS_COUNT_PATH : null
   );
   return (
     <DetectionsContext.Provider
-      value={{ count: data?.total ?? 0, refresh: refetch }}
+      value={{ count: data?.count ?? 0, refresh: refetch }}
     >
       {children}
     </DetectionsContext.Provider>
