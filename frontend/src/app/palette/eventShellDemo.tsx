@@ -59,9 +59,9 @@ export function EventShellSkeleton({ filling }: { filling: EventShellFilling }) 
       panels={isEvent ? <Slot label="Panels" className="h-16" /> : undefined}
       body={{
         sources: <Slot label="Body: sources" className="h-72" />,
-        proof: <Slot label="Body: proof" className="h-48" />,
-        location: <Slot label="Body: location" className="h-64" />,
-        details: <Slot label="Body: details" className="h-56" />,
+        proof: { content: <Slot label="Body: proof" className="h-48" /> },
+        location: { content: <Slot label="Body: location" className="h-64" /> },
+        details: { content: <Slot label="Body: details" className="h-56" /> },
       }}
     />
   );

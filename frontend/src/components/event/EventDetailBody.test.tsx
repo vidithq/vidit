@@ -1,10 +1,8 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { ReactNode } from "react";
-
 import { EventDetailBody, eventPageSlots } from "./EventDetailBody";
-import { EventLayout } from "./EventLayout";
+import { EventLayout, type EventSlot } from "./EventLayout";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import type { Source } from "@/lib/sources";
 import { source } from "@/test/eventDetail";
@@ -104,7 +102,7 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
 }
 
 // The event page's body, as `EventShell` lays it out.
-function PageBody({ geo, location }: { geo: EventDetail; location?: ReactNode }) {
+function PageBody({ geo, location }: { geo: EventDetail; location?: EventSlot }) {
   return <EventLayout {...eventPageSlots(geo, location)} />;
 }
 
@@ -230,7 +228,7 @@ describe("EventDetailBody", () => {
     render(
       <PageBody
         geo={geoFixture()}
-        location={<div data-testid="location-map">map goes here</div>}
+        location={{ content: <div data-testid="location-map">map goes here</div> }}
       />
     );
     const slot = screen.getByTestId("location-map");

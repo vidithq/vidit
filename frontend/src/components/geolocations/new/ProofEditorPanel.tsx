@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 
-import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { ProofSection } from "@/components/ui/ProofSection";
 import { TEXT_LINK } from "@/components/ui/styles";
 
 const ProofEditor = dynamic(
@@ -20,8 +20,16 @@ interface ProofEditorPanelProps {
   invalid?: boolean;
 }
 
-/** The "Proof" section: the event page's eyebrow, with the methodology link beside it, over the
- *  dynamically loaded proof editor. */
+/** Beside the form's Proof eyebrow: the methodology guide. */
+export const PROOF_GUIDE_LINK = (
+  <Link href="/methodology" className={`ml-1 text-[11px] ${TEXT_LINK}`}>
+    Methodology guide
+  </Link>
+);
+
+/** The form's proof card: the event page's `ProofSection` holding the dynamically loaded proof
+ *  editor. The editor reads both seeds once: on a remount, the current `proof` and its staged
+ *  files restore the draft, inline images included. */
 export function ProofEditorPanel({
   proof,
   onChange,
@@ -30,25 +38,14 @@ export function ProofEditorPanel({
   invalid = false,
 }: ProofEditorPanelProps) {
   return (
-    <section>
-      {/* The link is a sibling of the heading, so it stays out of the heading's name. */}
-      <div className="mb-3 flex items-center gap-1.5">
-        <SectionEyebrow title="Proof" concept="section_proof" margin="none" invalid={invalid} />
-        <Link href="/methodology" className={`ml-1 text-[11px] ${TEXT_LINK}`}>
-          Methodology guide
-        </Link>
-      </div>
-      {/* The editor is the card, as the event page's proof is. It reads both seeds once: on a
-          remount, the current `proof` and its staged files restore the draft, inline images
-          included. */}
+    <ProofSection editor invalid={invalid}>
       <ProofEditor
         bare
-        invalid={invalid}
         initialContent={proof}
         initialProofFiles={proofFiles}
         onChange={onChange}
         onProofFilesChange={onProofFilesChange}
       />
-    </section>
+    </ProofSection>
   );
 }

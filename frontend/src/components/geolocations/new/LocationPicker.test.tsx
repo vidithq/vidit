@@ -13,14 +13,11 @@ const baseProps = {
 };
 
 describe("LocationPicker", () => {
-  it("renders the Location heading, the subject pair, and the ? help", () => {
+  it("renders the subject pair under Coordinates, with its ? help", () => {
     render(<LocationPicker {...baseProps} />);
-    expect(screen.getByText("Location")).toBeInTheDocument();
+    expect(screen.getByText("Coordinates")).toBeInTheDocument();
     expect(screen.getAllByLabelText("Latitude")).toHaveLength(1);
     expect(screen.getAllByLabelText("Longitude")).toHaveLength(1);
-    expect(
-      screen.getByRole("button", { name: "What goes in Location?" })
-    ).toBeInTheDocument();
   });
 
   it("leaves the capture position to the sources", () => {

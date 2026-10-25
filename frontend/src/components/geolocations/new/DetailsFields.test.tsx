@@ -16,9 +16,8 @@ const baseProps = {
 const MUTED = "text-neutral-400";
 
 describe("DetailsFields", () => {
-  it("renders the Details heading, the two dates, and their ? help", () => {
+  it("renders the two dates and their ? help", () => {
     render(<DetailsFields {...baseProps} />);
-    expect(screen.getByText("Details")).toBeInTheDocument();
     expect(screen.getByText("Event date")).toBeInTheDocument();
     expect(screen.getByText("Event time")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "What is the event date?" })).toBeInTheDocument();

@@ -1,16 +1,31 @@
 import type { ReactNode } from "react";
 
+import { cn } from "@/lib/cn";
 import { Card } from "@/components/ui/Card";
-import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 
-// The "Proof" section: `SectionEyebrow` plus a box wrapping a geolocation's or
-// request's proof body (the caller passes the body). The box is `<Card>` one
-// density step tighter (p-4): proof is a reading surface.
-export function ProofSection({ children }: { children: ReactNode }) {
+// The proof's card on the event page and in every event form: `<Card>` one density step tighter
+// (p-4), a reading surface. Holding the form's editor, it takes the field's focus border and,
+// when a publish flags the proof, its red outline.
+export function ProofSection({
+  invalid = false,
+  editor = false,
+  children,
+}: {
+  invalid?: boolean;
+  /** Holds the proof editor: the card is the field's frame. */
+  editor?: boolean;
+  children: ReactNode;
+}) {
   return (
-    <div>
-      <SectionEyebrow title="Proof" concept="section_proof" />
-      <Card className="p-4">{children}</Card>
-    </div>
+    <Card
+      className={cn(
+        "p-4",
+        editor && "focus-within:border-orange-500",
+        invalid && FORM_INVALID_FIELD,
+      )}
+    >
+      {children}
+    </Card>
   );
 }

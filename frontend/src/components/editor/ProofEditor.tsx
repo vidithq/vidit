@@ -52,8 +52,9 @@ interface ProofEditorProps {
   allowImages?: boolean;
   /** Red invalid outline on the editor's box (FORM_INVALID_FIELD) for a caller whose submit refuses the body. */
   invalid?: boolean;
-  /** The editor is the section's card itself, padded like the event page's proof card, its text
-   *  starting where that card's text starts: an event form's Proof. Otherwise it is a field. */
+  /** No frame of its own: the caller's card is the frame (an event form's Proof, inside
+   *  `ProofSection`, which carries the focus border and the red outline). Otherwise it is a
+   *  field. */
   bare?: boolean;
 }
 
@@ -279,15 +280,16 @@ export default function ProofEditor({
   return (
     <div
       className={cn(
-        "border focus-within:border-orange-500",
         bare
-          ? // `ProofSection`'s card: its padding, and no inline padding of BlockNote's own, so the
-            // text starts where the event page's proof text starts. The side menu floats into the
-            // card's padding.
-            "rounded-lg border-neutral-700 bg-neutral-900 p-4 [&_.bn-editor]:px-0"
-          : "rounded-sm border-neutral-700 bg-neutral-800 py-2",
+          ? // Inside `ProofSection`, which is the frame: no inline padding of BlockNote's own, so
+            // the text starts where the event page's proof text starts. The side menu floats into
+            // the card's padding.
+            "[&_.bn-editor]:px-0"
+          : cn(
+              "rounded-sm border border-neutral-700 bg-neutral-800 py-2 focus-within:border-orange-500",
+              invalid && FORM_INVALID_FIELD,
+            ),
         FIELD_TEXT,
-        invalid && FORM_INVALID_FIELD,
       )}
     >
       <BlockNoteView

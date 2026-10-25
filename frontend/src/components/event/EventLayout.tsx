@@ -1,55 +1,110 @@
 import type { ComponentProps, ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
-import { PAGE_COLUMNS_SPLIT } from "@/components/ui/PageShell";
+import type { Concept } from "@/lib/fieldHelp";
+import { PageColumns } from "@/components/ui/PageShell";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+
+/** The sections of an event, named once for the page, the forms and the map panel. */
+export const EVENT_SECTIONS = {
+  sources: { title: "Sources", concept: "sources" },
+  proof: { title: "Proof", concept: "section_proof" },
+  location: { title: "Location", concept: "section_location" },
+  details: { title: "Details", concept: "section_details" },
+} as const satisfies Record<string, { title: string; concept: Concept }>;
+
+type EventSection = keyof typeof EVENT_SECTIONS;
+
+/** One section's filling: the card under the eyebrow, whether a publish flagged it (a red
+ *  eyebrow), and a node beside the eyebrow (the proof's guide link). */
+export interface EventSlot {
+  content: ReactNode;
+  invalid?: boolean;
+  aside?: ReactNode;
+}
 
 /** The body of `EventShell`, filled the same way by the event page and the forms. */
 export interface EventLayoutSlots {
+  /** The sources row (`SourcesRow`), which heads itself. */
   sources: ReactNode;
-  proof: ReactNode;
-  details: ReactNode;
-  location?: ReactNode;
+  proof: EventSlot;
+  details: EventSlot;
+  location?: EventSlot | null;
   form?: ComponentProps<"form">;
 }
 
-/**
- * The body grid of `EventShell`: the one placement of an event's blocks. Move a block here, not in
- * a page.
- *
- * From `lg` up, on the `PageColumns` split: the main column holds `sources` and `proof`; the side
- * column holds `location`, then `details`. Below `lg` one column reads the sources, proof,
- * location, then details.
- *
- * With `form`, the field blocks render inside a `<form>` laid out as `display: contents`, so the
- * grid still places them. A control outside it, in the title section or the actions block,
- * reaches the form through its `form` attribute.
- */
-export function EventLayout({ sources, proof, details, location, form }: EventLayoutSlots) {
-  const main = (
-    <div className="min-w-0 space-y-6">
-      {sources}
-      {proof}
-    </div>
-  );
-  const side = (
-    <div className="min-w-0 space-y-6">
-      {location}
-      {details}
-    </div>
+/** A section under its eyebrow. `besideScroller` levels the side column's first eyebrow with
+ *  the sources row's 32px header. */
+function Section({
+  name,
+  slot,
+  besideScroller = false,
+}: {
+  name: Exclude<EventSection, "sources">;
+  slot: EventSlot;
+  besideScroller?: boolean;
+}) {
+  const { title, concept } = EVENT_SECTIONS[name];
+  const eyebrow = (
+    <SectionEyebrow
+      title={title}
+      concept={concept}
+      invalid={slot.invalid}
+      besideScroller={besideScroller && !slot.aside}
+      margin={slot.aside ? "none" : "md"}
+    />
   );
   return (
-    <div className={cn("grid items-start gap-6", PAGE_COLUMNS_SPLIT)}>
-      {form ? (
-        <form {...form} className={cn("contents", form.className)}>
-          {main}
-          {side}
-        </form>
+    <section>
+      {slot.aside ? (
+        // The aside is a sibling of the heading, so it stays out of the heading's name.
+        <div className={cn("mb-3 flex items-center gap-1.5", besideScroller && "h-8")}>
+          {eyebrow}
+          {slot.aside}
+        </div>
       ) : (
-        <>
-          {main}
-          {side}
-        </>
+        eyebrow
       )}
-    </div>
+      {slot.content}
+    </section>
+  );
+}
+
+/**
+ * The body grid of `EventShell`: the one placement of an event's blocks and the one place their
+ * eyebrows are spelled. Move a block here, not in a page.
+ *
+ * On the `PageColumns` split: the main column holds `sources` and `proof`; the side column holds
+ * `location`, then `details`. Below `lg` one column reads the sources, proof, location, then
+ * details. The sources row's header is always as tall as its 32px buttons, so the side column's
+ * first eyebrow takes a row of the same height and both columns' first blocks start level.
+ *
+ * With `form`, the columns render inside a `<form>` laid out as `display: contents`. A control
+ * outside it, in the title section or the actions block, reaches the form through its `form`
+ * attribute.
+ */
+export function EventLayout({ sources, proof, details, location, form }: EventLayoutSlots) {
+  const columns = (
+    <PageColumns
+      main={
+        <>
+          {sources}
+          <Section name="proof" slot={proof} />
+        </>
+      }
+      side={
+        <>
+          {location && <Section name="location" slot={location} besideScroller />}
+          <Section name="details" slot={details} besideScroller={!location} />
+        </>
+      }
+    />
+  );
+  return form ? (
+    <form {...form} className={cn("contents", form.className)}>
+      {columns}
+    </form>
+  ) : (
+    columns
   );
 }

@@ -4,9 +4,8 @@ import dynamic from "next/dynamic";
 
 import type { EventDetail } from "@/types";
 import { CoordinateValue } from "@/components/event/CoordinateActions";
-import { sourcesScroll } from "@/components/sources/SourceBlock";
+import type { EventSlot } from "@/components/event/EventLayout";
 import { DetailRow } from "@/components/ui/DetailRow";
-import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 
 const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
 
@@ -15,25 +14,20 @@ const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
  * a coordless event (a `requested` row served by id). It takes a view, not an id, so the live row
  * and a filed version (fed by `snapshotToEventView`) render the same module.
  */
-export function eventLocation(geo: EventDetail) {
-  return geo.coords ? (
-    <EventLocation geo={geo} coords={geo.coords} besideScroller={sourcesScroll(geo.sources.length)} />
-  ) : null;
+export function eventLocation(geo: EventDetail): EventSlot | null {
+  return geo.coords ? { content: <EventLocation geo={geo} coords={geo.coords} /> } : null;
 }
 
 /** The Location module: the map with its coordinates row fused to its foot. */
 function EventLocation({
   geo,
   coords,
-  besideScroller,
 }: {
   geo: EventDetail;
   coords: NonNullable<EventDetail["coords"]>;
-  besideScroller: boolean;
 }) {
   return (
-    <div>
-      <SectionEyebrow title="Location" concept="section_location" besideScroller={besideScroller} />
+    <>
       {/* Map and coordinates are one module: the coords read as a Details-style row fused to the map's
           bottom (mirrors the submit form's Location section). `overflow-hidden` sits on the map alone,
           to clip its rounded corners, since the whole module would clip the coordinate row's `?` tooltip. */}
@@ -67,6 +61,6 @@ function EventLocation({
           <CoordinateValue lat={coords.lat} lng={coords.lng} />
         </DetailRow>
       </div>
-    </div>
+    </>
   );
 }

@@ -4,9 +4,9 @@ import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import { Plus, Trash2 } from "lucide-react";
 
 import { SourceEditor, type SourceEditorInvalid } from "@/components/sources/SourceEditor";
+import { SourcesRow } from "@/components/sources/SourcesRow";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
-import { HorizontalScroller, type HorizontalScrollerHandle } from "@/components/ui/HorizontalScroller";
-import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import type { HorizontalScrollerHandle } from "@/components/ui/HorizontalScroller";
 import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
 import { isSnapshotUrl, SNAPSHOT_HINT } from "@/components/ui/ArchivedCopies";
 import type { MissingFieldKey } from "@/lib/events";
@@ -27,9 +27,9 @@ import type { Tag } from "@/types";
 let uploadToken = 0;
 
 /**
- * The **Sources** section every event form carries, under a **Sources (N)** eyebrow: a
- * `HorizontalScroller` row of one `SourceEditor` per source, side by side like the event page's
- * (a lone one `wide`, its file beside its fields), **Add a source** in its header
+ * The **Sources** section every event form carries: the event page's `SourcesRow`, one
+ * `SourceEditor` per source (a lone one `wide`, its file beside its fields), **Add a source** in
+ * its header
  * (capped at `MAX_SOURCES_PER_EVENT`), and per editor a two-click remove. Every editor stays
  * mounted, so one scrolled out of view keeps its upload.
  *
@@ -107,56 +107,42 @@ export function SourcesField({
   const fileMissing = invalidKeys.has("source_file");
 
   return (
-    // No card of its own: the heading row sits on the page like the event page's Sources
-    // eyebrow, and each editor is the card.
-    <section>
-      <HorizontalScroller
-        ref={scroller}
-        heading={
-          // The floor's line sits in the header row, so it moves no card down.
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <SectionEyebrow
-              margin="none"
-              title={`Sources (${sources.length})`}
-              concept="sources"
-              invalid={fileMissing}
-            />
-            {fileMissing && (
-              <p className="text-xs text-red-400">Add a file to a direct or indirect source.</p>
-            )}
-          </div>
-        }
-        label="Sources"
-        previousLabel="Previous source"
-        nextLabel="Next source"
-        actions={
-          <>
-            {atCap && (
-              <span className="text-xs text-neutral-500">{MAX_SOURCES_PER_EVENT} maximum.</span>
-            )}
-            <Button variant="secondary" disabled={atCap} onClick={add}>
-              <Plus size={13} strokeWidth={2} />
-              Add a source
-            </Button>
-          </>
-        }
-      >
-        {sources.map((draft, index) => (
-          <SourceEditor
-            key={draft.key}
-            draft={draft}
-            index={index}
-            update={update(draft.key)}
-            onPickFile={(file) => void pickFile(draft.key)(file)}
-            tags={tags}
-            setTags={setTags}
-            invalid={sourceGaps(draft, invalidKeys)}
-            actions={sources.length > 1 && <RemoveSource index={index} onRemove={() => remove(index)} />}
-            wide={sources.length === 1}
-          />
-        ))}
-      </HorizontalScroller>
-    </section>
+    <SourcesRow
+      ref={scroller}
+      count={sources.length}
+      invalid={fileMissing}
+      note={
+        fileMissing && (
+          <p className="text-xs text-red-400">Add a file to a direct or indirect source.</p>
+        )
+      }
+      actions={
+        <>
+          {atCap && (
+            <span className="text-xs text-neutral-500">{MAX_SOURCES_PER_EVENT} maximum.</span>
+          )}
+          <Button variant="secondary" disabled={atCap} onClick={add}>
+            <Plus size={13} strokeWidth={2} />
+            Add a source
+          </Button>
+        </>
+      }
+    >
+      {sources.map((draft, index) => (
+        <SourceEditor
+          key={draft.key}
+          draft={draft}
+          index={index}
+          update={update(draft.key)}
+          onPickFile={(file) => void pickFile(draft.key)(file)}
+          tags={tags}
+          setTags={setTags}
+          invalid={sourceGaps(draft, invalidKeys)}
+          actions={sources.length > 1 && <RemoveSource index={index} onRemove={() => remove(index)} />}
+          wide={sources.length === 1}
+        />
+      ))}
+    </SourcesRow>
   );
 }
 

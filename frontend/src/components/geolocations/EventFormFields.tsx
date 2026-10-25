@@ -18,7 +18,7 @@ import {
 } from "@/components/geolocations/TaxonomyFields";
 import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
 import { LocationPicker } from "@/components/geolocations/new/LocationPicker";
-import { ProofEditorPanel } from "@/components/geolocations/new/ProofEditorPanel";
+import { PROOF_GUIDE_LINK, ProofEditorPanel } from "@/components/geolocations/new/ProofEditorPanel";
 import { SourcesField } from "@/components/sources/SourcesField";
 import { useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { cleanNumber } from "@/lib/coordinates";
@@ -219,6 +219,7 @@ export function eventFormSlots(
   } = {},
 ): { titleField: ReactNode; body: Omit<EventLayoutSlots, "form"> } {
   const { invalidKeys } = form;
+  const proofInvalid = invalidKeys.has("proof") || invalidKeys.has("proof_image");
 
   return {
     titleField: (
@@ -241,47 +242,56 @@ export function eventFormSlots(
         />
       ),
       // The image floor binds at the publish; a request may stay imageless.
-      proof: (
-        <ProofEditorPanel
-          proof={form.proof}
-          onChange={form.setProof}
-          proofFiles={form.proofFiles}
-          onProofFilesChange={form.setProofFiles}
-          invalid={invalidKeys.has("proof") || invalidKeys.has("proof_image")}
-        />
-      ),
-      details: (
-        <DetailsFields
-          eventDate={form.eventDate}
-          setEventDate={form.setEventDate}
-          eventTime={form.eventTime}
-          setEventTime={form.setEventTime}
-          detectedFromUrl={showProvenance ? row?.detected_from_url : undefined}
-          openedAsRequest={!!row?.requested_by}
-          invalid={invalidKeys.has("conflict_tag")}
-        >
-          <TaxonomyFields
-            taxonomy={form.taxonomy}
-            selectedTagIds={form.selectedTagIds}
-            setSelectedTagIds={form.setSelectedTagIds}
-            selectedConflictIds={form.selectedConflictIds}
-            setSelectedConflictIds={form.setSelectedConflictIds}
-            conflictInvalid={invalidKeys.has("conflict_tag")}
+      proof: {
+        content: (
+          <ProofEditorPanel
+            proof={form.proof}
+            onChange={form.setProof}
+            proofFiles={form.proofFiles}
+            onProofFilesChange={form.setProofFiles}
+            invalid={proofInvalid}
           />
-        </DetailsFields>
-      ),
-      location: (
-        <>
-          <LocationPicker
-            lat={form.lat}
-            setLat={form.setLat}
-            lng={form.lng}
-            setLng={form.setLng}
-            invalid={invalidKeys.has("coordinates")}
-          />
-          {afterLocation}
-        </>
-      ),
+        ),
+        invalid: proofInvalid,
+        aside: PROOF_GUIDE_LINK,
+      },
+      details: {
+        content: (
+          <DetailsFields
+            eventDate={form.eventDate}
+            setEventDate={form.setEventDate}
+            eventTime={form.eventTime}
+            setEventTime={form.setEventTime}
+            detectedFromUrl={showProvenance ? row?.detected_from_url : undefined}
+            openedAsRequest={!!row?.requested_by}
+          >
+            <TaxonomyFields
+              taxonomy={form.taxonomy}
+              selectedTagIds={form.selectedTagIds}
+              setSelectedTagIds={form.setSelectedTagIds}
+              selectedConflictIds={form.selectedConflictIds}
+              setSelectedConflictIds={form.setSelectedConflictIds}
+              conflictInvalid={invalidKeys.has("conflict_tag")}
+            />
+          </DetailsFields>
+        ),
+        invalid: invalidKeys.has("conflict_tag"),
+      },
+      location: {
+        content: (
+          <div className="space-y-6">
+            <LocationPicker
+              lat={form.lat}
+              setLat={form.setLat}
+              lng={form.lng}
+              setLng={form.setLng}
+              invalid={invalidKeys.has("coordinates")}
+            />
+            {afterLocation}
+          </div>
+        ),
+        invalid: invalidKeys.has("coordinates"),
+      },
     },
   };
 }

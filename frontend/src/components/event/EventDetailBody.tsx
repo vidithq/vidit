@@ -1,7 +1,5 @@
 "use client";
 
-import type { ReactNode } from "react";
-
 import type { EventDetail } from "@/types";
 import { formatDate } from "@/lib/format";
 import { formatCoordinates } from "@/lib/coordinates";
@@ -10,11 +8,11 @@ import { provenanceLabel } from "@/lib/events";
 import { renderProof } from "@/lib/proof";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { StatusBadge } from "@/components/event/StatusBadge";
-import { SourceBlocks, sourcesScroll } from "@/components/sources/SourceBlock";
+import { SourceBlocks } from "@/components/sources/SourceBlock";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { DetailCard, DetailPills, DetailRow } from "@/components/ui/DetailRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import type { EventLayoutSlots } from "@/components/event/EventLayout";
+import { EVENT_SECTIONS, type EventLayoutSlots, type EventSlot } from "@/components/event/EventLayout";
 import { ProofSection } from "@/components/ui/ProofSection";
 
 /** The body's data shape: an `EventDetail` as-is. Every lifecycle state shares it: a coordless
@@ -40,30 +38,16 @@ export function EventDetailBody({ geo }: { geo: EventDetailBodyData }) {
  * `location`, then the Details card with the request-trace row, in the side column. One home for
  * the field set, so the panel and the pages can't drift.
  */
-export function eventPageSlots(geo: EventDetailBodyData, location?: ReactNode): EventLayoutSlots {
+export function eventPageSlots(geo: EventDetailBodyData, location?: EventSlot | null): EventLayoutSlots {
   return {
     sources: <SourceBlocks sources={geo.sources} alt={geo.title} />,
-    proof: <ProofBlock geo={geo} compact={false} />,
-    details: (
-      <DetailRows
-        geo={geo}
-        compact={false}
-        besideScroller={sourcesScroll(geo.sources.length) && !location}
-      />
-    ),
+    proof: { content: <ProofBlock geo={geo} compact={false} /> },
+    details: { content: <DetailRows geo={geo} compact={false} /> },
     location,
   };
 }
 
-function DetailRows({
-  geo,
-  compact,
-  besideScroller = false,
-}: {
-  geo: EventDetailBodyData;
-  compact: boolean;
-  besideScroller?: boolean;
-}) {
+function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boolean }) {
   const sourceClass = compact ? "" : "text-sm";
 
   const rows = (
@@ -154,12 +138,7 @@ function DetailRows({
     return (
       <>
         <div className="space-y-2">
-          <SectionEyebrow
-            as="h3"
-            margin="none"
-            title="Location"
-            concept="section_location"
-          />
+          <SectionEyebrow as="h3" margin="none" {...EVENT_SECTIONS.location} />
           <DetailRow
             label="Coordinates"
             concept="coordinates"
@@ -176,27 +155,13 @@ function DetailRows({
           </DetailRow>
         </div>
         <div className="space-y-2">
-          <SectionEyebrow
-            as="h3"
-            margin="none"
-            title="Details"
-            concept="section_details"
-          />
+          <SectionEyebrow as="h3" margin="none" {...EVENT_SECTIONS.details} />
           <div className="space-y-2 text-sm">{rows}</div>
         </div>
       </>
     );
   }
-  return (
-    <div>
-      <SectionEyebrow
-        title="Details"
-        concept="section_details"
-        besideScroller={besideScroller}
-      />
-      <DetailCard>{rows}</DetailCard>
-    </div>
-  );
+  return <DetailCard>{rows}</DetailCard>;
 }
 
 function ProofBlock({ geo, compact }: { geo: EventDetailBodyData; compact: boolean }) {
@@ -214,12 +179,7 @@ function ProofBlock({ geo, compact }: { geo: EventDetailBodyData; compact: boole
   if (compact) {
     return (
       <div className="pt-2 border-t border-neutral-800">
-        <SectionEyebrow
-          as="h3"
-          margin="sm"
-          title="Proof"
-          concept="section_proof"
-        />
+        <SectionEyebrow as="h3" margin="sm" {...EVENT_SECTIONS.proof} />
         {body}
       </div>
     );

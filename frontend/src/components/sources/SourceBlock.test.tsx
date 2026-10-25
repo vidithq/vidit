@@ -179,10 +179,10 @@ describe("SourceBlock", () => {
 });
 
 describe("SourceBlocks", () => {
-  it("gives a lone source the whole area, file beside the rows, with no scroller", () => {
+  it("gives a lone source the whole row, file beside the rows, with no arrows", () => {
     render(<SourceBlocks sources={[source({ media: IMAGE })]} alt={ALT} />);
     expect(screen.getByText("Sources (1)")).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Sources" })).toBeNull();
+    expect(screen.getByRole("region", { name: "Sources" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Next source" })).toBeNull();
     const block = screen.getByRole("region", { name: "Source 1" });
     expect(block).toHaveClass("@container");

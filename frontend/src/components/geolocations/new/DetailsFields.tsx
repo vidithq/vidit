@@ -6,7 +6,6 @@ import { DateTimeInput } from "@/components/ui/DateTimeInput";
 import { FORM_LABEL, LABEL_TEXT } from "@/components/ui/form-styles";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Card } from "@/components/ui/Card";
-import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { provenanceLabel } from "@/lib/events";
 import { LockedHint } from "./LockedHint";
 import { LockedUrl } from "./LockedUrl";
@@ -24,13 +23,10 @@ interface DetailsFieldsProps {
   openedAsRequest?: boolean;
   /** The classification fields (conflict, tags), last in the card. */
   children?: ReactNode;
-  /** Red eyebrow: a field in the card is missing at publish (the conflict). */
-  invalid?: boolean;
 }
 
-/** The "Details" section, mirroring the detail page's Details block in its order and its eyebrow:
- *  when the event happened, the provenance link of an imported row, then the classification.
- *  Shared by every event form. */
+/** The Details card of every event form, in the order of the event page's Details card: when
+ *  the event happened, the provenance link of an imported row, then the classification. */
 export function DetailsFields({
   eventDate,
   setEventDate,
@@ -39,57 +35,53 @@ export function DetailsFields({
   detectedFromUrl,
   openedAsRequest = false,
   children,
-  invalid = false,
 }: DetailsFieldsProps) {
   return (
-    <section>
-      <SectionEyebrow title="Details" concept="section_details" invalid={invalid} />
-      <Card>
-        {/* One line at every width: two shrinking columns, in the side column and at 320px. */}
-        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4">
-          {/* Optional: an empty date reads as "Unknown". */}
-          <div className="space-y-1.5">
-            <span className="flex items-center gap-1">
-              <label htmlFor="occurred_date" className={LABEL_TEXT}>
-                Event date
-              </label>
-              <FieldHelp concept="occurred_date" />
-            </span>
-            <DateTimeInput
-              id="occurred_date"
-              type="date"
-              value={eventDate}
-              onChange={(e) => setEventDate(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <span className="flex items-center gap-1">
-              <label htmlFor="occurred_time" className={LABEL_TEXT}>
-                Event time
-              </label>
-              <FieldHelp concept="occurred_time" />
-            </span>
-            <DateTimeInput
-              id="occurred_time"
-              type="time"
-              value={eventTime}
-              onChange={(e) => setEventTime(e.target.value)}
-            />
-          </div>
+    <Card>
+      {/* One line at every width: two shrinking columns, in the side column and at 320px. */}
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4">
+        {/* Optional: an empty date reads as "Unknown". */}
+        <div className="space-y-1.5">
+          <span className="flex items-center gap-1">
+            <label htmlFor="occurred_date" className={LABEL_TEXT}>
+              Event date
+            </label>
+            <FieldHelp concept="occurred_date" />
+          </span>
+          <DateTimeInput
+            id="occurred_date"
+            type="date"
+            value={eventDate}
+            onChange={(e) => setEventDate(e.target.value)}
+          />
         </div>
+        <div className="space-y-1.5">
+          <span className="flex items-center gap-1">
+            <label htmlFor="occurred_time" className={LABEL_TEXT}>
+              Event time
+            </label>
+            <FieldHelp concept="occurred_time" />
+          </span>
+          <DateTimeInput
+            id="occurred_time"
+            type="time"
+            value={eventTime}
+            onChange={(e) => setEventTime(e.target.value)}
+          />
+        </div>
+      </div>
 
-        {/* Always locked and populated, so always the link form. */}
-        {detectedFromUrl && (
-          <div className="space-y-1.5">
-            <span className={FORM_LABEL}>
-              {provenanceLabel(openedAsRequest)} <FieldHelp concept="detected_from" />
-              <LockedHint>provenance, can&apos;t change</LockedHint>
-            </span>
-            <LockedUrl href={detectedFromUrl} />
-          </div>
-        )}
-        {children}
-      </Card>
-    </section>
+      {/* Always locked and populated, so always the link form. */}
+      {detectedFromUrl && (
+        <div className="space-y-1.5">
+          <span className={FORM_LABEL}>
+            {provenanceLabel(openedAsRequest)} <FieldHelp concept="detected_from" />
+            <LockedHint>provenance, can&apos;t change</LockedHint>
+          </span>
+          <LockedUrl href={detectedFromUrl} />
+        </div>
+      )}
+      {children}
+    </Card>
   );
 }

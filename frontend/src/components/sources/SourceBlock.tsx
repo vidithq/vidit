@@ -1,7 +1,7 @@
 import { CoordinateValue } from "@/components/event/CoordinateActions";
+import { EVENT_SECTIONS } from "@/components/event/EventLayout";
 import { ArchivedCopies, linkDescription } from "@/components/ui/ArchivedCopies";
 import { DetailCard, DetailPills, DetailRow } from "@/components/ui/DetailRow";
-import { HorizontalScroller } from "@/components/ui/HorizontalScroller";
 import { MediaGallery } from "@/components/ui/MediaGallery";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -12,6 +12,7 @@ import { cn } from "@/lib/cn";
 import { formatInstant, formatInstantOrDate, safeHostname } from "@/lib/format";
 import { isEvidenceLevel, LEVEL_LABELS, sourceKindLabel, type Source } from "@/lib/sources";
 
+import { SourcesRow } from "./SourcesRow";
 import { SourceWarnings } from "./SourceWarnings";
 
 /**
@@ -141,15 +142,10 @@ function SourceRows({
   );
 }
 
-/** Whether `<SourceBlocks>` on the page lays this many sources out in a `<HorizontalScroller>`. */
-export function sourcesScroll(count: number): boolean {
-  return count > 1;
-}
-
 /**
- * An event's sources under a **Sources** eyebrow, in the order the API serves them: a vertical
- * stack in the map panel, a `<HorizontalScroller>` row on the page. A lone source on the page
- * takes the whole area as a `wide` block, with no scroller.
+ * An event's sources in the order the API serves them: a `SourcesRow` on the page, a lone source
+ * taking the whole row as a `wide` block; a vertical stack under a **Sources** eyebrow in the map
+ * panel.
  */
 export function SourceBlocks({
   sources,
@@ -160,8 +156,6 @@ export function SourceBlocks({
   alt: string;
   compact?: boolean;
 }) {
-  const wide = !compact && sources.length === 1;
-  const scrolls = !compact && sourcesScroll(sources.length);
   const blocks = sources.map((source, index) => (
     <SourceBlock
       key={source.id}
@@ -169,36 +163,18 @@ export function SourceBlocks({
       index={index}
       alt={alt}
       compact={compact}
-      wide={wide}
+      wide={!compact && sources.length === 1}
     />
   ));
-  const counted = !compact && sources.length > 0;
-  const title = counted ? `Sources (${sources.length})` : "Sources";
-  if (scrolls) {
-    return (
-      <HorizontalScroller
-        heading={<SectionEyebrow margin="none" title={title} concept="sources" />}
-        label="Sources"
-        previousLabel="Previous source"
-        nextLabel="Next source"
-      >
-        {blocks}
-      </HorizontalScroller>
-    );
+  const empty = <p className="text-sm text-neutral-500 italic">No source yet</p>;
+  if (!compact) {
+    return <SourcesRow count={sources.length}>{sources.length === 0 ? empty : blocks}</SourcesRow>;
   }
+  const { title, concept } = EVENT_SECTIONS.sources;
   return (
-    <div className={compact ? "space-y-2" : "space-y-3"}>
-      <SectionEyebrow
-        as={compact ? "h3" : undefined}
-        margin="none"
-        title={title}
-        concept="sources"
-      />
-      {sources.length === 0 ? (
-        <p className="text-sm text-neutral-500 italic">No source yet</p>
-      ) : (
-        blocks
-      )}
+    <div className="space-y-2">
+      <SectionEyebrow as="h3" margin="none" title={title} concept={concept} />
+      {sources.length === 0 ? empty : blocks}
     </div>
   );
 }
