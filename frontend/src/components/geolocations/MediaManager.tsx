@@ -56,10 +56,10 @@ export function MediaManager({
       content:
         m.kind === "image" ? (
           <Image
-            src={displayUrlsFor(m).thumbnail}
+            src={displayUrlsFor(m).hero}
             alt=""
             fill
-            sizes="200px"
+            sizes="(min-width: 768px) 50vw, 100vw"
             className="object-cover"
           />
         ) : (

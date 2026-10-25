@@ -263,7 +263,7 @@ test.describe("submit", () => {
     await page.goto("/submit?mode=single");
 
     await page.getByRole("button", { name: "Add a source" }).click();
-    await page.getByRole("button", { name: "Show source 1" }).click();
+    await page.getByRole("button", { name: "Previous source" }).click();
     const first = page.getByRole("region", { name: "Source 1" });
     await first.getByLabel("Kind", { exact: true }).selectOption({ label: "Smartphone" });
     await first.getByLabel("Source 1 link 1", { exact: true }).fill("https://t.me/channel/12345");
@@ -285,7 +285,7 @@ test.describe("submit", () => {
     const removeLink = (await first.getByRole("button", { name: "Remove source 1 link 1" }).boundingBox())!;
     const posted = (await first.getByLabel("Posted (UTC), source 1, t.me").boundingBox())!;
     const archive = (await first.getByRole("button", { name: "Archive source 1, t.me" }).boundingBox())!;
-    expect(url.width).toBeGreaterThan(tile.width * 0.6);
+    expect(url.width).toBeGreaterThan(tile.width * 0.5);
     expect(removeLink.x).toBeGreaterThanOrEqual(url.x + url.width);
     expect(Math.abs(removeLink.y + removeLink.height / 2 - (url.y + url.height / 2))).toBeLessThanOrEqual(1);
     expect(posted.y).toBeGreaterThanOrEqual(url.y + url.height);
@@ -606,10 +606,10 @@ test.describe("publish counts on a touch screen", () => {
   });
 });
 
-test.describe("source carousel on a touch screen", () => {
+test.describe("source row on a touch screen", () => {
   test.use({ hasTouch: true });
 
-  test("shows one source at a time and moves by a swipe, the arrows or a dot", async ({
+  test("lays the sources side by side with a peek and moves by a swipe or the arrows", async ({
     context,
     page,
   }) => {
@@ -617,46 +617,55 @@ test.describe("source carousel on a touch screen", () => {
     await mockApi(page);
     await page.goto("/submit?mode=single");
 
-    const track = page.getByRole("region", { name: "Sources", exact: true });
+    const row = page.getByRole("region", { name: "Sources", exact: true });
     const first = page.getByRole("region", { name: "Source 1", exact: true });
     const second = page.getByRole("region", { name: "Source 2", exact: true });
+    await expect(first).toBeVisible();
     await expect(page.getByRole("button", { name: "Next source" })).toHaveCount(0);
+    const rowBox = (await row.boundingBox())!;
+    const rowRight = rowBox.x + rowBox.width;
+    // A lone source takes the row's full width.
+    expect((await first.boundingBox())!.width).toBeGreaterThan(rowBox.width - 1);
 
-    // Add a source shows the new one, at the track's full width.
+    // Add a source scrolls the new one into view, at the row's right edge.
     await page.getByRole("button", { name: "Add a source" }).click();
-    await expect(page.getByText("2 / 2", { exact: true })).toBeVisible();
-    const trackBox = (await track.boundingBox())!;
+    await expect(page.getByText("2 of 2", { exact: true })).toBeVisible();
     await expect
-      .poll(async () => Math.abs((await second.boundingBox())!.x - trackBox.x))
+      .poll(async () => {
+        const box = (await second.boundingBox())!;
+        return Math.abs(box.x + box.width - rowRight);
+      })
       .toBeLessThanOrEqual(1);
-    expect((await second.boundingBox())!.width).toBeGreaterThan(trackBox.width - 1);
     await expectNoHorizontalOverflow(page);
 
+    // On a phone one source fits and the next peeks.
     await page.getByRole("button", { name: "Previous source" }).tap();
-    await expect(page.getByText("1 / 2", { exact: true })).toBeVisible();
+    await expect(page.getByText("1 of 2", { exact: true })).toBeVisible();
     await expect
-      .poll(async () => Math.abs((await first.boundingBox())!.x - trackBox.x))
+      .poll(async () => Math.abs((await first.boundingBox())!.x - rowBox.x))
       .toBeLessThanOrEqual(1);
-
     const firstBox = (await first.boundingBox())!;
+    const secondBox = (await second.boundingBox())!;
+    expect(firstBox.width).toBeGreaterThan(rowBox.width * 0.8);
+    expect(secondBox.x, "the next source peeks").toBeLessThan(rowRight);
+    expect(secondBox.x + secondBox.width).toBeGreaterThan(rowRight);
+
     await swipeLeft(
       page,
-      Math.round(trackBox.x + trackBox.width * 0.8),
+      Math.round(rowBox.x + rowBox.width * 0.8),
       Math.round(firstBox.y + 20),
       Math.round(firstBox.width * 0.6),
     );
-    await expect(page.getByText("2 / 2", { exact: true })).toBeVisible();
-    await expect
-      .poll(async () => Math.abs((await second.boundingBox())!.x - trackBox.x))
-      .toBeLessThanOrEqual(1);
+    await expect(page.getByText("2 of 2", { exact: true })).toBeVisible();
 
-    await page.getByRole("button", { name: "Show source 1" }).tap();
-    await expect(page.getByText("1 / 2", { exact: true })).toBeVisible();
-
-    // One source left: no arrows, position or dots.
+    // Remove arms on the first tap and removes on the second.
+    await page.getByRole("button", { name: "Previous source" }).tap();
+    await expect(page.getByText("1 of 2", { exact: true })).toBeVisible();
     await first.getByRole("button", { name: "Remove source 1", exact: true }).tap();
+    await expect(page.getByRole("region", { name: /^Source \d$/ })).toHaveCount(2);
+    await first.getByRole("button", { name: "Confirm removing source 1", exact: true }).tap();
     await expect(page.getByRole("region", { name: /^Source \d$/ })).toHaveCount(1);
     await expect(page.getByRole("button", { name: "Next source" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /^Show source/ })).toHaveCount(0);
+    expect((await first.boundingBox())!.width).toBeGreaterThan(rowBox.width - 1);
   });
 });

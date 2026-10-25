@@ -150,41 +150,40 @@ export function SourceEditor({
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="space-y-1.5">
-          <span className={FORM_LABEL}>
-            Level <FieldHelp concept="source_level" />
-          </span>
-          <SegmentedControl<SourceLevel>
-            aria-label={`${name} level`}
-            options={LEVEL_OPTIONS}
-            value={draft.level}
-            onChange={(level) => update({ level })}
-            fullWidth
-          />
-        </div>
-        <div className="space-y-1.5">
-          <label
-            htmlFor={id("kind")}
-            className={cn(FORM_LABEL, invalid.kind && FORM_INVALID_LABEL)}
-          >
-            Kind <FieldHelp concept="source_kind" />
-          </label>
-          <Select
-            id={id("kind")}
-            value={draft.kind}
-            required
-            invalid={invalid.kind}
-            onChange={(e) => update({ kind: e.target.value as SourceKind | "" })}
-          >
-            <option value="">Pick a kind</option>
-            {SOURCE_KINDS.map((kind) => (
-              <option key={kind} value={kind}>
-                {SOURCE_KIND_LABELS[kind]}
-              </option>
-            ))}
-          </Select>
-        </div>
+      <div className="space-y-1.5">
+        <span className={FORM_LABEL}>
+          Level <FieldHelp concept="source_level" />
+        </span>
+        <SegmentedControl<SourceLevel>
+          aria-label={`${name} level`}
+          options={LEVEL_OPTIONS}
+          value={draft.level}
+          onChange={(level) => update({ level })}
+          fullWidth
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <label
+          htmlFor={id("kind")}
+          className={cn(FORM_LABEL, invalid.kind && FORM_INVALID_LABEL)}
+        >
+          Kind <FieldHelp concept="source_kind" />
+        </label>
+        <Select
+          id={id("kind")}
+          value={draft.kind}
+          required
+          invalid={invalid.kind}
+          onChange={(e) => update({ kind: e.target.value as SourceKind | "" })}
+        >
+          <option value="">Pick a kind</option>
+          {SOURCE_KINDS.map((kind) => (
+            <option key={kind} value={kind}>
+              {SOURCE_KIND_LABELS[kind]}
+            </option>
+          ))}
+        </Select>
       </div>
 
       <div className="space-y-1.5">

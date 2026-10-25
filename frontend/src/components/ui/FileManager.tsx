@@ -36,7 +36,8 @@ interface FileManagerProps {
   multiple?: boolean;
   addLabel: string;
   addHint?: string;
-  /** `grid`: thumbnail tiles (media). `stack`: file cards in a column. */
+  /** `grid`: thumbnail tiles (media), one full-width tile for a single-file picker. `stack`:
+   *  file cards in a column. */
   layout?: "grid" | "stack";
 }
 
@@ -150,7 +151,7 @@ export function FileManager({
 
   if (grid) {
     return (
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className={multiple ? "grid grid-cols-2 gap-3 sm:grid-cols-3" : "grid grid-cols-1"}>
         {items.map((it) => (
           <div
             key={it.key}

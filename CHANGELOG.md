@@ -13,7 +13,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - The feed shows machine detections from the analysts you follow, or from everyone on All, and a **Show detections** switch in its Kind filter hides them; `GET /feed` takes `kind=detected`.
 - A source can be of kind aircraft: images or video taken from a plane or a helicopter, historical aerial photos included.
 - A satellite or aircraft source is checked against a list of imagery providers and warns, without blocking, when a reader could not reopen the image at its date; the form names each provider, how to reopen it and its credit as you type, and `POST /sources/check` runs the same check.
-- The event form shows one source at a time: the arrows, the dots or a swipe on a phone move between sources, and a publish attempt shows the first source with a missing field.
+- The event form lays its sources side by side like the event page: the arrows or a swipe on a phone move along them, removing a source asks for a second click, and a publish attempt shows the first source with a missing field.
 
 ### Changed
 

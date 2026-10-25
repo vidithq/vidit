@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { MissingFieldKey } from "@/lib/events";
 import type { SourceDraft } from "@/lib/sources";
@@ -49,8 +49,32 @@ const withUrl = (url: string): SourceDraft => {
   return { ...draft, links: [{ url, postedAt: "", snapshotUrl: "", stored: null }] };
 };
 
+// jsdom has no layout: each editor sits 100px after the previous one in the Sources row, and
+// the row records where it was asked to scroll.
+const scrolledTo = vi.fn();
+const ITEM_LEFT = 100;
+
+function inRow(el: HTMLElement): HTMLElement | null {
+  const row = el.parentElement;
+  return row?.getAttribute("aria-label") === "Sources" ? row : null;
+}
+
 describe("SourcesField", () => {
-  beforeEach(() => upload.mockReset());
+  beforeEach(() => {
+    upload.mockReset();
+    scrolledTo.mockReset();
+    vi.spyOn(HTMLElement.prototype, "offsetLeft", "get").mockImplementation(function (this: HTMLElement) {
+      const row = inRow(this);
+      return row ? Array.from(row.children).indexOf(this) * ITEM_LEFT : 0;
+    });
+    vi.spyOn(Element.prototype, "scrollTo").mockImplementation(function (
+      this: Element,
+      options?: ScrollToOptions | number,
+    ) {
+      if (this.getAttribute("aria-label") === "Sources") scrolledTo((options as ScrollToOptions).left);
+    });
+  });
+  afterEach(() => vi.restoreAllMocks());
 
   it("starts with the editors it is given and adds one per click, showing it", () => {
     render(<Host initial={[newSourceDraft()]} />);
@@ -58,27 +82,23 @@ describe("SourcesField", () => {
     // One source: the form needs a source, and there is nothing to move between.
     expect(screen.queryByRole("button", { name: /^Remove source \d$/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Next source" })).toBeNull();
-    expect(screen.queryByRole("button", { name: /^Show source/ })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Add a source" }));
     expect(screen.getAllByRole("region", { name: /^Source \d$/ })).toHaveLength(2);
     expect(screen.getByRole("button", { name: "Remove source 2" })).toBeInTheDocument();
-    expect(screen.getByText("2 / 2")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Show source 2" })).toHaveAttribute("aria-current", "true");
+    expect(screen.getByRole("button", { name: "Next source" })).toBeInTheDocument();
+    expect(scrolledTo).toHaveBeenLastCalledWith(ITEM_LEFT);
   });
 
-  it("keeps every editor mounted in a track named Sources", () => {
+  it("keeps every editor mounted in a row named Sources", () => {
     render(<Host initial={[withUrl("https://a.example/1"), withUrl("https://b.example/2")]} />);
-    const track = screen.getByRole("region", { name: "Sources" });
-    expect(within(track).getAllByRole("region", { name: /^Source \d$/ })).toHaveLength(2);
-    expect(screen.getByText("1 / 2")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Next source" }));
-    expect(screen.getByText("2 / 2")).toBeInTheDocument();
+    const row = screen.getByRole("region", { name: "Sources" });
+    expect(within(row).getAllByRole("region", { name: /^Source \d$/ })).toHaveLength(2);
     expect(screen.getByRole("textbox", { name: "Source 1 link 1" })).toHaveValue("https://a.example/1");
+    expect(screen.getByRole("textbox", { name: "Source 2 link 1" })).toHaveValue("https://b.example/2");
   });
 
-  it("removes an editor and shows its neighbour", () => {
+  it("removes an editor on a confirming second click and shows its neighbour", () => {
     render(
       <Host
         initial={[
@@ -88,22 +108,24 @@ describe("SourcesField", () => {
         ]}
       />
     );
-    fireEvent.click(screen.getByRole("button", { name: "Show source 3" }));
     fireEvent.click(screen.getByRole("button", { name: "Remove source 3" }));
+    expect(seen.current).toHaveLength(3);
+    fireEvent.click(screen.getByRole("button", { name: "Confirm removing source 3" }));
     expect(seen.current.map((d) => d.links[0].url)).toEqual([
       "https://a.example/1",
       "https://b.example/2",
     ]);
-    expect(screen.getByText("2 / 2")).toBeInTheDocument();
+    expect(scrolledTo).toHaveBeenLastCalledWith(ITEM_LEFT);
 
     fireEvent.click(screen.getByRole("button", { name: "Remove source 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm removing source 1" }));
     expect(seen.current.map((d) => d.links[0].url)).toEqual(["https://b.example/2"]);
   });
 
   it("shows the first source with a gap on a publish attempt", () => {
     const complete = { ...withUrl("https://a.example/1"), kind: "drone" as const };
     const { rerender } = render(<Host initial={[complete, withUrl("https://b.example/2")]} />);
-    expect(screen.getByText("1 / 2")).toBeInTheDocument();
+    expect(scrolledTo).not.toHaveBeenCalled();
     rerender(
       <Host
         initial={[complete, withUrl("https://b.example/2")]}
@@ -111,7 +133,7 @@ describe("SourcesField", () => {
         attempt={1}
       />
     );
-    expect(screen.getByText("2 / 2")).toBeInTheDocument();
+    expect(scrolledTo).toHaveBeenLastCalledWith(ITEM_LEFT);
   });
 
   it("stops adding at the source cap and says what the cap is", () => {

@@ -49,8 +49,8 @@ function shownSpan(strip: HTMLElement): Span | null {
 
 /**
  * A row of same-width items that scrolls sideways, one snap point per item. In the `row` variant,
- * two items fit side by side once the row is 32rem wide; below that one fits and the next peeks.
- * With more than one item, the header carries the shown range ("1 to 2 of 5") and previous and
+ * a lone item takes the row's full width, and two items fit side by side once the row is 32rem
+ * wide; below that one fits and the next peeks. With more than one item, the header carries the shown range ("1 to 2 of 5") and previous and
  * next buttons that scroll by one item and go inert at the ends. The `carousel` variant shows one
  * item at the row's full width, the position ("2 / 3") between the buttons, and one dot per item
  * under the row.
@@ -211,7 +211,7 @@ export function HorizontalScroller({
             key={isValidElement(item) && item.key !== null ? item.key : i}
             className={cn(
               "grid shrink-0 grid-cols-1 snap-start",
-              carousel ? "basis-full" : "basis-[85%] @lg:basis-[calc(50%-0.375rem)]",
+              carousel || count === 1 ? "basis-full" : "basis-[85%] @lg:basis-[calc(50%-0.375rem)]",
             )}
           >
             {item}

@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
-import { Plus, X } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 
 import { SourceEditor, type SourceEditorInvalid } from "@/components/sources/SourceEditor";
-import { Button } from "@/components/ui/Button";
+import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { HorizontalScroller, type HorizontalScrollerHandle } from "@/components/ui/HorizontalScroller";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
 import { isSnapshotUrl, SNAPSHOT_HINT } from "@/components/ui/ArchivedCopies";
 import { MAX_SOURCES_PER_EVENT, type MissingFieldKey } from "@/lib/events";
 import {
@@ -24,9 +25,10 @@ import type { Tag } from "@/types";
 let uploadToken = 0;
 
 /**
- * The **Sources** section every event form carries: a `HorizontalScroller` carousel of one
- * `SourceEditor` per source, **Add a source** in its header (capped at `MAX_SOURCES_PER_EVENT`),
- * and per editor **Remove**. Every editor stays mounted, so a hidden one keeps its upload.
+ * The **Sources** section every event form carries: a `HorizontalScroller` row of one
+ * `SourceEditor` per source, side by side like the event page's, **Add a source** in its header
+ * (capped at `MAX_SOURCES_PER_EVENT`), and per editor a two-click remove. Every editor stays
+ * mounted, so one scrolled out of view keeps its upload.
  *
  * A picked file uploads at once, on its own request; the editor keeps the staged upload, and the
  * event write names it. A file picked again or removed while its upload runs drops the answer.
@@ -107,7 +109,6 @@ export function SourcesField({
     <section>
       <HorizontalScroller
         ref={scroller}
-        variant="carousel"
         heading={
           <div className="space-y-1">
             <SectionEyebrow margin="none" title="Sources" concept="sources" invalid={fileMissing} />
@@ -119,7 +120,6 @@ export function SourcesField({
         label="Sources"
         previousLabel="Previous source"
         nextLabel="Next source"
-        dotLabel={(index) => `Show source ${index + 1}`}
         actions={
           <>
             {atCap && (
@@ -142,22 +142,32 @@ export function SourcesField({
             tags={tags}
             setTags={setTags}
             invalid={sourceGaps(draft, invalidKeys)}
-            actions={
-              sources.length > 1 && (
-                <Button
-                  variant="ghost"
-                  onClick={() => remove(index)}
-                  aria-label={`Remove source ${index + 1}`}
-                >
-                  <X size={13} />
-                  Remove
-                </Button>
-              )
-            }
+            actions={sources.length > 1 && <RemoveSource index={index} onRemove={() => remove(index)} />}
           />
         ))}
       </HorizontalScroller>
     </section>
+  );
+}
+
+/** An editor's red trash button: the first click arms it, the second removes the source. */
+function RemoveSource({ index, onRemove }: { index: number; onRemove: () => void }) {
+  const { armed, trigger, controlRef } = useConfirmAction(onRemove, {
+    timeoutMs: ARM_MS,
+    dismissOnOutside: true,
+  });
+  const label = armed ? `Confirm removing source ${index + 1}` : `Remove source ${index + 1}`;
+  return (
+    <Button
+      ref={controlRef}
+      icon
+      variant="dangerGhost"
+      className={armed ? DANGER_CONFIRM : ""}
+      onClick={trigger}
+      aria-label={label}
+    >
+      <Trash2 size={14} />
+    </Button>
   );
 }
 

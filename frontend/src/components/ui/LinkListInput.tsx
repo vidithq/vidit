@@ -32,8 +32,8 @@ export interface LinkListColumn<R> {
   /** Above the first row on a wide list; a narrow card shows no headers. */
   header: string;
   /** The grid track on a wide list (`13rem`, `auto`). In a narrow card a fixed
-   *  track is the cell's minimum width and the cell takes the room left; an
-   *  `auto` cell keeps its content's width. */
+   *  track is the cell's minimum width, capped at the card's, and the cell takes
+   *  the room left; an `auto` cell keeps its content's width. */
   width: string;
   cell: (row: LinkListRow<R>) => ReactNode;
 }
@@ -135,7 +135,7 @@ export function LinkListInput<R>({
                     <div
                       key={column.header}
                       className="min-w-0"
-                      style={column.width === "auto" ? undefined : { flex: `1 0 ${column.width}` }}
+                      style={column.width === "auto" ? undefined : { flex: `1 0 min(${column.width}, 100%)` }}
                     >
                       {column.cell(slot(i))}
                     </div>
