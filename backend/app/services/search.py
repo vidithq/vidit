@@ -553,34 +553,6 @@ def suggest_authors(db: Session, *, query: str, limit: int = 8) -> list[str]:
     return [r.username for r in rows]
 
 
-def find_sources(db: Session, *, query: str, limit: int) -> list[Source]:
-    """The source picker: sources of visible events whose title or a URL contains ``query``.
-
-    Case-insensitive substring, newest first, with links, tags, file and event loaded.
-    """
-    q = query.strip()
-    return (
-        db.query(Source)
-        .join(Event, Event.id == Source.event_id)
-        .options(
-            selectinload(Source.links),
-            selectinload(Source.tags),
-            selectinload(Source.media),
-            joinedload(Source.event),
-        )
-        .filter(
-            *visible_events(),
-            or_(
-                Source.title.icontains(q, autoescape=True),
-                Source.links.any(SourceLink.url.icontains(q, autoescape=True)),
-            ),
-        )
-        .order_by(Source.created_at.desc(), Source.id.desc())
-        .limit(limit)
-        .all()
-    )
-
-
 # Allowed ``type`` values, re-exported by the router for its 422 message.
 # ``event`` is the union of the two event groups (the unified "Events" chip).
 ALLOWED_TYPES = {"all", "event", "geolocation", "request", "collection", "user", "organization"}

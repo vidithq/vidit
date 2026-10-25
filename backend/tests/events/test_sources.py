@@ -1,13 +1,11 @@
 """Event sources: several per event with levels and kinds, the publish floor, the caps,
-the two-layer upload, reuse by copy with its reference-counted storage, archived links, the
-derived graphic flag, the source filters, search and the picker."""
+the two-layer upload, a file named by id, archived links, the derived graphic flag,
+the source filters and search."""
 
 from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
-
-import pytest
 
 from app.models.event import Event
 from app.models.media import Media
@@ -312,57 +310,57 @@ def test_staged_uploads_are_capped_per_account(db, author, monkeypatch):
     assert response.json()["detail"]["code"] == "too_many_uploads"
 
 
-# ── Reuse by copy ────────────────────────────────────────────────────────────
+# ── A file named by id ───────────────────────────────────────────────────────
 
 
-def _admin_delete(admin, event_id) -> None:
-    response = client.delete(
-        f"/api/v1/admin/events/{event_id}", params={"hard": "true"}, headers=login_as(client, admin)
-    )
-    assert response.status_code == 200, response.text
-
-
-def test_copying_a_source_shares_the_stored_object_until_the_last_row_goes(
-    db, author, second_user, admin_user, conflict
-):
-    first = _create(author, conflict, filed_source(author, is_graphic=True))
-    assert first.status_code == 201, first.text
-    original = first.json()["sources"][0]
-    key = _key(original["media"]["storage_url"])
-
-    picked = client.get(
-        "/api/v1/sources", params={"q": "example.com/source"}, headers=login_as(client, second_user)
-    )
-    assert picked.status_code == 200
-    pick = next(s for s in picked.json() if s["id"] == original["id"])
-    copy = _create(
-        second_user,
-        conflict,
-        sources_field(source_spec(media_id=pick["media"]["id"], is_graphic=False)),
-    )
-    assert copy.status_code == 201, copy.text
-    copied = copy.json()["sources"][0]
-    assert copied["id"] != original["id"]
-    assert copied["media"]["id"] != original["media"]["id"]
-    assert copied["media"]["storage_url"] == original["media"]["storage_url"]
-    # The copy carries the original's graphic flag.
-    assert copied["is_graphic"] is True
-
-    _admin_delete(admin_user, first.json()["id"])
-    assert stored_path(key).exists()
-    _admin_delete(admin_user, copy.json()["id"])
-    assert not stored_path(key).exists()
-
-
-def test_a_hidden_events_file_cannot_be_copied(db, author, second_user, conflict):
+def test_another_events_file_cannot_be_named(author, second_user, conflict):
     first = _create(author, conflict, filed_source(author))
     media_id = first.json()["sources"][0]["media"]["id"]
-    event = db.get(Event, uuid.UUID(first.json()["id"]))
-    event.hidden_at = datetime.now(UTC)
-    db.commit()
     response = _create(second_user, conflict, sources_field(source_spec(media_id=media_id)))
     assert response.status_code == 400
     assert response.json()["detail"]["code"] == "source_media_not_found"
+
+
+def test_a_source_may_take_a_sibling_sources_file(author, conflict):
+    """A source naming the file of another source of the event takes it with its graphic
+    flag, on the same stored object."""
+    created = _create(
+        author,
+        conflict,
+        sources_field(
+            source_spec("https://example.com/a", upload_id=stage_file(author), is_graphic=True),
+            source_spec("https://example.com/b", level="context"),
+        ),
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    filed = next(s for s in body["sources"] if s["media"] is not None)
+    bare = next(s for s in body["sources"] if s["media"] is None)
+    response = client.post(
+        f"/api/v1/events/{body['id']}/versions",
+        headers=login_as(client, author),
+        data={
+            "title": "Strike",
+            "lat": "48.5",
+            "lng": "34.5",
+            "occurred_date": "2026-05-01",
+            "proof": body["proof"],
+            "conflict_ids": f'["{conflict.id}"]',
+            "sources": sources_field(
+                source_spec(
+                    links=[{"url": "https://example.com/a"}, {"url": "https://example.com/b"}],
+                    id=bare["id"],
+                    media_id=filed["media"]["id"],
+                )
+            ),
+        },
+    )
+    assert response.status_code == 200, response.text
+    [merged] = response.json()["sources"]
+    assert merged["id"] == bare["id"]
+    assert merged["media"]["storage_url"] == filed["media"]["storage_url"]
+    assert merged["is_graphic"] is True
+    assert stored_path(_key(filed["media"]["storage_url"])).exists()
 
 
 def test_a_request_edit_sweeps_the_file_nothing_names_any_more(db, author):
@@ -479,7 +477,7 @@ def test_an_event_is_graphic_when_one_source_is(db, author, conflict):
     assert db.query(Event).filter(Event.is_graphic, Event.owner_id == author.id).count() == 1
 
 
-# ── Filters, search, picker ──────────────────────────────────────────────────
+# ── Filters and search ───────────────────────────────────────────────────────
 
 
 def test_the_source_kind_and_level_filters_narrow_the_lists_and_the_map(db, author):
@@ -506,28 +504,6 @@ def test_search_matches_source_titles_and_urls(db, author):
         response = client.get("/api/v1/search", params={"q": q, "type": "geolocation"})
         assert response.status_code == 200
         assert str(geo.id) in {hit["id"] for hit in response.json()["geolocations"]}, q
-
-
-@pytest.mark.parametrize("q", ["t.me/pick", "Night shot"])
-def test_the_picker_finds_a_source_by_url_or_title(db, author, second_user, q):
-    geo = _make_geo(db, author=author, source_url="https://t.me/pick/1", with_media=True)
-    geo.sources[0].title = "Night shot"
-    db.commit()
-    response = client.get("/api/v1/sources", params={"q": q}, headers=login_as(client, second_user))
-    assert response.status_code == 200
-    [hit] = [s for s in response.json() if s["event_id"] == str(geo.id)]
-    assert hit["event_title"] == geo.title
-    assert hit["media"]["id"] == str(geo.sources[0].media.id)
-
-
-def test_the_picker_skips_withheld_events_and_needs_an_account(db, author, second_user):
-    geo = _make_geo(db, author=author, source_url="https://t.me/hidden/1", hidden=True)
-    response = client.get(
-        "/api/v1/sources", params={"q": "t.me/hidden"}, headers=login_as(client, second_user)
-    )
-    assert str(geo.id) not in {s["event_id"] for s in response.json()}
-    client.cookies.clear()
-    assert client.get("/api/v1/sources", params={"q": "t.me/hidden"}).status_code == 401
 
 
 def test_a_proof_image_is_a_media_row_of_the_event_not_of_a_source(db, author, conflict):

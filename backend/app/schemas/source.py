@@ -74,9 +74,8 @@ class SourceCreate(BaseModel):
     stored source the list leaves out is deleted.
 
     The file is one of ``upload_id`` (a staged file from ``POST /uploads``) and ``media_id``
-    (a stored file: this source's own keeps it, any other source's is copied onto this one, so
-    adding an existing source to another event creates a new media row on the same stored
-    object). Neither means no file.
+    (a stored file of this event: this source's own keeps it, another source's is copied onto
+    this one as a new media row on the same stored object). Neither means no file.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -148,13 +147,6 @@ class SourceRead(BaseModel):
     media: MediaRead | None
     # Empty unless the kind is ``satellite`` or ``aircraft``.
     warnings: list[SourceWarning]
-
-
-class SourcePickRead(SourceRead):
-    """A source the picker found (``GET /sources``), with the event that holds it."""
-
-    event_id: uuid.UUID
-    event_title: str
 
 
 class UploadRead(BaseModel):

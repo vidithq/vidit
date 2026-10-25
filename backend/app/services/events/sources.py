@@ -4,8 +4,9 @@ comparable form the no-change check reads.
 A write posts the event's whole list (``schemas/source.SourceCreate``). :func:`plan_sources`
 checks it against the stored sources before anything is written, :func:`check_publish_floor`
 holds a publication to its evidence, and :func:`apply_sources` writes it once the event row
-exists. The file of a source is a staged upload (``services/uploads``) or a stored file: the
-source's own is kept, another source's is copied by row onto the same stored object.
+exists. The file of a source is a staged upload (``services/uploads``) or a stored file of the
+same event: the source's own is kept, another source's is copied by row onto the same stored
+object.
 """
 
 from __future__ import annotations
@@ -18,7 +19,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from geoalchemy2.elements import WKBElement
-from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.event import Event
@@ -36,7 +36,6 @@ from app.models.upload import Upload
 from app.models.user import User
 from app.schemas.source import SourceCreate, SourceLinkCreate
 from app.services import uploads, versions
-from app.services.event_filters import visible_events
 from app.services.evidence_intake import StoredObject, media_objects
 from app.services.sanitize import safe_link_href
 from app.services.source_archive import _normalised_target, same_snapshot, validate_snapshot
@@ -122,7 +121,7 @@ def plan_sources(
 
     Raises :class:`TooManySourcesError`, :class:`SourceNotFoundError` (an ``id`` that is not
     one of ``geo``'s sources, or repeats), :class:`SourceMediaNotFoundError` (a ``media_id``
-    that names no file of a readable source), the link errors of :func:`_clean_links`,
+    that names no file of ``geo``'s sources), the link errors of :func:`_clean_links`,
     ``InvalidCoordinatesError``, and the upload errors.
     """
     if len(specs) > MAX_SOURCES_PER_EVENT:
@@ -177,22 +176,19 @@ def plan_sources(
 def _readable_files(
     db: Session, media_ids: list[uuid.UUID], *, geo: Event | None
 ) -> dict[uuid.UUID, Media]:
-    """The source files the ids name: this event's, or a live, unwithheld event's."""
+    """The source files the ids name, all of them files of ``geo``'s sources."""
     if not media_ids:
         return {}
     rows = (
-        db.query(Media)
-        .join(Source, Source.id == Media.source_id)
-        .join(Event, Event.id == Source.event_id)
-        .options(joinedload(Media.source))
-        .filter(Media.id.in_(media_ids))
-        .filter(
-            or_(
-                *([Event.id == geo.id] if geo is not None else []),
-                and_(*visible_events()),
-            )
+        (
+            db.query(Media)
+            .join(Source, Source.id == Media.source_id)
+            .options(joinedload(Media.source))
+            .filter(Media.id.in_(media_ids), Source.event_id == geo.id)
+            .all()
         )
-        .all()
+        if geo is not None
+        else []
     )
     found = {row.id: row for row in rows}
     missing = set(media_ids) - set(found)
