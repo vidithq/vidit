@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CharCounter } from "@/components/ui/CharCounter";
 import { CountBadge } from "@/components/ui/CountBadge";
-import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
+import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import { Input } from "@/components/ui/Input";
 import { PageShell } from "@/components/ui/PageShell";
 import { SectionHeading } from "@/components/ui/SectionHeading";
@@ -72,8 +72,8 @@ function missingCollectionFields(
  *
  * Title and description are required. The submit stays clickable and carries a
  * `<CountBadge>` of what it still refuses (a blank or over-long value). A click
- * on an incomplete form submits nothing: it lists the gaps in
- * `IncompleteFormNotice` and turns those fields red until they are filled.
+ * on an incomplete form submits nothing: it turns those fields red until they
+ * are filled, and `IncompleteFormAnnouncer` reads the gaps to a screen reader.
  *
  * **The description is written in `<ProofEditor>`** with `allowImages={false}`
  * (no upload path, and the server drops the node). The form holds the HTML
@@ -177,8 +177,8 @@ export function CollectionDetailsForm({
           )}
         </CountBadge>
       </div>
-      <IncompleteFormNotice
-        key={attempt}
+      <IncompleteFormAnnouncer
+        attempt={attempt}
         missing={attempt > 0 ? missing.map((m) => m.label) : []}
       />
       {error && (
@@ -200,7 +200,7 @@ export function CollectionDetailsForm({
       <form
         id={formId}
         className="space-y-6"
-        // `noValidate`: IncompleteFormNotice owns required-field feedback.
+        // `noValidate`: the red outlines and IncompleteFormAnnouncer own required-field feedback.
         noValidate
         onSubmit={(e) => {
           e.preventDefault();

@@ -888,7 +888,7 @@ export interface EventFieldsState {
 }
 
 /** Every unmet required field for a geolocation, all at once: `label` for
- *  `IncompleteFormNotice`, `key` for the highlight. Mirrors the backend evidence floor
+ *  `IncompleteFormAnnouncer`, `key` for the highlight. Mirrors the backend evidence floor
  *  (`docs/api.md#evidence-floor`). Proof must carry an image (`proofHasImage`): text alone
  *  can't be audited. */
 export function missingEventFields(s: EventFieldsState): MissingField[] {

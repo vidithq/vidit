@@ -11,7 +11,7 @@ export interface MissingEntry<K extends string = MissingFieldKey> {
   label: string;
 }
 
-/** The required fields whose value is blank after trimming, as `IncompleteFormNotice` lists them. */
+/** The required fields whose value is blank after trimming, as `IncompleteFormAnnouncer` lists them. */
 export function blankFields<K extends string>(
   fields: ReadonlyArray<{ key: K; label: string; value: string }>,
 ): MissingEntry<K>[] {
@@ -20,9 +20,9 @@ export function blankFields<K extends string>(
     .map(({ key, label }) => ({ key, label }));
 }
 
-/** State behind `IncompleteFormNotice` and the in-form red outlines, shared by every
- * create/edit form. `validationAttempt` re-keys the notice so a repeat blocked click replays
- * its entrance. The event forms use the default key set; a form with its own fields (auth,
+/** State behind the in-form red outlines and `IncompleteFormAnnouncer`, shared by every
+ * create/edit form. `validationAttempt` re-keys the announcer's sentence so a repeat blocked
+ * click is read again. The event forms use the default key set; a form with its own fields (auth,
  * settings) passes its keys as `K`. */
 export function useIncompleteForm<K extends string = MissingFieldKey>() {
   const [missingFields, setMissingFields] = useState<MissingEntry<K>[]>([]);

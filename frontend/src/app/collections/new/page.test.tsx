@@ -249,7 +249,7 @@ describe("NewCollectionPage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Create collection" }));
 
-    expect(screen.getByRole("alert")).toHaveTextContent("Description");
+    expect(screen.getByText(/^Fill in the required fields/)).toHaveTextContent("Description");
     expect(createCollection).not.toHaveBeenCalled();
   });
 

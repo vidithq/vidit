@@ -46,7 +46,7 @@ function fieldClass(
 
 interface FieldProps {
   variant?: InputVariant;
-  /** Red outline (flagged by IncompleteFormNotice). */
+  /** Red outline (flagged by `useIncompleteForm`). */
   invalid?: boolean;
 }
 

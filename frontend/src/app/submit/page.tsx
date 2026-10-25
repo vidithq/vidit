@@ -17,7 +17,7 @@ import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel";
 import { ImportPostPanel } from "@/components/geolocations/ImportPostPanel";
 import { MapPin, Megaphone } from "lucide-react";
-import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
+import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import { IconTile } from "@/components/ui/IconTile";
 import { eventFormSlots, useEventForm } from "@/components/geolocations/EventFormFields";
 import { PublishActions, usePublishAction } from "@/components/geolocations/PublishActions";
@@ -265,8 +265,8 @@ function SubmitForm() {
         actions={{
           pinned: actions,
           below: (
-            <IncompleteFormNotice
-              key={form.validationAttempt}
+            <IncompleteFormAnnouncer
+              attempt={form.validationAttempt}
               missing={form.missingFields.map((m) => m.label)}
             />
           ),

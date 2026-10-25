@@ -12,7 +12,7 @@ import { Ban, MapPin, Megaphone, Save } from "lucide-react";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { sourcesBlockWrite } from "@/components/sources/SourcesField";
 import { LABEL_TEXT } from "@/components/ui/form-styles";
-import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
+import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import { Button } from "@/components/ui/Button";
 import { CloseEventDialog, closeActionLabel } from "@/components/event/CloseEventDialog";
 import { EventShell } from "@/components/event/EventShell";
@@ -66,8 +66,8 @@ const CONFIRM_SENTENCE =
  * row that moved meanwhile answers a conflict instead of being overwritten.
  *
  * The fields fill `EventShell`'s zones. The actions block pins the writes (`PublishActions`), the
- * error banner and, for the owner, the close as a red icon button; the incomplete-form notice
- * reads under them.
+ * error banner and, for the owner, the close as a red icon button; the hidden
+ * `IncompleteFormAnnouncer` sits under them.
  * The title section's byline manages the geolocators in place: on a published row each change
  * applies on click and never makes a version; on a request or a detection the reader picks the
  * co-geolocators the publish invites.
@@ -379,15 +379,15 @@ export function EventEditForm({
       actions={{
         pinned: actions,
         below: (
-          <IncompleteFormNotice
-            key={form.validationAttempt}
+          <IncompleteFormAnnouncer
+            attempt={form.validationAttempt}
             missing={form.missingFields.map((m) => m.label)}
           />
         ),
       }}
       body={{
         ...fields.body,
-        // `noValidate`: IncompleteFormNotice owns required-field feedback.
+        // `noValidate`: the red outlines and IncompleteFormAnnouncer own required-field feedback.
         form: {
           id: EDIT_FORM_ID,
           onSubmit: (e) => {

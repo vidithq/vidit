@@ -13,7 +13,7 @@ import {
   FORM_LABEL_COMPACT,
 } from "@/components/ui/form-styles";
 import { Button } from "@/components/ui/Button";
-import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
+import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import { Input } from "@/components/ui/Input";
 import { blankFields, useIncompleteForm } from "@/hooks/useIncompleteForm";
 
@@ -98,8 +98,8 @@ function ResetPasswordInner() {
       }
     >
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
-        <IncompleteFormNotice
-          key={incomplete.validationAttempt}
+        <IncompleteFormAnnouncer
+          attempt={incomplete.validationAttempt}
           missing={incomplete.missingFields.map((m) => m.label)}
         />
         {error && (

@@ -12,7 +12,7 @@ import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { Button } from "@/components/ui/Button";
 import { ChoiceRow } from "@/components/ui/ChoiceRow";
-import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
+import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import {
   FORM_ERROR_BANNER,
   FORM_LABEL,
@@ -252,8 +252,8 @@ export default function SettingsPage() {
           </div>
 
           <form onSubmit={handleSubmit} noValidate className="space-y-3">
-            <IncompleteFormNotice
-              key={incomplete.validationAttempt}
+            <IncompleteFormAnnouncer
+              attempt={incomplete.validationAttempt}
               missing={incomplete.missingFields.map((m) => m.label)}
             />
             {error && (

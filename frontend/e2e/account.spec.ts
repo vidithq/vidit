@@ -66,7 +66,7 @@ test.describe("settings", () => {
     await expectNoHorizontalOverflow(page);
   });
 
-  test("lists every blank password field at once instead of a native bubble", async ({
+  test("flags every blank password field at once instead of a native bubble", async ({
     context,
     page,
   }) => {
@@ -77,10 +77,13 @@ test.describe("settings", () => {
     await page.getByLabel("New password", { exact: true }).fill("a-new-password");
     await page.getByRole("button", { name: "Update password" }).click();
 
-    const notice = page.getByRole("alert").filter({ hasText: "Fill in the required fields" });
-    await expect(notice).toContainText("Current password");
-    await expect(notice).toContainText("Confirm new password");
-    await expect(notice).not.toContainText("New password:");
+    // No box on the page: the fields turn red, and a screen reader hears the list.
+    await expect(page.getByRole("alert").filter({ hasText: "Fill in" })).toHaveCount(0);
+    await expect(
+      page.getByRole("status").filter({ hasText: "Fill in the required fields" }),
+    ).toHaveText(
+      "Fill in the required fields before continuing: Current password, Confirm new password.",
+    );
     await expectNoHorizontalOverflow(page);
   });
 

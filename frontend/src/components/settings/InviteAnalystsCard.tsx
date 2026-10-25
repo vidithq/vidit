@@ -19,7 +19,7 @@ import { InviteStatusPill } from "@/components/invites/InviteStatusPill";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CopyButton } from "@/components/ui/CopyButton";
-import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
+import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import { Input } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -141,8 +141,8 @@ export function InviteAnalystsCard() {
 
       {mintingEnabled && data && (
         <form onSubmit={onSubmit} noValidate className="space-y-3">
-          <IncompleteFormNotice
-            key={incomplete.validationAttempt}
+          <IncompleteFormAnnouncer
+            attempt={incomplete.validationAttempt}
             missing={incomplete.missingFields.map((m) => m.label)}
           />
           <div>

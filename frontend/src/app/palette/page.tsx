@@ -97,7 +97,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { SourceBlock, SourceBlocks } from "@/components/sources/SourceBlock";
 import { SourcesField } from "@/components/sources/SourcesField";
 import { sourceDraftFrom, type Source, type SourceDraft } from "@/lib/sources";
-import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
+import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import {
@@ -976,9 +976,11 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<IncompleteFormNotice>" usage="Lists all unmet required fields at once (submit / validate / request, and the sign-in, registration, password and invite forms). Every form sets noValidate; the blank fields come from blankFields and the key set from useIncompleteForm.">
-            <div className="w-full max-w-sm">
-              <IncompleteFormNotice missing={["Coordinates", "Conflict", "Proof"]} />
+          <Item name="<IncompleteFormAnnouncer>" usage="Reads every unmet required field to a screen reader in one sentence, on each blocked attempt (submit / validate / request, the collection form, and the sign-in, registration, password and invite forms). It shows nothing: the fields and labels turn red in place and a publish button's CountBadge lists them. A polite live region (role=status, sr-only) stays mounted, and attempt (useIncompleteForm's validationAttempt) re-keys the sentence so a repeat attempt is read again. Every form sets noValidate; the blank fields come from blankFields and the key set from useIncompleteForm.">
+            <div className="w-full max-w-sm text-xs text-neutral-500">
+              Visually hidden. Its sentence here: Fill in the required fields before continuing:
+              Coordinates, Conflict, Proof.
+              <IncompleteFormAnnouncer missing={["Coordinates", "Conflict", "Proof"]} attempt={1} />
             </div>
           </Item>
 
@@ -1921,7 +1923,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<EventShell>" usage="The one shell of an event (components/event/EventShell.tsx): the event page, a version page, the request page, the edit form and the submit form render it and only fill its three zones. Built on PageShell. The title section heads the main column: Back (the real arrow, in the gutter from lg up, in the menu chip below sm), then the title and the byline. On a form the Title field (titleField) takes the title's place, and the page name stays the h1 for assistive tech only. The byline is one line: the owner, the co-geolocators and pending invitees as AvatarStack pictures with their remove discs, then a Popover that holds the account picker; on a published edit it manages the geolocators, on the submit form and a request's or a detection's publish form it picks the co-geolocators the publish invites. Nothing opens in the page, so nothing moves. The actions block is top right: its pinned row stays at the top right while the page scrolls, and what reads below it scrolls with the page (the approvals and an invitation on the event page, a version's approvals, a form's incomplete-form notice). The body is EventLayout (components/event/EventLayout.tsx, the grid on the 65:35 PAGE_COLUMNS_SPLIT): Sources and Proof in the main column, Location then Details in the side column. Panels take the full width between the title section and the body (the panels the actions open, a version's banner). The demo renders the real shell inline, inside its own PageFrame, so it follows the window's breakpoints: narrow the window to see the phone order, where the Back arrow moves to the menu chip. Switch the filling to see which slots each surface uses; Open as a page shows the same skeleton at /palette/event-shell.">
+          <Item name="<EventShell>" usage="The one shell of an event (components/event/EventShell.tsx): the event page, a version page, the request page, the edit form and the submit form render it and only fill its three zones. Built on PageShell. The title section heads the main column: Back (the real arrow, in the gutter from lg up, in the menu chip below sm), then the title and the byline. On a form the Title field (titleField) takes the title's place, and the page name stays the h1 for assistive tech only. The byline is one line: the owner, the co-geolocators and pending invitees as AvatarStack pictures with their remove discs, then a Popover that holds the account picker; on a published edit it manages the geolocators, on the submit form and a request's or a detection's publish form it picks the co-geolocators the publish invites. Nothing opens in the page, so nothing moves. The actions block is top right: its pinned row stays at the top right while the page scrolls, and what reads below it scrolls with the page (the approvals and an invitation on the event page, a version's approvals, a form's hidden IncompleteFormAnnouncer). The body is EventLayout (components/event/EventLayout.tsx, the grid on the 65:35 PAGE_COLUMNS_SPLIT): Sources and Proof in the main column, Location then Details in the side column. Panels take the full width between the title section and the body (the panels the actions open, a version's banner). The demo renders the real shell inline, inside its own PageFrame, so it follows the window's breakpoints: narrow the window to see the phone order, where the Back arrow moves to the menu chip. Switch the filling to see which slots each surface uses; Open as a page shows the same skeleton at /palette/event-shell.">
             <EventShellPreview />
           </Item>
 

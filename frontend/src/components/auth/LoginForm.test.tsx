@@ -25,13 +25,13 @@ describe("LoginForm", () => {
     expect(login).toHaveBeenCalledWith("ana@example.test", "pw");
   });
 
-  it("names the blank fields in a notice and outlines them instead of signing in", () => {
+  it("outlines the blank fields and announces them instead of signing in", () => {
     render(<LoginForm onSuccess={vi.fn()} />);
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "ana@example.test" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
 
-    expect(screen.getByRole("alert")).toHaveTextContent("Password");
+    expect(screen.getByText(/^Fill in the required fields/)).toHaveTextContent("Password");
     expect(screen.getByLabelText("Password")).toHaveClass(...FORM_INVALID_FIELD.split(" "));
     expect(screen.getByLabelText("Email")).not.toHaveClass(...FORM_INVALID_FIELD.split(" "));
     expect(login).not.toHaveBeenCalled();

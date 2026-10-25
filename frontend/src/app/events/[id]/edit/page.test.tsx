@@ -691,8 +691,8 @@ describe("editing a published geolocation", () => {
     render(<EditEventPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
-    // The notice names the miss and writes nothing; the server enforces the same floor.
-    const notice = await screen.findByRole("alert");
+    // The announcer names the miss and nothing is written; the server enforces the same floor.
+    const notice = await screen.findByText(/^Fill in the required fields/);
     expect(notice).toHaveTextContent("Conflict");
     expect(saveVersionMock).not.toHaveBeenCalled();
   });

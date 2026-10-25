@@ -16,7 +16,7 @@ export const FORM_LABEL = `block ${LABEL_TEXT}`;
 export const FORM_LABEL_COMPACT =
   "block text-[10px] uppercase tracking-wider text-neutral-500";
 
-// Red outline for a field or section flagged by `IncompleteFormNotice`. The `!`
+// Red outline for a field or section a blocked submit flagged (`useIncompleteForm`). The `!`
 // overrides the element's own `border-*`; the ring lifts it off the dark card.
 // Append to the existing class.
 export const FORM_INVALID_FIELD = "!border-red-500/80 ring-1 ring-red-500/30";

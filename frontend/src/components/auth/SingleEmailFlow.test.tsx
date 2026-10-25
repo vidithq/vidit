@@ -35,12 +35,12 @@ describe("SingleEmailFlow", () => {
     expect(JSON.parse(apiFetch.mock.calls[0][1].body)).toEqual({ email: "ana@example.test" });
   });
 
-  it("flags a blank address in a notice instead of posting", async () => {
+  it("flags a blank address instead of posting", async () => {
     renderFlow();
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "   " } });
     fireEvent.click(screen.getByRole("button", { name: "Send link" }));
 
-    expect(screen.getByRole("alert")).toHaveTextContent("Email");
+    expect(screen.getByText(/^Fill in the required fields/)).toHaveTextContent("Email");
     expect(screen.getByLabelText("Email")).toHaveClass(...FORM_INVALID_FIELD.split(" "));
     await waitFor(() => expect(apiFetch).not.toHaveBeenCalled());
   });

@@ -36,7 +36,7 @@ describe("RegisterForm", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
 
-    const notice = screen.getByRole("alert");
+    const notice = screen.getByText(/^Fill in the required fields/);
     expect(notice).toHaveTextContent("Invite code");
     expect(notice).toHaveTextContent("Email");
     expect(notice).toHaveTextContent("Password");
