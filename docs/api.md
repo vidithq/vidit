@@ -181,7 +181,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/webhooks/x` | 🌐 | X webhook CRC challenge (HMAC answer, no DB) |
 | POST | `/webhooks/x` | 🌐 | Receive an X Account Activity delivery (signature-verified) and queue bot mentions |
 | **Admin** (collapsed below) | | | |
-| GET | `/admin/me` | 🛡️ | `is_admin` probe |
+| GET | `/admin/me` | 🔒 | `is_admin` probe, answered for every analyst |
 | GET | `/admin/detection-stats` | 🛡️ | Machine-extraction quality: reject-rate + pending missing-piece counts |
 | POST/GET | `/admin/invite-codes` | 🛡️ | Mint / list invite codes |
 | POST | `/admin/invite-codes/{id}/revoke` | 🛡️ | Revoke an invite code, keeping its row |
@@ -3093,12 +3093,14 @@ A retraction, a withdrawn request and a rejected detection are in no kind. A sof
 
 ## Admin
 
-All routes below are mounted under `/admin` and gated by the `require_admin` dependency, which layers on `get_current_user`, so a deactivated admin (`is_active=false`) loses access immediately. A path naming an unknown id returns 404. Each state-changing route appends an `audit_log` row, named under its endpoint. Outside `/admin`, the `viewer_*` fields a route returns follow the caller's own role, so being a site admin does not set them.
+All routes below are mounted under `/admin` and, except `GET /admin/me`, gated by the `require_admin` dependency, which layers on `get_current_user`, so a deactivated admin (`is_active=false`) loses access immediately. A path naming an unknown id returns 404. Each state-changing route appends an `audit_log` row, named under its endpoint. Outside `/admin`, the `viewer_*` fields a route returns follow the caller's own role, so being a site admin does not set them.
 
 <details>
 <summary>Admin endpoints. Expand for contracts.</summary>
 
-### `GET /admin/me` 🛡️
+### `GET /admin/me` 🔒
+
+Answers every signed-in analyst with their own role, so the frontend reads it on every page without a refused request. An anonymous call returns 401.
 
 **Response 200:**
 ```json

@@ -109,7 +109,7 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 
     Built on ``get_current_user``, so a deactivated admin loses access at once.
     Returns 403 (not 404) for non-admins: the route exists. The frontend learns
-    this via ``GET /admin/me``.
+    the role via ``GET /admin/me``, which answers every analyst.
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")

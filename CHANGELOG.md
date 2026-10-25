@@ -50,6 +50,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - A report opens in a dialog, and removing or leaving a geolocator takes a second click ([#693](https://github.com/vidithq/vidit/pull/693)).
 - Sign-in, registration, password reset, Change password and the invite form outline every blank required field at once and read the list to a screen reader, and the Settings accent colour picker moves between swatches with the arrow keys ([#693](https://github.com/vidithq/vidit/pull/693)).
 - The admin console finds analysts and events by name, confirms every destructive action in a dialog (revoking an invite code included), groups row actions in a menu, and pages the reports queue with Load more ([#693](https://github.com/vidithq/vidit/pull/693)).
+- `GET /admin/me` answers every signed-in analyst with their `is_admin` value instead of a 403 for an analyst who is not an admin ([#693](https://github.com/vidithq/vidit/pull/693)).
 
 ### Removed
 

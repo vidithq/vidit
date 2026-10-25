@@ -97,9 +97,10 @@ def test_admin_me_returns_200_for_admin(admin_user):
     assert response.json() == {"is_admin": True}
 
 
-def test_admin_me_returns_403_for_regular_user(regular_user):
+def test_admin_me_answers_false_for_regular_user(regular_user):
     response = client.get("/api/v1/admin/me", headers=login_as(client, regular_user))
-    assert response.status_code == 403
+    assert response.status_code == 200
+    assert response.json() == {"is_admin": False}
 
 
 def test_admin_me_returns_401_for_anonymous():

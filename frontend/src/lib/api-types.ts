@@ -309,7 +309,7 @@ export interface paths {
         };
         /**
          * Admin Me
-         * @description Route-guard probe: 200 + ``{is_admin: true}`` for admins, 403 otherwise.
+         * @description Whether the signed-in analyst is a site admin.
          */
         get: operations["admin_me_api_v1_admin_me_get"];
         put?: never;

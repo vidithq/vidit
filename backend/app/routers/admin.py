@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from sqlalchemy.orm import Session
 
 from app.cache import points_cache
-from app.dependencies import get_db, require_admin
+from app.dependencies import get_current_user, get_db, require_admin
 from app.models.user import User
 from app.ratelimit import limiter
 from app.routers._errors import raise_typed_error
@@ -68,9 +68,11 @@ def _raise_admin_error(exc: admin_service.AdminError) -> NoReturn:
 
 
 @router.get("/me", response_model=AdminMeResponse)
-def admin_me(current_user: User = Depends(require_admin)) -> AdminMeResponse:
-    """Route-guard probe: 200 + ``{is_admin: true}`` for admins, 403 otherwise."""
-    return AdminMeResponse(is_admin=True)
+def admin_me(current_user: User = Depends(get_current_user)) -> AdminMeResponse:
+    """Whether the signed-in analyst is a site admin."""
+    # The one route here open to every analyst: the frontend probes it on each signed-in page,
+    # so a 403 would log a console error for every analyst who is not an admin.
+    return AdminMeResponse(is_admin=current_user.is_admin)
 
 
 @router.get("/detection-stats", response_model=AdminDetectionStatsRead)
