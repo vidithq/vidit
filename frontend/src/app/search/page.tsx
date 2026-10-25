@@ -518,16 +518,15 @@ function DateRange({
   onChange: (from: string, to: string) => void;
 }) {
   return (
-    // The pair stacks below `sm`: a native date control needs more width than two columns leave
-    // on 320px, and the separator only reads on a row.
-    <div className="flex max-sm:flex-col max-sm:items-stretch items-center gap-2">
+    // Stacked: two native date controls at the field type size need more width than a row of the
+    // filter rail or of a 320px screen leaves.
+    <div className="flex flex-col gap-2">
       <Input
         type="date"
         value={from}
         onChange={(e) => onChange(e.target.value, to)}
         aria-label={`${label} from`}
       />
-      <span className="max-sm:hidden text-neutral-500 text-xs">–</span>
       <Input
         type="date"
         value={to}
