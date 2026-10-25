@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { MissingFieldKey } from "@/lib/events";
@@ -52,9 +52,8 @@ describe("SourcesField", () => {
   it("starts with the editors it is given and adds one per click", () => {
     render(<Host initial={[newSourceDraft()]} />);
     expect(screen.getAllByRole("region", { name: /^Source \d$/ })).toHaveLength(1);
-    // One source: nothing to merge into, and the form needs a source.
+    // One source: the form needs a source.
     expect(screen.queryByRole("button", { name: /^Remove source \d$/ })).toBeNull();
-    expect(screen.queryByRole("button", { name: /^Merge/ })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Add a source" }));
     expect(screen.getAllByRole("region", { name: /^Source \d$/ })).toHaveLength(2);
@@ -71,34 +70,6 @@ describe("SourcesField", () => {
     render(<Host initial={Array.from({ length: 10 }, () => newSourceDraft())} />);
     expect(screen.getByRole("button", { name: "Add a source" })).toBeDisabled();
     expect(screen.getByText("10 maximum.")).toBeInTheDocument();
-  });
-
-  it("merges one source into another: its links move, it goes", () => {
-    render(
-      <Host
-        initial={[
-          withUrl("https://t.me/c/1"),
-          withUrl("https://x.com/a/status/1"),
-          withUrl("https://t.me/c/1"),
-        ]}
-      />
-    );
-    const second = screen.getByRole("region", { name: "Source 2" });
-    fireEvent.click(within(second).getByRole("button", { name: "Merge Source 2" }));
-    // The first other source is picked by default; a click on Merge confirms.
-    fireEvent.click(within(second).getByRole("button", { name: "Merge" }));
-    expect(seen.current.map((d) => d.links.map((l) => l.url))).toEqual([
-      ["https://t.me/c/1", "https://x.com/a/status/1"],
-      ["https://t.me/c/1"],
-    ]);
-
-    // A link the kept source already holds is not repeated.
-    const last = screen.getByRole("region", { name: "Source 2" });
-    fireEvent.click(within(last).getByRole("button", { name: "Merge Source 2" }));
-    fireEvent.click(within(last).getByRole("button", { name: "Merge" }));
-    expect(seen.current.map((d) => d.links.map((l) => l.url))).toEqual([
-      ["https://t.me/c/1", "https://x.com/a/status/1"],
-    ]);
   });
 
   it("uploads a picked file at once and keeps the staged copy", async () => {

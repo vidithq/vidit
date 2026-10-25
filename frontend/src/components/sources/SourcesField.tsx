@@ -1,19 +1,16 @@
 "use client";
 
-import { useState, type Dispatch, type SetStateAction } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { Plus, X } from "lucide-react";
 
 import { SourceEditor } from "@/components/sources/SourceEditor";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { MergeAction } from "@/components/ui/MergeAction";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { isSnapshotUrl, SNAPSHOT_HINT } from "@/components/ui/ArchivedCopies";
-import { WARNING_CALLOUT } from "@/components/ui/styles";
-import { MAX_LINKS_PER_SOURCE, MAX_SOURCES_PER_EVENT, type MissingFieldKey } from "@/lib/events";
+import { MAX_SOURCES_PER_EVENT, type MissingFieldKey } from "@/lib/events";
 import {
   draftUrls,
-  mergeSourceDrafts,
   newSourceDraft,
   uploadError,
   uploadsRunning,
@@ -28,8 +25,7 @@ let uploadToken = 0;
 
 /**
  * The **Sources** section every event form carries: one `SourceEditor` per source, **Add a
- * source** (capped at `MAX_SOURCES_PER_EVENT`), and per editor **Merge** (into another editor of
- * the list) and **Remove**.
+ * source** (capped at `MAX_SOURCES_PER_EVENT`), and per editor **Remove**.
  *
  * A picked file uploads at once, on its own request; the editor keeps the staged upload, and the
  * event write names it. A file picked again or removed while its upload runs drops the answer.
@@ -48,9 +44,7 @@ export function SourcesField({
   /** The keys a publish attempt flagged (`useIncompleteForm`). */
   invalidKeys: ReadonlySet<MissingFieldKey>;
 }) {
-  const [mergeNotice, setMergeNotice] = useState<string | null>(null);
   const atCap = sources.length >= MAX_SOURCES_PER_EVENT;
-  const label = (i: number) => `Source ${i + 1}`;
 
   const update = (key: string) => (patch: Partial<SourceDraft>) =>
     setSources((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
@@ -74,21 +68,6 @@ export function SourcesField({
     }
   };
 
-  const merge = (dropKey: string, keepKey: string) => {
-    const drop = sources.find((d) => d.key === dropKey);
-    const keep = sources.find((d) => d.key === keepKey);
-    if (!drop || !keep) return;
-    const { merged, overflow } = mergeSourceDrafts(keep, drop);
-    setSources((prev) =>
-      prev.filter((d) => d.key !== dropKey).map((d) => (d.key === keepKey ? merged : d))
-    );
-    setMergeNotice(
-      overflow > 0
-        ? `${overflow} of its links did not fit: a source holds at most ${MAX_LINKS_PER_SOURCE} URLs.`
-        : null
-    );
-  };
-
   const fileMissing = invalidKeys.has("source_file");
 
   return (
@@ -96,11 +75,6 @@ export function SourcesField({
       <SectionHeading title="Sources" concept="sources" invalid={fileMissing} />
       {fileMissing && (
         <p className="text-xs text-red-400">Add a file to a direct or indirect source.</p>
-      )}
-      {mergeNotice && (
-        <p className={`rounded-md px-2 py-1 text-xs ${WARNING_CALLOUT}`} role="status">
-          {mergeNotice}
-        </p>
       )}
 
       {sources.map((draft, index) => (
@@ -118,23 +92,14 @@ export function SourcesField({
           }}
           actions={
             sources.length > 1 && (
-              <>
-                <MergeAction
-                  subject={label(index)}
-                  targets={sources.flatMap((d, i) =>
-                    d.key === draft.key ? [] : [{ key: d.key, label: label(i) }]
-                  )}
-                  onMerge={(keepKey) => merge(draft.key, keepKey)}
-                />
-                <Button
-                  variant="ghost"
-                  onClick={() => setSources((prev) => prev.filter((d) => d.key !== draft.key))}
-                  aria-label={`Remove ${label(index).toLowerCase()}`}
-                >
-                  <X size={13} />
-                  Remove
-                </Button>
-              </>
+              <Button
+                variant="ghost"
+                onClick={() => setSources((prev) => prev.filter((d) => d.key !== draft.key))}
+                aria-label={`Remove source ${index + 1}`}
+              >
+                <X size={13} />
+                Remove
+              </Button>
             )
           }
         />

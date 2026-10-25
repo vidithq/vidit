@@ -55,7 +55,7 @@ export interface SourceEditorInvalid {
  *
  * The editor holds no state of its own: `update` patches the draft in the form's list, and
  * `onPickFile` hands a picked file to the list, which uploads it. `actions` is the header's
- * slot for the list's controls (merge, remove).
+ * slot for the list's controls (remove).
  */
 export function SourceEditor({
   draft,

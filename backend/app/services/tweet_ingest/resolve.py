@@ -92,7 +92,7 @@ DUPLICATE_MEDIA = "duplicate_media"  # the row's media is already on another eve
 # about 13 times a plain one).
 WARNING_MESSAGES: dict[str, str] = {
     SEVERAL_COORDINATES: "Several coordinates, one detection each",
-    SOURCE_AMBIGUOUS: "Several source links. Merge or drop them at review",
+    SOURCE_AMBIGUOUS: "Several source links. Move or drop them at review",
     SOURCE_MISSING: "No footage link in the post. Add one at review",
     SOURCE_FOOTAGE_MISSING: "The source served no footage. Add it at review",
     SOURCE_FETCH_FAILED: "Source unreachable, no footage stored. Add it at review",

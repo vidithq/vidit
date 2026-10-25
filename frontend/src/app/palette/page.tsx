@@ -86,7 +86,6 @@ import { MediaLightbox } from "@/components/ui/MediaLightbox";
 import { VideoPlayer } from "@/components/ui/VideoPlayer";
 import { TaxonomyLoadError } from "@/components/geolocations/TaxonomyLoadError";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { MergeAction } from "@/components/ui/MergeAction";
 import { SourceBlock, SourceBlocks } from "@/components/sources/SourceBlock";
 import { SourcesField } from "@/components/sources/SourcesField";
 import { sourceDraftFrom, type Source, type SourceDraft } from "@/lib/sources";
@@ -1866,7 +1865,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SourcesField> / <SourceEditor>" usage="The Sources section of every event form (components/sources/): one <SourceEditor> per source in a LIST_TILE, holding the file slot (MediaManager on <FileManager>; a pick uploads at once through POST /uploads), the level (<SegmentedControl>), the kind (<Select>, required on every source), the capture time (<DateTimeInput>), the capture position (CoordinateInputs, hidden for an article, an official statement or another document), the links (<LinkListInput> with the archive pair and each link's post time, then <SourceImageryCheck> on a satellite or aircraft source), the tags (<TagChips>) and the graphic flag (<Switch>, locked on a flagged stored source). The section adds Add a source (capped at 10), and per editor <MergeAction> and Remove.">
+          <Item name="<SourcesField> / <SourceEditor>" usage="The Sources section of every event form (components/sources/): one <SourceEditor> per source in a LIST_TILE, holding the file slot (MediaManager on <FileManager>; a pick uploads at once through POST /uploads), the level (<SegmentedControl>), the kind (<Select>, required on every source), the capture time (<DateTimeInput>), the capture position (CoordinateInputs, hidden for an article, an official statement or another document), the links (<LinkListInput> with the archive pair and each link's post time, then <SourceImageryCheck> on a satellite or aircraft source), the tags (<TagChips>) and the graphic flag (<Switch>, locked on a flagged stored source). The section adds Add a source (capped at 10), and per editor Remove.">
             <div className="w-full max-w-2xl">
               <SourcesField
                 sources={paletteSources}
@@ -1876,14 +1875,6 @@ export default function PalettePage() {
                 invalidKeys={new Set()}
               />
             </div>
-          </Item>
-
-          <Item name="<MergeAction>" usage="Merge one item of a list into another: Merge opens a <Select> of the item to keep and a confirming Merge, so a stray click merges nothing; the caller folds the item away in onMerge. A source editor carries it to move its links onto another source of the event and drop itself.">
-            <MergeAction
-              subject="Source 2"
-              targets={[{ key: "s1", label: "Source 1" }]}
-              onMerge={() => {}}
-            />
           </Item>
 
           <Item name="<ConfirmDialog>" usage="The confirmation step before a final action: a centred MediaOverlay dialog with a Card, its title, a body saying what the action does and what cannot be undone, then Cancel (the initial focus, so Enter on open sends nothing) and the primary confirm. Cancel, Escape and a backdrop click close it; the caller owns the request, and `busy` and `error` show it in flight and refused, while `confirmDisabled` holds the confirm until an input the dialog carries is complete. Approve opens it, since an approval is final, and Request approval opens it over the open requests and the picker of whom to ask.">

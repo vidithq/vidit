@@ -13,7 +13,7 @@ export const FIELD_HELP = {
     label: "What is the conflict?",
   },
   sources: {
-    text: "The evidence: one block per source, none of them the main one. A source is one file and the URLs it was posted at. Publishing needs a direct or indirect source with a file; a context source may be a URL only. Add another source for other footage of the same event, and merge two sources that hold the same footage.",
+    text: "The evidence: one block per source, none of them the main one. A source is one file and the URLs it was posted at. Publishing needs a direct or indirect source with a file; a context source may be a URL only. Add another source for other footage of the same event. When two sources hold the same footage, move the links onto one and remove the other.",
     label: "What are sources?",
   },
   source_level: {

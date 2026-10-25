@@ -61,7 +61,7 @@ test.describe("submit", () => {
     await expectNarrowViewportLayout(page, createDetection);
   });
 
-  test("fits the source editors and their merge into 320px", async ({ page }) => {
+  test("fits the source editors into 320px", async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 568 });
     await page.goto("/submit");
 
@@ -69,10 +69,9 @@ test.describe("submit", () => {
     const first = page.getByRole("region", { name: "Source 1" });
     await first.getByLabel("Kind", { exact: true }).selectOption({ label: "Smartphone" });
     await first.getByLabel("Source 1 link 1", { exact: true }).fill("https://t.me/channel/12345");
-    await first.getByRole("button", { name: "Merge Source 1" }).click();
     await expectNarrowViewportLayout(page, page.getByRole("button", { name: "Add a source" }));
 
-    // Every control of the editor stays inside its tile, the merge pick included.
+    // Every control of the editor stays inside its tile.
     const tile = (await first.boundingBox())!;
     const controls = first.locator("input:visible, select:visible, button:visible");
     for (const control of await controls.all()) {
@@ -80,7 +79,6 @@ test.describe("submit", () => {
       expect(box.x).toBeGreaterThanOrEqual(tile.x);
       expect(box.x + box.width).toBeLessThanOrEqual(tile.x + tile.width + 0.5);
     }
-    await expect(first.getByLabel("Source to keep when merging Source 1")).toBeVisible();
     // The URL field takes the tile's whole width, its remove control under it.
     const url = (await first.getByLabel("Source 1 link 1", { exact: true }).boundingBox())!;
     const removeLink = (await first.getByRole("button", { name: "Remove source 1 link 1" }).boundingBox())!;

@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "./api";
 import {
   firstSourceUrl,
-  mergeSourceDrafts,
   newSourceDraft,
   sourceCreatePayload,
   sourceDraftFrom,
@@ -108,36 +107,6 @@ describe("sourceCreatePayload", () => {
   it("posts no capture position for a document kind", () => {
     const draft = { ...sourceDraftFrom(STORED), kind: "article" as const };
     expect(sourceCreatePayload(draft).capture_position).toBeNull();
-  });
-});
-
-describe("mergeSourceDrafts", () => {
-  it("moves the links the kept source lacks and raises its graphic flag", () => {
-    const keep = linked("https://t.me/c/1");
-    const drop = linked("https://x.com/a/status/1", { isGraphic: true });
-    drop.links.push({ url: "https://t.me/c/1", postedAt: "", snapshotUrl: "", stored: null });
-    const { merged, overflow } = mergeSourceDrafts(keep, drop);
-    expect(merged.key).toBe(keep.key);
-    expect(merged.links.map((l) => l.url)).toEqual(["https://t.me/c/1", "https://x.com/a/status/1"]);
-    expect(merged.isGraphic).toBe(true);
-    expect(overflow).toBe(0);
-  });
-
-  it("stops at the link cap and counts what did not fit", () => {
-    const keep = linked("https://a.example/0");
-    keep.links.push(
-      ...Array.from({ length: 8 }, (_, i) => ({
-        url: `https://a.example/${i + 1}`,
-        postedAt: "",
-        snapshotUrl: "",
-        stored: null,
-      }))
-    );
-    const drop = linked("https://b.example/1");
-    drop.links.push({ url: "https://b.example/2", postedAt: "", snapshotUrl: "", stored: null });
-    const { merged, overflow } = mergeSourceDrafts(keep, drop);
-    expect(merged.links).toHaveLength(10);
-    expect(overflow).toBe(1);
   });
 });
 

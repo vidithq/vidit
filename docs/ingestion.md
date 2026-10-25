@@ -234,7 +234,7 @@ Every chase is fail-soft: a refusing upstream reads as "no footage", never as a 
 
 ### Mirrors and context links
 
-`secondary_sources` ([`resolve_secondary_sources`](../backend/app/services/tweet_ingest/resolve.py)) holds the footage candidates the source slot did not take, in order, then the context links, with blanks and repeats dropped. The list is cut to 9, footage candidates first, so the declared source and the rest fit the 10 sources an event holds. The analyst keeps, merges or drops them at review. Each becomes a source of its own on the row (see [What a detection writes](#what-a-detection-writes)).
+`secondary_sources` ([`resolve_secondary_sources`](../backend/app/services/tweet_ingest/resolve.py)) holds the footage candidates the source slot did not take, in order, then the context links, with blanks and repeats dropped. The list is cut to 9, footage candidates first, so the declared source and the rest fit the 10 sources an event holds. At review the analyst keeps each one, moves its links onto another source, or drops it. Each becomes a source of its own on the row (see [What a detection writes](#what-a-detection-writes)).
 
 A mirror is a footage candidate: a `direct` source of kind `unknown`. A context link is a `context` source of its host's kind.
 
@@ -343,7 +343,7 @@ A `detected` row is **public on every read surface from the moment it lands**, b
 | Each context link in `secondary_sources` | One `context` source of its [host's](#context-hosts) kind and title, with that one link and no file |
 | Proof images | `media` rows on the event, inline in the proof body; never a source |
 
-A source the import wrote is no different from one an analyst wrote: the review edits, merges, copies or drops it like any other.
+A source the import wrote is no different from one an analyst wrote: the review edits or drops it like any other.
 
 ## The bot
 

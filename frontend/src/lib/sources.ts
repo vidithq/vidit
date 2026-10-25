@@ -1,7 +1,7 @@
 import { ApiError, apiFetch } from "./api";
 import type { components } from "./api-types";
 import { cleanNumber } from "./coordinates";
-import { MAX_LINKS_PER_SOURCE, type SourceFloorState } from "./events";
+import type { SourceFloorState } from "./events";
 import { toDatetimeLocalUTC } from "./format";
 import type { ArchivedLink, Media } from "@/types";
 
@@ -118,7 +118,7 @@ export interface LinkDraft {
 
 /** One source editor's state. */
 export interface SourceDraft {
-  /** React key; stable across reorders and merges. */
+  /** React key; stable across reorders. */
   key: string;
   /** A stored source of this event, updated in place; null creates one. */
   id: string | null;
@@ -197,35 +197,6 @@ export function sourceDraftFrom(source: Source): SourceDraft {
     graphicLocked: source.is_graphic,
     links: source.links.length > 0 ? linkDraftsOf(source.links) : [blankLink()],
     file: source.media ? { state: "stored", media: source.media } : null,
-  };
-}
-
-/** Merge `drop` into `keep`: `keep` takes the links of `drop` it does not already hold, up to
- *  `MAX_LINKS_PER_SOURCE`, and the graphic flag when `drop` carries it. The caller removes
- *  `drop`. Returns the merged editor and how many links did not fit. */
-export function mergeSourceDrafts(
-  keep: SourceDraft,
-  drop: SourceDraft,
-): { merged: SourceDraft; overflow: number } {
-  const urls = new Set(keep.links.map((l) => l.url.trim()).filter(Boolean));
-  const kept = keep.links.filter((l) => l.url.trim() !== "");
-  const incoming = drop.links.filter((l) => {
-    const url = l.url.trim();
-    if (!url || urls.has(url)) return false;
-    urls.add(url);
-    return true;
-  });
-  const room = Math.max(0, MAX_LINKS_PER_SOURCE - kept.length);
-  // A link moved from another source is a new row on this one.
-  const moved = incoming.slice(0, room).map((l) => ({ ...l, stored: null }));
-  const links = [...kept, ...moved];
-  return {
-    merged: {
-      ...keep,
-      links: links.length > 0 ? links : [blankLink()],
-      isGraphic: keep.isGraphic || drop.isGraphic,
-    },
-    overflow: incoming.length - moved.length,
   };
 }
 

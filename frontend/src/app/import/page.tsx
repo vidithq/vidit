@@ -137,7 +137,7 @@ export default function ImportGuidePage() {
             <span className="text-neutral-100">Source:</span> a quote outranks
             links. A link to your own post, an X link naming no post and a
             Google Maps link never count. With several candidate links, each
-            becomes a source of its own, and you merge or drop them at review.
+            becomes a source of its own, and you move or drop them at review.
             An X post is dated from its link alone.
           </li>
           <li>
