@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { API_BASE_URL } from "./support/environment";
-import { CONFLICTS, ONE_PIXEL_PNG } from "./support/fixtures";
+import { CONFLICTS, EVENT_ID, ONE_PIXEL_PNG } from "./support/fixtures";
 import { answerWith, grantSession, mockApi } from "./support/mockApi";
 import { expectNarrowViewportLayout, expectNoHorizontalOverflow } from "./support/narrowLayout";
 import { swipeLeft } from "./support/touch";
@@ -54,7 +54,7 @@ test.describe("submit", () => {
 
     // Scrolled to the last field, both buttons stay on screen, under the menu chip.
     await page.getByRole("heading", { name: /^Details/ }).scrollIntoViewIfNeeded();
-    await expect(page.getByRole("heading", { level: 1 })).not.toBeInViewport();
+    await expect(page.getByLabel("Title", { exact: true })).not.toBeInViewport();
     await expect(publish).toBeInViewport({ ratio: 1 });
     await expect(request).toBeInViewport({ ratio: 1 });
     expect((await actions.boundingBox())!.y).toBeGreaterThanOrEqual(56);
@@ -94,7 +94,7 @@ test.describe("submit", () => {
     await expect(page.getByText(label, { exact: true }).and(page.locator(":visible"))).toBeVisible();
     await page.mouse.move(0, 0);
     const actions = (await rail.boundingBox())!;
-    const title = (await page.getByRole("heading", { level: 1 }).boundingBox())!;
+    const title = (await page.getByLabel("Title", { exact: true }).boundingBox())!;
     const location = (await page.getByRole("heading", { name: /^Location/ }).boundingBox())!;
     const details = (await page.getByRole("heading", { name: /^Details/ }).boundingBox())!;
     expect(Math.abs(actions.y - title.y)).toBeLessThan(12);
@@ -113,10 +113,49 @@ test.describe("submit", () => {
     // make the form taller than the screen.
     await page.getByRole("region", { name: "Source 1" }).getByRole("button", { name: "More details" }).click();
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-    await expect(page.getByRole("heading", { level: 1 })).not.toBeInViewport();
+    await expect(page.getByLabel("Title", { exact: true })).not.toBeInViewport();
     const pinned = (await rail.boundingBox())!;
     expect(Math.abs(pinned.x - actions.x)).toBeLessThanOrEqual(1);
     await expect(rail.getByRole("button", { name: "Publish geolocation" })).toBeInViewport({ ratio: 1 });
+  });
+
+  test("puts the Title field in the event title's place, the byline and its picker under it", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`/events/${EVENT_ID}`);
+    const eventTitle = (await page.getByRole("heading", { level: 1 }).boundingBox())!;
+    await page.goto("/submit?mode=single");
+
+    // The page name stays the heading of the page, for assistive tech only.
+    await expect(page.getByRole("heading", { level: 1, name: "Submit" })).toHaveClass(/sr-only/);
+    const field = page.getByLabel("Title", { exact: true });
+    const title = (await field.boundingBox())!;
+    expect(Math.abs(title.x - eventTitle.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(title.y - eventTitle.y)).toBeLessThan(8);
+
+    // The byline under it is the analyst's, with the toggle that picks the co-geolocators.
+    const toggle = page.getByRole("button", { name: "Manage geolocators" });
+    expect((await toggle.boundingBox())!.y).toBeGreaterThan(title.y + title.height);
+    await toggle.click();
+    const invite = page.getByLabel("Invite a geolocator");
+    await invite.fill("dee");
+    await invite.press("Enter");
+    await page.getByRole("button", { name: "Invite", exact: true }).click();
+    const card = page.getByRole("heading", { name: /^Geolocators/ }).locator("xpath=ancestor::section[1]");
+    await expect(card.getByText("Pending invitations")).toBeVisible();
+    await expect(card.getByRole("link", { name: /dee/ })).toBeVisible();
+  });
+
+  test("picks a co-geolocator on a narrow column", async ({ page }) => {
+    await page.goto("/submit?mode=single");
+
+    await page.getByRole("button", { name: "Manage geolocators" }).click();
+    const invite = page.getByLabel("Invite a geolocator");
+    await invite.fill("dee");
+    await invite.press("Enter");
+    await page.getByRole("button", { name: "Invite", exact: true }).click();
+    await expectNarrowViewportLayout(page, page.getByRole("button", { name: "Remove", exact: true }));
   });
 
   test("holds two source editors on a narrow column", async ({ page }) => {

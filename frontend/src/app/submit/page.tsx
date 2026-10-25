@@ -24,6 +24,7 @@ import { CountBadge } from "@/components/ui/CountBadge";
 import { IconTile } from "@/components/ui/IconTile";
 import { eventFormSlots, useEventForm } from "@/components/geolocations/EventFormFields";
 import { EventShell } from "@/components/event/EventShell";
+import { useDraftGeolocatorsByline } from "@/components/event/useGeolocatorsByline";
 import { sourcesBlockWrite } from "@/components/sources/SourcesField";
 import { DuplicateProbe } from "@/components/geolocations/new/DuplicateProbe";
 import { IMPORT_GLYPH } from "@/lib/importEntries";
@@ -92,6 +93,9 @@ function SubmitForm() {
   // are the standing summary, so no notice banner.
   const form = useEventForm();
   const { flagIncomplete, clearIncomplete } = form;
+  // Above the shells with the draft: the picks survive a trip through the chooser. Only the
+  // geolocation publish posts them.
+  const geolocators = useDraftGeolocatorsByline();
 
   // The two publish paths share one error banner; each mutation clears the other.
   const requestMutation = useMutation(
@@ -116,6 +120,7 @@ function SubmitForm() {
         ...form.shared(),
         lat: cleanNumber(form.lat) ?? NaN,
         lng: cleanNumber(form.lng) ?? NaN,
+        geolocator_invites: geolocators.invitees,
       }),
     {
       fallback: "Submission failed",
@@ -264,7 +269,9 @@ function SubmitForm() {
     return (
       <EventShell
         title="Submit"
-        belowTitle={fields.titleField}
+        titleField={fields.titleField}
+        byline={geolocators.byline}
+        belowTitle={geolocators.panel}
         onBack={backToChooser}
         actions={{ pinned: actions }}
         body={{

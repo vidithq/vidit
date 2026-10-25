@@ -9,6 +9,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - An event holds up to 10 sources, none of them the main one. Each has a level (direct, indirect or context), a kind (such as drone, satellite or article), a capture time, a capture position, a graphic flag, tags, one file, and up to 10 URLs, each with its post time and archived copy.
 - `POST /uploads` stages one source file before the event write that uses it; a staged file nobody uses is deleted after 24 hours.
 - Search matches source titles and source URLs, and the map, list, search and feed filters take `source_kind` and `level`.
+- Submitting a geolocation or publishing a request or a detection invites the co-geolocators you pick by the byline, in the same write; `POST /events` and `POST /events/{id}/versions` take `geolocator_invites` ([#693](https://github.com/vidithq/vidit/pull/693)).
 - The feed shows machine detections from the analysts you follow, or from everyone on All, and a **Show detections** switch in its Kind filter hides them; `GET /feed` takes `kind=detected`.
 - A source can be of kind aircraft: images or video taken from a plane or a helicopter, historical aerial photos included.
 - A satellite or aircraft source is checked against a list of imagery providers and warns, without blocking, when a reader could not reopen the image at its date; the form names each provider, how to reopen it and its credit as you type, and `POST /sources/check` runs the same check.
@@ -34,7 +35,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - `POST /events/{id}/versions` takes an optional `version_no`, the version the form was loaded at, and answers 409 `version_mismatch` when the event has moved past it.
 - A re-import or a bot re-tag never writes over an event that has a saved version.
 - Profile stats count events per source kind, the source hosts read each event's first source URL, and `GET /tags` lists the tags on live events or their sources.
-- The event page and both event forms share one layout: the title and geolocators, the actions pinned top right over the approvals or version note, then sources and proof beside location and Details; the edit page manages geolocators by the byline ([#693](https://github.com/vidithq/vidit/pull/693)).
+- The event page and both event forms share one layout: the title, which a form's Title field replaces, and the geolocators, the actions pinned top right over the approvals or version note, then sources and proof beside location and Details ([#693](https://github.com/vidithq/vidit/pull/693)).
 - Submit opens on three cards, Single event, From an X post and Bulk import, in place of the mode switch; the chosen path stays in the address, and the back arrow returns to the cards ([#693](https://github.com/vidithq/vidit/pull/693)).
 - Tags are picked through a search field in the Details card and in each source: it suggests the matching tags as you type and offers to create a missing one, in place of the full tag list ([#693](https://github.com/vidithq/vidit/pull/693)).
 - Latitude and Longitude sit on one line at every width, followed by the map and copy actions as separate buttons, in the Location card and in each source's capture position ([#693](https://github.com/vidithq/vidit/pull/693)).

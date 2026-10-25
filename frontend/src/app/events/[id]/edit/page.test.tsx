@@ -191,6 +191,17 @@ async function publishDetection() {
   fireEvent.click(await screen.findByRole("button", { name: "Confirm publish" }));
 }
 
+/** Open the byline's geolocators card and pick `username` by its exact name. */
+async function pickCoGeolocator(username: string) {
+  const toggle = screen.getByRole("button", { name: "Manage geolocators" });
+  if (toggle.getAttribute("aria-expanded") !== "true") fireEvent.click(toggle);
+  // The field comes back once the previous pick is added.
+  const field = await waitFor(() => screen.getByLabelText("Invite a geolocator"));
+  fireEvent.change(field, { target: { value: username } });
+  fireEvent.keyDown(field, { key: "Enter" });
+  fireEvent.click(screen.getByRole("button", { name: "Invite" }));
+}
+
 /** True when `later` comes after `earlier` in document order. */
 function follows(earlier: Element, later: Element): boolean {
   return !!(earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING);
@@ -295,6 +306,26 @@ describe("the detection edit surface", () => {
     expect(id).toBe("d1");
     expect(input.version_no).toBe(0);
     expect(input.note).toBeUndefined();
+    expect(input.geolocator_invites).toEqual([]);
+  });
+
+  it("invites the co-geolocators picked in the byline with the publish", async () => {
+    render(<EditEventPage />);
+    await pickCoGeolocator("dee");
+    await pickCoGeolocator("eve");
+    // Nothing is sent before the publish, and a pick can be taken back.
+    expect(screen.getByText("dee")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[1]);
+    expect(screen.queryByText("eve")).toBeNull();
+    // Picking yourself or a repeat is refused in the card.
+    await pickCoGeolocator("ana");
+    expect(screen.getByRole("alert")).toHaveTextContent("already a geolocator");
+    await pickCoGeolocator("dee");
+    expect(screen.getByRole("alert")).toHaveTextContent("already invited");
+
+    await publishDetection();
+    await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
+    expect(saveVersionMock.mock.calls[0][1].geolocator_invites).toEqual(["dee"]);
   });
 
   it("returns to the queue list after a publish made outside a pass", async () => {
@@ -481,12 +512,13 @@ describe("editing a published geolocation", () => {
     expect(rail.contains(note)).toBe(false);
     const location = screen.getByRole("heading", { name: /^Location/ });
     expect(follows(note, location)).toBe(true);
-    // The title section: the page title, the geolocators toggle, then the Title field, which joins
-    // the form from outside it.
-    const pageTitle = screen.getByRole("heading", { name: "Edit geolocation" });
+    // The title section: the page heading (visually hidden), the Title field in the event title's
+    // place, which joins the form from outside it, then the byline and its geolocators toggle.
+    const pageTitle = screen.getByRole("heading", { level: 1, name: "Edit geolocation" });
+    expect(pageTitle).toHaveClass("sr-only");
     const toggle = screen.getByRole("button", { name: "Manage geolocators" });
     const title = screen.getByRole("textbox", { name: /Title/ });
-    expect(follows(pageTitle, toggle) && follows(toggle, title)).toBe(true);
+    expect(follows(pageTitle, title) && follows(title, toggle)).toBe(true);
     const form = document.getElementById("event-edit-form") as HTMLFormElement;
     expect(form.contains(title)).toBe(false);
     expect((title as HTMLInputElement).form).toBe(form);
@@ -495,7 +527,7 @@ describe("editing a published geolocation", () => {
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     const credit = screen.getByRole("heading", { name: /^Geolocators/ });
-    expect(follows(toggle, credit) && follows(credit, title)).toBe(true);
+    expect(follows(toggle, credit)).toBe(true);
     expect(form.contains(credit)).toBe(false);
     expect(screen.getByLabelText("Invite a geolocator")).toBeInTheDocument();
     // How shared credit works, changes applying on click with no new version, is the title's help.
@@ -535,6 +567,8 @@ describe("editing a published geolocation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
     await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
     expect(saveVersionMock.mock.calls[0][1].version_no).toBe(1);
+    // A published row invites through its Geolocators panel, never with the save.
+    expect(saveVersionMock.mock.calls[0][1]).not.toHaveProperty("geolocator_invites");
     await waitFor(() => expect(push).toHaveBeenCalledWith("/events/d1"));
   });
 
@@ -700,6 +734,8 @@ describe("editing an open request", () => {
 
   it("overwrites the request and lands back on it", async () => {
     render(<EditEventPage />);
+    // Saving the request sends no invitation: only the publish does.
+    await pickCoGeolocator("dee");
 
     fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), {
       target: { value: "Corrected ask" },
@@ -712,6 +748,7 @@ describe("editing an open request", () => {
       title: "Corrected ask",
       sources: [{ id: "s1", media_id: "m1", links: [{ url: "https://t.me/channel/12345" }] }],
     });
+    expect(updateRequestMock.mock.calls[0][1]).not.toHaveProperty("geolocator_invites");
     expect(saveVersionMock).not.toHaveBeenCalled();
     await waitFor(() => expect(push).toHaveBeenCalledWith("/requests/d1"));
   });

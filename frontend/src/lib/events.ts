@@ -176,6 +176,16 @@ function eventFormData(input: EventWriteInput): FormData {
   return fd;
 }
 
+/** The analysts a publish invites to share the credit, by username. Only the two publishing
+ *  writes take them. */
+function appendGeolocatorInvites(fd: FormData, usernames: string[] = []): void {
+  if (usernames.length === 0) return;
+  fd.append(
+    "geolocator_invites",
+    JSON.stringify(usernames.map((username) => ({ username }))),
+  );
+}
+
 function postEventForm<T>(path: string, fd: FormData): Promise<T> {
   return apiFetch<T>(path, { method: "POST", body: fd });
 }
@@ -186,14 +196,16 @@ export const VERSION_NOTE_MAX_LEN = 280;
 /** `POST /events/{id}/versions`: publishes a request or a detection (version 0 becomes version
  *  1) or corrects a published event, filing the superseded state as a version. `note` is the
  *  editor's words about the edit, stored on it. `version_no` is the version the form was loaded
- *  at: a row that moved past it answers 409 `version_mismatch`. */
+ *  at: a row that moved past it answers 409 `version_mismatch`. `geolocator_invites` rides on a
+ *  publish only. */
 export function saveVersion(
   id: string,
-  input: EventWriteInput & { note?: string; version_no: number }
+  input: EventWriteInput & { note?: string; version_no: number; geolocator_invites?: string[] }
 ): Promise<EventDetail> {
   const fd = eventFormData(input);
   if (input.note?.trim()) fd.append("note", input.note.trim());
   fd.append("version_no", String(input.version_no));
+  appendGeolocatorInvites(fd, input.geolocator_invites);
   return postEventForm(`/events/${id}/versions`, fd);
 }
 
@@ -620,8 +632,12 @@ export function eventVersions(
 }
 
 /** `POST /events` (multipart); returns the new id. */
-export function createEvent(input: EventWriteInput): Promise<{ id: string }> {
-  return postEventForm("/events", eventFormData(input));
+export function createEvent(
+  input: EventWriteInput & { geolocator_invites?: string[] }
+): Promise<{ id: string }> {
+  const fd = eventFormData(input);
+  appendGeolocatorInvites(fd, input.geolocator_invites);
+  return postEventForm("/events", fd);
 }
 
 /** Open a request: `POST /events/requests` (multipart). The coordinate guess is optional and

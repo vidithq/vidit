@@ -43,12 +43,13 @@ export function EventShellSkeleton({ filling }: { filling: EventShellFilling }) 
   const isEvent = filling === "event";
   return (
     <EventShell
-      title={<Slot label="Title section: title" className="h-7" />}
-      byline={
-        filling === "submit" ? undefined : <Slot label="Title section: byline" className="h-6" />
+      title={isEvent ? <Slot label="Title section: title" className="h-7" /> : "Form page name"}
+      titleField={
+        isEvent ? undefined : <Slot label="Title section: title field" className="h-[38px]" />
       }
+      byline={<Slot label="Title section: byline" className="h-6" />}
       belowTitle={
-        isEvent ? undefined : <Slot label="Title section: title field" className="h-20" />
+        isEvent ? undefined : <Slot label="Title section: geolocators panel" className="h-20" />
       }
       onBack={() => {}}
       actions={{

@@ -20,7 +20,10 @@ import { Button } from "@/components/ui/Button";
 import { CountBadge } from "@/components/ui/CountBadge";
 import { CloseEventDialog, closeActionLabel } from "@/components/event/CloseEventDialog";
 import { EventShell } from "@/components/event/EventShell";
-import { useGeolocatorsByline } from "@/components/event/useGeolocatorsByline";
+import {
+  useDraftGeolocatorsByline,
+  useGeolocatorsByline,
+} from "@/components/event/useGeolocatorsByline";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
@@ -68,9 +71,10 @@ const CONFIRM_SENTENCE =
  * row that moved meanwhile answers a conflict instead of being overwritten.
  *
  * The fields fill `EventShell`'s zones. The actions block pins the writes, the banners and, for
- * the owner, **More actions** with the close; a published row's version note reads under them. A
- * published row's title section carries its geolocators byline, with the toggle that opens their
- * panel: those changes apply on click and never make a version.
+ * the owner, **More actions** with the close; a published row's version note reads under them.
+ * The title section carries a geolocators byline with the toggle that opens their panel: on a
+ * published row those changes apply on click and never make a version; on a request or a
+ * detection the reader picks the co-geolocators the publish invites.
  *
  * With `queue` set the actions gain the position and a Skip, and a finished detection hands over
  * to the next one.
@@ -106,7 +110,10 @@ export function EventEditForm({
   const finish = queue?.onAdvance ?? (() => router.push(redirectTo));
 
   const form = useEventForm(geo);
-  const credit = useGeolocatorsByline(geo, () => onCreditChanged?.());
+  const publishedCredit = useGeolocatorsByline(geo, () => onCreditChanged?.());
+  // The publish posts the picks; Save request posts none.
+  const draftCredit = useDraftGeolocatorsByline();
+  const credit = editingPublished ? publishedCredit : draftCredit;
 
   // Edit only: a publish files version 0, which keeps no note of its own.
   const [editNote, setEditNote] = useState("");
@@ -135,7 +142,9 @@ export function EventEditForm({
         lat: cleanNumber(form.lat) ?? NaN,
         lng: cleanNumber(form.lng) ?? NaN,
         version_no: geo.version_no,
-        ...(editingPublished ? { note: editNote } : {}),
+        ...(editingPublished
+          ? { note: editNote }
+          : { geolocator_invites: draftCredit.invitees }),
       }),
     {
       fallback: editingPublished ? "Couldn't save this version." : "Couldn't publish.",
@@ -377,13 +386,9 @@ export function EventEditForm({
   return (
     <EventShell
       title={title}
-      byline={editingPublished && credit.byline}
-      belowTitle={
-        <>
-          {editingPublished && credit.panel}
-          {fields.titleField}
-        </>
-      }
+      titleField={fields.titleField}
+      byline={credit.byline}
+      belowTitle={credit.panel}
       backFallback={redirectTo}
       actions={{
         pinned: actions,

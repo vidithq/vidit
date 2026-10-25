@@ -1,6 +1,5 @@
 "use client";
 
-import { FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 
@@ -12,16 +11,13 @@ interface TitleFieldProps {
   form?: string;
 }
 
-/** The "Title" field (label, `?` help, input), shared by the submit and
- *  detection-edit forms. */
+/** The event forms' Title field, in the event title's place (`EventShell`'s `titleField`): the
+ *  title's size and weight, its label for assistive tech only, the `?` beside it. */
 export function TitleField({ value, onChange, invalid = false, form }: TitleFieldProps) {
   return (
-    <div className="space-y-1.5">
-      <label
-        htmlFor="title"
-        className={`${FORM_LABEL}${invalid ? ` ${FORM_INVALID_LABEL}` : ""}`}
-      >
-        Title <FieldHelp concept="title" />
+    <div className="flex items-center gap-2">
+      <label htmlFor="title" className="sr-only">
+        Title
       </label>
       <Input
         id="title"
@@ -30,9 +26,11 @@ export function TitleField({ value, onChange, invalid = false, form }: TitleFiel
         form={form}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="e.g. Strike on ammunition depot, Donetsk"
+        placeholder="Title, e.g. Strike on ammunition depot, Donetsk"
         invalid={invalid}
+        className="py-1 text-xl sm:text-xl font-medium"
       />
+      <FieldHelp concept="title" />
     </div>
   );
 }

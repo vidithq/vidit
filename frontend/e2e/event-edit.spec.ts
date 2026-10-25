@@ -36,7 +36,7 @@ test.describe("event edit", () => {
     await page.keyboard.press("Escape");
 
     // The version note reads under the actions, over Location. The geolocators open in the title
-    // section, between the byline and the title field.
+    // section, under the title field and its byline.
     const note = (await page.getByRole("textbox", { name: "Version note" }).boundingBox())!;
     const location = (await page.getByRole("heading", { name: /^Location/ }).boundingBox())!;
     expect(note.y).toBeLessThan(location.y);
@@ -44,8 +44,8 @@ test.describe("event edit", () => {
     await toggle.click();
     const geolocators = page.getByRole("heading", { name: /^Geolocators/ });
     const geolocatorsBox = (await geolocators.boundingBox())!;
+    expect((await toggle.boundingBox())!.y).toBeGreaterThan((await title.boundingBox())!.y);
     expect(geolocatorsBox.y).toBeGreaterThan((await toggle.boundingBox())!.y);
-    expect(geolocatorsBox.y).toBeLessThan((await title.boundingBox())!.y);
     await expect(page.getByRole("button", { name: "Invite" })).toBeVisible();
     await expectNoHorizontalOverflow(page);
 
@@ -65,7 +65,6 @@ test.describe("event edit", () => {
     const box = async (name: string) =>
       (await page.getByRole("heading", { name: new RegExp(`^${name}`) }).boundingBox())!;
     const railBox = (await rail.boundingBox())!;
-    const pageTitle = (await page.getByRole("heading", { level: 1 }).boundingBox())!;
     const title = (await page.getByLabel("Title", { exact: true }).boundingBox())!;
     const [sources, proof, location, details] = [
       await box("Sources"),
@@ -73,9 +72,9 @@ test.describe("event edit", () => {
       await box("Location"),
       await box("Details"),
     ];
-    // Header: the page title left, the actions top right, level with it.
+    // Header: the Title field left, in the title's place, the actions top right, level with it.
     expect(railBox.x).toBeGreaterThan(title.x + title.width);
-    expect(Math.abs(railBox.y - pageTitle.y)).toBeLessThan(12);
+    expect(Math.abs(railBox.y - title.y)).toBeLessThan(12);
     // Main column: title, sources, proof. Side column: location, details, under the actions.
     expect(sources.y).toBeGreaterThan(title.y);
     expect(proof.y).toBeGreaterThan(sources.y);
@@ -85,7 +84,7 @@ test.describe("event edit", () => {
 
     // Scrolled down, the title is gone and the actions stay top right.
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-    await expect(page.getByRole("heading", { level: 1 })).not.toBeInViewport();
+    await expect(page.getByLabel("Title", { exact: true })).not.toBeInViewport();
     const pinned = (await rail.boundingBox())!;
     expect(pinned.y).toBeGreaterThanOrEqual(0);
     expect(Math.abs(pinned.x - railBox.x)).toBeLessThanOrEqual(1);

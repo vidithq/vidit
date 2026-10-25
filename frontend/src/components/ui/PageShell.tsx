@@ -23,6 +23,7 @@ import { PageWithRail } from "./PageWithRail";
 
 export function PageShell({
   title,
+  titleField,
   subtitle,
   back = false,
   backFallback,
@@ -38,6 +39,9 @@ export function PageShell({
   children,
 }: {
   title: ReactNode;
+  /** Takes the title's place on a form whose first field is the title (`EventShell`). `title`
+   *  stays the page's `h1`, visually hidden. */
+  titleField?: ReactNode;
   subtitle?: ReactNode;
   back?: boolean;
   /** Where Back lands when the session has nothing to return to. Forwards to
@@ -165,7 +169,10 @@ export function PageShell({
           )}
         >
           <div className="basis-56 grow min-w-0 space-y-2">
-            <h1 className="text-xl font-medium text-neutral-100">{title}</h1>
+            <h1 className={cn("text-xl font-medium text-neutral-100", titleField && "sr-only")}>
+              {title}
+            </h1>
+            {titleField}
             {subtitle && (
               // A bio can hold a bare URL, one unbreakable token.
               <div className="text-sm text-neutral-400 wrap-anywhere">
