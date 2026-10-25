@@ -116,6 +116,7 @@ import {
 } from "@/components/ui/styles";
 import { Button, buttonClasses, DANGER_CONFIRM } from "@/components/ui/Button";
 import { CoordinateActions, CoordinateValue } from "@/components/event/CoordinateActions";
+import { CoordinateInputs } from "@/components/geolocations/CoordinateInputs";
 import { DateTimeInput } from "@/components/ui/DateTimeInput";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Switch } from "@/components/ui/Switch";
@@ -615,8 +616,13 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<CopyButton>" usage="The one copy confirmation: an icon button whose mark turns into a check while `copied` holds (useCopyToClipboard times it, 1.5 s) and fades back after, with no fade under prefers-reduced-motion. The accessible name never changes, since a changing name is re-announced as a new control; `announce` reaches screen readers through a sibling aria-live region, with no visible text. Worn by Copy coordinates, a profile's copied handle, and Share where the browser has no share sheet (Link copied).">
-            <PaletteCopyButton />
+          <Item name="<CopyButton>" usage="The one copy confirmation: an icon button whose mark turns into a check while `copied` holds (useCopyToClipboard times it, 1.5 s) and fades back after, with no fade under prefers-reduced-motion. The accessible name never changes, since a changing name is re-announced as a new control; `announce` reaches screen readers through a sibling aria-live region, with no visible text. Worn by Copy coordinates, a profile's copied handle, and Share where the browser has no share sheet (Link copied). The secondary `variant` boxes the button, for a copy that stands beside a field as its own item (Copy coordinates).">
+            <Variant label="ghost (default)">
+              <PaletteCopyButton />
+            </Variant>
+            <Variant label='variant="secondary"'>
+              <PaletteCopyButton variant="secondary" />
+            </Variant>
           </Item>
 
           <Item name="<ActiveFilterPills>" usage="The one rendering of active filters: a row of removable accent chips (label + ×), shared by the map's filter overlay and the search page so active filter state reads identically everywhere. Entries are {key, label, icon?, onRemove}; `onClearAll` adds a quiet clear-everything affordance once two or more filters are on. Renders nothing when the list is empty.">
@@ -715,7 +721,7 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Forms" />
 
-          <Item name="<Input> (+ FORM_INVALID_FIELD, FieldAdornment, TRAILING_ROOM, LOCKED_FIELD)" usage="The one form field: variant (default / compact / locked) + invalid + icon + trailing. `<Input invalid>` is sugar over the FORM_INVALID_FIELD red-outline token; the same raw token flags non-input surfaces too (media dropzone, proof editor, section cards). `icon` overlays a leading icon at the leading edge, inert. `trailing` is the field's own action slot at the other edge, centred on the field's height and taking the pointer: the map and copy marks of a longitude field, the picker of a <DateTimeInput>, the archive mark of a URL field. Each one is a ghost icon button, the site's one icon control, set a hair apart so two hover plates read as two controls; the field is one height across the three variants so that 32px square sits inside any of them with a 3px gutter, and the text padding grows by TRAILING_ROOM so a long value never runs under them, both figures stepping together on a phone. FIELD_TEXT is the one field type size, 16px below `sm` and 14px above, run by all three variants and by <Select> and <Textarea>, since Mobile Safari zooms a page in on a field under 16px and never zooms back out. `trailingFromSm` is for a field too narrow on a phone to hold both its value and a 36px mark (the instant field at 320px): the slot renders from `sm` up only and the field takes its room there only, so what the mark acts on has to stay reachable without it, the way a date field falls back to a tap opening the engine's picker. FieldAdornment + TRAILING_ROOM are exported for the one field that is not an input: <LockedUrl> renders a frozen value as an anchor in LOCKED_FIELD, the locked variant's box without its not-allowed cursor, and clears the same adornment by the same amount. Native props + className pass through.">
+          <Item name="<Input> (+ FORM_INVALID_FIELD, FieldAdornment, TRAILING_ROOM, LOCKED_FIELD)" usage="The one form field: variant (default / compact / locked) + invalid + icon + trailing. `<Input invalid>` is sugar over the FORM_INVALID_FIELD red-outline token; the same raw token flags non-input surfaces too (media dropzone, proof editor, section cards). `icon` overlays a leading icon at the leading edge, inert. `trailing` is the field's own action slot at the other edge, centred on the field's height and taking the pointer: the picker of a <DateTimeInput>, the archive mark of a URL field. Each one is a ghost icon button, the site's one icon control, set a hair apart so two hover plates read as two controls; the field is one height across the three variants so that 32px square sits inside any of them with a 3px gutter, and the text padding grows by TRAILING_ROOM so a long value never runs under them, both figures stepping together on a phone. FIELD_TEXT is the one field type size, 16px below `sm` and 14px above, run by all three variants and by <Select> and <Textarea>, since Mobile Safari zooms a page in on a field under 16px and never zooms back out. `trailingFromSm` is for a field too narrow on a phone to hold both its value and a 36px mark (the instant field at 320px): the slot renders from `sm` up only and the field takes its room there only, so what the mark acts on has to stay reachable without it, the way a date field falls back to a tap opening the engine's picker. FieldAdornment + TRAILING_ROOM are exported for the one field that is not an input: <LockedUrl> renders a frozen value as an anchor in LOCKED_FIELD, the locked variant's box without its not-allowed cursor, and clears the same adornment by the same amount. Native props + className pass through.">
             <div className="w-full max-w-sm space-y-2">
               <Variant label="default">
                 <Input placeholder="Type here..." />
@@ -725,9 +731,12 @@ export default function PalettePage() {
               </Variant>
               <Variant label="trailing (the field's own actions)">
                 <Input
-                  placeholder="48.015883"
-                  className="font-mono"
-                  trailing={<CoordinateActions lat={48.015883} lng={37.802411} />}
+                  placeholder="https://t.me/channel/12345"
+                  trailing={
+                    <Button icon variant="ghost" aria-label="Clear the field">
+                      <X size={14} />
+                    </Button>
+                  }
                 />
               </Variant>
               <Variant label='variant="compact" (admin rows)'>
@@ -791,6 +800,25 @@ export default function PalettePage() {
                 <DateTimeInput type="date" value="" invalid onChange={() => {}} />
               </Variant>
             </div>
+          </Item>
+
+          <Item name="<CoordinateInputs>" usage="The latitude and longitude pair of every event form (components/geolocations/CoordinateInputs.tsx): the Location card's subject point and each source's capture position. One line at every width, the 320px source editor included: Latitude and Longitude share the room in two shrinking columns, labels above, and <CoordinateActions> follows them as its own two boxes, centred on the fields. The fields run half the usual side padding and tight tracking, so a 6-decimal value shows whole from 375px up and in the forms' side column. A paste that reads as a pair (lat, lng, or a Google Maps URL) fills both fields from either one. `idPrefix` keeps a capture pair's ids apart from the subject's; `required={false}` for the optional capture pair; `invalid` reddens both labels and fields.">
+            <PaletteCoordinateInputs />
+          </Item>
+
+          <Item name="<CoordinateActions> / <CoordinateValue>" usage="The two things anyone does with a coordinate pair (components/event/CoordinateActions.tsx): View on Maps (a new tab) and Copy coordinates (the 6-decimal pair, through <CopyButton>). Two outlined icon buttons, each its own box, everywhere they appear: after the two fields of <CoordinateInputs> and on the event page's Coordinates row. A null pair (half-typed or out of bounds) keeps both in place, disabled and grey; the map link becomes a disabled button then. `small` is the 24px desktop square for a dense row. <CoordinateValue> is a reading row's value: the pair, then the actions; `compact` fits a narrow card on one line, 4 decimals and the small actions.">
+            <Variant label="a complete pair">
+              <CoordinateActions lat={48.015883} lng={37.802411} />
+            </Variant>
+            <Variant label="half-typed (disabled)">
+              <CoordinateActions lat={null} lng={null} />
+            </Variant>
+            <Variant label="small">
+              <CoordinateActions lat={48.015883} lng={37.802411} small />
+            </Variant>
+            <Variant label="<CoordinateValue>">
+              <CoordinateValue lat={48.015883} lng={37.802411} />
+            </Variant>
           </Item>
 
           <Item name="<LinkListInput>" usage="An ordered list of URL fields with a remove per row and one add button: each source editor's Links. A row is the caller's own value, read and written through `urlOf` / `withUrl`, so what else it carries (a post time, an archived copy) moves with it through adds and removals. `max` mirrors the server cap and disables add at the ceiling. Blank rows are the caller's to drop at assembly. `trailing` puts a mark inside the row's URL field, `detail` a line always under it, and `expansion` a line under it while the row is toggled open: on a source editor that is the <ArchiveAdornment> mark, the post time, and the <ArchiveSnapshotField> paste line. Every row starts closed. Below `sm` the URL field takes the whole row and the remove control drops under its right end.">
@@ -1981,13 +2009,24 @@ const PALETTE_MEDIA: Media = {
 const PALETTE_VIDEO_SRC =
   process.env.NEXT_PUBLIC_DEMO_VIDEO_URL ?? "/palette-demo-placeholder.mp4";
 
-function PaletteCopyButton() {
+function PaletteCoordinateInputs() {
+  const [lat, setLat] = useState("48.015883");
+  const [lng, setLng] = useState("37.802411");
+  return (
+    <div className="w-full max-w-xs">
+      <CoordinateInputs idPrefix="palette_" lat={lat} setLat={setLat} lng={lng} setLng={setLng} />
+    </div>
+  );
+}
+
+function PaletteCopyButton({ variant }: { variant?: "secondary" }) {
   const { copied, copy } = useCopyToClipboard();
   return (
     <CopyButton
       label="Copy coordinates"
       announce="Coordinates copied"
       icon={<Copy size={14} />}
+      variant={variant}
       copied={copied}
       onClick={() => void copy("48.500000, 37.800000")}
     />
