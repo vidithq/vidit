@@ -517,7 +517,7 @@ flowchart LR
   match["`**_disposition**
   the owner's own rows, matched on the thread's post ids or on a source URL, plus the coordinate`"]:::core
   matrix["`**_row_disposition**
-  detected updates in place; geolocated, closed, withheld and deleted are left alone`"]:::core
+  a detection at version 0 updates in place; a row past version 0, closed, withheld or deleted is left alone`"]:::core
   fetch["`**fetch_media**
   three attempts, per-media caps, photos re-encoded`"]:::shared
   write["`**_persist_one / _upsert_one**
@@ -548,12 +548,14 @@ The provenance leg is the thread's post IDs, not a URL and not the anchor alone.
 |---|---|
 | Soft-deleted (`deleted_at`) | Skipped. An admin removal stands; a re-import never brings the event back. |
 | Withheld (`hidden_at`) | Skipped, whatever its status. A takedown freezes the row for its owner too. |
-| `geolocated` | Skipped. A machine never overwrites published work. |
-| `detected` | Updated in place. |
-| `closed` | Skipped, whichever state it left. A rejected detection stays rejected, so nobody rejects the same post twice; a withdrawn request is not the import's to reopen; and a retraction is published work its owner took back, so the published-work rule above keeps holding after the close. |
+| Past version 0 (`version_no` above 0) | Skipped, whatever its status. A person saved a version of the row: publishing files the detection as version 0 and the row becomes version 1, so a machine never overwrites published work, a retraction included. |
+| `detected`, at version 0 | Updated in place. |
+| `closed` | Skipped, whichever state it left. A rejected detection stays rejected, so nobody rejects the same post twice, and a withdrawn request is not the import's to reopen. |
 | No match | A new `detected` row. |
 
-**What an update rewrites.** The row keeps its id, its owner, its `created_at` and `detected_at` stamps, its `event_detections` row (`from_post_id`, `from_url`, `thread_post_ids` and `via`) and its place in the detections queue, so a bot tag landing on a detection the archive created updates it and still reads `archive`. The import overwrites what it owns: the title, the coordinate, the event date, the sources (the declared one with its post date, one per mirror and one per context link), the `post_at` of its `event_detections` row, the proof, and the media. A source list whose links, post dates, levels, kinds or titles moved is rebuilt whole, the footage file carried onto the new declared source. Every field edit is welded to the `geolocated` promotion, so an open detection carries no analyst work to lose.
+**What an update rewrites.** The row keeps its id, its owner, its `created_at` and `detected_at` stamps, its `event_detections` row (`from_post_id`, `from_url`, `thread_post_ids` and `via`) and its place in the detections queue, so a bot tag landing on a detection the archive created updates it and still reads `archive`. The import overwrites what it owns: the title, the coordinate, the event date, the sources (the declared one with its post date, one per mirror and one per context link), the `post_at` of its `event_detections` row, the proof, and the media. A source list whose links, post dates, levels, kinds or titles moved is rebuilt whole, the footage file carried onto the new declared source. A person's only edit of a detection is its publish, which files the row as version 0 and moves it to version 1, so a row the import may still write carries no analyst work to lose.
+
+**A protected row counts as `skipped`.** A re-run of an export, a paste or a bot re-tag that matches a row past version 0 writes nothing onto it and reports the row `skipped`, as for any protected row; the bot ledgers that mention `skipped` and stays silent. A bot re-tag of a post that opened a request lands on the open request and moves nothing.
 
 **A short fetch keeps the stored media.** A media the fetch cannot turn into bytes leaves the resolution short of what the post declares, which reads exactly like a post whose media is gone, so the row's media stays as it stands; the other fields still update, and a pass that moves nothing else counts the row `skipped`. Media compares by `Media.sha256`, so re-running the same export leaves `updated_at` where it was and creates no storage objects.
 

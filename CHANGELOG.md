@@ -8,7 +8,6 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 - An event holds up to 10 sources, none of them the main one. Each has a level (direct, indirect or context), a kind (such as drone, satellite or article), a capture time, a capture position, a graphic flag, tags, one file, and up to 10 URLs, each with its post time and archived copy.
 - `POST /uploads` stages one source file before the event write that uses it; a staged file nobody uses is deleted after 24 hours.
-- `GET /sources` finds an existing source by URL or title, and an event form copies it onto another event without storing its file twice.
 - Search matches source titles and source URLs, and the map, list, search and feed filters take `source_kind` and `level`.
 - The feed shows machine detections from the analysts you follow, or from everyone on All, and a **Show detections** switch in its Kind filter hides them; `GET /feed` takes `kind=detected`.
 - A source can be of kind aircraft: images or video taken from a plane or a helicopter, historical aerial photos included.
@@ -25,8 +24,12 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - The always-on worker runs the hourly bot mentions catch-up, so the separate `bot` role and its schedule are no longer needed. Mentions queued by the webhook and the catch-up share one table.
 - Every event write takes a `sources` list in place of the source URL, mirror, snapshot, capture position, post time, graphic flag and file fields, and event reads serve `sources` in place of the source and archive fields.
 - Publishing needs a direct or indirect source with a file and a conflict; no tag is required. Every source needs a kind, `unknown` included. A request needs a direct or indirect source with a file.
-- The analyst who geolocates a request can correct its sources, and batch completion takes a source kind per detection in place of a capture-source tag.
+- The analyst who publishes a request can correct its sources, and batch completion takes a source kind per detection in place of a capture-source tag.
 - The graphic flag belongs to each source, and an event is graphic when any of its sources is; the admin moderation flag sets or clears it on every source.
+- A request or a detection is version 0. Publishing it is an edit through `POST /events/{id}/versions`, which keeps it readable as version 0 in the history and makes the published event version 1.
+- Requests and detections are published from their edit form, which lists the publish requirements; the history and the version selector name version 0 *Request* or *Detection*.
+- `POST /events/{id}/versions` takes an optional `version_no`, the version the form was loaded at, and answers 409 `version_mismatch` when the event has moved past it.
+- A re-import or a bot re-tag never writes over an event that has a saved version.
 - Profile stats count events per source kind, the source hosts read each event's first source URL, and `GET /tags` lists the tags on live events or their sources.
 
 ### Removed
@@ -37,6 +40,8 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - The `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `PRODUCT_UPDATE_EMAIL_DAILY_CAP` and `PRODUCT_UPDATE_EMAIL_BATCH_SIZE` settings; `NOTIFICATION_EMAIL_DAILY_CAP` must stay below `EMAIL_PROVIDER_DAILY_QUOTA`.
 - Capture-source tags and tag categories: each source's kind replaces them, and `POST /tags` takes only a name.
 - Archived copies of the post a detection came from and of the links in a proof body.
+- `POST /events/{id}/geolocate`: `POST /events/{id}/versions` publishes a request or a detection.
+- Answering a request from the submit page (`/submit?request_id=`).
 
 ## v0.7.4, 2026-10-22
 

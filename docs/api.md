@@ -98,17 +98,15 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/events/{id}` | 🌐 | Full event detail, any lifecycle state |
 | POST | `/events/{id}/report` | 🌐 | Report an event for moderation (anonymous allowed) |
 | POST | `/uploads` | 🔒 | Stage one source file for a later event write (multipart, one file) |
-| GET | `/sources` | 🔒 | Find an existing source by URL or title, to copy into an event form |
 | POST | `/events` | 🔒 | Create an event born `geolocated` (multipart) |
 | POST | `/events/requests` | 🔒 | Open a request (multipart); creates a `requested` event |
-| POST | `/events/{id}/request` | 🔒 | Correct an open request, owner only; overwrites it in place, no version filed |
-| POST | `/events/{id}/geolocate` | 🔒 | Give an event a vouched location: `requested` \| `detected` → `geolocated` |
+| POST | `/events/{id}/request` | 🔒 | Correct an open request, owner only; overwrites it in place at version 0 |
 | POST | `/events/batch-complete` | 🔒 | Publish a selection of your detections in one call (per-row verdicts) |
-| POST | `/events/{id}/versions` | 🔒 | Correct a published event, owner only; files the version it supersedes |
+| POST | `/events/{id}/versions` | 🔒 | Publish a request or a detection, or correct a published event; files the version it supersedes |
 | GET | `/events/{id}/versions` | 🌐 | The event's superseded versions, newest first |
 | GET | `/events/{id}/versions/{version_no}` | 🌐 | One superseded version, by its number |
 | POST | `/events/{id}/close` | 🔒 | Withdraw, reject or retract an event, owner only (→ `closed`) |
-| GET | `/events/detections` | 🔒 | Your `detected` events awaiting a geolocate (paginated, filterable on readiness) |
+| GET | `/events/detections` | 🔒 | Your `detected` events awaiting a publish (paginated, filterable on readiness) |
 | GET | `/events/{id}/collections` | 🔒 | Your collections, each saying whether this event is on it (credited analysts only) |
 | GET | `/events/{id}/geolocator-invites` | 🔒 | Pending invitations to share the event's credit: all for the owner, yours otherwise |
 | POST | `/events/{id}/geolocator-invites` | 🔒 | Invite an analyst to share a published event's credit, owner only |
@@ -240,10 +238,9 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST /events/import-archive` | 10/hour |
 | `GET /events/import-archive/{job_id}` | 60/min |
 | `POST /uploads` | 30/min |
-| `GET /sources` | 60/min |
 | `POST /sources/check` | 120/min |
 | `POST /events`, `POST /events/requests`, `POST /events/{id}/request` | 30/min |
-| `POST /events/{id}/geolocate`, `POST /events/{id}/versions` | 30/min |
+| `POST /events/{id}/versions` | 30/min |
 | `POST /events/batch-complete` | 10/min |
 | `POST /events/{id}/close` | 60/min |
 | `POST /events/{id}/report` | 10/hour (per IP only, anonymous allowed) |
@@ -518,9 +515,9 @@ flowchart LR
   open --> req
   imp --> det
   create --> geo
-  req -->|"`**POST /events/{id}/request**, owner edit, no version`"| req
-  req -->|"`**POST /events/{id}/geolocate**, anyone`"| geo
-  det -->|"`**POST /events/{id}/geolocate**, **POST /events/batch-complete**, owner`"| geo
+  req -->|"`**POST /events/{id}/request**, owner edit, stays version 0`"| req
+  req -->|"`**POST /events/{id}/versions**, anyone, files version 0`"| geo
+  det -->|"`**POST /events/{id}/versions**, **POST /events/batch-complete**, owner, files version 0`"| geo
   geo -->|"`**POST /events/{id}/versions**, owner, files a version`"| geo
   req -->|"`**POST /events/{id}/close**, withdraw`"| closed
   det -->|"`**POST /events/{id}/close**, reject`"| closed
@@ -531,28 +528,29 @@ flowchart LR
 
 ### Event form fields
 
-Five multipart endpoints take the event form. Each posts the whole row state at once, its sources included. This table states every field once; each endpoint section lists only its own rules.
+Four multipart endpoints take the event form. Each posts the whole row state at once, its sources included. This table states every field once; each endpoint section lists only its own rules.
 
-Columns: **create** [`POST /events`](#post-events), **requests** [`POST /events/requests`](#post-eventsrequests), **request** [`POST /events/{id}/request`](#post-eventsidrequest), **geolocate** [`POST /events/{id}/geolocate`](#post-eventsidgeolocate), **versions** [`POST /events/{id}/versions`](#post-eventsidversions). Values: **req** required; **opt** optional; **floor** optional on the wire, required by the [evidence floor](#evidence-floor); **no** not accepted, ignored if sent.
+Columns: **create** [`POST /events`](#post-events), **requests** [`POST /events/requests`](#post-eventsrequests), **request** [`POST /events/{id}/request`](#post-eventsidrequest), **versions** [`POST /events/{id}/versions`](#post-eventsidversions). Values: **req** required; **opt** optional; **floor** optional on the wire, required by the [evidence floor](#evidence-floor); **no** not accepted, ignored if sent.
 
-| Field | Rule | create | requests | request | geolocate | versions |
-|---|---|---|---|---|---|---|
-| `title` | 1 to 255 characters | req | req | req | req | req |
-| `lat`, `lng` | Subject point. Latitude in [-90, 90], longitude in [-180, 180]. Both or neither; on request, posting neither clears the guess | req | opt | opt | req | req |
-| `sources` | JSON array of [`SourceCreate`](#sources): the event's whole source list, which replaces the stored one. Required on the wire; the floor decides what it must hold | req | req | req | req | req |
-| `occurred_date` | `YYYY-MM-DD`. Blank stores NULL | opt | opt | opt | opt | opt |
-| `occurred_time` | `HH:MM`, UTC. Blank stores NULL. Independent of `occurred_date` | opt | opt | opt | opt | opt |
-| `proof` | An HTML string, sanitized on the [rich text](#rich-text) rules. A `placeholder://<filename>` src resolves against `proof_files`; an already-uploaded URL passes through | opt | opt | opt | opt | opt |
-| `tag_ids` | JSON array of tag ids. Replaces the event's tag set. A source's tags travel in its `tag_ids` | opt | opt | opt | opt | opt |
-| `conflict_ids` | JSON array of [conflict](#conflicts) ids. Replaces the conflict set | floor | opt | opt | floor | floor |
-| `note` | At most 280 characters, stored on the version this edit supersedes | no | no | no | no | opt |
-| `proof_files` | The proof body's inline images, matched to its `placeholder://` srcs by filename | opt | opt | opt | opt | opt |
+| Field | Rule | create | requests | request | versions |
+|---|---|---|---|---|---|
+| `title` | 1 to 255 characters | req | req | req | req |
+| `lat`, `lng` | Subject point. Latitude in [-90, 90], longitude in [-180, 180]. Both or neither; on request, posting neither clears the guess | req | opt | opt | req |
+| `sources` | JSON array of [`SourceCreate`](#sources): the event's whole source list, which replaces the stored one. Required on the wire; the floor decides what it must hold | req | req | req | req |
+| `occurred_date` | `YYYY-MM-DD`. Blank stores NULL | opt | opt | opt | opt |
+| `occurred_time` | `HH:MM`, UTC. Blank stores NULL. Independent of `occurred_date` | opt | opt | opt | opt |
+| `proof` | An HTML string, sanitized on the [rich text](#rich-text) rules. A `placeholder://<filename>` src resolves against `proof_files`; an already-uploaded URL passes through | opt | opt | opt | opt |
+| `tag_ids` | JSON array of tag ids. Replaces the event's tag set. A source's tags travel in its `tag_ids` | opt | opt | opt | opt |
+| `conflict_ids` | JSON array of [conflict](#conflicts) ids. Replaces the conflict set | floor | opt | opt | floor |
+| `note` | At most 280 characters, stored on the version this edit supersedes | no | no | no | opt |
+| `version_no` | The version the form was loaded at. A row that moved past it is `409 version_mismatch` | no | no | no | opt |
+| `proof_files` | The proof body's inline images, matched to its `placeholder://` srcs by filename | opt | opt | opt | opt |
 
-`status`, `requested_by` and the [detection provenance](data-model.md#event_detections) (`detected_from_url` among it) accept no field on any of the five. No write moves `detected_from_url`. A source's file never travels in the event form: it uploads first, through [`POST /uploads`](#post-uploads).
+`status`, `requested_by` and the [detection provenance](data-model.md#event_detections) (`detected_from_url` among it) accept no field on any of the four. No write moves `detected_from_url`. A source's file never travels in the event form: it uploads first, through [`POST /uploads`](#post-uploads).
 
 #### Evidence floor
 
-`POST /events`, `geolocate`, `versions` and [`POST /events/batch-complete`](#post-eventsbatch-complete) check the post-write state against one floor, before anything is written:
+`POST /events`, `versions` and [`POST /events/batch-complete`](#post-eventsbatch-complete) check the post-write state against one floor, before anything is written:
 
 1. A `direct` or `indirect` source: none is `source_required`, and none with a file is `source_file_required`. A `context` source may be a URL only.
 2. At least one [conflict](#conflicts): `conflict_required`. The `"Other"` conflict keeps the rule satisfiable. No tag is required.
@@ -605,12 +603,10 @@ flowchart LR
 
   upload["`**POST /uploads**
   one file per request; answers an UploadRead id`"]:::spec
-  picker["`**GET /sources?q=**
-  finds an existing source to copy; answers its media.id`"]:::spec
   spec_new["`**upload_id**
   a staged file of yours, consumed by the write`"]:::shared
   spec_copy["`**media_id**
-  this source's own file is kept; another source's file is copied`"]:::shared
+  a file of this event: the source's own is kept, another source's is copied`"]:::shared
   spec_id["`**id**
   a stored source of this event, updated in place`"]:::shared
   write["`**the event write**
@@ -621,7 +617,7 @@ flowchart LR
   the stored list follows the posted one: missing sources are deleted`")]:::store
 
   upload --> spec_new --> write
-  picker --> spec_copy --> write
+  spec_copy --> write
   spec_id --> write
   write --> plan --> rows
 ```
@@ -659,11 +655,11 @@ flowchart LR
 | `links` | 1 to 10 URLs, each `{url, posted_at, snapshot_url}`. `url` is at most 2000 characters; `posted_at` (`YYYY-MM-DDTHH:MM`, UTC) is when the media was posted there; `snapshot_url` is the link's [archived copy](#archived-copies). Each URL is stripped, and blanks and repeats are dropped before the count |
 | `tag_ids` | The source's tags, from the catalogue events use. An unknown id is ignored |
 | `upload_id` | A file you staged through [`POST /uploads`](#post-uploads). The write consumes it: the staged row becomes the source's file |
-| `media_id` | A stored source file. The source's own file keeps it; another source's file, on this event or on any event that is not deleted or withheld, is copied: a new file row on the same stored object, and the new source takes that source's `is_graphic`. Find one through [`GET /sources`](#get-sources) |
+| `media_id` | A stored file of one of this event's sources. The source's own file keeps it; another source's file is copied: a new file row on the same stored object, and the source takes that source's `is_graphic`. A file of another event is `source_media_not_found` |
 
 A source names one file, through `upload_id` or `media_id`, or none; both is a 422. Every other field outside this table is a 422 too.
 
-**The posted list replaces the stored one.** An entry with `id` updates that source in place, an entry without one creates a source, and a stored source the list leaves out is deleted with its links, tags and file row. Its stored object stays while a copy or a readable version names it ([`data-model.md`](data-model.md#media)). A source's links are replaced whole too, so post back each link's `snapshot_url` to keep its copy. The order is derived (level, then `captured_at`), so the posted order is not stored.
+**The posted list replaces the stored one.** An entry with `id` updates that source in place, an entry without one creates a source, and a stored source the list leaves out is deleted with its links, tags and file row. Its stored object stays while another file row or a readable version names it ([`data-model.md`](data-model.md#media)). A source's links are replaced whole too, so post back each link's `snapshot_url` to keep its copy. The order is derived (level, then `captured_at`), so the posted order is not stored.
 
 **Every source a person writes needs a URL.** A source posted with no link left after the blanks and repeats are dropped is `source_link_required`. Machine sources may lack one until they are published.
 
@@ -699,7 +695,7 @@ The error table every event form endpoint shares. Each endpoint section names wh
 | 400 | `too_many_sources` | More than 10 sources |
 | 400 | `too_many_source_links` | More than 10 URLs on one source, after blanks and repeats are dropped |
 | 400 | `source_not_found` | A source `id` that is not one of the event's sources, or that repeats |
-| 400 | `source_media_not_found` | A `media_id` that names no file of this event or of a readable event |
+| 400 | `source_media_not_found` | A `media_id` that names no file of this event's sources |
 | 400 | `upload_not_found` | An `upload_id` that does not exist or is not yours, or that another write already consumed |
 | 400 | `upload_expired` | An `upload_id` past its `expires_at`. Upload the file again |
 | 400 | `invalid_file` | A proof file of a disallowed type or size, or a proof src naming another event's image |
@@ -709,6 +705,7 @@ The error table every event form endpoint shares. Each endpoint section names wh
 | 403 | | You are not the owner (where the endpoint is owner-only) |
 | 404 | `event_not_found` | Unknown or soft-deleted event |
 | 409 | `invalid_state` | The row is not in a state this endpoint accepts |
+| 409 | `version_mismatch` | `POST /events/{id}/versions` only: the posted `version_no` is not the live version. Reload the event |
 | 413 | | The body exceeds the platform cap (`max_video_size + max_proof_images_per_event × max_image_size + 10 MB`). The middleware checks it before the body is read, and the 413 carries CORS headers |
 | 422 | `too_many_files` | Over the [proof-image ceiling](#proof-image-ceiling) |
 | 422 | | A missing required field, `title` over 255 characters, a malformed `occurred_date` or `occurred_time`, or a `sources` entry that fails its schema: an unknown field, a missing `kind`, a value outside `level` or `kind`, a URL over 2000 characters, a malformed instant, or both `upload_id` and `media_id`. The `loc` of each entry starts with `["body", "sources", <index>]` |
@@ -739,25 +736,6 @@ Stage one source file before the event write that uses it: the first layer of th
 | 400 | `invalid_file` | Disallowed type or size |
 | 400 | `evidence_processing_failed` | An image the server refuses (see [File limits](#file-limits)), or a failed upload |
 | 429 | `too_many_uploads` | You already hold 20 unexpired staged files no event uses. Submit the form that uses them, or wait for them to expire |
-
-### `GET /sources` 🔒
-
-The source picker: find an existing source to copy into an event form. Matches sources of events that are not deleted or withheld, whose title or one of whose URLs contains `q`, case-insensitive, newest first.
-
-**Query params:**
-| Param | Type | Description |
-|-------|------|-------------|
-| `q` | string, **required** | A URL or part of a title, 3 to 2000 characters |
-| `limit` | int | 1 to 20, default 10 |
-
-**Response 200:** an array of `SourcePickRead`: the [`SourceRead`](#get-eventsid) shape plus `event_id` and `event_title`, the event that holds the source.
-
-To copy a pick, post a new source whose `media_id` is the pick's `media.id`, with the links you want on the copy. A pick with no file has no `media_id` to copy; post its URLs as a new source instead.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 422 | `q` shorter than 3 or longer than 2000 characters, or `limit` outside [1, 20] |
 
 ### `POST /sources/check` 🔒
 
@@ -1131,9 +1109,10 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
 | `detected_from_url` | The post an imported row came from; `null` for a human submit. Read from the event's [`event_detections`](data-model.md#event_detections) row. Not a source |
 | `detected_via` | The ingest entry that produced a machine detection: `bot`, `paste` or `archive`. Stamped once at creation; `null` for a human submit and for a machine row that names no entry. Read from the `event_detections` row |
 | `requested_by` | The analyst who opened the request; `null` on a directly created event |
-| `geolocators` | Who vouched the location, oldest first: the owner and every analyst who accepted an [invitation](#shared-credit). Empty until the first geolocate. A soft-deleted analyst is left out |
+| `geolocators` | Who vouched the location, oldest first: the owner and every analyst who accepted an [invitation](#shared-credit). Empty until the publish. A soft-deleted analyst is left out |
 | `viewer_invite_pending` | `true` when you are signed in and hold a pending [invitation](#shared-credit) to share the event's credit; the event page shows the invitation card from it. `false` for anyone else, and on the responses of the write verbs |
-| `version_no` | `1` until the owner corrects the event, then one higher per [correction](#post-eventsidversions) |
+| `version_no` | `0` while the event is a request or a detection, `1` once it is published, then one higher per [correction](#post-eventsidversions). An event created published starts at `1` |
+| `version_zero` | What version 0 of the event is: `request` or `detection`, the row the event was published from or still is. `null` when the history holds no version 0: an event created published, or one published before the publish filed version 0. Served by `GET /events/{id}` and the write responses; `null` on list reads |
 | `geolocated_at` | When the row became `geolocated`; `null` before publication |
 | `close_reason`, `before_closed_status` | `null` while the event is open |
 | `thumbnail` | The card thumbnail, on the rule of [`GET /events`](#get-events) |
@@ -1186,7 +1165,7 @@ One report names one target: `event_id` here, or `collection` from [`POST /colle
 
 ### `POST /events` 🔒
 
-Create an event directly, born `geolocated`. To open a request without coordinates, use [`POST /events/requests`](#post-eventsrequests). To give an existing `requested` or `detected` event a location, use [`POST /events/{id}/geolocate`](#post-eventsidgeolocate).
+Create an event directly, born `geolocated`. To open a request without coordinates, use [`POST /events/requests`](#post-eventsrequests). To publish an existing `requested` or `detected` event, use [`POST /events/{id}/versions`](#post-eventsidversions).
 
 **Request body (`multipart/form-data`):** the [event form](#event-form-fields), **create** column. The [evidence floor](#evidence-floor) applies.
 
@@ -1198,7 +1177,7 @@ Create an event directly, born `geolocated`. To open a request without coordinat
 
 ### `GET /events/detections` 🔒
 
-Your queue of machine-`detected` events awaiting a geolocate, newest first. Scoped to you; it never exposes another analyst's rows. Items are the full [`EventRead`](#get-eventsid), so the queue shows the evidence and what each row is missing without a per-row fetch. `requested_by` is always `null` here.
+Your queue of machine-`detected` events awaiting a publish, newest first. Scoped to you; it never exposes another analyst's rows. Items are the full [`EventRead`](#get-eventsid), so the queue shows the evidence and what each row is missing without a per-row fetch. `requested_by` is always `null` here.
 
 **Query params:** `page` and `per_page` (offset-paged, see [Pagination](#pagination)), and:
 
@@ -1231,7 +1210,7 @@ Your queue of machine-`detected` events awaiting a geolocate, newest first. Scop
 
 ### `POST /events/requests` 🔒
 
-Open a request: create a `requested` event. A `direct` or `indirect` source with a file is required, and every source needs a URL and a kind. Coordinates, tags, conflicts and the event date are optional, and the proof body may carry images or none. You are recorded as both `owner` and `requested_by`; `requested_by` survives the later geolocate.
+Open a request: create a `requested` event. A `direct` or `indirect` source with a file is required, and every source needs a URL and a kind. Coordinates, tags, conflicts and the event date are optional, and the proof body may carry images or none. You are recorded as both `owner` and `requested_by`; `requested_by` survives the later publish. The request is version 0 until it is published.
 
 **Request body (`multipart/form-data`):** the [event form](#event-form-fields), **requests** column.
 
@@ -1243,32 +1222,16 @@ Open a request: create a `requested` event. A `direct` or `indirect` source with
 
 ### `POST /events/{id}/request` 🔒
 
-Correct an open request in place. Owner only, and only while `requested`. **No version is filed:** the row keeps its id, `requested_at`, `requested_by` and provenance columns, moves `updated_at`, and stays at `version_no` 1. Correct a published row through [`POST /events/{id}/versions`](#post-eventsidversions). Answering the request is [`POST /events/{id}/geolocate`](#post-eventsidgeolocate), which anyone may call.
+Correct an open request in place. Owner only, and only while `requested`. **No version is filed:** the row keeps its id, `requested_at`, `requested_by` and provenance columns, moves `updated_at`, and stays at `version_no` 0. Publishing the request is [`POST /events/{id}/versions`](#post-eventsidversions), which anyone may call.
 
 **Request body (`multipart/form-data`):** the [event form](#event-form-fields), **request** column. Rules specific to this path:
 
 - `sources` replaces the request's sources, on the floor of a request: a `direct` or `indirect` source with a file. Post each stored source's `id` to keep it, and its file's `media_id` to keep the file.
-- A file the write drops is deleted with its object, unless a copy on another event still names it.
+- A file the write drops is deleted with its object, unless another file row still names it.
 
-**Response 200:** an [`EventRead`](#get-eventsid), still `"status": "requested"` and `"version_no": 1`.
+**Response 200:** an [`EventRead`](#get-eventsid), still `"status": "requested"` and `"version_no": 0`.
 
 **Errors:** the [event write errors](#event-write-errors), except `proof_image_required` and `conflict_required`. 403 means you are not the owner. 409 `invalid_state` means the row is not `requested`.
-
----
-
-### `POST /events/{id}/geolocate` 🔒
-
-Give an event a vouched location: `requested` | `detected` → `geolocated`, writing your whole edited form in one transaction under a row lock. A concurrent geolocate on the same row serializes, and the loser gets 409. A `detected` row is owner-only, and this is the only write to it. A `requested` event is answerable by anyone, and you become its `owner` (`requested_by` keeps the original poster). When you fulfil someone else's request, the same transaction writes a `request_fulfilled` [notification](#notifications) for them.
-
-**Request body (`multipart/form-data`):** the [event form](#event-form-fields), **geolocate** column. The [evidence floor](#evidence-floor) applies to the post-geolocate state. Rules specific to this path:
-
-- `sources` replaces the stored sources on both row kinds. A request's sources are not locked: you correct them like any other field. Post each stored source's `id` to keep it, and its file's `media_id` to keep the file.
-- A detection's sources come from the import with kind `unknown`; name each source's kind, and give every source a URL.
-- A file the write drops is deleted with its object, since nothing is versioned before publication, unless a copy on another event still names it.
-
-**Response 200:** an [`EventRead`](#get-eventsid), `"status": "geolocated"`, with you added to `geolocators`.
-
-**Errors:** the [event write errors](#event-write-errors), except the plain-string 400. 403 means a detection you do not own. 409 `invalid_state` means the row is not `requested` or `detected`.
 
 ---
 
@@ -1276,7 +1239,7 @@ Give an event a vouched location: `requested` | `detected` → `geolocated`, wri
 
 Publish a selection of your own detections in one call: the bulk form of the `detected` → `geolocated` transition. **JSON, not multipart**: nothing uploads and no other field is written. The call supplies only what the machine can't judge: the conflicts, once for the selection, and one source kind per row.
 
-Each row runs in its own transaction against the [evidence floor](#evidence-floor). A row that fails rolls back alone and stays a detection; the rest still publish. A published row credits you in `event_geolocators`. Owner only: every targeted detection must be yours.
+Each row runs in its own transaction against the [evidence floor](#evidence-floor). A row that fails rolls back alone and stays a detection; the rest still publish. A published row files the detection as version 0, becomes version 1, and credits you in `event_geolocators`. Owner only: every targeted detection must be yours.
 
 **Request body:**
 ```json
@@ -1331,7 +1294,13 @@ A `200` does not mean every row published; read `published` and `failed`. A fail
 
 ### `POST /events/{id}/versions` 🔒
 
-Correct a published event. Owner only, and only while `geolocated`. The write files the pre-edit state as a version, applies your form, and moves the event to the next `version_no`, in one transaction under a row lock, so two concurrent edits take their numbers in order. Before publication, edit a row through [`POST /events/{id}/request`](#post-eventsidrequest) or [`POST /events/{id}/geolocate`](#post-eventsidgeolocate).
+Publish a request or a detection, or correct a published event. The write files the pre-edit state as a version, applies your form, and moves the event to the next `version_no`, in one transaction under a row lock, so two concurrent writes take their numbers in order.
+
+**Publish.** A `requested` or `detected` event is version 0. Writing to it files it as version 0, the request or the detection as it stood, and the event becomes `geolocated` at version 1, stamped `geolocated_at`, with you added to `geolocators`. A detection is owner-only. A request is anyone's to publish: you become its `owner`, `requested_by` keeps the original poster, and when you publish someone else's request the same transaction writes a `request_fulfilled` [notification](#notifications) for them. A publish always changes the status, so `nothing_changed` does not apply to it. A detection's sources come from the import with kind `unknown`; name each source's kind, and give every source a URL. The requester's own edit of an open request stays in place at version 0 through [`POST /events/{id}/request`](#post-eventsidrequest).
+
+**Correction.** A `geolocated` event is owner-only.
+
+**Concurrency.** Post `version_no`, the version your form was loaded at. When the row has moved past it, because a racing publish or edit landed first, the write answers `409 version_mismatch` before the ownership check, and nothing is written.
 
 **Request body (`multipart/form-data`):** the [event form](#event-form-fields), **versions** column. The [evidence floor](#evidence-floor) is re-checked against the post-edit state.
 
@@ -1350,18 +1319,18 @@ Rules specific to this path:
 **Media and history.**
 
 - A proof image the new body drops is deleted, row and object, unless a readable past version displays it.
-- A dropped source file stays until the event is deleted or the last readable version naming it is [redacted](#post-admineventsidversionsversion_noredact), and longer while a copy on another event names it.
+- A dropped source file stays until the event is deleted or the last readable version naming it is [redacted](#post-admineventsidversionsversion_noredact), and longer while another file row names it.
 - An already-uploaded src in `proof` must be one of this event's own images (a proof image, a source's file, or a source file a past version names). Any other stored image is `invalid_file`.
 
-**Response 200:** an [`EventRead`](#get-eventsid), with `version_no` one higher.
+**Response 200:** an [`EventRead`](#get-eventsid), with `version_no` one higher: `"status": "geolocated"` and `"version_no": 1` after a publish.
 
-**Errors:** the [event write errors](#event-write-errors), except the plain-string 400, plus `nothing_changed` and `version_limit` above. 403 means you are not the owner. 409 `invalid_state` means the row is not `geolocated`. A `note` over 280 characters is a 422.
+**Errors:** the [event write errors](#event-write-errors), except the plain-string 400, plus `nothing_changed`, `version_limit` and `version_mismatch` above. 403 means a detection or a published event you do not own. 409 `invalid_state` means the row is `closed`. A `note` over 280 characters, or a negative `version_no`, is a 422.
 
 ---
 
 ### `GET /events/{id}/versions` 🌐
 
-The event's superseded versions, newest first. Public, like the event. The live row is the current version and is not listed, so an event nobody has corrected answers with an empty list. Cursor-paged (see [Pagination](#pagination)); `total` is the whole history, not the page.
+The event's superseded versions, newest first. Public, like the event. The live row is the current version and is not listed, so an event nobody has published from a request or a detection, and nobody has corrected, answers with an empty list. Cursor-paged (see [Pagination](#pagination)); `total` is the whole history, not the page.
 
 **Query parameters:** `limit` and `cursor`, see [Pagination](#pagination).
 
@@ -1412,7 +1381,7 @@ The event's superseded versions, newest first. Public, like the event. The live 
 }
 ```
 
-- `version_no` is the version the row **holds**. An event at `version_no` 3 answers with snapshots 2 and 1.
+- `version_no` is the version the row **holds**. An event at `version_no` 3 answers with snapshots 2 and 1, and with snapshot 0 too when it was published from a request or a detection.
 - `edited_by` is the analyst whose edit superseded that version, `null` once their account is erased. `note` is their optional line, `null` when they left none. `created_at` is when the edit happened.
 - `redacted` is `true` on a version an admin [blanked](#post-admineventsidversionsversion_noredact). It keeps its number, `created_at` and `edited_by`, and serves `{}` as `snapshot` with `note` `null`.
 - `snapshot` carries the editable fields as they stood. Tags and conflicts carry their names beside their ids. `sources` holds each source in the order the event then read, with its links, their archived copies, its tags and its file; a source entry carries no `id`, and the snapshot stores `snapshot_url` where the live read serves `archived`. Each `media` and `proof_media` entry is carried whole, because the row may be gone.
@@ -2684,8 +2653,8 @@ flowchart LR
     l1 ~~~ l2 ~~~ l3 ~~~ l4
   end
 
-  geolocate["`**POST /events/{id}/geolocate**
-  on a request: request_fulfilled to the analyst who opened it`"]:::spec
+  publish["`**POST /events/{id}/versions**
+  publishing a request: request_fulfilled to the analyst who opened it`"]:::spec
   follow["`**POST /users/{username}/follow**
   new_follower to the followed analyst, once per follower`"]:::spec
   credit["`**geolocator_credit**
@@ -2716,7 +2685,7 @@ flowchart LR
   worker["`**notification_delivery.drain**
   re-checks the switch and the filter, sends after the action commits`"]:::core
 
-  geolocate --> rows
+  publish --> rows
   follow --> rows
   credit --> rows
   orgs --> rows
@@ -2739,7 +2708,7 @@ When your email switch for the kind is on, the same transaction queues an email 
 
 | Kind | Emitted when | `actor` | `event` | `organization` |
 |------|--------------|---------|---------|----------------|
-| `request_fulfilled` | Another analyst geolocates a request you opened | the fulfiller | the request | null |
+| `request_fulfilled` | Another analyst publishes a request you opened | the fulfiller | the request | null |
 | `new_follower` | An analyst follows you for the first time | the follower | null | null |
 | `co_geolocator_invite` | The owner of a published event invites you to share its credit, unless an invitation to the same event reached you in the last 7 days | the owner | the event | null |
 | `co_geolocator_removed` | The owner of an event removes you from its geolocators | the owner | the event | null |
@@ -3242,7 +3211,7 @@ Case-insensitive substring match on username or email. `%` and `_` match themsel
 Remove a user. Both modes invalidate the points cache. Audited as `user_soft_deleted` or `user_hard_deleted`.
 
 - **Soft delete** (default) sets `users.deleted_at`, passes every owned live event another live analyst is credited on to the earliest of them, who receives an `ownership_transferred` notification, and soft-deletes every other live event the user owns. `transferred_events` counts the events handed over. The user can no longer log in (an opaque 401, like wrong credentials), and their profile answers 404. Idempotent: a repeat keeps the original timestamp.
-- **Hard delete** (`?hard=true`, GDPR erasure) drops the user row, every event and [collection](#collections) they owned, then sweeps their storage objects (source files, proof images, the files they staged through [`POST /uploads`](#post-uploads), and the profile picture). An object a copy on another event still names stays. An owned event that credits another live analyst is kept instead: it passes to the earliest of them by credit time, with its media, versions and files, and that analyst receives an `ownership_transferred` notification that does not name the erased user. A soft-deleted co-geolocator is skipped. An event the user's soft delete hid (its `deleted_at` equals the user's) passes too and is restored; an event soft-deleted on its own is never handed over: it is deleted and swept like an uncredited one. Their own approvals go; an approval they placed for an organization stays the organization's, with `reviewer` set to `null`. Invite codes they issued or used survive with the reference set to NULL. The DB commits before the storage sweep.
+- **Hard delete** (`?hard=true`, GDPR erasure) drops the user row, every event and [collection](#collections) they owned, then sweeps their storage objects (source files, proof images, the files they staged through [`POST /uploads`](#post-uploads), and the profile picture). An object another file row still names stays. An owned event that credits another live analyst is kept instead: it passes to the earliest of them by credit time, with its media, versions and files, and that analyst receives an `ownership_transferred` notification that does not name the erased user. A soft-deleted co-geolocator is skipped. An event the user's soft delete hid (its `deleted_at` equals the user's) passes too and is restored; an event soft-deleted on its own is never handed over: it is deleted and swept like an uncredited one. Their own approvals go; an approval they placed for an organization stays the organization's, with `reviewer` set to `null`. Invite codes they issued or used survive with the reference set to NULL. The DB commits before the storage sweep.
 - **Both modes** hand an organization's org manager role to its earliest-joined live member when the user was its last live org manager (see [Organizations](#organizations)). On a hard delete, this and the event hand-over commit in one transaction.
 
 **Response 200:**

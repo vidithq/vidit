@@ -1,6 +1,6 @@
 # Data model
 
-One `events` row carries a geolocation for its whole life. The status it holds says how far along it is, four writes move or correct it, and the tables below hang off it rather than copy it.
+One `events` row carries a geolocation for its whole life. The status it holds says how far along it is, three writes move or correct it, and the tables below hang off it rather than copy it.
 
 ```mermaid
 flowchart LR
@@ -36,10 +36,10 @@ flowchart LR
 
   amend["`**update_request**
   the owner corrects the open question: overwritten in place, no version filed`"]:::spec
-  vouch["`**services/events.geolocate**
-  a person vouches: coordinate, a direct or indirect source with its file, one proof image. owner_id moves to the fulfiller`"]:::spec
+  vouch["`**publish**
+  a person vouches: coordinate, a direct or indirect source with its file, one proof image. A request or a detection is filed as version 0, and owner_id moves to a request's fulfiller`"]:::spec
   version["`**POST /events/{id}/versions**
-  every later correction; refused past 100 versions`"]:::spec
+  the publish of version 0, then every later correction; refused past 100 versions`"]:::spec
   close["`**close**
   the owner takes the row back, from any live status`"]:::spec
 
@@ -80,6 +80,7 @@ flowchart LR
   requested --> vouch
   detected --> vouch
   vouch --> geolocated --> version --> geolocated
+  vouch --> versions
   ask --> evidence
   engine --> evidence
   amend --> evidence
@@ -105,7 +106,7 @@ flowchart LR
   shelve --> shelves
 ```
 
-The three entries on the left are the three ways a row is born: a request and a direct submit come from [`POST /events/requests` and `POST /events`](api.md#post-events), and a machine detection comes from the [ingest engine](ingestion.md). The four statuses and the constraints that pin them are [`events`](#events). The four writes are `update_request`, `geolocate`, `save_version` and `close`, all in [`api.md`](api.md). Two of them correct a row rather than move it, and they differ on what the row is: `update_request` overwrites an open question, while `save_version` files what it supersedes, because a published row is a vouched claim. [`sources`](#sources), with their [`source_links`](#source_links) and files in [`media`](#media), hold the evidence the row rests on: every write but `close` posts the whole list, and the floor a status demands is in [`api.md`](api.md#evidence-floor). The tables on the right exist because a write happened: [`event_geolocators`](#event_geolocators) records who vouched (the owner and every analyst who accepted an invitation), who is invited and who lost the credit, [`event_detections`](#event_detections) records where an imported row came from, [`event_versions`](#event_versions) holds what a correction superseded, [`event_approvals`](#event_approvals) holds who attested which version, [`approval_requests`](#approval_requests) holds who was asked to (a departure withdraws the open requests its analyst sent), an [organization](#organizations) can stand behind an approval or a request in place of one analyst, [`content_reports`](#content_reports) holds what a viewer flagged, and [`collections`](#collections) with [`collection_events`](#collection_events) holds the curated sets a credited analyst puts the row on.
+The three entries on the left are the three ways a row is born: a request and a direct submit come from [`POST /events/requests` and `POST /events`](api.md#post-events), and a machine detection comes from the [ingest engine](ingestion.md). The four statuses and the constraints that pin them are [`events`](#events). The three writes are `update_request`, `save_version` and `close`, all in [`api.md`](api.md), plus the batch form of the publish. A request or a detection is version 0. `update_request` lets the requester overwrite an open question in place, at version 0. `save_version` publishes a request or a detection, filing it as version 0, and corrects a published row, filing what each correction supersedes, because a published row is a vouched claim. [`sources`](#sources), with their [`source_links`](#source_links) and files in [`media`](#media), hold the evidence the row rests on: every write but `close` posts the whole list, and the floor a status demands is in [`api.md`](api.md#evidence-floor). The tables on the right exist because a write happened: [`event_geolocators`](#event_geolocators) records who vouched (the owner and every analyst who accepted an invitation), who is invited and who lost the credit, [`event_detections`](#event_detections) records where an imported row came from, [`event_versions`](#event_versions) holds what a correction superseded, [`event_approvals`](#event_approvals) holds who attested which version, [`approval_requests`](#approval_requests) holds who was asked to (a departure withdraws the open requests its analyst sent), an [organization](#organizations) can stand behind an approval or a request in place of one analyst, [`content_reports`](#content_reports) holds what a viewer flagged, and [`collections`](#collections) with [`collection_events`](#collection_events) holds the curated sets a credited analyst puts the row on.
 
 ## Schema overview
 
@@ -187,7 +188,7 @@ erDiagram
         VARCHAR before_closed_status "nullable, requested | detected | geolocated"
         TIMESTAMPTZ deleted_at "nullable, admin soft-delete"
         TIMESTAMPTZ hidden_at "nullable, admin takedown"
-        INTEGER version_no "which version the live row is, from 1"
+        INTEGER version_no "which version the live row is: 0 until published"
         TIMESTAMPTZ created_at
         TIMESTAMPTZ updated_at
     }
@@ -647,12 +648,12 @@ One row represents one event across its whole lifecycle. `status` tracks the lif
 | `detected_at` | `TIMESTAMPTZ` | nullable. Stamped when a machine produced it, entering `detected`. The provenance of an imported row is its [`event_detections`](#event_detections) row. |
 | `geolocated_at` | `TIMESTAMPTZ` | nullable. Stamped when a person vouched for it and published it, entering `geolocated`. |
 | `closed_at` | `TIMESTAMPTZ` | nullable. Stamped when the event entered the terminal `closed` state. |
-| `status` | `VARCHAR(20)` | NOT NULL, `server_default 'geolocated'`. The lifecycle runs `requested` (an open call to geolocate) → `detected` (a machine detection, marked on every surface, immutable until vouched) → `geolocated` (a person vouched for it and published it; always has a location, and every later correction is a version) → `closed` (the owner took the row back, from any of the three live states). It is a plain string, not a native enum, and `ck_events_status_valid` pins the value domain. The default keeps a direct human submit correct without setting the value explicitly; the requested and detected paths pass `status` explicitly. The `update_request`, `geolocate`, `save_version` and `close` writes are documented in [`api.md`](api.md). |
+| `status` | `VARCHAR(20)` | NOT NULL, `server_default 'geolocated'`. The lifecycle runs `requested` (an open call to geolocate) → `detected` (a machine detection, marked on every surface, immutable until vouched) → `geolocated` (a person vouched for it and published it; always has a location, and every later correction is a version) → `closed` (the owner took the row back, from any of the three live states). It is a plain string, not a native enum, and `ck_events_status_valid` pins the value domain. The default keeps a direct human submit correct without setting the value explicitly; the requested and detected paths pass `status` explicitly. The `update_request`, `save_version` and `close` writes are documented in [`api.md`](api.md). |
 | `close_reason` | `TEXT` | nullable. A free-text reason the event was closed, such as AI image, bot bug, or withdrawn. Required by the close endpoint and kept visible for transparency, which is what makes a closed row read as a decision rather than a disappearance. |
 | `before_closed_status` | `VARCHAR(20)` | nullable. The status held just before `closed`: `requested` means withdrawn, `detected` means rejected, `geolocated` means retracted. Drives the status badge and the read views: a rejected detection stays in the located catalog, a withdrawn request in the requested queue, and a retraction is in neither. |
 | `deleted_at` | `TIMESTAMPTZ` | nullable. A non-NULL value marks an admin soft-delete: the row and its media stay in place, but every public read filters it out, admins included. |
 | `hidden_at` | `TIMESTAMPTZ` | nullable. A non-NULL value marks a takedown: the row is withheld from every public read the same way `deleted_at` is, but an admin still reads it (judging the [content report](#content_reports) that led to the takedown means seeing what was withheld), and the state is reversible, which is what separates it from `deleted_at`. Set by `POST /admin/reports/{id}/resolve` (`resolution = "hidden"`) or directly by `PATCH /admin/events/{id}/moderation`; cleared only by the latter. |
-| `version_no` | `INTEGER` | NOT NULL, `server_default 1`. Which version of the event the live row is. It starts at 1 and moves forward one step per correction, which files the superseded state in [`event_versions`](#event_versions). Only a `geolocated` row can move past 1, because saving a version is the published-row correction path; see [`POST /events/{id}/versions`](api.md#post-eventsidversions). An open request is corrected in place by [`POST /events/{id}/request`](api.md#post-eventsidrequest) and stays at 1: a version supersedes a vouched claim, and a request is a question. |
+| `version_no` | `INTEGER` | NOT NULL, `server_default 1`. Which version of the event the live row is. A request or a detection is version 0, open or closed; the ORM sets 0 when it inserts one (`models/event._initial_version`). Publishing it files version 0 in [`event_versions`](#event_versions) and the row becomes version 1; a row created published starts at 1. Each later correction moves it forward one step and files the superseded state; see [`POST /events/{id}/versions`](api.md#post-eventsidversions). The requester's correction of an open request, [`POST /events/{id}/request`](api.md#post-eventsidrequest), overwrites it in place at version 0. A [re-import](ingestion.md#re-import) writes onto a detection only at version 0. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
@@ -662,6 +663,7 @@ The evidence is not on this row. An event's footage, its URLs and the capture po
 - `ck_events_status_valid`: `status IN ('requested', 'detected', 'geolocated', 'closed')`. Pins the value domain at the database. The column is a plain `VARCHAR`, not a native enum, so this constraint rejects a bad write at the Postgres level, not only at the app-layer `Literal`.
 - `ck_events_coords_status`: `status <> 'geolocated' OR coords IS NOT NULL`. A `geolocated` event always has a subject coordinate. The other states leave it free, so a `requested` request may carry an approximate guess.
 - `ck_events_closed_stamp` (`status <> 'closed' OR closed_at IS NOT NULL`) and `ck_events_geolocated_stamp` (`status <> 'geolocated' OR geolocated_at IS NOT NULL`). These tie the terminal stamps to status. An app path that forgets to stamp is rejected at write time, not stored as silent bad data.
+- `ck_events_version_published`: `(version_no = 0) = (COALESCE(before_closed_status, status) IN ('requested', 'detected'))`. A row that was never published is version 0, and a published row, retracted or not, is version 1 or more.
 - `ck_events_before_closed_status`: `(status = 'closed' AND before_closed_status IS NOT NULL AND before_closed_status IN ('requested', 'detected', 'geolocated')) OR (status <> 'closed' AND before_closed_status IS NULL)`. The field is non-NULL and in-domain exactly when `closed`, and NULL otherwise. The explicit `IS NOT NULL` clause is required: `NULL IN (...)` evaluates to unknown, not false, so without it a `closed` row could keep a NULL discriminator and slip through.
 
 **Temporal fields: five kinds of time.** A geolocation carries several timestamps. Each marks a different point on the path from an event to a Vidit row. They are distinct by design:
@@ -720,14 +722,14 @@ The match joins to `events` to scope itself to the importer's own rows. The admi
 
 ### `event_geolocators`
 
-One analyst's standing on one event's credit, one row per pair. A row is `invited` while the owner's invitation waits, `active` while the analyst holds the credit, and `departed` once they held it and lost it. The `active` rows are the credit: who vouched for the location. `owner_id` is always among them on a `geolocated` event. The system writes the owner's `active` row at the `geolocate` transition, and a row turns `active` each time an invited analyst accepts. Credit grants no write right: every write still checks `owner_id`. Every read that lists an analyst's work matches an event on `owner_id` or on an `active` row (`services/event_filters.credited_to`).
+One analyst's standing on one event's credit, one row per pair. A row is `invited` while the owner's invitation waits, `active` while the analyst holds the credit, and `departed` once they held it and lost it. The `active` rows are the credit: who vouched for the location. `owner_id` is always among them on a `geolocated` event. The system writes the owner's `active` row at the publish, and a row turns `active` each time an invited analyst accepts. Credit grants no write right: every write still checks `owner_id`. Every read that lists an analyst's work matches an event on `owner_id` or on an `active` row (`services/event_filters.credited_to`).
 
 ```mermaid
 stateDiagram-v2
   classDef held fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
   classDef gone fill:#eef1fb,stroke:#4a5fa5,color:#33417a
 
-  [*] --> active: geolocate, for the owner
+  [*] --> active: publish, for the owner
   [*] --> invited: invite
   invited --> active: accept
   invited --> departed: decline or withdraw, row has departed_at
@@ -817,11 +819,11 @@ A geolocator's request that an analyst or an organization approve an event, writ
 
 ### `event_versions`
 
-One superseded version of a published event. Correcting a `geolocated` row must not silently rewrite the record, so the pre-edit state is filed here before the edit lands and `events.version_no` moves on. A version number is a public address, so a filed row is never removed and never renumbered while its event lives: nothing reuses a number, nothing reorders the history, and `/events/{id}/vN` means the same thing forever. Redaction is the one write a filed row takes (below), and the cascade with its event is the one delete.
+One superseded version of an event. Publishing a request or a detection, or correcting a `geolocated` row, must not silently rewrite the record, so the pre-edit state is filed here before the edit lands and `events.version_no` moves on. A version number is a public address, so a filed row is never removed and never renumbered while its event lives: nothing reuses a number, nothing reorders the history, and `/events/{id}/vN` means the same thing forever. Redaction is the one write a filed row takes (below), and the cascade with its event is the one delete.
 
-Read it as "the snapshots, then the live row": an event at `version_no` 3 carries rows 1 and 2 here, and the live row is version 3. Publication writes nothing here, so version 1 is the published row itself.
+Read it as "the snapshots, then the live row": an event at `version_no` 3 carries rows 1 and 2 here, and the live row is version 3. An event published from a request or a detection also carries row 0: the request or the detection as the requester or the import left it. An event created published (`POST /events`) has no row 0, and neither has one published before the publish filed version 0; `services/versions.version_zero` reads which case applies.
 
-One write files a version, through `services/versions.file_version`: the owner's edit ([`POST /events/{id}/versions`](api.md#post-eventsidversions)), which is also where an [archived copy](#source_links) of one of the row's links is recorded, since that is a change to what the published record says about its own evidence. The number is taken under the event's row lock.
+Two writes file a version, through `services/versions.file_version`: [`POST /events/{id}/versions`](api.md#post-eventsidversions), the publish of version 0 and the owner's later edits, which is also where an [archived copy](#source_links) of one of the row's links is recorded, since that is a change to what the published record says about its own evidence; and the batch publish, [`POST /events/batch-complete`](api.md#post-eventsbatch-complete), which files each detection as version 0. The number is taken under the event's row lock.
 
 An event carries at most 100 versions (`services/versions.MAX_VERSIONS_PER_EVENT`); a save whose only change is a link's archived copy is exempt. [`api.md`](api.md#post-eventsidversions) states the refusal. A version has to differ from the row it supersedes, so a save that moves no versioned field and no archived copy files nothing.
 
@@ -832,7 +834,7 @@ Redaction is that one write, and it is still not a delete: an admin blanks `snap
 | `id` | `UUID` | PK, default `uuid4()` |
 | `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, NOT NULL |
 | `version_no` | `INTEGER` | NOT NULL. The version this row **holds**, not the one that replaced it. |
-| `edited_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The analyst whose edit superseded this version. NULL once that account is erased: an event legitimately outlives an editor who is not its owner. |
+| `edited_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The analyst whose edit superseded this version; on version 0, the analyst who published it. NULL once that account is erased: an event legitimately outlives an editor who is not its owner. |
 | `note` | `TEXT` | nullable. The editor's own words about the edit. Bounded to 280 characters by the schema, not the column, which stays unbounded `TEXT`. |
 | `snapshot` | `JSONB` | NOT NULL. The editable fields as they stood (`services/versions.build_snapshot`): `title`, `coords`, `occurred_date`, `occurred_time`, `sources`, `tags`, `conflicts`, `proof` (the HTML string, as `events.proof` stores it), and `proof_media`. `sources` lists each [source](#sources) in the event's source order (`services/versions.source_entry`): `title`, `level`, `kind`, `captured_at`, `capture_position`, `is_graphic`, `links` (each `url`, `posted_at`, `snapshot_url`, `archived_at`), `tags`, and `media`, its file or `null`. A source entry carries no id: a source is filed by its content, not its row. `media` and each `proof_media` entry carry the [media](#media) row whole (`id`, `storage_url`, `kind`, `sha256`, `original_filename`); `proof_media` holds the images this version's own proof body referenced, not every proof image the event holds. Tags and conflicts carry their names alongside their ids, so a version stays readable after a referential row is renamed. `{}` on a redacted version. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL. When the edit that superseded this version happened. |
@@ -851,7 +853,7 @@ A source's file cannot take that route: a correction that drops a source, or rep
 
 ### `sources`
 
-One piece of evidence an event rests on: at most one file, the URLs that file was posted at, and what is known about its capture. An event holds up to 10 sources (`MAX_SOURCES_PER_EVENT` in [`models/source.py`](../backend/app/models/source.py)), and none is the main one. A source belongs to one event; adding an existing source to another event copies it (see Reuse by copy below). [`api.md`](api.md#sources) states the write contract.
+One piece of evidence an event rests on: at most one file, the URLs that file was posted at, and what is known about its capture. An event holds up to 10 sources (`MAX_SOURCES_PER_EVENT` in [`models/source.py`](../backend/app/models/source.py)), and none is the main one. A source belongs to one event. [`api.md`](api.md#sources) states the write contract.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -880,11 +882,11 @@ The `kind` and `level` value domains have one home, the `SourceKind` and `Source
 
 **The order is derived, not stored.** An event's sources read by level (`direct`, then `indirect`, then `context`), then by `captured_at` with unknown last, then by `created_at` and `id` (`models/source.source_order`). There is no position column, so no write reorders a list by hand.
 
-**A write posts the whole list.** Every event write posts the event's full source list, and the stored sources follow it (`services/events/sources.apply_sources`): an entry naming a stored source's `id` updates that source in place, an entry without one creates a source, and a stored source the list leaves out is deleted, its links, tags and `media` row with it. The source's file outlives its row while a copy or a readable version names it (see [`media`](#media)). A request's sources are not locked: the analyst who geolocates a request rewrites them like any other field.
+**A write posts the whole list.** Every event write posts the event's full source list, and the stored sources follow it (`services/events/sources.apply_sources`): an entry naming a stored source's `id` updates that source in place, an entry without one creates a source, and a stored source the list leaves out is deleted, its links, tags and `media` row with it. The source's file outlives its row while another `media` row or a readable version names it (see [`media`](#media)). A request's sources are not locked: the analyst who publishes a request rewrites them like any other field.
 
 **The graphic flag only rises from the forms.** A posted `false` leaves a stored source's `is_graphic` set. Only an admin clears it, through [`PATCH /admin/events/{id}/moderation`](api.md#patch-admineventsidmoderation), which sets or clears the flag on every source of the event; resolving a report as `marked_graphic` sets it on every source.
 
-**Reuse by copy.** An event form adds an existing source to another event by naming that source's file: the write creates a new source with its own links and a new `media` row on the same stored object, and the copy takes the original's graphic flag. The two sources then live apart, and the stored object stays until no `media` row names it.
+**A file shared within an event.** A source may name the file of another source of the same event: the write adds a `media` row on the same stored object, and the source takes that source's graphic flag. The stored object stays until no `media` row names it.
 
 **Versioned with the event.** A source is part of what an event says, so an edit to a source on a `geolocated` event files a version like any other edit, and the snapshot keeps each source whole ([`event_versions`](#event_versions)).
 
@@ -1172,8 +1174,8 @@ flowchart LR
   a source names upload_id or media_id`"]:::spec
   source_row["`**media** row, source_id set
   one per source`"]:::shared
-  copy_row["`**media** row on another source
-  a copy: same storage_url, new row`"]:::shared
+  copy_row["`**media** row on another source of the event
+  same storage_url, new row`"]:::shared
   proof_row["`**media** row, event_id set
   a proof image`"]:::shared
   snapshot["`**event_versions.snapshot**
@@ -1220,7 +1222,7 @@ The model reads a row's role off the foreign key that is set (`Media.role`: `sou
 
 **Two upload paths.** A source file uploads on its own request before the event write, through [`POST /uploads`](api.md#post-uploads), which stores the object and records an [`uploads`](#uploads) row; the event write names that row in a source's `upload_id` and turns it into the source's `media` row. Keeping every request to one file keeps a video within the request size limit. Proof images still travel inside the event write, as `proof_files` matched to the proof body's `placeholder://` srcs, and become rows with `event_id` set in the same transaction.
 
-**Reference counting.** Adding an existing source to another event copies the `media` row, not the object, so several rows may name one stored object. A write therefore never deletes an object outright: after the commit, `services/evidence_intake.sweep_unreferenced` deletes the objects that no `media` row and no readable [version snapshot](#event_versions) names. The event and user hard deletes, a redaction, the detection re-import and the upload reaper all go through the same check, so a copy on another event keeps its file.
+**Reference counting.** Two sources of one event may share a stored object through two `media` rows, and a readable [version snapshot](#event_versions) may name an object no row holds any more. A write therefore never deletes an object outright: after the commit, `services/evidence_intake.sweep_unreferenced` deletes the objects that no `media` row and no readable version snapshot names. The event and user hard deletes, a redaction, the detection re-import and the upload reaper all go through the same check.
 
 ---
 
@@ -1364,7 +1366,7 @@ This is a many-to-many relationship: a geolocation can carry several tags, and a
 A kind is one closed value per source, required on every source, and filtered on as a domain of its own. A column with a CHECK holds all three, and the value domain generates into the frontend types. A tag holds none of them: tags are free, many per row, and shared by events and sources.
 
 ### Why do several `media` rows share one stored object?
-A source added to another event is a copy, so each event keeps a source it can edit and delete on its own. Copying the row and not the object keeps one file for one piece of footage, which keeps its `sha256` and its storage cost single. The price is the reference count: an object is deleted only when no row and no readable version names it.
+A source that takes the file of another source of its event gets its own row, so each source keeps a file it can drop on its own. Sharing the object and not the bytes keeps one file for one piece of footage, which keeps its `sha256` and its storage cost single. The price is the reference count: an object is deleted only when no row and no readable version names it.
 
 ### Why `GEOMETRY` instead of two `lat` / `lng` columns?
 PostGIS enables native geospatial queries: bounding-box filtering, distance computation, and clustering. GeoAlchemy2 exposes those types directly to SQLAlchemy.
