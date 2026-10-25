@@ -65,7 +65,7 @@ function ZoneLayers({
             : { type: "FeatureCollection", features: [] }
         }
       >
-        <Layer id={ZONE_FILL} type="fill" paint={{ "fill-color": color, "fill-opacity": 0.2 }} />
+        <Layer id={ZONE_FILL} type="fill" paint={{ "fill-color": color, "fill-opacity": 0.1 }} />
         <Layer id={ZONE_LINE} type="line" paint={{ "line-color": color, "line-width": 2 }} />
       </Source>
       <Source

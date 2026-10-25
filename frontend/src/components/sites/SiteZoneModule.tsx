@@ -56,7 +56,7 @@ export const SiteZoneModule = forwardRef<HTMLDivElement, { site: Site; image: Si
 
     return (
       <div ref={ref} className="scroll-mt-20 rounded-lg border border-neutral-700">
-        <div className="h-64 overflow-hidden rounded-t-lg">
+        <div className="h-64 overflow-hidden rounded-t-lg lg:h-80">
           {bounds && (
             <SiteMap
               zone={contour?.zone ?? null}

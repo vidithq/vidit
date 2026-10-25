@@ -218,10 +218,10 @@ export function SiteLayers({
             "fill-opacity": [
               "case",
               ["==", ["get", "corroborated"], 0],
-              0.06,
+              0.04,
               ["==", ["get", "selected"], 1],
-              0.3,
-              0.18,
+              0.14,
+              0.08,
             ],
           }}
         />
@@ -232,7 +232,7 @@ export function SiteLayers({
           filter={["==", ["get", "corroborated"], 1]}
           paint={{
             "line-color": color,
-            "line-width": ["case", ["==", ["get", "selected"], 1], 2.5, 1.5],
+            "line-width": ["case", ["==", ["get", "selected"], 1], 3, 2],
           }}
         />
         <Layer
@@ -242,8 +242,8 @@ export function SiteLayers({
           filter={["==", ["get", "corroborated"], 0]}
           paint={{
             "line-color": color,
-            "line-width": ["case", ["==", ["get", "selected"], 1], 2, 1],
-            "line-opacity": 0.6,
+            "line-width": ["case", ["==", ["get", "selected"], 1], 2, 1.5],
+            "line-opacity": 0.7,
             "line-dasharray": [2, 2],
           }}
         />
