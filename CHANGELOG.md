@@ -17,7 +17,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
-- The event and source titles, the close reason and the report details show a character counter, URL and archived copy fields stop at the API's cap, an out-of-range capture position is flagged, and a write drops a document source's capture position.
+- The event title, the close reason and the report details show a character counter, the source title, URL and archived copy fields stop at the API's cap, an out-of-range capture position is flagged, and a write drops a document source's capture position.
 - Deleting a collection that an open report names withholds it from everyone at once, keeps it in the admin reports queue marked Deleted by its owner, and erases it when its last open report is resolved.
 - Sign-in, registration, password reset, Change password and the invite form list every blank required field at once and outline it, in place of the browser's one-field bubble. The accent colour picker in Settings moves between swatches with the arrow keys.
 - The admin console finds analysts and events by name, confirms every destructive action in a dialog (revoking an invite code included), groups row actions in a menu, and pages the reports queue with Load more.

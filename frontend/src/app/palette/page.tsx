@@ -950,7 +950,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<CharCounter>" usage="How much of a capped free-text field is used: `length / cap`, red once the value runs over. One counter for every capped free-text field (the profile bio, a collection's title and description, the event and source titles, the close reason, the report details), so no two spell the reading differently. It turns red exactly when the submit refuses the value, so the colour and the count on the submit always agree. The figure alone, no label and no box: a caller sits it at the far end of the field's label row.">
+          <Item name="<CharCounter>" usage="How much of a capped free-text field is used: `length / cap`, red once the value runs over. One counter for every capped free-text field (the profile bio, a collection's title and description, the event title, the close reason, the report details), so no two spell the reading differently. It turns red exactly when the submit refuses the value, so the colour and the count on the submit always agree. The figure alone, no label and no box: a caller sits it at the far end of the field's label row.">
             <div className="flex w-full max-w-sm items-center justify-between gap-2">
               <label className={FORM_LABEL}>Bio</label>
               <CharCounter length={120} max={500} />
