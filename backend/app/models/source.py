@@ -27,6 +27,7 @@ from app.database import Base, literal_check
 # the generated frontend type.
 SourceLevel = Literal["direct", "indirect", "context"]
 # The levels that support a publication (``services/events/sources.check_publish_floor``).
+# Mirrored by ``frontend/src/lib/sources.ts::isEvidenceLevel``; change both.
 EVIDENCE_LEVELS: tuple[SourceLevel, ...] = ("direct", "indirect")
 
 # Where a source comes from: what captured it (``camera`` is a handheld or press camera,
@@ -50,13 +51,18 @@ SourceKind = Literal[
     "unknown",
 ]
 SOURCE_KINDS: tuple[SourceKind, ...] = get_args(SourceKind)
+# The kinds that are documents, not captures: a document carries no capture position, and a
+# write drops one it posts (``schemas/source.SourceCreate``). Mirrored by
+# ``frontend/src/lib/sources.ts::DOCUMENT_SOURCE_KINDS``; change both.
+DOCUMENT_SOURCE_KINDS: frozenset[SourceKind] = frozenset({"article", "official_statement", "other"})
 
 # Which service holds a link's archived copy, derived from the snapshot URL's host
 # (``services/source_archive.PROVIDER_HOSTS``); never stored.
 ArchiveProvider = Literal["wayback", "archive_today", "ghostarchive"]
 
 # Ceilings per event and per source. A write past either is rejected, not truncated; an
-# import truncates instead (no one to report to).
+# import truncates instead (no one to report to). Mirrored, with the two input caps below, in
+# ``frontend/src/lib/sources.ts``; change both.
 MAX_SOURCES_PER_EVENT = 10
 MAX_LINKS_PER_SOURCE = 10
 # Input caps: the columns are unbounded ``Text``.

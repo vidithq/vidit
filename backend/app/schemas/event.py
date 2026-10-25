@@ -77,8 +77,11 @@ class ArchiveImportJobRead(BaseModel):
 
 
 # Boundary cap on the note attached to a version (the column is unbounded
-# ``Text``), so an over-long note is a 422.
+# ``Text``), so an over-long note is a 422. Mirrored by
+# ``frontend/src/lib/events.ts::VERSION_NOTE_MAX_LEN``; change both.
 VERSION_NOTE_MAX_LENGTH = 280
+# Mirrored by ``frontend/src/lib/events.ts::CLOSE_REASON_MAX_LEN``; change both.
+CLOSE_REASON_MAX_LENGTH = 2000
 
 
 class EventVersionRead(BaseModel):
@@ -121,8 +124,7 @@ class EventCloseRequest(BaseModel):
     """Body for ``POST /events/{id}/close``. The reason is required because a
     closed event stays public."""
 
-    # Mirrored by frontend CloseEventDialog.tsx CLOSE_REASON_MAX_LEN; change both.
-    close_reason: str = Field(min_length=1, max_length=2000)
+    close_reason: str = Field(min_length=1, max_length=CLOSE_REASON_MAX_LENGTH)
 
 
 # Largest page ``GET /events/detections`` serves. Equals

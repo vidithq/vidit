@@ -13,6 +13,7 @@ from pydantic import (
 
 from app.models.media import MediaKind
 from app.models.source import (
+    DOCUMENT_SOURCE_KINDS,
     SOURCE_TITLE_MAX_LENGTH,
     SOURCE_URL_MAX_LENGTH,
     ArchiveProvider,
@@ -99,6 +100,12 @@ class SourceCreate(BaseModel):
     def _one_file(self) -> "SourceCreate":
         if self.upload_id is not None and self.media_id is not None:
             raise ValueError("A source carries one file: send upload_id or media_id, not both")
+        return self
+
+    @model_validator(mode="after")
+    def _no_document_position(self) -> "SourceCreate":
+        if self.kind in DOCUMENT_SOURCE_KINDS:
+            self.capture_position = None
         return self
 
 

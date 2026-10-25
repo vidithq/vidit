@@ -1,6 +1,7 @@
 import math
 import time
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.encoders import jsonable_encoder
@@ -9,6 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from pydantic.json_schema import models_json_schema
 from slowapi.errors import RateLimitExceeded
 from starlette.types import ASGIApp
 
@@ -34,6 +37,7 @@ from app.routers import (
     users,
     webhooks,
 )
+from app.schemas.source import SourceCreate
 from app.services import archive_jobs
 from app.services.storage import (
     DEV_STAGING_UPLOAD_PATH,
@@ -45,11 +49,30 @@ configure_logging()
 init_sentry()
 
 
+# Models a multipart write takes as a JSON form field (``routers/events/_common.parse_sources``).
+# No route names them, so the spec lists them for the frontend codegen.
+_FORM_FIELD_MODELS: tuple[type[BaseModel], ...] = (SourceCreate,)
+
+
 class _ViditAPI(FastAPI):
     def build_middleware_stack(self) -> ASGIApp:
         # Wraps Starlette's ServerErrorMiddleware (which ``add_middleware``
         # cannot), so its 500 carries the request id too.
         return RequestIdMiddleware(super().build_middleware_stack())
+
+    def openapi(self) -> dict[str, Any]:
+        if self.openapi_schema is not None:
+            return self.openapi_schema
+        # ``super().openapi`` caches the dict it returns, so the additions persist.
+        schema = super().openapi()
+        _, defs = models_json_schema(
+            [(model, "validation") for model in _FORM_FIELD_MODELS],
+            ref_template="#/components/schemas/{model}",
+        )
+        components = schema.setdefault("components", {}).setdefault("schemas", {})
+        for name, definition in defs.get("$defs", {}).items():
+            components.setdefault(name, definition)
+        return schema
 
 
 app = _ViditAPI(

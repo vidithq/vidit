@@ -1,7 +1,8 @@
 """The typed failures of the event lifecycle, each with a stable ``code``.
 
 Leaf module: imports no sibling. The router maps each ``code`` to a status in
-``_EVENT_ERROR_STATUS`` (``routers/events/_common.py``).
+``_EVENT_ERROR_STATUS`` (``routers/events/_common.py``). The form sentence of each source code
+is mirrored by ``frontend/src/lib/sources.ts::SOURCE_ERROR_MESSAGES``; change both.
 """
 
 from __future__ import annotations

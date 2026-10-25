@@ -33,7 +33,9 @@ from app.services.users import get_live_by_username
 # Every relationship ``build_event_read`` and ``build_event_list`` read for the credit line.
 CREDIT_LOAD = selectinload(Event.geolocators).joinedload(EventGeolocator.user)
 
-# Geolocators plus pending invitations, per event. Bounds the byline every card prints.
+# Geolocators plus pending invitations, per event, the owner included. Bounds the byline every
+# card prints. Mirrored by ``frontend/src/lib/geolocatorCredit.ts::MAX_EVENT_GEOLOCATORS``;
+# change both.
 MAX_EVENT_GEOLOCATORS = 10
 
 

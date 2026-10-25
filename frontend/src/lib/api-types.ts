@@ -3497,6 +3497,16 @@ export interface components {
             resolution: "marked_graphic" | "hidden" | "dismissed";
         };
         /**
+         * CoordsCreate
+         * @description One WGS84 point as a write takes it; the service checks the ranges.
+         */
+        CoordsCreate: {
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
+        };
+        /**
          * CoordsRead
          * @description One WGS84 point on the wire, nested so a payload can carry several points.
          */
@@ -4432,9 +4442,87 @@ export interface components {
             /** Warnings */
             warnings: components["schemas"]["SourceWarning"][];
         };
+        /**
+         * SourceCreate
+         * @description One source block of an event form.
+         *
+         *     A write posts the event's whole list and the stored sources follow it. ``id`` names a
+         *     stored source of this event to update in place; a source without one is created, and a
+         *     stored source the list leaves out is deleted.
+         *
+         *     The file is one of ``upload_id`` (a staged file from ``POST /uploads``) and ``media_id``
+         *     (a stored file of this event: this source's own keeps it, another source's is copied onto
+         *     this one as a new media row on the same stored object). Neither means no file.
+         */
+        SourceCreate: {
+            /** @default null */
+            capture_position: components["schemas"]["CoordsCreate"] | null;
+            /**
+             * Captured At
+             * @default null
+             */
+            captured_at: string | null;
+            /**
+             * Id
+             * @default null
+             */
+            id: string | null;
+            /**
+             * Is Graphic
+             * @default false
+             */
+            is_graphic: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "smartphone" | "camera" | "static_camera" | "drone" | "aircraft" | "satellite" | "dashcam" | "body_cam" | "article" | "official_statement" | "other" | "unknown";
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "direct" | "indirect" | "context";
+            /** Links */
+            links?: components["schemas"]["SourceLinkCreate"][];
+            /**
+             * Media Id
+             * @default null
+             */
+            media_id: string | null;
+            /** Tag Ids */
+            tag_ids?: string[];
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            /**
+             * Upload Id
+             * @default null
+             */
+            upload_id: string | null;
+        };
         /** SourceLinkCheckRead */
         SourceLinkCheckRead: {
             provider: components["schemas"]["ImageryProviderRead"] | null;
+            /** Url */
+            url: string;
+        };
+        /**
+         * SourceLinkCreate
+         * @description One URL of a source as the event form posts it.
+         */
+        SourceLinkCreate: {
+            /**
+             * Posted At
+             * @default null
+             */
+            posted_at: string | null;
+            /**
+             * Snapshot Url
+             * @default null
+             */
+            snapshot_url: string | null;
             /** Url */
             url: string;
         };

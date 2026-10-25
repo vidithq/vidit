@@ -30,8 +30,8 @@ from app.services.sanitize import normalised_host
 # Hosts a snapshot may live on. The allowlist is the abuse bound: the catalog
 # renders the URL as an outbound link. archive.today serves one set of
 # snapshots under six interchangeable domains. Mirrored by
-# `ArchivedCopies.tsx::SNAPSHOT_HOSTS` (keys) and `lib/snapshots.ts`
-# (`WAYBACK_HOST`, `ARCHIVE_TODAY_HOSTS`).
+# ``frontend/src/lib/snapshots.ts::SNAPSHOT_HOSTS`` (keys) and ``snapshotProvider``
+# (providers); change both.
 PROVIDER_HOSTS: dict[str, ArchiveProvider] = {
     "web.archive.org": "wayback",
     "archive.ph": "archive_today",
