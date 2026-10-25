@@ -151,7 +151,7 @@ function MissingCopyMark({ describes }: { describes: string }) {
 /**
  * One link's archive box on a form, in the link's row. Never grey on a form.
  *
- * No copy: **Archive** opens the paste line under the row. A copy (the stored
+ * No copy: the **Archive** icon button (tooltip *Archive*) opens the paste line under the row. A copy (the stored
  * one, or a pasted snapshot on an allowed host): the copy itself, named for its
  * service, plus the `ArchiveRestore` mark, which opens the paste line to replace
  * a wrong paste.
@@ -176,13 +176,14 @@ export function ArchiveBox({
   if (!provider) {
     return (
       <Button
+        icon
         variant="ghost"
         onClick={onToggle}
         aria-expanded={expanded}
         aria-label={`Archive ${describes}`}
+        title="Archive"
       >
         <ArchiveRestore size={14} />
-        Archive
       </Button>
     );
   }

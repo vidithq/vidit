@@ -836,7 +836,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<LinkListInput>" usage="An ordered list of links, one row each, with one add button: each source editor's Links. A row is the URL field, the caller's `columns`, then the remove control, so the control sits at the end of the row it removes. A row is the caller's own value, read and written through `urlOf` / `withUrl`, so what else it carries (a post time, an archived copy) moves with it through adds and removals. `max` mirrors the server cap and disables add at the ceiling. Blank rows are the caller's to drop at assembly. Each column names its header and its grid track; `expansion` is a line across the row while the row is toggled open, and every row starts closed. On a source editor the columns are the post time and the <ArchiveBox>, and the expansion is the <ArchiveSnapshotField> paste line. The list is its own container: from `@xl` (36rem) the rows share one grid under a header line, so each column keeps one width down the list. Narrower, each row is a small card: the URL with the remove control at the card's top right, the columns wrapping under it.">
+          <Item name="<LinkListInput>" usage="An ordered list of links, one row each, with one add button: each source editor's Links. A row is the URL field, the caller's `columns`, then the remove control (a red dangerGhost cross), so the control sits at the end of the row it removes. `heading` (default Links) labels the list and carries the caller's help: it is the URL column's header on a wide list and a label above the cards on a narrow one, red while `invalid`. A row is the caller's own value, read and written through `urlOf` / `withUrl`, so what else it carries (a post time, an archived copy) moves with it through adds and removals. `max` mirrors the server cap and disables add at the ceiling. Blank rows are the caller's to drop at assembly. Each other column names its header and its grid track; `expansion` is a line across the row while the row is toggled open, and every row starts closed. On a source editor the columns are the post time and the <ArchiveBox>, and the expansion is the <ArchiveSnapshotField> paste line. The list is its own container: from `@xl` (36rem) the rows share one grid under a header line, so each column keeps one width down the list. Narrower, each row is a small card: the URL with the remove control at the card's top right, the columns wrapping under it.">
             <div className="w-full space-y-4">
               <Variant label="with a post time and an archive box per row (a wide list)">
                 <LinkListInput<string>
@@ -848,6 +848,11 @@ export default function PalettePage() {
                   max={3}
                   itemLabel="Link"
                   placeholder="https://x.com/user/status/12345"
+                  heading={
+                    <>
+                      Links <FieldHelp concept="source_links" />
+                    </>
+                  }
                   columns={[
                     {
                       header: "Posted (UTC)",
@@ -1180,9 +1185,9 @@ export default function PalettePage() {
 
           <Item
             name="<ArchiveBox>"
-            usage="One link's archive box on a form, in the link's row after its post time (a <LinkListInput> column). On a form it is never grey: whatever state the link is in there is something to do with it. No copy yet is the Archive button with the ArchiveRestore mark, which opens the paste line under the row. A copy (the stored one, or a pasted snapshot on an allowed host) shows as itself: the Archive mark and the service's name, opening the copy under the accessible name the event page gives it, with ArchiveRestore beside it, since one link holds one copy and a wrong paste has to be replaceable. Every name folds in `describes`, because a form carries several of these and they look alike. Nothing is written here: the paste travels with the form."
+            usage="One link's archive box on a form, in the link's row after its post time (a <LinkListInput> column). On a form it is never grey: whatever state the link is in there is something to do with it. No copy yet is an icon-only ghost button, the ArchiveRestore mark with an Archive tooltip, which opens the paste line under the row. A copy (the stored one, or a pasted snapshot on an allowed host) shows as itself: the Archive mark and the service's name, opening the copy under the accessible name the event page gives it, with ArchiveRestore beside it, since one link holds one copy and a wrong paste has to be replaceable. Every name folds in `describes`, because a form carries several of these and they look alike. Nothing is written here: the paste travels with the form."
           >
-            <Variant label="no copy yet: Archive opens the paste line">
+            <Variant label="no copy yet: the Archive icon opens the paste line">
               <ArchiveBox
                 describes={linkDescription(0, "t.me", 0, 1)}
                 snapshot=""

@@ -188,9 +188,6 @@ export function SourceEditor({
       </div>
 
       <div className="space-y-1.5">
-        <span className={cn(FORM_LABEL, invalid.link && FORM_INVALID_LABEL)}>
-          Links <FieldHelp concept="source_links" />
-        </span>
         <div className={invalid.link && draft.links.length === 0 ? FORM_INVALID_FIELD : undefined}>
           <LinkListInput<LinkDraft>
             rows={draft.links}
@@ -202,6 +199,11 @@ export function SourceEditor({
             itemLabel={`${name} link`}
             placeholder="https://t.me/channel/12345"
             invalid={invalid.link}
+            heading={
+              <>
+                Links <FieldHelp concept="source_links" />
+              </>
+            }
             columns={[
               {
                 header: "Posted (UTC)",

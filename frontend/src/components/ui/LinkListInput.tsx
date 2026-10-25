@@ -4,11 +4,13 @@ import { useState, type CSSProperties, type ReactNode } from "react";
 import { Plus, X } from "lucide-react";
 
 import { Button } from "./Button";
-import { LABEL_TEXT } from "./form-styles";
+import { cn } from "@/lib/cn";
+
+import { FORM_INVALID_LABEL, LABEL_TEXT } from "./form-styles";
 import { Input } from "./Input";
 
 // An ordered list of links, one row each: the URL field, the caller's own fields
-// (`columns`), and a remove control at the end, plus one add button. It owns the
+// (`columns`), and a remove control at the end (red, since it deletes the row), plus one add button. It owns the
 // list mechanics (append, edit, remove, the cap, and keeping each row's open line
 // aligned with its row). A row is the caller's own value; the list reads and
 // writes its URL through `urlOf` / `withUrl`, so whatever else a row carries (a
@@ -49,7 +51,10 @@ interface LinkListInputProps<R> {
   itemLabel: string;
   placeholder?: string;
   invalid?: boolean;
-  /** After the URL, each under its own header; the URL's header reads *URL*. */
+  /** The list's label: the header of the URL column on a wide list, a label above the
+   *  cards on a narrow one. Carries the caller's `FieldHelp`; red while `invalid`. */
+  heading?: ReactNode;
+  /** After the URL, each under its own header. */
   columns?: LinkListColumn<R>[];
   /** Under the row while it is expanded (`toggle`), across the whole row. */
   expansion?: (row: LinkListRow<R>) => ReactNode;
@@ -65,6 +70,7 @@ export function LinkListInput<R>({
   itemLabel,
   placeholder,
   invalid = false,
+  heading = "Links",
   columns = [],
   expansion,
 }: LinkListInputProps<R>) {
@@ -96,16 +102,17 @@ export function LinkListInput<R>({
           control on top, the columns wrapping under it. */}
       <div className="@container">
         <div style={tracks} className="flex flex-col gap-2 @xl:grid @xl:grid-cols-(--link-tracks) @xl:items-center">
-          {columns.length > 0 && rows.length > 0 && (
-            <div aria-hidden className="hidden @xl:col-span-full @xl:grid @xl:grid-cols-subgrid">
-              <span className={LABEL_TEXT}>URL</span>
-              {columns.map((column) => (
-                <span key={column.header} className={LABEL_TEXT}>
+          {/* One element for both layouts: the label above the cards, and the URL column's
+              header on a wide list, where the other columns' headers join it. */}
+          <div className="@xl:col-span-full @xl:grid @xl:grid-cols-subgrid">
+            <span className={cn(LABEL_TEXT, invalid && FORM_INVALID_LABEL)}>{heading}</span>
+            {rows.length > 0 &&
+              columns.map((column) => (
+                <span key={column.header} aria-hidden className={cn(LABEL_TEXT, "hidden @xl:block")}>
                   {column.header}
                 </span>
               ))}
-            </div>
-          )}
+          </div>
           {rows.map((row, i) => (
             // Index key: rows have no identity (a URL is edited per character and may
             // repeat while typing), and every field is controlled.
@@ -136,7 +143,7 @@ export function LinkListInput<R>({
                 </div>
               )}
               <Button
-                variant="ghost"
+                variant="dangerGhost"
                 icon
                 aria-label={`Remove ${lower} ${i + 1}`}
                 title={`Remove ${lower} ${i + 1}`}

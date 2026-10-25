@@ -341,7 +341,7 @@ test.describe("submit", () => {
       expect(boxes[i].x, `cell ${i + 1} follows cell ${i}`).toBeGreaterThanOrEqual(boxes[i - 1].x + boxes[i - 1].width);
       expect(Math.abs(boxes[i].y + boxes[i].height / 2 - (boxes[0].y + boxes[0].height / 2))).toBeLessThanOrEqual(1);
     }
-    const headers = ["URL", "Posted (UTC)", "Archive"];
+    const headers = ["Links", "Posted (UTC)", "Archive"];
     for (const [i, text] of headers.entries()) {
       const header = (await first.getByText(text, { exact: true }).first().boundingBox())!;
       expect(Math.abs(header.x - boxes[i].x), `${text} heads its column`).toBeLessThanOrEqual(1);
