@@ -761,7 +761,7 @@ export interface paths {
         /**
          * Get Collection
          * @description One collection's header: owner, title, item count and date range.
-         *     Public; a withheld collection is a 404 for everyone but an admin.
+         *     Public; a withheld or owner-deleted collection is a 404 for everyone but an admin.
          */
         get: operations["get_collection_api_v1_collections__collection_id__get"];
         put?: never;
@@ -769,6 +769,9 @@ export interface paths {
         /**
          * Delete Collection
          * @description Drop your collection (owner only). Its events stay.
+         *
+         *     Under an open content report the collection is only withheld, from every
+         *     read but an admin's, until its last open report is resolved, which erases it.
          */
         delete: operations["delete_collection_api_v1_collections__collection_id__delete"];
         options?: never;
@@ -851,7 +854,7 @@ export interface paths {
          *
          *     Same gesture, body and per-IP limit as an event report: open to anonymous
          *     viewers (``reporter_id`` NULL), a signed-in reporter is recorded. An
-         *     unknown, withheld or orphaned collection answers 404.
+         *     unknown, withheld, owner-deleted or orphaned collection answers 404.
          */
         post: operations["report_collection_api_v1_collections__collection_id__report_post"];
         delete?: never;
@@ -4219,6 +4222,8 @@ export interface components {
          *     renamed collection shows its current name.
          */
         ReportedCollection: {
+            /** Deleted At */
+            deleted_at: string | null;
             /**
              * Id
              * Format: uuid

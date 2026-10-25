@@ -42,6 +42,10 @@ import { eventHref } from "@/lib/routes";
  * A report whose target was since deleted survives the deletion: the row says the target is gone
  * instead of linking, and offers Dismiss alone (every other verdict gets 409
  * `report_target_gone`).
+ *
+ * A collection its owner deleted while a report on it was open is still here in full: the row marks
+ * it "Deleted by its owner" and takes the normal verdicts. Resolving its last open report, by any
+ * verdict, erases it.
  */
 
 const PER_PAGE = 20;
@@ -80,6 +84,7 @@ function ReportRow({
   const collection = report.collection;
   const isEvent = report.event_id !== null;
   const targetGone = !isEvent && collection === null;
+  const ownerDeleted = Boolean(collection?.deleted_at);
   const noun = isEvent ? "event" : "collection";
 
   return (
@@ -107,6 +112,9 @@ function ReportRow({
             </Link>
             <AuthorByline author={collection.owner} size="xs" />
           </>
+        )}
+        {ownerDeleted && (
+          <Pill title="Erased once no open report names it">Deleted by its owner</Pill>
         )}
         {targetGone && (
           <span className="text-neutral-500">Reported item deleted</span>
@@ -172,8 +180,9 @@ function ReportRow({
           }}
         >
           <p>
-            Hiding drops the {noun} from every public read until it is restored, and resolves the
-            report as Hidden.
+            {ownerDeleted
+              ? "Its owner deleted it, so resolving the last open report on it erases it."
+              : `Hiding drops the ${noun} from every public read until it is restored, and resolves the report as Hidden.`}
           </p>
         </ConfirmDialog>
       )}
