@@ -5,6 +5,7 @@ import { useState, type FormEvent } from "react";
 import type { EventDetail } from "@/types";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
+import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
 import {
   answerGeolocatorInvite,
@@ -24,7 +25,7 @@ import {
   type Account,
 } from "@/components/ui/AccountPicker";
 import { AuthorByline } from "@/components/ui/AuthorByline";
-import { Button } from "@/components/ui/Button";
+import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
@@ -86,7 +87,9 @@ export function GeolocatorInviteCard({
   );
 }
 
-/** One credited or invited analyst, with the one verb the reader holds over that row. */
+/** One credited or invited analyst, with the one verb the reader holds over that row. Each verb
+ * takes a credit away (Remove, Leave, Withdraw), so it arms in place: the first click turns the
+ * button into its confirm, and the second runs it. */
 function CreditRow({
   author,
   action,
@@ -94,12 +97,22 @@ function CreditRow({
   author: { username: string; avatar_url?: string | null };
   action?: { label: string; run: () => void; disabled: boolean };
 }) {
+  const { armed, trigger, controlRef } = useConfirmAction(() => action?.run(), {
+    timeoutMs: ARM_MS,
+    dismissOnOutside: true,
+  });
   return (
     <div className="flex items-center justify-between gap-2 py-2">
       <AuthorByline author={author} avatar className="text-sm min-w-0" />
       {action && (
-        <Button variant="ghost" onClick={action.run} disabled={action.disabled}>
-          {action.label}
+        <Button
+          ref={controlRef}
+          variant="danger"
+          className={armed ? DANGER_CONFIRM : ""}
+          onClick={trigger}
+          disabled={action.disabled}
+        >
+          {armed ? `Confirm ${action.label.toLowerCase()}` : action.label}
         </Button>
       )}
     </div>
@@ -203,7 +216,7 @@ export function GeolocatorsPanel({
               placeholder="Username"
               emptyText="No analyst with a published geolocation matches. Press Enter to invite this exact username."
             />
-            <Button type="submit" disabled={write.loading || !invitee}>
+            <Button type="submit" variant="secondary" disabled={write.loading || !invitee}>
               Invite
             </Button>
           </div>
