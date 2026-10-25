@@ -6,19 +6,23 @@ import { MapPin, SquarePen, Users } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
-import { cn } from "@/lib/cn";
+import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
+import { useMutation } from "@/hooks/useMutation";
 import { allApprovalsPath, type ApprovalList } from "@/lib/approvals";
 import { COLLECTABLE_STATUSES, CollectionIcon } from "@/lib/collections";
 import { hasPublishedRecord } from "@/lib/events";
+import { creditedAuthors, removeGeolocator } from "@/lib/geolocatorCredit";
 import { eventEditHref } from "@/lib/routes";
 import { AddToCollectionPanel } from "@/components/collections/AddToCollectionPanel";
-import { Button, buttonClasses } from "@/components/ui/Button";
+import { AuthorByline } from "@/components/ui/AuthorByline";
+import { Button, DANGER_CONFIRM, buttonClasses } from "@/components/ui/Button";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Popover } from "@/components/ui/Popover";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { EventShare } from "@/components/event/EventShare";
-import { GeolocatorInviteCard, GeolocatorsPanel } from "@/components/event/GeolocatorCredit";
+import { GeolocatorInviteCard } from "@/components/event/GeolocatorCredit";
 import type { EventShellActions } from "@/components/event/EventShell";
 import { useEventApprovals } from "@/components/event/EventApprovals";
 import { VersionSelector } from "@/components/event/VersionSelector";
@@ -27,21 +31,8 @@ import type { EventDetail } from "@/types";
 
 /**
  * The controls of one event, assembled once so no surface hand-assembles a row and controls can't
- * drift between them. They head the page's actions block, top right (`docs/design.md`, Event
- * actions and approvals), as a row of icon controls, left to right:
- *
- * 1. **The version selector**, on the event page of a published row.
- * 2. **Edit**, an icon, for the owner. Closing and the geolocators live on the edit page.
- * 3. **Share**.
- * 4. **Add to collection** for the owner and every co-geolocator, and **Geolocators** for a
- *    co-geolocator (where they leave). Each is a `<Popover>`: its panel floats over the page.
- * 5. **Request approval** for a geolocator of a published row, on the event page. It opens a
- *    dialog with the open requests and the picker that sends one.
- * 6. **Report** for every reader but the owner.
- *
- * The actions are `EventShell`'s actions block: the row, then **Geolocate** on an open request's
- * page, pinned while the page scrolls; under them, not pinned, a published row's approvals on the
- * event page (the stamps, Approve) and a pending geolocator invitation.
+ * drift between them. The order and the audience of each control are in `docs/design.md` (Event
+ * actions and approvals).
  *
  * The hook returns nodes rather than rendering them because the actions and the report form land
  * in different zones. Called before a surface's early returns, with `event` null
@@ -72,7 +63,7 @@ const TIERS: Record<
   request: { flow: true,  edit: true,  collect: false, history: false, utilities: true,  credit: false, approvals: false },
 };
 
-export interface EventActionsOptions {
+interface EventActionsOptions {
   /** The row to act on. Null while it loads: every node comes back null. */
   event: EventDetail | null;
   surface: ActionSurface;
@@ -80,7 +71,7 @@ export interface EventActionsOptions {
   onChanged?: () => void;
 }
 
-export interface EventActions {
+interface EventActions {
   /** The report form, a dialog, and the receipt a sent report leaves, for under the header. */
   panels: ReactNode;
   /** The actions block: the row and Geolocate on a request, pinned; the approvals and an
@@ -180,17 +171,6 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
     canReport && <Fragment key="report">{report.trigger}</Fragment>,
   ].filter(Boolean);
 
-  const row = (className?: string) =>
-    controls.length > 0 && (
-      <div
-        role="group"
-        aria-label="Event actions"
-        className={cn("flex flex-wrap items-center gap-1.5", className)}
-      >
-        {controls}
-      </div>
-    );
-
   // `max-sm:pr-2`: the `?` grows its tap area 8px past its glyph on a phone, which stays inside
   // the row's right edge.
   const geolocate = tiers.flow && isOpenRequest && (
@@ -208,7 +188,15 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
     actions: {
       pinned: (controls.length > 0 || geolocate) && (
         <div className="flex flex-col items-end gap-3">
-          {row("justify-end")}
+          {controls.length > 0 && (
+            <div
+              role="group"
+              aria-label="Event actions"
+              className="flex flex-wrap items-center justify-end gap-1.5"
+            >
+              {controls}
+            </div>
+          )}
           {geolocate}
         </div>
       ),
@@ -228,4 +216,71 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
       ),
     },
   };
+}
+
+/** One credited analyst. The reader's own row carries **Leave**, which takes their credit away,
+ * so it arms in place: the first click turns the button into its confirm, and the second runs
+ * it. */
+function CreditRow({
+  author,
+  leave,
+}: {
+  author: { username: string; avatar_url?: string | null };
+  leave?: { run: () => void; disabled: boolean };
+}) {
+  const { armed, trigger, controlRef } = useConfirmAction(() => leave?.run(), {
+    timeoutMs: ARM_MS,
+    dismissOnOutside: true,
+  });
+  return (
+    <div className="flex items-center justify-between gap-2 py-2">
+      <AuthorByline author={author} avatar className="text-sm min-w-0" />
+      {leave && (
+        <Button
+          ref={controlRef}
+          variant="danger"
+          className={armed ? DANGER_CONFIRM : ""}
+          onClick={trigger}
+          disabled={leave.disabled}
+        >
+          {armed ? "Confirm leave" : "Leave"}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The geolocators of a published event, owner first, as a co-geolocator reads them, with
+ * **Leave** on their own row. Credit grants no edit right, so nothing else here acts on the
+ * event.
+ */
+function GeolocatorsPanel({ event, onChanged }: { event: EventDetail; onChanged: () => void }) {
+  const { user } = useAuth();
+  const leave = useMutation((name: string) => removeGeolocator(event.id, name), {
+    fallback: "Failed to update the geolocators",
+    onSuccess: onChanged,
+  });
+  return (
+    <div className="space-y-4">
+      <div className="divide-y divide-neutral-800">
+        {creditedAuthors(event).map((author) => (
+          <CreditRow
+            key={author.id}
+            author={author}
+            leave={
+              author.username === user?.username
+                ? { run: () => void leave.run(author.username), disabled: leave.loading }
+                : undefined
+            }
+          />
+        ))}
+      </div>
+      {leave.error && (
+        <div className={FORM_ERROR_BANNER} role="alert">
+          {leave.error}
+        </div>
+      )}
+    </div>
+  );
 }

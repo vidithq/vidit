@@ -7,7 +7,7 @@ export const LAT_MAX = 90;
 export const LNG_MIN = -180;
 export const LNG_MAX = 180;
 
-export interface CoordinatePair {
+interface CoordinatePair {
   lat: number;
   lng: number;
 }

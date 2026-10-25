@@ -10,7 +10,6 @@ import {
   ClipboardX,
   RefreshCw,
   ShieldCheck,
-  Trash2,
   UserCheck,
   UserMinus,
   UserPlus,
@@ -33,7 +32,7 @@ import {
   type NotificationKind,
 } from "@/lib/notifications";
 import { Avatar } from "@/components/ui/Avatar";
-import { Button } from "@/components/ui/Button";
+import { RemoveButton } from "@/components/ui/RemoveButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
@@ -86,17 +85,11 @@ function NotificationRow({ n, onChanged }: { n: Notification; onChanged: () => v
         href={href}
         external={false}
         action={
-          <Button
-            icon
-            variant="dangerGhost"
-            className="text-neutral-500 hover:text-red-400"
-            aria-label="Delete notification"
-            title="Delete"
+          <RemoveButton
+            label="Delete notification"
             onClick={() => void remove.run()}
             disabled={remove.loading}
-          >
-            <Trash2 size={14} />
-          </Button>
+          />
         }
       />
       {remove.error && (

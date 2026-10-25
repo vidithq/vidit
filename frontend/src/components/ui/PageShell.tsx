@@ -56,8 +56,7 @@ export function PageShell({
    *  come before the title in the DOM and the tab order. */
   stickyActions?: ReactNode;
   /** The view controls under the title, left-aligned (a scope or sort `SegmentedControl`, a
-   *  mode picker), with any companion control pushed to the row's right end. `EventShell` ends
-   *  its title section here (a form's Title field). */
+   *  mode picker), with any companion control pushed to the row's right end. */
   controls?: ReactNode;
   /** A right rail beside `children` (see `PageWithRail`). A page whose rail comes and goes passes
    *  `null` while it is gone, so the column keeps its element and its focus. The frame is `wide`

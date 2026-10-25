@@ -105,7 +105,7 @@ export default async function EventOpenGraphImage({
             </div>
           </div>
 
-          {/* A coordless row (a request served by id) has no point to frame. */}
+          {/* A row without coordinates has no point to frame. */}
           {coords ? (
             <OgMiniMap
               lat={coords.lat}

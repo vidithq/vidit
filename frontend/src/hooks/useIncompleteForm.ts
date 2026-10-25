@@ -6,7 +6,7 @@ import type { MissingFieldKey } from "@/lib/events";
 
 /** A required field a form is still missing (`MissingField` for the event forms); `key` drives
  * the in-form highlight. */
-export interface MissingEntry<K extends string = MissingFieldKey> {
+interface MissingEntry<K extends string = MissingFieldKey> {
   key: K;
   label: string;
 }

@@ -20,7 +20,7 @@ import { Input } from "./Input";
 // Blank rows stay in state while typing; callers drop them from the payload.
 
 /** One row, as the caller's slots see it. */
-export interface LinkListRow<R> {
+interface LinkListRow<R> {
   index: number;
   row: R;
   update: (next: R) => void;
@@ -29,7 +29,7 @@ export interface LinkListRow<R> {
 }
 
 /** One field of a row after its URL. */
-export interface LinkListColumn<R> {
+interface LinkListColumn<R> {
   /** Above the first row on a wide list; a narrow card shows no headers. */
   header: string;
   /** The grid track on a wide list (`13rem`, `auto`). In a narrow card a fixed

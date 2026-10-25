@@ -14,9 +14,9 @@ import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer
 
 import { TitleField } from "@/components/geolocations/TitleField";
 import { useTaxonomy, type TaxonomyState } from "@/components/geolocations/TaxonomyFields";
-import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
-import { LocationPicker } from "@/components/geolocations/new/LocationPicker";
-import { PROOF_GUIDE_LINK, ProofEditorPanel } from "@/components/geolocations/new/ProofEditorPanel";
+import { DetailsFields } from "@/components/geolocations/fields/DetailsFields";
+import { LocationPicker } from "@/components/geolocations/fields/LocationPicker";
+import { PROOF_GUIDE_LINK, ProofEditorPanel } from "@/components/geolocations/fields/ProofEditorPanel";
 import { SourcesField } from "@/components/sources/SourcesField";
 import { useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { cleanNumber } from "@/lib/coordinates";
@@ -185,7 +185,11 @@ export function useEventForm(row?: EventDetail | null): EventFormState {
       ...(invitees && { geolocator_invites: invitees }),
     }),
     requestInput: () => ({ ...shared(), ...parseGuessCoords(lat, lng) }),
-    ...incomplete,
+    missingFields: incomplete.missingFields,
+    invalidKeys: incomplete.invalidKeys,
+    validationAttempt: incomplete.validationAttempt,
+    flagIncomplete: incomplete.flagIncomplete,
+    clearIncomplete: incomplete.clearIncomplete,
   };
 }
 
@@ -194,8 +198,6 @@ interface EventFormFieldsOptions {
   /** The stored row behind the form (the edited or published event). `null` on a fresh
    *  submit. */
   row?: EventDetail | null;
-  /** Show `row`'s provenance link, read-only. */
-  showProvenance?: boolean;
   /** Follows the Location card (the submit form's duplicate probe). */
   afterLocation?: ReactNode;
 }
@@ -265,19 +267,13 @@ export function EventFormShell({
 }
 
 /**
- * The fields every event write fills in, as `EventShell`'s zones: the Title field closes the title
- * section; in the body the sources and the proof fill the main column, and the location, then the
- * one Details card (date, time, provenance, conflict, tags), fill the side column.
- *
- * The submit form and the edit form compose it and keep no copy of a field, so labels, help and
- * red outlines stay one thing. Per-surface blocks (the version note, the geolocators) are the
- * shell's own; the writes are its pinned actions.
+ * The fields every event write fills in, as `EventShell`'s slots. The submit form and the edit
+ * form compose it and keep no copy of a field, so labels, help and red outlines stay one thing.
  */
 function eventFormSlots(
   form: EventFormState,
   {
     row = null,
-    showProvenance = false,
     afterLocation,
     formId,
   }: EventFormFieldsOptions & {
@@ -329,7 +325,7 @@ function eventFormSlots(
             setEventDate={form.setEventDate}
             eventTime={form.eventTime}
             setEventTime={form.setEventTime}
-            detectedFromUrl={showProvenance ? row?.detected_from_url : undefined}
+            detectedFromUrl={row?.detected_from_url}
             openedAsRequest={!!row?.requested_by}
             taxonomy={form.taxonomy}
             selectedTagIds={form.selectedTagIds}

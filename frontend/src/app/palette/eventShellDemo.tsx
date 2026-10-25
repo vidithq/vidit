@@ -12,9 +12,9 @@ import { cn } from "@/lib/cn";
 // body) filled with labelled empty boxes, in the three fillings the app renders. The boxes are demo
 // scaffolding, not a primitive.
 
-export type EventShellFilling = "event" | "edit" | "submit";
+type EventShellFilling = "event" | "edit" | "submit";
 
-export const FILLINGS: { value: EventShellFilling; label: string }[] = [
+const FILLINGS: { value: EventShellFilling; label: string }[] = [
   { value: "event", label: "Event page" },
   { value: "edit", label: "Edit" },
   { value: "submit", label: "Submit" },
@@ -51,10 +51,7 @@ export function EventShellSkeleton({ filling }: { filling: EventShellFilling }) 
       onBack={() => {}}
       actions={{
         pinned: <Slot label="Actions block: pinned row" className="h-9 w-56 max-w-full" />,
-        below:
-          filling === "submit" ? null : (
-            <Slot label="Actions block: below the row" className="h-24" />
-          ),
+        below: <Slot label="Actions block: below the row" className="h-24" />,
       }}
       panels={isEvent ? <Slot label="Panels" className="h-16" /> : undefined}
       body={{

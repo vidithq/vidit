@@ -49,7 +49,7 @@ export const POINT_DETECTED_FLAG = 5;
 
 /** Lifecycle status from the `detected` flag. Total because `/events/points` serves live
  *  `geolocated` and `detected` rows only (not `requested` guesses or `closed` rows). */
-export function pointLifecycleStatus(point: MapPoint): EventStatus {
+function pointLifecycleStatus(point: MapPoint): EventStatus {
   return point[POINT_DETECTED_FLAG] === 1 ? "detected" : "geolocated";
 }
 

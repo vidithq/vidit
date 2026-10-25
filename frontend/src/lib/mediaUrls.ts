@@ -13,7 +13,7 @@ import type { Media } from "@/types";
  * and rewriting its url to `_thumb` addresses an object never written, so the CDN answers 403.
  * Videos have no derivatives either.
  */
-export interface MediaUrlBundle {
+interface MediaUrlBundle {
   original: string;
   hero: string;
   thumbnail: string;

@@ -10,23 +10,15 @@ export interface EventShellActions {
   /** The row of buttons (or a form's writes and banners), the only part pinned on scroll. */
   pinned: ReactNode;
   /** Under the row, not pinned: the approvals and an invitation on the event page, a version's
-   *  approvals, the version note of a published row's edit. */
+   *  approvals, a form's hidden announcer. */
   below?: ReactNode;
 }
 
 /**
  * The one shell of an event: the event page, a version page, the request page, the edit form and
- * the submit form all render it and only fill its three zones. To move a block, change this shell
- * or `EventLayout`, never a page.
- *
- * 1. **Title section**, heading the main column: back, the title (a form's `titleField`, with
- *    `title` as its visually hidden page heading), then `byline`.
- * 2. **Actions block**, top right, heading the side column: `actions.pinned`, pinned while the
- *    page scrolls, then `actions.below`, which scrolls with the page.
- * 3. **Body**: `body` fills the `EventLayout` grid; without it the page stops after the panels (a
- *    redacted version).
- *
- * `panels` take the full width between the title section and the body.
+ * the submit form all render it and only fill its slots (zones in `docs/design.md`, Event
+ * layout). To move a block, change this shell or `EventLayout`, never a page. Without `body` the
+ * page stops after `panels` (a redacted version).
  */
 export function EventShell({
   title,

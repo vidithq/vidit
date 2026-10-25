@@ -8,7 +8,7 @@ import type { ArchivedLink, Media } from "@/types";
 
 /** One source of an event, in the event's derived order (level, then capture time). */
 export type Source = components["schemas"]["SourceRead"];
-export type SourceLink = components["schemas"]["SourceLinkRead"];
+type SourceLink = components["schemas"]["SourceLinkRead"];
 /** A staged source file (`POST /uploads`), referenced by a source's `upload_id`. */
 export type Upload = components["schemas"]["UploadRead"];
 export type SourceLevel = Source["level"];

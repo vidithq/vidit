@@ -26,7 +26,7 @@ import type { Media } from "@/types";
  * A source is a persisted `Media` row or a plain `{src, kind}` shape (a staged
  * object URL, or a proof image from an allowlisted URL).
  */
-export type LightboxSource =
+type LightboxSource =
   | Media
   | { src: string; kind: "image" | "video"; filename?: string };
 

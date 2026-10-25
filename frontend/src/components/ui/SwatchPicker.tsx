@@ -3,7 +3,7 @@ import { useRef, type KeyboardEvent } from "react";
 import { cn } from "@/lib/cn";
 import { ICON_TAP_STEP } from "./Button";
 
-export interface SwatchOption<T extends string> {
+interface SwatchOption<T extends string> {
   value: T;
   /** The colour's name: the radio's accessible name and its hover title. */
   label: string;

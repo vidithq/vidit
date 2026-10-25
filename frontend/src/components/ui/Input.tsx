@@ -15,7 +15,7 @@ import { FORM_INVALID_FIELD } from "./form-styles";
 // - `default`: the standard field; focus turns the border orange.
 // - `compact`: denser, display-leaning data-row field.
 // - `locked`: read-only inherited field; pair with `readOnly`.
-export type InputVariant = "default" | "compact" | "locked";
+type InputVariant = "default" | "compact" | "locked";
 
 // 16px below `sm`, 14px from `sm` up. Mobile Safari zooms in on focus for any
 // editable element under 16px and does not zoom back out on blur. Every field

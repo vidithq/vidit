@@ -72,16 +72,11 @@ function Section({
 
 /**
  * The body grid of `EventShell`: the one placement of an event's blocks and the one place their
- * eyebrows are spelled. Move a block here, not in a page.
- *
- * On the `PageColumns` split: the main column holds `sources` and `proof`; the side column holds
- * `location`, then `details`. Below `lg` one column reads the sources, proof, location, then
- * details. The sources row's header is always as tall as its 32px buttons, so the side column's
- * first eyebrow takes a row of the same height and both columns' first blocks start level.
+ * eyebrows are spelled. Move a block here, not in a page. The column order is in
+ * `docs/design.md` (Event layout).
  *
  * With `form`, the columns render inside a `<form>` laid out as `display: contents`. A control
- * outside it, in the title section or the actions block, reaches the form through its `form`
- * attribute.
+ * outside it reaches the form through its `form` attribute.
  */
 export function EventLayout({ sources, proof, details, location, form }: EventLayoutSlots) {
   const columns = (

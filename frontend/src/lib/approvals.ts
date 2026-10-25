@@ -64,7 +64,7 @@ export function deleteApproval(approvalId: string): Promise<void> {
  *  or, with `organization` (a slug of an organization they are a member of), in its name.
  *  Mirrors backend services/approvals.approve (published only, never a geolocator, one approval
  *  per reviewer or organization and version); change both. */
-export function canApprove(
+function canApprove(
   event: { status: string; owner: Author; geolocators: Author[] },
   userId: string | undefined,
   liveApprovals: Approval[],

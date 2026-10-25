@@ -22,7 +22,6 @@ import {
   Save,
   Search as SearchIcon,
   Swords,
-  Trash2,
   Upload,
   X,
 } from "lucide-react";
@@ -575,7 +574,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<RemoveButton>" usage="The one remove control (components/ui/RemoveButton.tsx): a red dangerGhost icon <Button> named by what it removes (label), the name showing as its tooltip. The icon is the rule: a trash (Trash2) when the removal asks for a confirmation first, a second click or a dialog (confirms), a cross (X) when it is instant. A source editor's remove (trash, it arms), a link row's remove (cross), a FileManager tile's remove (cross, every file removal there is a draft change, as a corner disc), an AvatarStack picture's remove disc (trash when it opens a ConfirmDialog: a published co-geolocator, a pending invitation, an approval stamp; cross for a draft pick) and the edit form's Close (trash, it opens CloseEventDialog).">
+          <Item name="<RemoveButton>" usage="The one remove control (components/ui/RemoveButton.tsx): a red dangerGhost icon <Button> named by what it removes (label), the name showing as its tooltip. The icon is the rule: a trash (Trash2) when the removal asks for a confirmation first, a second click or a dialog (confirms), a cross (X) when it is instant. A source editor's remove (trash, it arms), a link row's remove (cross), a notification's delete (cross, it is instant), a FileManager tile's remove (cross, every file removal there is a draft change, as a corner disc), an AvatarStack picture's remove disc (trash when it opens a ConfirmDialog: a published co-geolocator, a pending invitation, an approval stamp; cross for a draft pick) and the edit form's Close (trash, it opens CloseEventDialog).">
             <div className="flex items-center gap-2">
               <RemoveButton label="Remove link 2" />
               <RemoveButton confirms label="Remove source 2" />
@@ -958,7 +957,7 @@ export default function PalettePage() {
             <PaletteDisclosure />
           </Item>
 
-          <Item name="FORM_LABEL (+ _COMPACT, LABEL_TEXT, FORM_INVALID_LABEL)" usage="Field labels, kept separate from <Input>. LABEL_TEXT is the bare 11px uppercase text (FORM_LABEL minus block) for block hosts: table head rows, group headings, the error-digest label. FORM_INVALID_LABEL is FORM_INVALID_FIELD's label-side companion: every required field appends it to its own label (or SectionHeading's title) alongside the input's FORM_INVALID_FIELD outline, so the two always turn red together.">
+          <Item name="FORM_LABEL (+ _COMPACT, LABEL_TEXT, FORM_INVALID_LABEL)" usage="Field labels, kept separate from <Input>. LABEL_TEXT is the bare 11px uppercase text (FORM_LABEL minus block) for block hosts: table head rows, group headings, the error-digest label. FORM_INVALID_LABEL is FORM_INVALID_FIELD's label-side companion: every required field appends it to its own label alongside the input's FORM_INVALID_FIELD outline, so the two always turn red together.">
             <div className="space-y-2">
               <label className={FORM_LABEL}>Field label</label>
               <label className={FORM_LABEL_COMPACT}>Compact label</label>
@@ -1612,15 +1611,7 @@ export default function PalettePage() {
                 href="/palette"
                 external={false}
                 action={
-                  <Button
-                    icon
-                    variant="dangerGhost"
-                    className="text-neutral-500 hover:text-red-400"
-                    aria-label="Delete notification"
-                    title="Delete"
-                  >
-                    <Trash2 size={14} />
-                  </Button>
+                  <RemoveButton label="Delete notification" />
                 }
               />
               <LinkRow
@@ -1646,12 +1637,11 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SectionHeading>" usage="Form section heading inside the section's card (a collection's Details, a profile's Bio). `concept` adds the section's ?; a section no concept explains takes the title alone. An event form's sections take the event page's <SectionEyebrow> above the card instead.">
-            <SectionHeading title="Version note" concept="version_note" />
+          <Item name="<SectionHeading>" usage="Form section heading inside the section's card (a collection's Details, a profile's Bio). An event form's sections take the event page's <SectionEyebrow> above the card instead.">
             <SectionHeading title="Linked accounts" />
           </Item>
 
-          <Item name="<SectionEyebrow>" usage="Detail page + card/panel headings (uppercase eyebrow), and every event form section's heading (Sources, Proof, Location, Details), which sits on the page above the card like the event page's. `invalid` turns it red with FORM_INVALID_LABEL, as SectionHeading's does, when a publish attempt flags the section.">
+          <Item name="<SectionEyebrow>" usage="Detail page + card/panel headings (uppercase eyebrow), and every event form section's heading (Sources, Proof, Location, Details), which sits on the page above the card like the event page's. `invalid` turns it red with FORM_INVALID_LABEL when a publish attempt flags the section.">
             <Variant label="as=h2 (page)">
               <SectionEyebrow title="Details" concept="section_details" />
             </Variant>
@@ -2061,7 +2051,7 @@ export default function PalettePage() {
               <li><span className="font-mono text-neutral-400">BetaBanner</span>: a {"<Pill tone=\"accent\">"} in a <code>position: fixed</code> wrapper, already visible bottom-right from <code>sm</code> up; below <code>sm</code> the same pill rides the nav drawer via {"<BetaBanner inline>"}</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span>: the primary nav, auth/route-driven, always on screen. Two shapes: a fixed rail on the left edge from <code>sm</code> up (glyphs, or glyphs plus labels once expanded), and below <code>sm</code> a floating chip in the top-left corner that opens the same rail as a drawer over the page</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span> chip and drawer: the rail&apos;s own phone shape, rendered by that component rather than a <code>components/ui/</code> primitive, so there is nothing here to reuse. The chip&apos;s open control is a deliberate one-off too: a 44px neutral thumb target, which {"<Button icon>"} does not offer (36px, accent or red)</li>
-              <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page (PAGE_TITLE_TEXT is the title&apos;s type, which a form&apos;s Title field takes in its place): one container on every app page, its left edge at one x and a max-w-6xl column centred on the screen from lg up, 53rem reading width without a rail and max-w-6xl with one (PageShell&apos;s <code>rail</code>); PageShell&apos;s <code>controls</code> slot puts a view&apos;s segmented control under the title, left-aligned (the feed scope, the Requests sort),  PageShell&apos;s <code>titleField</code> puts a form&apos;s Title field in the title&apos;s place and keeps the title as a visually hidden h1 (set by EventShell alone); PageShell&apos;s <code>stickyActions</code> puts the page&apos;s actions at the top right of the header, in the aside named Actions it renders, the header keeping their room, and pins them at the top right of the column once the title scrolls away, on a surface (set by EventShell alone); PageShell&apos;s <code>onBack</code> replaces Back&apos;s history walk (on a /submit path, back to the chooser); PageShell&apos;s <code>headerInColumn</code> puts the header (back, title, byline) at the top of the main column beside the rail, so the rail opens top right (the organization page); PageShell&apos;s <code>headerSide</code> lays the header out in <code>PageColumns</code>, a 65:35 main and side column from lg up, its side heading the side column under the sticky actions, and the body continues in <code>EventLayout</code> on the same split (<code>PAGE_COLUMNS_SPLIT</code>) (set by EventShell alone, see its entry); PageShell&apos;s <code>back</code> arrow parks in the gutter left of the title from lg up and sticks there at the top of the viewport while the page scrolls, level with the rail; <span className="font-mono text-neutral-400">PageCenter</span> (from PageFrame) is the one centred full-screen block, on the same rail inset</li>
+              <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page (PAGE_TITLE_TEXT is the title&apos;s type, which a form&apos;s Title field takes in its place): one container on every app page, its left edge at one x and a max-w-6xl column centred on the screen from lg up, 53rem reading width without a rail and max-w-6xl with one (PageShell&apos;s <code>rail</code>); PageShell&apos;s <code>controls</code> slot puts a view&apos;s segmented control under the title, left-aligned (the feed scope, the Requests sort),  PageShell&apos;s <code>titleField</code> puts a form&apos;s Title field in the title&apos;s place and keeps the title as a visually hidden h1 (set by EventShell alone); PageShell&apos;s <code>stickyActions</code> puts the page&apos;s actions at the top right of the header, in the aside named Actions it renders, the header keeping their room, and pins them at the top right of the column once the title scrolls away, on a surface (set by EventShell, the profile and organization edit modes and the collection forms); PageShell&apos;s <code>onBack</code> replaces Back&apos;s history walk (on a /submit path, back to the chooser); PageShell&apos;s <code>headerInColumn</code> puts the header (back, title, byline) at the top of the main column beside the rail, so the rail opens top right (the organization page); PageShell&apos;s <code>headerSide</code> lays the header out in <code>PageColumns</code>, a 65:35 main and side column from lg up, its side heading the side column under the sticky actions, and the body continues in <code>EventLayout</code> on the same split (<code>PAGE_COLUMNS_SPLIT</code>) (set by EventShell alone, see its entry); PageShell&apos;s <code>back</code> arrow parks in the gutter left of the title from lg up and sticks there at the top of the viewport while the page scrolls, level with the rail; <span className="font-mono text-neutral-400">PageCenter</span> (from PageFrame) is the one centred full-screen block, on the same rail inset</li>
             </ul>
           </Item>
         </section>

@@ -268,12 +268,22 @@ describe("panels the row opens", () => {
     expect(screen.queryByRole("dialog", { name: "Add to collection" })).toBeNull();
   });
 
-  it("opens the geolocators panel for a co-geolocator, where they leave", () => {
+  it("opens the geolocators panel for a co-geolocator, where they leave and nothing more", async () => {
     renderAs(CO_GEOLOCATOR, { status: "geolocated", surface: "event" });
     fireEvent.click(within(row()).getByRole("button", { name: "Geolocators" }));
     const panel = screen.getByRole("dialog", { name: "Geolocators" });
     expect(within(panel).getByRole("heading", { name: "Geolocators" })).toBeInTheDocument();
-    expect(within(panel).getByRole("button", { name: "Leave" })).toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "Remove" })).toBeNull();
+    // Only the reader's own row leaves.
+    expect(within(panel).getAllByRole("button", { name: "Leave" })).toHaveLength(1);
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Leave" }));
+    // The first click arms in place and sends nothing.
+    expect(api.apiFetch).not.toHaveBeenCalledWith("/events/e1/geolocators/bo", { method: "DELETE" });
+    fireEvent.click(within(panel).getByRole("button", { name: "Confirm leave" }));
+    await waitFor(() =>
+      expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/geolocators/bo", { method: "DELETE" }),
+    );
   });
 
   it.each<EventStatus>(["requested", "detected"])("offers no geolocators panel on a %s row", (status) => {

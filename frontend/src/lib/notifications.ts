@@ -9,7 +9,7 @@ export type Notification = components["schemas"]["NotificationRead"];
 export type NotificationKind = Notification["kind"];
 export type UnreadCount = components["schemas"]["NotificationUnreadCount"];
 
-export const NOTIFICATIONS_PATH = "/notifications";
+const NOTIFICATIONS_PATH = "/notifications";
 export const UNREAD_COUNT_PATH = "/notifications/unread-count";
 
 export function notificationsPath(cursor: string | null): string {

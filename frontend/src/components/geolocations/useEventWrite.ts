@@ -16,7 +16,7 @@ export const WRITE_FALLBACK = {
 } as const;
 
 /** One write of an event form, as `PublishActions` and `writeGroup` read it. */
-export interface EventWrite {
+interface EventWrite {
   action: PublishAction;
   busy: boolean;
   error: string | null;

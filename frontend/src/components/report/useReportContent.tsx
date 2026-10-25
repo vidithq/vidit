@@ -44,7 +44,7 @@ import { FORM_LABEL, FORM_SUCCESS_BANNER } from "@/components/ui/form-styles";
  */
 
 /** What this report is filed against. Mirrors the two report routes. */
-export type ReportTargetKind = "event" | "collection";
+type ReportTargetKind = "event" | "collection";
 
 // The call per kind and the noun the copy uses, keyed by the union so a third target fails `tsc` here.
 const SUBMIT: Record<

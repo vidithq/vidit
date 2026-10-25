@@ -16,14 +16,14 @@ import type { ExternalLinks } from "@/types";
 export const BIO_MAX_LEN = 500;
 
 /** The fields the edit mode reads: an analyst's profile or an organization's. */
-export interface EditableProfile {
+interface EditableProfile {
   bio: string | null;
   avatar_url?: string | null;
   external_links: ExternalLinks;
 }
 
 /** The three writes a save runs. The avatar calls resolve to the saved row. */
-export interface ProfileSaveCalls {
+interface ProfileSaveCalls {
   update: (body: UserProfileUpdate) => Promise<unknown>;
   uploadAvatar: (file: File) => Promise<{ avatar_url?: string | null }>;
   deleteAvatar: () => Promise<{ avatar_url?: string | null }>;
@@ -51,7 +51,7 @@ interface UseProfileEditArgs {
 /** What the profile-picture surfaces render now: one derivation for the header title and the
  * picker. `staged` carries a null `url` while the file's bytes are read: surfaces still show a
  * staged state, since Save uploads the file, not what is stored. */
-export type AvatarPreview =
+type AvatarPreview =
   | { kind: "staged"; file: File; url: string | null }
   | { kind: "stored"; url: string }
   | { kind: "none" };

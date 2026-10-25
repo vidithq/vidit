@@ -19,7 +19,7 @@ import { TooltipButton } from "./Tooltip";
 //                                  report flag)
 // The loud filled red is `DANGER_CONFIRM`, for the armed second click of a
 // two-click confirm only.
-export type ButtonVariant =
+type ButtonVariant =
   | "primary"
   | "secondary"
   | "ghost"

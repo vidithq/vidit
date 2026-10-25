@@ -40,8 +40,7 @@ import { sourcesChanged } from "@/lib/sources";
 import { eventHref } from "@/lib/routes";
 import type { EventDetail } from "@/types";
 
-// Ties the pinned actions, the version note and the Title field to the form, which they sit
-// outside of.
+// Ties the pinned write buttons and the Title field to the form, which they sit outside of.
 const EDIT_FORM_ID = "event-edit-form";
 
 /**
@@ -63,12 +62,10 @@ const EDIT_FORM_ID = "event-edit-form";
  * `initialContent` on first paint. Every write names the version the form was loaded at, so a
  * row that moved meanwhile answers a conflict instead of being overwritten.
  *
- * The fields fill `EventShell`'s zones. The actions block pins the writes (`PublishActions`), the
- * error banner and, for the owner, the close as a red icon button; the hidden
- * `IncompleteFormAnnouncer` sits under them.
- * The title section's byline manages the geolocators in place: on a published row each change
- * applies on click and never makes a version; on a request or a detection the reader picks the
- * co-geolocators the publish invites.
+ * The actions block pins the writes (`PublishActions`), the error banner and, for the owner, the
+ * close. The title section's byline manages the geolocators in place: on a published row each
+ * change applies on click and never makes a version; on a request or a detection the reader
+ * picks the co-geolocators the publish invites.
  *
  * With `queue` set the actions gain the position and a Skip, and a finished detection hands over
  * to the next one.
@@ -272,7 +269,7 @@ export function EventEditForm({
       actions={actions}
       formId={EDIT_FORM_ID}
       onSubmit={submit.action.attempt}
-      fields={{ row: geo, showProvenance: true }}
+      fields={{ row: geo }}
     />
   );
 }

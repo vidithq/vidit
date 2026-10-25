@@ -4,7 +4,7 @@ type TagRead = components["schemas"]["TagRead"];
 type ConflictRead = components["schemas"]["ConflictRead"];
 
 /** One card pill. A `label` makes it a key/value pill (`Conflict: Russo-Ukrainian war`). */
-export interface CardTag {
+interface CardTag {
   id: string;
   name: string;
   label?: string;

@@ -21,7 +21,7 @@ import {
 } from "@/components/geolocations/PublishActions";
 import { WRITE_FALLBACK, useEventWrite, writeGroup } from "@/components/geolocations/useEventWrite";
 import { useDraftGeolocatorsByline } from "@/components/event/useGeolocatorsByline";
-import { DuplicateProbe } from "@/components/geolocations/new/DuplicateProbe";
+import { DuplicateProbe } from "@/components/geolocations/fields/DuplicateProbe";
 import { IMPORT_GLYPH } from "@/lib/importEntries";
 import { eventHref, requestHref, submitHref, type SubmitMode } from "@/lib/routes";
 

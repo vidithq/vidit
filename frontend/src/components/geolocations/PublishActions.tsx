@@ -86,7 +86,7 @@ export function usePublishAction({
 
 export type PublishAction = ReturnType<typeof usePublishAction>;
 
-export interface PublishButton {
+interface PublishButton {
   action: PublishAction;
   label: string;
   /** The label while the write runs. */

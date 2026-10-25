@@ -116,7 +116,7 @@ export const eventWindowActive = (w: DateWindows) => !!(w.eventFrom || w.eventTo
 export const addedWindowActive = (w: DateWindows) => !!(w.addedFrom || w.addedTo);
 
 /** A surface-specific section (the date controls) rendered in the accordion at its canonical position. */
-export interface InjectedSection {
+interface InjectedSection {
   title: string;
   concept?: Concept;
   summary: string;

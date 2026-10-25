@@ -15,14 +15,9 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { EVENT_SECTIONS, type EventLayoutSlots, type EventSlot } from "@/components/event/EventLayout";
 import { ProofSection } from "@/components/ui/ProofSection";
 
-/** The body's data shape: an `EventDetail` as-is. Every lifecycle state shares it: a coordless
- * `requested` row carries a null `coords`, and the missing detected-from and requested-by
- * spots drop out. */
-export type EventDetailBodyData = EventDetail;
-
 /** The map panel's body: one column, stacked sources with `thumbnail` media, bare rows, the proof
  * last, no request-trace row. The author is in the panel's header, so no row repeats it. */
-export function EventDetailBody({ geo }: { geo: EventDetailBodyData }) {
+export function EventDetailBody({ geo }: { geo: EventDetail }) {
   return (
     <>
       <SourceBlocks sources={geo.sources} alt={geo.title} compact />
@@ -38,7 +33,7 @@ export function EventDetailBody({ geo }: { geo: EventDetailBodyData }) {
  * `location`, then the Details card with the request-trace row, in the side column. One home for
  * the field set, so the panel and the pages can't drift.
  */
-export function eventPageSlots(geo: EventDetailBodyData, location?: EventSlot | null): EventLayoutSlots {
+export function eventPageSlots(geo: EventDetail, location?: EventSlot | null): EventLayoutSlots {
   return {
     sources: <SourceBlocks sources={geo.sources} alt={geo.title} />,
     proof: { content: <ProofBlock geo={geo} compact={false} /> },
@@ -47,7 +42,7 @@ export function eventPageSlots(geo: EventDetailBodyData, location?: EventSlot | 
   };
 }
 
-function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boolean }) {
+function DetailRows({ geo, compact }: { geo: EventDetail; compact: boolean }) {
   const sourceClass = compact ? "" : "text-sm";
 
   const rows = (
@@ -160,7 +155,7 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
   return <DetailCard>{rows}</DetailCard>;
 }
 
-function ProofBlock({ geo, compact }: { geo: EventDetailBodyData; compact: boolean }) {
+function ProofBlock({ geo, compact }: { geo: EventDetail; compact: boolean }) {
   // A proof body carries pasted URLs; a full-URL link text is one unbreakable token that scrolled the
   // page sideways on a phone without an anywhere-break. One wrapper for both the page and the map
   // panel, so neither regresses alone.

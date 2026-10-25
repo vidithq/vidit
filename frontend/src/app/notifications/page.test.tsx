@@ -162,18 +162,18 @@ describe("NotificationsPage", () => {
     expect(screen.queryByRole("button", { name: /Accept|Decline|Approve/ })).toBeNull();
   });
 
-  it("reads the sentence in the neutral colour, with the arrow and the trash inside the block", async () => {
+  it("reads the sentence in the neutral colour, with the arrow and the delete button inside the block", async () => {
     serve([follower]);
     render(<NotificationsPage />);
 
     const link = await screen.findByRole("link", { name: /cy followed you/ });
     expect(screen.getByText("cy followed you")).toHaveClass("text-neutral-200");
     const block = link.parentElement!;
-    const trash = screen.getByRole("button", { name: "Delete notification" });
+    const remove = screen.getByRole("button", { name: "Delete notification" });
     const arrow = block.querySelector("svg.lucide-arrow-right")!;
-    expect(block).toContainElement(trash);
-    expect(link.contains(trash)).toBe(false);
-    expect(trash.compareDocumentPosition(arrow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(block).toContainElement(remove);
+    expect(link.contains(remove)).toBe(false);
+    expect(remove.compareDocumentPosition(arrow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("deletes a row from its own delete button, then reloads the feed and the dot", async () => {

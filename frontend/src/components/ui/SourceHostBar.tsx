@@ -4,7 +4,7 @@ import { ACCENT_RAMP, CHART_NEUTRAL, CHART_TAIL } from "./styles";
 
 /** One (host, count) entry of `source_hosts`; `name` is the host, lower-cased with
  *  any leading `www.` removed server side. */
-export type SourceHostCount = components["schemas"]["TagCount"];
+type SourceHostCount = components["schemas"]["TagCount"];
 
 interface Segment {
   key: string;

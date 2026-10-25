@@ -60,7 +60,7 @@ export const EVENT_FIELDS = {
 } as const satisfies Record<string, FieldName>;
 
 /** One label per field key, read by the validators. */
-export const FIELD_LABELS: Record<MissingFieldKey, string> = {
+const FIELD_LABELS: Record<MissingFieldKey, string> = {
   title: EVENT_FIELDS.title.label,
   coordinates: EVENT_FIELDS.coordinates.label,
   source_file: "Source file",
@@ -106,10 +106,10 @@ export function detectionsReviewPath(): string {
 
 /** Read views over the `events` table. Mirrors `event_filters.VIEWS`; see
  *  `docs/data-model.md`. */
-export type EventView = "located" | "requested";
+type EventView = "located" | "requested";
 
 /** `hasCoords` `true` keeps rows with a location (a request's guess), `false` the blind ones. */
-export interface EventListParams extends EventFilterParams {
+interface EventListParams extends EventFilterParams {
   view?: EventView;
   sort?: EventListSort;
   limit?: number;
@@ -572,7 +572,7 @@ export interface EventVersionEntry {
 /** Rows one version is assembled from. `own` is its content (absent for the live row);
  *  `producedBy` is the row numbered one lower, since the API files an edit's byline on the
  *  version it superseded; `previous` is that lower version's view, the diff base. */
-export interface EventVersionEntryRows {
+interface EventVersionEntryRows {
   own?: EventVersion | null;
   producedBy?: EventVersion | null;
   previous?: EventDetail | null;
@@ -770,7 +770,7 @@ export function enqueueArchiveImport(
   });
 }
 
-export function getImportJob(jobId: string): Promise<ArchiveImportJob> {
+function getImportJob(jobId: string): Promise<ArchiveImportJob> {
   return apiFetch<ArchiveImportJob>(`/events/import-archive/${jobId}`);
 }
 

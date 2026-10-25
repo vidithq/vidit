@@ -4,7 +4,7 @@ import { useMemo, useState, type Dispatch, type ReactNode, type SetStateAction }
 
 import { CoordinateInputs } from "@/components/geolocations/CoordinateInputs";
 import { MediaManager } from "@/components/geolocations/MediaManager";
-import { LockedHint } from "@/components/geolocations/new/LockedHint";
+import { LockedHint } from "@/components/geolocations/fields/LockedHint";
 import {
   ArchiveBox,
   ArchiveSnapshotField,

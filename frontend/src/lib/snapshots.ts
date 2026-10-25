@@ -17,7 +17,7 @@ export const WAYBACK_HOST = "web.archive.org";
 /** archive.today's six interchangeable domains (one set of snapshots). Mirrors the
  *  `archive_today` entries of `source_archive.PROVIDER_HOSTS`; change both. `ArchivedCopies`
  *  builds its host list from it. */
-export const ARCHIVE_TODAY_HOSTS = [
+const ARCHIVE_TODAY_HOSTS = [
   "archive.today",
   "archive.ph",
   "archive.is",
