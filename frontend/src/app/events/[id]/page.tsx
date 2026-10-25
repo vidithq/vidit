@@ -19,7 +19,7 @@ export default function EventPage() {
     refetch,
   } = useApiResource<EventDetail>(eventId ? `/events/${eventId}` : null);
   // Called before the early returns.
-  const { panels, actions } = useEventActions({
+  const { panels, actions, side } = useEventActions({
     event: geo,
     surface: "event",
     onChanged: refetch,
@@ -36,7 +36,8 @@ export default function EventPage() {
       back
       title={geo.title}
       subtitle={<AuthorByline {...creditProps(geo)} coAuthorsAs="avatars" avatar />}
-      headerSide={actions}
+      stickyActions={actions}
+      headerSide={side}
     >
       {panels}
       <EventPageBody geo={geo} />

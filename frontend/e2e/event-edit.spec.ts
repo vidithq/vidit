@@ -2,12 +2,13 @@ import { expect, test } from "@playwright/test";
 
 import { EVENT, EVENT_ID } from "./support/fixtures";
 import { answerWith, grantSession, mockApi } from "./support/mockApi";
-import { expectNarrowViewportLayout } from "./support/narrowLayout";
+import { expectNarrowViewportLayout, expectNoHorizontalOverflow } from "./support/narrowLayout";
 
 /**
  * The one edit form: the owner's correction of a published geolocation, and the publish of a
- * request. From `lg` up the actions head the side column; on a phone they stack under the
- * fields, so the write is never the first thing on the page.
+ * request. The writes are the page's sticky actions, top right of the header: they stay pinned at
+ * the top of the viewport while the fields scroll under them, and on a phone the requirements fold
+ * into one toggle.
  */
 test.describe("event edit", () => {
   test.beforeEach(async ({ context, page }) => {
@@ -15,24 +16,36 @@ test.describe("event edit", () => {
     await mockApi(page);
   });
 
-  test("stacks the actions card under the fields on a narrow column", async ({ page }) => {
+  test("keeps the save pinned over the fields on a narrow column", async ({ page }) => {
     await page.goto(`/events/${EVENT_ID}/edit`);
 
-    const save = page.getByRole("button", { name: "Save version 2" });
+    const actions = page.getByRole("complementary", { name: "Actions" });
+    const save = actions.getByRole("button", { name: "Save version 2" });
     await expectNarrowViewportLayout(page, save);
 
-    // The last field block, Location, ends above the actions.
-    const location = await page.getByRole("heading", { name: /^Location/ }).locator("xpath=ancestor::section[1]").boundingBox();
-    const saveBox = await save.boundingBox();
-    expect(location!.y + location!.height).toBeLessThanOrEqual(saveBox!.y);
+    // At rest the actions sit above the title field; the close waits behind More actions.
+    const title = page.getByLabel("Title", { exact: true });
+    expect((await actions.boundingBox())!.y + (await actions.boundingBox())!.height).toBeLessThanOrEqual(
+      (await title.boundingBox())!.y,
+    );
+    await expect(page.getByRole("button", { name: "Close this geolocation" })).toHaveCount(0);
+    await actions.getByRole("button", { name: "More actions" }).click();
+    await expect(page.getByRole("menuitem", { name: "Close this geolocation" })).toBeVisible();
+    await page.keyboard.press("Escape");
 
-    // The close follows the save in the same card, and the geolocators come last.
-    const close = page.getByRole("button", { name: "Close this geolocation" });
-    const closeBox = await close.boundingBox();
-    expect(saveBox!.y + saveBox!.height).toBeLessThanOrEqual(closeBox!.y);
-    const geolocators = await page.getByRole("heading", { name: /^Geolocators/ }).boundingBox();
-    expect(closeBox!.y + closeBox!.height).toBeLessThanOrEqual(geolocators!.y);
+    // The version note heads the side column, over Location; the geolocators follow Details.
+    const note = (await page.getByRole("textbox", { name: "Version note" }).boundingBox())!;
+    const location = (await page.getByRole("heading", { name: /^Location/ }).boundingBox())!;
+    const details = (await page.getByRole("heading", { name: /^Details/ }).boundingBox())!;
+    const geolocators = page.getByRole("heading", { name: /^Geolocators/ });
+    expect(note.y).toBeLessThan(location.y);
+    expect((await geolocators.boundingBox())!.y).toBeGreaterThan(details.y);
+
+    // Scrolled to the geolocators, the save is still on screen, pinned at the top.
+    await geolocators.scrollIntoViewIfNeeded();
     await expect(page.getByRole("button", { name: "Invite" })).toBeVisible();
+    await expect(save).toBeInViewport({ ratio: 1 });
+    await expectNoHorizontalOverflow(page);
   });
 
   test("puts the actions top right, over the location and the details, on a wide screen", async ({
@@ -41,11 +54,12 @@ test.describe("event edit", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`/events/${EVENT_ID}/edit`);
 
-    const rail = page.getByRole("complementary", { name: "Actions and geolocators" });
+    const rail = page.getByRole("complementary", { name: "Actions" });
     await expect(rail.getByRole("button", { name: "Save version 2" })).toBeVisible();
     const box = async (name: string) =>
       (await page.getByRole("heading", { name: new RegExp(`^${name}`) }).boundingBox())!;
     const railBox = (await rail.boundingBox())!;
+    const pageTitle = (await page.getByRole("heading", { level: 1 }).boundingBox())!;
     const title = (await page.getByLabel("Title", { exact: true }).boundingBox())!;
     const [sources, proof, location, details] = [
       await box("Sources"),
@@ -53,18 +67,26 @@ test.describe("event edit", () => {
       await box("Location"),
       await box("Details"),
     ];
-    // Main column: title, sources, proof. Side column: actions, location, details.
+    // Header: the page title left, the actions top right, level with it.
     expect(railBox.x).toBeGreaterThan(title.x + title.width);
+    expect(Math.abs(railBox.y - pageTitle.y)).toBeLessThan(12);
+    // Main column: title, sources, proof. Side column: location, details, under the actions.
     expect(sources.y).toBeGreaterThan(title.y);
     expect(proof.y).toBeGreaterThan(sources.y);
-    expect(location.x).toBeGreaterThanOrEqual(railBox.x);
+    expect(location.x).toBeLessThanOrEqual(railBox.x + 1);
     expect(location.y).toBeGreaterThanOrEqual(railBox.y + railBox.height);
     expect(details.y).toBeGreaterThan(location.y);
-    // The actions start no lower than the title field.
-    expect(railBox.y).toBeLessThanOrEqual(title.y);
+
+    // Scrolled down, the title is gone and the actions stay top right.
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect(page.getByRole("heading", { level: 1 })).not.toBeInViewport();
+    const pinned = (await rail.boundingBox())!;
+    expect(pinned.y).toBeGreaterThanOrEqual(0);
+    expect(Math.abs(pinned.x - railBox.x)).toBeLessThanOrEqual(1);
+    await expect(rail.getByRole("button", { name: "Save version 2" })).toBeInViewport({ ratio: 1 });
   });
 
-  test("publishes a request from the same form, its requirements listed", async ({ page }) => {
+  test("publishes a request from the same form, its requirements folded on a phone", async ({ page }) => {
     await answerWith(page, `/events/${EVENT_ID}`, {
       ...EVENT,
       status: "requested",
@@ -79,8 +101,16 @@ test.describe("event edit", () => {
     const publish = page.getByRole("button", { name: "Publish", exact: true });
     await expectNarrowViewportLayout(page, publish);
     const rail = page.getByRole("complementary", { name: "Actions" });
-    await expect(rail.getByText("Conflict", { exact: true })).toBeVisible();
     await expect(rail.getByRole("button", { name: "Save request" })).toBeVisible();
     await expect(page.getByRole("button", { name: /Save version/ })).toHaveCount(0);
+
+    // The chips fold into one toggle that counts the unmet requirements; a tap shows them.
+    const conflict = rail.getByText("Conflict", { exact: true });
+    await expect(conflict).toBeHidden();
+    const toggle = rail.getByRole("button", { name: /^\d+ missing$/ });
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await toggle.click();
+    await expect(conflict).toBeVisible();
+    await expectNarrowViewportLayout(page, publish);
   });
 });

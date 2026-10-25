@@ -87,13 +87,14 @@ function Harness({
   beforeClosedStatus?: BeforeClosedStatus | null;
   versionNo?: number;
 }) {
-  const { panels, actions } = useEventActions({
+  const { panels, actions, side } = useEventActions({
     event: eventFixture(status, beforeClosedStatus, versionNo),
     surface,
   });
   return (
     <>
       {actions}
+      {side}
       {panels}
     </>
   );
@@ -316,12 +317,13 @@ describe("the version selector", () => {
   });
 });
 
-describe("the approvals under the actions row", () => {
-  it("comes with the event page of a published row, right under the row", async () => {
+describe("the approvals beside the actions row", () => {
+  it("come with the event page of a published row, in the side, not the sticky actions", async () => {
     api.approvals = [stamp("a1", "maya")];
     renderAs(null, { status: "geolocated", surface: "event" });
     const approvals = await screen.findByRole("region", { name: "Approvals" });
-    expect(approvals.previousElementSibling).toBe(row());
+    expect(row().contains(approvals)).toBe(false);
+    expect(row().compareDocumentPosition(approvals) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it.each<[ActionSurface, EventStatus]>([

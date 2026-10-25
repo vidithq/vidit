@@ -30,7 +30,7 @@ async function withoutWebShare(page: Page): Promise<void> {
 }
 
 test.describe("shared event link", () => {
-  test("holds the version, Share and Report under the title on a narrow column", async ({
+  test("holds the version, Share and Report over the title on a narrow column", async ({
     page,
     context,
   }) => {
@@ -44,11 +44,12 @@ test.describe("shared event link", () => {
     // What a reader who followed a link acts on: passing the record on again.
     const share = page.getByRole("button", { name: "Share", exact: true });
     await expectNarrowViewportLayout(page, share);
+    // On a phone the actions take the line over the title; the approvals stay under it.
     const titleBox = (await page.getByRole("heading", { level: 1 }).boundingBox())!;
     const approvalsBox = (await page.getByRole("region", { name: "Approvals" }).boundingBox())!;
     const shareBox = (await share.boundingBox())!;
-    expect(shareBox.y).toBeGreaterThan(titleBox.y);
-    expect(shareBox.y + shareBox.height).toBeLessThanOrEqual(approvalsBox.y);
+    expect(shareBox.y + shareBox.height).toBeLessThanOrEqual(titleBox.y);
+    expect(titleBox.y + titleBox.height).toBeLessThanOrEqual(approvalsBox.y);
 
     // A signed-out reader has no primary action, and the stamps stay under the actions row.
     await expect(page.getByRole("link", { name: /^Edit/ })).toHaveCount(0);
@@ -103,7 +104,7 @@ test.describe("shared event link", () => {
     await expectNarrowViewportLayout(page, stamps.getByRole("link").last());
   });
 
-  test("puts the actions top right of the side column, the location level with the sources", async ({
+  test("puts the actions top right, pinned while the page scrolls, the location level with the sources", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1512, height: 900 });
@@ -121,7 +122,9 @@ test.describe("shared event link", () => {
     const sources = (await page.getByRole("heading", { name: /^Sources/ }).boundingBox())!;
     const details = (await page.getByRole("heading", { name: "Details" }).boundingBox())!;
     const location = (await page.getByRole("heading", { name: "Location" }).boundingBox())!;
-    expect(location.x).toBeGreaterThan(rowBox.x - 1);
+    const map = (await page.getByRole("heading", { name: "Location" }).locator("xpath=following-sibling::div[1]").boundingBox())!;
+    // The row ends on the side column's right edge.
+    expect(Math.abs(rowBox.x + rowBox.width - (map.x + map.width))).toBeLessThanOrEqual(1);
     expect(Math.abs(location.y - sources.y)).toBeLessThan(2);
     expect(details.x).toBe(location.x);
     expect(details.y).toBeGreaterThan(location.y);
@@ -129,11 +132,20 @@ test.describe("shared event link", () => {
     expect(reportBox.y).toBeLessThan(
       (await page.getByRole("region", { name: "Approvals" }).boundingBox())!.y,
     );
+
+    // Scrolled to the end of a short window, the title goes and the row stays top right.
+    await page.setViewportSize({ width: 1512, height: 420 });
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect(title).not.toBeInViewport();
+    const pinned = (await row.boundingBox())!;
+    expect(Math.abs(pinned.x - rowBox.x)).toBeLessThanOrEqual(1);
+    expect(pinned.y).toBeGreaterThanOrEqual(0);
+    await expect(row.getByRole("button", { name: "Report" })).toBeInViewport({ ratio: 1 });
   });
 });
 
 test.describe("event page on a phone", () => {
-  test("reads in one column: title, actions and approvals, sources, proof, location, details", async ({
+  test("reads in one column: actions, title, approvals, sources, proof, location, details", async ({
     page,
   }) => {
     await mockApi(page);
@@ -142,8 +154,8 @@ test.describe("event page on a phone", () => {
     const approvals = page.getByRole("region", { name: "Approvals" });
     await expect(approvals.getByRole("list", { name: "Approved by" })).toBeVisible();
     const blocks = [
-      page.getByRole("heading", { level: 1 }),
       page.getByRole("group", { name: "Event actions" }),
+      page.getByRole("heading", { level: 1 }),
       approvals,
       page.getByRole("heading", { name: /^Sources/ }),
       page.getByRole("heading", { name: "Proof" }),
@@ -158,8 +170,8 @@ test.describe("event page on a phone", () => {
       );
     }
     // One column: the side column's blocks start on the title's left edge, not beside it.
-    const left = boxes[0].x;
-    for (const box of [boxes[2], ...boxes.slice(3)]) {
+    const left = boxes[1].x;
+    for (const box of boxes.slice(2)) {
       expect(Math.abs(box.x - left)).toBeLessThanOrEqual(1);
     }
     await expectNoHorizontalOverflow(page);

@@ -21,14 +21,12 @@ import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel
 import { ImportPostPanel } from "@/components/geolocations/ImportPostPanel";
 import { ArrowLeft, MapPin, Megaphone } from "lucide-react";
 import { Button, buttonClasses } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 import { IconTile } from "@/components/ui/IconTile";
-import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { EventFormLayout, useEventForm } from "@/components/geolocations/EventFormFields";
 import {
   GEO_EXTRA_REQS,
-  PublishChecklist,
   REQUEST_REQS,
+  usePublishConditions,
 } from "@/components/geolocations/PublishChecklist";
 import { sourcesBlockWrite } from "@/components/sources/SourcesField";
 import { DuplicateProbe } from "@/components/geolocations/new/DuplicateProbe";
@@ -158,6 +156,18 @@ function SubmitForm() {
     geoMissing.length === 0 && form.taxonomy.blockedMessage === null;
   const reqReady = reqMissing.length === 0;
 
+  // Two outcomes gated on content: meet the request floor and a request can post; add the extra
+  // rows and a geolocation can publish. A click while short flags the gaps red.
+  const conditions = usePublishConditions([
+    { title: "Request", concept: "submit_request", reqs: REQUEST_REQS, missing: reqMissingKeys },
+    {
+      title: "Geolocation",
+      concept: "submit_geolocation_extra",
+      reqs: GEO_EXTRA_REQS,
+      missing: geoMissingKeys,
+    },
+  ]);
+
   // Both publish handlers clear the shared error banner and prior red outlines before
   // re-validating.
   const resetActions = () => {
@@ -210,27 +220,10 @@ function SubmitForm() {
   // and leaves through the review queue.
   const showForm = mode === "single";
 
-  // The actions hold the conditions and the publish buttons, as on the edit page; on a phone they
-  // follow the fields.
+  // The page's sticky actions: the publish buttons, the conditions under them, then the banner.
   const actions = (
-    <Card as="section">
-      {error && (
-        <div className={FORM_ERROR_BANNER} role="alert">
-          {error}
-        </div>
-      )}
-
-      {/* Two outcomes gated on content: meet the request floor and a request can post; add the
-          extra rows and a geolocation can publish. A click while short flags the gaps red. */}
-      <div className="space-y-2">
-        <SectionEyebrow title="Request" concept="submit_request" margin="none" />
-        <PublishChecklist reqs={REQUEST_REQS} missing={reqMissingKeys} />
-      </div>
-      <div className="space-y-2">
-        <SectionEyebrow title="Geolocation" concept="submit_geolocation_extra" margin="none" />
-        <PublishChecklist reqs={GEO_EXTRA_REQS} missing={geoMissingKeys} />
-      </div>
-      <div className="flex flex-wrap gap-3">
+    <aside aria-label="Actions" className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
         <Button
           type="button"
           variant="primary"
@@ -251,14 +244,22 @@ function SubmitForm() {
           <Megaphone size={14} strokeWidth={2} />
           {requestMutation.loading ? "Posting…" : "Publish request"}
         </Button>
+        {conditions.toggle}
       </div>
-    </Card>
+      {conditions.list}
+      {error && (
+        <div className={FORM_ERROR_BANNER} role="alert">
+          {error}
+        </div>
+      )}
+    </aside>
   );
 
   return (
     <PageShell
       title="Submit"
       wide={showForm}
+      stickyActions={showForm ? actions : undefined}
       controls={
         mode !== null && (
           <Link href={submitHref()} className={buttonClasses("ghost", { className: "-ml-2" })}>
@@ -285,8 +286,6 @@ function SubmitForm() {
       <div className={showForm ? undefined : "hidden"}>
         <EventFormLayout
           form={form}
-          actions={actions}
-          actionsLabel="Actions"
           // No `onSubmit` route: publish actions are explicit buttons, and one clicked while its
           // floor is short flags the missing fields red. `noValidate` stops native bubbles.
           formProps={{ onSubmit: (e) => e.preventDefault(), noValidate: true }}

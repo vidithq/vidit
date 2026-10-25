@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach, type Mock } from "vitest";
 
-import { CloseEventForm } from "./CloseEventForm";
+import { CloseEventDialog } from "./CloseEventDialog";
 import { closeEvent } from "@/lib/events";
 import type { EventDetail } from "@/types";
 
@@ -15,25 +15,27 @@ beforeEach(() => {
   mockClose.mockReset();
 });
 
-describe("CloseEventForm", () => {
+describe("CloseEventDialog", () => {
   it("names the row it closes: a request", () => {
     render(
-      <CloseEventForm
+      <CloseEventDialog
         eventId="e1"
         status="requested"
         onClosed={() => {}}
         onCancel={() => {}}
       />
     );
+    expect(screen.getByRole("dialog", { name: "Close this request" })).toBeInTheDocument();
     expect(screen.getByText("Close reason")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Close this request" })
     ).toBeInTheDocument();
+    expect(screen.getByText(/Closing takes this request back/)).toBeInTheDocument();
   });
 
   it("names the row it closes: a detection", () => {
     render(
-      <CloseEventForm
+      <CloseEventDialog
         eventId="e1"
         status="detected"
         onClosed={() => {}}
@@ -48,7 +50,7 @@ describe("CloseEventForm", () => {
 
   it("requires a non-empty reason before calling the API", () => {
     render(
-      <CloseEventForm
+      <CloseEventDialog
         eventId="e1"
         status="requested"
         onClosed={() => {}}
@@ -67,7 +69,7 @@ describe("CloseEventForm", () => {
     mockClose.mockResolvedValue(closed);
     const onClosed = vi.fn();
     render(
-      <CloseEventForm
+      <CloseEventDialog
         eventId="e1"
         status="detected"
         onClosed={onClosed}
@@ -87,7 +89,7 @@ describe("CloseEventForm", () => {
   it("cancel dismisses without closing", () => {
     const onCancel = vi.fn();
     render(
-      <CloseEventForm
+      <CloseEventDialog
         eventId="e1"
         status="requested"
         onClosed={() => {}}

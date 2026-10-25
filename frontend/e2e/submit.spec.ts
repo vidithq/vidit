@@ -25,15 +25,46 @@ test.describe("submit", () => {
     await expectNarrowViewportLayout(page, publish);
   });
 
-  test("stacks the form on a phone as sources, proof, location, details, actions", async ({ page }) => {
+  test("pins the publish buttons on a phone and folds the conditions into one toggle", async ({ page }) => {
+    await page.goto("/submit?mode=single");
+
+    const actions = page.getByRole("complementary", { name: "Actions" });
+    const publish = actions.getByRole("button", { name: "Publish geolocation" });
+    const request = actions.getByRole("button", { name: "Publish request" });
+    await expect(publish).toBeVisible();
+
+    // Every condition is unmet on an empty form: seven, folded away until a tap.
+    const toggle = actions.getByRole("button", { name: "7 missing" });
+    const chip = actions.getByText("Source kind", { exact: true });
+    await expect(chip).toBeHidden();
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(chip).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    await toggle.click();
+    await expect(chip).toBeHidden();
+
+    // Scrolled to the last field, both buttons stay on screen, under the menu chip.
+    await page.getByRole("heading", { name: /^Details/ }).scrollIntoViewIfNeeded();
+    await expect(page.getByRole("heading", { level: 1 })).not.toBeInViewport();
+    await expect(publish).toBeInViewport({ ratio: 1 });
+    await expect(request).toBeInViewport({ ratio: 1 });
+    expect((await actions.boundingBox())!.y).toBeGreaterThanOrEqual(56);
+
+    // A publish while short flags the gaps: the conditions stay folded, the fields turn red.
+    await publish.click();
+    await expect(page.getByLabel("Title", { exact: true })).toHaveClass(/border-red-500/);
+  });
+
+  test("stacks the form on a phone as actions, sources, proof, location, details", async ({ page }) => {
     await page.goto("/submit?mode=single");
 
     const blocks = [
+      page.getByRole("complementary", { name: "Actions" }),
       page.getByRole("heading", { name: /^Sources/ }),
       page.getByRole("heading", { name: /^Proof/ }),
       page.getByRole("heading", { name: /^Location/ }),
       page.getByRole("heading", { name: /^Details/ }),
-      page.getByRole("complementary", { name: "Actions" }),
     ];
     const boxes = [];
     for (const block of blocks) boxes.push((await block.boundingBox())!);
@@ -42,19 +73,37 @@ test.describe("submit", () => {
     }
   });
 
-  test("puts the actions, the location, then the details in the side column on a wide screen", async ({
+  test("puts the actions top right, over the location then the details, on a wide screen", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/submit?mode=single");
 
-    const actions = (await page.getByRole("complementary", { name: "Actions" }).boundingBox())!;
+    const rail = page.getByRole("complementary", { name: "Actions" });
+    await expect(rail.getByText("Conflict", { exact: true })).toBeVisible();
+    await expect(rail.getByRole("button", { name: /missing$/ })).toBeHidden();
+    const actions = (await rail.boundingBox())!;
+    const title = (await page.getByRole("heading", { level: 1 }).boundingBox())!;
     const location = (await page.getByRole("heading", { name: /^Location/ }).boundingBox())!;
     const details = (await page.getByRole("heading", { name: /^Details/ }).boundingBox())!;
-    expect(location.x).toBeGreaterThanOrEqual(actions.x);
+    expect(Math.abs(actions.y - title.y)).toBeLessThan(12);
+    expect(location.x).toBeLessThanOrEqual(actions.x + 1);
     expect(location.y).toBeGreaterThanOrEqual(actions.y + actions.height);
     expect(details.x).toBe(location.x);
     expect(details.y).toBeGreaterThan(location.y);
+
+    // One Details card: the date, the time, the conflict and the tags.
+    const card = page.getByRole("heading", { name: /^Details/ }).locator("xpath=ancestor::section[1]");
+    await expect(card.locator("#occurred_date")).toBeVisible();
+    await expect(card.getByText("Tags", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^Classification/ })).toHaveCount(0);
+
+    // Scrolled down, the actions stay top right while the title goes.
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect(page.getByRole("heading", { level: 1 })).not.toBeInViewport();
+    const pinned = (await rail.boundingBox())!;
+    expect(Math.abs(pinned.x - actions.x)).toBeLessThanOrEqual(1);
+    await expect(rail.getByRole("button", { name: "Publish geolocation" })).toBeInViewport({ ratio: 1 });
   });
 
   test("holds two source editors on a narrow column", async ({ page }) => {

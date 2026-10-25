@@ -197,13 +197,20 @@ function follows(earlier: Element, later: Element): boolean {
   return !!(earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING);
 }
 
-/** Close the detection on screen, through its confirm-with-reason panel. */
-function closeDetection(reason: string) {
-  fireEvent.click(screen.getByRole("button", { name: "Close this detection" }));
-  fireEvent.change(screen.getByLabelText(/Close reason/), {
+/** Close the row on screen: More actions, its close item, then the reason dialog. */
+function closeRow(label: string, reason: string) {
+  fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: label }));
+  const dialog = screen.getByRole("dialog", { name: label });
+  fireEvent.change(within(dialog).getByLabelText(/Close reason/), {
     target: { value: reason },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Close this detection" }));
+  fireEvent.click(within(dialog).getByRole("button", { name: label }));
+}
+
+/** Close the detection on screen. */
+function closeDetection(reason: string) {
+  closeRow("Close this detection", reason);
 }
 
 beforeEach(() => {
@@ -231,7 +238,7 @@ describe("the detection edit surface", () => {
     expect(screen.queryByText("Requested from")).toBeNull();
   });
 
-  it("renders the form under a bare title, with Publish then Close in the actions rail", () => {
+  it("renders the form under a bare title, with Publish and More actions in the sticky actions", () => {
     render(<EditEventPage />);
 
     expect(
@@ -239,18 +246,19 @@ describe("the detection edit surface", () => {
     ).toBeInTheDocument();
     // No description line under the title: the fields say what they are.
     expect(screen.queryByText(/Publishing makes the event public/)).toBeNull();
-    // The rail holds the actions and follows the fields; no Cancel, and no Close in the header.
+    // The sticky actions come before the fields; no Cancel, and no bare Close.
     const rail = screen.getByRole("complementary", { name: "Actions" });
     const submit = within(rail).getByRole("button", { name: "Publish" });
     expect(screen.queryByRole("link", { name: "Cancel" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
-    expect(follows(document.getElementById("event-edit-form")!, submit)).toBe(true);
+    expect(follows(submit, document.getElementById("event-edit-form")!)).toBe(true);
 
-    // Close sits under Publish as a plain button, not behind a disclosure.
-    const close = within(rail).getByRole("button", { name: "Close this detection" });
-    expect(follows(submit, close)).toBe(true);
-    expect(screen.queryByRole("menuitem")).toBeNull();
-    expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
+    // The close waits behind More actions, after Publish.
+    const more = within(rail).getByRole("button", { name: "More actions" });
+    expect(follows(submit, more)).toBe(true);
+    expect(screen.queryByRole("button", { name: "Close this detection" })).toBeNull();
+    fireEvent.click(more);
+    expect(screen.getByRole("menuitem", { name: "Close this detection" })).toBeInTheDocument();
   });
 
   it("closes the detection behind its reason panel", async () => {
@@ -461,16 +469,23 @@ describe("editing a published geolocation", () => {
     expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
   });
 
-  it("holds the note, the save, the close, then the geolocators in the rail", () => {
+  it("holds the save and More actions in the actions, the note over Location, the geolocators under Details", () => {
     render(<EditEventPage />);
 
-    const rail = screen.getByRole("complementary", { name: "Actions and geolocators" });
-    const note = within(rail).getByRole("textbox", { name: "Version note" });
+    const rail = screen.getByRole("complementary", { name: "Actions" });
     const save = within(rail).getByRole("button", { name: "Save version 2" });
-    const close = within(rail).getByRole("button", { name: "Close this geolocation" });
-    const credit = within(rail).getByRole("heading", { name: /^Geolocators/ });
-    expect(follows(note, save) && follows(save, close) && follows(close, credit)).toBe(true);
-    expect(within(rail).getByLabelText("Invite a geolocator")).toBeInTheDocument();
+    const more = within(rail).getByRole("button", { name: "More actions" });
+    expect(follows(save, more)).toBe(true);
+    // The note and the geolocators are fields of the side column, not actions.
+    const note = screen.getByRole("textbox", { name: "Version note" });
+    expect(rail.contains(note)).toBe(false);
+    const location = screen.getByRole("heading", { name: /^Location/ });
+    const details = screen.getByRole("heading", { name: /^Details/ });
+    const credit = screen.getByRole("heading", { name: /^Geolocators/ });
+    expect(follows(note, location) && follows(details, credit)).toBe(true);
+    // The geolocators hold a form of their own, so they sit outside the edit form.
+    expect(document.getElementById("event-edit-form")!.contains(credit)).toBe(false);
+    expect(screen.getByLabelText("Invite a geolocator")).toBeInTheDocument();
     // How shared credit works, changes applying on click with no new version, is the title's help.
     expect(
       within(credit).getByRole("button", { name: "How does shared credit work?" })
@@ -481,9 +496,7 @@ describe("editing a published geolocation", () => {
     closeMock.mockResolvedValue(publishedFixture({ status: "closed" }));
     render(<EditEventPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Close this geolocation" }));
-    fireEvent.change(screen.getByLabelText(/Close reason/), { target: { value: "Wrong town." } });
-    fireEvent.click(screen.getByRole("button", { name: "Close this geolocation" }));
+    closeRow("Close this geolocation", "Wrong town.");
     await waitFor(() => expect(closeMock).toHaveBeenCalledWith("d1", "Wrong town."));
     await waitFor(() => expect(push).toHaveBeenCalledWith("/events/d1"));
   });
@@ -624,7 +637,7 @@ describe("editing an open request", () => {
     row = requestFixture();
   });
 
-  it("opens the one form with Publish, Save request and Close for its owner", () => {
+  it("opens the one form with Publish, Save request and the close for its owner", () => {
     render(<EditEventPage />);
 
     expect(
@@ -634,7 +647,8 @@ describe("editing an open request", () => {
     const rail = screen.getByRole("complementary", { name: "Actions" });
     expect(within(rail).getByRole("button", { name: "Publish" })).toBeInTheDocument();
     expect(within(rail).getByRole("button", { name: "Save request" })).toBeInTheDocument();
-    expect(within(rail).getByRole("button", { name: "Close this request" })).toBeInTheDocument();
+    fireEvent.click(within(rail).getByRole("button", { name: "More actions" }));
+    expect(screen.getByRole("menuitem", { name: "Close this request" })).toBeInTheDocument();
     // A request is version 0: nothing to supersede yet.
     expect(screen.queryByRole("button", { name: /Save version/ })).toBeNull();
   });
@@ -652,13 +666,11 @@ describe("editing an open request", () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith("/events/d1"));
   });
 
-  it("closes the request from the actions rail, then lands on the request", async () => {
+  it("closes the request from More actions, then lands on the request", async () => {
     closeMock.mockResolvedValue(requestFixture({ status: "closed" }));
     render(<EditEventPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Close this request" }));
-    fireEvent.change(screen.getByLabelText(/Close reason/), { target: { value: "Found it." } });
-    fireEvent.click(screen.getByRole("button", { name: "Close this request" }));
+    closeRow("Close this request", "Found it.");
     await waitFor(() => expect(closeMock).toHaveBeenCalledWith("d1", "Found it."));
     await waitFor(() => expect(push).toHaveBeenCalledWith("/requests/d1"));
   });
@@ -729,6 +741,7 @@ describe("editing an open request", () => {
     expect(screen.getByRole("button", { name: "Publish" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save request" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Close this request" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
   });
 
   it("holds the request floor before it posts", () => {

@@ -25,12 +25,17 @@ function Actions({ invited }: { invited: boolean }) {
     owner: { id: "u1", username: "ana" },
     viewer_invite_pending: invited,
   };
-  const { actions } = useEventActions({ event, surface: "event" });
-  return <>{actions}</>;
+  const { actions, side } = useEventActions({ event, surface: "event" });
+  return (
+    <>
+      {actions}
+      {side}
+    </>
+  );
 }
 
 describe("useEventActions invitation", () => {
-  it("shows the invitation in the actions from the event read, without asking the invitation list", () => {
+  it("shows the invitation beside the actions from the event read, without asking the invitation list", () => {
     render(<Actions invited />);
 
     expect(screen.getByText("Geolocator invitation")).toBeInTheDocument();

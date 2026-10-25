@@ -402,7 +402,7 @@ On a form, the archive mark rides the field holding the link, not a block under 
 
 ### Page chrome
 
-Every main-app page uses [`<PageShell>`](../frontend/src/components/ui/PageShell.tsx), which owns the `title` / `subtitle` / `back` / `actions` / `controls` / `headerSide` slots:
+Every main-app page uses [`<PageShell>`](../frontend/src/components/ui/PageShell.tsx), which owns the `title` / `subtitle` / `back` / `actions` / `stickyActions` / `controls` / `headerSide` slots:
 
 | Element | Style | Notes |
 |---|---|---|
@@ -410,10 +410,11 @@ Every main-app page uses [`<PageShell>`](../frontend/src/components/ui/PageShell
 | H1 (`title`) | `text-xl font-medium text-neutral-100` | Consistent on every page. |
 | Subtitle | `text-sm text-neutral-400` | Tight under the H1 (8 px gap). |
 | Back arrow (`back`) | Track `max-sm:hidden mb-1 lg:absolute lg:inset-y-0 lg:right-full lg:mr-3 lg:mb-0 lg:pointer-events-none`, then `lg:sticky lg:top-10 lg:pt-1.5`, then the button `flex -ml-2 lg:ml-0 lg:pointer-events-auto` | Lives in the gutter from `lg` up, so the title's x-coordinate is the same whether back is present or not. The gutter is the column's left padding, at least 4.5rem from `lg` up. There the button sits in a track that spans the page's height, so it sticks at the top of the viewport while the page scrolls: `top-10` equals the frame's `pt-10`, so the arrow never moves, and `pt-1.5` levels it with the title. The track lets clicks through, so only the button itself takes them. Between `sm` and `lg` the button is a row of its own above the title, since a gutter-parked one lands under the fixed sidebar, where taps reach the nav rather than the button. Below `sm` the header carries no back control at all: the same button is portaled into the menu chip instead (see [Phone chrome](#phone-chrome)). `-ml-2` takes back 8 of the 9px the 36px square insets its 18px glyph by, so the arrow reads as aligned with the heading. **When to set it:** `back` marks a drill-in page reached from content (event / request detail, edit, profile, the detections queue), where "back" means "return to where I clicked this". Sidebar destinations (map, submit, requests, search, about, settings) never set it: they are entered from the rail, so there is no "where I came from" to promise. **What it walks:** [`smartBack`](../frontend/src/lib/navigation.ts) pops an app-kept stack of visited paths rather than calling `history.back()`, which would walk off the origin. A route that only redirects keeps itself out of that stack (`skipBackRecord`, called before the redirect), since walking back onto one runs its redirect again and lands where the walk started, which reads as an arrow that does nothing. |
-| Actions (`actions`) | Right of the title, wrapping under it below a `14rem` title basis | The page-level action cluster. Every control that acts on the thing the page is about goes here, so a reader finds them in one place. On a profile that is the glyph row (the linked accounts, then Edit profile on your own), and Follow on someone else's profile or the save pair while editing. The event, version and request pages leave it empty: their controls head the side column instead (`headerSide`, see [Event actions and approvals](#event-actions-and-approvals)). A panel a cluster control opens (the report form, the close form) renders under the header; two open panels stack as separate cards rather than sharing a slot. Flex line-breaking measures the title's base size, so the cluster takes its own line rather than squeezing a heading into a one-word column. A preference, not a minimum (`min-w-0`): a hard floor outgrows the frame on the narrowest phones and scrolls the page sideways. The cluster is capped at the header width (`max-w-full`) and wraps inside itself, so a row of several buttons breaks into right-aligned lines on a phone. The subtitle breaks anywhere, since a bio can hold a bare URL, one unbreakable token. |
+| Actions (`actions`) | Right of the title, wrapping under it below a `14rem` title basis | The page-level action cluster. Every control that acts on the thing the page is about goes here, so a reader finds them in one place. On a profile that is the glyph row (the linked accounts, then Edit profile on your own), and Follow on someone else's profile or the save pair while editing. The event, version and request pages and the event forms leave it empty: their controls are sticky actions instead (`stickyActions`). A panel a cluster control opens (the report form, the close form) renders under the header; two open panels stack as separate cards rather than sharing a slot. Flex line-breaking measures the title's base size, so the cluster takes its own line rather than squeezing a heading into a one-word column. A preference, not a minimum (`min-w-0`): a hard floor outgrows the frame on the narrowest phones and scrolls the page sideways. The cluster is capped at the header width (`max-w-full`) and wraps inside itself, so a row of several buttons breaks into right-aligned lines on a phone. The subtitle breaks anywhere, since a bio can hold a bare URL, one unbreakable token. |
+| Sticky actions (`stickyActions`) | A zero-height `sticky top-10 max-sm:top-16 z-30` track before the header, the cluster hanging from it at the right, up to the side column's width from `lg` up | The page's actions, top right of the header, pinned at the top right of the column while the page scrolls. The event, version and request pages and the event forms set it. The header keeps the cluster's room, and the cluster takes a surface once pinned; see [Event layout](#event-layout). |
 | Header in the column (`headerInColumn`) | The header and `controls` head the main column of a [right rail](#right-rail) page, beside the rail rather than above both | Off by default. The organization page sets it, so the rail's first block (an invited viewer's answer) sits top right, level with the title. The header scrolls with the main column while the rail sticks. The title keeps its x and the back arrow keeps its gutter, since the main column starts where the header did. Below `lg` the header comes first and a stacked rail follows it, so the actions sit under the title. |
 | Controls (`controls`) | `flex flex-wrap items-center justify-between gap-2`, one `space-y-6` step under the header | The view controls: the `<SegmentedControl>` that picks what the page lists or how (the feed scope, the search result type, the Requests sort), left-aligned under the title. On `/submit` the row holds the link back to the entry chooser. A companion control in the same node takes the row's right end (the board's **Post request**). The row sits above a [right rail](#right-rail), so the rail starts level with the list. |
-| Header side (`headerSide`) | [`PageColumns`](../frontend/src/components/ui/PageShell.tsx): `grid items-start gap-6 lg:grid-cols-[minmax(0,65fr)_minmax(0,35fr)]` | Lays the page out as a main column and a side column, 65:35 from `lg` up. The header heads the main column and `headerSide` heads the side column, level with the title. The children lay out their own `PageColumns` under the header, on the same split, so the columns line up. Below `lg` each side column follows its main column. The event page, a version page and the request page set it (see [Event layout](#event-layout)). |
+| Header side (`headerSide`) | [`PageColumns`](../frontend/src/components/ui/PageShell.tsx): `grid items-start gap-6 lg:grid-cols-[minmax(0,65fr)_minmax(0,35fr)]` | Lays the page out as a main column and a side column, 65:35 from `lg` up. The header heads the main column and `headerSide` heads the side column, level with the title, under the sticky actions. The children lay out their own `PageColumns` under the header, on the same split, so the columns line up. Below `lg` each side column follows its main column. The event page, a version page and the request page set it (see [Event layout](#event-layout)). |
 
 Pre-data states use `<PageLoading>` / `<PageError>` (one centered shell). Opt-outs: `/` (landing), `/map` (full-screen map), the `(auth)/*` group, and `app/error.tsx`.
 
@@ -677,6 +678,7 @@ The history list's `Current` row opens the canonical page rather than a version 
 ```mermaid
 flowchart TB
   classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef pinned fill:#f3e8fb,stroke:#7a4aa5,color:#4f2f6b
   classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
   classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
   classDef state fill:#fdf3e7,stroke:#b8661a,color:#7a430f
@@ -684,22 +686,29 @@ flowchart TB
   subgraph legend [Legend]
     direction LR
     l1["`the layout primitive, thick-bordered`"]:::core
+    l5["`pinned at the top right while the page scrolls`"]:::pinned
     l2["`main column: the evidence`"]:::shared
     l3["`side column: the context`"]:::spec
     l4["`full width, between the rows`"]:::state
-    l1 ~~~ l2 ~~~ l3 ~~~ l4
+    l1 ~~~ l5 ~~~ l2 ~~~ l3 ~~~ l4
   end
 
   shell["`**PageShell**
-  headerSide on the event page, wide on a form`"]:::core
+  stickyActions on every event surface, headerSide on the event pages, wide on a form`"]:::core
 
   subgraph top [Header]
     direction LR
     header["`**Header**
     back, title, byline`"]:::shared
-    eventActions["`**Event actions**, event page only
-    the actions row, the approvals, an invitation or Geolocate`"]:::spec
-    header ~~~ eventActions
+    subgraph topside [Top right]
+      direction TB
+      sticky["`**stickyActions**
+      the actions row, or a form's writes and conditions`"]:::pinned
+      approvals["`**headerSide**, event pages only
+      the approvals, an invitation`"]:::spec
+      sticky --> approvals
+    end
+    header ~~~ topside
   end
 
   between["`**Panels and the version banner**`"]:::state
@@ -721,14 +730,13 @@ flowchart TB
     end
     subgraph side [Side column]
       direction TB
-      actions["`**actions**, forms only
-      the writes; last below lg`"]:::spec
       location["`**location**
       map and Coordinates, or the Location field`"]:::spec
       details["`**details**
-      Details card, or Details and Classification`"]:::spec
-      actions --> location --> details
+      the Details card`"]:::spec
+      location --> details
     end
+    main ~~~ side
   end
 
   shell --> top --> between --> layout --> body
@@ -736,19 +744,61 @@ flowchart TB
 
 [`<EventLayout>`](../frontend/src/components/event/EventLayout.tsx) places an event's blocks, and it is the one place that does. The event page, a version page, the request page, the [owner edit form](#the-owner-edit-form) and the [submit form](#forms) all fill its named slots, so a block sits in the same spot on every surface. To move a block, change `EventLayout`; a page only fills slots. The grid uses the `PageColumns` split, 65:35 from `lg` up (`PAGE_COLUMNS_SPLIT` in [`PageShell.tsx`](../frontend/src/components/ui/PageShell.tsx)). The main column holds the evidence and the side column holds the context. The map panel keeps its own one-column body.
 
-- **Header.** On the event page, [`<PageShell>`](../frontend/src/components/ui/PageShell.tsx) with `headerSide` holds the header (back, title, byline) and heads the side column with the event actions, level with the title: the actions row, the approvals and a pending invitation on the event page, the actions row and **Geolocate** on the request page, and the version selector and that version's approvals on a version page (see [Event actions and approvals](#event-actions-and-approvals)). On a form, `PageShell` takes `wide` and holds the page title (**Submit**, **Edit geolocation**), and the **Title** field fills the `header` slot at the top of the main column, where the event page shows the title.
+- **Header.** [`<PageShell>`](../frontend/src/components/ui/PageShell.tsx) holds the header (back, title, byline) and puts the page's actions at its top right through `stickyActions`. On the event page, a version page and the request page, `headerSide` heads the side column under the actions, level with the title: the approvals and a pending invitation on the event page, a version's approvals on a version page (see [Event actions and approvals](#event-actions-and-approvals)). On a form, `PageShell` takes `wide` and holds the page title (**Submit**, **Edit geolocation**), and the **Title** field fills the `header` slot at the top of the main column, where the event page shows the title.
+- **Sticky actions.** The actions row on the event page, the row and **Geolocate** on the request page, the version selector on a version page, and a form's writes and conditions (see [Submit actions](#forms) and [The owner edit form](#the-owner-edit-form)). From `lg` up the cluster is no wider than the side column and ends on its right edge. When the page scrolls, the title scrolls away and the cluster stays pinned at the top right of the column, so a write stays one click away from any field.
 - **Between the rows.** The panels the actions row opens, and the version banner on a version page, take the full width.
 - **Main column.** The `header` slot, then the sources, then the proof. One source takes the whole sources area (see [Source blocks](#source-blocks)).
-- **Side column.** The `actions` slot on a form, then **Location**, then **Details**. On the event page, Location is the map (`h-56`) with its **Coordinates** row and Details is the Details card. On a form, Location is the **Location** field, followed on submit by the duplicate probe, and Details is the **Details** card (event date and time, and the locked provenance link of an imported row) and the **Classification** card (conflict and tags). The request page has no Location block.
-- **Actions.** A form's writes, in an `aside` named by `actionsLabel` (**Actions**, or **Actions and geolocators** on a published row). From `lg` up the main column spans two grid rows and the actions take the first row of the side column, so a tall actions card never pushes the sources down. The actions sit outside the form's `<form>` element, since they can hold forms of their own: `EventLayout` renders the form as `display: contents`, so the grid still places the fields, and the actions' submit button and version note join the form through its `id`.
+- **Side column.** **Location**, then **Details**. On the event page, Location is the map (`h-56`) with its **Coordinates** row and Details is the Details card. On a form, Location is the **Location** field, followed on submit by the duplicate probe, and Details is one **Details** card in the event page's order: the event date and time, the locked provenance link of an imported row, then the conflict and the tags. A published row's edit puts its **Version note** over Location and its **Geolocators** card under Details. The request page has no Location block.
+- **Form.** `EventLayout` renders a form's `<form>` as `display: contents`, so the grid still places the fields. The sticky actions sit outside it, and the submit button joins it through its `id` (the `form` attribute). The `afterDetails` slot (the Geolocators card) sits outside it too, since it holds a form of its own: from `lg` up the main column then spans two grid rows and the slot takes the second row of the side column.
 - **Details.** The Details card carries no Author row: the byline in the header credits the author and every geolocator.
 - **Level tops.** On the event page the sources and the first block of the side column start at one height: the Location module, or the Details card when the event has no location. With two or more sources, the sources header row is as tall as the scroller's 32px buttons, so that block's eyebrow sets `<SectionEyebrow besideScroller>` and takes a row of the same height.
 - **Narrow side column.** A field pair that fits two columns in the main column stacks in the side column: the event date and time, and the coordinate pair, each switch to two columns on a container query (`@md`, 28rem) rather than on the viewport width.
-- **Below `lg`.** One column, in DOM order, which is also the tab order: the header (and on the event page the event actions and the approvals), the sources, the proof, the location, the details, then a form's actions. A form's actions come last, since they act on the fields above them.
+- **Below `lg`.** One column, in DOM order: the sticky actions, the header (and on the event pages the approvals), the sources, the proof, the location, then the details. The actions take the title row's right end when both fit, and the line above the title when they do not.
+
+`PageShell` pins the actions with a sticky track, a spacer and a sentinel:
+
+```mermaid
+flowchart TB
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef pinned fill:#f3e8fb,stroke:#7a4aa5,color:#4f2f6b
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`the content column`"]:::core
+    l2["`what the reader sees`"]:::pinned
+    l3["`invisible, zero height or measured`"]:::spec
+    l1 ~~~ l2 ~~~ l3
+  end
+
+  column["`**PageShell** content column
+  relative, the page's full height`"]:::core
+  sentinel["`**sentinel**
+  marks the cluster's resting top`"]:::spec
+  track["`**sticky track**
+  zero height, top-10, top-16 below sm`"]:::spec
+  cluster["`**the cluster**
+  stickyActions; a surface once data-stuck`"]:::pinned
+  spacer["`**spacer**
+  the cluster's measured size, in the header`"]:::spec
+  header["`**header**
+  title row, or headerSide's top from lg`"]:::spec
+
+  column --> sentinel
+  column --> track --> cluster
+  column --> header --> spacer
+  cluster -. ResizeObserver .-> spacer
+  sentinel -. compared on scroll .-> cluster
+```
+
+- **Track.** The cluster hangs from a zero-height `sticky` track placed before the header, so it stays pinned until the end of the page. Its `top` is the frame's top padding (`top-10`, `top-16` below `sm`), so it never moves before it pins, and it clears the menu chip on a phone. The track lets clicks through and sits inside the content column, never over the sidebar or the corner **Beta** badge.
+- **Room.** The cluster floats over the header, so the header keeps its room: a spacer of the cluster's measured size (a `ResizeObserver`) at the title row's right end, or from `lg` up on a `headerSide` page at the top of the side column. The title row wraps upwards (`flex-wrap-reverse`), so on a phone the spacer takes the line above the title, where the cluster rests.
+- **Surface.** At rest the cluster has no surface. Once it leaves its resting top (a zero-height sentinel marks it), it takes the page background, a border and a shadow (`data-stuck`), so the content scrolling under it stays out of the way. The surface overhangs by 8px, so the controls keep their edges.
+- **Order.** The cluster comes after the back arrow and before the title in the DOM, which is also the tab order: the writes are the first stop on a form.
 
 #### Event actions and approvals
 
-The side column's top is where you act on an event; the rest of the page is what you read. The event page opens it with a row of icon controls (the actions row), then the approvals of a published event, then a pending geolocator invitation. The request page opens it with the same row, then **Geolocate**. The title and the byline head the main column and carry no controls. [`useEventActions`](../frontend/src/components/event/useEventActions.tsx) assembles the controls and returns two nodes: the actions (the approvals included) and the panels the row's toggles open. A page renders those nodes instead of building controls of its own.
+The top right of the page is where you act on an event; the rest of the page is what you read. The event page puts a row of icon controls there (the actions row), as its sticky actions, with the approvals of a published event and a pending geolocator invitation under it at the top of the side column. The request page puts the same row there, then **Geolocate**. The title and the byline head the main column and carry no controls. [`useEventActions`](../frontend/src/components/event/useEventActions.tsx) assembles the controls and returns three nodes: the actions (the row, and **Geolocate** on a request) for `stickyActions`, the side (the approvals and the invitation) for `headerSide`, and the panels the row's toggles open. A page renders those nodes instead of building controls of its own.
 
 ```mermaid
 flowchart TB
@@ -796,13 +846,13 @@ flowchart TB
   panels["`**Panels** under the header, full width
   each takes focus when it opens`"]:::spec
   invite["`**GeolocatorInviteCard**
-  under the row, for an invited analyst`"]:::spec
+  side column top, for an invited analyst`"]:::spec
   approvals["`**Approvals**
-  under the row, no card`"]:::spec
+  side column top, under the row, no card`"]:::spec
   dialog["`**ConfirmDialog**
   the open requests and the picker`"]:::shared
   geolocate["`**Geolocate**
-  request page: under the row, opens the edit form`"]:::spec
+  request page: under the row, pinned with it, opens the edit form`"]:::spec
 
   hook --> header
   hook --> approvals
@@ -818,7 +868,7 @@ flowchart TB
   report --> panels
 ```
 
-The actions row holds these controls, left to right, each shown only to the reader it names. From `lg` up it aligns to the side column's right edge, so it sits top right, level with the title. Below `lg` the side column stacks under the title, so the row sits directly under the byline, left-aligned.
+The actions row holds these controls, left to right, each shown only to the reader it names. It sits top right, level with the title, and ends on the side column's right edge from `lg` up. It stays pinned there while the page scrolls (see [Event layout](#event-layout)). On a phone it takes the line above the title, right-aligned, when the title row cannot hold both.
 
 | Control | Who sees it | What it does |
 |---|---|---|
@@ -832,7 +882,7 @@ The actions row holds these controls, left to right, each shown only to the read
 
 [`VersionSelector`](../frontend/src/components/event/VersionSelector.tsx) lists the versions from the live version number and the event's `version_zero`, so it reads nothing. It is not an owner control: the other controls act on the record, and this one reads it. Every reader gets it, because a corrected record is auditable only when anyone can walk the corrections. The map panel and the forms show one version by construction and carry none.
 
-**Geolocate.** The request page renders its actions like the event page, with no card around them: the actions row (Edit for the asker, Share, Report), then **Geolocate**, the one filled button, aligned to the same right edge, which opens the [edit form](#the-owner-edit-form) on the request, with a `?` saying what publishing does. A closed request keeps its row and has no **Geolocate**.
+**Geolocate.** The request page renders its actions like the event page, with no card around them: the actions row (Edit for the asker, Share, Report), then **Geolocate** under it, the one filled button, aligned to the same right edge and pinned with the row, which opens the [edit form](#the-owner-edit-form) on the request, with a `?` saying what publishing does. A closed request keeps its row and has no **Geolocate**.
 
 A toggle wears the active-row paint while its panel is open, and the panel takes focus when it mounts, so a keyboard or screen reader user lands in it. Open panels stack as separate cards. Nothing in the actions row closes or destroys a row.
 
@@ -840,7 +890,7 @@ A toggle wears the active-row paint while its panel is open, and the panel takes
 
 **Shared credit.** The Geolocators panel ([`GeolocatorsPanel`](../frontend/src/components/event/GeolocatorCredit.tsx)) lists the event's geolocators, owner first. The owner invites an analyst picked in an `<AccountPicker>` (the author typeahead, or an exact username committed with Enter), withdraws a pending invitation and removes a co-geolocator there, on the edit page; a co-geolocator opens the same list from the event page's actions row, with a **Leave** button on their own row. An analyst the owner invited reads a **Geolocator invitation** card at the top of the event page's side column instead, under the actions row, with **Accept** and **Decline** ([`GeolocatorInviteCard`](../frontend/src/components/event/GeolocatorCredit.tsx)); the invitation's notification links to the event page. Every byline of the event credits every geolocator.
 
-**Approvals.** A published event's approvals of its live version sit right under the actions row, on the page background with no card. A geolocator asks for approval from **Request approval** in the actions row. Outdated approvals are read on each version's page, which the version selector opens.
+**Approvals.** A published event's approvals of its live version sit at the top of the side column, under the actions row's resting place, on the page background with no card. They scroll with the page; the row stays pinned. A geolocator asks for approval from **Request approval** in the actions row. Outdated approvals are read on each version's page, which the version selector opens.
 
 ```mermaid
 flowchart LR
@@ -890,7 +940,7 @@ flowchart LR
   own -->|"v1 link"| vn
 ```
 
-- **Layout.** [`useEventApprovals`](../frontend/src/components/event/EventApprovals.tsx) returns two nodes over one read of the approval requests: the summary, and **Request approval** for the actions row. The summary, a `<section>` named *Approvals*, sits right under the actions row in the side column's first row, on the page background with no card and no border. From `lg` up it aligns to the side column's right edge, under the right-aligned row. It renders nothing when the live version has no approval and the reader has nothing to act on (no **Approve**, no request, no outdated approval of their own).
+- **Layout.** [`useEventApprovals`](../frontend/src/components/event/EventApprovals.tsx) returns two nodes over one read of the approval requests: the summary, and **Request approval** for the actions row. The summary, a `<section>` named *Approvals*, is the side of `useEventActions` (`headerSide`): it heads the side column, under the room the actions row keeps, on the page background with no card and no border. From `lg` up it aligns to the side column's right edge, under the right-aligned row. On a phone it follows the title. It renders nothing when the live version has no approval and the reader has nothing to act on (no **Approve**, no request, no outdated approval of their own).
 - **Stamps.** [`ApprovedBy`](../frontend/src/components/event/Approvals.tsx) shows the stamps with no label and no count: the page never prints how many approvals an event holds. [`ApprovalStamps`](../frontend/src/components/event/Approvals.tsx) renders the live version's approvals (those that existed at closing, on a closed event) as an [`<AvatarStack checked>`](../frontend/src/components/ui/AvatarStack.tsx) named *Approved by* for screen readers: every stamp, 28px pictures set apart (`spacing="gap"`), oldest first, wrapping onto further lines, with no **+N** bubble. Each picture carries an accent check badge on its bottom-right corner. An analyst's approval shows the reviewer's picture in a circle, or the `<Avatar>` initial without one. An organization's approval shows the organization's picture in a rounded square. Each stamp is a link to the reviewer's profile or the organization's page. Its name, which a [`<Tooltip>`](../frontend/src/components/ui/Tooltip.tsx) shows on hover, on keyboard focus or on a first tap on a touch screen, says who approved which version when: *maya approved v2 on 15 Oct 2026*, or *Open Source Watch (maya) approved v2 on 15 Oct 2026* for an organization, without the member once that account is erased. A `?` ends the row (the `approval` concept): an approval means an analyst or an organization checked the geolocation and agrees with it, it covers one version, and it is final. While the live version has no approval, the `?` sits beside **Approve** instead, and shows only with it.
 - **Your outdated approval.** A reader whose own approval covers an earlier version reads one line above **Approve**: *You approved v1. Changed since: Title, Proof.* ([`YourOutdatedApproval`](../frontend/src/components/event/Approvals.tsx), the version history's own `changedFields` through `changesSince`). The version links to its page.
 - **Approve.** A secondary **Approve** shows only to a reader who may approve: the API's `viewer_can_approve` is true, so a former geolocator never sees a button the API refuses, and `canApprove` finds no approval of the live version by the reader, or by an organization they are a member of (`approveOptions` in [`lib/approvals.ts`](../frontend/src/lib/approvals.ts)). [`ApproveButtons`](../frontend/src/components/event/Approvals.tsx) has a leading `Stamp` icon and sits beside one **Approve as <organization>** per organization the reader is a member of, whatever their role, that has not approved the version ([`useMemberOrganizations`](../frontend/src/hooks/useMemberOrganizations.ts)). An approval is final, so a click opens a confirmation step, a [`<ConfirmDialog>`](../frontend/src/components/ui/ConfirmDialog.tsx), before anything is sent. The step names the version, names the organization when there is one, and says that the approval is final. The approval is sent only when the reader confirms, and **Cancel** sends nothing. A `version_mismatch` refusal prints the error with a **Reload** button, since the live version moved on since the page loaded. The new stamp is the confirmation: no banner follows an approval. **Approve** sits on its own line under the stamps, and no reader can withdraw an approval.
@@ -900,9 +950,9 @@ flowchart LR
 
 A notification carries no action. Each notification row links to the screen where you act: an approval request or a re-approval request to the event page, whose approvals hold **Approve** and **Decline**; a co-geolocator invitation to the event page, whose **Geolocator invitation** card holds **Accept** and **Decline**; an organization invite to the organization page, whose invite answer holds **Accept** and **Decline**. An answered request's row adds *Approved* or *Declined* to its label. Each row is a `<LinkRow variant="arrow">`: its delete control is a muted trash icon button inside the block, left of the arrow, named *Delete notification* with the tooltip *Delete*, that turns red on hover, deletes the row ([`DELETE /notifications/{id}`](api.md#delete-notificationsid)), and reloads the list and the sidebar dot. At 375px the sentence wraps and the trash and the arrow keep their place at the right edge.
 
-**One verb closes every shape.** The verb is *Close*, and only the noun changes with the row: *Close this request*, *Close this detection*, *Close this geolocation* ([`CloseEventForm`](../frontend/src/components/event/CloseEventForm.tsx) holds that copy, and the edit page's close button, its reason label and its confirm button all read it). One write ends all three, so one word names it on every surface. What the close means still differs by row, and the record says so: the closed page carries the reason, and the state it left is *withdrawn*, *rejected* or *retracted*. The close lives in the actions card of the owner's edit page, under the save, not in the event page's actions row. A closed row has no edit page and no close: closing is terminal and the owner has no un-close. The panel asks for a reason, and the reason's `?` says it stays public, because that reason is what a reader finds on the closed page in place of the claim.
+**One verb closes every shape.** The verb is *Close*, and only the noun changes with the row: *Close this request*, *Close this detection*, *Close this geolocation* ([`CloseEventDialog`](../frontend/src/components/event/CloseEventDialog.tsx) holds that copy, and the edit page's menu item, the dialog's title and its confirm button all read it). One write ends all three, so one word names it on every surface. What the close means still differs by row, and the record says so: the closed page carries the reason, and the state it left is *withdrawn*, *rejected* or *retracted*. The close lives in the **More actions** menu of the owner's edit page, beside the save, not in the event page's actions row. A closed row has no edit page and no close: closing is terminal and the owner has no un-close. The dialog asks for a reason, and the reason's `?` says it stays public, because that reason is what a reader finds on the closed page in place of the claim.
 
-A retracted geolocation keeps its page. It reads as a `Closed` badge with the reason and the closing day beside it, over the record it took back: the coordinates, the evidence, the credits and the version history are all still there, and the version selector stays in the actions row, since walking what the record used to claim is exactly what a reader does after a retraction. The map's side panel and the forms carry no actions row at all. The panel previews a row whose own page is one click away on the title, so acting on the record belongs there rather than in a preview of it; a form's primary action is its own Publish or Save, in the actions card beside the fields it applies, and sharing or reporting a row one is in the middle of rewriting acts on a record that is not the one on screen. The detection form's header cluster is its own controls instead (the queue position and Skip).
+A retracted geolocation keeps its page. It reads as a `Closed` badge with the reason and the closing day beside it, over the record it took back: the coordinates, the evidence, the credits and the version history are all still there, and the version selector stays in the actions row, since walking what the record used to claim is exactly what a reader does after a retraction. The map's side panel and the forms carry no actions row at all. The panel previews a row whose own page is one click away on the title, so acting on the record belongs there rather than in a preview of it; a form's primary action is its own Publish or Save, in the sticky actions over the fields it applies, and sharing or reporting a row one is in the middle of rewriting acts on a record that is not the one on screen. A review pass adds its own controls to the detection form's sticky actions instead (the queue position and Skip).
 
 A published event names its version in the actions row's version selector, not beside the byline (see [Event actions and approvals](#event-actions-and-approvals)).
 
@@ -955,7 +1005,7 @@ On a `requested` or `detected` row, version 0, it is the publish form: every fie
 
 On a `geolocated` row it is **Edit geolocation**: the same field bricks and the same editable fields, every source included, an optional **Version note** above the save, and a **Save version N** that writes on the click that made it, because a version adds a version and overwrites nothing. The button names the number it would produce, so the reader sees what they are about to create rather than what is on screen. A save that would move no versioned field is refused in the form, without a request: the banner reads *Nothing changed since version N*, which is the sentence the server's own refusal maps to. Some inputs hold less than their column does, a link's post time and a source's capture time (minutes) and the event time (no seconds), so a field still holding what the row seeded it with is treated as untouched and goes back at the row's precision rather than as its own truncation. Otherwise every edit of a typo would quietly take the seconds off a published record, and no save would ever count as unchanged.
 
-**The owner's management lives on the edit page.** The event page's actions row carries only **Edit** for the owner; what the owner does to the record beyond correcting it sits in the edit page's actions, at the top of the side column.
+**The owner's management lives on the edit page.** The event page's actions row carries only **Edit** for the owner; what the owner does to the record beyond correcting it sits on the edit page: the close in the sticky actions' **More actions** menu, and the geolocators under the Details card.
 
 ```mermaid
 flowchart TB
@@ -971,33 +1021,47 @@ flowchart TB
     l1 ~~~ l2 ~~~ l3
   end
 
-  shell["`**EventLayout actions=…**
-  top of the side column from lg, under the fields below it`"]:::core
-  fields["`**The form**
-  EventFormLayout: the fields in their slots`"]:::spec
+  shell["`**PageShell stickyActions=…**
+  top right of the header, pinned while the page scrolls`"]:::core
+  layout["`**EventLayout**
+  EventFormLayout: the fields in their slots`"]:::core
 
-  subgraph rail [Actions slot]
+  subgraph rail [Sticky actions]
     direction TB
-    actions["`**Actions card**
-    Version note or PublishChecklist, the banners,
-    Save version N, or Publish and Save request`"]:::spec
-    close["`**CloseSection**
+    queue["`**Queue position and Skip**, a review pass only`"]:::spec
+    actions["`**Save version N**, or **Publish** and **Save request**
+    then the requirements toggle on a phone, then **More actions**`"]:::spec
+    chips["`**To publish** chips, an unpublished row only
+    usePublishConditions`"]:::shared
+    banners["`**IncompleteFormNotice** and the error banner`"]:::shared
+    menu["`**ActionMenu** More actions
     Close this geolocation, detection or request`"]:::shared
-    credit["`**Geolocators card**, a published row only
-    GeolocatorsPanel: invite, withdraw, remove`"]:::spec
-    actions --> close
-    close ~~~ credit
+    dialog["`**CloseEventDialog**
+    the reason, Cancel, the close`"]:::shared
+    queue --> actions --> chips --> banners
+    actions --> menu --> dialog
   end
 
-  shell --> fields
+  subgraph side [Side column]
+    direction TB
+    note["`**Version note**, a published row only`"]:::spec
+    location["`**Location**`"]:::spec
+    details["`**Details**`"]:::spec
+    credit["`**Geolocators card**, a published row only
+    GeolocatorsPanel: invite, withdraw, remove`"]:::spec
+    note --> location --> details --> credit
+  end
+
   shell --> rail
+  shell --> layout --> side
 ```
 
-- **The form.** [`EventFormLayout`](../frontend/src/components/geolocations/EventFormFields.tsx) places the event fields in the [`EventLayout`](#event-layout) slots, and the page's `<form>` holds them and nothing else. The submit button and the version note join it through the form's `id` (the `form` attribute), so Enter in a field or in the note still saves.
-- **Actions card.** The version note on a published row or the publish requirements on a request or a detection, `IncompleteFormNotice`, the error banner, then the write: **Save version N**, or the arming **Publish** with, for the asker of a request, **Save request**.
-- **Close.** Under the save, in the same card, for the owner, **Close this geolocation**, **Close this detection** or **Close this request** ([`CloseSection`](../frontend/src/components/event/CloseEventForm.tsx)) opens the reason form in place, with a `?` beside it that says what closing does. A close lands on the event page, the next detection of a review pass, the detections queue, or the request page for a request.
-- **Geolocators.** A published geolocation's actions hold a second card with the Geolocators panel ([`GeolocatorsPanel`](../frontend/src/components/event/GeolocatorCredit.tsx)), outside the form, since the panel holds a form of its own. The owner invites an analyst picked in an `<AccountPicker>`, withdraws a pending invitation and removes a co-geolocator there. Each change applies on click through its own endpoint and never makes a version. The `?` on the card's title (the `geolocators` concept) says so, and that an invited analyst is credited once they accept while editing and closing stay with the owner. The event page's Geolocators panel carries the same `?`. A change rereads the row.
-- **Phone.** Below `lg` the actions stack under the fields: the actions card, then the Geolocators card.
+- **The form.** [`EventFormLayout`](../frontend/src/components/geolocations/EventFormFields.tsx) places the event fields in the [`EventLayout`](#event-layout) slots, and the page's `<form>` holds them and nothing else. The submit button sits outside it, in the sticky actions, and joins it through the form's `id` (the `form` attribute), so Enter in a field or in the version note still saves.
+- **Sticky actions.** An `aside` named *Actions*: a review pass's position and **Skip**, then the write, **Save version N**, or the arming **Publish** (its armed ring, and its armed sentence in a live region) with, for the asker of a request, **Save request**, then **More actions** for the owner. Under them, on a request or a detection, the **To publish** requirements as `<Pill>` chips, then `IncompleteFormNotice` and the error banner. Below `sm` the chips fold into one toggle that counts the unmet ones (*3 missing*), beside the buttons, and a tap shows them ([`usePublishConditions`](../frontend/src/components/geolocations/PublishChecklist.tsx)).
+- **Close.** For the owner, **More actions** (an [`<ActionMenu>`](../frontend/src/components/ui/ActionMenu.tsx) with lucide `Ellipsis`) holds **Close this geolocation**, **Close this detection** or **Close this request**. The item opens [`CloseEventDialog`](../frontend/src/components/event/CloseEventDialog.tsx), a `ConfirmDialog` that says what closing does, then asks for the reason. A close lands on the event page, the next detection of a review pass, the detections queue, or the request page for a request.
+- **Version note.** On a published row, the optional note is a field: its card heads the side column, over **Location**.
+- **Geolocators.** A published geolocation's side column holds a card with the Geolocators panel under the Details card ([`GeolocatorsPanel`](../frontend/src/components/event/GeolocatorCredit.tsx)), outside the form, since the panel holds a form of its own. The owner invites an analyst picked in an `<AccountPicker>`, withdraws a pending invitation and removes a co-geolocator there. Each change applies on click through its own endpoint and never makes a version. The `?` on the card's title (the `geolocators` concept) says so, and that an invited analyst is credited once they accept while editing and closing stay with the owner. The event page's Geolocators panel carries the same `?`. A change rereads the row.
+- **Phone.** The sticky actions take the line above the page title and stay pinned under the menu chip while the fields scroll. The side column follows the main column: the version note, Location, Details, then the Geolocators card.
 
 #### The version history and one version
 
@@ -1453,9 +1517,9 @@ Every clickable is accent, and red is only for destructive or alerting actions. 
 
 **One submit page, content-gated.** [`/submit`](../frontend/src/app/submit/page.tsx) is a single form: you fill in what you have, and two actions publish from the content, "Publish geolocation" (born `geolocated`) or "Publish request" (born `requested`). Each is gated on a live requirements tick-list that escalates from the request floor to the full geolocation floor. `/submit` opens on a chooser of three [`<IconTile>`](../frontend/src/components/ui/IconTile.tsx) links, each with an icon, a title and one sentence: **Single event** (geolocate one event, or ask the community to geolocate it), **From an X post** (paste a link to one of your own posts, which becomes a detection you review), and **Bulk import** (upload your X archive; each geolocation in your posts becomes a detection to review). A tile opens its path in place of the chooser and names it in the `mode` query (`single`, `xpost` or `bulk`, built by `submitHref` in [`lib/routes.ts`](../frontend/src/lib/routes.ts)), so a reload keeps the path and the browser's Back returns to the chooser. **Other ways to submit**, under the title, returns to the chooser from any path. The form stays mounted while hidden, so its draft survives a trip through the chooser. `?import=1`, the target of the onboarding card and the `/import` guide, opens **Bulk import**. A link that asks for the form opens it directly (`?mode=single`): **Post request** on the Requests board, the empty profile's first-submission link, and the guide's submit tile. `/requests/new` redirects to the form, and `/geolocations/new` redirects to `/submit` with its query. A request is answered from its own [edit form](#the-owner-edit-form), not from here.
 
-**Submit actions.** The submit form takes the edit form's layout, [`EventLayout`](#event-layout) through `EventFormLayout`: the actions slot holds an **Actions** `<Card>` with the error banner, the tick-lists and the publish actions, at the top of the side column from `lg` up and after the fields on a phone. It shows a **Request** tick-list and a **Geolocation** tick-list for the extra rows, each a [`PublishChecklist`](../frontend/src/components/geolocations/PublishChecklist.tsx) under a `SectionEyebrow` whose `?` says what the list unlocks, then **Publish geolocation** and **Publish request**. The import entries hide the form, and its actions with it.
+**Submit actions.** The submit form takes the edit form's layout, [`EventLayout`](#event-layout) through `EventFormLayout`, and its writes are the page's sticky actions, an `aside` named *Actions* at the top right of the header, pinned while the fields scroll. It holds **Publish geolocation** (primary) and **Publish request**, then the conditions as chips: a **Request** list, then a **Geolocation** list for the extra rows, each a `PublishChecklist` under a `SectionEyebrow` whose `?` says what the list unlocks, then the error banner. Below `sm` the chips fold into one toggle beside the buttons that counts the unmet ones (*7 missing*), and a tap shows them ([`usePublishConditions`](../frontend/src/components/geolocations/PublishChecklist.tsx)). The import entries hide the form, and its actions with it.
 
-Section placement follows [Event layout](#event-layout): Title, **Sources** and **Proof** in the main column; the actions, **Location**, **Details** (event date and time) and **Classification** (conflict and tags) in the side column. Each section is a `<Card as="section">` headed by [`<SectionHeading>`](../frontend/src/components/ui/SectionHeading.tsx) (which carries the section `?`). Fields use the [`<Input>`](../frontend/src/components/ui/Input.tsx) primitive. **Sources** is the carousel of source editors that [Source blocks](#source-blocks) describes, reused by submit, request, detection review and the published-row edit so they can't drift; each editor's file slot sits on the generic [`FileManager`](../frontend/src/components/ui/FileManager.tsx). **From an X post** is [`ImportPostPanel`](../frontend/src/components/geolocations/ImportPostPanel.tsx): a URL field and one action. The post becomes detections server-side, and the panel opens the first one in the detections queue; a run with something to say (warnings, a refusal, a post already imported) stays on the panel and says it, with the review one click away. **Bulk import** is [`ImportArchivePanel`](../frontend/src/components/geolocations/ImportArchivePanel.tsx), whose export walkthrough is a `boxed` [`NumberedSteps`](../frontend/src/components/ui/NumberedSteps.tsx).
+Section placement follows [Event layout](#event-layout): Title, **Sources** and **Proof** in the main column; **Location** and **Details** (event date and time, the provenance link of an imported row, conflict and tags) in the side column. Each section is a `<Card as="section">` headed by [`<SectionHeading>`](../frontend/src/components/ui/SectionHeading.tsx) (which carries the section `?`). Fields use the [`<Input>`](../frontend/src/components/ui/Input.tsx) primitive. **Sources** is the carousel of source editors that [Source blocks](#source-blocks) describes, reused by submit, request, detection review and the published-row edit so they can't drift; each editor's file slot sits on the generic [`FileManager`](../frontend/src/components/ui/FileManager.tsx). **From an X post** is [`ImportPostPanel`](../frontend/src/components/geolocations/ImportPostPanel.tsx): a URL field and one action. The post becomes detections server-side, and the panel opens the first one in the detections queue; a run with something to say (warnings, a refusal, a post already imported) stays on the panel and says it, with the review one click away. **Bulk import** is [`ImportArchivePanel`](../frontend/src/components/geolocations/ImportArchivePanel.tsx), whose export walkthrough is a `boxed` [`NumberedSteps`](../frontend/src/components/ui/NumberedSteps.tsx).
 
 **Coordinates travel as a pair.** Every pair (the subject point and each source's capture position) is the shared [`CoordinateInputs`](../frontend/src/components/geolocations/CoordinateInputs.tsx). A paste that reads as a pair fills both fields whichever one received it: a decimal `lat, lng` (comma or space separated, degree signs tolerated), or a Google Maps URL (`@lat,lng`, `q=`, `query=`) when the paste is itself a URL. Anything else pastes as ordinary text, prose quoting `@48.5,37.8` included. [`<CoordinateActions>`](../frontend/src/components/event/CoordinateActions.tsx) rides inside the longitude field as its trailing adornment, so a coordinate can be checked against satellite imagery and carried away while it is being typed without the eye leaving the field. It is two ghost icon buttons everywhere it appears, the shape every control inside a field carries, and the two sit a hair apart so their hover plates read as two controls. The map link (new tab) is named *View on Maps* by its `aria-label` and its tooltip, and the copy composes the same primitive over `useCopyToClipboard`. The actions cost no column of their own and no line under the fields. While the pair is half-typed or out of bounds both controls stay in place, disabled and grey, rather than disappearing, so the field holds one width and a grey control says the point is not usable yet; the map link becomes a disabled button there, since there is nothing to navigate to. The event detail page's coordinates row renders the same component, right-aligned on the coordinates line, so the two surfaces can't drift. The parser, the bounds, the rendering (6 decimals, 4 in a compact row) and the map-link builder have one home, [`lib/coordinates.ts`](../frontend/src/lib/coordinates.ts).
 
@@ -1465,7 +1529,7 @@ Section placement follows [Event layout](#event-layout): Title, **Sources** and 
 
 **Reviewing is the same form on the same route, one detection at a time.** A queue row and a detection under review open one surface, [`EventEditForm`](../frontend/src/components/geolocations/edit/EventEditForm.tsx) at `/events/{id}/edit`, with the same sections in the same order and every field editable in both cases, the proof editor included. A review pass is that URL carrying `?queue=1`: one address per detection, so a reload keeps its place, the address bar says which detection is open, and the browser's Back steps back one detection. Every entry from the queue page sets the flag, a row click included, so a pass starts wherever the reader entered it; the bare URL stays reachable by hand for a single detection. *Start reviewing* points at `/profile/{username}/detections/review`, which reads the queue and hands over to the first detection's URL, replacing itself in history so Back from that detection lands on the queue list.
 
-With the flag set on a detection the reader owns, the page reads the owner's queue, places the detection in it, and adds the pass's own chrome to the header cluster: the position (*Detection n of m*) and **Skip**. **Publish** and **Close this detection** sit in the actions card, as on every edit. Publishing runs the single-row [`POST /events/{id}/versions`](api.md#post-eventsidversions) behind the form's confirm and then opens the next detection instead of returning to the queue; closing, behind its own required-reason panel, hands over the same way; **Skip** hands over without writing. Past the last detection the pass ends on the queue list. The position is read off the live queue, so a detection just published or closed is out of both the count and the walk, and a detection the queue no longer holds carries no position at all: the page is a plain edit again.
+With the flag set on a detection the reader owns, the page reads the owner's queue, places the detection in it, and adds the pass's own chrome to the sticky actions: the position (*Detection n of m*) and **Skip**. **Publish** and the **More actions** close sit in the sticky actions, as on every edit, and the position and **Skip** head them. Publishing runs the single-row [`POST /events/{id}/versions`](api.md#post-eventsidversions) behind the form's confirm and then opens the next detection instead of returning to the queue; closing, behind its own required-reason dialog, hands over the same way; **Skip** hands over without writing. Past the last detection the pass ends on the queue list. The position is read off the live queue, so a detection just published or closed is out of both the count and the walk, and a detection the queue no longer holds carries no position at all: the page is a plain edit again.
 
 **Required by default.** No field carries a `required` or an `optional` marker: per-field markers make the form a legend to decode, and two guides say the same thing better. The readiness tick-list beside the actions names every unmet requirement of the publish path you are aiming at, and a clicked action outlines the missing fields in place. On submit, [`IncompleteFormNotice`](../frontend/src/components/ui/IncompleteFormNotice.tsx) lists every unmet field at once (not the first miss) above the action, and outlines each missing field in place (`FORM_INVALID_FIELD`). The forms set `noValidate`, so this notice, not native one-bubble-at-a-time validation, owns the feedback. It is shared across geolocation, request, and detection submit, each computing its own required set (detection is a superset of create; request is a subset). One content rule: a geolocation's proof must contain an image (`proofHasImage`), the source-to-satellite cross-reference. Detection-submit is a single **Submit** behind a confirm: a `detected` row is machine output nobody has vouched for, so submit applies the whole form and publishes it as `geolocated` in one step, after which every change to it is a version on a public record. The confirm **arms the button in place** rather than replacing it with a confirm pair: the label reads *Confirm submit*, the button takes `ARMED_RING`, and the second click writes. Nothing is inserted and nothing moves, so the second click lands where the first one did, and the button keeps focus, so Enter twice submits. It disarms on its own after a few seconds, on Escape, and on any click or focus landing elsewhere ([`useConfirmAction`](../frontend/src/hooks/useConfirmAction.ts) owns all of it). What the second click costs is in the `?` beside the button, and the armed state announces itself in a sibling live region, the shape every copy control uses, so no control renames itself mid-gesture.
 

@@ -5,8 +5,8 @@ import { useState } from "react";
 import { closeEvent } from "@/lib/events";
 import { useMutation } from "@/hooks/useMutation";
 import type { EventDetail, EventStatus } from "@/types";
-import type { Concept } from "@/lib/fieldHelp";
-import { Button } from "@/components/ui/Button";
+import { FIELD_HELP, type Concept } from "@/lib/fieldHelp";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Textarea } from "@/components/ui/Input";
 import { FORM_LABEL, FORM_ERROR_BANNER } from "@/components/ui/form-styles";
@@ -17,7 +17,7 @@ const CLOSE_REASON_MAX_LEN = 2000;
 /**
  * What each row is called, for the one verb that closes all of them. The verb is always *Close*:
  * one write ends a request, a detection and a published geolocation, and per-shape verbs would
- * let the open button and the confirm button drift. The noun names the row. A `closed`
+ * let the menu item and the confirm button drift. The noun names the row. A `closed`
  * row offers no close, so the generic noun covers it rather than a fourth entry.
  */
 const CLOSE_NOUN: Partial<Record<EventStatus, string>> = {
@@ -26,7 +26,7 @@ const CLOSE_NOUN: Partial<Record<EventStatus, string>> = {
   geolocated: "geolocation",
 };
 
-/** What closing does, per row, as the close button's help. */
+/** What closing does, per row, as the dialog's opening sentence. */
 const CLOSE_HELP: Partial<Record<EventStatus, Concept>> = {
   requested: "close_request",
   detected: "close_detection",
@@ -38,39 +38,40 @@ function closeNoun(status: EventStatus): string {
   return CLOSE_NOUN[status] ?? "event";
 }
 
-/** The row's own close label, as the open button and this form's confirm button print it. */
-function closeActionLabel(status: EventStatus): string {
+/** The row's own close label, as the menu item and the dialog's confirm button print it. */
+export function closeActionLabel(status: EventStatus): string {
   return `Close this ${closeNoun(status)}`;
 }
 
-interface CloseEventFormProps {
+interface CloseEventDialogProps {
   eventId: string;
   /** The row's current status, which names the row in the copy. */
   status: EventStatus;
   /** Called with the closed event on success (the parent refetches / routes). */
   onClosed: (closed: EventDetail) => void;
-  /** Dismiss without closing (returns to the trigger). */
+  /** Dismiss without closing. */
   onCancel: () => void;
-  /** Disable the controls while a sibling action is mid-flight. */
+  /** Hold the confirm while a sibling action is mid-flight. */
   disabled?: boolean;
 }
 
 /**
- * Inline "close this event" panel: a required free-text reason plus confirm and cancel, composed
- * from shared primitives. `status` only picks the noun (`CLOSE_NOUN`). The reason stays publicly
- * visible on the closed row, so the backend requires it; this enforces the same non-empty rule
- * client-side.
+ * The close of an owner's edit page, opened from its **More actions** menu: a `ConfirmDialog` that
+ * says what closing does, then a required free-text reason, **Cancel** and **Close this …**.
+ * `status` only picks the noun (`CLOSE_NOUN`). The reason stays publicly visible on the closed
+ * row, so the backend requires it; this enforces the same non-empty rule client-side.
  */
-export function CloseEventForm({
+export function CloseEventDialog({
   eventId,
   status,
   onClosed,
   onCancel,
   disabled = false,
-}: CloseEventFormProps) {
+}: CloseEventDialogProps) {
   const [reason, setReason] = useState("");
   const [emptyReason, setEmptyReason] = useState(false);
   const noun = closeNoun(status);
+  const help = CLOSE_HELP[status];
 
   const closeMutation = useMutation(() => closeEvent(eventId, reason.trim()), {
     fallback: "Close failed",
@@ -86,10 +87,18 @@ export function CloseEventForm({
     void closeMutation.run();
   };
 
-  const busy = closeMutation.loading || disabled;
-
   return (
-    <div className="space-y-3">
+    <ConfirmDialog
+      title={closeActionLabel(status)}
+      confirmLabel={closeActionLabel(status)}
+      busyLabel="Closing…"
+      busy={closeMutation.loading}
+      confirmDisabled={disabled}
+      error={closeMutation.error}
+      onConfirm={submit}
+      onCancel={onCancel}
+    >
+      {help && <p>{FIELD_HELP[help].text}</p>}
       <div className="space-y-1.5">
         <span className="inline-flex items-center gap-1">
           <label htmlFor="close_reason" className={FORM_LABEL}>
@@ -110,59 +119,11 @@ export function CloseEventForm({
           placeholder={`Why are you closing this ${noun}? (stays visible on the closed row)`}
         />
       </div>
-
       {emptyReason && (
         <div className={FORM_ERROR_BANNER} role="alert">
           A reason is required to close this {noun}.
         </div>
       )}
-      {closeMutation.error && (
-        <div className={FORM_ERROR_BANNER} role="alert">
-          {closeMutation.error}
-        </div>
-      )}
-
-      <div className="flex items-center gap-3">
-        <Button variant="danger" onClick={submit} disabled={busy}>
-          {closeMutation.loading ? "Closing…" : closeActionLabel(status)}
-        </Button>
-        <Button variant="ghost" onClick={onCancel} disabled={busy}>
-          Cancel
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-/**
- * The close at the foot of an owner's edit page actions card, under the save: **Close this …**,
- * with what closing does in its help, which opens `CloseEventForm` in place.
- */
-export function CloseSection({
-  eventId,
-  status,
-  onClosed,
-  disabled = false,
-}: Omit<CloseEventFormProps, "onCancel">) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="space-y-3 border-t border-neutral-800 pt-4">
-      {open ? (
-        <CloseEventForm
-          eventId={eventId}
-          status={status}
-          onClosed={onClosed}
-          onCancel={() => setOpen(false)}
-          disabled={disabled}
-        />
-      ) : (
-        <span className="inline-flex items-center gap-1.5">
-          <Button variant="danger" onClick={() => setOpen(true)} disabled={disabled}>
-            {closeActionLabel(status)}
-          </Button>
-          {CLOSE_HELP[status] && <FieldHelp concept={CLOSE_HELP[status]} />}
-        </span>
-      )}
-    </div>
+    </ConfirmDialog>
   );
 }

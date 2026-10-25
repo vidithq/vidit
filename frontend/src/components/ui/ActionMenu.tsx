@@ -16,17 +16,21 @@ import { Button } from "./Button";
 import { Tooltip } from "./Tooltip";
 import { ACCENT_SURFACE, TOOLTIP_SURFACE } from "./styles";
 
-export interface ActionMenuItem {
+export type ActionMenuItem = {
   key: string;
   label: string;
-  href: string;
   icon?: ReactNode;
   /** The link to the page on screen (`aria-current`), which the menu focuses when it opens. */
   current?: boolean;
   /** Shows the icon alone, with `label` as the accessible name and a tooltip, for a list too
    *  narrow to print it. */
   iconOnly?: boolean;
-}
+} & (
+  | { href: string; onSelect?: never }
+  /** An action instead of a link (the edit page's close, which opens a dialog). The menu closes
+   *  and gives focus back to the trigger first. */
+  | { onSelect: () => void; href?: never }
+);
 
 const ITEM =
   "flex w-full min-h-9 items-center gap-2 rounded px-2.5 py-1.5 text-left text-xs font-medium outline-none transition-colors text-orange-400 hover:bg-orange-500/10 focus-visible:bg-orange-500/10";
@@ -38,7 +42,7 @@ function itemNodes(menu: HTMLElement): HTMLElement[] {
 }
 
 /**
- * A trigger button that opens a short list of links (`role="menu"`). Arrow keys, Home and End
+ * A trigger button that opens a short list of links or actions (`role="menu"`). Arrow keys, Home and End
  * move between items; Escape closes and returns focus to the trigger; Tab or an outside click
  * closes. The menu opens under the trigger, aligned to its right edge, and shifts sideways when
  * that would cross the viewport; with `matchTriggerWidth` it is exactly as wide as the trigger. A
@@ -170,21 +174,37 @@ export function ActionMenu({
           )}
         >
           {items.map((item) => {
-            const link = (
-              <Link
-                key={item.key}
-                href={item.href}
-                role="menuitem"
-                tabIndex={-1}
-                aria-current={item.current ? "page" : undefined}
-                aria-label={item.iconOnly ? item.label : undefined}
-                className={cn(ITEM, item.iconOnly && "justify-center", item.current && ACCENT_SURFACE)}
-                onClick={() => close(false)}
-              >
+            const shared = {
+              role: "menuitem",
+              tabIndex: -1,
+              "aria-current": item.current ? ("page" as const) : undefined,
+              "aria-label": item.iconOnly ? item.label : undefined,
+              className: cn(ITEM, item.iconOnly && "justify-center", item.current && ACCENT_SURFACE),
+            };
+            const content = (
+              <>
                 {item.icon}
                 {!item.iconOnly && item.label}
-              </Link>
+              </>
             );
+            const link =
+              item.href !== undefined ? (
+                <Link key={item.key} href={item.href} {...shared} onClick={() => close(false)}>
+                  {content}
+                </Link>
+              ) : (
+                <button
+                  key={item.key}
+                  type="button"
+                  {...shared}
+                  onClick={() => {
+                    close(true);
+                    item.onSelect();
+                  }}
+                >
+                  {content}
+                </button>
+              );
             return item.iconOnly ? (
               <Tooltip key={item.key} label={item.label}>
                 {link}

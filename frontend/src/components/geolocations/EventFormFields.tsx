@@ -151,31 +151,33 @@ interface EventFormLayoutProps {
   row?: EventDetail | null;
   /** Show `row`'s provenance link, read-only. */
   showProvenance?: boolean;
+  /** Heads the side column, over the Location section (the edit form's version note). */
+  beforeLocation?: ReactNode;
   /** Follows the Location section (the submit form's duplicate probe). */
   afterLocation?: ReactNode;
-  /** The surface's writes (see `EventLayout`). */
-  actions: ReactNode;
-  actionsLabel: string;
+  /** Follows the Details section, outside the form (the geolocators of a published row). */
+  afterDetails?: ReactNode;
   /** The `<form>` the fields render in. */
   formProps: ComponentProps<"form">;
 }
 
 /**
  * The fields every event write fills in, placed in `EventLayout`'s slots: the title heads the main
- * column over the sources and the proof; the location, then the details (date, time, provenance,
- * then the classification), fill the side column under the actions.
+ * column over the sources and the proof; the location, then the one Details card (date, time,
+ * provenance, conflict, tags), fill the side column.
  *
  * The submit form and the edit form compose it and keep no copy of a field, so labels, help and
- * red outlines stay one thing. Per-surface pieces (readiness list, duplicate probe, version note,
- * confirm step) come in through `actions` and `afterLocation`.
+ * red outlines stay one thing. Per-surface fields (version note, duplicate probe, geolocators)
+ * come in through `beforeLocation`, `afterLocation` and `afterDetails`; the writes are the page's
+ * sticky actions.
  */
 export function EventFormLayout({
   form,
   row = null,
   showProvenance = false,
+  beforeLocation,
   afterLocation,
-  actions,
-  actionsLabel,
+  afterDetails,
   formProps,
 }: EventFormLayoutProps) {
   const { invalidKeys } = form;
@@ -183,8 +185,7 @@ export function EventFormLayout({
   return (
     <EventLayout
       form={formProps}
-      actions={actions}
-      actionsLabel={actionsLabel}
+      afterDetails={afterDetails}
       header={
         <TitleField
           value={form.title}
@@ -235,6 +236,7 @@ export function EventFormLayout({
       }
       location={
         <>
+          {beforeLocation}
           <LocationPicker
             lat={form.lat}
             setLat={form.setLat}

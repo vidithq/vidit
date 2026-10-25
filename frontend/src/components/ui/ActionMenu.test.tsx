@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ActionMenu } from "./ActionMenu";
 
@@ -116,5 +116,26 @@ describe("<ActionMenu>", () => {
     expect(history).toHaveAttribute("href", "/events/e1/history");
     expect(history).not.toHaveTextContent("History");
     expect(history).toContainElement(screen.getByTestId("history-icon"));
+  });
+
+  it("runs an action item as a button, after closing and giving focus back to the trigger", () => {
+    const onSelect = vi.fn();
+    render(
+      <ActionMenu
+        label="More actions"
+        icon={<span aria-hidden>…</span>}
+        items={[{ key: "close", label: "Close this request", onSelect }]}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: "More actions" });
+    fireEvent.click(trigger);
+
+    const close = item("Close this request");
+    expect(close.tagName).toBe("BUTTON");
+    expect(close).not.toHaveAttribute("href");
+    fireEvent.click(close);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(trigger).toHaveFocus();
   });
 });

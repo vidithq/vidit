@@ -38,11 +38,12 @@ import type { EventDetail } from "@/types";
  *    dialog with the open requests and the picker that sends one.
  * 6. **Report** for every reader but the owner.
  *
- * The actions are that row, then a published row's approvals on the event page (the stamps,
- * Approve) and a pending geolocator invitation, or **Geolocate** on an open request's page.
+ * The actions are that row, then **Geolocate** on an open request's page: the page's sticky
+ * actions (`PageShell`'s `stickyActions`). The side, under them, holds a published row's approvals
+ * on the event page (the stamps, Approve) and a pending geolocator invitation.
  *
- * The hook returns nodes rather than rendering them because the actions and the panels land in
- * different slots. Called before a surface's early returns, with `event` null
+ * The hook returns nodes rather than rendering them because the actions, the side and the panels
+ * land in different slots. Called before a surface's early returns, with `event` null
  * while the row loads, so hook order is stable.
  */
 
@@ -85,8 +86,11 @@ export interface EventActionsOptions {
 export interface EventActions {
   /** The panels the row's toggles open, for under the header. */
   panels: ReactNode;
-  /** The block heading the page's side column. */
+  /** The page's sticky actions: the row, and Geolocate on a request. */
   actions: ReactNode;
+  /** The block heading the page's side column, under the actions: the approvals and an
+   *  invitation. */
+  side: ReactNode;
 }
 
 /** A panel a row toggle opens. It mounts when opened and takes focus then, so a keyboard or
@@ -130,7 +134,7 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
   }, [event?.id]);
 
   if (!event || !tiers) {
-    return { panels: null, actions: null };
+    return { panels: null, actions: null, side: null };
   }
 
   const isOpenRequest = event.status === "requested";
@@ -247,9 +251,14 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
         {canReport && report.panel && <TogglePanel id={REPORT_PANEL_ID}>{report.panel}</TogglePanel>}
       </>
     ),
-    actions: (
+    actions: (controls.length > 0 || geolocate) && (
+      <div className="flex flex-col items-end gap-3">
+        {row("justify-end")}
+        {geolocate}
+      </div>
+    ),
+    side: (eventApprovals.summary || invited) && (
       <div className="space-y-4">
-        {row("lg:justify-end")}
         {eventApprovals.summary}
         {invited && (
           <GeolocatorInviteCard
@@ -260,7 +269,6 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
             }}
           />
         )}
-        {geolocate && <div className="flex lg:justify-end">{geolocate}</div>}
       </div>
     ),
   };
