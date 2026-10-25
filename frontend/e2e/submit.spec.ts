@@ -325,11 +325,21 @@ test.describe("submit", () => {
       if (width) await page.setViewportSize({ width, height: 900 });
       await page.goto("/submit?mode=single");
       const card = page.getByRole("heading", { name: /^Details/ }).locator("xpath=ancestor::section[1]");
-      const date = (await card.locator("#occurred_date").boundingBox())!;
-      const time = (await card.locator("#occurred_time").boundingBox())!;
+      // One read of all three boxes: the form still settles while it loads, and separate reads
+      // would compare positions from different layouts.
+      const { date, time, cardBox } = await card.evaluate((el) => {
+        const box = (node: Element) => {
+          const r = node.getBoundingClientRect();
+          return { x: r.x, y: r.y, width: r.width };
+        };
+        return {
+          date: box(el.querySelector("#occurred_date")!),
+          time: box(el.querySelector("#occurred_time")!),
+          cardBox: box(el),
+        };
+      });
       expect(Math.abs(date.y - time.y)).toBeLessThan(1);
       expect(time.x).toBeGreaterThanOrEqual(date.x + date.width);
-      const cardBox = (await card.boundingBox())!;
       expect(time.x + time.width).toBeLessThanOrEqual(cardBox.x + cardBox.width + 0.5);
       await expectNoHorizontalOverflow(page);
     });
