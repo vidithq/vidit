@@ -5,7 +5,7 @@ import Link from "next/link";
 
 import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 import { Card } from "@/components/ui/Card";
-import { SectionHeading } from "@/components/ui/SectionHeading";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { TEXT_LINK } from "@/components/ui/styles";
 
 const ProofEditor = dynamic(
@@ -22,7 +22,8 @@ interface ProofEditorPanelProps {
   invalid?: boolean;
 }
 
-/** The "Proof" section: the dynamically loaded proof editor. */
+/** The "Proof" section: the event page's eyebrow, with the methodology link beside it, over the
+ *  dynamically loaded proof editor. */
 export function ProofEditorPanel({
   proof,
   onChange,
@@ -31,32 +32,24 @@ export function ProofEditorPanel({
   invalid = false,
 }: ProofEditorPanelProps) {
   return (
-    <Card
-      as="section"
-      className={invalid ? FORM_INVALID_FIELD : ""}
-    >
-      <SectionHeading
-        title="Proof"
-        concept="section_proof"
-        invalid={invalid}
-        trailing={
-          <Link
-            href="/methodology"
-            className={`ml-1 text-[11px] font-normal ${TEXT_LINK}`}
-          >
-            Methodology guide
-          </Link>
-        }
-      />
-
-      {/* The editor reads both seeds once: on a remount, the current `proof` and its staged
-          files restore the draft, inline images included. */}
-      <ProofEditor
-        initialContent={proof}
-        initialProofFiles={proofFiles}
-        onChange={onChange}
-        onProofFilesChange={onProofFilesChange}
-      />
-    </Card>
+    <section>
+      {/* The link is a sibling of the heading, so it stays out of the heading's name. */}
+      <div className="mb-3 flex items-center gap-1.5">
+        <SectionEyebrow title="Proof" concept="section_proof" margin="none" invalid={invalid} />
+        <Link href="/methodology" className={`ml-1 text-[11px] ${TEXT_LINK}`}>
+          Methodology guide
+        </Link>
+      </div>
+      <Card className={invalid ? FORM_INVALID_FIELD : ""}>
+        {/* The editor reads both seeds once: on a remount, the current `proof` and its staged
+            files restore the draft, inline images included. */}
+        <ProofEditor
+          initialContent={proof}
+          initialProofFiles={proofFiles}
+          onChange={onChange}
+          onProofFilesChange={onProofFilesChange}
+        />
+      </Card>
+    </section>
   );
 }

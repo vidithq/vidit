@@ -1604,17 +1604,16 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SectionHeading>" usage="Form section heading (Details, Location, Tags...). `concept` adds the section's ?; a section no concept explains (a collection's Details, a profile's Bio) takes the title alone.">
-            <SectionHeading title="Sources" concept="sources" />
-            <SectionHeading title="Proof" concept="section_proof" />
+          <Item name="<SectionHeading>" usage="Form section heading inside the section's card (a collection's Details, a profile's Bio, the version note). `concept` adds the section's ?; a section no concept explains takes the title alone. An event form's sections take the event page's <SectionEyebrow> above the card instead.">
+            <SectionHeading title="Version note" concept="version_note" />
             <SectionHeading title="Linked accounts" />
           </Item>
 
-          <Item name="<SectionEyebrow>" usage="Detail page + card/panel headings (uppercase eyebrow), and a form's Sources heading, which sits on the page like the event page's. `invalid` turns it red with FORM_INVALID_LABEL, as SectionHeading's does, when a publish attempt flags the section.">
+          <Item name="<SectionEyebrow>" usage="Detail page + card/panel headings (uppercase eyebrow), and every event form section's heading (Sources, Proof, Location, Details), which sits on the page above the card like the event page's. `invalid` turns it red with FORM_INVALID_LABEL, as SectionHeading's does, when a publish attempt flags the section.">
             <Variant label="as=h2 (page)">
               <SectionEyebrow title="Details" concept="section_details" />
             </Variant>
-            <Variant label="invalid (a form's Sources, flagged)">
+            <Variant label="invalid (a form section, flagged)">
               <SectionEyebrow title="Sources" concept="sources" invalid />
             </Variant>
             <Variant label="no concept">

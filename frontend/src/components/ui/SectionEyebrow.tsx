@@ -4,9 +4,9 @@ import { FieldHelp } from "./FieldHelp";
 import { FORM_INVALID_LABEL } from "./form-styles";
 import type { Concept } from "@/lib/fieldHelp";
 
-// Uppercase "eyebrow" heading for the detail surfaces and a form's Sources
-// section, plus section `FieldHelp`. Distinct from the form `SectionHeading`
-// (`text-sm font-medium`). `margin` covers the page (`mb-3`), the dense panel
+// Uppercase "eyebrow" heading for the detail surfaces and an event form's
+// sections, plus section `FieldHelp`. Distinct from the in-card form
+// `SectionHeading` (`text-sm font-medium`). `margin` covers the page (`mb-3`), the dense panel
 // (none) and the proof block (`mb-1.5`); `as` picks h2 (page) or h3 (panel).
 const MARGIN = { none: "", sm: "mb-1.5", md: "mb-3" } as const;
 
