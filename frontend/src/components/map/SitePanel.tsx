@@ -4,26 +4,17 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
 import type { ApiResource } from "@/hooks/useApiResource";
-import { formatDate } from "@/lib/format";
-import {
-  IMAGERY_PROVIDER_LABELS,
-  siteHref,
-  type Site,
-} from "@/lib/sites";
+import { siteHref, type Site } from "@/lib/sites";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { buttonClasses } from "@/components/ui/Button";
 import { DetailRow } from "@/components/ui/DetailRow";
 import { TEXT_LINK } from "@/components/ui/styles";
-import {
-  CorroborationPill,
-  LinkEffectPill,
-  ObservationEffectPill,
-  SiteTypePill,
-} from "@/components/sites/SiteBadges";
+import { CorroborationPill, SiteKindPill } from "@/components/sites/SiteBadges";
+import { LastImageValue, LatestEffectValue } from "@/components/sites/SiteFacts";
 import { MapOverlayPanel } from "./DetailSidePanel";
 
-/** The compact panel a site opens on the map: what it is, when it was last observed, and the
- *  way to its page. */
+/** The compact panel a site opens on the map: what it is, when it was last imaged, the latest
+ *  effect a linked event shows, and the way to its page. */
 export function SitePanel({
   resource,
   onClose,
@@ -43,32 +34,27 @@ export function SitePanel({
               </Link>
             </h2>
             <div className="flex flex-wrap gap-1.5">
-              <SiteTypePill type={site.site_type} />
+              <SiteKindPill kind={site.kind} />
               <CorroborationPill site={site} />
             </div>
           </div>
-          <div className="space-y-2 text-xs">
-            <DetailRow
-              compact
-              label="Last observed"
-              concept="site_last_observed"
-              value={`${formatDate(site.observed_on)}, ${IMAGERY_PROVIDER_LABELS[site.imagery_provider]}`}
-            />
-            <DetailRow compact label="Imagery shows" align="center">
-              <ObservationEffectPill effect={site.observation_effect} />
+          <div className="space-y-2 text-sm">
+            <DetailRow compact label="Last image" concept="site_last_image">
+              <LastImageValue site={site} />
             </DetailRow>
             {site.latest_link_effect && (
-              <DetailRow compact label="Latest linked event" align="center">
-                <LinkEffectPill effect={site.latest_link_effect.effect} />
+              <DetailRow compact label="Latest effect" align="center">
+                <LatestEffectValue effect={site.latest_link_effect} />
               </DetailRow>
             )}
+            <DetailRow compact label="Images" value={site.images.length} />
             <DetailRow compact label="Linked events" value={site.linked_events.length} />
             <DetailRow compact label="Owner">
               <AuthorByline author={site.owner} size="xs" avatar />
             </DetailRow>
           </div>
           <Link href={siteHref(site.id)} className={buttonClasses("secondary", { fullWidth: true })}>
-            Open site page
+            Open the site page
           </Link>
         </>
       )}

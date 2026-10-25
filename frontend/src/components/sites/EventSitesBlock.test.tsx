@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { eventDetail } from "@/test/eventDetail";
+import { eventDetail, source } from "@/test/eventDetail";
 
 let viewer: { id: string } | null;
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: viewer }) }));
@@ -14,18 +14,18 @@ vi.mock("@/lib/api", async (importOriginal) => ({
     calls.push({ path, method: options?.method ?? "GET" });
     if (path.endsWith("/site-links")) return Promise.resolve(links);
     if (path.includes("/site-suggestions"))
-      return Promise.resolve([{ id: "s2", name: "Site Bravo", site_type: "depot", distance_m: 640 }]);
+      return Promise.resolve([{ id: "s2", name: "Site Bravo", kind: "depot", distance_m: 640 }]);
     return Promise.resolve(undefined);
   },
 }));
 
 import { EventSitesBlock } from "./EventSitesBlock";
 
-const ALPHA = { id: "s1", name: "Site Alpha", site_type: "airbase" };
+const ALPHA = { id: "s1", name: "Site Alpha", kind: "airbase" };
 
-async function renderBlock() {
+async function renderBlock(event = eventDetail("e1", "Strike on the apron")) {
   await act(async () => {
-    render(<EventSitesBlock event={eventDetail("e1", "Strike on the apron")} />);
+    render(<EventSitesBlock event={event} />);
   });
 }
 
@@ -65,12 +65,38 @@ describe("EventSitesBlock", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Link to a site" }));
     });
-    fireEvent.click(screen.getByRole("button", { name: "Site Bravo" }));
-    expect(screen.getByText(/event 640 m outside the zone/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Site Bravo/ }));
+    expect(screen.getByText("Depot · 640 m from the event")).toBeInTheDocument();
+    // No effect is picked for the analyst: the link waits for one.
+    expect(screen.getByRole("button", { name: "Link" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Destruction" }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Link" }));
     });
     expect(calls).toContainEqual({ path: "/events/e1/site-links", method: "POST" });
+    // The event has no satellite source, so nothing is filed on the site.
+    expect(calls.some((c) => c.path.startsWith("/sites/"))).toBe(false);
+  });
+
+  it("files the event's satellite image on the site when the owner asks", async () => {
+    viewer = { id: "u1" };
+    const satellite = source({
+      id: "sat",
+      kind: "satellite",
+      level: "indirect",
+      captured_at: "2026-03-15T10:20:00Z",
+      media: { id: "m1", role: "source", storage_url: "", kind: "image", sha256: "", original_filename: "a.jpg" },
+    });
+    await renderBlock({ ...eventDetail("e1", "Strike on the apron"), sources: [source(), satellite] });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Link to a site" }));
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Site Bravo/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Damage" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Also file source 2 in the imagery history" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Link" }));
+    });
+    expect(calls).toContainEqual({ path: "/sites/s2/images", method: "POST" });
   });
 });

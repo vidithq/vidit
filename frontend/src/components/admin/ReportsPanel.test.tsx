@@ -94,4 +94,22 @@ describe("<ReportsPanel>", () => {
     expect(screen.getByRole("button", { name: "Hide the collection" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
   });
+
+  it("names a reported site and offers to hide it, not to mark it graphic", async () => {
+    const site = {
+      ...report("r1"),
+      event_id: null,
+      site: { id: "s1", name: "Kerrin Flats depot", owner: { id: "u1", username: "owner", avatar_url: null } },
+    };
+    api.apiFetchPage.mockResolvedValue({
+      items: { items: [site], total: 1, page: 1, per_page: 20 },
+      nextCursor: null,
+    });
+    render(<ReportsPanel />);
+
+    expect(await screen.findByRole("link", { name: "Kerrin Flats depot" })).toHaveAttribute("href", "/sites/s1");
+    expect(screen.getByRole("button", { name: "Hide the site" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mark graphic" })).toBeNull();
+    expect(screen.queryByText("Reported item deleted")).toBeNull();
+  });
 });

@@ -104,18 +104,25 @@ export function SiteLayers({
 }) {
   const { current: map } = useMap();
   const colors = SITE_MAP_COLORS[useTheme()];
-  const icon = iconId(colors.zone);
+  // One square per paint a zone can take, so a marker wears its zone's emphasis.
+  const icons = useMemo(
+    () => ({ zone: colors.zone, damage: colors.damage, destruction: colors.destruction }),
+    [colors.zone, colors.damage, colors.destruction],
+  );
 
   useEffect(() => {
     if (!map) return;
     const raw = map.getMap();
-    // A style reload drops every image, so the icon is re-added after each one.
+    // A style reload drops every image, so the icons are re-added after each one.
     const ensure = () => {
-      if (raw.hasImage(icon)) return;
-      try {
-        raw.addImage(icon, squareIcon(colors.zone), { pixelRatio: ICON_PIXEL_RATIO });
-      } catch {
-        // The style is not ready yet; its `styledata` event retries.
+      for (const color of Object.values(icons)) {
+        const id = iconId(color);
+        if (raw.hasImage(id)) continue;
+        try {
+          raw.addImage(id, squareIcon(color), { pixelRatio: ICON_PIXEL_RATIO });
+        } catch {
+          // The style is not ready yet; its `styledata` event retries.
+        }
       }
     };
     ensure();
@@ -125,7 +132,7 @@ export function SiteLayers({
       raw.off("styledata", ensure);
       raw.off("styleimagemissing", ensure);
     };
-  }, [map, icon, colors.zone]);
+  }, [map, icons]);
 
   useUnderEventPins(ALL_LAYERS);
 
@@ -180,6 +187,7 @@ export function SiteLayers({
           corroborated: site.corroborated ? 1 : 0,
           everyZoom: (site.everyZoom ?? site.corroborated) ? 1 : 0,
           selected: site.id === selectedId ? 1 : 0,
+          emphasis: site.emphasis ?? "none",
         },
         geometry: { type: "Point", coordinates: [site.centroid.lng, site.centroid.lat] },
       })),
@@ -248,7 +256,15 @@ export function SiteLayers({
             maxzoom={zoneMinZoom}
             filter={["==", ["get", "everyZoom"], 1]}
             layout={{
-              "icon-image": icon,
+              "icon-image": [
+                "match",
+                ["get", "emphasis"],
+                "damage",
+                iconId(icons.damage),
+                "destruction",
+                iconId(icons.destruction),
+                iconId(icons.zone),
+              ],
               "icon-allow-overlap": true,
               "icon-size": ["case", ["==", ["get", "selected"], 1], 1.4, 1],
               "text-field": ["get", "name"],

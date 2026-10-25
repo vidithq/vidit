@@ -1,34 +1,38 @@
 import { apiFetch } from "./api";
 import type { components } from "./api-types";
-import { parseHttp } from "./format";
+import { sourceCreatePayload, draftUrls, newSourceDraft, type SourceDraft } from "./sources";
 
 export type Site = components["schemas"]["SiteRead"];
 export type SiteCreated = components["schemas"]["SiteCreatedRead"];
 export type SiteListItem = components["schemas"]["SiteList"];
-export type SiteObservation = components["schemas"]["SiteObservationRead"];
-export type SiteObservationCreate = components["schemas"]["SiteObservationCreate"];
+export type SiteImage = components["schemas"]["SiteImageRead"];
+export type SiteImageFiled = components["schemas"]["SiteImageFiledRead"];
+export type SiteImageCreate = components["schemas"]["SiteImageCreate"];
+export type SiteContour = components["schemas"]["SiteContourRead"];
 export type SiteLinkedEvent = components["schemas"]["SiteLinkedEventRead"];
 export type SiteNearbyEvent = components["schemas"]["SiteNearbyEventRead"];
-export type SiteHistoryEntry = components["schemas"]["SiteHistoryEntry"];
 export type SiteOverlap = components["schemas"]["SiteOverlapRead"];
 export type SiteSuggestion = components["schemas"]["SiteSuggestionRead"];
 export type EventSiteLink = components["schemas"]["EventSiteLinkRead"];
 export type Zone = components["schemas"]["ZonePolygon"];
+export type SiteHistoryEntry = components["schemas"]["SiteHistoryEntry"];
 
-export type SiteType = Site["site_type"];
-export type ImageryProvider = Site["imagery_provider"];
-export type ObservationEffect = Site["observation_effect"];
+export type SiteKind = Site["kind"];
 export type LinkEffect = EventSiteLink["effect"];
+/** The two clocks a site's history reads by: when a fact happened on the ground, or when it
+ *  entered Vidit. */
 export type HistoryOrder = "fact" | "recorded";
 
 /** Mirrors backend `models/event.TITLE_MAX_LENGTH`, the cap on a site name; change both. */
 export const SITE_NAME_MAX_LEN = 255;
-/** Mirrors backend `schemas/site.NOTE_MAX_LENGTH`; change both. */
-export const SITE_NOTE_MAX_LEN = 2000;
-/** Mirrors the `margin_m` default (2000 m) of backend `routers/sites` and `routers/events/sites`; change both. */
+/** Mirrors backend `schemas/site.IMAGE_NOTE_MAX_LENGTH`; change both. */
+export const SITE_IMAGE_NOTE_MAX_LEN = 500;
+/** Mirrors the `margin_m` default (2000 m) of backend `routers/sites` and `routers/events/sites`;
+ *  change both. */
 export const SITE_MARGIN_KM = 2;
 
-export const SITE_TYPE_LABELS: Record<SiteType, string> = {
+/** Keyed by the generated union, so a kind the backend adds fails the type-check. */
+export const SITE_KIND_LABELS: Record<SiteKind, string> = {
   airbase: "Airbase",
   military_base: "Military base",
   depot: "Depot",
@@ -37,43 +41,42 @@ export const SITE_TYPE_LABELS: Record<SiteType, string> = {
   artillery_position: "Artillery position",
   radar: "Radar",
   fortification: "Fortification",
+  unknown: "Unknown",
   other: "Other",
 };
 
-export const IMAGERY_PROVIDER_LABELS: Record<ImageryProvider, string> = {
-  google_earth: "Google Earth",
-  sentinel_2: "Sentinel-2",
-  landsat: "Landsat",
-  other: "Other",
-};
+export const SITE_KINDS = Object.keys(SITE_KIND_LABELS) as SiteKind[];
 
-export const OBSERVATION_EFFECT_LABELS: Record<ObservationEffect, string> = {
-  observed_no_change: "Observed, no change",
-  construction_extension: "Construction or extension",
-  no_visible_activity: "No visible activity",
-  reoccupation: "Reoccupation",
-  other: "Other",
-};
-
+/** Keyed by the generated union, in the order the link dialog offers them. */
 export const LINK_EFFECT_LABELS: Record<LinkEffect, string> = {
   damage: "Damage",
   destruction: "Destruction",
+  activity: "Activity",
   other: "Other",
 };
 
-/** The options of a `<Select>` or `<SegmentedControl>` over one of the label maps, in the
- *  map's own order. */
-export function labelOptions<T extends string>(
-  labels: Record<T, string>,
-): { value: T; label: string }[] {
-  return (Object.keys(labels) as T[]).map((value) => ({ value, label: labels[value] }));
-}
+export const LINK_EFFECTS = Object.keys(LINK_EFFECT_LABELS) as LinkEffect[];
+
+export const HISTORY_ORDER_LABELS: Record<HistoryOrder, string> = {
+  fact: "Date on the ground",
+  recorded: "Date added to Vidit",
+};
 
 export function siteHref(id: string): string {
   return `/sites/${encodeURIComponent(id)}`;
 }
 
 export const NEW_SITE_HREF = "/sites/new";
+
+export function siteFileImageHref(id: string): string {
+  return `${siteHref(id)}/images/new`;
+}
+
+/** The owner's contour editor, starting from `imageId` when given. */
+export function siteContourHref(id: string, imageId?: string): string {
+  const base = `${siteHref(id)}/contour`;
+  return imageId ? `${base}?image=${encodeURIComponent(imageId)}` : base;
+}
 
 export function sitesPath(bbox: string, asOf: string | null): string {
   const params = new URLSearchParams({ bbox });
@@ -107,6 +110,13 @@ export function createSite(body: components["schemas"]["SiteCreate"]): Promise<S
   return apiFetch<SiteCreated>("/sites", { method: "POST", body: JSON.stringify(body) });
 }
 
+export function updateSite(
+  id: string,
+  body: components["schemas"]["SiteUpdate"],
+): Promise<Site> {
+  return apiFetch<Site>(sitePath(id), { method: "PATCH", body: JSON.stringify(body) });
+}
+
 export function checkOverlaps(zone: Zone, signal?: AbortSignal): Promise<SiteOverlap[]> {
   return apiFetch<SiteOverlap[]>("/sites/overlaps", {
     method: "POST",
@@ -115,14 +125,25 @@ export function checkOverlaps(zone: Zone, signal?: AbortSignal): Promise<SiteOve
   });
 }
 
-export function addObservation(
-  siteId: string,
-  body: SiteObservationCreate,
-): Promise<SiteObservation> {
-  return apiFetch<SiteObservation>(`${sitePath(siteId)}/observations`, {
+export function fileSiteImage(siteId: string, body: SiteImageCreate): Promise<SiteImageFiled> {
+  return apiFetch<SiteImageFiled>(`${sitePath(siteId)}/images`, {
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+export function drawSiteContour(siteId: string, zone: Zone, imageId: string): Promise<SiteContour> {
+  return apiFetch<SiteContour>(`${sitePath(siteId)}/contours`, {
+    method: "POST",
+    body: JSON.stringify({ zone, image_id: imageId }),
+  });
+}
+
+export function reportSite(
+  id: string,
+  body: components["schemas"]["ContentReportCreate"],
+): Promise<components["schemas"]["ContentReportRead"]> {
+  return apiFetch(`${sitePath(id)}/report`, { method: "POST", body: JSON.stringify(body) });
 }
 
 /** Idempotent: the same effect again writes nothing, a new one replaces the live link. */
@@ -155,26 +176,81 @@ export function todayUtc(now: Date = new Date()): string {
   return now.toISOString().slice(0, 10);
 }
 
+/** The UTC day of an instant, `YYYY-MM-DD`: the unit the zone rule reads a capture date in. */
+export function utcDay(iso: string): string {
+  return new Date(iso).toISOString().slice(0, 10);
+}
+
 /** "640 m" under a kilometre, "2.4 km" from there. */
 export function formatDistance(metres: number): string {
   if (metres < 1000) return `${Math.round(metres)} m`;
   return `${(metres / 1000).toFixed(1)} km`;
 }
 
-/** "Corroborated by 3 analysts", or "Not corroborated" when only the owner linked events. */
-export function corroborationLabel(site: Pick<Site, "is_corroborated" | "corroboration_count">): string {
+/** "Corroborated by 3 analysts", or "Not corroborated" when only the owner documented it. */
+export function corroborationLabel(
+  site: Pick<Site, "is_corroborated" | "corroboration_count">,
+): string {
   if (!site.is_corroborated) return "Not corroborated";
   return `Corroborated by ${site.corroboration_count} ${site.corroboration_count === 1 ? "analyst" : "analysts"}`;
 }
 
-/** Observations in the order the API serves them (capture date, then recording time): the
- *  last one is the current zone. The one before `id` in that order is its previous zone. */
-export function previousObservation(
-  observations: SiteObservation[],
-  id: string,
-): SiteObservation | null {
-  const index = observations.findIndex((o) => o.id === id);
-  return index > 0 ? observations[index - 1] : null;
+/** Whether the viewer owns the site: the one reader who renames it and draws its contour. */
+export function ownsSite(site: Pick<Site, "owner">, viewerId: string | null | undefined): boolean {
+  return !!viewerId && site.owner.id === viewerId;
+}
+
+// The order the zone rule reads contours in: the image's capture time, the later contour
+// breaking a tie.
+function contourKey(contour: SiteContour): string {
+  return `${contour.captured_at} ${contour.created_at}`;
+}
+
+function contourOrder(contours: SiteContour[]): SiteContour[] {
+  return [...contours].sort((a, b) => contourKey(a).localeCompare(contourKey(b)));
+}
+
+/** The contour valid on a day (`YYYY-MM-DD`): the latest one whose image was captured on or
+ *  before it. Null before the first contour's capture day. Mirrors backend
+ *  `services/sites.zones_at`; change both. */
+export function contourOn(contours: SiteContour[], day: string): SiteContour | null {
+  let valid: SiteContour | null = null;
+  for (const contour of contourOrder(contours)) {
+    if (utcDay(contour.captured_at) <= day) valid = contour;
+  }
+  return valid;
+}
+
+/** The contour that held before `contour`, in the zone rule's order, or null for the first. */
+export function contourBefore(contours: SiteContour[], contour: SiteContour): SiteContour | null {
+  const ordered = contourOrder(contours);
+  const index = ordered.findIndex((c) => c.id === contour.id);
+  return index > 0 ? ordered[index - 1] : null;
+}
+
+/** The contour the owner drew from an image, the latest when they drew several. */
+export function contourFromImage(contours: SiteContour[], imageId: string): SiteContour | null {
+  return contourOrder(contours).filter((c) => c.image_id === imageId).at(-1) ?? null;
+}
+
+/** The images newest first under one clock: the capture time, or when each was filed. */
+export function sortImages(images: SiteImage[], order: HistoryOrder): SiteImage[] {
+  const key = (image: SiteImage) =>
+    order === "fact" ? (image.captured_at ?? image.created_at) : image.created_at;
+  return [...images].sort((a, b) => key(b).localeCompare(key(a)));
+}
+
+/** The linked events newest first under one clock: the event date (an undated event sits on the
+ *  day it was linked, as the API's history places it), or when the link opened. */
+export function sortLinkedEvents(events: SiteLinkedEvent[], order: HistoryOrder): SiteLinkedEvent[] {
+  const key = (event: SiteLinkedEvent) =>
+    order === "fact" ? (event.occurred_date ?? utcDay(event.linked_at)) : event.linked_at;
+  return [...events].sort((a, b) => key(b).localeCompare(key(a)));
+}
+
+/** The image the page opens on: the latest capture, whose zone is the one valid now. */
+export function latestImage(images: SiteImage[]): SiteImage | null {
+  return sortImages(images, "fact")[0] ?? null;
 }
 
 /** Whether the main map draws a site below the zone zoom: a corroborated site for everyone, an
@@ -195,50 +271,51 @@ export function zoneEmphasis(
   return effect === "damage" || effect === "destruction" ? effect : null;
 }
 
-/** The observation fields of a form, as typed: the zone travels beside them. */
-export interface ObservationDraft {
-  capturedOn: string;
-  provider: ImageryProvider | "";
-  url: string;
-  effect: ObservationEffect;
-  note: string;
+/** An image editor as the site forms start it: a satellite source, one blank link. */
+export function newSiteImageDraft(): SourceDraft {
+  return { ...newSourceDraft(), level: "context", kind: "satellite" };
 }
 
-export const EMPTY_OBSERVATION: ObservationDraft = {
-  capturedOn: "",
-  provider: "",
-  url: "",
-  effect: "observed_no_change",
-  note: "",
-};
-
-/** What the form still lacks before the API would take the observation, as the labels the
- *  incomplete notice lists. Mirrors backend `schemas/site.SiteObservationCreate`; change both. */
-export function observationMissing(
-  draft: ObservationDraft,
-  zone: Zone | null,
-  today: string,
-): string[] {
+/** The labels of what the image still lacks before the API takes it, in the editor's order.
+ *  Mirrors backend `schemas/site.SiteImageCreate`; change both. */
+export function siteImageMissing(draft: SourceDraft, note: string, today: string): string[] {
   const missing: string[] = [];
-  if (!zone) missing.push("A closed zone");
-  if (!draft.provider) missing.push("Imagery provider");
-  if (!draft.capturedOn) missing.push("Capture date");
-  else if (draft.capturedOn > today) missing.push("A capture date that is not in the future");
-  const url = draft.url.trim();
-  if (draft.provider === "other" && !url) missing.push("Public URL of the image");
-  else if (url && !parseHttp(url)) missing.push("An http or https image URL");
-  if (draft.note.length > SITE_NOTE_MAX_LEN) missing.push(`A note under ${SITE_NOTE_MAX_LEN} characters`);
+  if (!draft.capturedAt) missing.push("Capture date");
+  else if (draft.capturedAt.slice(0, 10) > today) missing.push("A capture date that is not in the future");
+  if (draftUrls(draft).length === 0) missing.push("A link");
+  if (note.length > SITE_IMAGE_NOTE_MAX_LEN) missing.push(`A note of at most ${SITE_IMAGE_NOTE_MAX_LEN} characters`);
   return missing;
 }
 
-/** The API body of a complete draft. A blank URL or note is sent as absent. */
-export function observationBody(draft: ObservationDraft, zone: Zone): SiteObservationCreate {
+/** The image fields of a site write, from the editor and the note. A blank note is absent. */
+export function siteImagePayload(draft: SourceDraft, note: string): SiteImageCreate {
+  const { title, captured_at, links, upload_id, media_id } = sourceCreatePayload(draft);
   return {
-    zone,
-    captured_on: draft.capturedOn,
-    imagery_provider: draft.provider as ImageryProvider,
-    imagery_url: draft.url.trim() || null,
-    effect: draft.effect,
-    note: draft.note.trim() || null,
+    title,
+    captured_at: captured_at ?? "",
+    links,
+    upload_id,
+    media_id,
+    note: note.trim() || null,
+  };
+}
+
+/** The site image a satellite source of an event becomes, its file shared: the offer the link
+ *  dialog makes. Null when the source cannot be filed (no file or no capture time). Mirrors
+ *  backend `services/sites._event_file`; change both. */
+export function imageFromEventSource(source: {
+  title: string;
+  kind: string;
+  captured_at: string | null;
+  media: { id: string } | null;
+  links: { url: string; archived: { url: string } | null }[];
+}): SiteImageCreate | null {
+  if (source.kind !== "satellite" || !source.media || !source.captured_at) return null;
+  return {
+    title: source.title,
+    captured_at: source.captured_at,
+    links: source.links.map((link) => ({ url: link.url, snapshot_url: link.archived?.url ?? null })),
+    media_id: source.media.id,
+    note: null,
   };
 }

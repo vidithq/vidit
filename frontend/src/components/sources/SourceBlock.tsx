@@ -8,6 +8,8 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { LIST_TILE } from "@/components/ui/form-styles";
 import { META_LINE } from "@/components/ui/styles";
+import type { ReactNode } from "react";
+
 import { cn } from "@/lib/cn";
 import { formatInstant, formatInstantOrDate, safeHostname } from "@/lib/format";
 import {
@@ -40,6 +42,11 @@ export function SourceBlock({
   alt,
   compact = false,
   wide = false,
+  variant = "event",
+  name = sourceName(index),
+  header,
+  className,
+  children,
 }: {
   source: Source;
   /** Position in the event's source order, for the names ("Source 2"). */
@@ -48,8 +55,17 @@ export function SourceBlock({
   alt: string;
   compact?: boolean;
   wide?: boolean;
+  /** A site's satellite image: its kind and level are fixed, so neither shows, nor do the
+   *  capture position and the tags it never carries; the capture time leads, then `children`. */
+  variant?: "event" | "site-image";
+  /** The card's accessible name. */
+  name?: string;
+  /** A row heading the card (`DetailCard`'s `header`). */
+  header?: ReactNode;
+  className?: string;
+  /** More rows, after the capture time of a site image. */
+  children?: ReactNode;
 }) {
-  const name = sourceName(index);
   const file = source.media === null && !isEvidenceLevel(source.level) ? null : (
     <MediaGallery
       media={source.media ? [source.media] : []}
@@ -60,7 +76,17 @@ export function SourceBlock({
       empty="No file"
     />
   );
-  const rows = <SourceRows source={source} index={index} compact={compact} />;
+  const rows =
+    variant === "site-image" ? (
+      <>
+        {source.title && <DetailRow {...SOURCE_FIELDS.title} value={source.title} />}
+        <CapturedRow source={source} compact={compact} />
+        {children}
+        <SourceLinkRows source={source} name={name.charAt(0).toLowerCase() + name.slice(1)} compact={compact} postedOnly />
+      </>
+    ) : (
+      <SourceRows source={source} index={index} compact={compact} />
+    );
   if (compact) {
     return (
       <section aria-label={name} className={cn(LIST_TILE, "space-y-2 text-sm")}>
@@ -70,7 +96,7 @@ export function SourceBlock({
     );
   }
   return (
-    <DetailCard label={name} lead={file} leadBeside={wide}>
+    <DetailCard label={name} header={header} lead={file} leadBeside={wide} className={className}>
       {rows}
     </DetailCard>
   );
@@ -87,7 +113,6 @@ function SourceRows({
 }) {
   const kind = sourceKindLabel(source);
   const position = source.capture_position;
-  const links = source.links;
   return (
     <>
       {source.title && <DetailRow {...SOURCE_FIELDS.title} value={source.title} compact={compact} />}
@@ -95,39 +120,8 @@ function SourceRows({
         <Pill tone="neutral">{LEVEL_LABELS[source.level]}</Pill>
       </DetailRow>
       {kind && <DetailRow {...SOURCE_FIELDS.kind} compact={compact} value={kind} />}
-      {links.length > 0 && (
-        <DetailRow
-          {...SOURCE_FIELDS.links}
-          label={`${SOURCE_FIELDS.links.label} (${links.length})`}
-          compact={compact}
-          align="start"
-        >
-          <ul className="space-y-1.5 text-right" aria-label={`Links of ${sourceName(index).toLowerCase()}`}>
-            {links.map((link, i) => (
-              <li key={link.url}>
-                <div className="flex items-center justify-end">
-                  <SourceLabel url={link.url} variant="link" className="text-sm" />
-                  <ArchivedCopies
-                    copy={link.archived}
-                    describes={linkDescription(index, safeHostname(link.url), i, links.length)}
-                  />
-                </div>
-                <p className={META_LINE}>
-                  {link.posted_at ? `Posted ${formatInstantOrDate(link.posted_at)}` : "Date unknown"}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </DetailRow>
-      )}
-      <SourceWarnings warnings={source.warnings} label={`Warnings of ${sourceName(index).toLowerCase()}`} />
-      {source.captured_at && (
-        <DetailRow
-          {...SOURCE_FIELDS.captured_at}
-          compact={compact}
-          value={formatInstant(source.captured_at)}
-        />
-      )}
+      <SourceLinkRows source={source} name={sourceName(index).toLowerCase()} compact={compact} />
+      <CapturedRow source={source} compact={compact} />
       {position && (
         <DetailRow
           {...SOURCE_FIELDS.capture_position}
@@ -144,6 +138,66 @@ function SourceRows({
         </DetailRow>
       )}
     </>
+  );
+}
+
+/** A source's links, each with its archived copy and post time, then its imagery warnings. */
+/** `postedOnly` drops the *Date unknown* line of a link with no post time (a site image's link
+ *  reopens an image; when it was posted rarely matters). */
+function SourceLinkRows({
+  source,
+  name,
+  compact,
+  postedOnly = false,
+}: {
+  source: Source;
+  name: string;
+  compact: boolean;
+  postedOnly?: boolean;
+}) {
+  const links = source.links;
+  return (
+    <>
+      {links.length > 0 && (
+        <DetailRow
+          {...SOURCE_FIELDS.links}
+          label={`${SOURCE_FIELDS.links.label} (${links.length})`}
+          compact={compact}
+          align="start"
+        >
+          <ul className="space-y-1.5 text-right" aria-label={`Links of ${name}`}>
+            {links.map((link, i) => (
+              <li key={link.url}>
+                <div className="flex items-center justify-end">
+                  <SourceLabel url={link.url} variant="link" className="text-sm" />
+                  <ArchivedCopies
+                    copy={link.archived}
+                    describes={linkDescription(name, safeHostname(link.url), i, links.length)}
+                  />
+                </div>
+                {(link.posted_at || !postedOnly) && (
+                  <p className={META_LINE}>
+                    {link.posted_at ? `Posted ${formatInstantOrDate(link.posted_at)}` : "Date unknown"}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </DetailRow>
+      )}
+      <SourceWarnings warnings={source.warnings} label={`Warnings of ${name}`} />
+    </>
+  );
+}
+
+function CapturedRow({ source, compact }: { source: Source; compact: boolean }) {
+  if (!source.captured_at) return null;
+  return (
+    <DetailRow
+      {...SOURCE_FIELDS.captured_at}
+      compact={compact}
+      value={formatInstant(source.captured_at)}
+    />
   );
 }
 

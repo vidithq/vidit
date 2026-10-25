@@ -53,6 +53,7 @@ const LEVEL_OPTIONS = SOURCE_LEVELS.map((value) => ({ value, label: LEVEL_LABELS
 export interface SourceEditorInvalid {
   link?: boolean;
   kind?: boolean;
+  captured?: boolean;
 }
 
 /** Whether a field under **More details** holds a value. */
@@ -74,6 +75,10 @@ function holdsDetails(draft: SourceDraft): boolean {
  * The editor holds no draft state of its own: `update` patches the draft in the form's list,
  * and `onPickFile` hands a picked file to the list, which uploads it. `actions` is the
  * header's slot for the list's controls (remove).
+ *
+ * `variant="site-image"` is a site's satellite image: its kind and level are fixed (satellite,
+ * context), so neither shows, the capture time is required and sits under the title, and
+ * `extra` (the image's note) closes the card in place of **More details**.
  */
 export function SourceEditor({
   draft,
@@ -85,22 +90,30 @@ export function SourceEditor({
   invalid = {},
   actions,
   wide = false,
+  variant = "event",
+  name = sourceName(index),
+  extra,
 }: {
   draft: SourceDraft;
   /** Position in the list, for the names ("Source 2"). */
   index: number;
   update: (patch: Partial<SourceDraft>) => void;
   onPickFile: (file: File) => void;
-  /** The tag catalogue the event's Details card also reads. */
-  tags: Tag[];
-  setTags: Dispatch<SetStateAction<Tag[]>>;
+  /** The tag catalogue the event's Details card also reads; an event source only. */
+  tags?: Tag[];
+  setTags?: Dispatch<SetStateAction<Tag[]>>;
   invalid?: SourceEditorInvalid;
   actions?: ReactNode;
   /** The editor owns the whole section (a lone source): the file sits left of the fields once
    *  the card is wide enough. */
   wide?: boolean;
+  variant?: "event" | "site-image";
+  /** The card's heading, and the root of its fields' accessible names. */
+  name?: string;
+  /** What a site image adds after its links: the note. */
+  extra?: ReactNode;
 }) {
-  const name = sourceName(index);
+  const siteImage = variant === "site-image";
   const id = (field: string) => `${draft.key}-${field}`;
   const file = draft.file;
   const hasFile = file !== null && file.state !== "failed";
@@ -120,7 +133,7 @@ export function SourceEditor({
         : null;
 
   const describe = (i: number, url: string) =>
-    linkDescription(index, safeHostname(url.trim()), i, draft.links.length);
+    linkDescription(siteImage ? name.toLowerCase() : index, safeHostname(url.trim()), i, draft.links.length);
 
   const fileSlot = (
     <div className="space-y-1.5">
@@ -146,25 +159,27 @@ export function SourceEditor({
     </div>
   );
 
-  const essentials = (
-    <div className="space-y-4">
-      <div className="space-y-1.5">
-        <FieldLabel
-          {...SOURCE_FIELDS.title}
-          htmlFor={id("title")}
-          trailing={<CharCounter length={draft.title.length} max={SOURCE_TITLE_MAX_LEN} />}
-        />
-        <Input
-          id={id("title")}
-          // Named apart from the event's Title field and the other editors' titles.
-          aria-label={`${name} title`}
-          value={draft.title}
-          maxLength={SOURCE_TITLE_MAX_LEN}
-          onChange={(e) => update({ title: e.target.value })}
-          placeholder="For example Drone footage of the strike"
-        />
-      </div>
+  // Required on a site image, where the zone rule reads it; optional under More details otherwise.
+  const captured = (
+    <div className="space-y-1.5">
+      <FieldLabel
+        {...SOURCE_FIELDS.captured_at}
+        htmlFor={id("captured_at")}
+        invalid={invalid.captured}
+      />
+      <DateTimeInput
+        id={id("captured_at")}
+        type="datetime-local"
+        value={draft.capturedAt}
+        required={siteImage}
+        invalid={invalid.captured}
+        onChange={(e) => update({ capturedAt: e.target.value })}
+      />
+    </div>
+  );
 
+  const classification = (
+    <>
       <div className="space-y-1.5">
         <FieldLabel {...SOURCE_FIELDS.level} />
         <SegmentedControl<SourceLevel>
@@ -193,7 +208,87 @@ export function SourceEditor({
           ))}
         </Select>
       </div>
+    </>
+  );
+
+  const essentials = (
+    <div className="space-y-4">
+      <div className="space-y-1.5">
+        <FieldLabel
+          {...SOURCE_FIELDS.title}
+          htmlFor={id("title")}
+          trailing={<CharCounter length={draft.title.length} max={SOURCE_TITLE_MAX_LEN} />}
+        />
+        <Input
+          id={id("title")}
+          // Named apart from the event's Title field and the other editors' titles.
+          aria-label={`${name} title`}
+          value={draft.title}
+          maxLength={SOURCE_TITLE_MAX_LEN}
+          onChange={(e) => update({ title: e.target.value })}
+          placeholder={
+            siteImage ? "For example Sentinel-2 true colour" : "For example Drone footage of the strike"
+          }
+        />
+      </div>
+
+      {siteImage ? captured : classification}
     </div>
+  );
+
+  const details = (
+    <Disclosure
+      label="More details"
+      open={detailsOpen}
+      onToggle={() => setDetailsOpen((open) => !open)}
+    >
+      {captured}
+
+      {hasCapturePosition(draft.kind) && (
+        <div className="space-y-1.5">
+          <FieldLabel {...SOURCE_FIELDS.capture_position} />
+          <CoordinateInputs
+            idPrefix={id("capture_")}
+            required={false}
+            lat={draft.captureLat}
+            setLat={(captureLat) => update({ captureLat })}
+            lng={draft.captureLng}
+            setLng={(captureLng) => update({ captureLng })}
+            invalid={positionInvalid}
+          />
+          {positionInvalid && (
+            <p className="text-xs text-red-400">
+              Enter a latitude from {LAT_MIN} to {LAT_MAX} and a longitude from {LNG_MIN} to{" "}
+              {LNG_MAX}, or clear both. Until then the capture position is not saved.
+            </p>
+          )}
+        </div>
+      )}
+
+      {tags && setTags && (
+        <TagsField
+          tags={tags}
+          setTags={setTags}
+          selected={draft.tagIds}
+          setSelected={(tagIds) => update({ tagIds })}
+          owner={name}
+        />
+      )}
+
+      {/* A `span` label plus the switch's own name: not a labelable field. */}
+      <div className="flex items-center justify-between gap-4">
+        <FieldLabel
+          {...SOURCE_FIELDS.is_graphic}
+          trailing={draft.graphicLocked && <LockedHint>admin only</LockedHint>}
+        />
+        <Switch
+          on={draft.isGraphic}
+          onToggle={() => update({ isGraphic: !draft.isGraphic })}
+          disabled={draft.graphicLocked}
+          aria-label={`${name} graphic content`}
+        />
+      </div>
+    </Disclosure>
   );
 
   const rest = (
@@ -211,7 +306,9 @@ export function SourceEditor({
             itemLabel={`${name} link`}
             addText="Add a link"
             addName={`Add a link to ${name.toLowerCase()}`}
-            placeholder="https://t.me/channel/12345"
+            placeholder={
+              siteImage ? "https://browser.dataspace.copernicus.eu/?…" : "https://t.me/channel/12345"
+            }
             invalid={invalid.link}
             heading={
               <FieldLabel
@@ -261,64 +358,7 @@ export function SourceEditor({
         <SourceImageryCheck draft={draft} name={name} />
       </div>
 
-      <Disclosure
-        label="More details"
-        open={detailsOpen}
-        onToggle={() => setDetailsOpen((open) => !open)}
-      >
-        <div className="space-y-1.5">
-          <FieldLabel {...SOURCE_FIELDS.captured_at} htmlFor={id("captured_at")} />
-          <DateTimeInput
-            id={id("captured_at")}
-            type="datetime-local"
-            value={draft.capturedAt}
-            onChange={(e) => update({ capturedAt: e.target.value })}
-          />
-        </div>
-
-        {hasCapturePosition(draft.kind) && (
-          <div className="space-y-1.5">
-            <FieldLabel {...SOURCE_FIELDS.capture_position} />
-            <CoordinateInputs
-              idPrefix={id("capture_")}
-              required={false}
-              lat={draft.captureLat}
-              setLat={(captureLat) => update({ captureLat })}
-              lng={draft.captureLng}
-              setLng={(captureLng) => update({ captureLng })}
-              invalid={positionInvalid}
-            />
-            {positionInvalid && (
-              <p className="text-xs text-red-400">
-                Enter a latitude from {LAT_MIN} to {LAT_MAX} and a longitude from {LNG_MIN} to{" "}
-                {LNG_MAX}, or clear both. Until then the capture position is not saved.
-              </p>
-            )}
-          </div>
-        )}
-
-        <TagsField
-          tags={tags}
-          setTags={setTags}
-          selected={draft.tagIds}
-          setSelected={(tagIds) => update({ tagIds })}
-          owner={name}
-        />
-
-        {/* A `span` label plus the switch's own name: not a labelable field. */}
-        <div className="flex items-center justify-between gap-4">
-          <FieldLabel
-            {...SOURCE_FIELDS.is_graphic}
-            trailing={draft.graphicLocked && <LockedHint>admin only</LockedHint>}
-          />
-          <Switch
-            on={draft.isGraphic}
-            onToggle={() => update({ isGraphic: !draft.isGraphic })}
-            disabled={draft.graphicLocked}
-            aria-label={`${name} graphic content`}
-          />
-        </div>
-      </Disclosure>
+      {siteImage ? extra : details}
     </div>
   );
 

@@ -278,12 +278,35 @@ export const PAGE_COLUMNS_SPLIT = "lg:grid-cols-[minmax(0,65fr)_minmax(0,35fr)]"
 /**
  * A main column and a side column, 65:35 from `lg` up. Below `lg` the side column follows the main
  * one. Every `PageColumns` of a page shares the split, so its columns line up from one to the next.
+ *
+ * `sideFirst` puts the side column first below `lg`, for a side column the main one acts on (a
+ * site's map, which a pick in the main column redraws). `stickySide` pins the side column under
+ * the sticky actions from `lg` up while the main column scrolls, and scrolls it on its own once
+ * it outgrows the viewport.
  */
-export function PageColumns({ main, side }: { main: ReactNode; side: ReactNode }) {
+export function PageColumns({
+  main,
+  side,
+  sideFirst = false,
+  stickySide = false,
+}: {
+  main: ReactNode;
+  side: ReactNode;
+  sideFirst?: boolean;
+  stickySide?: boolean;
+}) {
   return (
     <div className={`grid items-start gap-6 ${PAGE_COLUMNS_SPLIT}`}>
       <div className="min-w-0 space-y-6">{main}</div>
-      <div className="min-w-0 space-y-6">{side}</div>
+      <div
+        className={cn(
+          "min-w-0 space-y-6",
+          sideFirst && "max-lg:order-first",
+          stickySide && "lg:sticky lg:top-24 lg:max-h-[calc(100dvh-7rem)] lg:overflow-y-auto",
+        )}
+      >
+        {side}
+      </div>
     </div>
   );
 }

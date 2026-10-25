@@ -42,7 +42,6 @@ import {
   SECOND_COLLECTED_EVENT_ID,
   SIGNED_IN_USER,
   SITE,
-  SITE_HISTORY,
   SITE_ID,
   SITE_NEARBY,
   X_HANDLE,
@@ -103,10 +102,11 @@ const ROUTES: [RegExp, unknown][] = [
     new RegExp(`^/collections/${COLLECTION_ID}/events$`),
     [COLLECTED_EVENT, SECOND_COLLECTED_EVENT],
   ],
-  // The site page: the site, its history under either clock, and its unlinked neighbours.
+  // The site page and its forms: the site, which the signed-in analyst owns, and its unlinked
+  // neighbours, one of them the analyst's own. The imagery provider check answers no provider.
   [new RegExp(`^/sites/${SITE_ID}$`), SITE],
-  [new RegExp(`^/sites/${SITE_ID}/history$`), SITE_HISTORY],
   [new RegExp(`^/sites/${SITE_ID}/nearby-events$`), SITE_NEARBY],
+  [/^\/sources\/check$/, { links: [], warnings: [] }],
   // The organization page as its org manager reads it.
   [new RegExp(`^/organizations/${ORGANIZATION_SLUG}$`), ORGANIZATION],
   [new RegExp(`^/organizations/${ORGANIZATION_SLUG}/members$`), ORGANIZATION_MEMBERS],

@@ -1,104 +1,172 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import dynamic from "next/dynamic";
-import { Check, Eraser, Undo2 } from "lucide-react";
+import { Check, Eraser, Minus, RotateCcw, Undo2 } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
 import { DetailRow } from "@/components/ui/DetailRow";
-import type { DrawState } from "@/components/map/ZoneDrawMap";
+import type { DrawChange } from "@/components/map/ZoneDrawMap";
 import type { MapSite } from "@/components/map/SiteLayers";
-import { MIN_ZONE_VERTICES, zoneAreaKm2, zoneSelfCrosses } from "@/lib/siteZone";
+import { cn } from "@/lib/cn";
+import {
+  EMPTY_DRAW,
+  MIN_ZONE_VERTICES,
+  removeVertex,
+  zoneAreaKm2,
+  zoneSelfCrosses,
+  type DrawState,
+} from "@/lib/siteZone";
+import type { Zone } from "@/lib/sites";
 import type { MapBounds } from "@/lib/viewport";
 
 const ZoneDrawMap = dynamic(() => import("@/components/map/ZoneDrawMap"), { ssr: false });
 
-export const EMPTY_DRAW: DrawState = { vertices: [], closed: false };
+/** The steps **Undo** walks back. */
+const UNDO_DEPTH = 50;
 
-/** True when the drawn ring is closed and its edges do not cross: the zone the API takes. */
-export function drawReady(state: DrawState): boolean {
-  return (
-    state.closed && state.vertices.length >= MIN_ZONE_VERTICES && !zoneSelfCrosses(state.vertices)
-  );
+/** The editor's state with its undo stack: every change but a drag step is one step back. */
+export function useDrawHistory(initial: DrawState) {
+  const [{ state, past }, setHistory] = useState({ state: initial, past: [] as DrawState[] });
+  const change: DrawChange = useCallback((next, transient = false) => {
+    setHistory((h) => ({
+      state: next,
+      past: transient ? h.past : [...h.past.slice(-UNDO_DEPTH + 1), h.state],
+    }));
+  }, []);
+  const undo = useCallback(() => {
+    setHistory((h) => {
+      const previous = h.past.at(-1);
+      return previous ? { state: previous, past: h.past.slice(0, -1) } : h;
+    });
+  }, []);
+  return { state, change, undo, canUndo: past.length > 0 };
+}
+
+function hint(state: DrawState): string {
+  if (state.closed) {
+    return state.selected === null
+      ? "Drag a corner to move it, or drag a dot between two corners to add one."
+      : "Drag the corner to move it, or remove it.";
+  }
+  if (state.vertices.length >= MIN_ZONE_VERTICES) return "Click the first corner or Close to finish.";
+  return "Click on the map to place the corners of the contour.";
 }
 
 /**
- * The zone field of a site form: the draw canvas with its toolbar above and the zone's size
- * below, as one module like the event form's Location block.
+ * The contour field of a site form: the draw canvas with its toolbar above and the contour's
+ * size below, one module like the event page's Location block. **Start over** clears the ring;
+ * with a `reference` (the contour being redrawn), **Back to the current contour** restores it.
  */
 export function ZoneEditor({
-  state,
-  onChange,
+  history,
   sites,
+  reference = null,
+  onReset,
   bounds,
   center,
   onBoundsChange,
+  invalid = false,
+  label,
 }: {
-  state: DrawState;
-  onChange: (next: DrawState) => void;
+  history: ReturnType<typeof useDrawHistory>;
   sites: MapSite[];
+  reference?: Zone | null;
+  /** Restores the contour being redrawn. */
+  onReset?: () => void;
   bounds?: MapBounds;
   center?: { lat: number; lng: number; zoom: number };
   onBoundsChange?: (bounds: MapBounds) => void;
+  /** A write attempt found no closed contour: the frame turns red. */
+  invalid?: boolean;
+  /** The region's accessible name. */
+  label: string;
 }) {
-  const { vertices, closed } = state;
+  const { state, change, undo, canUndo } = history;
+  const { vertices, closed, selected } = state;
   const crosses = closed && zoneSelfCrosses(vertices);
-  const hint = closed
-    ? "Drag a corner to adjust the zone."
-    : vertices.length >= MIN_ZONE_VERTICES
-      ? "Click the first corner or Done to close the zone."
-      : "Click on the map to add the corners of the zone.";
+  const canRemove = selected !== null && (!closed || vertices.length > MIN_ZONE_VERTICES);
 
   return (
-    <div className="rounded-lg border border-neutral-700">
-      <div className="flex flex-wrap items-center gap-1.5 rounded-t-lg border-b border-neutral-800 bg-neutral-900 px-2 py-1.5">
-        <Button
-          variant="ghost"
-          disabled={vertices.length === 0}
-          onClick={() =>
-            onChange(closed ? { vertices, closed: false } : { vertices: vertices.slice(0, -1), closed })
-          }
-        >
+    <section
+      aria-label={label}
+      className={cn(
+        "rounded-lg border",
+        invalid || crosses ? "border-red-500/60" : "border-neutral-700",
+      )}
+    >
+      <div
+        role="toolbar"
+        aria-label="Contour tools"
+        className="flex flex-wrap items-center gap-1 rounded-t-lg border-b border-neutral-800 bg-neutral-900 px-2 py-1.5"
+      >
+        <Button variant="ghost" disabled={!canUndo} onClick={undo}>
           <Undo2 size={14} />
-          {closed ? "Reopen" : "Undo corner"}
+          Undo
         </Button>
-        <Button
-          variant="ghost"
-          disabled={closed || vertices.length < MIN_ZONE_VERTICES}
-          onClick={() => onChange({ vertices, closed: true })}
-        >
-          <Check size={14} />
-          Done
-        </Button>
-        <Button variant="ghost" disabled={vertices.length === 0} onClick={() => onChange({ vertices: [], closed: false })}>
+        {closed ? (
+          <Button
+            variant="ghost"
+            disabled={!canRemove}
+            onClick={() => selected !== null && change(removeVertex(state, selected))}
+          >
+            <Minus size={14} />
+            Remove corner
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            disabled={vertices.length < MIN_ZONE_VERTICES}
+            onClick={() => change({ ...state, closed: true, selected: null })}
+          >
+            <Check size={14} />
+            Close
+          </Button>
+        )}
+        <Button variant="ghost" disabled={vertices.length === 0} onClick={() => change(EMPTY_DRAW)}>
           <Eraser size={14} />
-          Redraw
+          Start over
         </Button>
-        <span className="ml-auto px-1 text-xs text-neutral-500">{hint}</span>
+        {onReset && (
+          <Button variant="ghost" onClick={onReset}>
+            <RotateCcw size={14} />
+            Back to the current contour
+          </Button>
+        )}
       </div>
-      <div className="h-80 overflow-hidden">
+      <p className="border-b border-neutral-800 bg-neutral-900 px-4 py-2 text-xs text-neutral-400" aria-live="polite">
+        {hint(state)}
+      </p>
+      <div className="h-80 overflow-hidden sm:h-96">
         <ZoneDrawMap
           state={state}
-          onChange={onChange}
+          onChange={change}
           sites={sites}
+          reference={reference}
           bounds={bounds}
           center={center}
           onBoundsChange={onBoundsChange}
         />
       </div>
       <DetailRow
-        label="Zone"
+        label="Contour"
         concept="site_zone"
         align="center"
         className="rounded-b-lg border-t border-neutral-800 bg-neutral-900"
       >
-        <span className={crosses ? "text-sm text-red-400" : "text-sm text-neutral-200"}>
+        <span
+          className={cn("text-right text-sm", crosses || invalid ? "text-red-400" : "text-neutral-200")}
+          role={crosses ? "alert" : undefined}
+        >
           {crosses
-            ? "The edges cross: move a corner"
+            ? "Two edges cross. Move a corner."
             : closed
               ? `${zoneAreaKm2(vertices).toFixed(2)} km² · ${vertices.length} corners`
-              : `${vertices.length} corners, not closed`}
+              : vertices.length === 0
+                ? "Not drawn yet"
+                : `${vertices.length} corners, not closed`}
         </span>
       </DetailRow>
-    </div>
+    </section>
   );
 }

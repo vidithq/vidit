@@ -1,173 +1,197 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Link2, Search } from "lucide-react";
+import { X } from "lucide-react";
 
-import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
-import { FieldHelp } from "@/components/ui/FieldHelp";
-import { Input } from "@/components/ui/Input";
-import { MediaOverlay } from "@/components/ui/MediaLightbox";
+import { Combobox } from "@/components/ui/Combobox";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { FieldLabel } from "@/components/ui/FieldLabel";
 import { Pill } from "@/components/ui/Pill";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
-import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
+import { META_LINE } from "@/components/ui/styles";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import { useMutation } from "@/hooks/useMutation";
-import { LINK_EFFECT_LABELS, labelOptions, type LinkEffect } from "@/lib/sites";
+import { LINK_EFFECTS, LINK_EFFECT_LABELS, type LinkEffect } from "@/lib/sites";
 
 const SEARCH_DEBOUNCE_MS = 250;
+
+const EFFECT_OPTIONS = LINK_EFFECTS.map((value) => ({ value, label: LINK_EFFECT_LABELS[value] }));
 
 /** One pickable row of the dialog: a site to link the event to, or an event to link to the site. */
 export interface LinkCandidate {
   id: string;
   label: string;
-  /** What the reader needs to choose: the type, the owner, the distance. */
+  /** What the reader needs to choose: the kind, the date, the distance. */
   meta: string;
 }
 
 /**
- * The one dialog behind both directions of a link: an event owner picking a site from the event
- * page, or picking one of their events from a site page. Suggestions and search results are
- * chips; the pick and the effect go out together.
+ * The one dialog behind both directions of a link, on `ConfirmDialog`: an event's owner picks a
+ * site from the event page, or one of their events from a site page. The nearby suggestions show
+ * as chips, any other pick comes from the name search, and the pick shows as an accent chip a
+ * click removes. The effect has no default: the analyst says what the event shows. `extra`
+ * renders under the effect once a pick is made (the offer to file the event's satellite images).
  */
 export function LinkDialog({
   title,
-  subtitle,
+  intro,
+  pickLabel,
   suggestedLabel,
-  emptySuggestions,
   suggestions,
+  emptySuggestions,
+  searchLabel,
   searchPlaceholder,
   search,
   initial,
+  preset,
+  extra,
   onLink,
   onClose,
 }: {
   title: string;
-  subtitle: ReactNode;
+  intro: ReactNode;
+  /** The pick's name: Site, Event. */
+  pickLabel: string;
   suggestedLabel: string;
-  emptySuggestions: string;
   /** Null while the suggestions load. */
   suggestions: LinkCandidate[] | null;
+  emptySuggestions: string;
+  searchLabel: string;
   searchPlaceholder: string;
   search: (q: string, signal: AbortSignal) => Promise<LinkCandidate[]>;
-  /** The live link being edited, to change its effect. */
+  /** A live link whose effect the dialog changes: the pick is fixed. */
   initial?: { candidate: LinkCandidate; effect: LinkEffect };
-  onLink: (id: string, effect: LinkEffect) => Promise<unknown>;
+  /** A pick to start from, which the analyst may still remove (a nearby event's Link). */
+  preset?: LinkCandidate;
+  extra?: (picked: LinkCandidate) => ReactNode;
+  onLink: (picked: LinkCandidate, effect: LinkEffect) => Promise<unknown>;
   onClose: () => void;
 }) {
-  const [picked, setPicked] = useState<LinkCandidate | null>(initial?.candidate ?? null);
-  const [effect, setEffect] = useState<LinkEffect>(initial?.effect ?? "damage");
+  const [picked, setPicked] = useState<LinkCandidate | null>(initial?.candidate ?? preset ?? null);
+  const [effect, setEffect] = useState<LinkEffect | "">(initial?.effect ?? "");
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<LinkCandidate[] | null>(null);
-  const link = useMutation(() => onLink(picked!.id, effect), {
-    fallback: "Failed to link",
+  const [open, setOpen] = useState(false);
+  const [result, setResult] = useState<{ query: string; rows: LinkCandidate[] | null } | null>(null);
+  const link = useMutation(() => onLink(picked!, effect as LinkEffect), {
+    fallback: "The link failed. Try again.",
     onSuccess: onClose,
   });
 
+  const q = query.trim();
   useDebouncedEffect(
     () => {
-      const q = query.trim();
-      if (!q) {
-        setResults(null);
-        return;
-      }
+      if (!q) return;
       const controller = new AbortController();
       search(q, controller.signal)
-        .then(setResults)
-        .catch(() => {});
+        .then((rows) => setResult({ query: q, rows }))
+        .catch(() => {
+          if (!controller.signal.aborted) setResult({ query: q, rows: null });
+        });
       return () => controller.abort();
     },
-    [query],
+    [q],
     SEARCH_DEBOUNCE_MS,
   );
+  const current = result?.query === q ? result : null;
+  const rows = q && current?.rows ? current.rows : [];
+  const status = !q
+    ? null
+    : !current
+      ? "Searching…"
+      : current.rows === null
+        ? "The search failed."
+        : current.rows.length === 0
+          ? "No match."
+          : null;
 
-  const chips = (rows: LinkCandidate[]) => (
-    <div className="flex flex-wrap gap-1.5">
-      {rows.map((row) => (
-        <Pill
-          key={row.id}
-          tone={picked?.id === row.id ? "accent" : "neutral"}
-          onClick={() => setPicked(row)}
-          title={row.meta}
-        >
-          {row.label}
-        </Pill>
-      ))}
-    </div>
-  );
+  const pick = (candidate: LinkCandidate) => {
+    setPicked(candidate);
+    setQuery("");
+    setOpen(false);
+  };
+  const changing = initial !== undefined;
+  const unchanged = changing && effect === initial.effect;
 
   return (
-    <MediaOverlay variant="dialog" label={title} onClose={onClose}>
-      <Card className="w-[min(36rem,calc(100vw-3rem))]">
-        <div className="space-y-1">
-          <h2 className="text-base font-medium text-neutral-100">{title}</h2>
-          <p className="text-sm text-neutral-400">{subtitle}</p>
-        </div>
+    <ConfirmDialog
+      title={title}
+      confirmLabel={changing ? "Save the effect" : "Link"}
+      busyLabel="Saving…"
+      busy={link.loading}
+      confirmDisabled={!picked || !effect || unchanged}
+      error={link.error}
+      onConfirm={() => void link.run()}
+      onCancel={onClose}
+    >
+      <p>{intro}</p>
 
-        <div className="space-y-2">
-          <span className={FORM_LABEL}>{suggestedLabel}</span>
-          {suggestions === null ? (
-            <p className="text-sm text-neutral-500">Loading…</p>
-          ) : suggestions.length === 0 ? (
-            <p className="text-sm text-neutral-500">{emptySuggestions}</p>
-          ) : (
-            chips(suggestions)
-          )}
-        </div>
-
-        <div className="space-y-2">
-          <label htmlFor="link-search" className={FORM_LABEL}>
-            Or search by name
-          </label>
-          <Input
-            id="link-search"
-            icon={<Search size={14} />}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={searchPlaceholder}
-          />
-          {results !== null &&
-            (results.length === 0 ? (
-              <p className="text-sm text-neutral-500">No match.</p>
+      <div className="space-y-2 pt-1">
+        <FieldLabel label={pickLabel} />
+        {picked ? (
+          <div className="space-y-1">
+            {changing ? (
+              <Pill tone="accent">{picked.label}</Pill>
             ) : (
-              chips(results)
-            ))}
-        </div>
-
-        {picked && (
-          <p className="text-sm text-neutral-300">
-            {picked.label} <span className="text-neutral-500">· {picked.meta}</span>
-          </p>
+              <Pill tone="accent" title={`Remove ${picked.label}`} onClick={() => setPicked(null)}>
+                {picked.label}
+                <X size={12} aria-hidden />
+              </Pill>
+            )}
+            <p className={META_LINE}>{picked.meta}</p>
+          </div>
+        ) : (
+          <>
+            <p className="text-xs text-neutral-500">{suggestedLabel}</p>
+            {suggestions === null ? (
+              <p className="text-xs text-neutral-500">Loading…</p>
+            ) : suggestions.length === 0 ? (
+              <p className="text-xs text-neutral-500">{emptySuggestions}</p>
+            ) : (
+              <ul className="flex flex-wrap gap-1.5" aria-label={suggestedLabel}>
+                {suggestions.map((s) => (
+                  <li key={s.id} className="max-w-full">
+                    <Pill tone="neutral" title={s.meta} onClick={() => pick(s)}>
+                      {s.label}
+                      <span className="font-normal opacity-70">{s.meta}</span>
+                    </Pill>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <Combobox
+              aria-label={searchLabel}
+              placeholder={searchPlaceholder}
+              options={rows}
+              optionKey={(row) => row.id}
+              renderOption={(row) => (
+                <span className="min-w-0">
+                  <span className="block truncate">{row.label}</span>
+                  <span className="block truncate text-xs text-neutral-500">{row.meta}</span>
+                </span>
+              )}
+              onPick={pick}
+              query={query}
+              onQueryChange={setQuery}
+              open={open && q !== ""}
+              onOpenChange={setOpen}
+              status={status}
+            />
+          </>
         )}
+      </div>
 
-        <div className="space-y-2">
-          <span className="flex items-center gap-1">
-            <span className={FORM_LABEL}>Effect on the site</span>
-            <FieldHelp concept="link_effect" size={12} />
-          </span>
-          <SegmentedControl
-            aria-label="Effect on the site"
-            options={labelOptions(LINK_EFFECT_LABELS)}
-            value={effect}
-            onChange={setEffect}
-          />
-          <p className="text-xs text-neutral-500">
-            Describe only what the footage or image shows. Your interpretation goes in the proof.
-          </p>
-        </div>
+      <div className="space-y-2 pt-1">
+        <FieldLabel label="What the event shows at the site" concept="link_effect" />
+        <SegmentedControl<LinkEffect | "">
+          aria-label="Effect on the site"
+          options={EFFECT_OPTIONS}
+          value={effect}
+          onChange={setEffect}
+          fullWidth
+        />
+      </div>
 
-        {link.error && <div className={FORM_ERROR_BANNER}>{link.error}</div>}
-
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button variant="ghost" data-overlay-close="" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button variant="primary" disabled={!picked || link.loading} onClick={() => void link.run()}>
-            <Link2 size={14} />
-            {link.loading ? "Linking…" : "Link"}
-          </Button>
-        </div>
-      </Card>
-    </MediaOverlay>
+      {picked && extra?.(picked)}
+    </ConfirmDialog>
   );
 }

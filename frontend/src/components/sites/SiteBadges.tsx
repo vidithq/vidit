@@ -1,24 +1,23 @@
 import { Pill, type PillTone } from "@/components/ui/Pill";
 import {
   LINK_EFFECT_LABELS,
-  OBSERVATION_EFFECT_LABELS,
-  SITE_TYPE_LABELS,
+  SITE_KIND_LABELS,
   corroborationLabel,
   type LinkEffect,
-  type ObservationEffect,
   type Site,
-  type SiteType,
+  type SiteKind,
 } from "@/lib/sites";
 
-// Only damage and destruction carry colour, the two semantic tones the site's zone takes too.
+// Only damage and destruction carry colour, the two semantic tones a zone takes on the map too.
 const LINK_EFFECT_TONE: Record<LinkEffect, PillTone> = {
   damage: "warning",
   destruction: "danger",
+  activity: "neutral",
   other: "neutral",
 };
 
-export function SiteTypePill({ type }: { type: SiteType }) {
-  return <Pill tone="neutral">{SITE_TYPE_LABELS[type]}</Pill>;
+export function SiteKindPill({ kind }: { kind: SiteKind }) {
+  return <Pill tone="neutral">{SITE_KIND_LABELS[kind]}</Pill>;
 }
 
 export function CorroborationPill({
@@ -29,14 +28,11 @@ export function CorroborationPill({
   return <Pill tone="neutral">{corroborationLabel(site)}</Pill>;
 }
 
-export function LinkEffectPill({ effect }: { effect: LinkEffect }) {
+/** A link's effect. `keyed` prints the field's name before it, where the row does not say it. */
+export function LinkEffectPill({ effect, keyed = false }: { effect: LinkEffect; keyed?: boolean }) {
   return (
-    <Pill tone={LINK_EFFECT_TONE[effect]} label="Effect">
+    <Pill tone={LINK_EFFECT_TONE[effect]} label={keyed ? "Effect" : undefined}>
       {LINK_EFFECT_LABELS[effect]}
     </Pill>
   );
-}
-
-export function ObservationEffectPill({ effect }: { effect: ObservationEffect }) {
-  return <Pill tone="neutral">{OBSERVATION_EFFECT_LABELS[effect]}</Pill>;
 }

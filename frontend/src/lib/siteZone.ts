@@ -122,3 +122,50 @@ export function positionsBounds(positions: Position[]): MapBounds | null {
   }
   return { south, west, north, east };
 }
+
+/** The contour editor's state: the corners, whether the ring is closed, and the corner the
+ *  analyst picked (the one **Remove corner** takes). */
+export interface DrawState {
+  vertices: Position[];
+  closed: boolean;
+  selected: number | null;
+}
+
+export const EMPTY_DRAW: DrawState = { vertices: [], closed: false, selected: null };
+
+/** A closed draw state from a stored zone, so the owner edits the current contour in place. */
+export function drawFromZone(zone: Zone): DrawState {
+  return { vertices: zoneVertices(zone), closed: true, selected: null };
+}
+
+/** True when the drawn ring is closed and its edges do not cross: the zone the API takes. */
+export function drawReady(state: DrawState): boolean {
+  return state.closed && state.vertices.length >= MIN_ZONE_VERTICES && !zoneSelfCrosses(state.vertices);
+}
+
+/** The middle of each edge of the closed ring, where a drag inserts a corner. */
+export function edgeMidpoints(vertices: Position[]): Position[] {
+  return vertices.map((v, i) => {
+    const next = vertices[(i + 1) % vertices.length];
+    return [(v[0] + next[0]) / 2, (v[1] + next[1]) / 2];
+  });
+}
+
+/** A new corner on the edge that starts at corner `edge`, selected. */
+export function insertVertex(state: DrawState, edge: number, position: Position): DrawState {
+  const vertices = [...state.vertices];
+  vertices.splice(edge + 1, 0, position);
+  return { ...state, vertices, selected: edge + 1 };
+}
+
+export function moveVertex(state: DrawState, index: number, position: Position): DrawState {
+  const vertices = state.vertices.slice();
+  vertices[index] = position;
+  return { ...state, vertices };
+}
+
+/** Takes a corner out. A closed ring keeps at least three corners, so the last three stay. */
+export function removeVertex(state: DrawState, index: number): DrawState {
+  if (state.closed && state.vertices.length <= MIN_ZONE_VERTICES) return state;
+  return { ...state, vertices: state.vertices.filter((_, i) => i !== index), selected: null };
+}

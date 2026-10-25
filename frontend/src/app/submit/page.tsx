@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useRef, type ReactNode } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { createEvent, createEventRequest } from "@/lib/events";
@@ -10,6 +11,8 @@ import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel
 import { ImportPostPanel } from "@/components/geolocations/ImportPostPanel";
 import { MapPin } from "lucide-react";
 import { IconTile } from "@/components/ui/IconTile";
+import { TEXT_LINK } from "@/components/ui/styles";
+import { NEW_SITE_HREF } from "@/lib/sites";
 import { EventFormShell, useEventForm } from "@/components/geolocations/EventFormFields";
 import {
   PUBLISHING_LABEL,
@@ -164,11 +167,20 @@ function SubmitForm() {
   return (
     <PageShell title="Submit" back={mode !== null} onBack={backToChooser}>
       {mode === null && (
-        <div role="group" aria-label="Submission mode" className="grid gap-4 sm:grid-cols-3">
-          {MODES.map(({ mode, icon, title, note }) => (
-            <IconTile key={mode} href={submitHref(mode)} icon={icon} title={title} note={note} />
-          ))}
-        </div>
+        <>
+          <div role="group" aria-label="Submission mode" className="grid gap-4 sm:grid-cols-3">
+            {MODES.map(({ mode, icon, title, note }) => (
+              <IconTile key={mode} href={submitHref(mode)} icon={icon} title={title} note={note} />
+            ))}
+          </div>
+          <p className="text-sm text-neutral-400">
+            To follow a place through dated satellite imagery,{" "}
+            <Link href={NEW_SITE_HREF} className={TEXT_LINK}>
+              create a site
+            </Link>
+            .
+          </p>
+        </>
       )}
 
       {mode === "xpost" && <ImportPostPanel />}

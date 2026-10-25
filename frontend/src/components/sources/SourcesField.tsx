@@ -57,27 +57,7 @@ export function SourcesField({
 }) {
   const atCap = sources.length >= MAX_SOURCES_PER_EVENT;
 
-  const update = (key: string) => (patch: Partial<SourceDraft>) =>
-    setSources((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
-
-  const settle = (key: string, token: number, file: SourceFile) =>
-    setSources((prev) =>
-      prev.map((d) =>
-        d.key === key && d.file?.state === "uploading" && d.file.token === token
-          ? { ...d, file }
-          : d
-      )
-    );
-
-  const pickFile = (key: string) => async (file: File) => {
-    const token = ++uploadToken;
-    update(key)({ file: { state: "uploading", file, token } });
-    try {
-      settle(key, token, { state: "staged", upload: await uploadSourceFile(file) });
-    } catch (err) {
-      settle(key, token, { state: "failed", file, error: uploadError(err) });
-    }
-  };
+  const { update, pickFile } = sourceDraftUpdaters(setSources);
 
   const scroller = useRef<HorizontalScrollerHandle>(null);
   // A source to show once the list renders: the one Add a source appended, the neighbour of a
@@ -146,6 +126,38 @@ export function SourcesField({
       ))}
     </SourcesRow>
   );
+}
+
+/**
+ * The two writers a form's source editors take: `update(key)` patches one draft, and
+ * `pickFile(key)` uploads a picked file at once, on its own request. The answer lands on the
+ * draft only while that same upload is still its file, so a file picked again or removed while
+ * its upload runs drops the answer.
+ */
+export function sourceDraftUpdaters(setSources: Dispatch<SetStateAction<SourceDraft[]>>) {
+  const update = (key: string) => (patch: Partial<SourceDraft>) =>
+    setSources((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
+
+  const settle = (key: string, token: number, file: SourceFile) =>
+    setSources((prev) =>
+      prev.map((d) =>
+        d.key === key && d.file?.state === "uploading" && d.file.token === token
+          ? { ...d, file }
+          : d
+      )
+    );
+
+  const pickFile = (key: string) => async (file: File) => {
+    const token = ++uploadToken;
+    update(key)({ file: { state: "uploading", file, token } });
+    try {
+      settle(key, token, { state: "staged", upload: await uploadSourceFile(file) });
+    } catch (err) {
+      settle(key, token, { state: "failed", file, error: uploadError(err) });
+    }
+  };
+
+  return { update, pickFile };
 }
 
 /** An editor's red trash button: the first click arms it, the second removes the source. */

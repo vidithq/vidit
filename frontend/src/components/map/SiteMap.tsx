@@ -29,7 +29,7 @@ function ZoneLayers({
   emphasis,
   outside,
 }: {
-  zone: Zone;
+  zone: Zone | null;
   previousZone: Zone | null;
   emphasis: "damage" | "destruction" | null;
   outside: SiteLinkedEvent[];
@@ -41,9 +41,9 @@ function ZoneLayers({
   const connectors = useMemo<FeatureCollection>(
     () => ({
       type: "FeatureCollection",
-      features: outside.map((event) => {
+      features: (zone ? outside : []).map((event) => {
         const from: [number, number] = [event.coords.lng, event.coords.lat];
-        const to = nearestPointOnZone(zone, from);
+        const to = nearestPointOnZone(zone!, from);
         return {
           type: "Feature",
           properties: { distance: event.distance_m === null ? "" : formatDistance(event.distance_m) },
@@ -56,7 +56,15 @@ function ZoneLayers({
 
   return (
     <>
-      <Source id="site-zone" type="geojson" data={{ type: "Feature", properties: {}, geometry: zone }}>
+      <Source
+        id="site-zone"
+        type="geojson"
+        data={
+          zone
+            ? { type: "Feature", properties: {}, geometry: zone }
+            : { type: "FeatureCollection", features: [] }
+        }
+      >
         <Layer id={ZONE_FILL} type="fill" paint={{ "fill-color": color, "fill-opacity": 0.2 }} />
         <Layer id={ZONE_LINE} type="line" paint={{ "line-color": color, "line-width": 2 }} />
       </Source>
@@ -104,23 +112,24 @@ function ZoneLayers({
 }
 
 /**
- * A site's own map: the zone shown (coloured only by a damage or destruction link), the zone
- * before it dashed, the linked events as pins, and a dotted line with its distance from each
- * event outside the zone it was measured against. Events measured against another zone are dimmed.
+ * A site's own map: the zone of the date shown (coloured only by a damage or destruction link),
+ * the contour before it dashed, the linked events as pins, and a dotted line with its distance
+ * from each event outside the zone it was measured against. Events measured against another
+ * contour are dimmed. With no zone on the date, `previousZone` carries the first contour, dashed.
  */
 export default function SiteMap({
   zone,
   previousZone,
-  observationId,
+  contourId,
   emphasis,
   events,
   bounds,
   onEventClick,
 }: {
-  zone: Zone;
+  zone: Zone | null;
   previousZone: Zone | null;
-  /** The observation `zone` comes from: events measured against another one are dimmed. */
-  observationId: string;
+  /** The contour `zone` comes from: events measured against another one are dimmed. */
+  contourId: string | null;
   emphasis: "damage" | "destruction" | null;
   events: SiteLinkedEvent[];
   bounds: MapBounds;
@@ -131,12 +140,12 @@ export default function SiteMap({
     [events],
   );
   const dimmed = useMemo(
-    () => new Set(events.filter((e) => e.measured_observation_id !== observationId).map((e) => e.id)),
-    [events, observationId],
+    () => new Set(events.filter((e) => e.measured_contour_id !== contourId).map((e) => e.id)),
+    [events, contourId],
   );
   const outside = useMemo(
-    () => events.filter((e) => !e.inside_zone && e.measured_observation_id === observationId),
-    [events, observationId],
+    () => events.filter((e) => !e.inside_zone && e.measured_contour_id === contourId),
+    [events, contourId],
   );
 
   return (
