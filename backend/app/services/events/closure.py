@@ -35,8 +35,8 @@ def close(db: Session, *, geo: Event, current_user: User, close_reason: str) -> 
     Raises :class:`EventStateError` (409) on a ``closed`` row. Commits and
     invalidates the points cache.
     """
-    # Lock the row like ``geolocate`` and ``save_version``, so a concurrent
-    # geolocate or version save lands wholly before or after this close.
+    # Lock the row like ``save_version`` and ``update_request``, so a concurrent
+    # publish or version save lands wholly before or after this close.
     geo = lock_event(db, geo.id)
     ensure_owner(geo, current_user)
     if geo.status == STATUS_CLOSED:

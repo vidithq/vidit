@@ -76,6 +76,7 @@ _EVENT_ERROR_STATUS: dict[str, int] = {
     "source_media_not_found": 400,
     "invalid_state": 409,
     "nothing_changed": 409,
+    "version_mismatch": 409,
 }
 
 # Every relationship ``build_source_read`` reads, for a query that serves sources.
@@ -132,7 +133,7 @@ def resolve_live_event(db: Session, event_id: uuid.UUID) -> Event:
 
     A soft-deleted or withheld (``hidden_at``) row reads as 404: a takedown
     freezes the event for its owner too, until the admin moderation endpoint
-    lifts it. Permission is the caller's concern (geolocate owns per-status
+    lifts it. Permission is the caller's concern (``save_version`` owns per-status
     ownership; owner-only verbs call ``permissions.ensure_owner``).
     """
     geo = db.query(Event).filter(Event.id == event_id, *visible_events()).first()

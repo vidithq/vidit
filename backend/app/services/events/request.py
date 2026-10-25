@@ -75,8 +75,11 @@ async def create_request(
     keeps edit rights until a fulfiller takes over and stays credited as
     requester.
 
+    The row is version 0 (``models/event.version_no``) until it is published through
+    :func:`save_version`.
+
     Coordinates (a guess) are optional, both-or-neither. Tags and conflicts are optional
-    (:func:`geolocate` enforces the publication floor), but the footage must be on the row
+    (:func:`save_version` enforces the publication floor at the publish), but the footage must be on the row
     from the start: a ``direct`` or ``indirect`` source with its file. The proof body may
     carry images (``proof_files`` resolve ``placeholder://`` srcs) but has no image floor.
 
@@ -145,16 +148,16 @@ async def update_request(
     """Correct an open request in place (owner-only, only while ``requested``).
 
     The form posts the whole state and this overwrites the row. **No version is
-    filed**: a request is a question, not a vouched claim. ``updated_at`` moves;
-    id, ``requested_at``, requester and provenance stay. Past fulfilment,
-    :func:`save_version` does this and files a version.
+    filed**: the request stays version 0 until it is published, when
+    :func:`save_version` files it. ``updated_at`` moves; id, ``requested_at``,
+    requester and provenance stay.
 
     Fields and floor follow :func:`create_request`. The posted ``sources`` replace the stored
     ones (``sources.apply_sources``); a file nothing names any more is swept after the commit
     (no version renders it).
 
-    The row is locked and the status re-checked, as in :func:`geolocate`,
-    :func:`save_version` and :func:`close`, so a racing fulfilment or withdrawal
+    The row is locked and the status re-checked, as in :func:`save_version` and
+    :func:`close`, so a racing publish or withdrawal
     gives the loser a 409.
 
     Raises :class:`EventStateError` (409) off ``requested``, the 403 of

@@ -284,7 +284,7 @@ class AdminDetectionStatsRead(BaseModel):
     soft-delete counts that account's pending detections as rejects.
 
     The ``pending_*`` counts profile the live ``detected`` queue (machine rows,
-    ``deleted_at IS NULL``): how many miss a piece the geolocate floor demands,
+    ``deleted_at IS NULL``): how many miss a piece the publish floor demands,
     so a poor extraction run shows before an analyst opens the queue.
     """
 

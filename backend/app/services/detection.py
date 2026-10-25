@@ -34,7 +34,6 @@ from starlette.datastructures import Headers
 from app.cache import points_cache
 from app.models.event import (
     STATUS_DETECTED,
-    STATUS_GEOLOCATED,
     DetectedVia,
     Event,
     EventDetection,
@@ -146,9 +145,10 @@ def _row_disposition(row: Event) -> Verdict:
     1. An admin removal (``deleted_at``) stays removed, so a re-import cannot undo a takedown.
     2. A withheld row (``hidden_at``) is frozen for its owner too
        (``routers/events/_common.resolve_live_event``).
-    3. Published work (``geolocated``) is never touched by a machine.
-    4. An open detection is machine-authored and no analyst path edits it in place, so a newer
-       parse overwrites it.
+    3. A row past version 0 carries a version a person saved (the publish files version 0 and
+       the row becomes version 1), so a machine never touches it, whatever its status.
+    4. An open detection at version 0 is machine-authored and no analyst path edits it in
+       place, so a newer parse overwrites it.
     5. A ``closed`` row (rejected, withdrawn or retracted) is not the import's to reopen.
     6. Anything else live (a ``requested`` event matched through its source URL) belongs to a
        human flow.
@@ -157,7 +157,7 @@ def _row_disposition(row: Event) -> Verdict:
         return "skip"
     if row.hidden_at is not None:
         return "skip"
-    if row.status == STATUS_GEOLOCATED:
+    if row.version_no > 0:
         return "skip"
     if row.status == STATUS_DETECTED:
         return "upsert"
@@ -567,7 +567,7 @@ async def _upsert_one(
     """
     media_resolution = await _resolve_media(detection, fetch_media, media_cache)
     resolved = media_resolution.items
-    # Re-read under a lock and re-run the matrix, as ``events.geolocate`` does: the owner may
+    # Re-read under a lock and re-run the matrix, as ``events.save_version`` does: the owner may
     # have published, rejected or been taken down since the unlocked read.
     lock_event(db, row.id)
     if _row_disposition(row) != "upsert":

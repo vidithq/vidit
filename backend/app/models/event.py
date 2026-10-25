@@ -23,6 +23,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.engine.default import DefaultExecutionContext
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -54,6 +55,14 @@ BeforeClosedStatus = Literal["requested", "detected", "geolocated"]
 # ``detection.persist_detections``; NULL on older rows. Pinned by
 # ``ck_event_detections_via_valid``.
 DetectedVia = Literal["bot", "paste", "archive"]
+
+
+def _initial_version(context: DefaultExecutionContext) -> int:
+    """0 for a row born unpublished (a request or a detection), else 1."""
+    params = context.get_current_parameters()
+    state = params.get("before_closed_status") or params.get("status")
+    return 0 if state in (STATUS_REQUESTED, STATUS_DETECTED) else 1
+
 
 # Field-length ceiling for the create / edit forms.
 TITLE_MAX_LENGTH = 255
@@ -116,11 +125,12 @@ class EventGeolocator(Base):
 
 
 class EventVersion(Base):
-    """One superseded version of a published event, snapshotted at an edit.
+    """One superseded version of an event, snapshotted at an edit.
 
-    Append-only: ``services/events.save_version`` writes a row before the edit
+    Append-only: ``services/versions.file_version`` writes a row before the edit
     lands. ``version_no`` is the version this row holds, so an event at version
-    3 carries snapshots 1 and 2 plus the live row.
+    3 carries snapshots 1 and 2 plus the live row, and snapshot 0 too when it
+    was published from a request or a detection.
 
     ``snapshot`` holds the fields the edit form writes, its sources included
     (``services/versions.build_snapshot``). Media rows are not versioned, so a
@@ -234,7 +244,7 @@ class Event(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     # Edit-rights owner. A ``requested`` event's poster, handed to the fulfiller
-    # at geolocate. Always among the geolocators once ``geolocated``.
+    # at the publish. Always among the geolocators once ``geolocated``.
     owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     # Who opened the request, kept across fulfilment. NULL for a direct
     # geolocation. SET NULL: the event outlives its requester and a GDPR erasure
@@ -303,12 +313,12 @@ class Event(Base):
     # Takedown after a content report: withheld from public reads alongside
     # ``deleted_at``, but reversible by an admin.
     hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # Which version this row IS. Incremented under the row lock by
-    # ``services/events.save_version``, which first files the superseded state as
-    # an ``EventVersion``. A public address (``/events/{id}/v{n}``), so it only
-    # moves forward.
+    # Which version this row IS: 0 until the row is published, then 1 and up. Incremented
+    # under the row lock by ``services/events.save_version``, which first files the
+    # superseded state as an ``EventVersion``. A public address (``/events/{id}/v{n}``), so
+    # it only moves forward. ``ck_events_version_published`` ties it to the status.
     version_no: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=1, server_default=text("1")
+        Integer, nullable=False, default=_initial_version, server_default=text("1")
     )
 
     @hybrid_property
@@ -377,6 +387,13 @@ class Event(Base):
             " AND before_closed_status IN ('requested', 'detected', 'geolocated'))"
             " OR (status <> 'closed' AND before_closed_status IS NULL)",
             name="ck_events_before_closed_status",
+        ),
+        # Version 0 is the unpublished row (a request or a detection, open or closed); a
+        # published row is version 1 and up.
+        CheckConstraint(
+            "(version_no = 0) = (COALESCE(before_closed_status, status)"
+            " IN ('requested', 'detected'))",
+            name="ck_events_version_published",
         ),
         literal_check("status", EventStatus, "ck_events_status_valid"),
         # Open requests / detections / geolocations, newest first.

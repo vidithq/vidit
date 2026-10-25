@@ -3,7 +3,8 @@
 A detection arrives with title, coordinates, sources and usually proof images;
 what the machine can't supply is the conflict and the source kind. This endpoint
 takes those (conflicts once for the selection, source kind per row) and runs each
-detection through the same floor as ``POST /events/{id}/geolocate``. Transactions and verdicts are per row.
+detection through the same floor as a publish through ``POST /events/{id}/versions``,
+filing it as version 0. Transactions and verdicts are per row.
 """
 
 from fastapi import APIRouter, Depends, Request

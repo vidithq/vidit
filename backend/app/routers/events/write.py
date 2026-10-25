@@ -55,7 +55,7 @@ router = APIRouter()
 @limiter.limit("30/minute")
 def create_event(
     request: Request,
-    # ``max_length`` ceilings (shared with geolocate via the model module) reject
+    # ``max_length`` ceilings (shared with the versioned write via the model module) reject
     # over-length input before any work.
     title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
     lat: float = Form(...),

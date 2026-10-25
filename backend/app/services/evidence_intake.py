@@ -230,19 +230,19 @@ def _history_pinned_srcs(db: Session, event: Event) -> set[str]:
     A proof image a past version still shows survives, row and object, after
     the current body drops it, so history stays renderable.
 
-    Version 1 has no snapshot, so it pays no query. Precondition:
-    ``services/versions.file_version`` has already bumped ``version_no`` and
-    staged this write's snapshot, so the superseded version's images aren't
-    swept by the same write.
+    An unpublished row (version 0) has no snapshot, so it pays no query.
+    Precondition: ``services/versions.file_version`` has already bumped
+    ``version_no`` and staged this write's snapshot, so the superseded
+    version's images aren't swept by the same write.
     """
-    if event.version_no <= 1:
+    if event.version_no == 0:
         return set()
     return versions.referenced_media_urls(db, event.id)
 
 
 def _history_pinned_source_srcs(db: Session, event: Event) -> set[str]:
     """The source-file URLs this event's readable snapshots render."""
-    if event.version_no <= 1:
+    if event.version_no == 0:
         return set()
     return {
         url

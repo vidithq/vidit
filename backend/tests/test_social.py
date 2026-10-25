@@ -313,6 +313,7 @@ def _fulfil(event: Event, *, by: User, at: datetime | None = None) -> None:
     event.geolocated_at = at or datetime.now(UTC)
     event.owner_id = owner_id
     event.status = STATUS_GEOLOCATED
+    event.version_no = 1
 
 
 def _walk(headers: dict, url: str) -> list[dict]:

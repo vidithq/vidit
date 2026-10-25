@@ -26,9 +26,11 @@ from app.models.event import (
 from app.models.media import Media
 from app.models.source import Source, SourceLink
 from app.models.user import User
+from app.services import versions
 from app.services.auth import hash_password
 from app.services.detection import (
     Outcome,
+    _row_disposition,
     _write_warnings,
     backfill_from_archive,
     persist_detections,
@@ -504,6 +506,52 @@ async def test_retracted_geolocation_is_skipped(db, owner):
     assert [r.id for r in rows] == [geo_id]
     assert rows[0].status == "closed"
     assert rows[0].title == stored_title
+
+
+async def test_a_detection_stays_at_version_0_while_re_imports_overwrite_it(db, owner):
+    await _persist(db, owner=owner, detections=[_detection()], fetch_media=_missing_fetcher)
+    outcome = await _persist(
+        db,
+        owner=owner,
+        detections=[_detection(title="Rewritten by the newer parser")],
+        fetch_media=_missing_fetcher,
+    )
+    assert len(outcome.updated) == 1
+    db.expire_all()
+    geo = db.query(Event).filter(Event.owner_id == owner.id).one()
+    assert geo.title == "Rewritten by the newer parser"
+    assert geo.version_no == 0
+    assert db.query(EventVersion).filter(EventVersion.event_id == geo.id).count() == 0
+
+
+async def test_a_published_detection_is_never_re_imported(db, owner):
+    """Once a person saved a version (the publish files version 0), the import leaves it."""
+    await _persist(db, owner=owner, detections=[_detection()], fetch_media=_missing_fetcher)
+    geo = db.query(Event).filter(Event.owner_id == owner.id).one()
+    geo_id, stored_title = geo.id, geo.title
+    versions.file_version(db, geo=geo, edited_by=owner, note=None)
+    geo.status = STATUS_GEOLOCATED
+    geo.geolocated_at = datetime.now(UTC)
+    db.commit()
+
+    outcome = await _persist(
+        db,
+        owner=owner,
+        detections=[_detection(title="Rewritten by the newer parser")],
+        fetch_media=_missing_fetcher,
+    )
+    assert outcome.created == [] and outcome.skipped == [geo_id] and outcome.updated == []
+    db.expire_all()
+    row = db.get(Event, geo_id)
+    assert row.title == stored_title
+    assert row.version_no == 1
+
+
+def test_the_import_writes_only_onto_version_0():
+    """The rule reads the version, not only the status: a detection a person saved a version
+    of is skipped too."""
+    assert _row_disposition(Event(status=STATUS_DETECTED, version_no=0)) == "upsert"
+    assert _row_disposition(Event(status=STATUS_DETECTED, version_no=1)) == "skip"
 
 
 async def test_same_source_and_coordinate_skips_across_provenance_urls(db, owner):

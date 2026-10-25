@@ -9,7 +9,13 @@ from __future__ import annotations
 
 import uuid
 
-from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event, EventGeolocator
+from app.models.event import (
+    STATUS_DETECTED,
+    STATUS_GEOLOCATED,
+    Event,
+    EventGeolocator,
+    EventVersion,
+)
 from app.models.media import Media
 from app.models.source import Source, SourceLink
 from tests._fixtures import fake_sha256
@@ -56,7 +62,8 @@ def test_batch_complete_requires_authentication(db, author, conflict):
 
 
 def test_batch_complete_publishes_a_ready_detection(db, author, conflict, free_tag):
-    """The whole promotion: state, stamp, conflict, kind, geolocator credit; tags stay."""
+    """The whole promotion: state, stamp, conflict, kind, geolocator credit, version 0 filed
+    and version 1 live; tags stay."""
     detection = _detection(db, author, tags=[free_tag])
 
     response = client.post(
@@ -79,6 +86,11 @@ def test_batch_complete_publishes_a_ready_detection(db, author, conflict, free_t
     assert [c.id for c in row.conflicts] == [conflict.id]
     assert {t.id for t in row.tags} == {free_tag.id}
     assert [s.kind for s in row.sources] == ["drone"]
+    assert row.version_no == 1
+    [filed] = db.query(EventVersion).filter(EventVersion.event_id == detection.id).all()
+    assert filed.version_no == 0
+    assert filed.edited_by_id == author.id
+    assert [source["kind"] for source in filed.snapshot["sources"]] != ["drone"]
     credit = (
         db.query(EventGeolocator)
         .filter(EventGeolocator.event_id == detection.id, EventGeolocator.user_id == author.id)

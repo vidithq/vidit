@@ -1098,7 +1098,12 @@ def test_status_filter_scopes_search(db, caller):
     located = _seed_geo(db, caller, f"Located {token}")
     detected = _seed_geo(db, caller, f"Detected {token}")
     db.query(Event).filter(Event.id == detected).update(
-        {"status": STATUS_DETECTED, "detected_at": datetime.now(UTC), "geolocated_at": None}
+        {
+            "status": STATUS_DETECTED,
+            "version_no": 0,
+            "detected_at": datetime.now(UTC),
+            "geolocated_at": None,
+        }
     )
     db.commit()
     try:

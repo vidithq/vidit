@@ -359,7 +359,7 @@ def list_detections(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """The caller's ``detected`` events awaiting a geolocate, newest first.
+    """The caller's ``detected`` events awaiting a publish, newest first.
 
     Owner-scoped to ``current_user`` (never a URL username): the Detections
     queue. Returns full ``EventRead`` so the queue shows evidence and what each

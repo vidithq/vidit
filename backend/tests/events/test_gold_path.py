@@ -197,7 +197,7 @@ def test_gold_path_register_import_geolocate_publish(db, email_recorder, invite_
         queue = client.get("/api/v1/events/detections", headers=auth_headers)
         assert event_id in {r["id"] for r in queue.json()["items"]}
 
-        # ── 4. The owner geolocates over the evidence floor ─────────────
+        # ── 4. The owner publishes over the evidence floor ──────────────
         staged = client.post(
             "/api/v1/uploads",
             headers=auth_headers,
@@ -205,12 +205,13 @@ def test_gold_path_register_import_geolocate_publish(db, email_recorder, invite_
         )
         assert staged.status_code == 201, staged.text
         geolocated = client.post(
-            f"/api/v1/events/{event_id}/geolocate",
+            f"/api/v1/events/{event_id}/versions",
             data={
                 "title": "Depot strike, verified",
                 "lat": "48.213",
                 "lng": "37.512",
                 "occurred_date": "2025-11-12",
+                "version_no": "0",
                 "proof": proof_form_field(),
                 "conflict_ids": json.dumps([str(conflict.id)]),
                 "sources": sources_field(
@@ -227,18 +228,20 @@ def test_gold_path_register_import_geolocate_publish(db, email_recorder, invite_
         assert geolocated.status_code == 200, geolocated.text
         body = geolocated.json()
         assert body["status"] == STATUS_GEOLOCATED
+        assert body["version_no"] == 1
         assert [g["username"] for g in body["geolocators"]] == [handle]
         [source] = body["sources"]
         assert source["kind"] == "smartphone" and source["media"]["kind"] == "image"
 
-        # Frozen: a second geolocate 409s.
+        # Frozen: a second publish from the version 0 form 409s.
         frozen = client.post(
-            f"/api/v1/events/{event_id}/geolocate",
+            f"/api/v1/events/{event_id}/versions",
             data={
                 "title": "x",
                 "lat": "1",
                 "lng": "1",
                 "occurred_date": "2025-11-12",
+                "version_no": "0",
                 "sources": sources_field(source_spec("https://example.com/s")),
             },
             headers=auth_headers,

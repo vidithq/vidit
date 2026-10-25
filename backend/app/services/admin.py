@@ -842,7 +842,7 @@ def detection_quality_stats(db: Session) -> AdminDetectionStatsRead:
        :func:`app.services.detection._row_disposition` refuses to re-import both shapes.
     2. The live ``detected`` queue (``deleted_at IS NULL``, human rows excluded), counting
        detections missing a source file (on a direct or indirect source), a proof image or a
-       source URL, which the geolocate floor demands.
+       source URL, which the publish floor demands.
     """
     # A bot-opened request carries an ``event_detections`` row too, so the cohort is the
     # model's own predicate rather than a second spelling of it.

@@ -223,6 +223,7 @@ def test_digest_counts_only_unpublished_real_work(db, detection_owner):
     _detection(db, detection_owner, deleted_at=datetime.now(UTC))
     published = _detection(db, detection_owner)
     published.status = STATUS_GEOLOCATED
+    published.version_no = 1
     published.geolocated_at = datetime.now(UTC)
     db.commit()
 

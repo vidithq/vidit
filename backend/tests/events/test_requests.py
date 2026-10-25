@@ -2,7 +2,7 @@
 
 A request is an ``Event`` with ``status='requested'``; a withdrawn one stays visible
 as ``closed`` with ``before_closed_status='requested'``. ``POST
-/events/{id}/geolocate`` fulfils it in place: ownership moves to the fulfiller and
+/events/{id}/versions`` fulfils it in place: ownership moves to the fulfiller and
 ``requested_by`` keeps the poster. Local storage backend so uploads exercise the real
 path.
 """
@@ -471,7 +471,7 @@ def _geolocate_fulfilment(request_id, fulfiller, conflict, sources: str, **overr
     }
     data.update(overrides)
     return client.post(
-        f"/api/v1/events/{request_id}/geolocate",
+        f"/api/v1/events/{request_id}/versions",
         headers=login_as(client, fulfiller),
         data=data,
         files=[proof_file_part()],
@@ -650,7 +650,8 @@ def test_edit_request_overwrites_in_place_without_a_version(db, author, free_tag
         "https://mirror.example/a",
     ]
     assert [t["name"] for t in body["tags"]] == [free_tag.name]
-    assert body["version_no"] == 1
+    # The request stays version 0 and files no version until it is published.
+    assert body["version_no"] == 0
     # The poster keeps both roles: an edit is not a change of hands.
     assert body["owner"]["username"] == author.username
     assert body["requested_by"]["username"] == author.username
@@ -663,7 +664,7 @@ def test_edit_request_overwrites_in_place_without_a_version(db, author, free_tag
         "https://example.com/second",
         "https://mirror.example/a",
     }
-    assert row.version_no == 1
+    assert row.version_no == 0
     assert db.query(EventVersion).filter(EventVersion.event_id == request_id).count() == 0
 
 
@@ -753,7 +754,7 @@ def test_edit_request_keeps_the_requested_at_stamp(db, author):
 
 
 async def test_edit_request_loses_the_race_to_a_fulfilment(db, author):
-    """A geolocate committing between the router's row resolution and the service's
+    """A publish committing between the router's row resolution and the service's
     locked re-read makes the edit refuse (409) on the post-lock status. Service-level:
     the stale row goes straight to ``update_request`` while a second session holds the
     committed fulfilment. The owner answers their own request so the refusal turns on
@@ -767,6 +768,7 @@ async def test_edit_request_loses_the_race_to_a_fulfilment(db, author):
     try:
         fulfilled = winner.query(Event).filter(Event.id == request_id).one()
         fulfilled.status = STATUS_GEOLOCATED
+        fulfilled.version_no = 1
         fulfilled.coords = from_shape(Point(37.8, 48.5), srid=4326)
         fulfilled.geolocated_at = datetime.now(UTC)
         winner.commit()

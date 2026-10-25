@@ -15,6 +15,7 @@ from app.models.conflict import Conflict
 from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event
 from app.models.source import SourceKind
 from app.models.user import User
+from app.services import versions
 from app.services.event_filters import visible_events
 from app.services.evidence_intake import EvidenceIntakeError
 from app.services.permissions import ensure_owner
@@ -75,9 +76,10 @@ def _publish_detection(
 
     No other field edits, uploads or proof rewrite: the import already put the rest on the
     row. ``kind`` goes onto every source that carries a file. The floor is the one
-    :func:`geolocate` runs, so a batch is no looser a door to ``geolocated``.
+    :func:`save_version` runs on a publish, so a batch is no looser a door to ``geolocated``.
+    Like that publish, it files the detection as version 0 and the row becomes version 1.
 
-    Locked like :func:`geolocate`, so a race with a hand-submit serializes.
+    Locked like :func:`save_version`, so a race with a publish from the form serializes.
     Commits on success. The floor is projected into SQL by
     :func:`detection_ready_predicate`: change a leg in both.
 
@@ -87,7 +89,7 @@ def _publish_detection(
     """
     geo = (
         db.query(Event)
-        # A withheld detection is frozen for its owner, as in :func:`geolocate`.
+        # A withheld detection is frozen for its owner, as in :func:`save_version`.
         .filter(Event.id == event_id, *visible_events())
         .populate_existing()
         .with_for_update()
@@ -108,7 +110,9 @@ def _publish_detection(
         raise SourceLinkRequiredError("Every source needs a URL")
     check_publish_floor(stored_floor(geo.sources))
 
-    # As in ``geolocate``: lazy-loading the collections would flush a half-stamped row.
+    # Filed before any field moves: the snapshot reads the live row.
+    versions.file_version(db, geo=geo, edited_by=current_user, note=None)
+    # As in ``save_version``: lazy-loading the collections would flush a half-stamped row.
     with db.no_autoflush:
         for source in geo.sources:
             if source.media is not None:

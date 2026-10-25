@@ -52,7 +52,7 @@ def _kept(source: Source, **extra) -> dict:
 
 def _geolocate(geo: Event, user, conflict, sources: str):
     return client.post(
-        f"/api/v1/events/{geo.id}/geolocate",
+        f"/api/v1/events/{geo.id}/versions",
         data={
             "title": "Edited title",
             "lat": "50.0",

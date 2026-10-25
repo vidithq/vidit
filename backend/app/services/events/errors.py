@@ -104,13 +104,20 @@ class EventNotFoundError(EventError):
 
 
 class EventStateError(EventError):
-    """The event's state forbids the transition: geolocate on a row that is not
-    ``requested`` / ``detected``, close on a ``closed`` row, :func:`save_version`
-    on a row that is not ``geolocated``, :func:`update_request` on a row that is
-    no longer ``requested``. Maps to 409.
+    """The event's state forbids the transition: :func:`save_version` on a
+    ``closed`` row, close on a ``closed`` row, :func:`update_request` on a row
+    that is no longer ``requested``, a batch publish of a row that is no longer
+    ``detected``. Maps to 409.
     """
 
     code = "invalid_state"
+
+
+class VersionMismatchError(EventError):
+    """The write names the version its form was loaded at, and the row has moved past it (a
+    racing publish or edit landed first). Maps to 409."""
+
+    code = "version_mismatch"
 
 
 class NothingChangedError(EventError):

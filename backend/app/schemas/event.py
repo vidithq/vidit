@@ -173,7 +173,7 @@ class BatchCompletionCreate(BaseModel):
 
 class BatchCompletionRowRead(BaseModel):
     """One row's outcome. ``code`` / ``message`` are NULL when published,
-    otherwise the stable error code the single-row geolocate would return."""
+    otherwise the stable error code the single-row publish would return."""
 
     event_id: uuid.UUID
     published: bool

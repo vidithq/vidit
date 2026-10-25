@@ -4,9 +4,9 @@
 every business rule, the S3 upload loop, the DB commit, and the post-commit S3
 sweep on rollback. Verbs: :func:`create_with_evidence` (``geolocated``),
 :func:`create_request` (``requested``), :func:`update_request`,
-:func:`geolocate` (fulfil a request or vouch a detection), :func:`save_version`
-(correct a published row, filing the superseded state), :func:`close`
-(withdraw / reject / retract, any live state).
+:func:`save_version` (publish a request or a detection, or correct a published row, filing
+the superseded state), :func:`complete_detections` (publish detections in a batch),
+:func:`close` (withdraw / reject / retract, any live state).
 
 Errors are `EventError` subclasses with stable `.code` strings. Add each new
 code to `_EVENT_ERROR_STATUS` in `routers/events/_common.py`.
@@ -17,8 +17,7 @@ no verb module imports another.
 
 * ``errors``, ``coordinates``, ``sources``, ``rules``: shared.
 * ``readiness``: the batch publish floor as one SQL predicate.
-* ``create``, ``request``, ``geolocation``, ``revision``, ``batch``,
-  ``closure``: one per verb.
+* ``create``, ``request``, ``revision``, ``batch``, ``closure``: one per verb.
 """
 
 from __future__ import annotations
@@ -44,8 +43,8 @@ from .errors import (
     SourceRequiredError,
     TooManySourceLinksError,
     TooManySourcesError,
+    VersionMismatchError,
 )
-from .geolocation import geolocate
 from .readiness import DETECTION_READINESS, detection_ready_predicate
 from .request import ImportProvenance, create_request, stamp_provenance, update_request
 from .revision import save_version
@@ -71,12 +70,12 @@ __all__ = [
     "SourceRequiredError",
     "TooManySourceLinksError",
     "TooManySourcesError",
+    "VersionMismatchError",
     "close",
     "complete_detections",
     "create_request",
     "create_with_evidence",
     "detection_ready_predicate",
-    "geolocate",
     "save_version",
     "stamp_provenance",
     "update_request",

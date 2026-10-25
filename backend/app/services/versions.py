@@ -1,10 +1,12 @@
-"""Version history for a published event: snapshot, read, redact, media floor.
+"""Version history of an event: snapshot, read, redact, media floor.
 
-:func:`file_version` is the only way a version comes to be (caller:
-``services/events.save_version``, the owner's edit of a published row). It
-files the row's pre-edit state as an append-only ``event_versions`` entry and
-bumps ``version_no``. Publication paths write no version: version 1 is the
-published row itself.
+:func:`file_version` is the only way a version comes to be (callers:
+``services/events.save_version``, which publishes or corrects, and the batch
+publish ``services/events.complete_detections``). It files the row's pre-edit
+state as an append-only ``event_versions`` entry and bumps ``version_no``. An
+unpublished request or detection is version 0, so publishing files version 0
+and the published row is version 1. A row created published (``POST /events``)
+starts at version 1 with no version 0.
 
 :func:`referenced_media_urls` keeps a snapshot's proof images renderable.
 Media rows are not versioned, so the shared intake asks here before dropping a

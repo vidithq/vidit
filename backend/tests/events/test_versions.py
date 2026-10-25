@@ -1,8 +1,8 @@
-"""Editing a published event through ``POST /events/{id}/versions``.
+"""Publishing and editing an event through ``POST /events/{id}/versions``.
 
-A correction files the version it supersedes instead of overwriting it. Covers the
-write's guards (owner, state, published floor), the corrections it files (the sources
-included), the media rules that keep a past version renderable, and the row lock two
+A publish or a correction files the version it supersedes instead of overwriting it. Covers
+the write's guards (owner, state, published floor), the publish of version 0, the
+corrections it files (the sources included), the media rules that keep a past version renderable, and the row lock two
 concurrent edits serialize on.
 """
 
@@ -58,12 +58,15 @@ def _proof_html(src: str) -> str:
     return f'<p>Cross-reference.</p><img src="{src}">'
 
 
-def _published(db, author, conflict, *, proof_url=STORED_PROOF_URL, **kwargs):
-    """A ``geolocated`` row carrying the whole published floor an edit has to keep."""
+def _published(
+    db, author, conflict, *, proof_url=STORED_PROOF_URL, status=STATUS_GEOLOCATED, **kwargs
+):
+    """A row (``geolocated`` unless ``status`` says otherwise) carrying the whole published
+    floor an edit has to keep."""
     geo = _make_geo(
         db,
         author=author,
-        status=STATUS_GEOLOCATED,
+        status=status,
         with_media=True,
         proof=_proof_html(proof_url),
         conflicts=[conflict],
@@ -404,20 +407,113 @@ def test_save_version_is_owner_only(db, author, second_user, conflict):
     assert db.get(Event, geo.id).version_no == 1
 
 
-def test_save_version_is_geolocated_only(db, author, conflict):
-    """Before publication there is no vouched version to supersede: other states answer 409."""
-    for status in (STATUS_DETECTED, STATUS_REQUESTED, STATUS_CLOSED):
-        geo = _make_geo(
-            db,
-            author=author,
-            status=status,
-            with_media=True,
-            proof=_proof_html(STORED_PROOF_URL),
-            conflicts=[conflict],
-        )
-        response = _save_version(geo.id, author, data=_form(conflict, _kept(geo)))
-        assert response.status_code == 409, (status, response.text)
-        assert response.json()["detail"]["code"] == "invalid_state"
+def test_save_version_refuses_a_closed_row(db, author, conflict):
+    """A closed row takes no write: 409."""
+    geo = _make_geo(
+        db,
+        author=author,
+        status=STATUS_CLOSED,
+        with_media=True,
+        proof=_proof_html(STORED_PROOF_URL),
+        conflicts=[conflict],
+    )
+    response = _save_version(geo.id, author, data=_form(conflict, _kept(geo)))
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"]["code"] == "invalid_state"
+
+
+# ── Publishing: version 0 becomes version 1 ─────────────────────────────────
+
+
+def _unpublished(db, author, conflict, status):
+    """A request or a detection that already carries the floor, at version 0."""
+    geo = _published(db, author, conflict, status=status, title="As imported")
+    assert geo.version_no == 0
+    return geo
+
+
+def test_publishing_a_detection_files_it_as_version_0(db, author, conflict):
+    """The publish is an edit: the detection's state is filed as version 0, the row is v1."""
+    geo = _unpublished(db, author, conflict, STATUS_DETECTED)
+    response = _save_version(geo.id, author, data=_form(conflict, _kept(geo), version_no="0"))
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["status"] == STATUS_GEOLOCATED
+    assert body["version_no"] == 1
+    assert body["title"] == "Corrected title"
+    assert [g["id"] for g in body["geolocators"]] == [str(author.id)]
+
+    filed = _filed(db, geo.id)
+    assert filed.version_no == 0
+    assert filed.snapshot["title"] == "As imported"
+    assert filed.edited_by_id == author.id
+
+    history = client.get(f"/api/v1/events/{geo.id}/versions").json()
+    assert [item["version_no"] for item in history["items"]] == [0]
+    assert client.get(f"/api/v1/events/{geo.id}/versions/0").status_code == 200
+
+
+def test_a_publish_that_changes_no_field_still_publishes(db, author, conflict):
+    """The status moves, so an untouched detection is not ``nothing_changed``."""
+    geo = _unpublished(db, author, conflict, STATUS_DETECTED)
+    response = _save_version(
+        geo.id,
+        author,
+        data=_form(
+            conflict,
+            _kept(geo),
+            title="As imported",
+            lat="48.5",
+            lng="34.5",
+            occurred_date="2026-05-01",
+        ),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["version_no"] == 1
+    assert _filed(db, geo.id).version_no == 0
+
+
+def test_publishing_someone_elses_detection_is_refused(db, author, second_user, conflict):
+    geo = _unpublished(db, author, conflict, STATUS_DETECTED)
+    response = _save_version(geo.id, second_user, data=_form(conflict, _kept(geo)))
+    assert response.status_code == 403
+    db.expire_all()
+    assert db.get(Event, geo.id).version_no == 0
+    assert db.query(EventVersion).filter(EventVersion.event_id == geo.id).count() == 0
+
+
+def test_fulfilling_a_request_files_it_as_version_0(db, author, second_user, conflict):
+    """Anyone may publish a request: it becomes theirs, the requester stays, and the request
+    as it was asked is version 0."""
+    geo = _unpublished(db, author, conflict, STATUS_REQUESTED)
+    geo.requested_by_id = author.id
+    db.commit()
+    response = _save_version(geo.id, second_user, data=_form(conflict, _kept(geo)))
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["status"] == STATUS_GEOLOCATED
+    assert body["version_no"] == 1
+    assert body["owner"]["id"] == str(second_user.id)
+    assert body["requested_by"]["id"] == str(author.id)
+
+    filed = _filed(db, geo.id)
+    assert filed.version_no == 0
+    assert filed.snapshot["title"] == "As imported"
+    assert filed.edited_by_id == second_user.id
+
+
+def test_version_0_keeps_the_proof_image_a_publish_drops(db, author, conflict):
+    """The detection's proof image survives a publish that replaces it: version 0 shows it."""
+    geo = _unpublished(db, author, conflict, STATUS_DETECTED)
+    response = _save_version(
+        geo.id,
+        author,
+        data=_form(conflict, _kept(geo), proof=proof_form_field()),
+        files=[proof_file_part()],
+    )
+    assert response.status_code == 200, response.text
+    db.expire_all()
+    assert STORED_PROOF_URL in {m.storage_url for m in _proof_rows(db, geo.id)}
 
 
 def test_save_version_holds_the_published_floor(db, author, conflict):

@@ -1,4 +1,4 @@
-"""Owner flow: `POST .../geolocate` and `POST .../close`, plus the absence of an owner delete."""
+"""Owner flow: the publish through `POST .../versions` and `POST .../close`, plus the absence of an owner delete."""
 
 from __future__ import annotations
 
@@ -92,13 +92,13 @@ def _floor_files():
 
 def test_geolocate_requires_authentication(db, author):
     geo = _detected(db, author)
-    response = client.post(f"/api/v1/events/{geo.id}/geolocate", data=_geolocate_form())
+    response = client.post(f"/api/v1/events/{geo.id}/versions", data=_geolocate_form())
     assert response.status_code == 401
 
 
 def test_geolocate_returns_404_for_unknown_id(author):
     response = client.post(
-        f"/api/v1/events/{uuid.uuid4()}/geolocate",
+        f"/api/v1/events/{uuid.uuid4()}/versions",
         data=_geolocate_form(),
         headers=login_as(client, author),
     )
@@ -108,7 +108,7 @@ def test_geolocate_returns_404_for_unknown_id(author):
 def test_geolocate_returns_404_for_soft_deleted(db, author):
     geo = _detected(db, author, deleted=True)
     response = client.post(
-        f"/api/v1/events/{geo.id}/geolocate",
+        f"/api/v1/events/{geo.id}/versions",
         data=_geolocate_form(),
         headers=login_as(client, author),
     )
@@ -118,17 +118,34 @@ def test_geolocate_returns_404_for_soft_deleted(db, author):
 def test_geolocate_returns_403_when_not_owner(db, author, second_user):
     geo = _detected(db, author)
     response = client.post(
-        f"/api/v1/events/{geo.id}/geolocate",
+        f"/api/v1/events/{geo.id}/versions",
         data=_geolocate_form(),
         headers=login_as(client, second_user),
     )
     assert response.status_code == 403
 
 
-def test_geolocate_rejects_geolocated_row(db, author):
+def test_a_publish_form_is_refused_on_a_published_row(db, author):
+    """A form loaded at version 0 cannot land on a row that is already version 1."""
     geo = _make_geo(db, author=author)  # default status = geolocated
     response = client.post(
-        f"/api/v1/events/{geo.id}/geolocate",
+        f"/api/v1/events/{geo.id}/versions",
+        data=_geolocate_form(version_no="0"),
+        headers=login_as(client, author),
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "version_mismatch"
+
+
+def test_publishing_a_closed_row_is_refused(db, author):
+    geo = _make_geo(db, author=author, status=STATUS_DETECTED)
+    client.post(
+        f"/api/v1/events/{geo.id}/close",
+        json={"close_reason": "Not mine"},
+        headers=login_as(client, author),
+    )
+    response = client.post(
+        f"/api/v1/events/{geo.id}/versions",
         data=_geolocate_form(),
         headers=login_as(client, author),
     )
@@ -146,7 +163,7 @@ def test_geolocate_writes_fields_and_freezes(db, author, conflict):
         posted_at="2026-06-30T07:45",
     )
     response = client.post(
-        f"/api/v1/events/{geo.id}/geolocate",
+        f"/api/v1/events/{geo.id}/versions",
         data=_floor_form(
             conflict,
             geo,
@@ -188,7 +205,7 @@ def test_geolocate_accepts_missing_occurred_date(db, author, conflict):
     form = _floor_form(conflict, geo)
     del form["occurred_date"]
     response = client.post(
-        f"/api/v1/events/{geo.id}/geolocate",
+        f"/api/v1/events/{geo.id}/versions",
         data=form,
         files=_floor_files(),
         headers=login_as(client, author),
@@ -205,7 +222,7 @@ def test_geolocate_applies_the_sources_but_ignores_provenance_and_state(db, auth
     them is silently ignored. The row ends ``geolocated`` via the verb itself."""
     geo = _detected(db, author, with_media=True)
     response = client.post(
-        f"/api/v1/events/{geo.id}/geolocate",
+        f"/api/v1/events/{geo.id}/versions",
         data=_floor_form(
             conflict,
             geo,
@@ -229,7 +246,7 @@ def test_geolocate_rejects_out_of_range_coordinate(db, author):
     """Coordinate validation runs before the floor, so a bare form still 400s."""
     geo = _detected(db, author)
     response = client.post(
-        f"/api/v1/events/{geo.id}/geolocate",
+        f"/api/v1/events/{geo.id}/versions",
         data=_geolocate_form(lat="200.0"),
         headers=login_as(client, author),
     )
@@ -240,7 +257,7 @@ def test_geolocate_rejects_out_of_range_coordinate(db, author):
 def test_geolocate_blocked_without_media(db, author, conflict):
     geo = _detected(db, author, with_media=False)
     response = client.post(
-        f"/api/v1/events/{geo.id}/geolocate",
+        f"/api/v1/events/{geo.id}/versions",
         data=_floor_form(conflict, geo),
         files=_floor_files(),
         headers=login_as(client, author),
@@ -252,7 +269,7 @@ def test_geolocate_blocked_without_media(db, author, conflict):
 def test_geolocate_blocked_without_proof_image(db, author, conflict):
     geo = _detected(db, author, with_media=True)
     response = client.post(
-        f"/api/v1/events/{geo.id}/geolocate",
+        f"/api/v1/events/{geo.id}/versions",
         data=_geolocate_form(conflict_ids=json.dumps([str(conflict.id)]), sources=_kept(geo)),
         headers=login_as(client, author),
     )
@@ -265,7 +282,7 @@ def test_geolocate_blocked_without_a_conflict(db, author):
     skipped."""
     geo = _detected(db, author, with_media=True)
     response = client.post(
-        f"/api/v1/events/{geo.id}/geolocate",
+        f"/api/v1/events/{geo.id}/versions",
         data=_geolocate_form(proof=proof_form_field(), sources=_kept(geo)),
         files=_floor_files(),
         headers=login_as(client, author),
@@ -277,22 +294,23 @@ def test_geolocate_blocked_without_a_conflict(db, author):
 def test_geolocate_freezes_against_resubmit(db, author, conflict):
     geo = _detected(db, author, with_media=True)
     ok = client.post(
-        f"/api/v1/events/{geo.id}/geolocate",
-        data=_floor_form(conflict, geo),
+        f"/api/v1/events/{geo.id}/versions",
+        data=_floor_form(conflict, geo, version_no="0"),
         files=_floor_files(),
         headers=login_as(client, author),
     )
     assert ok.status_code == 200
     assert ok.json()["status"] == "geolocated"
+    assert ok.json()["version_no"] == 1
 
     frozen = client.post(
-        f"/api/v1/events/{geo.id}/geolocate",
-        data=_floor_form(conflict, geo),
+        f"/api/v1/events/{geo.id}/versions",
+        data=_floor_form(conflict, geo, version_no="0"),
         files=_floor_files(),
         headers=login_as(client, author),
     )
     assert frozen.status_code == 409
-    assert frozen.json()["detail"]["code"] == "invalid_state"
+    assert frozen.json()["detail"]["code"] == "version_mismatch"
 
 
 def test_geolocate_invalidates_points_cache(db, author, conflict):
@@ -300,7 +318,7 @@ def test_geolocate_invalidates_points_cache(db, author, conflict):
     assert client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").headers.get("x-cache") == "MISS"
     assert client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").headers.get("x-cache") == "HIT"
     client.post(
-        f"/api/v1/events/{geo.id}/geolocate",
+        f"/api/v1/events/{geo.id}/versions",
         data=_floor_form(conflict, geo),
         files=_floor_files(),
         headers=login_as(client, author),

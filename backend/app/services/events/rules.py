@@ -28,7 +28,7 @@ def _sanitize_proof(proof_data: str | None) -> str | None:
 def _require_conflict(conflicts: list[Conflict]) -> None:
     """Require one conflict on a publication.
 
-    A create runs it up front; a request or detection runs it at geolocate. Checked on
+    A create runs it up front; a request or detection runs it at the publish. Checked on
     resolved rows, so bogus ids fail like an empty list. The ``Other`` value keeps the rule
     satisfiable.
     """

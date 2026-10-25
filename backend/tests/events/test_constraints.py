@@ -229,7 +229,7 @@ def test_geolocate_rejects_missing_coordinates_at_the_form_boundary(db, author, 
     geo = _make_geo(db, author=author, status=STATUS_DETECTED, with_media=True)
     [source] = geo.sources
     response = client.post(
-        f"/api/v1/events/{geo.id}/geolocate",
+        f"/api/v1/events/{geo.id}/versions",
         headers=login_as(client, author),
         data={
             "title": "No coordinates supplied",

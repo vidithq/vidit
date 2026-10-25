@@ -1,6 +1,6 @@
-"""Single-event ops by id: detail, lifecycle verbs (geolocate, close), the
-open-request correction (update_request) and the published-row correction
-(save_version + version history).
+"""Single-event ops by id: detail, the versioned write that publishes or corrects an
+event (save_version + version history), the open-request correction (update_request) and
+close.
 
 No delete: an owner takes a row back with ``close``; destruction is
 ``DELETE /admin/events/{id}``.
@@ -172,87 +172,18 @@ def get_event(
 
 
 # ── Lifecycle verbs ───────────────────────────────────────────────────
-# Geolocate moves a ``requested`` or ``detected`` event to ``geolocated``;
-# close is the terminal withdraw / reject / retract, in every live state. A
-# detection is owner-only; a ``requested`` event is answerable by anyone (the
-# fulfiller becomes the owner). A ``requested`` row is corrected through
-# ``update_request`` (overwrites, owner-only: a request is a question, so no
-# vouched version exists to supersede). A ``geolocated`` row is corrected
-# through ``save_version`` (owner-only, files the superseded version). An
-# owner's way out of a published claim is the retraction; destruction is
-# admin-only. See ``api.md``.
+# ``save_version`` is the one write that files a version: it publishes a
+# ``requested`` or ``detected`` event (version 0 becomes version 1) and corrects
+# a ``geolocated`` one. A detection and a published row are owner-only; a
+# request is answerable by anyone (the fulfiller becomes the owner). The
+# requester corrects an open request in place through ``update_request``
+# (owner-only, it stays version 0). Close is the terminal withdraw / reject /
+# retract, in every live state. An owner's way out of a published claim is the
+# retraction; destruction is admin-only. See ``api.md``.
 #
-# The three multipart writes are plain ``def`` driving their async service
+# The two multipart writes are plain ``def`` driving their async service
 # through ``asyncio.run``, so their queries and the row lock held across the
 # upload stay off the event loop (``engineering.md``, Request concurrency).
-
-
-@router.post("/{geolocation_id}/geolocate", response_model=EventRead)
-@limiter.limit("30/minute")
-def geolocate_event(
-    request: Request,
-    geolocation_id: uuid.UUID,
-    # Multipart like create: the service writes the whole form and flips to
-    # ``geolocated`` atomically. ``max_length`` uses the shared model constant
-    # so over-length input is rejected before any work.
-    title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
-    lat: float = Form(...),
-    lng: float = Form(...),
-    # Optional like create; NULL reads as "Unknown".
-    occurred_date: str | None = Form(None),
-    occurred_time: str | None = Form(None),
-    proof: str | None = Form(None),
-    tag_ids: str | None = Form(None),
-    conflict_ids: str | None = Form(None),
-    sources: str = Form(..., description=SOURCES_FIELD_DESCRIPTION),
-    # New inline proof images, matched to ``placeholder://`` srcs.
-    proof_files: list[UploadFile] | None = File(None),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Give an event a vouched location: ``requested`` | ``detected`` → ``geolocated``.
-
-    The caller posts the whole form (title, coordinates, dates, proof + images, tags,
-    conflicts, sources). On success the row is published as ``geolocated`` and the caller is
-    credited as a geolocator; later corrections go through ``save_version``. A detection is
-    owner-only (403 otherwise); a ``requested`` event is answerable by anyone and the
-    fulfiller becomes its owner (``requested_by`` keeps the poster) and may correct its
-    sources. Blocked (400) until the floor is met (a direct or indirect source with its file,
-    a proof image, a conflict). Other statuses 409; soft-deleted 404.
-    """
-    parsed_sources = parse_sources(sources)
-    proof_files = proof_files or []
-    parsed_occurred_date = parse_optional_iso_date(occurred_date, field="occurred_date")
-    parsed_occurred_time = parse_optional_iso_time(occurred_time, field="occurred_time")
-    proof_data = proof or None
-    parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids")
-    parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids")
-
-    # The service enforces per-status ownership under a row lock.
-    geo = resolve_live_event(db, geolocation_id)
-    try:
-        geolocated = asyncio.run(
-            events_service.geolocate(
-                db,
-                geo=geo,
-                current_user=current_user,
-                title=title,
-                lat=lat,
-                lng=lng,
-                occurred_date=parsed_occurred_date,
-                occurred_time=parsed_occurred_time,
-                proof_data=proof_data,
-                tag_ids=parsed_tag_ids,
-                conflict_ids=parsed_conflict_ids,
-                sources=parsed_sources,
-                proof_files=proof_files,
-            )
-        )
-    except EvidenceIntakeError as exc:
-        _raise_event_error(exc)
-    except SnapshotRejected as exc:
-        raise_archive_error(exc)
-    return _serialize_event(db, geolocated)
 
 
 @router.post("/{geolocation_id}/request", response_model=EventRead)
@@ -277,13 +208,13 @@ def update_event_request(
 ):
     """Correct an open request, overwriting it in place (owner-only).
 
-    No version is filed: a version supersedes a vouched claim, and a request is
-    a question. The row keeps its id, ``requested_at``, requester and
-    provenance, and moves ``updated_at``. Allowed only while ``requested`` (409
-    otherwise).
+    No version is filed: the request stays version 0 until it is published
+    through ``POST /events/{id}/versions``. The row keeps its id,
+    ``requested_at``, requester and provenance, and moves ``updated_at``.
+    Allowed only while ``requested`` (409 otherwise).
 
     Every create-form field is editable, the coordinate guess included; the
-    publication floor stays unenforced until geolocate, but the row must still
+    publication floor stays unenforced until the publish, but the row must still
     hold a direct or indirect source with its file. Soft-deleted rows read as 404.
     """
     parsed_sources = parse_sources(sources)
@@ -329,8 +260,9 @@ def update_event_request(
 def save_event_version(
     request: Request,
     geolocation_id: uuid.UUID,
-    # Multipart like geolocate: the service writes the editable state and the
-    # superseded version atomically.
+    # Multipart like create: the service writes the editable state and the
+    # superseded version atomically. ``max_length`` uses the shared model
+    # constant so over-length input is rejected before any work.
     title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
     lat: float = Form(...),
     lng: float = Form(...),
@@ -342,22 +274,34 @@ def save_event_version(
     sources: str = Form(..., description=SOURCES_FIELD_DESCRIPTION),
     # The editor's note, stored on the version this edit supersedes.
     note: str | None = Form(None, max_length=VERSION_NOTE_MAX_LENGTH),
+    version_no: int | None = Form(
+        None,
+        ge=0,
+        description="The version the form was loaded at; a row that moved past it answers 409.",
+    ),
     # New inline proof images, matched to ``placeholder://`` srcs.
     proof_files: list[UploadFile] | None = File(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Correct a published event, keeping the version it replaces readable.
+    """Publish a request or a detection, or correct a published event, filing a version.
 
-    Owner-only and only while ``geolocated`` (409 otherwise). The pre-edit state
-    is filed as an ``event_versions`` row and the event moves to the next
-    ``version_no``, in one transaction under a row lock.
+    The caller posts the whole form (title, coordinates, dates, proof + images, tags,
+    conflicts, sources). The pre-edit state is filed as an ``event_versions`` row and the
+    event moves to the next ``version_no``, in one transaction under a row lock.
 
-    The sources are versioned too: the posted list replaces the stored one and
-    the filed version keeps what it supersedes, files included. The publication
-    floor is re-checked on the post-edit state. A save whose only change is a
-    link's archived copy is accepted even at the version ceiling. Soft-deleted
-    rows read as 404.
+    On a ``requested`` or ``detected`` event (version 0) this publishes: the event becomes
+    ``geolocated`` at version 1 and the caller is credited as a geolocator. A detection is
+    owner-only (403 otherwise); a request is answerable by anyone, and the fulfiller becomes
+    its owner (``requested_by`` keeps the poster). On a ``geolocated`` event it is an
+    owner-only correction, refused when nothing changed. Other statuses 409, and 409
+    ``version_mismatch`` when ``version_no`` names a version the event has moved past.
+
+    The sources are versioned too: the posted list replaces the stored one and the filed
+    version keeps what it supersedes, files included. The publication floor (coordinates, a
+    direct or indirect source with its file, a proof image, a conflict) is checked on the
+    post-edit state. A save whose only change is a link's archived copy is accepted even at
+    the version ceiling. Soft-deleted rows read as 404.
     """
     parsed_sources = parse_sources(sources)
     proof_files = proof_files or []
@@ -386,6 +330,7 @@ def save_event_version(
                 sources=parsed_sources,
                 proof_files=proof_files,
                 note=note,
+                expected_version=version_no,
             )
         )
     except EvidenceIntakeError as exc:
