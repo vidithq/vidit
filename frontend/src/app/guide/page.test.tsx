@@ -31,7 +31,7 @@ describe("/guide", () => {
   it("links each way in to its section of the import guide, and the submit form", () => {
     const { container } = render(<GuidePage />);
 
-    for (const href of ["/import#detection", "/import#archive", "/import#paste", "/import#bot", "/submit"]) {
+    for (const href of ["/import#detection", "/import#archive", "/import#paste", "/import#bot", "/submit?mode=single"]) {
       expect(container.querySelector(`a[href="${href}"]`)).not.toBeNull();
     }
   });

@@ -18,6 +18,7 @@ import { NumberedSteps } from "@/components/ui/NumberedSteps";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { IMPORT_ENTRIES, IMPORT_GLYPH } from "@/lib/importEntries";
+import { submitHref } from "@/lib/routes";
 import type { EventStatus } from "@/types";
 import { staticPageMetadata } from "../_og/metadata";
 import { Shot } from "../_shots/Shot";
@@ -173,7 +174,7 @@ export default function GuidePage() {
             />
           ))}
           <IconTile
-            href="/submit"
+            href={submitHref("single")}
             icon={glyph(Plus)}
             title="Fill in the submit form"
             note="Anything else, as a geolocation or a request."

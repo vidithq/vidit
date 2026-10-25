@@ -2,7 +2,7 @@ import { Archive, AtSign } from "lucide-react";
 import { XGlyph } from "@/components/ui/BrandGlyphs";
 
 // The three ways in from X, in the order of `/import`. `anchor` is that page's section id. The glyphs
-// match the Submit page's mode control.
+// match the Submit page's chooser.
 export const IMPORT_GLYPH = {
   archive: <Archive size={13} strokeWidth={1.8} />,
   paste: <XGlyph size={12} />,

@@ -95,15 +95,14 @@
       "route": "/submit",
       "session": "signed-in",
       "viewport": { "width": 1440, "height": 900 },
-      "clip": { "x": 96, "y": 24, "width": 928, "height": 236 },
+      "clip": { "x": 96, "y": 24, "width": 928, "height": 220 },
       "dpr": 1,
-      "alt": "The Submit page, signed in, with its mode selector numbered",
+      "alt": "The Submit page, signed in, with its three ways in numbered",
       "markers": [
-        { "target": "role=group[name=\"Submission mode\"]", "place": "left", "label": "The mode selector: pick how you bring work in." },
-        { "target": "role=group[name=\"Submission mode\"] >> role=button[name=\"Single\"]", "place": "bottom", "label": "Single: a geolocation or a request you fill in yourself." },
-        { "target": "role=group[name=\"Submission mode\"] >> role=button[name=\"From an X post\"]", "place": "bottom", "label": "From an X post: read one of your own posts." },
-        { "target": "role=group[name=\"Submission mode\"] >> role=button[name=\"Bulk import\"]", "place": "bottom", "label": "Bulk import: upload your X archive." },
-        { "target": "input[type=\"url\"]", "place": "left", "label": "Paste the link to your post here." }
+        { "target": "role=group[name=\"Submission mode\"]", "place": "left", "label": "The chooser: pick how you bring work in." },
+        { "target": "role=group[name=\"Submission mode\"] >> role=link[name=/^Single event/]", "place": "top-left", "label": "Single event: a geolocation or a request you fill in yourself." },
+        { "target": "role=group[name=\"Submission mode\"] >> role=link[name=/^From an X post/]", "place": "top-left", "label": "From an X post: read one of your own posts." },
+        { "target": "role=group[name=\"Submission mode\"] >> role=link[name=/^Bulk import/]", "place": "top-left", "label": "Bulk import: upload your X archive." }
       ]
     }
   }

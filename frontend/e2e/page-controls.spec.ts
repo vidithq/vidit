@@ -10,7 +10,6 @@ import { expectNoHorizontalOverflow } from "./support/narrowLayout";
 const PAGES = [
   { name: "feed", path: "/feed", control: "Feed scope" },
   { name: "requests", path: "/requests", control: "Sort requests" },
-  { name: "submit", path: "/submit", control: "Submission mode" },
 ];
 
 async function expectUnderTitle(page: Page, control: string) {

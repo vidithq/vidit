@@ -6,7 +6,7 @@ import { expectNarrowViewportLayout, expectNoHorizontalOverflow } from "./suppor
 import { swipeLeft } from "./support/touch";
 
 /**
- * Golden path 3: the submit page, in each of the two modes it opens in.
+ * Golden path 3: the submit page, its chooser and the paths it opens.
  *
  * `/submit` sits behind the auth wall, so the context carries the session
  * cookie `proxy.ts` checks and `/auth/me` answers with the fixture user.
@@ -19,14 +19,14 @@ test.describe("submit", () => {
   });
 
   test("fills the single-event form on a narrow column", async ({ page }) => {
-    await page.goto("/submit");
+    await page.goto("/submit?mode=single");
 
     const publish = page.getByRole("button", { name: "Publish geolocation" });
     await expectNarrowViewportLayout(page, publish);
   });
 
   test("holds two source editors on a narrow column", async ({ page }) => {
-    await page.goto("/submit");
+    await page.goto("/submit?mode=single");
 
     await page.getByRole("button", { name: "Add a source" }).click();
     const first = page.getByRole("region", { name: "Source 1" });
@@ -49,12 +49,58 @@ test.describe("submit", () => {
     await expectNarrowViewportLayout(page, page.getByRole("button", { name: "Publish geolocation" }));
   });
 
-  test("reads an X post on a narrow column", async ({ page }) => {
+  test("opens on a chooser of three cards that fits a narrow column", async ({ page }) => {
     await page.goto("/submit");
 
     const modes = page.getByRole("group", { name: "Submission mode" });
-    await expect(modes).toBeVisible();
-    await modes.getByRole("button", { name: "From an X post" }).click();
+    const cards = modes.getByRole("link");
+    await expect(cards).toHaveCount(3);
+    await expectNarrowViewportLayout(page, cards.last());
+    await expect(page.getByRole("button", { name: "Publish geolocation" })).toBeHidden();
+
+    // The path lives in the URL: a reload keeps it, and Back returns to the chooser.
+    await modes.getByRole("link", { name: /^Single event/ }).click();
+    await expect(page).toHaveURL(/\/submit\?mode=single$/);
+    const publish = page.getByRole("button", { name: "Publish geolocation" });
+    await expect(publish).toBeVisible();
+    await page.reload();
+    await expect(publish).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(/\/submit$/);
+    await expect(cards).toHaveCount(3);
+
+    // The link under the title returns to the chooser from any path.
+    await page.goto("/submit?mode=bulk");
+    await page.getByRole("link", { name: "Other ways to submit" }).click();
+    await expect(page).toHaveURL(/\/submit$/);
+    await expect(cards).toHaveCount(3);
+  });
+
+  test("keeps the form's draft through a trip to the chooser", async ({ page }) => {
+    await page.goto("/submit?mode=single");
+
+    await page.getByLabel("Title", { exact: true }).fill("Strike on a depot");
+    await page.getByRole("link", { name: "Other ways to submit" }).click();
+    await page.getByRole("group", { name: "Submission mode" }).getByRole("link", { name: /^Single event/ }).click();
+    await expect(page.getByLabel("Title", { exact: true })).toHaveValue("Strike on a depot");
+  });
+
+  test("opens the archive import from the onboarding link", async ({ page }) => {
+    await page.goto("/submit?import=1");
+
+    await expect(page.getByRole("group", { name: "Submission mode" })).toHaveCount(0);
+    await expectNarrowViewportLayout(page, page.getByRole("link", { name: "Other ways to submit" }));
+    await expect(page.getByText("Upload it here")).toBeVisible();
+  });
+
+  test("reads an X post on a narrow column", async ({ page }) => {
+    await page.goto("/submit");
+
+    await page
+      .getByRole("group", { name: "Submission mode" })
+      .getByRole("link", { name: /^From an X post/ })
+      .click();
+    await expect(page).toHaveURL(/\/submit\?mode=xpost$/);
 
     const createDetection = page.getByRole("button", {
       name: "Create the detection",
@@ -64,7 +110,7 @@ test.describe("submit", () => {
 
   test("fits the source editors into 320px", async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 568 });
-    await page.goto("/submit");
+    await page.goto("/submit?mode=single");
 
     await page.getByRole("button", { name: "Add a source" }).click();
     await page.getByRole("button", { name: "Show source 1" }).click();
@@ -104,7 +150,7 @@ test.describe("submit", () => {
   // the room the mark leaves is what decides whether the reader can see the
   // instant they just typed or only the front half of it.
   test("a filled instant field clears its own mark", async ({ page }) => {
-    await page.goto("/submit");
+    await page.goto("/submit?mode=single");
 
     const field = page.getByRole("region", { name: "Source 1" }).getByLabel(/^Captured \(UTC\)/);
     await expect(field).toBeVisible();
@@ -147,9 +193,11 @@ test.describe("submit", () => {
     ).toBeGreaterThanOrEqual(measured.valuePx);
   });
 
-  test("the legacy route redirects here", async ({ page }) => {
+  test("the legacy routes redirect here", async ({ page }) => {
     await page.goto("/geolocations/new");
     await expect(page).toHaveURL(/\/submit$/);
+    await page.goto("/requests/new");
+    await expect(page).toHaveURL(/\/submit\?mode=single$/);
   });
 });
 
@@ -162,7 +210,7 @@ test.describe("source carousel on a touch screen", () => {
   }) => {
     await grantSession(context);
     await mockApi(page);
-    await page.goto("/submit");
+    await page.goto("/submit?mode=single");
 
     const track = page.getByRole("region", { name: "Sources", exact: true });
     const first = page.getByRole("region", { name: "Source 1", exact: true });

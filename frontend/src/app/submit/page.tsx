@@ -1,6 +1,7 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useMemo, type ReactNode } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
@@ -18,12 +19,11 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel";
 import { ImportPostPanel } from "@/components/geolocations/ImportPostPanel";
-import { Archive, MapPin, Megaphone } from "lucide-react";
-import { SegmentedControl } from "@/components/ui/SegmentedControl";
-import { Button } from "@/components/ui/Button";
+import { ArrowLeft, MapPin, Megaphone } from "lucide-react";
+import { Button, buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { IconTile } from "@/components/ui/IconTile";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { XGlyph } from "@/components/ui/BrandGlyphs";
 import { EventFormLayout, useEventForm } from "@/components/geolocations/EventFormFields";
 import {
   GEO_EXTRA_REQS,
@@ -32,14 +32,42 @@ import {
 } from "@/components/geolocations/PublishChecklist";
 import { sourcesBlockWrite } from "@/components/sources/SourcesField";
 import { DuplicateProbe } from "@/components/geolocations/new/DuplicateProbe";
-import { eventHref } from "@/lib/routes";
+import { IMPORT_GLYPH } from "@/lib/importEntries";
+import { eventHref, submitHref, type SubmitMode } from "@/lib/routes";
 
 // Three entry paths, differing only in where the work starts: `single` is one event by hand,
 // `xpost` reads one of your own X posts into a detection you review, `bulk` backfills an
 // archive. There is no geolocation-vs-request pick: the two publish actions unlock from the
 // content (a placed coordinate plus evidence publishes a geolocation, bare footage posts a
 // request).
-type Mode = "single" | "xpost" | "bulk";
+const MODES: { mode: SubmitMode; icon: ReactNode; title: string; note: string }[] = [
+  {
+    mode: "single",
+    icon: <MapPin size={13} strokeWidth={1.8} />,
+    title: "Single event",
+    note: "Geolocate one event, or ask the community to geolocate it.",
+  },
+  {
+    mode: "xpost",
+    icon: IMPORT_GLYPH.paste,
+    title: "From an X post",
+    note: "Paste a link to one of your own posts. It becomes a detection you review.",
+  },
+  {
+    mode: "bulk",
+    icon: IMPORT_GLYPH.archive,
+    title: "Bulk import",
+    note: "Upload your X archive. Each geolocation in your posts becomes a detection to review.",
+  },
+];
+
+/** The path the query names: `mode`, or the archive on-ramp from the legacy `?import=1` (the
+ *  onboarding and /import target). `null` is the chooser. */
+function modeFrom(params: URLSearchParams): SubmitMode | null {
+  const mode = MODES.find((m) => m.mode === params.get("mode"))?.mode;
+  if (mode) return mode;
+  return params.get("import") === "1" ? "bulk" : null;
+}
 
 export default function SubmitPage() {
   // `useSearchParams` opts out of static prerender, so Next requires a Suspense boundary.
@@ -55,11 +83,7 @@ function SubmitForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Entry path, seeded to the archive on-ramp from `?import=1` (the onboarding and /import
-  // redirect target).
-  const [mode, setMode] = useState<Mode>(
-    searchParams.get("import") === "1" ? "bulk" : "single"
-  );
+  const mode = modeFrom(searchParams);
 
   // Every field both publish paths fill, empty. `invalidKeys` drive the in-form red outlines,
   // set when a publish is clicked while its floor is short. The tick-list is the standing
@@ -184,8 +208,7 @@ function SubmitForm() {
 
   // Both import entries swap out the form for their panel: each writes detections server side
   // and leaves through the review queue.
-  const showBulk = mode === "bulk";
-  const showXPost = mode === "xpost";
+  const showForm = mode === "single";
 
   // The actions hold the conditions and the publish buttons, as on the edit page; on a phone they
   // follow the fields.
@@ -235,63 +258,31 @@ function SubmitForm() {
   return (
     <PageShell
       title="Submit"
-      wide={!showBulk && !showXPost}
+      wide={showForm}
       controls={
-        // Entry paths. Single and From an X post share the one-event form; bulk swaps in the
-        // archive on-ramp.
-        (
-          <SegmentedControl
-            aria-label="Submission mode"
-            options={[
-              {
-                value: "single",
-                label: (
-                  <span className="inline-flex items-center gap-1.5">
-                    <MapPin size={13} strokeWidth={1.8} className="max-sm:hidden" />
-                    Single
-                  </span>
-                ),
-              },
-              {
-                value: "xpost",
-                label: (
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="max-sm:hidden"><XGlyph size={12} /></span>
-                    From an X post
-                  </span>
-                ),
-              },
-              {
-                value: "bulk",
-                label: (
-                  <span className="inline-flex items-center gap-1.5">
-                    <Archive size={13} strokeWidth={1.8} className="max-sm:hidden" />
-                    Bulk import
-                  </span>
-                ),
-              },
-            ]}
-            value={mode}
-            onChange={setMode}
-          />
+        mode !== null && (
+          <Link href={submitHref()} className={buttonClasses("ghost", { className: "-ml-2" })}>
+            <ArrowLeft size={14} strokeWidth={2} />
+            Other ways to submit
+          </Link>
         )
       }
     >
-      {/* On-ramps swap in for the form; it stays mounted (hidden) so its draft survives switching
-          back. */}
-      {showXPost && (
-        <div className="mt-4">
-          <ImportPostPanel />
+      {mode === null && (
+        <div role="group" aria-label="Submission mode" className="grid gap-4 sm:grid-cols-3">
+          {MODES.map(({ mode, icon, title, note }) => (
+            <IconTile key={mode} href={submitHref(mode)} icon={icon} title={title} note={note} />
+          ))}
         </div>
       )}
 
-      {showBulk && (
-        <div className="mt-4">
-          <ImportArchivePanel username={user.username} />
-        </div>
-      )}
+      {mode === "xpost" && <ImportPostPanel />}
 
-      <div className={showBulk || showXPost ? "hidden" : undefined}>
+      {mode === "bulk" && <ImportArchivePanel username={user.username} />}
+
+      {/* Stays mounted (hidden) on the other paths, so its draft survives a trip through the
+          chooser. */}
+      <div className={showForm ? undefined : "hidden"}>
         <EventFormLayout
           form={form}
           actions={actions}

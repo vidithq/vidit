@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { EntityCard } from "@/components/ui/EntityCard";
 import { TEXT_LINK } from "@/components/ui/styles";
+import { submitHref } from "@/lib/routes";
 import { buttonClasses } from "@/components/ui/Button";
 import { profileSearchHref } from "@/lib/search";
 import type { PublicProfile } from "@/lib/users";
@@ -86,7 +87,7 @@ export function RecentSubmissions({
             variant="plain"
             lead="No geolocations submitted yet."
             cta={
-              <Link href="/submit" className={`text-xs ${TEXT_LINK}`}>
+              <Link href={submitHref("single")} className={`text-xs ${TEXT_LINK}`}>
                 Submit your first geolocation →
               </Link>
             }
