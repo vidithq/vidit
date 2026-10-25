@@ -3,7 +3,6 @@
 import type { ClipboardEvent } from "react";
 
 import { CoordinateActions } from "@/components/event/CoordinateActions";
-import { FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
 import { coordinatePair, parsePastedCoordinates } from "@/lib/coordinates";
 
@@ -50,21 +49,12 @@ export function CoordinateInputs({
   // The actions grey out while the pair is half-typed or out of bounds.
   const pair = coordinatePair(lat, lng);
 
-  const label = `${FORM_LABEL}${invalid ? ` ${FORM_INVALID_LABEL}` : ""}`;
-
   return (
     // One line at every width, the narrowest source editor at 320px included:
     // two shrinking columns, then the actions, which take only their own width.
-    // The fields sit on the second grid row so the actions centre on them, not on
-    // the labels.
-    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-1.5">
-      <label htmlFor={latId} className={label}>
-        Latitude
-      </label>
-      <label htmlFor={lngId} className={label}>
-        Longitude
-      </label>
-      <div className="row-start-2">
+    // No visible labels: the `aria-label`s name the fields.
+    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-1.5">
+      <div>
         <Input
           id={latId}
           type="text"
@@ -72,12 +62,13 @@ export function CoordinateInputs({
           value={lat}
           onChange={(e) => setLat(e.target.value)}
           onPaste={onPastePair}
+          aria-label="Latitude"
           placeholder="48.015883"
           className={FIELD_PADDING}
           invalid={invalid}
         />
       </div>
-      <div className="row-start-2">
+      <div>
         <Input
           id={lngId}
           type="text"
@@ -85,13 +76,14 @@ export function CoordinateInputs({
           value={lng}
           onChange={(e) => setLng(e.target.value)}
           onPaste={onPastePair}
+          aria-label="Longitude"
           placeholder="37.802411"
           className={FIELD_PADDING}
           invalid={invalid}
         />
       </div>
       {/* Always mounted so nothing shifts when the pair becomes valid. */}
-      <div className="row-start-2 self-center">
+      <div>
         <CoordinateActions lat={pair?.lat ?? null} lng={pair?.lng ?? null} />
       </div>
     </div>

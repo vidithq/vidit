@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { FORM_INVALID_LABEL } from "@/components/ui/form-styles";
+import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 
 import { LocationPicker } from "./LocationPicker";
 
@@ -29,9 +29,9 @@ describe("LocationPicker", () => {
     expect(screen.queryByText("Capture position")).toBeNull();
   });
 
-  it("flags the Latitude and Longitude labels red when the coordinates are missing", () => {
+  it("flags the Latitude and Longitude fields red when the coordinates are missing", () => {
     render(<LocationPicker {...baseProps} invalid />);
-    expect(screen.getByText("Latitude")).toHaveClass(FORM_INVALID_LABEL);
-    expect(screen.getByText("Longitude")).toHaveClass(FORM_INVALID_LABEL);
+    expect(screen.getByLabelText("Latitude").className).toContain(FORM_INVALID_FIELD);
+    expect(screen.getByLabelText("Longitude").className).toContain(FORM_INVALID_FIELD);
   });
 });

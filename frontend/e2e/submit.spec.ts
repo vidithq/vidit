@@ -307,9 +307,8 @@ test.describe("submit", () => {
         }
         expect(boxes[0].x).toBeGreaterThanOrEqual(card.x);
         expect(boxes[3].x + boxes[3].width).toBeLessThanOrEqual(card.x + card.width + 0.5);
-        // The labels stay above their fields.
-        const latLabel = (await box.getByText("Latitude", { exact: true }).boundingBox())!;
-        expect(latLabel.y + latLabel.height).toBeLessThanOrEqual(boxes[0].y);
+        // No visible label: the fields carry only their accessible names.
+        await expect(box.getByText("Latitude", { exact: true })).toHaveCount(0);
         if (page.viewportSize()!.width >= 375) {
           for (const field of [lat, lng]) {
             expect(await field.evaluate((el) => el.scrollWidth <= el.clientWidth), "the value shows whole").toBe(true);
