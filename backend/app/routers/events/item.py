@@ -37,13 +37,16 @@ from app.routers._forms import (
     parse_optional_iso_time,
 )
 from app.routers.events._common import (
+    GEOLOCATOR_INVITES_FIELD_DESCRIPTION,
     SOURCE_LOAD,
     SOURCES_FIELD_DESCRIPTION,
     _raise_event_error,
     build_event_read,
     build_version_read,
+    parse_geolocator_invites,
     parse_sources,
     raise_archive_error,
+    raise_credit_error,
     raise_version_error,
     resolve_live_event,
     resolve_readable_event,
@@ -62,7 +65,7 @@ from app.services import events as events_service
 from app.services import reports as reports_service
 from app.services import versions as versions_service
 from app.services.evidence_intake import EvidenceIntakeError
-from app.services.geolocator_credit import CREDIT_LOAD, has_pending_invite
+from app.services.geolocator_credit import CREDIT_LOAD, GeolocatorCreditError, has_pending_invite
 from app.services.pagination import (
     decode_ordinal_cursor,
     encode_ordinal_cursor,
@@ -282,6 +285,7 @@ def save_event_version(
         ge=0,
         description="The version the form was loaded at; a row that moved past it answers 409.",
     ),
+    geolocator_invites: str | None = Form(None, description=GEOLOCATOR_INVITES_FIELD_DESCRIPTION),
     # New inline proof images, matched to ``placeholder://`` srcs.
     proof_files: list[UploadFile] | None = File(None),
     current_user: User = Depends(get_current_user),
@@ -296,7 +300,10 @@ def save_event_version(
     On a ``requested`` or ``detected`` event (version 0) this publishes: the event becomes
     ``geolocated`` at version 1 and the caller is credited as a geolocator. A detection is
     owner-only (403 otherwise); a request is answerable by anyone, and the fulfiller becomes
-    its owner (``requested_by`` keeps the poster). On a ``geolocated`` event it is an
+    its owner (``requested_by`` keeps the poster). A publish invites each analyst in
+    ``geolocator_invites`` to share the credit, refused as
+    ``POST /events/{id}/geolocator-invites`` refuses, and a refusal publishes nothing; a
+    ``geolocated`` event takes none (409). On a ``geolocated`` event it is an
     owner-only correction, refused when nothing changed. Other statuses 409, and 409
     ``version_mismatch`` when ``version_no`` names a version the event has moved past.
 
@@ -307,6 +314,7 @@ def save_event_version(
     the version ceiling. Soft-deleted rows read as 404.
     """
     parsed_sources = parse_sources(sources)
+    parsed_invites = parse_geolocator_invites(geolocator_invites)
     proof_files = proof_files or []
     parsed_occurred_date = parse_optional_iso_date(occurred_date, field="occurred_date")
     parsed_occurred_time = parse_optional_iso_time(occurred_time, field="occurred_time")
@@ -334,6 +342,7 @@ def save_event_version(
                 proof_files=proof_files,
                 note=note,
                 expected_version=version_no,
+                geolocator_invites=parsed_invites,
             )
         )
     except EvidenceIntakeError as exc:
@@ -342,6 +351,8 @@ def save_event_version(
         raise_archive_error(exc)
     except versions_service.VersionLimitError as exc:
         raise_version_error(exc)
+    except GeolocatorCreditError as exc:
+        raise_credit_error(exc)
     return _serialize_event(db, edited)
 
 

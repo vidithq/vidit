@@ -25,9 +25,11 @@ from app.models.event import (
     STATUS_GEOLOCATED,
     STATUS_REQUESTED,
     Event,
+    EventGeolocator,
     EventVersion,
 )
 from app.models.media import Media
+from app.models.notification import Notification
 from app.models.source import SourceLink
 from app.services import versions as versions_service
 from app.services.storage import get_storage
@@ -509,6 +511,140 @@ def test_fulfilling_a_request_files_it_as_version_0(db, author, second_user, con
     assert filed.version_no == 0
     assert filed.snapshot["title"] == "As imported"
     assert filed.edited_by_id == second_user.id
+
+
+def _invites(*usernames: str) -> str:
+    return json.dumps([{"username": name} for name in usernames])
+
+
+def _pending_invitees(db, geo_id) -> set[uuid.UUID]:
+    db.expire_all()
+    rows = db.query(EventGeolocator).filter(
+        EventGeolocator.event_id == geo_id, EventGeolocator.state == "invited"
+    )
+    return {row.user_id for row in rows}
+
+
+def _invite_notices(db, geo_id) -> list[tuple[uuid.UUID, uuid.UUID | None]]:
+    rows = db.query(Notification).filter(
+        Notification.event_id == geo_id, Notification.kind == "co_geolocator_invite"
+    )
+    return [(row.user_id, row.actor_id) for row in rows]
+
+
+def test_the_create_invites_co_geolocators_in_its_transaction(db, author, second_user, conflict):
+    response = client.post(
+        "/api/v1/events",
+        headers=login_as(client, author),
+        data={
+            "title": "Strike",
+            "lat": "48.5",
+            "lng": "34.5",
+            "proof": proof_form_field(),
+            "conflict_ids": json.dumps([str(conflict.id)]),
+            "sources": filed_source(author),
+            "geolocator_invites": _invites(second_user.username),
+        },
+        files=[proof_file_part()],
+    )
+    assert response.status_code == 201, response.text
+    geo_id = uuid.UUID(response.json()["id"])
+    assert _pending_invitees(db, geo_id) == {second_user.id}
+    assert _invite_notices(db, geo_id) == [(second_user.id, author.id)]
+
+
+def test_a_refused_invitation_creates_no_event(db, author, conflict):
+    before = db.query(Event).filter(Event.owner_id == author.id).count()
+    response = client.post(
+        "/api/v1/events",
+        headers=login_as(client, author),
+        data={
+            "title": "Strike",
+            "lat": "48.5",
+            "lng": "34.5",
+            "proof": proof_form_field(),
+            "conflict_ids": json.dumps([str(conflict.id)]),
+            "sources": filed_source(author),
+            "geolocator_invites": _invites("no-such-analyst"),
+        },
+        files=[proof_file_part()],
+    )
+    assert (response.status_code, response.json()["detail"]["code"]) == (404, "user_not_found")
+    db.expire_all()
+    assert db.query(Event).filter(Event.owner_id == author.id).count() == before
+
+
+def test_publishing_a_detection_invites_co_geolocators(db, author, second_user, conflict):
+    geo = _unpublished(db, author, conflict, STATUS_DETECTED)
+    response = _save_version(
+        geo.id,
+        author,
+        data=_form(conflict, _kept(geo), geolocator_invites=_invites(second_user.username)),
+    )
+    assert response.status_code == 200, response.text
+    assert [g["id"] for g in response.json()["geolocators"]] == [str(author.id)]
+    assert _pending_invitees(db, geo.id) == {second_user.id}
+    assert _invite_notices(db, geo.id) == [(second_user.id, author.id)]
+
+
+def test_the_fulfiller_of_a_request_invites_as_its_new_owner(db, author, second_user, conflict):
+    """The requester is no geolocator of the published row, so the fulfiller may invite them."""
+    geo = _unpublished(db, author, conflict, STATUS_REQUESTED)
+    geo.requested_by_id = author.id
+    db.commit()
+    response = _save_version(
+        geo.id,
+        second_user,
+        data=_form(conflict, _kept(geo), geolocator_invites=_invites(author.username)),
+    )
+    assert response.status_code == 200, response.text
+    assert _pending_invitees(db, geo.id) == {author.id}
+    assert _invite_notices(db, geo.id) == [(author.id, second_user.id)]
+
+
+@pytest.mark.parametrize(
+    ("names", "code"),
+    [(["self"], "already_geolocator"), (["other", "other"], "already_invited")],
+)
+def test_a_refused_invitation_publishes_nothing(db, author, second_user, conflict, names, code):
+    geo = _unpublished(db, author, conflict, STATUS_DETECTED)
+    usernames = {"self": author.username, "other": second_user.username}
+    response = _save_version(
+        geo.id,
+        author,
+        data=_form(
+            conflict, _kept(geo), geolocator_invites=_invites(*(usernames[n] for n in names))
+        ),
+    )
+    assert (response.status_code, response.json()["detail"]["code"]) == (409, code)
+    db.expire_all()
+    row = db.get(Event, geo.id)
+    assert (row.status, row.version_no) == (STATUS_DETECTED, 0)
+    assert db.query(EventVersion).filter(EventVersion.event_id == geo.id).count() == 0
+    assert _pending_invitees(db, geo.id) == set()
+    assert _invite_notices(db, geo.id) == []
+
+
+def test_a_published_edit_takes_no_invitations(db, author, second_user, conflict):
+    geo = _published(db, author, conflict)
+    response = _save_version(
+        geo.id,
+        author,
+        data=_form(conflict, _kept(geo), geolocator_invites=_invites(second_user.username)),
+    )
+    assert (response.status_code, response.json()["detail"]["code"]) == (409, "invalid_state")
+    assert _pending_invitees(db, geo.id) == set()
+
+
+def test_the_invitation_list_is_validated(db, author, conflict):
+    geo = _unpublished(db, author, conflict, STATUS_DETECTED)
+    response = _save_version(
+        geo.id,
+        author,
+        data=_form(conflict, _kept(geo), geolocator_invites=json.dumps([{"name": "x"}])),
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"][:3] == ["body", "geolocator_invites", 0]
 
 
 def test_version_0_keeps_the_proof_image_a_publish_drops(db, author, conflict):

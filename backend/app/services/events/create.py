@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, date, datetime, time
 
 from fastapi import UploadFile
@@ -13,6 +14,7 @@ from app.cache import points_cache
 from app.models.event import Event
 from app.models.user import User
 from app.schemas.source import SourceCreate
+from app.services import geolocator_credit
 from app.services.evidence_intake import attach_evidence_and_commit
 
 from .coordinates import validate_coordinates
@@ -41,10 +43,13 @@ async def create_with_evidence(
     conflict_ids: list,
     sources: list[SourceCreate],
     proof_files: list[UploadFile],
+    geolocator_invites: Sequence[str] = (),
 ) -> Event:
     """Create a ``geolocated`` event with its evidence (a direct geolocate).
 
-    The creator is stamped ``geolocated_at`` and credited in ``event_geolocators``.
+    The creator is stamped ``geolocated_at`` and credited in ``event_geolocators``. Each of
+    ``geolocator_invites`` is invited to share the credit in the same transaction
+    (``geolocator_credit.invite_on_publish``).
 
     The full floor applies: subject coordinates, a ``direct`` or ``indirect`` source with its
     file (``sources.check_publish_floor``), a proof image (a ``placeholder://`` src resolved
@@ -52,8 +57,9 @@ async def create_with_evidence(
 
     Raises :class:`EvidenceIntakeError` subclasses: bad coordinates, an unmet floor, invalid or
     image-less proof, a source list past its caps or naming an unknown upload or file, or a
-    proof intake failure; ``SnapshotRejected`` for a pasted copy that is not a snapshot. Every
-    check runs before the first upload; any later failure rolls back and sweeps what landed.
+    proof intake failure; ``SnapshotRejected`` for a pasted copy that is not a snapshot;
+    ``GeolocatorCreditError`` for a refused invitation. Every check runs before the first
+    upload; any later failure rolls back and sweeps what landed.
     """
     validate_coordinates(lat, lng)
     proof_data = _sanitize_proof(proof_data)
@@ -79,6 +85,7 @@ async def create_with_evidence(
     db.add(geo)
     db.flush()
     _credit_geolocator(db, geo, current_user)
+    geolocator_credit.invite_on_publish(db, geo=geo, usernames=geolocator_invites)
     apply_sources(db, geo, planned)
 
     await attach_evidence_and_commit(

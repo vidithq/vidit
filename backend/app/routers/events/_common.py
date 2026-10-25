@@ -7,10 +7,10 @@ routers), the projection helpers, :func:`resolve_live_event` and
 
 import uuid
 from datetime import datetime
-from typing import NoReturn
+from typing import Annotated, NoReturn
 
 from fastapi import HTTPException
-from pydantic import TypeAdapter, ValidationError
+from pydantic import Field, TypeAdapter, ValidationError
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.event import Event, EventVersion
@@ -21,6 +21,7 @@ from app.schemas.event import (
     EventList,
     EventRead,
     EventVersionRead,
+    GeolocatorInviteCreate,
 )
 from app.schemas.media import MediaRead
 from app.schemas.source import (
@@ -33,7 +34,12 @@ from app.schemas.source import (
 )
 from app.services.event_filters import visible_events
 from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
-from app.services.geolocator_credit import live_geolocators
+from app.services.geolocator_credit import (
+    GEOLOCATOR_CREDIT_ERROR_STATUS,
+    MAX_EVENT_GEOLOCATORS,
+    GeolocatorCreditError,
+    live_geolocators,
+)
 from app.services.imagery import LinkCheck, source_warnings
 from app.services.source_archive import SnapshotRejected, provider_of
 from app.services.thumbnails import pick_thumbnail
@@ -86,29 +92,55 @@ SOURCE_LOAD = selectinload(Event.sources).options(
 
 _SOURCES_ADAPTER = TypeAdapter(list[SourceCreate])
 
+# Past the cap every list fails ``too_many_geolocators``; the bound keeps the parse small.
+_INVITES_ADAPTER: TypeAdapter[list[GeolocatorInviteCreate]] = TypeAdapter(
+    Annotated[list[GeolocatorInviteCreate], Field(max_length=MAX_EVENT_GEOLOCATORS)]
+)
+
+# Help text of the ``geolocator_invites`` form field, shared by the two publishing writes.
+GEOLOCATOR_INVITES_FIELD_DESCRIPTION = (
+    "JSON array of GeolocatorInviteCreate: the analysts invited to share the credit once the "
+    "event is published, in the same transaction."
+)
+
 # Help text of the ``sources`` form field, shared by every event write.
 SOURCES_FIELD_DESCRIPTION = (
     "JSON array of SourceCreate: the event's whole source list, which replaces the stored one."
 )
 
 
-def parse_sources(raw: str | None) -> list[SourceCreate]:
-    """The ``sources`` form field: a JSON array of ``SourceCreate``; absent is an empty list.
-
-    A 422 names the failing entry, as a JSON body would.
-    """
+def _parse_json_field[T](adapter: TypeAdapter[list[T]], raw: str | None, *, field: str) -> list[T]:
+    """A JSON-array form field; absent is an empty list. A 422 names the failing entry, as a
+    JSON body would."""
     if raw is None or not raw.strip():
         return []
     try:
-        return _SOURCES_ADAPTER.validate_json(raw)
+        return adapter.validate_json(raw)
     except ValidationError as exc:
         raise HTTPException(
             status_code=422,
             detail=[
-                {**error, "loc": ["body", "sources", *error["loc"]]}
+                {**error, "loc": ["body", field, *error["loc"]]}
                 for error in exc.errors(include_url=False, include_context=False)
             ],
         ) from exc
+
+
+def parse_sources(raw: str | None) -> list[SourceCreate]:
+    """The ``sources`` form field: a JSON array of ``SourceCreate``."""
+    return _parse_json_field(_SOURCES_ADAPTER, raw, field="sources")
+
+
+def parse_geolocator_invites(raw: str | None) -> list[str]:
+    """The ``geolocator_invites`` form field: the usernames of a JSON array of
+    ``GeolocatorInviteCreate``."""
+    invites = _parse_json_field(_INVITES_ADAPTER, raw, field="geolocator_invites")
+    return [invite.username for invite in invites]
+
+
+def raise_credit_error(exc: GeolocatorCreditError) -> NoReturn:
+    """Translate a refused credit write into its HTTP response."""
+    raise_typed_error(exc, GEOLOCATOR_CREDIT_ERROR_STATUS)
 
 
 def _raise_event_error(exc: EvidenceIntakeError) -> NoReturn:

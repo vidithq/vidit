@@ -545,6 +545,7 @@ Columns: **create** [`POST /events`](#post-events), **requests** [`POST /events/
 | `note` | At most 280 characters, stored on the version this edit supersedes | no | no | no | opt |
 | `version_no` | The version the form was loaded at. A row that moved past it is `409 version_mismatch` | no | no | no | opt |
 | `proof_files` | The proof body's inline images, matched to its `placeholder://` srcs by filename | opt | opt | opt | opt |
+| `geolocator_invites` | JSON array of `GeolocatorInviteCreate` (`{"username": "bo"}`), at most 10 entries. See [Invitations on the publish](#invitations-on-the-publish). On **versions**, a publish only | opt | no | no | opt |
 
 `status`, `requested_by` and the [detection provenance](data-model.md#event_detections) (`detected_from_url` among it) accept no field on any of the four. No write moves `detected_from_url`. A source's file never travels in the event form: it uploads first, through [`POST /uploads`](#post-uploads).
 
@@ -557,6 +558,15 @@ Columns: **create** [`POST /events`](#post-events), **requests** [`POST /events/
 3. At least one image in the `proof` body: `proof_image_required`.
 
 A `geolocated` row also always carries coordinates. The two request writes check only the first rule: a direct or indirect source with a file. Every write, requests included, needs a `kind` on every source. `unknown` is a valid kind, and a missing one is a 422.
+
+#### Invitations on the publish
+
+The two writes that publish, `POST /events` and a publish through `versions`, invite the analysts in `geolocator_invites` to share the event's credit. The invitations are written in the publish's transaction, right after the event becomes `geolocated`, with you as its owner.
+
+- Each username is checked in order, with the refusals and codes of [`POST /events/{id}/geolocator-invites`](#post-eventsidgeolocator-invites): `user_not_found` (404), `already_geolocator`, `already_invited` and `too_many_geolocators` (409). A repeated username is `already_invited`.
+- A refusal rolls back the whole write: no event is created or published, and no invitation or notification is written.
+- Each invitation writes the same `co_geolocator_invite` [notification](#notifications) as the invite endpoint.
+- A correction of a `geolocated` event takes no `geolocator_invites`: a non-empty list is `409 invalid_state`. Invite through [`POST /events/{id}/geolocator-invites`](#post-eventsidgeolocator-invites) instead.
 
 #### Archived copies
 
@@ -1169,9 +1179,9 @@ Create an event directly, born `geolocated`. To open a request without coordinat
 
 **Request body (`multipart/form-data`):** the [event form](#event-form-fields), **create** column. The [evidence floor](#evidence-floor) applies.
 
-**Response 201:** an [`EventRead`](#get-eventsid), `"status": "geolocated"`, with `requested_by: null` and you in `geolocators`.
+**Response 201:** an [`EventRead`](#get-eventsid), `"status": "geolocated"`, with `requested_by: null` and you in `geolocators`. The analysts in `geolocator_invites` hold pending invitations (see [Invitations on the publish](#invitations-on-the-publish)).
 
-**Errors:** the [event write errors](#event-write-errors), except the plain-string 400, `source_not_found`, 403, 404 and `invalid_state`.
+**Errors:** the [event write errors](#event-write-errors), except the plain-string 400, `source_not_found`, 403, 404 and `invalid_state`, plus the [invitation refusals](#invitations-on-the-publish).
 
 ---
 
@@ -1296,7 +1306,7 @@ A `200` does not mean every row published; read `published` and `failed`. A fail
 
 Publish a request or a detection, or correct a published event. The write files the pre-edit state as a version, applies your form, and moves the event to the next `version_no`, in one transaction under a row lock, so two concurrent writes take their numbers in order.
 
-**Publish.** A `requested` or `detected` event is version 0. Writing to it files it as version 0, the request or the detection as it stood, and the event becomes `geolocated` at version 1, stamped `geolocated_at`, with you added to `geolocators`. A detection is owner-only. A request is anyone's to publish: you become its `owner`, `requested_by` keeps the original poster, and when you publish someone else's request the same transaction writes a `request_fulfilled` [notification](#notifications) for them. A publish always changes the status, so `nothing_changed` does not apply to it. A detection's sources come from the import with kind `unknown`; name each source's kind, and give every source a URL. The requester's own edit of an open request stays in place at version 0 through [`POST /events/{id}/request`](#post-eventsidrequest).
+**Publish.** A `requested` or `detected` event is version 0. Writing to it files it as version 0, the request or the detection as it stood, and the event becomes `geolocated` at version 1, stamped `geolocated_at`, with you added to `geolocators`. A detection is owner-only. A request is anyone's to publish: you become its `owner`, `requested_by` keeps the original poster, and when you publish someone else's request the same transaction writes a `request_fulfilled` [notification](#notifications) for them. A publish always changes the status, so `nothing_changed` does not apply to it. A publish also invites the analysts in `geolocator_invites` (see [Invitations on the publish](#invitations-on-the-publish)). A detection's sources come from the import with kind `unknown`; name each source's kind, and give every source a URL. The requester's own edit of an open request stays in place at version 0 through [`POST /events/{id}/request`](#post-eventsidrequest).
 
 **Correction.** A `geolocated` event is owner-only.
 
@@ -1324,7 +1334,7 @@ Rules specific to this path:
 
 **Response 200:** an [`EventRead`](#get-eventsid), with `version_no` one higher: `"status": "geolocated"` and `"version_no": 1` after a publish.
 
-**Errors:** the [event write errors](#event-write-errors), except the plain-string 400, plus `nothing_changed`, `version_limit` and `version_mismatch` above. 403 means a detection or a published event you do not own. 409 `invalid_state` means the row is `closed`. A `note` over 280 characters, or a negative `version_no`, is a 422.
+**Errors:** the [event write errors](#event-write-errors), except the plain-string 400, plus `nothing_changed`, `version_limit` and `version_mismatch` above. 403 means a detection or a published event you do not own. 409 `invalid_state` means the row is `closed`, or a correction posted `geolocator_invites`. A publish adds the [invitation refusals](#invitations-on-the-publish). A `note` over 280 characters, or a negative `version_no`, is a 422.
 
 ---
 

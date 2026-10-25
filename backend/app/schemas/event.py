@@ -277,7 +277,8 @@ class EventList(BaseModel):
 
 
 class GeolocatorInviteCreate(BaseModel):
-    """Body of ``POST /events/{id}/geolocator-invites``: who to invite."""
+    """Who to invite: the body of ``POST /events/{id}/geolocator-invites``, and one entry of the
+    ``geolocator_invites`` field of the two publishing writes."""
 
     model_config = ConfigDict(extra="forbid")
 

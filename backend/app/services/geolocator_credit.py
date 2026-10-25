@@ -6,7 +6,8 @@ analyst holds one ``event_geolocators`` row per event, whose ``state`` moves bet
 version and closing stay with the owner (``permissions.ensure_owner``).
 
 Every write here locks the event row first, the way the lifecycle verbs do, so an invitation, an
-answer and an erasure hand-over on the same event serialize.
+answer and an erasure hand-over on the same event serialize. The invitations a publish carries
+(:func:`invite_on_publish`) run in the publishing write's transaction, under its lock.
 """
 
 from __future__ import annotations
@@ -150,6 +151,26 @@ def invite(db: Session, *, geo: Event, owner: User, username: str) -> EventGeolo
     """
     geo = lock_event(db, geo.id)
     ensure_owner(geo, owner)
+    row = _stage_invite(db, geo=geo, username=username)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def invite_on_publish(db: Session, *, geo: Event, usernames: Sequence[str]) -> None:
+    """Invite each of ``usernames`` to share the credit of ``geo``, which the caller's
+    transaction has just published, and notify them.
+
+    Each one is checked and refused as :func:`invite` refuses it, in order, so a repeated name
+    is 409 ``already_invited``. Staged in the caller's transaction, which holds the event's
+    lock: a refusal rolls back the whole publish. Does not commit.
+    """
+    for username in usernames:
+        _stage_invite(db, geo=geo, username=username)
+
+
+def _stage_invite(db: Session, *, geo: Event, username: str) -> EventGeolocator:
+    """:func:`invite`'s checks and writes on a locked ``geo`` whose owner invites."""
     _require_published(geo)
     invitee = get_live_by_username(db, username)
     if invitee is None:
@@ -181,9 +202,9 @@ def invite(db: Session, *, geo: Event, owner: User, username: str) -> EventGeolo
     else:
         row.state = "invited"
         row.invited_at = now
+    # The next name's checks read this row.
+    db.flush()
     notifications.notify_co_geolocator_invite(db, event=geo, invitee_id=invitee.id)
-    db.commit()
-    db.refresh(row)
     return row
 
 

@@ -922,7 +922,9 @@ export interface paths {
          *
          *     Parses the form into clean types; business rules and IO live in
          *     ``services/events.create_with_evidence``. A pasted archived copy that is not
-         *     a snapshot is a 400 with the failing check's code and no event is created.
+         *     a snapshot is a 400 with the failing check's code and no event is created. Each
+         *     analyst in ``geolocator_invites`` is invited to share the credit, refused as
+         *     ``POST /events/{id}/geolocator-invites`` refuses, and a refusal creates no event.
          */
         post: operations["create_event_api_v1_events_post"];
         delete?: never;
@@ -1545,7 +1547,10 @@ export interface paths {
          *     On a ``requested`` or ``detected`` event (version 0) this publishes: the event becomes
          *     ``geolocated`` at version 1 and the caller is credited as a geolocator. A detection is
          *     owner-only (403 otherwise); a request is answerable by anyone, and the fulfiller becomes
-         *     its owner (``requested_by`` keeps the poster). On a ``geolocated`` event it is an
+         *     its owner (``requested_by`` keeps the poster). A publish invites each analyst in
+         *     ``geolocator_invites`` to share the credit, refused as
+         *     ``POST /events/{id}/geolocator-invites`` refuses, and a refusal publishes nothing; a
+         *     ``geolocated`` event takes none (409). On a ``geolocated`` event it is an
          *     owner-only correction, refused when nothing changed. Other statuses 409, and 409
          *     ``version_mismatch`` when ``version_no`` names a version the event has moved past.
          *
@@ -3070,6 +3075,11 @@ export interface components {
         Body_create_event_api_v1_events_post: {
             /** Conflict Ids */
             conflict_ids?: string | null;
+            /**
+             * Geolocator Invites
+             * @description JSON array of GeolocatorInviteCreate: the analysts invited to share the credit once the event is published, in the same transaction.
+             */
+            geolocator_invites?: string | null;
             /** Lat */
             lat: number;
             /** Lng */
@@ -3127,6 +3137,11 @@ export interface components {
         Body_save_event_version_api_v1_events__geolocation_id__versions_post: {
             /** Conflict Ids */
             conflict_ids?: string | null;
+            /**
+             * Geolocator Invites
+             * @description JSON array of GeolocatorInviteCreate: the analysts invited to share the credit once the event is published, in the same transaction.
+             */
+            geolocator_invites?: string | null;
             /** Lat */
             lat: number;
             /** Lng */
@@ -3735,7 +3750,8 @@ export interface components {
         };
         /**
          * GeolocatorInviteCreate
-         * @description Body of ``POST /events/{id}/geolocator-invites``: who to invite.
+         * @description Who to invite: the body of ``POST /events/{id}/geolocator-invites``, and one entry of the
+         *     ``geolocator_invites`` field of the two publishing writes.
          */
         GeolocatorInviteCreate: {
             /** Username */

@@ -32,17 +32,21 @@ from app.routers._forms import (
     parse_optional_iso_time,
 )
 from app.routers.events._common import (
+    GEOLOCATOR_INVITES_FIELD_DESCRIPTION,
     SOURCES_FIELD_DESCRIPTION,
     _raise_event_error,
     build_event_read,
+    parse_geolocator_invites,
     parse_sources,
     raise_archive_error,
+    raise_credit_error,
 )
 from app.schemas.event import (
     EventRead,
 )
 from app.services import events as events_service
 from app.services.evidence_intake import EvidenceIntakeError
+from app.services.geolocator_credit import GeolocatorCreditError
 from app.services.source_archive import SnapshotRejected
 
 router = APIRouter()
@@ -70,6 +74,7 @@ def create_event(
     tag_ids: str | None = Form(None),
     conflict_ids: str | None = Form(None),
     sources: str = Form(..., description=SOURCES_FIELD_DESCRIPTION),
+    geolocator_invites: str | None = Form(None, description=GEOLOCATOR_INVITES_FIELD_DESCRIPTION),
     # Proof images resolve against the proof's placeholders.
     proof_files: list[UploadFile] | None = File(None),
     current_user: User = Depends(get_current_user),
@@ -79,9 +84,12 @@ def create_event(
 
     Parses the form into clean types; business rules and IO live in
     ``services/events.create_with_evidence``. A pasted archived copy that is not
-    a snapshot is a 400 with the failing check's code and no event is created.
+    a snapshot is a 400 with the failing check's code and no event is created. Each
+    analyst in ``geolocator_invites`` is invited to share the credit, refused as
+    ``POST /events/{id}/geolocator-invites`` refuses, and a refusal creates no event.
     """
     parsed_sources = parse_sources(sources)
+    parsed_invites = parse_geolocator_invites(geolocator_invites)
     proof_files = proof_files or []
 
     # Form(str) doesn't validate date shape; a raw value would 500 at flush.
@@ -108,12 +116,15 @@ def create_event(
                 conflict_ids=parsed_conflict_ids,
                 sources=parsed_sources,
                 proof_files=proof_files,
+                geolocator_invites=parsed_invites,
             )
         )
     except EvidenceIntakeError as exc:
         _raise_event_error(exc)
     except SnapshotRejected as exc:
         raise_archive_error(exc)
+    except GeolocatorCreditError as exc:
+        raise_credit_error(exc)
 
     # Born ``geolocated`` with no request, so ``requested_by`` is null.
     return build_event_read(geo, lat=lat, lng=lng)

@@ -3,6 +3,7 @@ detection."""
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, date, datetime, time
 
 from fastapi import UploadFile
@@ -14,7 +15,7 @@ from app.cache import points_cache
 from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, STATUS_REQUESTED, Event
 from app.models.user import User
 from app.schemas.source import SourceCreate
-from app.services import notifications, versions
+from app.services import geolocator_credit, notifications, versions
 from app.services.event_filters import lock_event
 from app.services.evidence_intake import attach_evidence_and_commit
 from app.services.permissions import ensure_owner
@@ -59,6 +60,7 @@ async def save_version(
     proof_files: list[UploadFile],
     note: str | None = None,
     expected_version: int | None = None,
+    geolocator_invites: Sequence[str] = (),
 ) -> Event:
     """Write the posted form onto the event and file the state it supersedes as a version.
 
@@ -72,7 +74,11 @@ async def save_version(
     ``event_geolocators``. A detection is owner-only. A request is answerable by anyone:
     ``owner_id`` transfers to the caller, ``requested_by_id`` keeps the poster, and the
     requester is notified. A publish always moves something (the status), so the no-change
-    check below does not apply to it.
+    check below does not apply to it. Each of ``geolocator_invites`` is invited to share the
+    credit right after the row is published, in the same transaction
+    (``geolocator_credit.invite_on_publish``); a refused one rolls back the whole publish. A
+    ``geolocated`` row takes none (409 ``invalid_state``): its owner invites through
+    ``geolocator_credit.invite``.
 
     A ``geolocated`` row is owner-only. Any other state raises :class:`EventStateError` (409),
     so a racing close gives the loser a 409. ``expected_version`` is the version the caller's
@@ -103,7 +109,7 @@ async def save_version(
 
     Raises :class:`EventStateError` (409), :class:`VersionMismatchError` (409), the 403 of
     ``ensure_owner``, :class:`NothingChangedError` (409), ``services/versions.VersionLimitError`` (409) at the
-    ceiling, and the errors of ``create_with_evidence``.
+    ceiling, and the errors of ``create_with_evidence``, ``GeolocatorCreditError`` included.
     """
     geo = lock_event(db, geo.id)
     if geo.status not in _WRITABLE:
@@ -113,6 +119,10 @@ async def save_version(
             f"This event is at version {geo.version_no}; reload it before saving"
         )
     publishing = geo.status in _UNPUBLISHED
+    if geolocator_invites and not publishing:
+        raise EventStateError(
+            "A published event invites its geolocators through its geolocator invitations"
+        )
     fulfils_request = geo.status == STATUS_REQUESTED
     if not fulfils_request:
         ensure_owner(geo, current_user)
@@ -176,6 +186,7 @@ async def save_version(
     if publishing:
         # Hands edit-rights to the fulfiller of a request and records the credit.
         _credit_geolocator(db, geo, current_user)
+        geolocator_credit.invite_on_publish(db, geo=geo, usernames=geolocator_invites)
     if fulfils_request:
         notifications.notify_request_fulfilled(db, event=geo, fulfiller=current_user)
     # The version filed above renders the dropped files, so the sweep keeps them.
