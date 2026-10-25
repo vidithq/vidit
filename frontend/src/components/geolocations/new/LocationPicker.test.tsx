@@ -23,16 +23,15 @@ describe("LocationPicker", () => {
     ).toBeInTheDocument();
   });
 
-  it("labels the subject and leaves the capture position to the sources", () => {
+  it("leaves the capture position to the sources", () => {
     render(<LocationPicker {...baseProps} />);
-    expect(screen.getByText("Subject")).toBeInTheDocument();
+    expect(screen.queryByText("Subject")).toBeNull();
     expect(screen.queryByText("Capture position")).toBeNull();
   });
 
-  it("flags the Subject label red when the coordinates are missing", () => {
+  it("flags the Latitude and Longitude labels red when the coordinates are missing", () => {
     render(<LocationPicker {...baseProps} invalid />);
-    expect(screen.getByText("Subject").closest("span")).toHaveClass(
-      FORM_INVALID_LABEL
-    );
+    expect(screen.getByText("Latitude")).toHaveClass(FORM_INVALID_LABEL);
+    expect(screen.getByText("Longitude")).toHaveClass(FORM_INVALID_LABEL);
   });
 });
