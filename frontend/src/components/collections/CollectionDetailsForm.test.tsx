@@ -5,6 +5,10 @@ import { textHtml } from "@/test/proofEditorStub";
 
 vi.mock("@/components/editor/ProofEditor", () => import("@/test/proofEditorStub"));
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
+}));
+
 // The picker is `EventPicker.test.tsx`'s subject.
 vi.mock("@/hooks/useCursorList", () => ({
   useCursorList: () => ({
@@ -32,6 +36,8 @@ const onCancel = vi.fn();
 async function renderForm(props: Record<string, unknown> = {}) {
   const result = render(
     <CollectionDetailsForm
+      title="New collection"
+      backFallback="/profile/ana"
       username="ana"
       submitLabel="Create collection"
       onSubmit={onSubmit}
@@ -87,26 +93,67 @@ describe("CollectionDetailsForm", () => {
     ).toBeInTheDocument();
   });
 
-  it("refuses a description whose text is blank", async () => {
+  it("counts what the submit still refuses, and flags it red on click", async () => {
     await renderForm();
-    fireEvent.change(titleField(), { target: { value: "March strikes" } });
 
-    expect(submit()).toBeDisabled();
-
-    fireEvent.change(descriptionField(), { target: { value: "   " } });
-    expect(submit()).toBeDisabled();
-
-    fireEvent.change(descriptionField(), { target: { value: "Something." } });
+    // Never disabled: the badge names the gaps before the click.
     expect(submit()).not.toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "2 missing: Title, Description" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    fireEvent.click(submit());
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Fill in the required fields before continuing:TitleDescription",
+    );
+    expect(titleField().className).toContain("border-red-500");
+    expect(descriptionField()).toHaveAttribute("data-invalid", "true");
+
+    // Filling a field clears its flag and its line.
+    fireEvent.change(titleField(), { target: { value: "March strikes" } });
+    expect(titleField().className).not.toContain("border-red-500");
+    expect(screen.getByRole("alert")).not.toHaveTextContent("Title");
   });
 
-  it("refuses a description past the cap, and flags the editor red", async () => {
+  it("refuses a description whose text is blank", async () => {
+    await renderForm();
+    fill("March strikes", "   ");
+    fireEvent.click(submit());
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent("Description");
+
+    fireEvent.change(descriptionField(), { target: { value: "Something." } });
+    expect(screen.queryByRole("alert")).toBeNull();
+    fireEvent.click(submit());
+    expect(onSubmit).toHaveBeenCalled();
+  });
+
+  it("refuses a description past the cap, and flags the editor red as it is typed", async () => {
     await renderForm();
     fill("March strikes", "x".repeat(COLLECTION_DESCRIPTION_MAX_LEN + 1));
 
-    expect(submit()).toBeDisabled();
-    // The outline and the disabled submit turn over together.
+    // The outline and the counter turn over together, before any click.
     expect(descriptionField()).toHaveAttribute("data-invalid", "true");
+    expect(
+      screen.getByRole("button", {
+        name: `1 missing: Description (${COLLECTION_DESCRIPTION_MAX_LEN} characters at most)`,
+      }),
+    ).toBeInTheDocument();
+    fireEvent.click(submit());
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("puts Cancel beside the submit in the page's actions", async () => {
+    await renderForm();
+
+    const actions = screen.getByRole("complementary", { name: "Actions" });
+    expect(actions).toContainElement(submit());
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onCancel).toHaveBeenCalled();
   });
 
   it("opens an edit on the collection's own description", async () => {

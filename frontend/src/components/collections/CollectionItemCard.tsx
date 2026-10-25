@@ -14,13 +14,16 @@ import { eventHref } from "@/lib/routes";
  *
  * `action` is the control the surface puts on the row. `onSelect` is the
  * collection page's mode: the row picks the player's step instead of opening the
- * event, and the event's page is reached from the player panel's title.
+ * event, and the event's page is reached from the player panel's title. `large`
+ * is the feed card, media under the title, for a carousel that shows one event
+ * at a time (the write pages' held events); its control sits outside the card.
  */
 export function CollectionItemCard({
   item,
   action,
   selected = false,
   onSelect,
+  large = false,
 }: {
   item: PickableEvent;
   action?: ReactNode;
@@ -28,7 +31,24 @@ export function CollectionItemCard({
   selected?: boolean;
   /** Picks this row instead of opening it. */
   onSelect?: () => void;
+  large?: boolean;
 }) {
+  if (large) {
+    return (
+      <EntityCard
+        variant="feed"
+        title={item.title}
+        badge={<StatusBadge status={item.status} />}
+        media={item.media ?? undefined}
+        isGraphic={item.is_graphic}
+        dates={item.occurred_date ? [{ label: "Event", date: item.occurred_date }] : undefined}
+        coords={item.coords}
+        tags={item.tags}
+        detailHref={eventHref(item.id)}
+      />
+    );
+  }
+
   const slots = {
     variant: "compact" as const,
     title: item.title,

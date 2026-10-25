@@ -3,8 +3,8 @@ import { FieldHelp } from "./FieldHelp";
 import { FORM_INVALID_LABEL } from "./form-styles";
 import type { Concept } from "@/lib/fieldHelp";
 
-// Form-section heading: `<header><h2>` + section `FieldHelp`, with an optional
-// `trailing` badge slot.
+// Form-section heading: `<header><h2>`, the section `FieldHelp` when a concept explains it, and an
+// optional `trailing` badge slot.
 export function SectionHeading({
   title,
   concept,
@@ -12,7 +12,7 @@ export function SectionHeading({
   invalid = false,
 }: {
   title: string;
-  concept: Concept;
+  concept?: Concept;
   trailing?: ReactNode;
   /** Red: a single-field section missing at submit. */
   invalid?: boolean;
@@ -27,7 +27,7 @@ export function SectionHeading({
         }`}
       >
         {title}
-        <FieldHelp concept={concept} />
+        {concept && <FieldHelp concept={concept} />}
       </h2>
       {trailing}
     </header>

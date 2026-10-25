@@ -895,8 +895,8 @@ export function missingEventFields(s: EventFieldsState): MissingField[] {
   return missing;
 }
 
-/** The unmet fields as a publish button's count badge names them: `2 missing: Title, Conflict`. */
-export function missingSummary(missing: MissingField[]): string {
+/** The unmet fields as a submit button's count badge names them: `2 missing: Title, Conflict`. */
+export function missingSummary(missing: readonly { label: string }[]): string {
   return `${missing.length} missing: ${missing.map((m) => m.label).join(", ")}`;
 }
 

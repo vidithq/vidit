@@ -62,4 +62,14 @@ describe("CollectionItemCard", () => {
 
     expect(onRemove).toHaveBeenCalled();
   });
+
+  it("opens the event from the large card, its date named", () => {
+    render(<CollectionItemCard item={ITEM} large />);
+
+    expect(
+      screen.getByRole("link", { name: "Strike on the rail junction" }),
+    ).toHaveAttribute("href", "/events/e1");
+    expect(screen.getByText(/^Event /)).toBeInTheDocument();
+    expect(screen.getByText("Geolocated")).toBeInTheDocument();
+  });
 });
