@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { MAX_EVENT_GEOLOCATORS } from "@/lib/geolocatorCredit";
 import { eventDetail } from "@/test/eventDetail";
 
 const api = vi.hoisted(() => ({
@@ -101,6 +102,18 @@ describe("<GeolocatorsByline>", () => {
     const dialog = screen.getByRole("dialog", { name: "Invite a geolocator" });
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("No analyst with that username");
   });
+
+  it("refuses a pick past the cap without asking the server", () => {
+    // The owner, bo, cy pending, and seven more pending: ten held.
+    api.invites = [CY, ...Array.from({ length: 7 }, (_, i) => ({ id: `p${i}`, username: `p${i}` }))].map(
+      (user) => ({ user, invited_at: "2026-10-15T09:00:00Z" }),
+    );
+    render(<GeolocatorsByline event={shared} onChanged={vi.fn()} />);
+
+    pick("dee");
+    expect(screen.getByRole("alert")).toHaveTextContent(`at most ${MAX_EVENT_GEOLOCATORS} geolocators`);
+    expect(api.apiFetch).not.toHaveBeenCalled();
+  });
 });
 
 function Draft({ onInvitees }: { onInvitees: (names: string[]) => void }) {
@@ -134,5 +147,16 @@ describe("useDraftGeolocatorsByline", () => {
     pick("dee");
     pick("dee");
     expect(screen.getByRole("alert")).toHaveTextContent("already invited");
+  });
+
+  it("stops at the cap, the reader included", () => {
+    let invitees: string[] = [];
+    render(<Draft onInvitees={(names) => (invitees = names)} />);
+
+    for (let i = 1; i < MAX_EVENT_GEOLOCATORS; i++) pick(`p${i}`);
+    expect(invitees).toHaveLength(MAX_EVENT_GEOLOCATORS - 1);
+    pick("one-more");
+    expect(screen.getByRole("alert")).toHaveTextContent(`at most ${MAX_EVENT_GEOLOCATORS} geolocators`);
+    expect(invitees).toHaveLength(MAX_EVENT_GEOLOCATORS - 1);
   });
 });

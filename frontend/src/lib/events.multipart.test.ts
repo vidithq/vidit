@@ -31,6 +31,7 @@ const pngA = new File(["a"], "a.png", { type: "image/png" });
 const pngB = new File(["b"], "b.png", { type: "image/png" });
 
 const SOURCE: SourceCreate = {
+  id: null,
   title: "",
   level: "direct",
   kind: "drone",
@@ -40,6 +41,7 @@ const SOURCE: SourceCreate = {
   links: [{ url: "https://t.me/c/1", posted_at: "2026-01-02T10:00", snapshot_url: null }],
   tag_ids: [],
   upload_id: "u1",
+  media_id: null,
 };
 
 const input: EventWriteInput = {

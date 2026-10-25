@@ -5,7 +5,13 @@ import { appendEventFilterParams, type EventFilterParams } from "./search";
 import { cleanNumber, inBounds } from "./coordinates";
 import { proofHasImage } from "./proof";
 import { snapshotProvider } from "./snapshots";
-import type { Source, SourceCreate } from "./sources";
+import {
+  isEvidenceLevel,
+  SOURCE_LEVELS,
+  type Source,
+  type SourceCreate,
+  type SourceLevel,
+} from "./sources";
 import type {
   ArchiveImportJob,
   ArchiveImportPresign,
@@ -45,11 +51,8 @@ export const FIELD_LABELS: Record<MissingFieldKey, string> = {
   conflict_tag: "Conflict",
 };
 
-/** Mirrors `models/source.MAX_SOURCES_PER_EVENT`; change both. */
-export const MAX_SOURCES_PER_EVENT = 10;
-
-/** Mirrors `models/source.MAX_LINKS_PER_SOURCE`; change both. */
-export const MAX_LINKS_PER_SOURCE = 10;
+/** Mirrors `models/event.TITLE_MAX_LENGTH`; change both. */
+export const EVENT_TITLE_MAX_LEN = 255;
 
 /** Below the backend default (`per_page=20`, max 100) so row previews load faster. */
 const DETECTIONS_PER_PAGE = 10;
@@ -311,7 +314,7 @@ function snapshotSource(
   return {
     id: `v${versionNo}-${index}`,
     title: asString(entry.title, ""),
-    level: level === "indirect" || level === "context" ? level : "direct",
+    level: SOURCE_LEVELS.includes(level as SourceLevel) ? (level as SourceLevel) : "direct",
     kind: (asNullableString(entry.kind) as Source["kind"] | null) ?? "unknown",
     captured_at: asNullableString(entry.captured_at),
     capture_position: asCoords(entry.capture_position),
@@ -813,7 +816,7 @@ export function batchCompletionBlockers(geo: {
   // The leg the queue most often has to flag.
   if (!geo.proof || !proofHasImage(geo.proof)) missing.push(FIELD_LABELS.proof_image);
   if (geo.sources.some((s) => s.links.length === 0)) missing.push(FIELD_LABELS.source_link);
-  if (!geo.sources.some((s) => s.level !== "context" && s.media !== null)) {
+  if (!geo.sources.some((s) => isEvidenceLevel(s.level) && s.media !== null)) {
     missing.push(FIELD_LABELS.source_file);
   }
   return missing;
@@ -844,6 +847,9 @@ export type ContentReport = components["schemas"]["ContentReportRead"];
 
 /** Mirrors `schemas/report.DETAILS_MAX_LENGTH`; change both. */
 export const REPORT_DETAILS_MAX_LEN = 2000;
+
+/** Mirrors `schemas/event.CLOSE_REASON_MAX_LENGTH`; change both. */
+export const CLOSE_REASON_MAX_LEN = 2000;
 
 /** One label per report bucket, shared by the report form and the admin queue. Keyed by the
  *  generated union so a new backend reason fails `tsc`. */

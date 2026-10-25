@@ -9,8 +9,10 @@ import { useApiResource } from "@/hooks/useApiResource";
 import { useMutation } from "@/hooks/useMutation";
 import {
   creditedAuthors,
+  GEOLOCATOR_CAP_MESSAGE,
   geolocatorInvitesPath,
   inviteGeolocator,
+  MAX_EVENT_GEOLOCATORS,
   removeGeolocator,
   withdrawGeolocatorInvite,
   type GeolocatorInvite,
@@ -32,6 +34,17 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 const ADD_LABEL = "Invite a geolocator";
 
 type Person = { username: string; avatar_url?: string | null };
+
+/** Why `name` cannot join a credit line, or null. `credited` starts with the reader, who owns
+ *  the event. The local copies of the server's `already_geolocator`, `already_invited` and
+ *  `too_many_geolocators` refusals, so a pick that cannot land never leaves the picker. */
+function inviteRefusal(name: string, credited: string[], invited: string[]): string | null {
+  if (name === credited[0]) return "You are already a geolocator of this event.";
+  if (credited.includes(name)) return "This analyst is already a geolocator of this event.";
+  if (invited.includes(name)) return "This analyst is already invited.";
+  if (credited.length + invited.length >= MAX_EVENT_GEOLOCATORS) return GEOLOCATOR_CAP_MESSAGE;
+  return null;
+}
 
 function picture(
   person: Person,
@@ -134,6 +147,7 @@ export function GeolocatorsByline({
 }) {
   const invites = useApiResource<GeolocatorInvite[]>(geolocatorInvitesPath(event.id));
   const [confirming, setConfirming] = useState<Pending | null>(null);
+  const [refusal, setRefusal] = useState<string | null>(null);
   const write = useMutation(
     async (kind: "invite" | Pending["kind"], name: string) => {
       if (kind === "invite") await inviteGeolocator(event.id, name);
@@ -154,7 +168,19 @@ export function GeolocatorsByline({
     write.reset();
     setConfirming(pending);
   };
-  const [, ...coGeolocators] = creditedAuthors(event);
+  const credited = creditedAuthors(event);
+  const [, ...coGeolocators] = credited;
+  const invite = async (account: Account): Promise<boolean> => {
+    const name = accountName(account);
+    const refused = inviteRefusal(
+      name,
+      credited.map((person) => person.username),
+      (invites.data ?? []).map(({ user }) => user.username),
+    );
+    setRefusal(refused);
+    if (refused) return false;
+    return (await write.run("invite", name)) ?? false;
+  };
   const pictures = [
     ...coGeolocators.map((person) =>
       picture(person, person.username, {
@@ -181,8 +207,8 @@ export function GeolocatorsByline({
         pictures={pictures}
         add={
           <AddGeolocator
-            onAdd={async (account) => (await write.run("invite", accountName(account))) ?? false}
-            error={confirming ? null : write.error}
+            onAdd={invite}
+            error={confirming ? null : (refusal ?? write.error)}
             note="They are credited once they accept. Editing and closing stay with you."
           />
         }
@@ -221,15 +247,12 @@ export function useDraftGeolocatorsByline(): { byline: ReactNode; invitees: stri
   const [error, setError] = useState<string | null>(null);
   const add = (account: Account) => {
     const name = accountName(account);
-    if (name === user?.username) setError("You are already a geolocator of this event.");
-    else if (picked.some((other) => accountName(other) === name)) {
-      setError("This analyst is already invited.");
-    } else {
-      setError(null);
-      setPicked([...picked, account]);
-      return true;
-    }
-    return false;
+    // The reader owns the event once it is published, so they hold the first credit.
+    const refused = inviteRefusal(name, user ? [user.username] : [], picked.map(accountName));
+    setError(refused);
+    if (refused) return false;
+    setPicked([...picked, account]);
+    return true;
   };
   const pictures = picked.map((account) => {
     const name = accountName(account);

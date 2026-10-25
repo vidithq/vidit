@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { ApiError } from "./api";
 import {
+  capturePositionInvalid,
   firstSourceUrl,
+  isEvidenceLevel,
+  SOURCE_LEVELS,
   newSourceDraft,
   sourceCreatePayload,
   sourceDraftFrom,
@@ -68,6 +71,7 @@ describe("sourceCreatePayload", () => {
       ],
       tag_ids: ["t1"],
       media_id: "m1",
+      upload_id: null,
     });
   });
 
@@ -98,8 +102,8 @@ describe("sourceCreatePayload", () => {
         file: { state: "uploading", file: new File(["x"], "x.png"), token: 1 },
       })
     );
-    expect(running.upload_id).toBeUndefined();
-    expect(running.media_id).toBeUndefined();
+    expect(running.upload_id).toBeNull();
+    expect(running.media_id).toBeNull();
     // The kind describes the source, file or not.
     expect(running.kind).toBe("drone");
   });
@@ -107,6 +111,21 @@ describe("sourceCreatePayload", () => {
   it("posts no capture position for a document kind", () => {
     const draft = { ...sourceDraftFrom(STORED), kind: "article" as const };
     expect(sourceCreatePayload(draft).capture_position).toBeNull();
+  });
+
+  it("drops an out-of-bounds capture pair, which the editor flags", () => {
+    const draft = linked("https://t.me/c/1", { kind: "drone", captureLat: "48.1", captureLng: "190" });
+    expect(sourceCreatePayload(draft).capture_position).toBeNull();
+    expect(capturePositionInvalid(draft)).toBe(true);
+    expect(capturePositionInvalid({ ...draft, captureLng: "37.9" })).toBe(false);
+    expect(capturePositionInvalid({ ...draft, captureLat: "", captureLng: "" })).toBe(false);
+    expect(capturePositionInvalid({ ...draft, kind: "article" })).toBe(false);
+  });
+});
+
+describe("isEvidenceLevel", () => {
+  it("counts direct and indirect sources toward the floor, context ones not", () => {
+    expect(SOURCE_LEVELS.filter(isEvidenceLevel)).toEqual(["direct", "indirect"]);
   });
 });
 

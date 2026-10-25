@@ -10,7 +10,7 @@ import { LIST_TILE } from "@/components/ui/form-styles";
 import { META_LINE } from "@/components/ui/styles";
 import { cn } from "@/lib/cn";
 import { formatInstant, formatInstantOrDate, safeHostname } from "@/lib/format";
-import { LEVEL_LABELS, sourceKindLabel, type Source } from "@/lib/sources";
+import { isEvidenceLevel, LEVEL_LABELS, sourceKindLabel, type Source } from "@/lib/sources";
 
 import { SourceWarnings } from "./SourceWarnings";
 
@@ -42,7 +42,7 @@ export function SourceBlock({
   wide?: boolean;
 }) {
   const name = `Source ${index + 1}`;
-  const file = source.media === null && source.level === "context" ? null : (
+  const file = source.media === null && !isEvidenceLevel(source.level) ? null : (
     <MediaGallery
       media={source.media ? [source.media] : []}
       alt={alt}

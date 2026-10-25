@@ -1,7 +1,9 @@
 "use client";
 
+import { CharCounter } from "@/components/ui/CharCounter";
 import { Textarea } from "@/components/ui/Input";
 import { FieldHelp } from "@/components/ui/FieldHelp";
+import { EVENT_TITLE_MAX_LEN } from "@/lib/events";
 
 interface TitleFieldProps {
   value: string;
@@ -18,7 +20,8 @@ interface TitleFieldProps {
  *  and padding (13px) and up and down by the same 5px, so the text sits on the title's line and
  *  the header keeps the title's height. It is a one-row textarea that grows a row per wrapped
  *  line (`field-sizing: content`), so a long title wraps on a phone like the event title. A title
- *  is one line: Enter adds none and submits the form the field joins, as a text input does. */
+ *  is one line: Enter adds none and submits the form the field joins, as a text input does. The
+ *  counter beside the `?` reads the title against `EVENT_TITLE_MAX_LEN`. */
 export function TitleField({ value, onChange, invalid = false, form }: TitleFieldProps) {
   return (
     <div className="flex items-center gap-2">
@@ -30,6 +33,7 @@ export function TitleField({ value, onChange, invalid = false, form }: TitleFiel
         rows={1}
         required
         form={form}
+        maxLength={EVENT_TITLE_MAX_LEN}
         value={value}
         onChange={(e) => onChange(e.target.value.replace(/\s*[\r\n]+\s*/g, " "))}
         onKeyDown={(e) => {
@@ -42,6 +46,7 @@ export function TitleField({ value, onChange, invalid = false, form }: TitleFiel
         invalid={invalid}
         className="-my-[5px] -ml-[13px] min-w-0 flex-1 resize-none py-1 text-xl leading-7 font-medium field-sizing-content sm:text-xl"
       />
+      <CharCounter length={value.length} max={EVENT_TITLE_MAX_LEN} />
       <FieldHelp concept="title" />
     </div>
   );

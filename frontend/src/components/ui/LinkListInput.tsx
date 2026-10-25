@@ -47,6 +47,8 @@ interface LinkListInputProps<R> {
   blank: () => R;
   /** Row ceiling; mirrors the server cap of the field being edited. */
   max: number;
+  /** Character ceiling of one URL; mirrors the server cap of the field being edited. */
+  maxLength?: number;
   /** Singular name of one entry ("Link"), for screen readers. */
   itemLabel: string;
   /** The add button's text, `Add <itemLabel>` by default. */
@@ -72,6 +74,7 @@ export function LinkListInput<R>({
   withUrl,
   blank,
   max,
+  maxLength,
   itemLabel,
   addText,
   addName,
@@ -129,6 +132,7 @@ export function LinkListInput<R>({
             >
               <Input
                 type="url"
+                maxLength={maxLength}
                 value={urlOf(row)}
                 onChange={(e) => slot(i).update(withUrl(row, e.target.value))}
                 placeholder={placeholder}
