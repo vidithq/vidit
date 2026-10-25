@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { EVENT, EVENT_ID } from "./support/fixtures";
+import { EVENT, EVENT_ID, MEDIA_URL } from "./support/fixtures";
 import { answerWith, grantSession, mockApi } from "./support/mockApi";
 import { expectNarrowViewportLayout, expectNoHorizontalOverflow } from "./support/narrowLayout";
 
@@ -32,11 +32,9 @@ test.describe("event edit", () => {
     );
     await expect(actions.getByRole("button", { name: "Close this geolocation" })).toBeVisible();
 
-    // The version note reads under the actions, over Location. The byline under the title field
-    // ends with the add button, whose picker floats in a popover.
-    const note = (await page.getByRole("textbox", { name: "Version note" }).boundingBox())!;
-    const location = (await page.getByRole("heading", { name: /^Location/ }).boundingBox())!;
-    expect(note.y).toBeLessThan(location.y);
+    // No version note in the page: the byline under the title field ends with the add button,
+    // whose picker floats in a popover.
+    await expect(page.getByRole("textbox", { name: "Version note" })).toHaveCount(0);
     const add = page.getByRole("button", { name: "Invite a geolocator" });
     expect((await add.boundingBox())!.y).toBeGreaterThan((await title.boundingBox())!.y);
     await add.click();
@@ -47,6 +45,33 @@ test.describe("event edit", () => {
     // Scrolled to the details, the save is still on screen, pinned at the top.
     await page.getByRole("heading", { name: /^Details/ }).scrollIntoViewIfNeeded();
     await expect(save).toBeInViewport({ ratio: 1 });
+  });
+
+  test("asks for the version note in a panel on the save, inside a narrow column", async ({ page }) => {
+    // A proof image completes the floor, so the save goes on to ask for the note.
+    await answerWith(page, `/events/${EVENT_ID}`, {
+      ...EVENT,
+      proof: `<p>Matched the skyline.</p><img src="${MEDIA_URL}">`,
+    });
+    await page.goto(`/events/${EVENT_ID}/edit`);
+    await page.getByLabel("Title", { exact: true }).fill("Corrected title");
+    const save = page
+      .getByRole("complementary", { name: "Actions" })
+      .getByRole("button", { name: "Save version 2" });
+    await save.click();
+
+    const panel = page.getByRole("dialog", { name: "Version note" });
+    await expect(panel.getByRole("textbox", { name: "Version note" })).toBeFocused();
+    await expect(panel).toBeInViewport({ ratio: 1 });
+    expect((await panel.boundingBox())!.y).toBeGreaterThanOrEqual(
+      (await save.boundingBox())!.y + (await save.boundingBox())!.height,
+    );
+    await expectNoHorizontalOverflow(page);
+    await page.keyboard.press("Escape");
+    await expect(panel).toHaveCount(0);
+    // Escape writes nothing: the save is there to click again. Focus returning to it is the unit
+    // test's to check.
+    await expect(save).toHaveAccessibleName("Save version 2");
   });
 
   test("puts the actions top right, over the location and the details, on a wide screen", async ({

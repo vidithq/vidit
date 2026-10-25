@@ -129,10 +129,12 @@ test.describe("submit", () => {
 
     // The page name stays the heading of the page, for assistive tech only.
     await expect(page.getByRole("heading", { level: 1, name: "Submit" })).toHaveClass(/sr-only/);
+    // The typed text starts where the title's text starts: the box bleeds left by its border
+    // and padding, and up and down by 5px, so it holds the title's line.
     const field = page.getByLabel("Title", { exact: true });
     const title = (await field.boundingBox())!;
-    expect(Math.abs(title.x - eventTitle.x)).toBeLessThanOrEqual(1);
-    expect(Math.abs(title.y - eventTitle.y)).toBeLessThan(8);
+    expect(Math.abs(title.x + 13 - eventTitle.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(title.y + 5 - eventTitle.y)).toBeLessThanOrEqual(1);
 
     // The byline under it is the analyst's, with the add button that picks the co-geolocators. The
     // picker floats in a popover, so nothing under the title moves.
@@ -307,7 +309,7 @@ test.describe("submit", () => {
       const fits = await option.evaluate((el) => el.scrollWidth <= el.clientWidth);
       expect(fits, `${await option.textContent()} is cut`).toBe(true);
     }
-    for (const name of ["Remove source 1", "Remove source 1 link 1", "Add source 1 link"]) {
+    for (const name of ["Remove source 1", "Remove source 1 link 1", "Add a link to source 1"]) {
       const box = (await first.getByRole("button", { name, exact: true }).boundingBox())!;
       expect(box.height, name).toBeGreaterThanOrEqual(36);
     }
@@ -394,7 +396,7 @@ test.describe("submit", () => {
     await page.goto("/submit?mode=single");
 
     const first = page.getByRole("region", { name: "Source 1" });
-    await first.getByRole("button", { name: "Add source 1 link" }).click();
+    await first.getByRole("button", { name: "Add a link to source 1" }).click();
     await first.getByLabel("Source 1 link 1", { exact: true }).fill("https://t.me/channel/12345");
 
     // URL, post time, archive box, remove: one line, in that order, under their headers.
@@ -410,10 +412,11 @@ test.describe("submit", () => {
       expect(boxes[i].x, `cell ${i + 1} follows cell ${i}`).toBeGreaterThanOrEqual(boxes[i - 1].x + boxes[i - 1].width);
       expect(Math.abs(boxes[i].y + boxes[i].height / 2 - (boxes[0].y + boxes[0].height / 2))).toBeLessThanOrEqual(1);
     }
-    const headers = ["Links", "Posted (UTC)", "Archive"];
+    // The Links header counts the typed URLs.
+    const headers = [/^Links \(1\)/, "Posted (UTC)", "Archive"];
     for (const [i, text] of headers.entries()) {
       const header = (await first.getByText(text, { exact: true }).first().boundingBox())!;
-      expect(Math.abs(header.x - boxes[i].x), `${text} heads its column`).toBeLessThanOrEqual(1);
+      expect(Math.abs(header.x - boxes[i].x), `${String(text)} heads its column`).toBeLessThanOrEqual(1);
       expect(header.y + header.height).toBeLessThanOrEqual(boxes[0].y);
     }
     // The second row keeps the first row's columns.
@@ -518,7 +521,7 @@ test.describe("submit", () => {
   // is what decides whether the reader can see the instant they just typed or
   // only the front half of it.
   for (const [name, label] of [
-    ["capture time", /^Captured \(UTC\)/],
+    ["capture time", /^Captured$/],
     ["link's post time", /^Posted \(UTC\), source 1/],
   ] as const) {
     test(`a filled ${name} field clears its own mark`, async ({ page }) => {

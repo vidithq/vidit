@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import {
   Archive,
   AtSign,
+  Ban,
   ClipboardCheck,
   UserPlus,
   BookOpen,
@@ -19,6 +20,7 @@ import {
   Mail,
   MapPin,
   MessageCircle,
+  Save,
   Search as SearchIcon,
   Swords,
   Trash2,
@@ -30,6 +32,7 @@ import type { Conflict, EventDetail, EventStatus, Media, Tag } from "@/types";
 import { PageShell } from "@/components/ui/PageShell";
 import { AccountPicker, analystAccount, type Account } from "@/components/ui/AccountPicker";
 import { Popover } from "@/components/ui/Popover";
+import { PublishActions, usePublishAction } from "@/components/geolocations/PublishActions";
 import { Combobox } from "@/components/ui/Combobox";
 import { ActionMenu } from "@/components/ui/ActionMenu";
 import { CopyButton } from "@/components/ui/CopyButton";
@@ -477,10 +480,10 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="ARMED_RING" usage="The armed half of a two-click confirm on a control that stays put: a ring plus a neutral plate, so the button reads as changed without moving or resizing anything. Applied via className over any variant, paired with useConfirmAction (which owns the arming, the timeout, and the Escape / outside-click exits) and a label that says what the next click does. Every armed control that is not the loud red point of no return uses it: the event share row's detection link, the edit form's Publish. DANGER_CONFIRM is the destructive counterpart.">
+          <Item name="ARMED_RING" usage="The armed half of a two-click confirm on a control that stays put: a ring plus a neutral plate, so the button reads as changed without moving or resizing anything. Applied via className over any variant, paired with useConfirmAction (which owns the arming, the timeout, and the Escape / outside-click exits) and a label that says what the next click does. Every armed control that is not the loud red point of no return uses it: the event share row's detection link, the event forms' publish buttons (through PublishActions). DANGER_CONFIRM is the destructive counterpart.">
             <div className="flex items-center gap-3">
               <Button variant="primary" className={ARMED_RING}>
-                Confirm publish
+                Confirm
               </Button>
               <Button icon variant="ghost" className={ARMED_RING} aria-label="Copy coordinates" title="Copy coordinates">
                 <Copy size={15} />
@@ -589,7 +592,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<Popover>" usage="An icon button that opens a small panel anchored under it (role=dialog, named by label), for a control too small to sit in the page: the account picker behind the event forms' byline add button. The panel floats over the page in a TOOLTIP_SURFACE bubble, 18rem wide, so nothing in the page moves when it opens. It renders in a portal fixed to the viewport, starts at the trigger's left edge, shifts sideways to stay 8px inside the viewport, and follows the trigger on scroll. The trigger is the ghost icon button with label as its aria-label and tooltip, in the active-row paint while open. children is a function handed the close, so a pick can close it; a field with autoFocus takes focus when it opens. Escape closes it and returns focus to the trigger; an outside click closes it, and a click in a list a control in the panel owns (the Combobox list, portaled out) counts as inside.">
+          <Item name="<Popover>" usage="An icon button that opens a small panel anchored under it (role=dialog, named by label), for a control too small to sit in the page: the account picker behind the event forms' byline add button. The panel floats over the page in a TOOLTIP_SURFACE bubble, 18rem wide, so nothing in the page moves when it opens. It renders in a portal fixed to the viewport, starts at the trigger's left edge, shifts sideways to stay 8px inside the viewport, and follows the trigger on scroll. The trigger is the ghost icon button with label as its aria-label and tooltip, in the active-row paint while open. children is a function handed the close, so a pick can close it; a field with autoFocus takes focus when it opens. Escape closes it and returns focus to the trigger; an outside click closes it, and a click in a list a control in the panel owns (the Combobox list, portaled out) counts as inside. compact makes the trigger a 24px square on a desktop that takes no more height than a 20px line (the byline's add button). <PopoverPanel> is the panel alone, for a caller that owns its trigger: mounted while open, anchored under anchorRef, its left edge on the anchor's or, with align=end, its right edge on the anchor's, and onClose handed whether to return focus (Escape) or not (an outside press). The edit form's Save version N opens the version note in one, through PublishActions.">
             <Variant label="the byline's add button: an account picker">
               <Popover label="Invite a geolocator" icon={<UserPlus size={14} />}>
                 {(close) => (
@@ -603,6 +606,14 @@ export default function PalettePage() {
                   />
                 )}
               </Popover>
+            </Variant>
+            <Variant label="compact, on a byline's line">
+              <span className="inline-flex items-center gap-2 text-sm text-neutral-400">
+                by ana
+                <Popover label="Invite a geolocator" icon={<UserPlus size={12} />} compact>
+                  {() => <p className="px-1 text-xs text-neutral-500">The picker goes here.</p>}
+                </Popover>
+              </span>
             </Variant>
           </Item>
 
@@ -662,7 +673,7 @@ export default function PalettePage() {
             <PaletteFilterSearchFields />
           </Item>
 
-          <Item name="<ToggleRow>" usage="An on/off row: the whole row is the switch (role + click), the <Switch> rendering as its visual span, and it takes the phone tap step. `description` picks the shape: without one the row is the filter toggle, a micro uppercase label on a divided list; with one it is a settings preference, the label at reading size over a line saying what the preference does. The accessible name is the label alone (aria-labelledby on it), never the paragraph under it. `className` carries the caller's own divider and spacing. `disabled` reads the state but refuses the toggle, dimmed, with a `description` saying why (the feed's Show detections while a kind chip is selected). Settings lists one described row per notification kind, its Email switch.">
+          <Item name="<ToggleRow>" usage="An on/off row: the whole row is the switch (role + click), the <Switch> rendering as its visual span, and it takes the phone tap step. `description` picks the shape: without one the row is the filter toggle, a micro uppercase label on a divided list; with one it is a settings preference, the label at reading size over a line saying what the preference does. The accessible name is the label alone (aria-label), never the paragraph under it, which is its description. `className` carries the caller's own divider and spacing. `disabled` reads the state but refuses the toggle, dimmed, with a `description` saying why (the feed's Show detections while a kind chip is selected). Settings lists one described row per notification kind, its Email switch.">
             <PaletteToggleRow />
           </Item>
 
@@ -939,7 +950,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<CharCounter>" usage="The room left in a capped free-text field: `remaining / cap`, red once the value runs over. One counter for every capped field, so the profile bio, a collection's title and a collection's description cannot spell the same reading three ways. It states what is left rather than what is used, and it turns red exactly when the submit refuses the value, so the colour and the disabled button always agree. The figure alone, no label and no box: a caller sits it at the far end of the field's label row.">
+          <Item name="<CharCounter>" usage="How much of a capped free-text field is used: `length / cap`, red once the value runs over. One counter for every capped field, so the profile bio, a collection's title and a collection's description cannot spell the same reading three ways. It turns red exactly when the submit refuses the value, so the colour and the count on the submit always agree. The figure alone, no label and no box: a caller sits it at the far end of the field's label row.">
             <div className="flex w-full max-w-sm items-center justify-between gap-2">
               <label className={FORM_LABEL}>Bio</label>
               <CharCounter length={120} max={500} />
@@ -1041,7 +1052,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<AvatarStack>" usage="A row of 28px pictures: the approval stamps under the event page's actions and the organization logos in a profile header, oldest first, overlapping by default; spacing=gap sets them apart and wraps them onto further lines (the approval stamps). checked puts a 14px check badge in the reader's accent on each picture's bottom-right corner, ringed in the page colour (the approval stamps). An organization (variant=organization) takes the rounded square, an analyst the circle. Each picture is a link to its href (the profile or the organization's page) named by its label, which a <Tooltip tapToShow> shows on hover or keyboard focus, or on a first tap on a touch screen, where the second tap follows the link (who approved which version when, on a stamp; the role on a logo). An item's remove puts a 20px remove disc on the picture's top-right corner, revealed by HOVER_REVEAL on hover or keyboard focus and pinned visible on a touch screen, where its hit area is a 36px square up and right of the disc and the picture takes room for it (a site admin's delete of a stamp, a co-geolocator taken off the edit form's byline). muted fades a picture to half opacity, for an account not credited yet (a pending co-geolocator invitation). At most max (5 by default) show; the rest fold into a +N bubble, a button when onOverflow is set and plain text otherwise; the approval stamps pass every item, so no count shows. Renders nothing for an empty list.">
+          <Item name="<AvatarStack>" usage="A row of 28px pictures: the approval stamps under the event page's actions and the organization logos in a profile header, oldest first, overlapping by default; spacing=gap sets them apart and wraps them onto further lines (the approval stamps). checked puts a 14px check badge in the reader's accent on each picture's bottom-right corner, ringed in the page colour (the approval stamps). An organization (variant=organization) takes the rounded square, an analyst the circle. Each picture is a link to its href (the profile or the organization's page) named by its label, which a <Tooltip tapToShow> shows on hover or keyboard focus, or on a first tap on a touch screen, where the second tap follows the link (who approved which version when, on a stamp; the role on a logo). An item's remove puts a 20px remove disc on the picture's top-right corner, revealed by HOVER_REVEAL on hover or keyboard focus and pinned visible on a touch screen, where its hit area is a 36px square up and right of the disc and the picture takes room for it (a site admin's delete of a stamp, a co-geolocator taken off the edit form's byline). muted fades a picture to half opacity, for an account not credited yet (a pending co-geolocator invitation). size=sm takes the 20px picture of a byline with a 16px remove disc (an event form's geolocators), so the byline keeps the page byline's height. trailing follows the last picture on its line, out of the list's items (the approvals' ?). At most max (5 by default) show; the rest fold into a +N bubble, a button when onOverflow is set and plain text otherwise; the approval stamps pass every item, so no count shows. Renders nothing for an empty list.">
             <Variant label="analysts and an organization, max=3 with onOverflow (+N opens the panel)">
               <AvatarStack
                 label="Approved by"
@@ -1604,7 +1615,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SectionHeading>" usage="Form section heading inside the section's card (a collection's Details, a profile's Bio, the version note). `concept` adds the section's ?; a section no concept explains takes the title alone. An event form's sections take the event page's <SectionEyebrow> above the card instead.">
+          <Item name="<SectionHeading>" usage="Form section heading inside the section's card (a collection's Details, a profile's Bio). `concept` adds the section's ?; a section no concept explains takes the title alone. An event form's sections take the event page's <SectionEyebrow> above the card instead.">
             <SectionHeading title="Version note" concept="version_note" />
             <SectionHeading title="Linked accounts" />
           </Item>
@@ -1910,7 +1921,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<EventShell>" usage="The one shell of an event (components/event/EventShell.tsx): the event page, a version page, the request page, the edit form and the submit form render it and only fill its three zones. Built on PageShell. The title section heads the main column: Back (the real arrow, in the gutter from lg up, in the menu chip below sm), then the title and the byline. On a form the Title field (titleField) takes the title's place, and the page name stays the h1 for assistive tech only. The byline is one line: the owner, the co-geolocators and pending invitees as AvatarStack pictures with their remove discs, then a Popover that holds the account picker; on a published edit it manages the geolocators, on the submit form and a request's or a detection's publish form it picks the co-geolocators the publish invites. Nothing opens in the page, so nothing moves. The actions block is top right: its pinned row stays at the top right while the page scrolls, and what reads below it scrolls with the page (the approvals and an invitation on the event page, a version's approvals, the version note of a published row's edit). The body is EventLayout (components/event/EventLayout.tsx, the grid on the 65:35 PAGE_COLUMNS_SPLIT): Sources and Proof in the main column, Location then Details in the side column. Panels take the full width between the title section and the body (the panels the actions open, a version's banner). The demo renders the real shell inline, inside its own PageFrame, so it follows the window's breakpoints: narrow the window to see the phone order, where the Back arrow moves to the menu chip. Switch the filling to see which slots each surface uses; Open as a page shows the same skeleton at /palette/event-shell.">
+          <Item name="<EventShell>" usage="The one shell of an event (components/event/EventShell.tsx): the event page, a version page, the request page, the edit form and the submit form render it and only fill its three zones. Built on PageShell. The title section heads the main column: Back (the real arrow, in the gutter from lg up, in the menu chip below sm), then the title and the byline. On a form the Title field (titleField) takes the title's place, and the page name stays the h1 for assistive tech only. The byline is one line: the owner, the co-geolocators and pending invitees as AvatarStack pictures with their remove discs, then a Popover that holds the account picker; on a published edit it manages the geolocators, on the submit form and a request's or a detection's publish form it picks the co-geolocators the publish invites. Nothing opens in the page, so nothing moves. The actions block is top right: its pinned row stays at the top right while the page scrolls, and what reads below it scrolls with the page (the approvals and an invitation on the event page, a version's approvals, a form's incomplete-form notice). The body is EventLayout (components/event/EventLayout.tsx, the grid on the 65:35 PAGE_COLUMNS_SPLIT): Sources and Proof in the main column, Location then Details in the side column. Panels take the full width between the title section and the body (the panels the actions open, a version's banner). The demo renders the real shell inline, inside its own PageFrame, so it follows the window's breakpoints: narrow the window to see the phone order, where the Back arrow moves to the menu chip. Switch the filling to see which slots each surface uses; Open as a page shows the same skeleton at /palette/event-shell.">
             <EventShellPreview />
           </Item>
 
@@ -1927,7 +1938,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SourceBlock> / <SourceBlocks>" usage="One source of an event on a reading surface (components/sources/SourceBlock.tsx), read like the event's Details card: a <DetailCard> region named Source N, its file in the lead slot through <MediaGallery> (behind its own <GraphicContentGate> when this source is flagged, a No file box without one, and no file area at all on a context source without one), then <DetailRow>s for Title (Untitled when empty), Level as a <Pill>, Kind (the kind label, then the file's kind after a middle dot when there is a file: Drone · video, Article; an Unknown kind shows the file's kind alone, or no row without a file), Capture position (the compact <CoordinateValue>: 4 decimals and the small <CoordinateActions> on one line, under wrapLabel), Captured, Links (N) (right-aligned, each link through <SourceLabel> (its host, the full URL in the title) followed by its <ArchivedCopies> mark, with Posted and its UTC date and time (the date alone at exactly midnight UTC) or Date unknown under it) and Tags as <DetailPills>. A row with no value drops out, except Title. The map panel keeps a LIST_TILE with bare compact rows. `wide` grows the file and sets it beside the rows (<DetailCard leadBeside>). <SourceBlocks> renders the event's blocks in API order: a <HorizontalScroller> row under a Sources (N) eyebrow on the event page (eventPageSlots), a vertical stack under Sources in the map panel (<EventDetailBody>). A lone source on the event page skips the scroller and renders as one wide block.">
+          <Item name="<SourceBlock> / <SourceBlocks>" usage="One source of an event on a reading surface (components/sources/SourceBlock.tsx), read like the event's Details card: a <DetailCard> region named Source N, its file in the lead slot through <MediaGallery> (behind its own <GraphicContentGate> when this source is flagged, a No file box without one, and no file area at all on a context source without one), then <DetailRow>s in the order of the editor's fields: Title, Level as a <Pill>, Kind (the kind label, then the file's kind after a middle dot when there is a file: Drone · video, Article; an Unknown kind shows the file's kind alone, or no row without a file), Links (N) (right-aligned, each link through <SourceLabel> (its host, the full URL in the title) followed by its <ArchivedCopies> mark, with Posted and its UTC date and time (the date alone at exactly midnight UTC) or Date unknown under it), Captured, Capture position (the compact <CoordinateValue>: 4 decimals and the small <CoordinateActions> on one line, under wrapLabel) and Tags as <DetailPills>. A row with no value drops out, Title included. The map panel keeps a LIST_TILE with bare compact rows. `wide` grows the file and sets it beside the rows (<DetailCard leadBeside>). <SourceBlocks> renders the event's blocks in API order: a <HorizontalScroller> row under a Sources (N) eyebrow on the event page (eventPageSlots), a vertical stack under Sources in the map panel (<EventDetailBody>). A lone source on the event page skips the scroller and renders as one wide block.">
             <div className="w-full max-w-2xl">
               <SourceBlocks sources={[MOCK_SOURCE, MOCK_CONTEXT_SOURCE]} alt="Strike on a depot" />
             </div>
@@ -1973,7 +1984,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<SourcesField> / <SourceEditor>" usage="The Sources section of every event form (components/sources/): one <SourceEditor> per source, each a <Card>, in the order of the event page's source block: the file slot (MediaManager on <FileManager>, one full-width tile; a pick uploads at once through POST /uploads), the title, the level (<SegmentedControl>) on its own line and the kind (<Select>, required on every source) under it, the links (<LinkListInput>, one row per link with its post time and <ArchiveBox>, then <SourceImageryCheck> on a satellite or aircraft source), then More details (<Disclosure>, open when a field inside holds a value): the capture time (<DateTimeInput>), the capture position (CoordinateInputs, hidden for an article, an official statement or another document), the tags (<TagChips>) and the graphic flag (<Switch>, locked on a flagged stored source). The section has no card of its own: its <SectionEyebrow> header row sits on the page like the event page's. It lays the editors out in a row <HorizontalScroller> like the event page's sources, a lone editor at full width and two or more side by side with the row's peek, every editor mounted, with Add a source (capped at 10) in its header; Add a source scrolls the new editor into view, the red trash icon (per editor, from two) arms on the first click and removes on the second, then shows the neighbour, and a publish attempt shows the first editor with a gap.">
+          <Item name="<SourcesField> / <SourceEditor>" usage="The Sources section of every event form (components/sources/): one <SourceEditor> per source, each a <Card>, in the order of the event page's source block: the file slot (MediaManager on <FileManager>, one full-width tile; a pick uploads at once through POST /uploads), the Title (named Source N title), the level (<SegmentedControl>) on its own line and the kind (<Select>, required on every source) under it, the links (<LinkListInput> under Links (N), one row per link with its post time and <ArchiveBox>, Add a link under them, then <SourceImageryCheck> on a satellite or aircraft source), then More details (<Disclosure>, open when a field inside holds a value): Captured (<DateTimeInput>, UTC), the capture position (CoordinateInputs, hidden for an article, an official statement or another document), the tags (<TagChips>) and Graphic content (<Switch> with its ?, locked on a flagged stored source). Each label's ? sits beside its <label>, never inside it. The section has no card of its own: its Sources (N) <SectionEyebrow> header row sits on the page like the event page's, and a missing file's red line sits in that row, so no editor moves down. It lays the editors out in a row <HorizontalScroller> like the event page's sources, a lone editor at full width with its file beside its title, level and kind once the card is 42rem wide (like <DetailCard leadBeside>), the links and More details under both, and two or more side by side with the row's peek, every editor mounted, with Add a source (capped at 10) in its header; Add a source scrolls the new editor into view, the red trash icon (per editor, from two) arms on the first click and removes on the second, then shows the neighbour, and a publish attempt shows the first editor with a gap.">
             <div className="w-full max-w-2xl">
               <SourcesField
                 sources={paletteSources}
@@ -1983,6 +1994,10 @@ export default function PalettePage() {
                 invalidKeys={new Set()}
               />
             </div>
+          </Item>
+
+          <Item name="<PublishActions>" usage="The pinned writes of the event forms (components/geolocations/PublishActions.tsx), the submit form's and the edit form's: an aside named Actions, one right-aligned line of buttons that never wraps, each with a <CountBadge> of what it still misses and dimmed while short (it stays clickable, so a click flags the gaps), its icon from lg up, then the ? and the caller's trailing control (the edit form's red close). usePublishAction runs the caller's checks on every click, then writes at once, or arms on a first click with confirm (the button reads Confirm with ARMED_RING, its sentence in a live region, and the second click writes), or with ask opens a <PopoverPanel> under the button whose own confirm writes (the version note). helpFromSm hides the ? below sm, for a line that fills a 320px phone. The error banner follows the line as an alert; lead heads the block (a review pass's position and Skip).">
+            <PalettePublishActions />
           </Item>
 
           <Item name="<ConfirmDialog>" usage="The confirmation step before a final action: a centred MediaOverlay dialog with a Card, its title, a body saying what the action does and what cannot be undone, then Cancel (the initial focus, so Enter on open sends nothing) and the primary confirm. Cancel, Escape and a backdrop click close it; the caller owns the request, and `busy` and `error` show it in flight and refused, while `confirmDisabled` holds the confirm until an input the dialog carries is complete. Approve opens it, since an approval is final, Request approval opens it over the open requests and the picker of whom to ask, and the report flag opens it over the reason and the details.">
@@ -2197,6 +2212,76 @@ function PaletteAccountPicker() {
             emptyText="No analyst or organization matches"
           />
         </Card>
+      </Variant>
+    </div>
+  );
+}
+
+function PalettePublishActions() {
+  const [note, setNote] = useState("");
+  const publish = usePublishAction({
+    check: () => true,
+    write: () => undefined,
+    confirm: "Click again to publish.",
+  });
+  const save = usePublishAction({ check: () => true, write: () => undefined, ask: true });
+  return (
+    <div className="w-full max-w-md space-y-4">
+      <Variant label="two arming publishes, the first short (the submit form)">
+        <PublishActions
+          disabled={false}
+          help="action_submit"
+          buttons={[
+            {
+              action: publish,
+              label: "Publish geolocation",
+              busyLabel: "Publishing…",
+              busy: false,
+              variant: "primary",
+              icon: <MapPin size={14} strokeWidth={2} />,
+              missing: [{ key: "proof", label: "Proof" }],
+            },
+          ]}
+        />
+      </Variant>
+      <Variant label="a save that asks for a note (a published edit)">
+        <PublishActions
+          disabled={false}
+          buttons={[
+            {
+              action: save,
+              label: "Save version 3",
+              busyLabel: "Saving…",
+              busy: false,
+              variant: "primary",
+              icon: <Save size={14} strokeWidth={2} />,
+              ask: {
+                label: "Version note",
+                content: (
+                  <>
+                    <Input
+                      aria-label="Version note"
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      placeholder="What changed, and why"
+                      autoFocus
+                    />
+                    <div className="flex justify-end">
+                      <Button variant="primary" onClick={save.confirmAsk}>
+                        Save version 3
+                      </Button>
+                    </div>
+                  </>
+                ),
+              },
+            },
+          ]}
+          trailing={
+            <Button icon variant="dangerGhost" aria-label="Close this geolocation">
+              <Ban size={14} />
+            </Button>
+          }
+        />
       </Variant>
     </div>
   );

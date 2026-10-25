@@ -69,7 +69,8 @@ function holdsDetails(draft: SourceDraft): boolean {
  * kind, then the links with their post time and archived copy (and the imagery provider check
  * on a satellite or aircraft source). **More details** holds the capture time, the capture
  * position (none on a document kind), the tags and the graphic flag. A `wide` editor (the lone
- * source) sets the file beside the fields once the card is wide enough.
+ * source) sets the file beside the title, level and kind once the card is wide enough, the rest
+ * under both.
  *
  * The editor holds no draft state of its own: `update` patches the draft in the form's list,
  * and `onPickFile` hands a picked file to the list, which uploads it. `actions` is the
@@ -147,7 +148,7 @@ export function SourceEditor({
     </div>
   );
 
-  const fields = (
+  const essentials = (
     <div className="space-y-4">
       <div className="space-y-1.5">
         <label htmlFor={id("title")} className={FORM_LABEL}>
@@ -199,7 +200,11 @@ export function SourceEditor({
           ))}
         </Select>
       </div>
+    </div>
+  );
 
+  const rest = (
+    <div className="space-y-4">
       <div className="space-y-1.5">
         <div className={invalid.link && draft.links.length === 0 ? FORM_INVALID_FIELD : undefined}>
           <LinkListInput<LinkDraft>
@@ -331,10 +336,13 @@ export function SourceEditor({
         <div className="flex flex-wrap items-center gap-1">{actions}</div>
       </header>
       {/* A lone editor reads like the event page's lone source: once the card is 42rem wide the
-          file sits left of the fields, 3:2 (`DetailCard leadBeside`); narrower, it stays on top. */}
-      <div className={cn("grid gap-4", wide && "@2xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] @2xl:gap-5")}>
+          file sits left of the title, level and kind, 3:2 (`DetailCard leadBeside`), and the links
+          and More details take the card's width under both, so a link keeps its one-row layout;
+          narrower, everything stacks. */}
+      <div className={cn("grid gap-4", wide && "@2xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] @2xl:gap-x-5")}>
         {fileSlot}
-        {fields}
+        {essentials}
+        <div className={cn(wide && "@2xl:col-span-2")}>{rest}</div>
       </div>
     </Card>
   );

@@ -188,7 +188,7 @@ function fillTheFloor() {
 async function publishDetection() {
   fillTheFloor();
   fireEvent.click(screen.getByRole("button", { name: "Publish" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Confirm publish" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Confirm" }));
 }
 
 /** Open the byline's add popover and pick `username` by its exact name. */
@@ -204,6 +204,19 @@ function pickCoGeolocator(username: string) {
 /** True when `later` comes after `earlier` in document order. */
 function follows(earlier: Element, later: Element): boolean {
   return !!(earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING);
+}
+
+/** Save a version: the first click opens the note panel on the button, whose save writes. */
+function saveNewVersion(note?: string) {
+  const rail = screen.getByRole("complementary", { name: "Actions" });
+  fireEvent.click(within(rail).getByRole("button", { name: "Save version 2" }));
+  const panel = screen.getByRole("dialog", { name: "Version note" });
+  if (note !== undefined) {
+    fireEvent.change(within(panel).getByRole("textbox", { name: "Version note" }), {
+      target: { value: note },
+    });
+  }
+  fireEvent.click(within(panel).getByRole("button", { name: "Save version 2" }));
 }
 
 /** Close the row on screen: the red close button, then the reason dialog. */
@@ -418,8 +431,8 @@ describe("the publish confirm", () => {
     const button = armSubmit();
 
     // Same element, renamed: nothing is inserted before it, so the second click lands where the first did.
-    expect(button).toHaveAccessibleName("Confirm publish");
-    expect(screen.getByRole("button", { name: "Confirm publish" })).toBe(button);
+    expect(button).toHaveAccessibleName("Confirm");
+    expect(screen.getByRole("button", { name: "Confirm" })).toBe(button);
     expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
     expect(saveVersionMock).not.toHaveBeenCalled();
   });
@@ -492,18 +505,15 @@ describe("editing a published geolocation", () => {
     expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
   });
 
-  it("holds the save and the close in the actions, the note under them, the geolocators beside the byline", () => {
+  it("holds the save and the close in the actions, the geolocators beside the byline", () => {
     render(<EditEventPage />);
 
     const rail = screen.getByRole("complementary", { name: "Actions" });
     const save = within(rail).getByRole("button", { name: "Save version 2" });
     const close = within(rail).getByRole("button", { name: "Close this geolocation" });
     expect(follows(save, close)).toBe(true);
-    // The note is a field under the actions, not an action, over the body.
-    const note = screen.getByRole("textbox", { name: "Version note" });
-    expect(rail.contains(note)).toBe(false);
-    const location = screen.getByRole("heading", { name: /^Location/ });
-    expect(follows(note, location)).toBe(true);
+    // The note is asked for at save time, never in the page.
+    expect(screen.queryByRole("textbox", { name: "Version note" })).toBeNull();
     // The title section: the page heading (visually hidden), the Title field in the event title's
     // place, which joins the form from outside it, then the byline and its add button.
     const pageTitle = screen.getByRole("heading", { level: 1, name: "Edit geolocation" });
@@ -549,8 +559,8 @@ describe("editing a published geolocation", () => {
     fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), {
       target: { value: "Corrected title" },
     });
-    // No arming step: a version is the ordinary way a published event changes.
-    fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
+    // No arming step: the first click asks for the optional note, and its save writes.
+    saveNewVersion();
     await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
     expect(saveVersionMock.mock.calls[0][1].version_no).toBe(1);
     // A published row invites through its Geolocators panel, never with the save.
@@ -573,7 +583,7 @@ describe("editing a published geolocation", () => {
     fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), {
       target: { value: "Corrected title" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
+    saveNewVersion();
     await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
 
     const [, input] = saveVersionMock.mock.calls[0];
@@ -587,7 +597,7 @@ describe("editing a published geolocation", () => {
     fireEvent.change(screen.getByLabelText(/^Posted \(UTC\), source 1/), {
       target: { value: "2026-05-30T15:00" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
+    saveNewVersion();
     await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
 
     expect(saveVersionMock.mock.calls[0][1].sources[0].links[0].posted_at).toBe(
@@ -601,10 +611,7 @@ describe("editing a published geolocation", () => {
     fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), {
       target: { value: "Corrected title" },
     });
-    fireEvent.change(screen.getByRole("textbox", { name: "Version note" }), {
-      target: { value: "Coordinates were off by a block." },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
+    saveNewVersion("Coordinates were off by a block.");
     await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
 
     const [id, input] = saveVersionMock.mock.calls[0];
@@ -622,7 +629,7 @@ describe("editing a published geolocation", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Source 1 link 1" }), {
       target: { value: "https://t.me/channel/999" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
+    saveNewVersion();
     await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
 
     expect(saveVersionMock.mock.calls[0][1].sources[0].links[0].url).toBe(
@@ -633,23 +640,50 @@ describe("editing a published geolocation", () => {
   it("refuses a save that would change nothing, without a request", async () => {
     render(<EditEventPage />);
 
-    // The form posts the whole editable state, so an untouched save would mint a version with no changed fields; the note alone does not lift the refusal.
-    fireEvent.change(screen.getByRole("textbox", { name: "Version note" }), {
-      target: { value: "Read it again." },
-    });
+    // The form posts the whole editable state, so an untouched save would mint a version with no
+    // changed fields: the first click refuses it before asking for a note.
     fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
 
     expect(
       await screen.findByText("Nothing changed since version 1.")
     ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Version note" })).toBeNull();
     expect(saveVersionMock).not.toHaveBeenCalled();
 
     // A moved field makes it a correction again.
     fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), {
       target: { value: "Corrected title" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
+    saveNewVersion();
     await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("saves from the note panel on Enter, and writes nothing on Escape", async () => {
+    render(<EditEventPage />);
+    fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), {
+      target: { value: "Corrected title" },
+    });
+    const save = within(screen.getByRole("complementary", { name: "Actions" })).getByRole("button", {
+      name: "Save version 2",
+    });
+
+    fireEvent.click(save);
+    expect(save).toHaveAttribute("aria-expanded", "true");
+    const note = within(screen.getByRole("dialog", { name: "Version note" })).getByRole("textbox", {
+      name: "Version note",
+    });
+    expect(note).toHaveFocus();
+    fireEvent.keyDown(note, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Version note" })).toBeNull();
+    expect(save).toHaveFocus();
+    expect(saveVersionMock).not.toHaveBeenCalled();
+
+    fireEvent.click(save);
+    const again = screen.getByRole("textbox", { name: "Version note" });
+    fireEvent.change(again, { target: { value: "Typo." } });
+    fireEvent.keyDown(again, { key: "Enter" });
+    await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
+    expect(saveVersionMock.mock.calls[0][1].note).toBe("Typo.");
   });
 
   it("still holds the published floor before it posts", async () => {
@@ -690,7 +724,7 @@ describe("editing an open request", () => {
 
     fillTheFloor();
     fireEvent.click(screen.getByRole("button", { name: "Publish" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Confirm publish" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm" }));
     await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
     expect(saveVersionMock.mock.calls[0][1].version_no).toBe(0);
     expect(updateRequestMock).not.toHaveBeenCalled();

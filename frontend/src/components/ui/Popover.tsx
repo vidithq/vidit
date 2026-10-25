@@ -8,6 +8,7 @@ import {
   useState,
   type KeyboardEvent,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
 
@@ -56,9 +57,7 @@ export function Popover({
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const triggerId = useId();
-  const wrapperRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
 
   // By id rather than the ref: the content calls it, and a ref read there trips the compiler.
   const close = (restoreFocus = true) => {
@@ -66,46 +65,8 @@ export function Popover({
     if (restoreFocus) document.getElementById(triggerId)?.focus();
   };
 
-  // Placed before paint and again on every scroll or resize: style writes, not state.
-  useLayoutEffect(() => {
-    const panel = panelRef.current;
-    const trigger = triggerRef.current;
-    if (!open || !panel || !trigger) return;
-    const place = () => {
-      const anchor = trigger.getBoundingClientRect();
-      const room = document.documentElement.clientWidth - EDGE_PX - panel.offsetWidth;
-      panel.style.top = `${anchor.bottom + GAP_PX}px`;
-      panel.style.left = `${Math.max(EDGE_PX, Math.min(anchor.left, room))}px`;
-    };
-    place();
-    window.addEventListener("scroll", place, true);
-    window.addEventListener("resize", place);
-    return () => {
-      window.removeEventListener("scroll", place, true);
-      window.removeEventListener("resize", place);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointer = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (!wrapperRef.current?.contains(target) && !insidePanel(panelRef.current, target)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onPointer);
-    return () => document.removeEventListener("mousedown", onPointer);
-  }, [open]);
-
-  const onPanelKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== "Escape") return;
-    e.preventDefault();
-    close();
-  };
-
   return (
-    <div ref={wrapperRef} className="inline-flex">
+    <div className="inline-flex">
       <Button
         ref={triggerRef}
         id={triggerId}
@@ -120,20 +81,90 @@ export function Popover({
       >
         {icon}
       </Button>
-      {open &&
-        createPortal(
-          <div
-            ref={panelRef}
-            id={panelId}
-            role="dialog"
-            aria-label={label}
-            onKeyDown={onPanelKeyDown}
-            className={cn("fixed z-50 w-72 max-w-[calc(100vw-1rem)] space-y-2 rounded-md p-2", TOOLTIP_SURFACE)}
-          >
-            {children(close)}
-          </div>,
-          document.body,
-        )}
+      {open && (
+        <PopoverPanel id={panelId} label={label} anchorRef={triggerRef} onClose={close}>
+          {children(close)}
+        </PopoverPanel>
+      )}
     </div>
+  );
+}
+
+/**
+ * The panel of a `<Popover>`, for a caller that owns its trigger (a write that asks one more
+ * thing before it runs, the edit form's version note). Mount it while open. It is fixed to the
+ * viewport from a portal under `anchorRef`, starting at the anchor's left edge, or ending at its
+ * right edge with `align="end"`, shifted to stay inside the viewport, and follows the anchor on
+ * scroll. Escape calls `onClose(true)`, so focus can return to the anchor; a press outside the
+ * panel and the anchor calls `onClose(false)`.
+ */
+export function PopoverPanel({
+  id,
+  label,
+  anchorRef,
+  onClose,
+  align = "start",
+  children,
+}: {
+  id?: string;
+  /** The panel's accessible name. */
+  label: string;
+  anchorRef: RefObject<HTMLElement | null>;
+  onClose: (restoreFocus: boolean) => void;
+  align?: "start" | "end";
+  children: ReactNode;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // Placed before paint and again on every scroll or resize: style writes, not state.
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    const anchorEl = anchorRef.current;
+    if (!panel || !anchorEl) return;
+    const place = () => {
+      const anchor = anchorEl.getBoundingClientRect();
+      const room = document.documentElement.clientWidth - EDGE_PX - panel.offsetWidth;
+      const left = align === "end" ? anchor.right - panel.offsetWidth : anchor.left;
+      panel.style.top = `${anchor.bottom + GAP_PX}px`;
+      panel.style.left = `${Math.max(EDGE_PX, Math.min(left, room))}px`;
+    };
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [anchorRef, align]);
+
+  useEffect(() => {
+    const onPointer = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (!anchorRef.current?.contains(target) && !insidePanel(panelRef.current, target)) {
+        onClose(false);
+      }
+    };
+    document.addEventListener("mousedown", onPointer);
+    return () => document.removeEventListener("mousedown", onPointer);
+  }, [anchorRef, onClose]);
+
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    onClose(true);
+  };
+
+  return createPortal(
+    <div
+      ref={panelRef}
+      id={id}
+      role="dialog"
+      aria-label={label}
+      onKeyDown={onKeyDown}
+      className={cn("fixed z-50 w-72 max-w-[calc(100vw-1rem)] space-y-2 rounded-md p-2", TOOLTIP_SURFACE)}
+    >
+      {children}
+    </div>,
+    document.body,
   );
 }

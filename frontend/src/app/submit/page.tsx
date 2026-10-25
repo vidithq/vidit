@@ -215,6 +215,8 @@ function SubmitForm() {
       disabled={submitting}
       error={error}
       help="action_submit"
+      // The two buttons fill a 320px line: the `?` shows from `sm` up.
+      helpFromSm
       buttons={[
         {
           action: publishGeolocation,

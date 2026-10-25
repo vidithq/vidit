@@ -1,46 +1,74 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { CountBadge } from "@/components/ui/CountBadge";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
-import { ARMED_RING } from "@/components/ui/styles";
+import { PopoverPanel } from "@/components/ui/Popover";
+import { ACCENT_SURFACE, ARMED_RING } from "@/components/ui/styles";
 import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
 import { cn } from "@/lib/cn";
 import { missingSummary, type MissingField } from "@/lib/events";
 import type { Concept } from "@/lib/fieldHelp";
 
-/** What an armed button reads. */
-const ARMED_LABEL = "Confirm publish";
+/** What an armed button reads. One word no longer than a publish label, so arming never widens
+ *  the line. */
+const ARMED_LABEL = "Confirm";
 
-/** One write of an event form. `attempt` runs `check` and, when it passes, the write: at once,
- *  or with `confirm` on the second click, since a publish makes the event public. */
+/**
+ * One write of an event form. `attempt` runs `check` and, when it passes, the write: at once;
+ * with `confirm`, on the second click, since a publish makes the event public; with `ask`, once
+ * the panel the first click opens confirms (`ask.confirm`), for a write that takes one more
+ * input (a version's note).
+ */
 export function usePublishAction({
   check,
   write,
   confirm,
+  ask = false,
 }: {
   /** Flags what holds the write (missing fields, a running upload). True when it may go. */
   check: () => boolean;
   write: () => void;
   /** The armed button's sentence, for screen readers. Set, a first click arms. */
   confirm?: string;
+  /** A first click opens the button's `ask` panel instead of writing. */
+  ask?: boolean;
 }) {
   const { armed, trigger, cancel, controlRef } = useConfirmAction(write, {
     timeoutMs: ARM_MS,
     dismissOnOutside: true,
   });
+  const [asking, setAsking] = useState(false);
   const attempt = () => {
     if (!check()) {
       cancel();
+      setAsking(false);
       return;
     }
-    if (confirm) trigger();
+    if (ask) setAsking(true);
+    else if (confirm) trigger();
     else write();
   };
-  return { attempt, armed: confirm !== undefined && armed, controlRef, confirm };
+  return {
+    attempt,
+    armed: confirm !== undefined && armed,
+    controlRef,
+    confirm,
+    asking,
+    /** Closes the panel and writes. */
+    confirmAsk: () => {
+      setAsking(false);
+      write();
+    },
+    /** Closes the panel, writing nothing; `restoreFocus` returns focus to the button. */
+    cancelAsk: (restoreFocus: boolean) => {
+      setAsking(false);
+      if (restoreFocus) controlRef.current?.focus();
+    },
+  };
 }
 
 export type PublishAction = ReturnType<typeof usePublishAction>;
@@ -60,19 +88,24 @@ export interface PublishButton {
   /** The `<form>` the button submits, so Enter in a field takes the same path (`form`'s
    *  `onSubmit` calls `action.attempt`). Left out, a click runs it. */
   form?: string;
+  /** The panel an `ask` action opens under the button: its name and its content, which ends on
+   *  the confirm that calls `action.confirmAsk`. */
+  ask?: { label: string; content: ReactNode };
 }
 
 /**
  * The pinned writes of an event form, the submit form's and the edit form's: one right-aligned
- * line of buttons, each with the count of what it still misses, then the `?` and `trailing`
- * (the edit form's close). A short button dims and stays clickable, so a click still flags the gaps.
- * An arming button reads *Confirm publish* on the first click, with `ARMED_RING`, and announces its
- * sentence in a live region; the second click writes. The error banner follows the line. `lead`
- * heads the block (a review pass's position and Skip).
+ * line of buttons, each with the count of what it still misses, then the `?` and `trailing` (the
+ * edit form's close). A short button dims and stays clickable, so a click still flags the gaps.
+ * An arming button reads *Confirm* on the first click, with `ARMED_RING`, and announces its
+ * sentence in a live region; the second click writes. An asking button opens its panel on the
+ * first click (`PopoverPanel`). The error banner follows the line. `lead` heads the block (a
+ * review pass's position and Skip).
  */
 export function PublishActions({
   buttons,
   help,
+  helpFromSm = false,
   trailing,
   lead,
   error,
@@ -80,6 +113,8 @@ export function PublishActions({
 }: {
   buttons: PublishButton[];
   help?: Concept;
+  /** Shows the `?` from `sm` up only, for a line with no room for it on a 320px phone. */
+  helpFromSm?: boolean;
   trailing?: ReactNode;
   lead?: ReactNode;
   error?: string | null;
@@ -94,32 +129,52 @@ export function PublishActions({
         {buttons.map((b) => {
           const missing = b.missing ?? [];
           const label = b.busy ? b.busyLabel : b.action.armed ? ARMED_LABEL : b.label;
+          const asking = b.ask !== undefined && b.action.asking;
           return (
             <CountBadge key={b.label} count={missing.length} label={missingSummary(missing)}>
               {(describedBy) => (
-                <Button
-                  ref={b.action.controlRef}
-                  type={b.form ? "submit" : "button"}
-                  form={b.form}
-                  onClick={b.form ? undefined : b.action.attempt}
-                  variant={b.variant}
-                  disabled={disabled}
-                  aria-label={label}
-                  aria-describedby={describedBy}
-                  className={cn(missing.length > 0 && "opacity-60", b.action.armed && ARMED_RING)}
-                >
-                  <span aria-hidden className="contents max-lg:hidden">
-                    {b.icon}
-                  </span>
-                  {/* Both labels share one grid cell, so arming never resizes the button. */}
-                  <span aria-hidden className="grid">
-                    <span className="invisible col-start-1 row-start-1">{b.label}</span>
-                    {b.action.confirm && (
-                      <span className="invisible col-start-1 row-start-1">{ARMED_LABEL}</span>
+                <>
+                  <Button
+                    ref={b.action.controlRef}
+                    type={b.form ? "submit" : "button"}
+                    form={b.form}
+                    onClick={b.form ? undefined : b.action.attempt}
+                    variant={b.variant}
+                    disabled={disabled}
+                    aria-label={label}
+                    aria-describedby={describedBy}
+                    aria-haspopup={b.ask ? "dialog" : undefined}
+                    aria-expanded={b.ask ? asking : undefined}
+                    className={cn(
+                      "shrink-0 whitespace-nowrap",
+                      missing.length > 0 && "opacity-60",
+                      b.action.armed && ARMED_RING,
+                      asking && ACCENT_SURFACE,
                     )}
-                    <span className="col-start-1 row-start-1">{label}</span>
-                  </span>
-                </Button>
+                  >
+                    <span aria-hidden className="contents max-lg:hidden">
+                      {b.icon}
+                    </span>
+                    {/* Both labels share one grid cell, so arming never resizes the button. */}
+                    <span aria-hidden className="grid">
+                      <span className="invisible col-start-1 row-start-1">{b.label}</span>
+                      {b.action.confirm && (
+                        <span className="invisible col-start-1 row-start-1">{ARMED_LABEL}</span>
+                      )}
+                      <span className="col-start-1 row-start-1">{label}</span>
+                    </span>
+                  </Button>
+                  {asking && (
+                    <PopoverPanel
+                      label={b.ask!.label}
+                      anchorRef={b.action.controlRef}
+                      onClose={b.action.cancelAsk}
+                      align="end"
+                    >
+                      {b.ask!.content}
+                    </PopoverPanel>
+                  )}
+                </>
               )}
             </CountBadge>
           );
@@ -127,7 +182,7 @@ export function PublishActions({
         {/* Last on the line, the `?` keeps its phone tap area, 8px past its glyph, inside the
             line's right edge. */}
         {help && (
-          <span className={cn("flex", !trailing && "max-sm:pr-2")}>
+          <span className={cn("flex", helpFromSm && "max-sm:hidden", !trailing && "max-sm:pr-2")}>
             <FieldHelp concept={help} />
           </span>
         )}

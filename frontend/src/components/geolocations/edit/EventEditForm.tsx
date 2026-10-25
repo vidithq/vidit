@@ -9,8 +9,7 @@ import { eventFormSlots, useEventForm } from "@/components/geolocations/EventFor
 import { PublishActions, usePublishAction } from "@/components/geolocations/PublishActions";
 import { Ban, MapPin, Megaphone, Save } from "lucide-react";
 
-import { Card } from "@/components/ui/Card";
-import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { FieldHelp } from "@/components/ui/FieldHelp";
 import { sourcesBlockWrite } from "@/components/sources/SourcesField";
 import { LABEL_TEXT } from "@/components/ui/form-styles";
 import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
@@ -58,7 +57,8 @@ const CONFIRM_SENTENCE =
  * overwrites it in place and leaves it version 0.
  *
  * **Save version** (a `geolocated` row): the same fields, and the write files the version it
- * supersedes. An optional note travels with that version. No confirm.
+ * supersedes. The first click asks for the optional note that travels with that version, in a
+ * panel on the button, whose save writes.
  *
  * Built like the create form: `EventShell`, `eventFormSlots`, `useEventForm`. State is seeded
  * from props (the form mounts after the row loaded), so the proof editor gets its
@@ -66,8 +66,8 @@ const CONFIRM_SENTENCE =
  * row that moved meanwhile answers a conflict instead of being overwritten.
  *
  * The fields fill `EventShell`'s zones. The actions block pins the writes (`PublishActions`), the
- * error banner and, for the owner, the close as a red icon button; the incomplete-form notice and
- * a published row's version note read under them.
+ * error banner and, for the owner, the close as a red icon button; the incomplete-form notice
+ * reads under them.
  * The title section's byline manages the geolocators in place: on a published row each change
  * applies on click and never makes a version; on a request or a detection the reader picks the
  * co-geolocators the publish invites.
@@ -234,7 +234,9 @@ export function EventEditForm({
       return true;
     },
     write: () => void submitMutation.run(),
+    // A version asks for its note in a panel on the button; a publish arms.
     confirm: editingPublished ? undefined : CONFIRM_SENTENCE,
+    ask: editingPublished,
   });
 
   // No confirm: the in-place save publishes nothing and files no version.
@@ -263,6 +265,9 @@ export function EventEditForm({
         : "Geolocate request"
       : "Publish detection";
 
+  // The version the save produces (live row N becomes N + 1).
+  const saveLabel = `Save version ${geo.version_no + 1}`;
+
   const actions = (
     <PublishActions
       disabled={busy}
@@ -283,13 +288,23 @@ export function EventEditForm({
         editingPublished
           ? {
               action: submit,
-              // The version the save produces (live row N becomes N + 1).
-              label: `Save version ${geo.version_no + 1}`,
+              label: saveLabel,
               busyLabel: "Saving…",
               busy: submitMutation.loading,
               variant: "primary",
               icon: <Save size={14} strokeWidth={2} />,
               form: EDIT_FORM_ID,
+              ask: {
+                label: "Version note",
+                content: (
+                  <VersionNotePanel
+                    note={editNote}
+                    setNote={setEditNote}
+                    saveLabel={saveLabel}
+                    onSave={submit.confirmAsk}
+                  />
+                ),
+              },
             }
           : {
               action: submit,
@@ -363,34 +378,11 @@ export function EventEditForm({
       backFallback={redirectTo}
       actions={{
         pinned: actions,
-        // Optional, never part of the floor. Outside the `<form>`, so it joins it through `form`,
-        // and Enter in it still saves.
         below: (
-          <div className="space-y-4">
-            <IncompleteFormNotice
-              key={form.validationAttempt}
-              missing={form.missingFields.map((m) => m.label)}
-            />
-            {/* Optional, never part of the floor. Outside the `<form>`, so it joins it through
-                `form`, and Enter in it still saves. */}
-            {editingPublished && (
-              <section>
-                <SectionEyebrow title="Version note" concept="version_note" />
-                <Card>
-                  <Input
-                    id="version_note"
-                    type="text"
-                    form={EDIT_FORM_ID}
-                    value={editNote}
-                    maxLength={VERSION_NOTE_MAX_LEN}
-                    onChange={(e) => setEditNote(e.target.value)}
-                    placeholder="What changed, and why"
-                    aria-label="Version note"
-                  />
-                </Card>
-              </section>
-            )}
-          </div>
+          <IncompleteFormNotice
+            key={form.validationAttempt}
+            missing={form.missingFields.map((m) => m.label)}
+          />
         ),
       }}
       body={{
@@ -406,5 +398,51 @@ export function EventEditForm({
         },
       }}
     />
+  );
+}
+
+/** The panel the first click on **Save version N** opens: the optional note the version keeps,
+ *  then the save. Enter in the note saves; the panel's Escape or an outside click writes nothing. */
+function VersionNotePanel({
+  note,
+  setNote,
+  saveLabel,
+  onSave,
+}: {
+  note: string;
+  setNote: (note: string) => void;
+  saveLabel: string;
+  onSave: () => void;
+}) {
+  return (
+    <>
+      <div className="space-y-1.5 px-1">
+        <span className="flex items-center gap-1">
+          <label htmlFor="version_note" className={LABEL_TEXT}>
+            Version note
+          </label>
+          <FieldHelp concept="version_note" />
+        </span>
+        <Input
+          id="version_note"
+          type="text"
+          value={note}
+          maxLength={VERSION_NOTE_MAX_LEN}
+          onChange={(e) => setNote(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+            e.preventDefault();
+            onSave();
+          }}
+          placeholder="What changed, and why"
+          autoFocus
+        />
+      </div>
+      <div className="flex justify-end">
+        <Button variant="primary" onClick={onSave}>
+          {saveLabel}
+        </Button>
+      </div>
+    </>
   );
 }

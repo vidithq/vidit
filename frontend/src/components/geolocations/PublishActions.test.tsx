@@ -49,7 +49,7 @@ describe("PublishActions", () => {
 
     fireEvent.click(button);
     expect(write).not.toHaveBeenCalled();
-    expect(button).toHaveAccessibleName("Confirm publish");
+    expect(button).toHaveAccessibleName("Confirm");
     expect(screen.getByRole("status")).toHaveTextContent("Click again to publish.");
 
     fireEvent.click(button);
