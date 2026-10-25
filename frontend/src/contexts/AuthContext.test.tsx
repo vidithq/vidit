@@ -95,8 +95,20 @@ describe("AuthProvider and a rejected session", () => {
   it("signs the reader out when /auth/me answers 401 too", async () => {
     meAnswers(401);
     await signedIn();
-    act(() => reportSessionRejected());
+    let taken = false;
+    act(() => {
+      taken = reportSessionRejected();
+    });
+    expect(taken).toBe(true);
     expect(await screen.findByText("signed out, session ended")).toBeInTheDocument();
+  });
+
+  it("leaves a rejection to the caller while nobody is signed in", async () => {
+    meAnswers(401);
+    await signedIn();
+    act(() => reportSessionRejected());
+    await screen.findByText("signed out, session ended");
+    expect(reportSessionRejected()).toBe(false);
   });
 
   it("re-reads /auth/me once for calls that fail together", async () => {

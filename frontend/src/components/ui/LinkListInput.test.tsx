@@ -165,6 +165,16 @@ describe("LinkListInput", () => {
     expect(screen.getByText("line of https://b.example/2")).toBeInTheDocument();
   });
 
+  it("focuses the new row's URL field on add", () => {
+    function Host() {
+      const [rows, setRows] = useState(["https://a.example/1"]);
+      return <LinkListInput {...props} rows={rows} onChange={setRows} />;
+    }
+    render(<Host />);
+    fireEvent.click(screen.getByRole("button", { name: "Add link" }));
+    expect(screen.getByLabelText("Link 2")).toHaveFocus();
+  });
+
   it("disables add at the cap and says what the cap is", () => {
     render(
       <LinkListInput

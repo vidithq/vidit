@@ -35,6 +35,16 @@ describe("apiFetch and a rejected session", () => {
     expect(session.reportSessionRejected).toHaveBeenCalledTimes(2);
   });
 
+  it("marks the error when a signed-in session takes the rejection, so a form shows nothing", async () => {
+    answer(401);
+    session.reportSessionRejected.mockReturnValue(true);
+    const err = await apiFetch("/users/me", { method: "PATCH" }).catch((e: unknown) => e);
+    expect(err).toMatchObject({ status: 401, sessionRejected: true });
+    session.reportSessionRejected.mockReturnValue(false);
+    const anonymous = await apiFetch("/users/me", { method: "PATCH" }).catch((e: unknown) => e);
+    expect(anonymous).toMatchObject({ status: 401, sessionRejected: false });
+  });
+
   it("does not report a 403, which refuses a live session", async () => {
     answer(403);
     await expect(apiFetch("/events/e1/collections")).rejects.toMatchObject({ status: 403 });

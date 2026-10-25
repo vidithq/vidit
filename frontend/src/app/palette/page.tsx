@@ -419,7 +419,7 @@ export default function PalettePage() {
     sourceDraftFrom(MOCK_CONTEXT_SOURCE),
     sourceDraftFrom(MOCK_SATELLITE_SOURCE),
   ]);
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState<"accent" | "danger" | null>(null);
 
   return (
     <PageShell
@@ -1260,7 +1260,7 @@ export default function PalettePage() {
 
           <Item
             name="<ArchiveBox>"
-            usage="One link's archive box on a form, in the link's row after its post time (a <LinkListInput> column). On a form it is never grey: whatever state the link is in there is something to do with it. No copy yet is an icon-only ghost button, the ArchiveRestore mark with an Archive tooltip, which opens the paste line under the row. A copy (the stored one, or a pasted snapshot on an allowed host) shows as itself: the Archive mark and the service's name, opening the copy under the accessible name the event page gives it, with ArchiveRestore beside it, since one link holds one copy and a wrong paste has to be replaceable. Every name folds in `describes`, because a form carries several of these and they look alike. Nothing is written here: the paste travels with the form."
+            usage="One link's archive box on a form, in the link's row after its post time (a <LinkListInput> column). On a form it is never grey: whatever state the link is in there is something to do with it. No copy yet is an icon-only ghost button, the ArchiveRestore mark with an Archive tooltip, which opens the paste line under the row. A copy (the stored one, or a pasted snapshot on an allowed host) shows as itself: the Archive mark and the service's name, opening the copy under the accessible name the event page gives it, with ArchiveRestore beside it, since one link holds one copy and a wrong paste has to be replaceable. On a wide link list the box is 9rem wide in every state, so a copy appearing never narrows the row's other fields; a long service name truncates and its tooltip shows it whole. Every name folds in `describes`, because a form carries several of these and they look alike. Nothing is written here: the paste travels with the form."
           >
             <Variant label="no copy yet: the Archive icon opens the paste line">
               <ArchiveBox
@@ -2028,19 +2028,35 @@ export default function PalettePage() {
             <PalettePublishActions />
           </Item>
 
-          <Item name="<ConfirmDialog>" usage="The confirmation step before a final action: a centred MediaOverlay dialog with a Card, its title, a body saying what the action does and what cannot be undone, then Cancel (the initial focus, so Enter on open sends nothing) and the primary confirm. Cancel, Escape and a backdrop click close it; the caller owns the request, and `busy` and `error` show it in flight and refused, while `confirmDisabled` holds the confirm until an input the dialog carries is complete. Approve opens it, since an approval is final, Request approval opens it over the open requests and the picker of whom to ask, and the report flag opens it over the reason and the details.">
-            <Button variant="secondary" onClick={() => setConfirmOpen(true)}>
-              Approve
-            </Button>
-            {confirmOpen && (
+          <Item name="<ConfirmDialog>" usage="The confirmation step before a final action: a centred MediaOverlay dialog with a Card, its title, a body saying what the action does and what cannot be undone, then Cancel (the initial focus, so Enter on open sends nothing) and the primary confirm. Cancel, Escape and a backdrop click close it; the caller owns the request, and `busy` and `error` show it in flight and refused, while `confirmDisabled` holds the confirm until an input the dialog carries is complete. `tone` is accent by default; `danger` paints the border and the confirm red (the danger Button) for an action that deletes, removes or closes something: closing an event, every admin delete, purge and invite revoke, deleting an organization or an approval, removing a co-geolocator or withdrawing an invitation, and hiding a report whose owner deleted it. Approve opens it in accent, since an approval is final but destroys nothing, Request approval opens it over the open requests and the picker of whom to ask, and the report flag opens it over the reason and the details.">
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={() => setConfirmOpen("accent")}>
+                Approve
+              </Button>
+              <Button variant="danger" onClick={() => setConfirmOpen("danger")}>
+                Delete approval
+              </Button>
+            </div>
+            {confirmOpen === "accent" && (
               <ConfirmDialog
                 title="Approve this version?"
                 confirmLabel="Approve"
-                onConfirm={() => setConfirmOpen(false)}
-                onCancel={() => setConfirmOpen(false)}
+                onConfirm={() => setConfirmOpen(null)}
+                onCancel={() => setConfirmOpen(null)}
               >
                 <p>You approve version 2 of this geolocation.</p>
                 <p>An approval is final.</p>
+              </ConfirmDialog>
+            )}
+            {confirmOpen === "danger" && (
+              <ConfirmDialog
+                title="Delete this approval?"
+                confirmLabel="Delete approval"
+                tone="danger"
+                onConfirm={() => setConfirmOpen(null)}
+                onCancel={() => setConfirmOpen(null)}
+              >
+                <p>You delete the approval of version 2 by maya. This cannot be undone.</p>
               </ConfirmDialog>
             )}
           </Item>

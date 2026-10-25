@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Plus } from "lucide-react";
 
 import { Button } from "./Button";
@@ -91,6 +91,8 @@ export function LinkListInput<R>({
   // Every row starts closed; the flags move with the rows on a removal.
   const [expanded, setExpanded] = useState<boolean[]>([]);
   const expandedNow = rows.map((_, i) => expanded[i] ?? false);
+  // The row **Add** appended: its URL field takes the focus once it mounts.
+  const focusRow = useRef<number | null>(null);
 
   const slot = (i: number): LinkListRow<R> => ({
     index: i,
@@ -132,6 +134,12 @@ export function LinkListInput<R>({
               className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md border border-neutral-800 p-2 @xl:col-span-full @xl:grid-cols-subgrid @xl:border-0 @xl:p-0"
             >
               <Input
+                ref={(el) => {
+                  if (el && focusRow.current === i) {
+                    focusRow.current = null;
+                    el.focus();
+                  }
+                }}
                 type="url"
                 maxLength={maxLength}
                 value={urlOf(row)}
@@ -176,6 +184,7 @@ export function LinkListInput<R>({
           disabled={atCap}
           aria-label={addName}
           onClick={() => {
+            focusRow.current = rows.length;
             onChange([...rows, blank()]);
             setExpanded([...expandedNow, false]);
           }}

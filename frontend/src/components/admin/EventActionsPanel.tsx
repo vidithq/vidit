@@ -293,6 +293,7 @@ export function EventActionsPanel() {
           busyLabel="Deleting…"
           busy={busy}
           error={deleteMutation.error}
+          tone="danger"
           onConfirm={() => {
             moderateMutation.reset();
             void deleteMutation.run();

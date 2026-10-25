@@ -64,6 +64,7 @@ describe("RecentSubmissions", () => {
     );
 
     expect(screen.getByText("No geolocations submitted yet.")).toBeInTheDocument();
+    expect(screen.queryByText("No geolocations yet.")).not.toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Submit your first geolocation →" })
     ).toHaveAttribute("href", "/submit?mode=single");

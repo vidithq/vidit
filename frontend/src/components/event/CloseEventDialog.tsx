@@ -93,6 +93,7 @@ export function CloseEventDialog({
       busy={closeMutation.loading}
       confirmDisabled={disabled}
       error={closeMutation.error}
+      tone="danger"
       onConfirm={submit}
       onCancel={onCancel}
     >

@@ -247,6 +247,7 @@ function InviteCodeRow({
             busyLabel={INVITE_ACTIONS[confirming].busy}
             busy={action.loading}
             error={action.error}
+            tone="danger"
             onConfirm={() => void action.run(confirming)}
             onCancel={() => {
               setConfirming(null);

@@ -173,6 +173,7 @@ function ReportRow({
           busyLabel="Hiding…"
           busy={busy}
           error={resolveMutation.error}
+          tone={ownerDeleted ? "danger" : "accent"}
           onConfirm={() => void resolveMutation.run("hidden")}
           onCancel={() => {
             setConfirmingHide(false);

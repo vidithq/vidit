@@ -138,6 +138,7 @@ function DeleteOrganization({
       busy={remove.loading}
       confirmDisabled={typed !== slug}
       error={remove.error}
+      tone="danger"
       onConfirm={() => void remove.run()}
       onCancel={onCancel}
     >

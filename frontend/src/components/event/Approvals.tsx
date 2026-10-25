@@ -73,6 +73,7 @@ function DeleteApprovalDialog({
       busyLabel="Deleting…"
       busy={remove.loading}
       error={remove.error}
+      tone="danger"
       onConfirm={() => void remove.run()}
       onCancel={onCancel}
     >

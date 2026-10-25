@@ -39,12 +39,15 @@ export function RecentSubmissions({
         <div className="basis-56 grow min-w-0 space-y-1">
           <SectionEyebrow title="Recent submissions" margin="none" />
           {/* Gated on the rows this block renders, not `geolocations_count`: a count from a different
-              request could promise "latest geolocations" above an empty list (a failed feed read). */}
-          <p className="text-xs text-neutral-500">
-            {submissions.length > 0
-              ? `${profile.username}'s latest geolocations, newest first.`
-              : "No geolocations yet."}
-          </p>
+              request could promise "latest geolocations" above an empty list (a failed feed read).
+              The owner's empty block says it once, in the empty state below. */}
+          {(submissions.length > 0 || !isOwn) && (
+            <p className="text-xs text-neutral-500">
+              {submissions.length > 0
+                ? `${profile.username}'s latest geolocations, newest first.`
+                : "No geolocations yet."}
+            </p>
+          )}
         </div>
         {submissions.length > 0 && (
           // Mirrors backend `event_filters.published_events()`: `status=geolocated` makes the expansion serve the
@@ -81,7 +84,7 @@ export function RecentSubmissions({
         </div>
       ) : (
         // Own profile, nothing submitted: the freshly-invited analyst gets a next action. A visitor gets
-        // nothing more, since the heading already reads "No geolocations yet."
+        // the heading alone, which reads "No geolocations yet."
         isOwn && (
           <EmptyState
             variant="plain"

@@ -153,6 +153,11 @@ function MissingCopyMark({ describes }: { describes: string }) {
   );
 }
 
+// On the wide list (`@xl` of the `LinkListInput` container) one width in every state, so a copy
+// appearing mid typing never narrows the row's other fields; a long service name truncates, and
+// its tooltip carries it whole. A narrow list's card wraps its second line instead.
+const ARCHIVE_BOX = "flex min-w-0 items-center gap-0.5 @xl:w-36";
+
 /**
  * One link's archive box on a form, in the link's row. Never grey on a form.
  *
@@ -180,29 +185,33 @@ export function ArchiveBox({
   const provider = isSnapshotUrl(pasted) ? snapshotProvider(pasted) : null;
   if (!provider) {
     return (
-      <Button
-        icon
-        variant="ghost"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        aria-label={`Archive ${describes}`}
-        title="Archive"
-      >
-        <ArchiveRestore size={14} />
-      </Button>
+      <span className={ARCHIVE_BOX}>
+        <Button
+          icon
+          variant="ghost"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          aria-label={`Archive ${describes}`}
+          title="Archive"
+        >
+          <ArchiveRestore size={14} />
+        </Button>
+      </span>
     );
   }
   const replace = `Replace the archived copy of ${describes}`;
   return (
-    <span className="inline-flex items-center gap-0.5">
-      <OutboundLink
-        href={pasted}
-        aria-label={copyLabel(provider, describes)}
-        className={buttonClasses("ghost")}
-      >
-        <ArchiveMark size={14} />
-        {PROVIDER_LABELS[provider]}
-      </OutboundLink>
+    <span className={ARCHIVE_BOX}>
+      <Tooltip label={PROVIDER_LABELS[provider]}>
+        <OutboundLink
+          href={pasted}
+          aria-label={copyLabel(provider, describes)}
+          className={buttonClasses("ghost", { className: "min-w-0" })}
+        >
+          <ArchiveMark size={14} className="shrink-0" />
+          <span className="truncate">{PROVIDER_LABELS[provider]}</span>
+        </OutboundLink>
+      </Tooltip>
       <Button
         icon
         variant="ghost"

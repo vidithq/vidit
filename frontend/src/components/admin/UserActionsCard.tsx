@@ -276,6 +276,7 @@ export function UserActionsCard({
           busyLabel="Working…"
           busy={acting}
           error={dangerError}
+          tone="danger"
           onConfirm={submitDanger}
           onCancel={cancelDanger}
         >

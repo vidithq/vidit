@@ -109,7 +109,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(
     () =>
       onSessionRejected(() => {
-        if (!signedIn.current || rechecking.current) return;
+        if (!signedIn.current) return false;
+        if (rechecking.current) return true;
         rechecking.current = true;
         const version = stateVersion.current;
         apiFetch<User>("/auth/me")
@@ -129,6 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .finally(() => {
             rechecking.current = false;
           });
+        return true;
       }),
     [setUser],
   );

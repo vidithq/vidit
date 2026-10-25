@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 import { Button } from "./Button";
 import { Card } from "./Card";
+import { cn } from "@/lib/cn";
 import { FORM_ERROR_BANNER } from "./form-styles";
 import { MediaOverlay } from "./MediaLightbox";
 
@@ -14,7 +15,8 @@ import { MediaOverlay } from "./MediaLightbox";
  *
  * The caller owns the open state and the request: `onConfirm` runs it, `busy` holds the buttons
  * while it is in flight, and `error` prints its refusal inside the dialog. `confirmDisabled` holds
- * the confirm button while an input the dialog carries is incomplete.
+ * the confirm button while an input the dialog carries is incomplete. `tone="danger"` paints the
+ * border and the confirm red, for an action that deletes, removes or closes something.
  */
 export function ConfirmDialog({
   title,
@@ -24,6 +26,7 @@ export function ConfirmDialog({
   busy = false,
   confirmDisabled = false,
   error = null,
+  tone = "accent",
   onConfirm,
   onCancel,
 }: {
@@ -36,12 +39,18 @@ export function ConfirmDialog({
   busy?: boolean;
   confirmDisabled?: boolean;
   error?: string | null;
+  tone?: "accent" | "danger";
   onConfirm: () => void;
   onCancel: () => void;
 }) {
   return (
     <MediaOverlay variant="dialog" label={title} onClose={busy ? () => {} : onCancel}>
-      <Card className="w-[min(28rem,calc(100vw-3rem))] space-y-3 border-orange-500/40 text-sm">
+      <Card
+        className={cn(
+          "w-[min(28rem,calc(100vw-3rem))] space-y-3 text-sm",
+          tone === "danger" ? "border-red-500/40" : "border-orange-500/40",
+        )}
+      >
         <h2 className="text-base font-semibold text-neutral-100">{title}</h2>
         <div className="space-y-2 text-neutral-400">{children}</div>
         {error && (
@@ -53,7 +62,11 @@ export function ConfirmDialog({
           <Button variant="ghost" data-overlay-close="" onClick={onCancel} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={onConfirm} disabled={busy || confirmDisabled}>
+          <Button
+            variant={tone === "danger" ? "danger" : "primary"}
+            onClick={onConfirm}
+            disabled={busy || confirmDisabled}
+          >
             {busy && busyLabel ? busyLabel : confirmLabel}
           </Button>
         </div>

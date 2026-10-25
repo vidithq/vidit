@@ -226,6 +226,7 @@ export function GeolocatorsByline({
           confirmLabel={confirming.kind === "remove" ? "Remove" : "Withdraw"}
           busy={write.loading}
           error={write.error}
+          tone="danger"
           onConfirm={() => void write.run(confirming.kind, confirming.username)}
           onCancel={() => setConfirming(null)}
         >
