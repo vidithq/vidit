@@ -23,7 +23,8 @@ type LayerRole =
   | "road"
   | "minor-road"
   | "road-label"
-  | "region-border";
+  | "region-border"
+  | "building";
 
 const ROAD_ROLES: ReadonlySet<LayerRole> = new Set(["road", "minor-road", "road-label"]);
 
@@ -35,6 +36,7 @@ export interface BasemapOptions {
   density: LabelDensity;
   regionBorders: boolean;
   roads: boolean;
+  buildings: boolean;
 }
 
 export const DEFAULT_BASEMAP_OPTIONS: BasemapOptions = {
@@ -42,6 +44,7 @@ export const DEFAULT_BASEMAP_OPTIONS: BasemapOptions = {
   density: "sparse",
   regionBorders: false,
   roads: true,
+  buildings: true,
 };
 
 // Below zoom 5 a sparse map labels countries and capitals only. At 5 one country fills a laptop
@@ -122,7 +125,8 @@ function adjustLayer(layer: AdjustableLayer, options: BasemapOptions): LayerSpec
 
   const hidden =
     (role === "region-border" && !options.regionBorders) ||
-    (ROAD_ROLES.has(role) && !options.roads);
+    (ROAD_ROLES.has(role) && !options.roads) ||
+    (role === "building" && !options.buildings);
   if (hidden) layout.visibility = "none";
 
   if (JSON.stringify(layout["text-field"] ?? null).includes('"name')) {

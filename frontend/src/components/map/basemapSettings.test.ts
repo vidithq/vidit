@@ -12,7 +12,7 @@ describe("basemap settings", () => {
   beforeEach(() => window.localStorage.clear());
   afterEach(() => vi.restoreAllMocks());
 
-  it("defaults to Auto, Latin labels, sparse density, no region borders and roads on", async () => {
+  it("defaults to Auto, Latin labels, sparse density, no region borders, roads and buildings on", async () => {
     const { getBasemapSettings } = await load();
     expect(getBasemapSettings()).toEqual({
       preset: "auto",
@@ -20,6 +20,7 @@ describe("basemap settings", () => {
       density: "sparse",
       regionBorders: false,
       roads: true,
+      buildings: true,
     });
   });
 
@@ -48,6 +49,28 @@ describe("basemap settings", () => {
     );
     const { getBasemapSettings } = await load();
     expect(getBasemapSettings()).toMatchObject({ preset: "auto", language: "local", roads: true });
+  });
+
+  it("reads a value stored before a setting existed with that setting at its default", async () => {
+    window.localStorage.setItem(
+      "vidit:basemap",
+      JSON.stringify({
+        preset: "vidit-light",
+        language: "both",
+        density: "normal",
+        regionBorders: true,
+        roads: false,
+      }),
+    );
+    const { getBasemapSettings } = await load();
+    expect(getBasemapSettings()).toMatchObject({
+      preset: "vidit-light",
+      language: "both",
+      density: "normal",
+      regionBorders: true,
+      roads: false,
+      buildings: true,
+    });
   });
 
   it("reads an unparsable value as the defaults", async () => {

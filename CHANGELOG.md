@@ -8,6 +8,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 - A map control beside the zoom buttons picks the basemap: Auto, which follows the theme, Dark, Light, Streets or Terrain; the browser keeps the choice ([#709](https://github.com/vidithq/vidit/pull/709)).
 - On the Dark and Light basemaps, the same control sets the label language (Latin, local or both), the label density, and whether region borders and roads show ([#709](https://github.com/vidithq/vidit/pull/709)).
+- The basemap control turns building footprints on or off on the Dark and Light basemaps ([#709](https://github.com/vidithq/vidit/pull/709)).
 
 ### Changed
 

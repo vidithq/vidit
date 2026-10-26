@@ -17,6 +17,7 @@ const SETTINGS: BasemapSettings = {
   density: "sparse",
   regionBorders: false,
   roads: true,
+  buildings: true,
 };
 
 function open(settings: Partial<BasemapSettings> = {}, adjustable = true) {
@@ -56,12 +57,15 @@ describe("<BasemapControl>", () => {
     expect(onChange).toHaveBeenLastCalledWith({ regionBorders: true });
     fireEvent.click(screen.getByRole("switch", { name: "Roads" }));
     expect(onChange).toHaveBeenLastCalledWith({ roads: false });
+    fireEvent.click(screen.getByRole("switch", { name: "Buildings" }));
+    expect(onChange).toHaveBeenLastCalledWith({ buildings: false });
   });
 
   it("hides the detail settings on a third-party basemap", () => {
     open({ preset: "streets" }, false);
     expect(screen.queryByRole("group", { name: "Label language" })).toBeNull();
     expect(screen.queryByRole("switch", { name: "Roads" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Buildings" })).toBeNull();
     expect(screen.getByText(/adjust on the Dark and Light basemaps/)).toBeInTheDocument();
   });
 });

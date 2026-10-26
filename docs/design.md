@@ -180,7 +180,7 @@ Constants: the pill tones live on `<Pill>` as `PILL_TONE`. [`styles.ts`](../fron
 - **One name per label.** By default a label shows its Latin name (`name:latin`), or its local name when it has no Latin one.
 - **Label font.** Basemap labels and the cluster counts use Montserrat, the app font, with Noto Sans for the scripts Montserrat lacks. The glyphs are served from the frontend; see [`engineering.md`](engineering.md#frontend).
 - **Basemap presets.** A map control beside the zoom buttons ([`<BasemapControl>`](../frontend/src/components/map/BasemapControl.tsx), a [`<MapControlButton>`](../frontend/src/components/ui/MapControlButton.tsx) with lucide `Map`) opens a wide `<PopoverPanel>` above it that picks the basemap: **Auto** (the default, the Vidit style of the theme), **Dark** and **Light** (the Vidit styles), **Streets** (OpenFreeMap Liberty) and **Terrain** (OpenTopoMap raster tiles, drawn up to zoom 17). Each preset carries its own attribution and declares its brightness in [`basemap.ts`](../frontend/src/components/map/basemap.ts). The selected-point halo and the canvas tint follow that brightness, not the theme: on a light basemap the halo is near-black and a faint `sepia` on the canvas (`globals.css`, under `data-basemap="light"`) warms the map toward the warm light surfaces. The choice is kept in this browser's `localStorage` under `vidit:basemap`, in [`basemapSettings.ts`](../frontend/src/components/map/basemapSettings.ts), and a browser that refuses storage keeps it for the session.
-- **Basemap settings.** On the Dark and Light presets, the same panel adjusts the drawn style, and the browser keeps each setting with the preset:
+- **Basemap settings.** On the Dark and Light presets, the same panel adjusts the drawn style under two headings, **Labels** (language and density) and **Layers** (the switches), and the browser keeps each setting with the preset:
 
   | Setting | Choices | Default |
   |---|---|---|
@@ -188,6 +188,7 @@ Constants: the pill tones live on `<Pill>` as `PILL_TONE`. [`styles.ts`](../fron
   | Label density | Sparse (the low-zoom rules above), Normal (the upstream style's labels and roads) | Sparse |
   | Region borders | On, off | Off |
   | Roads | On, off: roads, railways and their names | On |
+  | Buildings | On, off: building footprints, which the tiles carry from zoom 13 | On |
 
   A local name in a script MapLibre cannot draw (`is-supported-script`) shows its Latin form. On Streets and Terrain the panel shows a line saying the settings adjust on Dark and Light, in place of the settings.
 - **Style swaps.** The map mounts on a blank style, and `BasemapStyle` in `Map.tsx` applies the chosen one. A later swap, a preset or a setting change, goes through MapLibre's style diff, so a setting applies at runtime as `setLayoutProperty`, `setFilter` and `setLayerZoomRange` calls. The diff runs with a `transformStyle` (`carryOverlay`) that keeps the event points source and its layers above the incoming basemap, and points every style, a third-party one included, at the Montserrat glyphs.

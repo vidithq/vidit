@@ -358,6 +358,9 @@
         "fill-antialias": true,
         "fill-color": "rgb(10,10,10)",
         "fill-outline-color": "rgb(27 ,27 ,29)"
+      },
+      "metadata": {
+        "vidit:role": "building"
       }
     },
     {

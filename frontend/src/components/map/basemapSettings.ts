@@ -23,12 +23,18 @@ const DEFAULT_BASEMAP_SETTINGS: BasemapSettings = {
 const KEY = "vidit:basemap";
 const EVENT = "vidit:basemap-changed";
 
-const LANGUAGES: readonly LabelLanguage[] = ["latin", "local", "both"];
-const DENSITIES: readonly LabelDensity[] = ["sparse", "normal"];
+const BOOLEAN: readonly boolean[] = [true, false];
 
-function pick<T>(value: unknown, allowed: readonly T[], fallback: T): T {
-  return allowed.includes(value as T) ? (value as T) : fallback;
-}
+/** Every stored field with the values it may take. A field added here reads as its default from a
+ *  value stored before it existed. */
+const FIELDS: { [K in keyof BasemapSettings]: readonly BasemapSettings[K][] } = {
+  preset: BASEMAP_PRESET_IDS,
+  language: ["latin", "local", "both"] satisfies LabelLanguage[],
+  density: ["sparse", "normal"] satisfies LabelDensity[],
+  regionBorders: BOOLEAN,
+  roads: BOOLEAN,
+  buildings: BOOLEAN,
+};
 
 /** A stored value read field by field: a missing or invalid field takes its default. */
 function parse(raw: string | null): BasemapSettings {
@@ -39,14 +45,13 @@ function parse(raw: string | null): BasemapSettings {
   } catch {
     // An unreadable value reads as no value.
   }
-  const d = DEFAULT_BASEMAP_SETTINGS;
-  return {
-    preset: pick(stored.preset, BASEMAP_PRESET_IDS, d.preset),
-    language: pick(stored.language, LANGUAGES, d.language),
-    density: pick(stored.density, DENSITIES, d.density),
-    regionBorders: pick(stored.regionBorders, [true, false], d.regionBorders),
-    roads: pick(stored.roads, [true, false], d.roads),
-  };
+  const keys = Object.keys(FIELDS) as (keyof BasemapSettings)[];
+  return Object.fromEntries(
+    keys.map((key) => {
+      const allowed: readonly unknown[] = FIELDS[key];
+      return [key, allowed.includes(stored[key]) ? stored[key] : DEFAULT_BASEMAP_SETTINGS[key]];
+    }),
+  ) as unknown as BasemapSettings;
 }
 
 // `localStorage` can be absent or throw (a private window, blocked site data). The settings then

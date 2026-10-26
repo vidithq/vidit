@@ -58,8 +58,8 @@ describe.each(BASES)("buildViditStyle on the %s style", (_, base) => {
   it("validates against the style spec with every option set", () => {
     for (const options of [
       DEFAULT_BASEMAP_OPTIONS,
-      { language: "both", density: "normal", regionBorders: true, roads: false },
-      { language: "local", density: "sparse", regionBorders: false, roads: true },
+      { language: "both", density: "normal", regionBorders: true, roads: false, buildings: false },
+      { language: "local", density: "sparse", regionBorders: false, roads: true, buildings: true },
     ] as BasemapOptions[]) {
       expect(validateStyleMin(buildViditStyle(base, options))).toEqual([]);
     }
@@ -150,6 +150,17 @@ describe.each(BASES)("buildViditStyle on the %s style", (_, base) => {
       expect(withRole(layers, role).every((layer) => !visible(layer))).toBe(true);
     }
     expect(withRole(build(base), "road").every(visible)).toBe(true);
+  });
+
+  it("draws buildings by default and hides them when off", () => {
+    expect(withRole(base.layers as Layer[], "building")).not.toHaveLength(0);
+    for (const layer of base.layers as Layer[]) {
+      if (layer["source-layer"] === "building") expect(layer.metadata?.["vidit:role"], layer.id).toBe("building");
+    }
+    expect(withRole(build(base), "building").every(visible)).toBe(true);
+    expect(withRole(build(base, { buildings: false }), "building").every((layer) => !visible(layer))).toBe(
+      true,
+    );
   });
 
   it("writes one language per label, Latin by default", () => {
