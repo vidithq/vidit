@@ -558,8 +558,7 @@ async def _upload_with_optional_strip(
 
 
 def _source_file_key(content_type: str | None) -> str:
-    """The key of a staged source file. It names no event: one stored object may serve several
-    sources (a copy)."""
+    """It names no event: one stored object may serve several sources (a copy)."""
     return f"uploads/{uuid4()}{safe_storage_extension(content_type)}"
 
 

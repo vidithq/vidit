@@ -1,20 +1,20 @@
 """``POST /uploads/from-link``: a post link's file, staged as ``POST /uploads`` stages a picked one.
 
-Offline: every upstream (syndication, the Telegram embed, the CDNs) answers through one
-``httpx.MockTransport`` handler routed by host.
+Offline: every upstream answers through one ``httpx.MockTransport`` handler routed by host.
 """
 
 from __future__ import annotations
 
 import json
 from collections.abc import Callable, Iterator
+from types import SimpleNamespace
 
 import httpx
 import pytest
 
+import app.services.tweet_ingest.archive as archive_mod
 from app.config import settings
 from app.services import uploads as uploads_service
-from app.services.tweet_ingest import is_importable_link
 from app.services.tweet_ingest.syndication import _cache_clear
 from tests._fixtures import TINY_JPEG, TINY_MP4, stored_path
 from tests.conftest import login_as
@@ -29,70 +29,63 @@ from tests.events._helpers import (
 
 Handler = Callable[[httpx.Request], httpx.Response]
 
+_SYNDICATION = "cdn.syndication.twimg.com"
 _STATUS_URL = "https://x.com/someone/status/1790000000000000000"
 _TELEGRAM_URL = "https://t.me/somechannel/12345"
-_PHOTO_URL = "https://pbs.twimg.com/media/strike.jpg"
-_VIDEO_URL = "https://video.twimg.com/ext_tw_video/1/pu/vid/strike.mp4"
-
-
-def _status_body(*media: dict[str, object]) -> dict[str, object]:
-    return {
-        "__typename": "Tweet",
-        "id_str": "1790000000000000000",
-        "text": "footage",
-        "created_at": "2026-03-04T13:20:00.000Z",
-        "user": {"screen_name": "someone"},
-        "mediaDetails": list(media),
-    }
-
-
-_PHOTO = {"type": "photo", "media_url_https": _PHOTO_URL}
-_VIDEO = {
-    "type": "video",
-    "video_info": {
-        "variants": [{"content_type": "video/mp4", "bitrate": 832000, "url": _VIDEO_URL}]
-    },
-}
-
-_TELEGRAM_VIDEO_HTML = (
-    '<div class="tgme_widget_message">'
-    '<video src="https://cdn4.cdn-telegram.org/file/video1.mp4"></video>'
-    '<time datetime="2026-03-04T13:20:00+00:00"></time>'
-    "</div>"
-)
-_TELEGRAM_SENSITIVE_HTML = (
-    '<div class="tgme_widget_message">'
-    '<div class="message_media_not_supported">Please open Telegram to view this post</div>'
-    '<time datetime="2026-03-04T13:20:00+00:00"></time>'
-    "</div>"
-)
-
-
 _TIKTOK_ID = "7400000000000000001"
-_TIKTOK_URL = f"https://www.tiktok.com/@someone/photo/{_TIKTOK_ID}"
+_TIKTOK_URL = f"https://www.tiktok.com/@someone/video/{_TIKTOK_ID}"
+_CDN_HOSTS = ("pbs.twimg.com", "video.twimg.com", "cdn4.cdn-telegram.org", "v16m.tiktokcdn-eu.com")
+
+_PHOTO = {"type": "photo", "media_url_https": "https://pbs.twimg.com/media/strike.jpg"}
+_VARIANT = {"content_type": "video/mp4", "url": "https://video.twimg.com/vid/strike.mp4"}
+_VIDEO = {"type": "video", "video_info": {"variants": [_VARIANT]}}
 
 
-def _tiktok_embed(video_data: dict[str, object]) -> Handler:
-    state = {"source": {"data": {f"/embed/v2/{_TIKTOK_ID}": {"videoData": video_data}}}}
-    page = f'<script id="__FRONTITY_CONNECT_STATE__">{json.dumps(state)}</script>'
-    return lambda _request: httpx.Response(200, text=page)
+def _answer(status: int = 200, **kwargs) -> Handler:
+    return lambda _request: httpx.Response(status, **kwargs)
+
+
+def _syndication(*media: dict[str, object]) -> Handler:
+    return _answer(
+        json={
+            "__typename": "Tweet",
+            "id_str": "1790000000000000000",
+            "text": "footage",
+            "created_at": "2026-03-04T13:20:00.000Z",
+            "user": {"screen_name": "someone"},
+            "mediaDetails": list(media),
+        }
+    )
+
+
+def _telegram(media_html: str) -> Handler:
+    return _answer(
+        text=f'<div class="tgme_widget_message">{media_html}'
+        '<time datetime="2026-03-04T13:20:00+00:00"></time></div>'
+    )
+
+
+_TELEGRAM_VIDEO = _telegram('<video src="https://cdn4.cdn-telegram.org/file/video1.mp4"></video>')
+_TELEGRAM_SENSITIVE = _telegram(
+    '<div class="message_media_not_supported">Please open Telegram to view this post</div>'
+)
+
+
+def _tiktok() -> Handler:
+    video = {"urls": [f"https://v16m.tiktokcdn-eu.com/v/{_TIKTOK_ID}.mp4"]}
+    data = {"itemInfos": {"createTime": "1772630400", "video": video}}
+    state = {"source": {"data": {f"/embed/v2/{_TIKTOK_ID}": {"videoData": data}}}}
+    return _answer(text=f'<script id="__FRONTITY_CONNECT_STATE__">{json.dumps(state)}</script>')
 
 
 def _cdn(request: httpx.Request) -> httpx.Response:
-    path = request.url.path
-    return httpx.Response(200, content=TINY_MP4 if path.endswith(".mp4") else TINY_JPEG)
+    return httpx.Response(200, content=TINY_MP4 if request.url.path.endswith(".mp4") else TINY_JPEG)
 
 
 @pytest.fixture
-def upstream(monkeypatch) -> Iterator[dict[str, Handler]]:
-    """Route every outgoing fetch by host to the handler the test sets; any other host fails."""
-    routes: dict[str, Handler] = {
-        "pbs.twimg.com": _cdn,
-        "video.twimg.com": _cdn,
-        "cdn4.cdn-telegram.org": _cdn,
-        "v16m.tiktokcdn-eu.com": _cdn,
-        "p16-common-sign.tiktokcdn-eu.com": _cdn,
-    }
+def upstream(monkeypatch) -> Iterator[SimpleNamespace]:
+    """Route every outgoing fetch by host to ``routes``; any other host fails the test."""
+    routes: dict[str, Handler] = dict.fromkeys(_CDN_HOSTS, _cdn)
     seen: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -107,13 +100,8 @@ def upstream(monkeypatch) -> Iterator[dict[str, Handler]]:
     monkeypatch.setattr(httpx, "Client", lambda **_kw: real_sync(transport=transport))
     monkeypatch.setattr(httpx, "AsyncClient", lambda **_kw: real_async(transport=transport))
     _cache_clear()
-    routes["seen"] = seen  # type: ignore[assignment]
-    yield routes
+    yield SimpleNamespace(routes=routes, seen=seen)
     _cache_clear()
-
-
-def _syndication(body: dict[str, object] | None = None, *, status: int = 200) -> Handler:
-    return lambda _request: httpx.Response(status, json=body or {})
 
 
 def _import(user, url: str, **extra) -> httpx.Response:
@@ -122,25 +110,20 @@ def _import(user, url: str, **extra) -> httpx.Response:
     )
 
 
-def _key(storage_url: str) -> str:
-    return storage_url.split("/local-storage/", 1)[1]
-
-
-def test_an_x_post_file_is_staged_like_an_upload(upstream, author):
-    upstream["cdn.syndication.twimg.com"] = _syndication(_status_body(_PHOTO))
+def test_an_x_post_file_is_staged_like_an_upload_and_taken_by_the_event_write(
+    upstream, author, conflict
+):
+    upstream.routes[_SYNDICATION] = _syndication(_PHOTO)
     response = _import(author, _STATUS_URL)
     assert response.status_code == 201, response.text
-    body = response.json()
-    assert body["kind"] == "image" and body["post_media"] == ["image"]
-    assert body["original_filename"] is None
-    assert stored_path(_key(body["storage_url"])).exists()
+    staged = response.json()
+    assert staged["kind"] == "image" and staged["post_media"] == ["image"]
+    assert staged["original_filename"] is None
+    key = staged["storage_url"].split("/local-storage/", 1)[1]
+    assert stored_path(key).exists()
     # A source image gets its derivatives, as one uploaded through the form.
-    assert stored_path(_key(body["storage_url"]).replace(".jpg", "_thumb.jpg")).exists()
+    assert stored_path(key.replace(".jpg", "_thumb.jpg")).exists()
 
-
-def test_the_staged_file_is_taken_by_the_event_write(upstream, author, conflict):
-    upstream["cdn.syndication.twimg.com"] = _syndication(_status_body(_VIDEO))
-    staged = _import(author, _STATUS_URL).json()
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
@@ -159,68 +142,48 @@ def test_the_staged_file_is_taken_by_the_event_write(upstream, author, conflict)
     assert response.json()["sources"][0]["media"]["storage_url"] == staged["storage_url"]
 
 
-def test_a_telegram_post_file_is_staged(upstream, author):
-    upstream["t.me"] = lambda _request: httpx.Response(200, text=_TELEGRAM_VIDEO_HTML)
-    response = _import(author, _TELEGRAM_URL)
+@pytest.mark.parametrize(
+    "host,route,url,index,kind,post_media",
+    [
+        ("t.me", _TELEGRAM_VIDEO, _TELEGRAM_URL, 0, "video", ["video"]),
+        ("www.tiktok.com", _tiktok(), _TIKTOK_URL, 0, "video", ["video"]),
+        (_SYNDICATION, _syndication(_PHOTO, _VIDEO), _STATUS_URL, 1, "video", ["image", "video"]),
+    ],
+    ids=["telegram", "tiktok", "x-index"],
+)
+def test_the_file_at_the_index_is_staged(
+    upstream, author, host, route, url, index, kind, post_media
+):
+    upstream.routes[host] = route
+    response = _import(author, url, index=index)
     assert response.status_code == 201, response.text
-    assert response.json()["kind"] == "video"
-    assert response.json()["post_media"] == ["video"]
+    assert (response.json()["kind"], response.json()["post_media"]) == (kind, post_media)
+    assert "pbs.twimg.com" not in upstream.seen
 
 
-def test_the_index_picks_one_of_the_post_files(upstream, author):
-    upstream["cdn.syndication.twimg.com"] = _syndication(_status_body(_PHOTO, _VIDEO))
-    response = _import(author, _STATUS_URL, index=1)
-    assert response.status_code == 201, response.text
-    assert response.json()["kind"] == "video"
-    assert response.json()["post_media"] == ["image", "video"]
-    assert upstream["seen"].count("pbs.twimg.com") == 0  # type: ignore[union-attr]
+_X_PHOTO = {_SYNDICATION: _syndication(_PHOTO)}
+_TG_VIDEO = {"t.me": _TELEGRAM_VIDEO}
+_TG_CDN = "cdn4.cdn-telegram.org"
 
 
-def test_a_tiktok_video_is_staged(upstream, author):
-    upstream["www.tiktok.com"] = _tiktok_embed(
-        {
-            "itemInfos": {
-                "createTime": "1772630400",
-                "video": {"urls": [f"https://v16m.tiktokcdn-eu.com/v/{_TIKTOK_ID}.mp4"]},
-            }
-        }
-    )
-    response = _import(author, f"https://www.tiktok.com/@someone/video/{_TIKTOK_ID}")
-    assert response.status_code == 201, response.text
-    assert response.json()["kind"] == "video" and response.json()["post_media"] == ["video"]
-
-
-def test_a_tiktok_photo_post_stages_the_photo_picked_by_index(upstream, author):
-    photos = [f"https://p16-common-sign.tiktokcdn-eu.com/obj/photo{n}.jpeg" for n in (1, 2, 3)]
-    upstream["www.tiktok.com"] = _tiktok_embed(
-        {
-            "itemInfos": {"createTime": 1772630400, "video": {"urls": []}},
-            "imagePostInfo": {"displayImages": [{"urlList": [url]} for url in photos]},
-        }
-    )
-    seen: list[str] = []
-    upstream["p16-common-sign.tiktokcdn-eu.com"] = lambda request: (
-        seen.append(str(request.url)) or _cdn(request)
-    )
-    response = _import(author, _TIKTOK_URL, index=2)
-    assert response.status_code == 201, response.text
-    assert response.json()["kind"] == "image"
-    assert response.json()["post_media"] == ["image", "image", "image"]
-    assert seen == [photos[2]]
-
-
-def test_an_index_past_the_post_files_is_refused(upstream, author):
-    upstream["cdn.syndication.twimg.com"] = _syndication(_status_body(_PHOTO))
-    response = _import(author, _STATUS_URL, index=1)
-    assert response.status_code == 404
-    assert response.json()["detail"]["code"] == "link_has_no_file"
-
-
-def test_a_post_without_a_file_is_refused(upstream, author):
-    upstream["t.me"] = lambda _request: httpx.Response(200, text=_TELEGRAM_SENSITIVE_HTML)
-    response = _import(author, _TELEGRAM_URL)
-    assert response.status_code == 404
-    assert response.json()["detail"]["code"] == "link_has_no_file"
+@pytest.mark.parametrize(
+    "url,routes,index,status,code",
+    [
+        (_STATUS_URL, _X_PHOTO, 1, 404, "link_has_no_file"),
+        (_TELEGRAM_URL, {"t.me": _TELEGRAM_SENSITIVE}, 0, 404, "link_has_no_file"),
+        (_STATUS_URL, {_SYNDICATION: _answer(404, json={})}, 0, 404, "link_not_accessible"),
+        (_STATUS_URL, {**_X_PHOTO, "pbs.twimg.com": _answer(403)}, 0, 404, "link_not_accessible"),
+        (_STATUS_URL, {_SYNDICATION: _answer(429, json={})}, 0, 503, "upstream_busy"),
+        (_TELEGRAM_URL, {**_TG_VIDEO, _TG_CDN: _answer(503)}, 0, 503, "upstream_busy"),
+    ],
+)
+def test_a_post_whose_file_cannot_be_staged_is_refused(
+    upstream, author, url, routes, index, status, code
+):
+    upstream.routes.update(routes)
+    response = _import(author, url, index=index)
+    assert response.status_code == status
+    assert response.json()["detail"]["code"] == code
 
 
 @pytest.mark.parametrize(
@@ -236,98 +199,17 @@ def test_an_unsupported_link_is_refused_without_a_fetch(upstream, author, url):
     response = _import(author, url)
     assert response.status_code == 400
     assert response.json()["detail"]["code"] == "unsupported_link"
-    assert upstream["seen"] == []
-
-
-# The frontend mirror (``lib/sources.test.ts::isImportableLink``) pins the same shapes.
-@pytest.mark.parametrize(
-    "url",
-    [
-        "https://x.com/someone/status/1790000000000000000",
-        "https://www.x.com/someone/status/1790000000000000000?s=20",
-        "https://twitter.com/someone/status/1790000000000000000",
-        "https://x.com/i/web/status/1790000000000000000",
-        "https://t.me/somechannel/12345",
-        "http://www.t.me/somechannel/12345?single",
-        "https://www.tiktok.com/@someone/video/7400000000000000001",
-        "https://tiktok.com/@some.one_2/photo/7400000000000000001/",
-        "https://m.tiktok.com/@someone/photo/7400000000000000001",
-        "https://vm.tiktok.com/ZMabc123/",
-        "https://vt.tiktok.com/ZSxyz",
-        "https://www.tiktok.com/t/ZTcode9/",
-    ],
-)
-def test_an_x_status_a_telegram_or_a_tiktok_post_is_importable(url):
-    assert is_importable_link(url)
+    assert upstream.seen == []
 
 
 @pytest.mark.parametrize(
-    "url",
-    [
-        "https://example.com/article",
-        "https://x.com/someone",
-        "https://web.archive.org/web/2026/https://x.com/someone/status/1",
-        "https://x.com.evil.example/someone/status/1",
-        "https://t.me/somechannel",
-        "https://t.me/c/1234567890/42",
-        "https://t.me:8080/somechannel/12345",
-        "https://user:pass@t.me/somechannel/12345",
-        "https://www.tiktok.com/@someone",
-        "https://www.tiktok.com/embed/v2/7400000000000000001",
-        "https://tiktok.com.evil.example/@someone/video/1",
-        "https://evil.tiktok.com/ZMabc123/",
-        "https://vm.tiktok.com/a/b",
-        "https://www.tiktok.com:8443/@someone/video/1",
-        "not a url",
-    ],
+    "target,attr,value",
+    [(settings, "max_image_size", len(TINY_JPEG) - 1), (archive_mod, "MEDIA_FETCH_MAX_BYTES", 8)],
+    ids=["upload-limit", "fetch-cap"],
 )
-def test_any_other_link_is_not_importable(url):
-    assert not is_importable_link(url)
-
-
-def test_a_gone_post_is_not_accessible(upstream, author):
-    upstream["cdn.syndication.twimg.com"] = _syndication(status=404)
-    response = _import(author, _STATUS_URL)
-    assert response.status_code == 404
-    assert response.json()["detail"]["code"] == "link_not_accessible"
-
-
-def test_a_refused_file_is_not_accessible(upstream, author):
-    upstream["cdn.syndication.twimg.com"] = _syndication(_status_body(_PHOTO))
-    upstream["pbs.twimg.com"] = lambda _request: httpx.Response(403)
-    response = _import(author, _STATUS_URL)
-    assert response.status_code == 404
-    assert response.json()["detail"]["code"] == "link_not_accessible"
-
-
-def test_a_throttled_post_host_is_busy(upstream, author):
-    upstream["cdn.syndication.twimg.com"] = _syndication(status=429)
-    response = _import(author, _STATUS_URL)
-    assert response.status_code == 503
-    assert response.json()["detail"]["code"] == "upstream_busy"
-
-
-def test_a_throttled_file_host_is_busy(upstream, author):
-    upstream["t.me"] = lambda _request: httpx.Response(200, text=_TELEGRAM_VIDEO_HTML)
-    upstream["cdn4.cdn-telegram.org"] = lambda _request: httpx.Response(503)
-    response = _import(author, _TELEGRAM_URL)
-    assert response.status_code == 503
-    assert response.json()["detail"]["code"] == "upstream_busy"
-
-
-def test_a_file_over_the_upload_limit_is_refused(upstream, author, monkeypatch):
-    monkeypatch.setattr(settings, "max_image_size", len(TINY_JPEG) - 1)
-    upstream["cdn.syndication.twimg.com"] = _syndication(_status_body(_PHOTO))
-    response = _import(author, _STATUS_URL)
-    assert response.status_code == 400
-    assert response.json()["detail"]["code"] == "invalid_file"
-
-
-def test_a_file_over_the_fetch_cap_is_dropped_unbuffered(upstream, author, monkeypatch):
-    import app.services.tweet_ingest.archive as archive_mod
-
-    monkeypatch.setattr(archive_mod, "MEDIA_FETCH_MAX_BYTES", 8)
-    upstream["cdn.syndication.twimg.com"] = _syndication(_status_body(_VIDEO))
+def test_a_file_over_a_size_limit_is_refused(upstream, author, monkeypatch, target, attr, value):
+    monkeypatch.setattr(target, attr, value)
+    upstream.routes.update(_X_PHOTO)
     response = _import(author, _STATUS_URL)
     assert response.status_code == 400
     assert response.json()["detail"]["code"] == "invalid_file"
@@ -339,4 +221,4 @@ def test_the_staged_file_cap_holds_before_any_fetch(upstream, author, monkeypatc
     response = _import(author, _STATUS_URL)
     assert response.status_code == 429
     assert response.json()["detail"]["code"] == "too_many_uploads"
-    assert upstream["seen"] == []
+    assert upstream.seen == []

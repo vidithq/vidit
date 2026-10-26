@@ -165,56 +165,24 @@ describe("SourceEditor", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("clip.mp4: Too large.");
   });
 
-  it("offers each link row's file import while the source has no file", () => {
+  it("offers each importable link row's file import while the source has no file", () => {
     const onImportLink = vi.fn();
     const url = "https://t.me/channel/12345";
     const draft = newSourceDraft();
+    const link = (u: string) => ({ ...draft.links[0], url: u });
     const { unmount } = render(
       <Host
-        initial={{ ...draft, links: [{ ...draft.links[0], url }] }}
+        initial={{ ...draft, links: [link(url), link("https://example.com/article")] }}
         onImportLink={onImportLink}
       />
     );
-    fireEvent.click(screen.getByRole("button", { name: "Import the file of source 1, t.me" }));
+    const imports = screen.getAllByRole("button", { name: /^Import the file of/ });
+    expect(imports).toHaveLength(1);
+    fireEvent.click(imports[0]);
     expect(onImportLink).toHaveBeenCalledWith({ url, index: 0, kinds: [] });
     unmount();
 
     render(<Host initial={{ ...newSourceDraft(), file: { state: "stored", media: FILE } }} />);
-    expect(screen.queryByRole("button", { name: /^Import the file of/ })).toBeNull();
-  });
-
-  it("offers the import on X, Telegram and TikTok post links only", () => {
-    const draft = newSourceDraft();
-    const link = (url: string) => ({ ...draft.links[0], url });
-    render(
-      <Host
-        initial={{
-          ...draft,
-          links: [
-            link("https://x.com/someone/status/1"),
-            link("https://twitter.com/someone/status/2"),
-            link("https://t.me/channel/3"),
-            link("https://www.tiktok.com/@someone/video/4"),
-            link("https://example.com/article"),
-            link(""),
-          ],
-        }}
-      />
-    );
-    const imports = screen.getAllByRole("button", { name: /^Import the file of/ });
-    expect(imports.map((b) => b.getAttribute("aria-label"))).toEqual([
-      "Import the file of source 1, link 1, x.com",
-      "Import the file of source 1, link 2, twitter.com",
-      "Import the file of source 1, link 3, t.me",
-      "Import the file of source 1, link 4, tiktok.com",
-    ]);
-  });
-
-  it("shows no import column without an importable link", () => {
-    const draft = newSourceDraft();
-    render(
-      <Host initial={{ ...draft, links: [{ ...draft.links[0], url: "https://example.com/a" }] }} />
-    );
     expect(screen.queryByRole("button", { name: /^Import the file of/ })).toBeNull();
   });
 

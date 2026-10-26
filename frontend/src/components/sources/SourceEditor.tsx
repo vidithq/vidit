@@ -77,10 +77,8 @@ function holdsDetails(draft: SourceDraft): boolean {
  *
  * The editor holds no draft state of its own: `update` patches the draft in the form's list,
  * `onPickFile` hands a picked file to the list, which uploads it, and `onImportLink` hands it a
- * link whose post's file it imports: each X or Telegram post link offers it while the source has
- * no file (`isImportableLink`), and a
- * post with several files gets a picker under the slot. `actions` is the header's slot for the
- * list's controls (remove).
+ * link whose post's file it imports. `actions` is the header's slot for the list's controls
+ * (remove).
  */
 export function SourceEditor({
   draft,
@@ -128,7 +126,6 @@ export function SourceEditor({
         ? { ...file.upload, role: "source" }
         : null;
 
-  // The post an imported file came from, while it imports and once staged.
   const post = file?.state === "importing" || file?.state === "staged" ? file.post : undefined;
 
   const describe = (i: number, url: string) =>
@@ -278,7 +275,6 @@ export function SourceEditor({
                   />
                 ),
               },
-              // Offered on the links the server reads, while the source has no file.
               ...(hasFile || !draft.links.some((link) => isImportableLink(link.url))
                 ? []
                 : [

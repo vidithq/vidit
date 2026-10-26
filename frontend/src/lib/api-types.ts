@@ -2118,10 +2118,6 @@ export interface paths {
         /**
          * Create Upload From Link
          * @description Stage the file of a post link, as ``POST /uploads`` stages a picked one.
-         *
-         *     Reads an X post or a public Telegram post through the ingestion chase, takes its file
-         *     ``index``, and stores it under the limits of ``POST /uploads``. Per-IP 30/minute bounds
-         *     the shared upstream budget.
          */
         post: operations["create_upload_from_link_api_v1_uploads_from_link_post"];
         delete?: never;

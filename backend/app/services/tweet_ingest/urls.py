@@ -43,7 +43,7 @@ TELEGRAM_POST_PATH_RE = re.compile(r"^/([A-Za-z0-9_]{1,64})/(\d{1,19})$")
 # A TikTok post path: ``/@<user>/video/<id>`` or ``/@<user>/photo/<id>``.
 TIKTOK_POST_PATH_RE = re.compile(r"^/@[A-Za-z0-9_.]{1,64}/(?:video|photo)/(\d{1,25})/?$")
 # A TikTok short link: ``vm.tiktok.com/<code>``, ``vt.tiktok.com/<code>`` or
-# ``www.tiktok.com/t/<code>``. It names no post until its redirect is read.
+# ``www.tiktok.com/t/<code>``.
 TIKTOK_SHORT_PATH_RE = re.compile(r"^/([A-Za-z0-9]{1,32})/?$")
 TIKTOK_T_PATH_RE = re.compile(r"^/t/([A-Za-z0-9]{1,32})/?$")
 
@@ -142,8 +142,8 @@ def context_host(url: str) -> ContextHost | None:
 
 
 def _plain_web_url(url: str) -> tuple[str, str] | None:
-    """``url``'s lowercased host and its path, or ``None`` unless it is a plain
-    ``http(s)`` URL: no credentials, no port. The first check of every chase gate."""
+    """``url``'s lowercased host and path, ``None`` unless it is ``http(s)`` with no
+    credentials and no port."""
     try:
         parsed = urlparse(url)
         port = parsed.port
@@ -172,11 +172,7 @@ def telegram_post_url(url: str) -> str | None:
 
 
 def tiktok_post_id(url: str) -> str | None:
-    """The id of the TikTok video or photo post ``url`` names, or ``None``.
-
-    The SSRF gate of the TikTok chase, with :func:`tiktok_short_url`: the chase
-    fetches only ``www.tiktok.com/embed/v2/<id>`` for the id this returns.
-    """
+    """The id of the TikTok video or photo post ``url`` names, or ``None``."""
     parts = _plain_web_url(url)
     if parts is None or TIKTOK_HOST_RE.match(parts[0]) is None:
         return None
@@ -185,11 +181,7 @@ def tiktok_post_id(url: str) -> str | None:
 
 
 def tiktok_short_url(url: str) -> str | None:
-    """The canonical ``https`` form of a TikTok short link, or ``None``.
-
-    A short link names no post: the chase reads its one redirect, which must
-    itself pass :func:`tiktok_post_id`.
-    """
+    """The canonical ``https`` form of a TikTok short link, or ``None``."""
     parts = _plain_web_url(url)
     if parts is None:
         return None
@@ -204,12 +196,9 @@ def tiktok_short_url(url: str) -> str | None:
 
 
 def is_importable_link(url: str) -> bool:
-    """Whether a chaser reads ``url``: an X status, a public Telegram post or a TikTok post.
+    """Whether a chaser of ``chase.chase_post`` reads ``url``.
 
-    The chasers' own gates (:func:`x_status_id`, :func:`telegram_post_url`,
-    :func:`tiktok_post_id`, :func:`tiktok_short_url`), so the answer
-    matches what ``chase.chase_post`` fetches. Mirrored by frontend
-    ``lib/sources.ts::isImportableLink``; change both.
+    Mirrored by frontend ``lib/sources.ts::isImportableLink``; change both.
     """
     return (
         x_status_id(url) is not None
@@ -289,8 +278,7 @@ TWITTER_MEDIA_HOSTS = frozenset({"pbs.twimg.com", "video.twimg.com"})
 # dot-boundary suffix (:func:`_host_matches_base`) so ``evil-cdn-telegram.org`` fails.
 TELEGRAM_MEDIA_BASE_HOSTS = frozenset({"cdn-telegram.org", "telesco.pe"})
 
-# TikTok's CDN: the global, EU and US domains its embed serves files from, matched
-# by dot-boundary suffix like Telegram's.
+# TikTok's global, EU and US CDNs, matched by dot-boundary suffix like Telegram's.
 TIKTOK_MEDIA_BASE_HOSTS = frozenset({"tiktokcdn.com", "tiktokcdn-eu.com", "tiktokcdn-us.com"})
 
 

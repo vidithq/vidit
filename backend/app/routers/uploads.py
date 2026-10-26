@@ -55,8 +55,7 @@ def create_upload(
     return _upload_read(row)
 
 
-# ``def`` plus ``asyncio.run``, as ``import-from-tweet``: the chase and the download are one
-# blocking stretch that would hold every other request on the event loop.
+# ``def`` plus ``asyncio.run``, as ``import-from-tweet``: the chase and the download block.
 @router.post("/from-link", response_model=LinkUploadRead, status_code=status.HTTP_201_CREATED)
 @limiter.limit("30/minute")
 def create_upload_from_link(
@@ -65,14 +64,9 @@ def create_upload_from_link(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> LinkUploadRead:
-    """Stage the file of a post link, as ``POST /uploads`` stages a picked one.
-
-    Reads an X post or a public Telegram post through the ingestion chase, takes its file
-    ``index``, and stores it under the limits of ``POST /uploads``. Per-IP 30/minute bounds
-    the shared upstream budget.
-    """
+    """Stage the file of a post link, as ``POST /uploads`` stages a picked one."""
     try:
-        staged = asyncio.run(
+        row, post_media = asyncio.run(
             uploads_service.stage_from_link(
                 db, uploader=current_user, url=body.url, index=body.index
             )
@@ -81,4 +75,4 @@ def create_upload_from_link(
         if exc.code == "upstream_busy":
             logger.warning("Link import busy for %s: %s", scrub_log(body.url), exc)
         raise_typed_error(exc, _ERROR_STATUS)
-    return LinkUploadRead(**_upload_read(staged.upload).model_dump(), post_media=staged.post_media)
+    return LinkUploadRead(**_upload_read(row).model_dump(), post_media=post_media)

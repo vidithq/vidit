@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import uuid
 from collections.abc import Awaitable, Iterable
-from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from fastapi import UploadFile
@@ -70,28 +69,19 @@ class TooManyUploadsError(EvidenceIntakeError):
     code = "too_many_uploads"
 
 
-class UnsupportedLinkError(EvidenceIntakeError):
-    """No chaser reads the link (``tweet_ingest.is_importable_link``), so nothing is fetched."""
-
-    code = "unsupported_link"
-
-
-class LinkNotAccessibleError(EvidenceIntakeError):
-    """The post, or its file, is gone, restricted or unreadable."""
-
-    code = "link_not_accessible"
+_LINK_REFUSALS = {
+    "unsupported_link": "Import works with an X post, a public Telegram post or a TikTok post link.",
+    "link_not_accessible": "The post or its file is gone, restricted or unreadable without a login.",
+    "upstream_busy": "The post's host or its file host is not answering. Try again in a minute.",
+}
 
 
-class LinkHasNoFileError(EvidenceIntakeError):
-    """The post answered with no file to take, or none at the asked index."""
+class LinkImportError(EvidenceIntakeError):
+    """A post link whose file cannot be staged; ``code`` names why."""
 
-    code = "link_has_no_file"
-
-
-class LinkUpstreamBusyError(EvidenceIntakeError):
-    """The post's host throttled or did not answer once the retries were spent."""
-
-    code = "upstream_busy"
+    def __init__(self, code: str, message: str | None = None) -> None:
+        super().__init__(message or _LINK_REFUSALS[code])
+        self.code = code
 
 
 UPLOAD_ERROR_STATUS: dict[str, int] = {
@@ -103,14 +93,6 @@ UPLOAD_ERROR_STATUS: dict[str, int] = {
     "link_has_no_file": 404,
     "upstream_busy": 503,
 }
-
-
-@dataclass(frozen=True)
-class LinkUpload:
-    """A file staged from a post link, and the kind of every file the post holds."""
-
-    upload: Upload
-    post_media: list[MediaKind]
 
 
 def _ensure_room(db: Session, uploader: User, now: datetime) -> None:
@@ -186,30 +168,28 @@ async def stage_upload(db: Session, *, uploader: User, file: UploadFile) -> Uplo
     )
 
 
-async def stage_from_link(db: Session, *, uploader: User, url: str, index: int = 0) -> LinkUpload:
-    """Fetch file ``index`` of the post ``url`` names and stage it as :func:`stage_upload` does.
+async def stage_from_link(
+    db: Session, *, uploader: User, url: str, index: int = 0
+) -> tuple[Upload, list[MediaKind]]:
+    """Stage file ``index`` of the post ``url`` names, with the kind of every file it holds.
 
-    The chase picks the fetch (``tweet_ingest.chase_post``): only an X status or a public
-    Telegram post is read, through its fixed upstream, and only a trusted CDN serves the file.
-    Raises :func:`stage_upload`'s errors, plus :class:`UnsupportedLinkError`,
-    :class:`LinkNotAccessibleError`, :class:`LinkHasNoFileError` and
-    :class:`LinkUpstreamBusyError`.
+    Only a link a chaser reads is fetched (``tweet_ingest.chase_post``), and only a trusted CDN
+    serves the file. Raises :func:`stage_upload`'s errors and :class:`LinkImportError`.
     """
     if not is_importable_link(url):
-        raise UnsupportedLinkError(
-            "Import works with an X post, a public Telegram post or a TikTok post link."
-        )
+        raise LinkImportError("unsupported_link")
     now = datetime.now(UTC)
     _ensure_room(db, uploader, now)
     chased = await asyncio.to_thread(chase_post, url)
     if chased.outcome == "transient_failure":
-        raise LinkUpstreamBusyError("The post's host is not answering. Try again in a minute.")
+        raise LinkImportError("upstream_busy")
     if chased.post is None:
-        raise LinkNotAccessibleError("The post is gone, restricted or unreadable without a login.")
+        raise LinkImportError("link_not_accessible")
     media = chased.post.media
     if index >= len(media):
-        raise LinkHasNoFileError(
-            "The post serves no file." if not media else f"The post holds {len(media)} files."
+        raise LinkImportError(
+            "link_has_no_file",
+            "The post serves no file." if not media else f"The post holds {len(media)} files.",
         )
     parsed = media[index]
     try:
@@ -217,11 +197,9 @@ async def stage_from_link(db: Session, *, uploader: User, url: str, index: int =
     except MediaTooLarge as exc:
         raise InvalidFileError("File too large") from exc
     except TweetFetchFailed as exc:
-        raise LinkUpstreamBusyError(
-            "The post's file host is not answering. Try again in a minute."
-        ) from exc
+        raise LinkImportError("upstream_busy") from exc
     except TweetImportError as exc:
-        raise LinkNotAccessibleError("The post's file could not be read.") from exc
+        raise LinkImportError("link_not_accessible") from exc
     try:
         kind = validate_bytes(data, parsed.content_type)
     except ValueError as exc:
@@ -234,7 +212,7 @@ async def stage_from_link(db: Session, *, uploader: User, url: str, index: int =
         original_filename=None,
         now=now,
     )
-    return LinkUpload(upload=upload, post_media=[item.kind for item in media])
+    return upload, [item.kind for item in media]
 
 
 def storage_url_of(upload: Upload) -> str:

@@ -127,8 +127,7 @@ export function sourceKindLabel(source: Pick<Source, "kind" | "media">): string 
 /** One entry of an event write's `sources` JSON field, every field posted. */
 export type SourceCreate = Required<components["schemas"]["SourceCreate"]>;
 
-/** The post a file is imported from (`POST /uploads/from-link`): its link, which of its files,
- *  and the kind of each, empty until the post answers. */
+/** `kinds` stays empty until the post answers. */
 export interface LinkPost {
   url: string;
   index: number;
@@ -146,7 +145,9 @@ export type SourceFile =
   | { state: "failed"; name: string; error: string };
 
 /** Whether a source file is still on its way to the server: the write waits for it. */
-const fileRunning = (file: SourceFile | null): boolean =>
+export const fileRunning = (
+  file: SourceFile | null
+): file is Extract<SourceFile, { token: number }> =>
   file?.state === "uploading" || file?.state === "importing";
 
 /** One link row as the form holds it: input strings, plus the stored values an untouched input
@@ -384,9 +385,7 @@ const TIKTOK_POST_PATH_RE = /^\/@[A-Za-z0-9_.]{1,64}\/(?:video|photo)\/\d{1,25}\
 const TIKTOK_SHORT_PATH_RE = /^\/[A-Za-z0-9]{1,32}\/?$/;
 const TIKTOK_T_PATH_RE = /^\/t\/[A-Za-z0-9]{1,32}\/?$/;
 
-/** Whether `POST /uploads/from-link` reads this link: an X status, a public `t.me` post, or a
- *  TikTok post or short link. Mirrors backend `tweet_ingest/urls.is_importable_link`; change
- *  both. */
+/** Mirrors backend `tweet_ingest/urls.is_importable_link`; change both. */
 export function isImportableLink(url: string): boolean {
   let parsed: URL;
   try {
@@ -408,8 +407,6 @@ export function isImportableLink(url: string): boolean {
   return false;
 }
 
-/** `POST /uploads/from-link`: stage file `index` of the post a link names, as `uploadSourceFile`
- *  stages a picked one. The answer also holds the kind of every file the post holds. */
 export function importSourceFile(url: string, index: number): Promise<LinkUpload> {
   return apiFetch<LinkUpload>("/uploads/from-link", {
     method: "POST",

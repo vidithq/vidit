@@ -178,9 +178,6 @@ async def download_cdn_media(parsed: ParsedMedia) -> bytes:
     SSRF-guarded by ``is_trusted_media_url``. Streamed under
     ``MEDIA_FETCH_MAX_BYTES`` so a CDN lying about size cannot OOM the worker.
     A throttled or unreachable CDN is retried (:mod:`tweet_ingest.retry`) first.
-    Raises :class:`TweetNotAccessible` for an untrusted URL or a refusal,
-    :class:`MediaTooLarge` over the cap, and the transient errors once the
-    retries are spent.
     """
     if not is_trusted_media_url(parsed.remote_url):
         raise TweetNotAccessible("media URL is not on a trusted CDN")
@@ -197,9 +194,8 @@ async def fetch_cdn_media(parsed: ParsedMedia) -> tuple[bytes, str] | None:
 
 
 async def _read_cdn_media(url: str) -> bytes:
-    """One streamed GET. A non-throttling refusal or an over-cap body raises an
-    error a retry cannot help; throttling or an unreachable CDN raises one that
-    earns the retry."""
+    """One streamed GET. Only throttling or an unreachable CDN raises an error that earns
+    the retry."""
     try:
         async with (
             httpx.AsyncClient(timeout=20.0) as client,

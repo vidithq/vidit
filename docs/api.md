@@ -751,40 +751,18 @@ Stage one source file before the event write that uses it: the first layer of th
 
 ### `POST /uploads/from-link` 🔒
 
-Stage the file of a post, by its link, instead of downloading and uploading it by hand. The server reads the post through the [chase](ingestion.md#the-chase) of the ingestion, downloads the file you pick from the post's CDN, and stages it as [`POST /uploads`](#post-uploads) stages a picked file: same limits, same metadata strip, same `uploads` row, expiry and per-account cap. A source of a later event write names the returned `id` as its `upload_id`.
+Stage the file of a post by its link. The server reads the post through the [chase](ingestion.md#the-chase), downloads the file you pick from the post's CDN, and stages it as [`POST /uploads`](#post-uploads) does: same limits, metadata strip, expiry and per-account cap. Any link no chaser reads is refused before any fetch.
 
-The server fetches only through the [chasers](ingestion.md#the-chase): an X status through syndication, a public `t.me/<channel>/<id>` post or a TikTok post through its embed, and the file from the X, Telegram or TikTok CDN. Any other link is refused before any fetch.
+**Request body (JSON):** `url`, the post link (at most 2000 characters), and `index`, which of the post's files in post order (default `0`).
 
-**Request body (JSON):**
-```json
-{ "url": "https://x.com/someone/status/1790000000000000000", "index": 0 }
-```
-
-| Field | Meaning |
-|---|---|
-| `url` | The post link, at most 2000 characters |
-| `index` | Which of the post's files, in post order. Defaults to `0` |
-
-**Response 201:** an `UploadRead` plus `post_media`, the kind of every file the post holds, in post order. Pick another file by posting the same `url` with its `index`.
-```json
-{
-  "id": "uuid",
-  "kind": "video",
-  "sha256": "f7c3bcd13f00e8a4b2d4e9b3f1a2c5d6e7f8901234567890abcdef1234567890",
-  "original_filename": null,
-  "storage_url": "https://<cloudfront-domain>/uploads/….mp4",
-  "expires_at": "2026-03-17T09:42:00Z",
-  "post_media": ["image", "video"]
-}
-```
+**Response 201:** the `UploadRead` of [`POST /uploads`](#post-uploads) plus `post_media`, the kind of every file the post holds, in post order. To pick another file, post the same `url` with its `index`.
 
 **Errors:** those of [`POST /uploads`](#post-uploads), plus:
 | Status | Code | Case |
 |---|---|---|
-| 400 | `unsupported_link` | The link names no X post, no public Telegram post and no TikTok post or short link. Nothing is fetched |
-| 400 | `invalid_file` | The file is over the [file limits](#file-limits) |
+| 400 | `unsupported_link` | No chaser reads the link. Nothing is fetched |
 | 404 | `link_not_accessible` | The post or its file is gone, restricted, or unreadable without a login |
-| 404 | `link_has_no_file` | The post serves no file, or none at `index` (a sensitive Telegram post serves none) |
+| 404 | `link_has_no_file` | The post serves no file, or none at `index` |
 | 503 | `upstream_busy` | The post's host or its CDN throttled or did not answer once the [retries](ingestion.md#the-chase) were spent. Try again in a minute |
 
 ### `POST /sources/check` 🔒

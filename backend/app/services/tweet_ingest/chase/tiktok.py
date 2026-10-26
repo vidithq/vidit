@@ -1,20 +1,11 @@
-"""Chase a TikTok post: its public embed, for the date and the served media.
+"""Chase a TikTok post through its public embed (``www.tiktok.com/embed/v2/<id>``).
 
-The auth-less embed (``https://www.tiktok.com/embed/v2/<id>``) renders its state
-as JSON in the ``__FRONTITY_CONNECT_STATE__`` script: the post's date, and
-either one video file or, for a photo post, one image per photo. The result is
-a link with a date, stored by the resolution as off-platform footage.
+The embed renders its state as JSON in the ``__FRONTITY_CONNECT_STATE__`` script: the
+post's date, and one video file or one image per photo. A short link costs one more GET:
+its redirect is read, never followed, and must name a post itself.
 
-A short link (``vm.tiktok.com/<code>``, ``vt.tiktok.com/<code>``,
-``www.tiktok.com/t/<code>``) costs one more GET: its redirect is read, never
-followed, and must name a post itself.
-
-Fail-soft: any error or unexpected page yields a footage-less
-:class:`ChaseResult` naming the failure.
-
-SSRF guard: :func:`urls.tiktok_post_id` and :func:`urls.tiktok_short_url` are
-the only gates to a fetch, redirects are not followed, and every extracted
-media URL is re-checked with :func:`is_trusted_media_url`.
+SSRF guard: :func:`urls.tiktok_post_id` and :func:`urls.tiktok_short_url` are the only
+gates to a fetch, and every extracted media URL passes :func:`is_trusted_media_url`.
 """
 
 from __future__ import annotations
@@ -41,11 +32,8 @@ _STATE_RE = re.compile(
     r'<script[^>]*\bid="__FRONTITY_CONNECT_STATE__"[^>]*>(.*?)</script>', re.DOTALL
 )
 
-_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
-
 
 def _dig(value: Any, *keys: str) -> Any:
-    """``value[k1][k2]...``, ``None`` as soon as a level is not a dict."""
     for key in keys:
         if not isinstance(value, dict):
             return None
@@ -60,24 +48,19 @@ def _first_str(values: Any) -> str | None:
 
 
 def _resolve_short(short_url: str, *, client: httpx.Client | None) -> str | None:
-    """The post id a short link redirects to, ``None`` unless its ``Location`` names a post."""
     resp = retrying(lambda: get_page(short_url, client=client), what=short_url)
-    if resp.status_code not in _REDIRECT_STATUSES:
-        return None
-    return tiktok_post_id(resp.headers.get("Location", ""))
+    return tiktok_post_id(resp.headers["Location"]) if resp.is_redirect else None
 
 
 def _read_embed(post_id: str, *, client: httpx.Client | None) -> str | None:
-    """The embed HTML of post ``post_id``; ``None`` for any answer but a 200 (a 3xx
-    to a login page included)."""
     url = _EMBED_URL.format(post_id=post_id)
     resp = retrying(lambda: get_page(url, client=client), what=url)
     return resp.text if resp.status_code == 200 else None
 
 
 def _video_data(embed_html: str, post_id: str) -> dict[str, Any] | None:
-    """The embed state's ``videoData`` for ``post_id``; ``None`` when absent, empty or
-    flagged by a non-zero ``statusCode`` (a private or removed post)."""
+    """``None`` when absent, empty or flagged by a non-zero ``statusCode`` (a private or
+    removed post)."""
     match = _STATE_RE.search(embed_html)
     if match is None:
         return None
@@ -95,10 +78,6 @@ def _video_data(embed_html: str, post_id: str) -> dict[str, Any] | None:
 
 
 def _extract_media(data: dict[str, Any]) -> list[ParsedMedia]:
-    """The served footage: the video file, else one image per photo of a photo post.
-
-    The music track is not footage and is never read.
-    """
     video = _first_str(_dig(data, "itemInfos", "video", "urls"))
     if video is not None and is_trusted_media_url(video):
         return [ParsedMedia(kind="video", remote_url=video, origin="quote")]
@@ -111,7 +90,6 @@ def _extract_media(data: dict[str, Any]) -> list[ParsedMedia]:
 
 
 def _posted_at(data: dict[str, Any]) -> str | None:
-    """The post date (``itemInfos.createTime``, epoch seconds) as ISO 8601 UTC."""
     created = _dig(data, "itemInfos", "createTime")
     try:
         return datetime.fromtimestamp(int(created), UTC).isoformat()
@@ -120,13 +98,9 @@ def _posted_at(data: dict[str, Any]) -> str | None:
 
 
 def chase(target: str, *, client: httpx.Client | None = None) -> ChaseResult:
-    """The TikTok post ``target`` names, read through its public embed.
-
-    ``chased`` with at least a date or media; ``no_target`` for a link that is
-    no TikTok post or short link; ``transient_failure`` when throttled or
-    unanswered after the retry schedule; ``not_accessible`` for a short link
-    that names no post, or a gone, private or unreadable embed. Never raises.
-    ``client`` is for tests.
+    """``chased`` with at least a date or media; ``no_target`` for a link that is no TikTok
+    post or short link; ``transient_failure`` once the retries are spent; ``not_accessible``
+    otherwise. Never raises. ``client`` is for tests.
     """
     try:
         return _chase(target, client=client)

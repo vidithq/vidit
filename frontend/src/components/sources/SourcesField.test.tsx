@@ -165,16 +165,16 @@ describe("SourcesField", () => {
   });
 
   it("imports a link's file, then re-imports the file picked from the post", async () => {
-    const staged = (id: string, kind: "image" | "video") => ({
+    const staged = (id: string) => ({
       id,
-      kind,
+      kind: "image",
       sha256: "0",
       original_filename: null,
       storage_url: `https://cdn/uploads/${id}`,
       expires_at: "2099-01-01T00:00:00Z",
       post_media: ["image", "video"],
     });
-    importFile.mockResolvedValueOnce(staged("u1", "image")).mockResolvedValueOnce(staged("u2", "video"));
+    importFile.mockResolvedValueOnce(staged("u1")).mockResolvedValueOnce(staged("u2"));
     const url = "https://x.com/someone/status/1";
     render(<Host initial={[withUrl(url)]} />);
     fireEvent.click(screen.getByRole("button", { name: /^Import the file of source 1/ }));

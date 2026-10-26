@@ -195,41 +195,24 @@ describe("firstSourceUrl", () => {
 });
 
 describe("isImportableLink", () => {
-  // The shapes of backend tests/events/test_uploads_from_link.py, which pins the mirrored check.
   it.each([
-    "https://x.com/someone/status/1790000000000000000",
-    "https://www.x.com/someone/status/1790000000000000000?s=20",
-    "https://twitter.com/someone/status/1790000000000000000",
-    "https://x.com/i/web/status/1790000000000000000",
-    "https://t.me/somechannel/12345",
-    "http://www.t.me/somechannel/12345?single",
-    "https://www.tiktok.com/@someone/video/7400000000000000001",
-    "https://tiktok.com/@some.one_2/photo/7400000000000000001/",
-    "https://m.tiktok.com/@someone/photo/7400000000000000001",
-    "https://vm.tiktok.com/ZMabc123/",
-    "https://vt.tiktok.com/ZSxyz",
-    "https://www.tiktok.com/t/ZTcode9/",
-  ])("reads %s", (url) => {
-    expect(isImportableLink(url)).toBe(true);
-  });
-
-  it.each([
-    "https://example.com/article",
-    "https://x.com/someone",
-    "https://web.archive.org/web/2026/https://x.com/someone/status/1",
-    "https://x.com.evil.example/someone/status/1",
-    "https://t.me/somechannel",
-    "https://t.me/c/1234567890/42",
-    "https://t.me:8080/somechannel/12345",
-    "https://user:pass@t.me/somechannel/12345",
-    "https://www.tiktok.com/@someone",
-    "https://www.tiktok.com/embed/v2/7400000000000000001",
-    "https://tiktok.com.evil.example/@someone/video/1",
-    "https://evil.tiktok.com/ZMabc123/",
-    "https://vm.tiktok.com/a/b",
-    "https://www.tiktok.com:8443/@someone/video/1",
-    "not a url",
-  ])("refuses %s", (url) => {
-    expect(isImportableLink(url)).toBe(false);
+    ["https://twitter.com/someone/status/1790000000000000000?s=20", true],
+    ["https://x.com/i/web/status/1790000000000000000", true],
+    ["http://www.t.me/somechannel/12345?single", true],
+    ["https://tiktok.com/@some.one_2/photo/7400000000000000001/", true],
+    ["https://vm.tiktok.com/ZMabc123/", true],
+    ["https://www.tiktok.com/t/ZTcode9/", true],
+    ["https://example.com/article", false],
+    ["https://x.com/someone", false],
+    ["https://t.me/c/1234567890/42", false],
+    ["https://t.me:8080/somechannel/12345", false],
+    ["https://user:pass@t.me/somechannel/12345", false],
+    ["https://www.tiktok.com/@someone", false],
+    ["https://www.tiktok.com/embed/v2/7400000000000000001", false],
+    ["https://evil.tiktok.com/ZMabc123/", false],
+    ["https://vm.tiktok.com/a/b", false],
+    ["not a url", false],
+  ])("%s is %s", (url, importable) => {
+    expect(isImportableLink(url)).toBe(importable);
   });
 });

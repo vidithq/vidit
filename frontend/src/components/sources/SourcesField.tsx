@@ -13,6 +13,7 @@ import { isSnapshotUrl, SNAPSHOT_HINT } from "@/components/ui/ArchivedCopies";
 import type { MissingFieldKey } from "@/lib/events";
 import {
   draftUrls,
+  fileRunning,
   importSourceFile,
   isEvidenceLevel,
   MAX_SOURCES_PER_EVENT,
@@ -67,9 +68,7 @@ export function SourcesField({
   const settle = (key: string, token: number, file: SourceFile) =>
     setSources((prev) =>
       prev.map((d) =>
-        d.key === key &&
-        (d.file?.state === "uploading" || d.file?.state === "importing") &&
-        d.file.token === token
+        d.key === key && fileRunning(d.file) && d.file.token === token
           ? { ...d, file }
           : d
       )
