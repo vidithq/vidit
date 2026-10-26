@@ -5,14 +5,17 @@ import type {
   StyleSpecification,
 } from "maplibre-gl";
 
+import { MAP_LAYER_COLORS } from "@/lib/palette";
 import type { ThemeId } from "@/lib/theme";
 
 import viditDark from "./styles/vidit-dark.json";
 import viditLight from "./styles/vidit-light.json";
 
+export type Brightness = "dark" | "light";
+
 /** The Vidit styles, forked from OpenFreeMap's dark and Positron (licence in `styles/LICENSE`).
  *  Each layer the builder adjusts carries a `vidit:role` in its metadata. */
-export const VIDIT_STYLES = {
+export const VIDIT_STYLES: Record<Brightness, StyleSpecification> = {
   dark: viditDark as unknown as StyleSpecification,
   light: viditLight as unknown as StyleSpecification,
 };
@@ -25,7 +28,8 @@ type LayerRole =
   | "road-label"
   | "region-border"
   | "disputed-border"
-  | "building";
+  | "building"
+  | "military-airport";
 
 const ROAD_ROLES: ReadonlySet<LayerRole> = new Set(["road", "minor-road", "road-label"]);
 
@@ -38,6 +42,7 @@ export interface BasemapOptions {
   regionBorders: boolean;
   roads: boolean;
   buildings: boolean;
+  militaryAndAirports: boolean;
   /** Dashed, a disputed country border reads apart from a settled one; solid, it reads like one. */
   disputedDashed: boolean;
 }
@@ -48,6 +53,7 @@ export const DEFAULT_BASEMAP_OPTIONS: BasemapOptions = {
   regionBorders: false,
   roads: true,
   buildings: true,
+  militaryAndAirports: true,
   disputedDashed: true,
 };
 
@@ -111,6 +117,7 @@ function labelText(language: LabelLanguage, separator: string): ExpressionSpecif
 }
 
 type AdjustableLayer = LayerSpecification & {
+  "source-layer"?: string;
   filter?: FilterSpecification;
   layout?: Record<string, unknown>;
   paint?: Record<string, unknown>;
@@ -131,7 +138,8 @@ function adjustLayer(layer: AdjustableLayer, options: BasemapOptions): LayerSpec
   const hidden =
     (role === "region-border" && !options.regionBorders) ||
     (ROAD_ROLES.has(role) && !options.roads) ||
-    (role === "building" && !options.buildings);
+    (role === "building" && !options.buildings) ||
+    (role === "military-airport" && !options.militaryAndAirports);
   if (hidden) layout.visibility = "none";
 
   if (role === "disputed-border" && !options.disputedDashed) {
@@ -156,16 +164,94 @@ function adjustLayer(layer: AdjustableLayer, options: BasemapOptions): LayerSpec
   return next;
 }
 
+const LINES: ExpressionSpecification = [
+  "match",
+  ["geometry-type"],
+  ["LineString", "MultiLineString"],
+  true,
+  false,
+];
+
+/** Military areas (`landuse` class `military`, from zoom 10 in the tiles) and airports (the
+ *  `aeroway` aerodrome area, runways and taxiways) drawn over the land, in colours of their own. */
+function militaryAirportLayers(brightness: Brightness): LayerSpecification[] {
+  const { military, airport } = MAP_LAYER_COLORS[brightness];
+  const source = { source: "openmaptiles", metadata: { "vidit:role": "military-airport" } };
+  const isMilitary: FilterSpecification = ["==", ["get", "class"], "military"];
+  const isAerodrome: FilterSpecification = ["==", ["get", "class"], "aerodrome"];
+  const outlineWidth: ExpressionSpecification = ["interpolate", ["linear"], ["zoom"], 10, 0.75, 16, 1.5];
+  return [
+    {
+      ...source,
+      id: "vidit-military-fill",
+      type: "fill",
+      "source-layer": "landuse",
+      filter: isMilitary,
+      paint: { "fill-color": military, "fill-opacity": 0.12 },
+    },
+    {
+      ...source,
+      id: "vidit-military-outline",
+      type: "line",
+      "source-layer": "landuse",
+      filter: isMilitary,
+      paint: { "line-color": military, "line-opacity": 0.7, "line-width": outlineWidth },
+    },
+    {
+      ...source,
+      id: "vidit-airport-fill",
+      type: "fill",
+      "source-layer": "aeroway",
+      filter: isAerodrome,
+      paint: { "fill-color": airport, "fill-opacity": 0.12 },
+    },
+    {
+      ...source,
+      id: "vidit-airport-outline",
+      type: "line",
+      "source-layer": "aeroway",
+      filter: isAerodrome,
+      paint: { "line-color": airport, "line-opacity": 0.7, "line-width": outlineWidth },
+    },
+    {
+      ...source,
+      id: "vidit-runway",
+      type: "line",
+      "source-layer": "aeroway",
+      filter: ["all", LINES, ["match", ["get", "class"], ["runway", "taxiway"], true, false]],
+      layout: { "line-cap": "round" },
+      paint: {
+        "line-color": airport,
+        "line-opacity": 0.85,
+        "line-width": [
+          "interpolate",
+          ["exponential", 1.5],
+          ["zoom"],
+          10,
+          ["match", ["get", "class"], "runway", 1.5, 0.5],
+          17,
+          ["match", ["get", "class"], "runway", 16, 4],
+        ],
+      },
+    },
+  ];
+}
+
 /** A Vidit style with the reader's options applied. Pure: the same inputs give an equal style,
- *  so MapLibre's style diff turns an option change into `setLayoutProperty`, `setFilter` and
- *  `setLayerZoomRange` calls on the live map. */
-export function buildViditStyle(
-  base: StyleSpecification,
-  options: BasemapOptions,
-): StyleSpecification {
+ *  so MapLibre's style diff turns an option change into `setLayoutProperty`, `setPaintProperty`,
+ *  `setFilter` and `setLayerZoomRange` calls on the live map. */
+export function buildViditStyle(brightness: Brightness, options: BasemapOptions): StyleSpecification {
+  const base = VIDIT_STYLES[brightness];
+  const layers = [...base.layers];
+  // Above the style's own aeroway layers, under its roads and labels.
+  let at = 0;
+  layers.forEach((layer, i) => {
+    if ((layer as AdjustableLayer)["source-layer"] === "aeroway") at = i + 1;
+  });
+  layers.splice(at, 0, ...militaryAirportLayers(brightness));
   return {
     ...base,
-    layers: base.layers.map((layer) => adjustLayer(layer as AdjustableLayer, options)),
+    layers: layers.map((layer) => adjustLayer(layer as AdjustableLayer, options)),
   };
 }
 
@@ -198,8 +284,6 @@ const TERRAIN_STYLE: StyleSpecification = {
   layers: [{ id: "opentopomap", type: "raster", source: "opentopomap" }],
 };
 
-export type Brightness = "dark" | "light";
-
 export const BASEMAP_PRESET_IDS = ["auto", "vidit-dark", "vidit-light", "streets", "terrain"] as const;
 export type BasemapPresetId = (typeof BASEMAP_PRESET_IDS)[number];
 type ConcretePresetId = Exclude<BasemapPresetId, "auto">;
@@ -215,12 +299,12 @@ export const BASEMAP_PRESETS: Record<ConcretePresetId, BasemapPreset> = {
   "vidit-dark": {
     brightness: "dark",
     adjustable: true,
-    style: (options) => buildViditStyle(VIDIT_STYLES.dark, options),
+    style: (options) => buildViditStyle("dark", options),
   },
   "vidit-light": {
     brightness: "light",
     adjustable: true,
-    style: (options) => buildViditStyle(VIDIT_STYLES.light, options),
+    style: (options) => buildViditStyle("light", options),
   },
   streets: {
     brightness: "light",

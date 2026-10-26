@@ -8,6 +8,8 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { MAP_LAYER_COLORS } from "@/lib/palette";
+
 import {
   BASEMAP_PRESETS,
   BLANK_STYLE,
@@ -18,6 +20,7 @@ import {
   resolvePreset,
   VIDIT_STYLES,
   type BasemapOptions,
+  type Brightness,
 } from "./basemap";
 
 type Layer = LayerSpecification & {
@@ -28,11 +31,11 @@ type Layer = LayerSpecification & {
   "source-layer"?: string;
 };
 
-const BASES = Object.entries(VIDIT_STYLES);
+const BASES = Object.entries(VIDIT_STYLES) as [Brightness, StyleSpecification][];
 const GLYPHS_DIR = join(process.cwd(), "public", "map-glyphs");
 
-function build(base: StyleSpecification, options: Partial<BasemapOptions> = {}): Layer[] {
-  return buildViditStyle(base, { ...DEFAULT_BASEMAP_OPTIONS, ...options }).layers as Layer[];
+function build(brightness: Brightness, options: Partial<BasemapOptions> = {}): Layer[] {
+  return buildViditStyle(brightness, { ...DEFAULT_BASEMAP_OPTIONS, ...options }).layers as Layer[];
 }
 
 function withRole(layers: Layer[], role: string): Layer[] {
@@ -55,14 +58,14 @@ function labelOf(layer: Layer, properties: Record<string, unknown>): unknown {
   return parsed.value.evaluate({ zoom: 10 }, { type: 1, properties } as never);
 }
 
-describe.each(BASES)("buildViditStyle on the %s style", (_, base) => {
+describe.each(BASES)("buildViditStyle on the %s style", (brightness, base) => {
   it("validates against the style spec with every option set", () => {
     for (const options of [
       DEFAULT_BASEMAP_OPTIONS,
-      { language: "both", density: "normal", regionBorders: true, roads: false, buildings: false, disputedDashed: false },
-      { language: "local", density: "sparse", regionBorders: false, roads: true, buildings: true, disputedDashed: true },
+      { language: "both", density: "normal", regionBorders: true, roads: false, buildings: false, militaryAndAirports: false, disputedDashed: false },
+      { language: "local", density: "sparse", regionBorders: false, roads: true, buildings: true, militaryAndAirports: true, disputedDashed: true },
     ] as BasemapOptions[]) {
-      expect(validateStyleMin(buildViditStyle(base, options))).toEqual([]);
+      expect(validateStyleMin(buildViditStyle(brightness, options))).toEqual([]);
     }
   });
 
@@ -94,7 +97,7 @@ describe.each(BASES)("buildViditStyle on the %s style", (_, base) => {
   });
 
   it("labels only countries and capitals below the low zoom by default", () => {
-    const places = withRole(build(base), "place-label");
+    const places = withRole(build(brightness), "place-label");
     const below = LOW_ZOOM - 1;
     const anyShows = (zoom: number, properties: Record<string, unknown>) =>
       places.some((layer) => shows(layer, zoom, properties));
@@ -110,14 +113,14 @@ describe.each(BASES)("buildViditStyle on the %s style", (_, base) => {
   });
 
   it("keeps the upstream place labels at normal density", () => {
-    const places = withRole(build(base, { density: "normal" }), "place-label");
+    const places = withRole(build(brightness, { density: "normal" }), "place-label");
     expect(
       places.some((layer) => shows(layer, LOW_ZOOM - 1, { class: "city", rank: 1 })),
     ).toBe(true);
   });
 
   it("holds every other label and road back to the low zoom when sparse", () => {
-    const layers = build(base);
+    const layers = build(brightness);
     for (const role of ["label", "road", "road-label"]) {
       for (const layer of withRole(layers, role)) {
         expect(layer.minzoom ?? 0, layer.id).toBeGreaterThanOrEqual(LOW_ZOOM);
@@ -126,31 +129,31 @@ describe.each(BASES)("buildViditStyle on the %s style", (_, base) => {
     for (const layer of withRole(layers, "minor-road")) {
       expect(layer.minzoom ?? 0, layer.id).toBeGreaterThanOrEqual(12);
     }
-    const normal = build(base, { density: "normal" });
+    const normal = build(brightness, { density: "normal" });
     expect(withRole(normal, "minor-road").map((l) => l.minzoom)).toEqual(
       withRole(base.layers as Layer[], "minor-road").map((l) => l.minzoom),
     );
   });
 
   it("hides region borders and keeps country borders by default", () => {
-    const layers = build(base);
+    const layers = build(brightness);
     expect(withRole(layers, "region-border").every((layer) => !visible(layer))).toBe(true);
     const countries = layers.filter(
       (layer) => layer["source-layer"] === "boundary" && !layer.metadata,
     );
     expect(countries).not.toHaveLength(0);
     expect(countries.every(visible)).toBe(true);
-    expect(withRole(build(base, { regionBorders: true }), "region-border").every(visible)).toBe(
+    expect(withRole(build(brightness, { regionBorders: true }), "region-border").every(visible)).toBe(
       true,
     );
   });
 
   it("hides every road layer when roads are off", () => {
-    const layers = build(base, { roads: false });
+    const layers = build(brightness, { roads: false });
     for (const role of ["road", "minor-road", "road-label"]) {
       expect(withRole(layers, role).every((layer) => !visible(layer))).toBe(true);
     }
-    expect(withRole(build(base), "road").every(visible)).toBe(true);
+    expect(withRole(build(brightness), "road").every(visible)).toBe(true);
   });
 
   it("draws buildings by default and hides them when off", () => {
@@ -158,14 +161,14 @@ describe.each(BASES)("buildViditStyle on the %s style", (_, base) => {
     for (const layer of base.layers as Layer[]) {
       if (layer["source-layer"] === "building") expect(layer.metadata?.["vidit:role"], layer.id).toBe("building");
     }
-    expect(withRole(build(base), "building").every(visible)).toBe(true);
-    expect(withRole(build(base, { buildings: false }), "building").every((layer) => !visible(layer))).toBe(
+    expect(withRole(build(brightness), "building").every(visible)).toBe(true);
+    expect(withRole(build(brightness, { buildings: false }), "building").every((layer) => !visible(layer))).toBe(
       true,
     );
   });
 
   it("dashes disputed country borders by default and leaves the settled ones solid", () => {
-    const layers = build(base);
+    const layers = build(brightness);
     const borders = layers.filter((layer) => layer["source-layer"] === "boundary");
     const disputed = withRole(layers, "disputed-border");
     const countries = borders.filter((layer) => !layer.metadata);
@@ -181,26 +184,62 @@ describe.each(BASES)("buildViditStyle on the %s style", (_, base) => {
     expect(disputed[0].paint).toHaveProperty("line-dasharray");
     for (const layer of countries) expect(layer.paint, layer.id).not.toHaveProperty("line-dasharray");
 
-    const solid = withRole(build(base, { disputedDashed: false }), "disputed-border")[0];
+    const solid = withRole(build(brightness, { disputedDashed: false }), "disputed-border")[0];
     expect(solid.paint).not.toHaveProperty("line-dasharray");
     expect(visible(solid)).toBe(true);
   });
 
+  it("highlights military areas and airports above the aeroways and under the roads by default", () => {
+    const layers = build(brightness);
+    const highlights = withRole(layers, "military-airport");
+    const anyShows = (sourceLayer: string, properties: Record<string, unknown>) =>
+      highlights.some((layer) => layer["source-layer"] === sourceLayer && shows(layer, 12, properties));
+
+    expect(highlights.every(visible)).toBe(true);
+    expect(anyShows("landuse", { class: "military" })).toBe(true);
+    expect(anyShows("landuse", { class: "industrial" })).toBe(false);
+    expect(anyShows("aeroway", { class: "aerodrome" })).toBe(true);
+    expect(highlights.some((layer) => layer.type === "line" && JSON.stringify(layer.filter).includes("runway"))).toBe(
+      true,
+    );
+
+    const ids = layers.map((layer) => layer.id);
+    const lastAeroway = Math.max(
+      ...layers.flatMap((layer, i) => (layer["source-layer"] === "aeroway" && !layer.metadata ? [i] : [])),
+    );
+    const firstHighlight = ids.indexOf(highlights[0].id);
+    expect(firstHighlight).toBe(lastAeroway + 1);
+    // Only tunnels, which run under the ground, draw beneath the highlights.
+    const roadsBelow = withRole(layers, "road").filter((layer) => ids.indexOf(layer.id) < firstHighlight);
+    expect(roadsBelow.every((layer) => layer.id.startsWith("tunnel_"))).toBe(true);
+
+    const colors = MAP_LAYER_COLORS[brightness];
+    const paints = JSON.stringify(highlights.map((layer) => layer.paint));
+    expect(paints).toContain(colors.military);
+    expect(paints).toContain(colors.airport);
+  });
+
+  it("hides the military and airport highlights when off", () => {
+    const highlights = withRole(build(brightness, { militaryAndAirports: false }), "military-airport");
+    expect(highlights).not.toHaveLength(0);
+    expect(highlights.every((layer) => !visible(layer))).toBe(true);
+  });
+
   it("writes one language per label, Latin by default", () => {
     const kyiv = { name: "Київ", "name:latin": "Kyiv", "name:nonlatin": "Київ" };
-    const city = withRole(build(base), "place-label")[0];
+    const city = withRole(build(brightness), "place-label")[0];
     expect(labelOf(city, kyiv)).toBe("Kyiv");
     expect(labelOf(city, { name: "Lviv" })).toBe("Lviv");
 
-    const local = withRole(build(base, { language: "local" }), "place-label")[0];
+    const local = withRole(build(brightness, { language: "local" }), "place-label")[0];
     expect(labelOf(local, kyiv)).toBe("Київ");
 
-    const both = withRole(build(base, { language: "both" }), "place-label")[0];
+    const both = withRole(build(brightness, { language: "both" }), "place-label")[0];
     expect(labelOf(both, kyiv)).toBe("Kyiv\nКиїв");
   });
 
   it("leaves road shields on their reference", () => {
-    const shields = withRole(build(base), "road-label").filter((layer) =>
+    const shields = withRole(build(brightness), "road-label").filter((layer) =>
       JSON.stringify(layer.layout?.["text-field"] ?? null).includes('"ref"'),
     );
     for (const layer of shields) {

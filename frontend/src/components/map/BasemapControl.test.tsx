@@ -18,6 +18,7 @@ const SETTINGS: BasemapSettings = {
   regionBorders: false,
   roads: true,
   buildings: true,
+  militaryAndAirports: true,
   disputedDashed: true,
 };
 
@@ -60,6 +61,8 @@ describe("<BasemapControl>", () => {
     expect(onChange).toHaveBeenLastCalledWith({ roads: false });
     fireEvent.click(screen.getByRole("switch", { name: "Buildings" }));
     expect(onChange).toHaveBeenLastCalledWith({ buildings: false });
+    fireEvent.click(screen.getByRole("switch", { name: "Military areas and airports" }));
+    expect(onChange).toHaveBeenLastCalledWith({ militaryAndAirports: false });
     fireEvent.click(screen.getByRole("switch", { name: "Dashed disputed borders" }));
     expect(onChange).toHaveBeenLastCalledWith({ disputedDashed: false });
   });

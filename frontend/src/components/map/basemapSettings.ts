@@ -34,6 +34,7 @@ const FIELDS: { [K in keyof BasemapSettings]: readonly BasemapSettings[K][] } = 
   regionBorders: BOOLEAN,
   roads: BOOLEAN,
   buildings: BOOLEAN,
+  militaryAndAirports: BOOLEAN,
   disputedDashed: BOOLEAN,
 };
 

@@ -12,7 +12,7 @@ describe("basemap settings", () => {
   beforeEach(() => window.localStorage.clear());
   afterEach(() => vi.restoreAllMocks());
 
-  it("defaults to Auto, Latin labels, sparse density, no region borders, roads, buildings and dashed disputed borders on", async () => {
+  it("defaults to Auto, Latin labels, sparse density, no region borders, and every layer but region borders on", async () => {
     const { getBasemapSettings } = await load();
     expect(getBasemapSettings()).toEqual({
       preset: "auto",
@@ -21,6 +21,7 @@ describe("basemap settings", () => {
       regionBorders: false,
       roads: true,
       buildings: true,
+      militaryAndAirports: true,
       disputedDashed: true,
     });
   });
@@ -71,6 +72,7 @@ describe("basemap settings", () => {
       regionBorders: true,
       roads: false,
       buildings: true,
+      militaryAndAirports: true,
       disputedDashed: true,
     });
   });

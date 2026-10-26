@@ -52,6 +52,11 @@ const LAYER_TOGGLES: SwitchSetting[] = [
   { key: "roads", label: "Roads", description: "Roads, railways and their names." },
   { key: "buildings", label: "Buildings", description: "Building footprints, from zoom 13." },
   {
+    key: "militaryAndAirports",
+    label: "Military areas and airports",
+    description: "Outlined in colour, from zoom 10.",
+  },
+  {
     key: "disputedDashed",
     label: "Dashed disputed borders",
     description: "Off draws a disputed border solid, like a settled one.",

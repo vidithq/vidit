@@ -125,3 +125,11 @@ export const SITE_MAP_COLORS: Record<
   dark: { zone: "#a3a3a3", damage: "#f59e0b", destruction: "#ef4444", halo: "#0a0a0a" },
   light: { zone: "#585858", damage: "#f59e0b", destruction: "#ef4444", halo: "#eae8e4" },
 };
+
+/** Basemap highlights, by basemap brightness: Tailwind lime for military areas and cyan for
+ *  airports, hues no marker palette above and no site zone uses, so a highlighted area never
+ *  reads as an event. */
+export const MAP_LAYER_COLORS: Record<ThemeId, { military: string; airport: string }> = {
+  dark: { military: "#a3e635", airport: "#22d3ee" },
+  light: { military: "#4d7c0f", airport: "#0e7490" },
+};
