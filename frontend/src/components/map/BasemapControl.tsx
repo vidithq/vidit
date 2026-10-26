@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useControl } from "react-map-gl/maplibre";
 import { Map as MapIcon } from "lucide-react";
@@ -63,8 +63,26 @@ const LAYER_TOGGLES: SwitchSetting[] = [
   },
 ];
 
+const OVERLAY_TOGGLES: SwitchSetting[] = [
+  {
+    key: "grid",
+    label: "Coordinate grid",
+    description: "Latitude and longitude lines, finer as you zoom in.",
+  },
+];
+
+function SettingsGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="space-y-3 border-t border-neutral-700 pt-3">
+      <p className={FORM_LABEL}>{title}</p>
+      {children}
+    </div>
+  );
+}
+
 /** The basemap picker: a map control beside the zoom buttons that opens the basemap settings. The
- *  detail settings show only on a preset they apply to (the Vidit styles). */
+ *  label and layer settings show only on a preset they apply to (the Vidit styles); the overlays
+ *  show on every preset. */
 export function BasemapControl({
   settings,
   adjustable,
@@ -89,6 +107,17 @@ export function BasemapControl({
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelId = useId();
+
+  const switches = (toggles: SwitchSetting[]) =>
+    toggles.map((toggle) => (
+      <ToggleRow
+        key={toggle.key}
+        label={toggle.label}
+        description={toggle.description}
+        on={settings[toggle.key]}
+        onToggle={() => onChange({ [toggle.key]: !settings[toggle.key] })}
+      />
+    ));
 
   const close = (restoreFocus: boolean) => {
     setOpen(false);
@@ -123,8 +152,7 @@ export function BasemapControl({
             </div>
             {adjustable ? (
               <>
-                <div className="space-y-3 border-t border-neutral-700 pt-3">
-                  <p className={FORM_LABEL}>Labels</p>
+                <SettingsGroup title="Labels">
                   <ChoiceRow
                     label="Label language"
                     description="Local writes each place in its own script."
@@ -139,25 +167,15 @@ export function BasemapControl({
                     value={settings.density}
                     onChange={(density) => onChange({ density })}
                   />
-                </div>
-                <div className="space-y-3 border-t border-neutral-700 pt-3">
-                  <p className={FORM_LABEL}>Layers</p>
-                  {LAYER_TOGGLES.map((toggle) => (
-                    <ToggleRow
-                      key={toggle.key}
-                      label={toggle.label}
-                      description={toggle.description}
-                      on={settings[toggle.key]}
-                      onToggle={() => onChange({ [toggle.key]: !settings[toggle.key] })}
-                    />
-                  ))}
-                </div>
+                </SettingsGroup>
+                <SettingsGroup title="Layers">{switches(LAYER_TOGGLES)}</SettingsGroup>
               </>
             ) : (
               <p className="border-t border-neutral-700 pt-2 text-xs text-neutral-500">
                 Labels and layers adjust on the Dark and Light basemaps.
               </p>
             )}
+            <SettingsGroup title="Overlays">{switches(OVERLAY_TOGGLES)}</SettingsGroup>
           </div>
         </PopoverPanel>
       )}

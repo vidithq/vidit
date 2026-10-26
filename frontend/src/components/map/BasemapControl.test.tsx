@@ -20,6 +20,7 @@ const SETTINGS: BasemapSettings = {
   buildings: true,
   militaryAndAirports: true,
   disputedDashed: true,
+  grid: false,
 };
 
 function open(settings: Partial<BasemapSettings> = {}, adjustable = true) {
@@ -65,13 +66,16 @@ describe("<BasemapControl>", () => {
     expect(onChange).toHaveBeenLastCalledWith({ militaryAndAirports: false });
     fireEvent.click(screen.getByRole("switch", { name: "Dashed disputed borders" }));
     expect(onChange).toHaveBeenLastCalledWith({ disputedDashed: false });
+    fireEvent.click(screen.getByRole("switch", { name: "Coordinate grid" }));
+    expect(onChange).toHaveBeenLastCalledWith({ grid: true });
   });
 
-  it("hides the detail settings on a third-party basemap", () => {
+  it("hides the label and layer settings on a third-party basemap and keeps the overlays", () => {
     open({ preset: "streets" }, false);
     expect(screen.queryByRole("group", { name: "Label language" })).toBeNull();
     expect(screen.queryByRole("switch", { name: "Roads" })).toBeNull();
     expect(screen.queryByRole("switch", { name: "Buildings" })).toBeNull();
+    expect(screen.getByRole("switch", { name: "Coordinate grid" })).toBeInTheDocument();
     expect(screen.getByText(/adjust on the Dark and Light basemaps/)).toBeInTheDocument();
   });
 });

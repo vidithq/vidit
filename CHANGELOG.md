@@ -10,6 +10,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - On the Dark and Light basemaps, the same control sets the label language (Latin, local or both), the label density, and whether region borders and roads show ([#709](https://github.com/vidithq/vidit/pull/709)).
 - The basemap control turns building footprints on or off on the Dark and Light basemaps ([#709](https://github.com/vidithq/vidit/pull/709)).
 - The Dark and Light basemaps highlight military areas and airports, with their runways, from zoom 10; the basemap control turns the highlight off ([#709](https://github.com/vidithq/vidit/pull/709)).
+- A coordinate grid overlay, off by default, draws latitude and longitude lines with their labels on every basemap, finer as you zoom in ([#709](https://github.com/vidithq/vidit/pull/709)).
 - The Dark and Light basemaps draw disputed country borders dashed, and the basemap control can draw them solid ([#709](https://github.com/vidithq/vidit/pull/709)).
 
 ### Changed

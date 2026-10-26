@@ -126,10 +126,25 @@ export const SITE_MAP_COLORS: Record<
   light: { zone: "#585858", damage: "#f59e0b", destruction: "#ef4444", halo: "#eae8e4" },
 };
 
-/** Basemap highlights, by basemap brightness: Tailwind lime for military areas and cyan for
- *  airports, hues no marker palette above and no site zone uses, so a highlighted area never
- *  reads as an event. */
-export const MAP_LAYER_COLORS: Record<ThemeId, { military: string; airport: string }> = {
-  dark: { military: "#a3e635", airport: "#22d3ee" },
-  light: { military: "#4d7c0f", airport: "#0e7490" },
+/** Basemap highlights and the coordinate grid, by basemap brightness. Military areas take Tailwind
+ *  lime and airports cyan: hues no marker palette above and no site zone uses, so a highlighted
+ *  area never reads as an event. The grid is a neutral line, labelled over a halo of the canvas. */
+export const MAP_LAYER_COLORS: Record<
+  ThemeId,
+  { military: string; airport: string; grid: string; gridLabel: string; gridHalo: string }
+> = {
+  dark: {
+    military: "#a3e635",
+    airport: "#22d3ee",
+    grid: "rgba(255,255,255,0.22)",
+    gridLabel: "#a3a3a3",
+    gridHalo: "#0a0a0a",
+  },
+  light: {
+    military: "#4d7c0f",
+    airport: "#0e7490",
+    grid: "rgba(0,0,0,0.25)",
+    gridLabel: "#525252",
+    gridHalo: "#ffffff",
+  },
 };
