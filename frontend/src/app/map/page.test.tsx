@@ -162,3 +162,32 @@ describe("map detail panel", () => {
     expect(heading(TITLE_A)).toBeInTheDocument();
   });
 });
+
+describe("map sites layer", () => {
+  const filtersButton = () => screen.getByRole("button", { name: /^Filters/ });
+  const sitesSwitch = () => screen.getByRole("switch", { name: "Show sites" });
+
+  it("turns the layer on from the filter panel and counts it as an active filter", () => {
+    renderMap();
+    expect(screen.queryByRole("switch", { name: "Show sites" })).not.toBeInTheDocument();
+
+    fireEvent.click(filtersButton());
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sites" }));
+    expect(sitesSwitch()).toHaveAttribute("aria-checked", "false");
+
+    fireEvent.click(sitesSwitch());
+    expect(sitesSwitch()).toHaveAttribute("aria-checked", "true");
+    expect(filtersButton()).toHaveTextContent(/^Filters1/);
+
+    // Collapsed, the count and the pill still say the layer is on.
+    fireEvent.click(filtersButton());
+    expect(screen.queryByRole("switch", { name: "Show sites" })).not.toBeInTheDocument();
+    expect(filtersButton()).toHaveTextContent(/^Filters1/);
+
+    fireEvent.click(screen.getByTitle("Remove filter: Sites"));
+    expect(filtersButton()).not.toHaveTextContent(/^Filters1/);
+    fireEvent.click(filtersButton());
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sites" }));
+    expect(sitesSwitch()).toHaveAttribute("aria-checked", "false");
+  });
+});

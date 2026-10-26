@@ -10,6 +10,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- The map's Sites switch moves into the filter panel as its first section; while sites show, the Filters button counts them and a Sites pill turns them off ([#719](https://github.com/vidithq/vidit/issues/719)).
 - Search, feed and requests show the active filters at the top of the filter panel on a wide screen, and search puts the result count at the head of the list ([#702](https://github.com/vidithq/vidit/pull/702)).
 - The feed's Kind filter offers Detections as a third chip beside Geolocations and Requests, in place of the Show detections switch; no chip still lists all three ([#702](https://github.com/vidithq/vidit/pull/702)).
 - Search loads every matching geolocation: **Load more** under the Geolocations group appends the next page, and `GET /search` pages that group with `geolocations_cursor` ([#696](https://github.com/vidithq/vidit/pull/696)).

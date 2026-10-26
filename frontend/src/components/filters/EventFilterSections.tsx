@@ -314,7 +314,7 @@ export function EventFilterSections({
   conflicts: Conflict[];
   values: EventFilterValues;
   onPatch: EventFilterPatch;
-  /** Surface-specific sections above the shared stack (the feed's Kind). */
+  /** Surface-specific sections above the shared stack (the feed's Kind, the map's Sites). */
   leadSections?: InjectedSection[];
   dateSections?: InjectedSection[];
   /** Which sections this surface offers (default: all). A surface scoped to a view a section can't
