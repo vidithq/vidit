@@ -30,6 +30,12 @@ describe("basemap settings", () => {
     });
   });
 
+  it("reads the Satellite preset back", async () => {
+    window.localStorage.setItem("vidit:basemap", JSON.stringify({ preset: "satellite" }));
+    const { getBasemapSettings } = await load();
+    expect(getBasemapSettings().preset).toBe("satellite");
+  });
+
   it("persists a change and announces it", async () => {
     const { getBasemapSettings, saveBasemapSettings } = await load();
     const heard = vi.fn();
@@ -51,7 +57,7 @@ describe("basemap settings", () => {
   it("reads an invalid field as its default and keeps the valid ones", async () => {
     window.localStorage.setItem(
       "vidit:basemap",
-      JSON.stringify({ preset: "satellite", language: "local", roads: "no" }),
+      JSON.stringify({ preset: "aerial", language: "local", roads: "no" }),
     );
     const { getBasemapSettings } = await load();
     expect(getBasemapSettings()).toMatchObject({ preset: "auto", language: "local", roads: true });

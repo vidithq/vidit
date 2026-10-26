@@ -18,12 +18,25 @@ import { ToggleRow } from "@/components/ui/ToggleRow";
 import type { BasemapPresetId, LabelDensity, LabelLanguage } from "./basemap";
 import type { BasemapSettings } from "./basemapSettings";
 
-const PRESET_OPTIONS: SegmentedControlOption<BasemapPresetId>[] = [
-  { value: "auto", label: "Auto" },
-  { value: "vidit-dark", label: "Dark" },
-  { value: "vidit-light", label: "Light" },
-  { value: "streets", label: "Streets" },
-  { value: "terrain", label: "Terrain" },
+// Two rows, since six options overflow the panel: the Vidit styles, which take the label and layer
+// settings, then the third-party ones, drawn as published.
+const PRESET_ROWS: { label: string; options: SegmentedControlOption<BasemapPresetId>[] }[] = [
+  {
+    label: "Vidit basemaps",
+    options: [
+      { value: "auto", label: "Auto" },
+      { value: "vidit-dark", label: "Dark" },
+      { value: "vidit-light", label: "Light" },
+    ],
+  },
+  {
+    label: "Other basemaps",
+    options: [
+      { value: "streets", label: "Streets" },
+      { value: "terrain", label: "Terrain" },
+      { value: "satellite", label: "Satellite" },
+    ],
+  },
 ];
 
 const LANGUAGE_OPTIONS: SegmentedControlOption<LabelLanguage>[] = [
@@ -153,13 +166,19 @@ export function BasemapControl({
           <div className="max-h-[calc(100dvh-5rem)] space-y-2 overflow-y-auto">
             <div className="space-y-1.5">
               <p className={FORM_LABEL}>Basemap</p>
-              <SegmentedControl
-                aria-label="Basemap"
-                options={PRESET_OPTIONS}
-                value={settings.preset}
-                onChange={(preset) => onChange({ preset })}
-              />
-              <p className="text-xs text-neutral-500">Auto follows the theme.</p>
+              {PRESET_ROWS.map((row) => (
+                <SegmentedControl
+                  key={row.label}
+                  aria-label={row.label}
+                  options={row.options}
+                  value={settings.preset}
+                  onChange={(preset) => onChange({ preset })}
+                  fullWidth
+                />
+              ))}
+              <p className="text-xs text-neutral-500">
+                Auto follows the theme. Satellite is a cloud-free mosaic of 2016.
+              </p>
             </div>
             {adjustable ? (
               <>

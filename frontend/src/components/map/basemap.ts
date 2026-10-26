@@ -2,6 +2,7 @@ import type {
   ExpressionSpecification,
   FilterSpecification,
   LayerSpecification,
+  RasterSourceSpecification,
   SourceSpecification,
   StyleSpecification,
 } from "maplibre-gl";
@@ -309,25 +310,45 @@ export const BLANK_STYLE: StyleSpecification = {
   layers: [],
 };
 
-// Raster tiles stop at 17; MapLibre scales the last level past it.
-const TERRAIN_STYLE: StyleSpecification = {
-  version: 8,
-  name: "OpenTopoMap",
-  glyphs: GLYPHS,
-  sources: {
-    opentopomap: {
-      type: "raster",
-      tiles: ["a", "b", "c"].map((s) => `https://${s}.tile.opentopomap.org/{z}/{x}/{y}.png`),
-      tileSize: 256,
-      maxzoom: 17,
-      attribution:
-        'Map data: &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org" target="_blank">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org" target="_blank">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank">CC-BY-SA</a>)',
-    },
-  },
-  layers: [{ id: "opentopomap", type: "raster", source: "opentopomap" }],
-};
+/** A basemap of one raster source. MapLibre scales the source's last level past its `maxzoom`. */
+function rasterStyle(name: string, id: string, source: RasterSourceSpecification): StyleSpecification {
+  return {
+    version: 8,
+    name,
+    glyphs: GLYPHS,
+    sources: { [id]: source },
+    layers: [{ id, type: "raster", source: id }],
+  };
+}
 
-export const BASEMAP_PRESET_IDS = ["auto", "vidit-dark", "vidit-light", "streets", "terrain"] as const;
+const TERRAIN_STYLE = rasterStyle("OpenTopoMap", "opentopomap", {
+  type: "raster",
+  tiles: ["a", "b", "c"].map((s) => `https://${s}.tile.opentopomap.org/{z}/{x}/{y}.png`),
+  tileSize: 256,
+  maxzoom: 17,
+  attribution:
+    'Map data: &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org" target="_blank">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org" target="_blank">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank">CC-BY-SA</a>)',
+});
+
+// The 2016 mosaic is CC BY; EOX licenses the 2018 and later ones for non-commercial use only. The
+// 10 m data adds no detail past zoom 14, where EOX serves enlarged copies.
+const SATELLITE_STYLE = rasterStyle("Sentinel-2 cloudless 2016", "s2cloudless-2016", {
+  type: "raster",
+  tiles: ["https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/GoogleMapsCompatible/{z}/{y}/{x}.jpg"],
+  tileSize: 256,
+  maxzoom: 14,
+  attribution:
+    '<a href="https://s2maps.eu" target="_blank">Sentinel-2 cloudless 2016</a> by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016), <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank">CC BY 4.0</a>',
+});
+
+export const BASEMAP_PRESET_IDS = [
+  "auto",
+  "vidit-dark",
+  "vidit-light",
+  "streets",
+  "terrain",
+  "satellite",
+] as const;
 export type BasemapPresetId = (typeof BASEMAP_PRESET_IDS)[number];
 type ConcretePresetId = Exclude<BasemapPresetId, "auto">;
 
@@ -355,6 +376,7 @@ export const BASEMAP_PRESETS: Record<ConcretePresetId, BasemapPreset> = {
     style: () => "https://tiles.openfreemap.org/styles/liberty",
   },
   terrain: { brightness: "light", adjustable: false, style: () => TERRAIN_STYLE },
+  satellite: { brightness: "dark", adjustable: false, style: () => SATELLITE_STYLE },
 };
 
 /** Auto follows the theme onto the Vidit style of the same brightness. */

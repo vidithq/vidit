@@ -145,6 +145,7 @@ Every map source is keyless and loads straight from its host in the reader's bro
 | Terrain basemap | OpenTopoMap raster tiles, to zoom 17 | `tile.opentopomap.org` | OpenStreetMap contributors, SRTM, OpenTopoMap (CC BY-SA) |
 | Daily satellite imagery | NASA GIBS, `VIIRS_SNPP_CorrectedReflectance_TrueColor`, Web Mercator JPEG tiles of the day before, to zoom 9 | `gibs.earthdata.nasa.gov` | Imagery: NASA GIBS / EOSDIS |
 | Fire detections | NASA GIBS, `VIIRS_SNPP_Thermal_Anomalies_375m_All`, vector tiles of the day before | `gibs.earthdata.nasa.gov` | Imagery: NASA GIBS / EOSDIS |
+| Satellite basemap | [Sentinel-2 cloudless 2016](https://s2maps.eu) by EOX, layer `s2cloudless_3857`, JPEG tiles to zoom 14 | `tiles.maps.eox.at` | Sentinel-2 cloudless 2016 by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016), CC BY 4.0 |
 | Relief | [Terrain Tiles](https://registry.opendata.aws/terrain-tiles) on AWS Open Data, Terrarium-encoded elevation PNG, to zoom 15 | `s3.amazonaws.com/elevation-tiles-prod` | Terrain Tiles: USGS, NOAA, Copernicus EU-DEM and others, linked to the full list |
 
 Terrain Tiles merges several elevation datasets, and its [attribution list](https://github.com/tilezen/joerd/blob/master/docs/attribution.md) asks each to be credited:
@@ -162,6 +163,8 @@ Terrain Tiles merges several elevation datasets, and its [attribution list](http
 - United States 3DEP (formerly NED) and global GMTED2010 and SRTM terrain data courtesy of the U.S. Geological Survey.
 
 The attribution control names the three largest contributors and links to that list.
+
+The 2016 Sentinel-2 cloudless mosaic is licensed CC BY 4.0. EOX licenses the 2018 and later mosaics (`s2cloudless-2018` onward) under CC BY-NC-SA 4.0, which excludes commercial use. EOX serves the layer to zoom 21, but its 10 m Sentinel-2 data adds no detail past zoom 14: a zoom 15 tile matches its enlarged zoom 14 parent within JPEG noise. The source stops at 14, and MapLibre enlarges that level beyond.
 
 GIBS lists the fire detections as Web Mercator vector tiles (`GoogleMapsCompatible_Level8`), but answers 404 to every such request. It serves them on its geographic grid (EPSG:4326, matrix set `500m`), which a MapLibre vector source cannot read, since MapLibre tiles only in Web Mercator. Level 0 of that grid holds every detection of the day in two tiles, about 2 MB gzipped together. `loadFireDetections` in [`gibs.ts`](../frontend/src/components/map/gibs.ts) fetches both once per page load and date, since GIBS marks them `no-store`, and decodes them with `@mapbox/vector-tile` and `pbf`, the decoders MapLibre itself depends on. Each feature of the `VIIRS_SNPP_Thermal_Anomalies_375m_All_v2_NRT` layer carries its position as `LATITUDE` and `LONGITUDE` properties, so the decoder places each point there, with no tile projection, and keeps `FRP` (fire radiative power, in MW) and `CONFIDENCE` (`low`, `nominal` or `high`). The other properties are `BRIGHT_TI4`, `BRIGHT_TI5`, `SCAN`, `TRACK`, `ACQ_DATE`, `ACQ_TIME`, `SATELLITE`, `DAYNIGHT`, `VERSION` and `UID`. The points feed a GeoJSON source, which a basemap swap keeps.
 

@@ -13,6 +13,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - A coordinate grid overlay, off by default, draws latitude and longitude lines with their labels on every basemap, finer as you zoom in ([#709](https://github.com/vidithq/vidit/pull/709)).
 - The Dark and Light basemaps draw disputed country borders dashed, and the basemap control can draw them solid ([#709](https://github.com/vidithq/vidit/pull/709)).
 - A Relief switch on the Dark and Light basemaps shades hills and mountains from open elevation data; it is off by default ([#709](https://github.com/vidithq/vidit/pull/709)).
+- A Satellite basemap draws the cloud-free Sentinel-2 mosaic of 2016 by EOX ([#709](https://github.com/vidithq/vidit/pull/709)).
 - Two map overlays, off by default, show NASA data of the day before on every basemap: true-colour satellite imagery and fire detections ([#709](https://github.com/vidithq/vidit/pull/709)).
 
 ### Changed

@@ -51,6 +51,8 @@ describe("<BasemapControl>", () => {
     expect(screen.getByRole("button", { name: "Auto" })).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(screen.getByRole("button", { name: "Terrain" }));
     expect(onChange).toHaveBeenCalledWith({ preset: "terrain" });
+    fireEvent.click(screen.getByRole("button", { name: "Satellite" }));
+    expect(onChange).toHaveBeenLastCalledWith({ preset: "satellite" });
   });
 
   it("reports a change to each detail setting", () => {
