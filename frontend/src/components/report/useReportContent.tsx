@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Flag } from "lucide-react";
 
 import { reportCollection } from "@/lib/collections";
+import { reportSite } from "@/lib/sites";
 import {
   REPORT_DETAILS_MAX_LEN,
   REPORT_REASON_LABELS,
@@ -38,13 +39,13 @@ import { FORM_LABEL, FORM_SUCCESS_BANNER } from "@/components/ui/form-styles";
  * exclusive-choice track. The reporter's words are optional, since the bucket is often the whole
  * report; the details' `?` says so rather than the label.
  *
- * One hook for both reportable kinds, parameterised by `kind`: the two endpoints take the same
+ * One hook for every reportable kind, parameterised by `kind`: the endpoints take the same
  * body under the same cap, so a second copy would be a second place for the buckets and the
  * 2000-character ceiling to drift.
  */
 
-/** What this report is filed against. Mirrors the two report routes. */
-type ReportTargetKind = "event" | "collection";
+/** What this report is filed against. Mirrors the three report routes. */
+type ReportTargetKind = "event" | "collection" | "site";
 
 // The call per kind and the noun the copy uses, keyed by the union so a third target fails `tsc` here.
 const SUBMIT: Record<
@@ -53,11 +54,13 @@ const SUBMIT: Record<
 > = {
   event: reportEvent,
   collection: reportCollection,
+  site: reportSite,
 };
 
 const NOUN: Record<ReportTargetKind, string> = {
   event: "event",
   collection: "collection",
+  site: "site",
 };
 
 // The select's order, from the shared label map so the form and the admin queue name buckets alike.

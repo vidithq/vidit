@@ -15,7 +15,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base, literal_check
 
-# Why a viewer flagged an event or collection. ``illegal_content`` is the legal
+# Why a viewer flagged an event, a collection or a site. ``illegal_content`` is the legal
 # escalation; ``graphic_not_flagged`` is footage of death, injury or human
 # remains without the author's ``sources.is_graphic``; ``copyright`` and
 # ``privacy`` are third-party rights claims; ``other`` relies on ``details``.
@@ -31,20 +31,20 @@ ContentReportReason = Literal[
 
 # What an admin did. ``marked_graphic`` sets the event's graphic flag over the
 # author's declaration; ``hidden`` takes the target off every public read
-# (``events.hidden_at``, ``collections.hidden_at``); ``dismissed`` leaves it
+# (``events.hidden_at``, ``collections.hidden_at``, ``sites.hidden_at``); ``dismissed`` leaves it
 # untouched. Reports are resolved, never deleted (an audit trail).
 # ``marked_graphic`` is an event-only verdict (refused in ``services/reports``).
 ContentReportResolution = Literal["marked_graphic", "hidden", "dismissed"]
 
 
 class ContentReport(Base):
-    """One viewer's report against one event or one collection.
+    """One viewer's report against one event, collection or site.
 
     Open to anonymous viewers (a takedown request must not need an account);
     ``reporter_id`` is NULL unless the reporter was logged in.
 
-    One row names one target, ``event_id`` or ``collection_id``, and both share
-    one queue. Two real foreign keys rather than a ``(target_type, target_id)``
+    One row names one target, ``event_id``, ``collection_id`` or ``site_id``,
+    and all share one queue. Two real foreign keys rather than a ``(target_type, target_id)``
     pair, so the database keeps the pointer valid and empties it on destroy.
 
     Several reports may name one target, each resolved on its own. "Open" is
@@ -64,6 +64,10 @@ class ContentReport(Base):
     # owner's account is erased (``owner_id`` cascades).
     collection_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("collections.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # Same terms as ``event_id``; NULL for any other report.
+    site_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("sites.id", ondelete="SET NULL"), nullable=True, index=True
     )
     reason: Mapped[ContentReportReason] = mapped_column(String(30), nullable=False)
     # The reporter's own words; capped at 2000 characters in the schema, not the column.
@@ -85,9 +89,10 @@ class ContentReport(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
-    # Read by the admin queue to name a collection report (title and owner). No
-    # ``event`` relationship: an event report carries its id and links out.
+    # Read by the admin queue to name a collection or site report (title or name, and
+    # owner). No ``event`` relationship: an event report carries its id and links out.
     collection = relationship("Collection")
+    site = relationship("Site")
 
     __table_args__ = (
         literal_check("reason", ContentReportReason, "ck_content_reports_reason_valid"),
@@ -107,7 +112,7 @@ class ContentReport(Base):
         # whose target is destroyed names neither and must stay legal. Exactly
         # one holds at insert.
         CheckConstraint(
-            "num_nonnulls(event_id, collection_id) <= 1",
+            "num_nonnulls(event_id, collection_id, site_id) <= 1",
             name="ck_content_reports_one_target",
         ),
         # The admin queue read, matching its ORDER BY (``services.reports.list_reports``):

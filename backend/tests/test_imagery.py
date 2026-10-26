@@ -10,7 +10,15 @@ from pathlib import Path
 import pytest
 
 from app.models.source import SOURCE_KINDS
-from app.services.imagery import IMAGERY_KINDS, PROVIDERS, LinkCheck, provider_of, source_warnings
+from app.services.imagery import (
+    IMAGERY_KINDS,
+    PROVIDERS,
+    LinkCheck,
+    can_reopen,
+    image_provider,
+    provider_of,
+    source_warnings,
+)
 
 CAPTURED = datetime(2024, 7, 12, tzinfo=UTC)
 
@@ -137,6 +145,22 @@ def test_a_listed_link_beside_an_unlisted_one_is_enough():
         LinkCheck("https://earthexplorer.usgs.gov/scene/metadata/full/a/b/"),
     ]
     assert source_warnings("satellite", CAPTURED, links) == []
+
+
+def test_can_reopen_needs_one_reopenable_link():
+    assert not can_reopen([])
+    assert not can_reopen([LinkCheck("https://goo.gl/abc"), LinkCheck("https://news.example/a")])
+    assert not can_reopen([LinkCheck("https://www.google.com/maps/@47,37,500m")])
+    assert can_reopen([LinkCheck("https://news.example/a", archived=True)])
+    assert can_reopen([LinkCheck("https://earthexplorer.usgs.gov/scene/metadata/full/a/b/")])
+
+
+def test_image_provider_prefers_a_reopenable_listed_link():
+    maps = "https://www.google.com/maps/@47,37,500m"
+    usgs = "https://earthexplorer.usgs.gov/scene/metadata/full/a/b/"
+    assert image_provider(["https://news.example/a", maps, usgs]).id == "usgs_earthexplorer"
+    assert image_provider([maps]).id == "google_maps"
+    assert image_provider(["https://news.example/a"]) is None
 
 
 @pytest.mark.parametrize(

@@ -148,6 +148,62 @@ export const FIELD_HELP = {
     text: "The last org manager cannot leave, be removed or become a member. Make another member org manager first.",
     label: "Why can the last org manager not leave?",
   },
+  sites_layer: {
+    text: "Places analysts monitor through dated satellite imagery, such as bases, depots and radars. Below zoom 10 each site is a square; from zoom 10 the map draws its zone. A zone turns amber when its latest linked event shows damage and red for destruction. Each zone is the one valid at the end of the event date window.",
+    label: "What is the sites layer?",
+  },
+  site_last_image: {
+    text: "The capture date and the imagery provider of the most recent image filed on the site. Vidit says when the place was last seen, never whether it is in use today.",
+    label: "What is the last image?",
+  },
+  site_kind: {
+    text: "What kind of place the site is. Only its owner changes it.",
+    label: "What is the site kind?",
+  },
+  site_location: {
+    text: "The site's zone on the date on show, the contour before it dashed, and the linked events, with the coordinates of the current zone's centre.",
+    label: "What goes in Location?",
+  },
+  site_coordinates: {
+    text: "Decimal degrees, latitude then longitude: the centre of the site's current zone.",
+    label: "What are the coordinates?",
+  },
+  site_details: {
+    text: "Who documents the site, what kind of place it is, when it was last imaged, and the latest effect a linked event shows.",
+    label: "What goes in Details?",
+  },
+  site_zone: {
+    text: "The outline of the site, drawn over one dated image. A new contour holds from that image's capture date, and the earlier ones stay on record. Only the site's owner draws it.",
+    label: "What is the contour?",
+  },
+  site_image: {
+    text: "A dated satellite image of the site, filed with a link that reopens it at its date. Any analyst files one. An image states no effect: it shows the place on one date. Nothing filed is ever edited.",
+    label: "What is a site image?",
+  },
+  site_contour_image: {
+    text: "The filed image the new contour is drawn from. The contour holds from its capture date, so an older image does not replace a newer zone.",
+    label: "Which image shows the contour?",
+  },
+  site_image_captured: {
+    text: "Required. When the satellite captured the image (UTC), as the provider dates it. The zone drawn from the image holds from this date, and a reader reopens the image at it.",
+    label: "When was the image captured?",
+  },
+  site_image_note: {
+    text: "What the image shows, in plain words, such as new sheds or a burn scar. Keep your interpretation for an event.",
+    label: "What goes in the note?",
+  },
+  link_effect: {
+    text: "What your event shows happening at the site: damage, destruction, activity such as a column leaving or a launch, or Other. Describe only what the footage or image shows; your interpretation goes in the proof.",
+    label: "What is the effect?",
+  },
+  event_sites: {
+    text: "The sites this event is linked to, each with what the event shows there. Only the event's owner links it, and a link holds even when the event lies outside the site's zone.",
+    label: "What are linked sites?",
+  },
+  site_linked_events: {
+    text: "The published events their authors linked to this site, newest first by the date they occurred, each with what it shows at the site and where it lies against the zone valid on its date. A link holds even when the event lies outside the zone. Only an event's author links it, changes its effect or unlinks it.",
+    label: "What are linked events?",
+  },
 } as const;
 
 /** A concept key: the single argument every `<FieldHelp>` takes. */

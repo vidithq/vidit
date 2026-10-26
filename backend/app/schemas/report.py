@@ -12,10 +12,11 @@ DETAILS_MAX_LENGTH = 2000
 
 
 class ContentReportCreate(BaseModel):
-    """Body for ``POST /events/{id}/report`` and ``POST /collections/{id}/report``.
+    """Body for ``POST /events/{id}/report``, ``POST /collections/{id}/report``
+    and ``POST /sites/{id}/report``.
 
     ``reason`` is one of ``ContentReportReason``; ``details`` is optional. One
-    body for both targets, the path names the thing.
+    body for every target, the path names the thing.
     """
 
     reason: ContentReportReason
@@ -36,14 +37,25 @@ class ReportedCollection(BaseModel):
     deleted_at: datetime | None
 
 
+class ReportedSite(BaseModel):
+    """The reported site as the admin queue names it, read live."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    owner: AuthorRef
+
+
 class ContentReportRead(BaseModel):
     """One report as the admin queue reads it.
 
     ``resolved_at`` / ``resolution`` / ``resolved_by_id`` are all NULL while open
     and all set once resolved, so ``resolved_at is None`` is the open test.
 
-    A row names one target: ``event_id`` or ``collection``. Both are NULL once
-    the target is destroyed (the orphan row, closed only by ``dismissed``).
+    A row names one target: ``event_id``, ``collection`` or ``site``. All are
+    NULL once the target is destroyed (the orphan row, closed only by
+    ``dismissed``).
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -53,6 +65,8 @@ class ContentReportRead(BaseModel):
     event_id: uuid.UUID | None
     # NULL for an event report, and once the collection is gone.
     collection: ReportedCollection | None = None
+    # NULL for any other report, and once the site is gone.
+    site: ReportedSite | None = None
     reason: ContentReportReason
     details: str | None
     # NULL for an anonymous report and after the reporter's erasure.

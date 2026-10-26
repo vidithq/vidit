@@ -62,38 +62,7 @@ export function SourcesField({
 }) {
   const atCap = sources.length >= MAX_SOURCES_PER_EVENT;
 
-  const update = (key: string) => (patch: Partial<SourceDraft>) =>
-    setSources((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
-
-  const settle = (key: string, token: number, file: SourceFile) =>
-    setSources((prev) =>
-      prev.map((d) =>
-        d.key === key && fileRunning(d.file) && d.file.token === token
-          ? { ...d, file }
-          : d
-      )
-    );
-
-  const pickFile = (key: string) => async (file: File) => {
-    const token = ++uploadToken;
-    update(key)({ file: { state: "uploading", file, token } });
-    try {
-      settle(key, token, { state: "staged", upload: await uploadSourceFile(file) });
-    } catch (err) {
-      settle(key, token, { state: "failed", name: file.name, error: uploadError(err) });
-    }
-  };
-
-  const importLink = (key: string) => async (post: LinkPost) => {
-    const token = ++uploadToken;
-    update(key)({ file: { state: "importing", post, token } });
-    try {
-      const { post_media: kinds, ...upload } = await importSourceFile(post.url, post.index);
-      settle(key, token, { state: "staged", upload, post: { ...post, kinds } });
-    } catch (err) {
-      settle(key, token, { state: "failed", name: safeHostname(post.url), error: uploadError(err) });
-    }
-  };
+  const { update, pickFile, importLink } = sourceDraftUpdaters(setSources);
 
   const scroller = useRef<HorizontalScrollerHandle>(null);
   // A source to show once the list renders: the one Add a source appended, the neighbour of a
@@ -163,6 +132,49 @@ export function SourcesField({
       ))}
     </SourcesRow>
   );
+}
+
+/**
+ * The writers a form's source editors take: `update(key)` patches one draft, `pickFile(key)`
+ * uploads a picked file at once, on its own request, and `importLink(key)` stages the file of a
+ * link's post the same way. The answer lands on the draft only while that same request is still
+ * its file, so a file picked, imported or removed while a request runs drops the answer.
+ */
+export function sourceDraftUpdaters(setSources: Dispatch<SetStateAction<SourceDraft[]>>) {
+  const update = (key: string) => (patch: Partial<SourceDraft>) =>
+    setSources((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
+
+  const settle = (key: string, token: number, file: SourceFile) =>
+    setSources((prev) =>
+      prev.map((d) =>
+        d.key === key && fileRunning(d.file) && d.file.token === token
+          ? { ...d, file }
+          : d
+      )
+    );
+
+  const pickFile = (key: string) => async (file: File) => {
+    const token = ++uploadToken;
+    update(key)({ file: { state: "uploading", file, token } });
+    try {
+      settle(key, token, { state: "staged", upload: await uploadSourceFile(file) });
+    } catch (err) {
+      settle(key, token, { state: "failed", name: file.name, error: uploadError(err) });
+    }
+  };
+
+  const importLink = (key: string) => async (post: LinkPost) => {
+    const token = ++uploadToken;
+    update(key)({ file: { state: "importing", post, token } });
+    try {
+      const { post_media: kinds, ...upload } = await importSourceFile(post.url, post.index);
+      settle(key, token, { state: "staged", upload, post: { ...post, kinds } });
+    } catch (err) {
+      settle(key, token, { state: "failed", name: safeHostname(post.url), error: uploadError(err) });
+    }
+  };
+
+  return { update, pickFile, importLink };
 }
 
 /** An editor's red trash button: the first click arms it, the second removes the source. */

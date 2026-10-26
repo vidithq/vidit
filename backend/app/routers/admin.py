@@ -22,6 +22,8 @@ from app.schemas.admin import (
     AdminMaintenanceResponse,
     AdminMeResponse,
     AdminPurgeDetectedResponse,
+    AdminSiteModerationRead,
+    AdminSiteModerationUpdate,
     AdminUserDeleteResponse,
     AdminUserRead,
     UserInviteMintingUpdate,
@@ -57,6 +59,7 @@ _ADMIN_ERROR_STATUS: dict[str, int] = {
     "geolocation_not_found": 404,
     "version_not_found": 404,
     "collection_not_found": 404,
+    "site_not_found": 404,
     "x_handle_conflict": 409,
     "invite_code_used": 409,
 }
@@ -488,6 +491,30 @@ def set_collection_moderation(
         title=collection.title,
         hidden_at=collection.hidden_at,
     )
+
+
+@router.patch("/sites/{site_id}/moderation", response_model=AdminSiteModerationRead)
+@limiter.limit("60/hour")
+def set_site_moderation(
+    request: Request,
+    site_id: uuid.UUID,
+    body: AdminSiteModerationUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> AdminSiteModerationRead:
+    """Withhold a site from every read but an admin's, or restore it.
+
+    ``true`` stamps ``hidden_at``: the site leaves the map, the event links and the
+    suggestions. ``false`` clears it. Idempotent: an unchanged state writes no audit row.
+    404 on an unknown site.
+    """
+    try:
+        site = admin_service.set_site_moderation(
+            db, actor_id=current_user.id, site_id=site_id, hidden=body.hidden
+        )
+    except admin_service.AdminError as exc:
+        _raise_admin_error(exc)
+    return AdminSiteModerationRead(site_id=site.id, name=site.name, hidden_at=site.hidden_at)
 
 
 @router.get("/reports", response_model=ContentReportList)
