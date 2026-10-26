@@ -1,12 +1,14 @@
 import uuid
 from datetime import date, datetime
+from typing import Self
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.models.event import TITLE_MAX_LENGTH
 from app.models.media import MediaKind, MediaRole
 from app.schemas.tag import TagRead
 from app.schemas.user import AuthorRef
+from app.services.event_filters import EventFilters
 
 # Cap on a collection description, measured on its plain-text projection
 # (``services/sanitize.html_text``), not the markup. Its own constant,
@@ -15,8 +17,9 @@ from app.schemas.user import AuthorRef
 # ``services/collections`` measures descriptions against it.
 DESCRIPTION_MAX_LENGTH = 500
 
-# Events one create may shelve: a ceiling on the body so a runaway request
-# can't open one transaction over the whole catalogue.
+# Events one create or one bulk add may shelve: a ceiling on the body so a
+# runaway request can't open one transaction over the whole catalogue.
+# Mirrored by ``frontend/src/lib/collections.ts::BULK_ADD_MAX_EVENTS``; change both.
 MAX_CREATE_EVENTS = 500
 
 
@@ -153,3 +156,65 @@ class CollectionMembershipList(BaseModel):
     """Every collection the caller owns, as the popover reads them."""
 
     items: list[CollectionMembershipRead]
+
+
+class SearchMatch(BaseModel):
+    """What one search names: ``q`` and the event filters of ``GET /search``, as a JSON body.
+
+    ``filters`` takes the query parameters' names and values
+    (``services/event_filters.EventFilters``), checked by ``EventFilters.validate``.
+    The ``match`` of :class:`CollectionBulkAdd` and the body of
+    ``POST /collections/collectable-count``.
+    """
+
+    q: str = ""
+    filters: EventFilters = Field(default_factory=EventFilters)
+
+
+class CollectableCount(BaseModel):
+    """How many of the caller's events a :class:`SearchMatch` lists in the search
+    Geolocations group that a collection can hold."""
+
+    total: int
+
+
+class CollectionBulkAdd(BaseModel):
+    """Body of ``POST /collections/{id}/events``: exactly one of ``event_ids`` or ``match``.
+
+    ``event_ids`` are de-duplicated in arrival order. ``match`` names the
+    caller's collectable events a search lists in its Geolocations group, less
+    ``exclude_event_ids`` (match only, de-duplicated). Past
+    :data:`MAX_CREATE_EVENTS` events, or exclusions, is a 422 ``too_many_events``,
+    raised by the service so every mode answers with the same code.
+    """
+
+    event_ids: list[uuid.UUID] | None = None
+    match: SearchMatch | None = None
+    exclude_event_ids: list[uuid.UUID] = Field(default_factory=list)
+
+    @field_validator("event_ids", "exclude_event_ids")
+    @classmethod
+    def _unique(cls, v: list[uuid.UUID] | None) -> list[uuid.UUID] | None:
+        return None if v is None else list(dict.fromkeys(v))
+
+    @model_validator(mode="after")
+    def _exactly_one(self) -> Self:
+        if (self.event_ids is None) == (self.match is None):
+            raise ValueError("send exactly one of event_ids or match")
+        if self.exclude_event_ids and self.match is None:
+            raise ValueError("exclude_event_ids narrows a match only")
+        return self
+
+
+class CollectionBulkAddSkipped(BaseModel):
+    """Events a bulk add left out, by reason. Neither is an error."""
+
+    already_in_collection: int
+    not_collectable: int
+
+
+class CollectionBulkAddResult(BaseModel):
+    """What one bulk add wrote: ``added`` new memberships and the events it skipped."""
+
+    added: int
+    skipped: CollectionBulkAddSkipped

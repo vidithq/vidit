@@ -101,12 +101,19 @@ class InvalidDescriptionError(CollectionError):
     code = "invalid_description"
 
 
+class TooManyEventsError(CollectionError):
+    """One write names more events than ``schemas/collection.MAX_CREATE_EVENTS``."""
+
+    code = "too_many_events"
+
+
 COLLECTION_ERROR_STATUS: dict[str, int] = {
     "collection_not_found": 404,
     "event_not_found": 404,
     "event_not_collectable": 409,
     "not_credited": 403,
     "invalid_description": 400,
+    "too_many_events": 422,
 }
 
 
@@ -389,7 +396,7 @@ def resolve_collection(db: Session, *, collection_id: uuid.UUID, viewer: User | 
     owner deleted pending a report, or one owned by a soft-deleted user reads
     as not found, except to an admin (the branch ``GET /events/{id}`` takes).
     The owner verbs refuse a deleted one even to an admin
-    (:func:`_ensure_owned_live`).
+    (:func:`ensure_owned_live`).
     """
     query = db.query(Collection).options(joinedload(Collection.owner))
     query = query.filter(Collection.id == collection_id)
@@ -401,7 +408,7 @@ def resolve_collection(db: Session, *, collection_id: uuid.UUID, viewer: User | 
     return collection
 
 
-def _ensure_owned_live(collection: Collection, user: User) -> None:
+def ensure_owned_live(collection: Collection, user: User) -> None:
     """403 unless ``user`` owns ``collection``, then 404 once its owner deleted it.
 
     The owner's verbs only. An admin reads a deleted collection to judge its
@@ -429,12 +436,40 @@ def ensure_collectable(db: Session, *, event_ids: Sequence[uuid.UUID], user: Use
     Per id, in arrival order: no such event is a 404, an event ``user`` is not
     credited on is a 403, and a state a collection does not show
     (:func:`services.event_filters.collectable_events`) is a 409. Shared by
-    :func:`add_event` and :func:`create_collection`. One statement whatever the
-    count, projecting only the columns the refusals read.
+    :func:`add_event` and :func:`create_collection`.
+    """
+    rows = _eligibility(db, event_ids=event_ids, user=user)
+    for event_id in event_ids:
+        row = _known(rows, event_id)
+        if not row.collectable:
+            raise EventNotCollectableError("This event is not one a collection can hold")
+
+
+def split_collectable(
+    db: Session, *, event_ids: Sequence[uuid.UUID], user: User
+) -> tuple[list[uuid.UUID], int]:
+    """The ids a collection of ``user``'s can hold, in arrival order, and how many it cannot.
+
+    :func:`ensure_collectable` with a state a collection does not show counted instead of
+    refused. An unknown event is still a 404 and an uncredited one a 403, which fail the whole
+    call: the caller is asking to shelve work that is not theirs.
+    """
+    rows = _eligibility(db, event_ids=event_ids, user=user)
+    collectable = [event_id for event_id in event_ids if _known(rows, event_id).collectable]
+    return collectable, len(event_ids) - len(collectable)
+
+
+def _eligibility(
+    db: Session, *, event_ids: Sequence[uuid.UUID], user: User
+) -> dict[uuid.UUID, Any]:
+    """Per id, whether ``user`` is credited on the event and whether a collection may hold it.
+
+    One statement whatever the count, projecting only the columns the refusals read. An unknown
+    id is absent.
     """
     if not event_ids:
-        return
-    rows = {
+        return {}
+    return {
         row.id: row
         for row in db.query(
             Event.id,
@@ -442,13 +477,15 @@ def ensure_collectable(db: Session, *, event_ids: Sequence[uuid.UUID], user: Use
             collectable_events().label("collectable"),
         ).filter(Event.id.in_(event_ids))
     }
-    for event_id in event_ids:
-        row = rows.get(event_id)
-        if row is None:
-            raise EventNotFoundError("Event not found")
-        _refuse_uncredited(row.credited)
-        if not row.collectable:
-            raise EventNotCollectableError("This event is not one a collection can hold")
+
+
+def _known(rows: dict[uuid.UUID, Any], event_id: uuid.UUID) -> Any:
+    """The eligibility row of one id, refusing an unknown event (404) or an uncredited one (403)."""
+    row = rows.get(event_id)
+    if row is None:
+        raise EventNotFoundError("Event not found")
+    _refuse_uncredited(row.credited)
+    return row
 
 
 class _CheckedDescription(NamedTuple):
@@ -541,7 +578,7 @@ def update_collection_details(
     :func:`create_collection`. Ownership is settled first: a stranger gets a
     403 whatever the body.
     """
-    _ensure_owned_live(collection, user)
+    ensure_owned_live(collection, user)
     checked = _checked_description(description)
     collection.title = title
     collection.description = checked.html
@@ -576,7 +613,7 @@ def delete_collection(db: Session, *, collection: Collection, user: User) -> Non
     moderators keep the evidence, and :func:`erase_if_released` erases it when
     the last open report is resolved.
     """
-    _ensure_owned_live(collection, user)
+    ensure_owned_live(collection, user)
     # Locked like ``services/reports.resolve_report`` locks it, and both decide on the open
     # reports after the lock, so whichever runs second sees the other's write: a delete racing
     # the last verdict either erases at once or is erased by the verdict.
@@ -624,7 +661,7 @@ def add_event(db: Session, *, collection: Collection, event_id: uuid.UUID, user:
     the collection or event vanished, and answering 204 would claim a shelving
     that did not happen, so it is re-raised (500).
     """
-    _ensure_owned_live(collection, user)
+    ensure_owned_live(collection, user)
     ensure_collectable(db, event_ids=[event_id], user=user)
 
     try:
@@ -643,7 +680,7 @@ def remove_event(db: Session, *, collection: Collection, event_id: uuid.UUID, us
     403 for anyone but the owner. Eligibility is not re-checked, so an owner
     can always clear a membership whose event has since closed or been withheld.
     """
-    _ensure_owned_live(collection, user)
+    ensure_owned_live(collection, user)
     row = (
         db.query(CollectionEvent)
         .filter(

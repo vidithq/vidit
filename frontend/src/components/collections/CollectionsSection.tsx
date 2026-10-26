@@ -6,6 +6,7 @@ import { Plus } from "lucide-react";
 import { CollectionCard } from "@/components/collections/CollectionCard";
 import { buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { ShowMoreLink } from "@/components/ui/LoadMoreRow";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { useApiResource } from "@/hooks/useApiResource";
@@ -89,14 +90,7 @@ export function CollectionsSection({
             // `type=collection` is the one scope `author` narrows rather than
             // empties, so the expansion serves the set the grid previewed.
             <div className="flex justify-center">
-              <Link
-                href={profileSearchHref(username, {}, "collection")}
-                className={buttonClasses("secondary", {
-                  className: "whitespace-nowrap",
-                })}
-              >
-                Show more
-              </Link>
+              <ShowMoreLink href={profileSearchHref(username, {}, "collection")} />
             </div>
           )}
         </>

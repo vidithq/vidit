@@ -11,6 +11,7 @@ import {
   BookOpen,
   Bot,
   Camera,
+  Check,
   ChevronDown,
   Copy,
   Download,
@@ -89,11 +90,12 @@ import { ProgressSteps } from "@/components/ui/ProgressSteps";
 import { ActiveFilterPills } from "@/components/ui/ActiveFilterPills";
 import { ChipBucket } from "@/components/ui/ChipBucket";
 import { FilterSection, chipSummary } from "@/components/ui/FilterSection";
+import { ActionRow } from "@/components/ui/ActionRow";
 import { ToggleRow } from "@/components/ui/ToggleRow";
 import { ChoiceRow } from "@/components/ui/ChoiceRow";
 import { SwatchPicker } from "@/components/ui/SwatchPicker";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
+import { LoadMoreRow, ShowMoreLink } from "@/components/ui/LoadMoreRow";
 import { Avatar } from "@/components/ui/Avatar";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { AvatarStack } from "@/components/ui/AvatarStack";
@@ -697,12 +699,37 @@ export default function PalettePage() {
             <PaletteFilterSearchFields />
           </Item>
 
-          <Item name="<ToggleRow>" usage="An on/off row: the whole row is the switch (role + click), the <Switch> rendering as its visual span, and it takes the phone tap step. `description` picks the shape: without one the row is the filter toggle, a micro uppercase label on a divided list; with one it is a settings preference, the label at reading size over a line saying what the preference does. The accessible name is the label alone (aria-label), never the paragraph under it, which is its description. `className` carries the caller's own divider and spacing. `disabled` reads the state but refuses the toggle, dimmed, with a `description` saying why (the feed's Show detections while a kind chip is selected). Settings lists one described row per notification kind, its Email switch.">
+          <Item name="<ToggleRow>" usage="An on/off row: the whole row is the switch (role + click), the <Switch> rendering as its visual span, and it takes the phone tap step. `description` picks the shape: without one the row is the filter toggle, a micro uppercase label on a divided list; with one it is a settings preference, the label at reading size over a line saying what the preference does. The accessible name is the label alone (aria-label), never the paragraph under it, which is its description. `className` carries the caller's own divider and spacing. `disabled` reads the state but refuses the toggle, dimmed, with a `description` saying why (a satellite source the event form cannot file as a site image). Settings lists one described row per notification kind, its Email switch.">
             <PaletteToggleRow />
           </Item>
 
           <Item name="<ChoiceRow>" usage="A pick-one preference row, the <ToggleRow> shape for a setting with a few named choices: the label at reading size over a line saying what the setting does, and a <SegmentedControl> named by the label. Beside the text from sm up; below sm the bar drops under it and takes the full column. `className` carries the caller's own divider and spacing. Settings and the organization page both render Accept approval requests from through it.">
             <PaletteChoiceRow />
+          </Item>
+
+          <Item name="<ActionRow>" usage="A row that is one action on a named thing, the sibling of <ToggleRow> and <ChoiceRow>: an optional small picture (leading), the label at reading size over a muted line, and the action's verb at the right edge. The whole row is the button, with the accent wash on hover and keyboard focus. The verb (+ Add) shows on hover and keyboard focus, through HOVER_REVEAL, and always on a touch screen. done is the static state that takes the verb's place once the row has acted (an accent Added N pill with a check); the row then stops acting. disabled refuses the action while another write runs, dimmed. aria-label names the action and its target until done. The search page's bulk Add to collection lists the owner's collections through it, each led by its CollectionCover tile at 40px.">
+            <div className="w-full max-w-sm space-y-0.5">
+              <ActionRow
+                label="Kupiansk rail corridor"
+                description="12 events"
+                actionLabel="Add"
+                aria-label="Add to Kupiansk rail corridor"
+                onAct={() => {}}
+                className="py-1.5"
+              />
+              <ActionRow
+                label="Dam breach"
+                description="44 events"
+                actionLabel="Add"
+                onAct={() => {}}
+                className="py-1.5"
+                done={
+                  <Pill tone="accent" icon={<Check size={11} />}>
+                    Added 44
+                  </Pill>
+                }
+              />
+            </div>
           </Item>
 
           <Item name="<Pill>" usage="One pill for the whole family (status, tag, filter, badge) at one size. `tone` = accent | secondary | neutral | danger | warning, mirroring the <Button> tones (secondary is the accent outline, no fill); warning is the `WARNING_CALLOUT` paint, for a site link effect of damage beside the danger tone of a destruction. A static <span> by default; pass `onClick` and it becomes an interactive chip (a <button> that brightens on hover), the caller driving the tone off its active state. `label` makes a key/value pill, the key muted before the value (`Conflict: Russo-Ukrainian war`), for a field whose name the value alone does not carry; lib/cardTags.ts keys a card's conflicts; a source block keys its kind and drops an Unknown value. className merges via cn (caller wins on a conflicting utility); keep it to orthogonal extras, the size stays one.">
@@ -1336,7 +1363,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<Dot>" usage="The orange notification dot: the rail's identity row, the profile's detections entry, the map filter panel's in-flight pulse, the position dots of a carousel <HorizontalScroller> (grey except the current one). Position / ring / size / colour via className.">
+          <Item name="<Dot>" usage="The orange notification dot: the rail's identity row, the profile's detections entry, the map filter panel's in-flight pulse. Position / ring / size / colour via className.">
             <Variant label="bare">
               <Dot />
             </Variant>
@@ -1765,7 +1792,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<PageWithRail>" usage="A main column plus a sticky 17.5rem right rail from lg up. PageShell composes it from its rail prop and widens its column to max-w-6xl, so the main column keeps the 53rem reading width: the filter rail of the feed, the Requests board and search. `header` heads the main column beside the rail rather than above both (PageShell's headerInColumn: the organization page, whose rail opens top right with an invited viewer's answer), and comes first below lg, so a stacked rail lands under the title. The rail sticks at its resting top, so it never moves when the page scrolls, and scrolls on its own once taller than the viewport. Below lg it stacks above the column (narrow=&quot;stacked&quot;), below it (narrow=&quot;below&quot;, for a rail that acts on the column) or leaves the page (narrow=&quot;hidden&quot;, where FilterBar's Filters (N) button opens the same panel full screen). No rail: one full-width column.">
+          <Item name="<PageWithRail>" usage="A main column plus a sticky 17.5rem right rail from lg up. PageShell composes it from its rail prop and widens its column to max-w-6xl, so the main column keeps the 53rem reading width: the filter rail of the feed, the Requests board and search. `header` heads the main column beside the rail rather than above both (PageShell's headerInColumn: the organization page, whose rail opens top right with an invited viewer's answer), and comes first below lg, so a stacked rail lands under the title. The rail sticks at its resting top, so it never moves when the page scrolls, and scrolls on its own once taller than the viewport. Below lg it stacks above the column (narrow=&quot;stacked&quot;), below it (narrow=&quot;below&quot;, for a rail that acts on the column) or leaves the page (narrow=&quot;hidden&quot;, where FilterBar's Filters (N) button opens the same panel full screen; from lg up FilterRail puts the active-filter pills at the rail's head). No rail: one full-width column.">
             <div className="w-full space-y-4">
               <Variant label="rail beside the column">
                 <PageWithRail
@@ -1801,7 +1828,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<LoadMoreRow>" usage="The one foot of a paged list (requests, feed, version history, invite codes, the admin reports queue, the search page's Geolocations group, and the detections queue, whose pages are numbered): Load more while a next page exists, a spinner while it loads, a failed page's message above Try again, nothing once the walk ends. `infinite` loads the next page as the row nears the viewport and pauses after a failure until the click.">
+          <Item name="<LoadMoreRow> / <ShowMoreLink>" usage="The one Show more control, a secondary button with one label wherever a list has more. <LoadMoreRow> is the foot of a paged list that grows in place (requests, feed, version history, notifications, an organization's approvals, the admin reports queue and onboarding, the search page's Geolocations group, the create page's matched geolocations, and the detections queue, whose pages are numbered): Show more while a next page exists, a spinner with Loading… while it loads, a failed page's message above Try again, nothing once the walk ends. `infinite` loads the next page as the row nears the viewport and pauses after a failure until the click. <ShowMoreLink href> is the same control as a link, for a preview whose whole list lives on another page: the profile's geolocations, open requests and collections, each opening its list in search.">
             <div className="w-full space-y-4">
               <Variant label="idle">
                 <LoadMoreRow walk={{ hasMore: true, loadingMore: false, loadMore: () => {}, error: null }} />
@@ -1813,6 +1840,11 @@ export default function PalettePage() {
                 <LoadMoreRow
                   walk={{ hasMore: true, loadingMore: false, loadMore: () => {}, error: "API error 500" }}
                 />
+              </Variant>
+              <Variant label="link (ShowMoreLink)">
+                <div className="flex justify-center">
+                  <ShowMoreLink href="/search?type=event&author=ana" />
+                </div>
               </Variant>
             </div>
           </Item>
@@ -1924,7 +1956,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<EntityCard variant=compact>: a collection item" usage="One item of a collection, on its page's Events list (<CollectionItemCard> with onSelect): the same compact card with three differences the props carry. `author` is omitted, so the row drops its byline, because a collection is one analyst's own set and the page header names them once. onSelect swaps the link for a button that moves the player to the row, and `selected` marks the row it stands on. `uniformHeight={false}` drops the catalogue height floor, since every row here carries the same two lines and the floor would print a band of empty space under each of them: the row stands on its media column and the text centres against it. The write pages show a held item as the feed card instead (<CollectionItemCard> without onSelect), one at a time in a carousel <HorizontalScroller>, with a red Remove under it.">
+          <Item name="<EntityCard variant=compact>: a collection item" usage="One item of a collection, on its page's Events list (<CollectionItemCard> with onSelect): the same compact card with three differences the props carry. `author` is omitted, so the row drops its byline, because a collection is one analyst's own set and the page header names them once. onSelect swaps the link for a button that moves the player to the row, and `selected` marks the row it stands on. `uniformHeight={false}` drops the catalogue height floor, since every row here carries the same two lines and the floor would print a band of empty space under each of them: the row stands on its media column and the text centres against it. The write pages show a held item as the same compact row without onSelect and without its tag row: the card links to the event, one line of meta (date, coordinates, the badge), in a vertical list with a <RemoveButton> at each row's right edge.">
             <div className="w-full max-w-xl">
               <EntityCard
                 variant="compact"
@@ -2011,7 +2043,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<HorizontalScroller>" usage="A row of same-width items that scrolls sideways (components/ui/HorizontalScroller.tsx): native overflow scrolling with one snap point per item, so a swipe moves it, focusable so the arrow keys scroll it. In the row variant, a lone item takes the full width, two items fit once the row is 32rem wide, and below that one fits and the next peeks. With more than one item, the header shows the shown range (1 to 2 of 5) and previous and next ghost icon buttons that scroll by one item, without smoothing under prefers-reduced-motion, go inert at the ends, and step on the left and right keys. The carousel variant shows one item at full width, the position (2 / 3) between the buttons, and one dot per item under the row, the current one accent; a dot shows its item. `actions` adds header controls after the buttons at any item count, and a ref's show(index) scrolls an item into view. The event page's sources and <SourcesField> are the row consumers; the collection picker's held events are the carousel consumer.">
+          <Item name="<HorizontalScroller>" usage="A row of same-width items that scrolls sideways (components/ui/HorizontalScroller.tsx): native overflow scrolling with one snap point per item, so a swipe moves it, focusable so the arrow keys scroll it. A lone item takes the full width, two items fit once the row is 32rem wide, and below that one fits and the next peeks. With more than one item, the header shows the shown range (1 to 2 of 5) and previous and next ghost icon buttons that scroll by one item, without smoothing under prefers-reduced-motion, go inert at the ends, and step on the left and right keys. `actions` adds header controls after the buttons at any item count, and a ref's show(index) scrolls an item into view. The event page's sources and <SourcesField> are its consumers.">
             <div className="w-full max-w-2xl">
               <HorizontalScroller
                 heading={<SectionEyebrow margin="none" title="Sources (3)" />}
@@ -2024,22 +2056,6 @@ export default function PalettePage() {
                 ))}
               </HorizontalScroller>
             </div>
-            <Variant label="carousel">
-              <div className="w-full max-w-md">
-                <HorizontalScroller
-                  variant="carousel"
-                  heading={<SectionEyebrow margin="none" title="Sources" />}
-                  label="Sources"
-                  previousLabel="Previous source"
-                  nextLabel="Next source"
-                  dotLabel={(index) => `Show source ${index + 1}`}
-                >
-                  {[MOCK_SOURCE, MOCK_CONTEXT_SOURCE, MOCK_SATELLITE_SOURCE].map((source, index) => (
-                    <SourceBlock key={index} source={source} index={index} alt="Strike on a depot" />
-                  ))}
-                </HorizontalScroller>
-              </div>
-            </Variant>
           </Item>
 
           <Item name="<SourcesField> / <SourceEditor>" usage="The Sources section of every event form (components/sources/): one <SourceEditor> per source, each a <Card>, in the order of the event page's source block: the file slot (MediaManager on <FileManager>, one full-width tile; a pick uploads at once through POST /uploads), the Title (named Source N title), the level (<SegmentedControl>) on its own line and the kind (<Select>, required on every source) under it, the links (<LinkListInput> under Links (N), one row per link with its post time, <ArchiveBox> and, on an X, Telegram or TikTok post link while the source has no file, a ghost icon button that imports the link's file through POST /uploads/from-link (a post with several files gets a <Select> under the slot to pick one), Add a link under them, then <SourceImageryCheck> on a satellite or aircraft source), then More details (<Disclosure>, open when a field inside holds a value): Captured (<DateTimeInput>, UTC), the capture position (CoordinateInputs, hidden for an article, an official statement or another document), the tags (<TagChips>) and Graphic content (<Switch> with its ?, locked on a flagged stored source). Each label's ? sits beside its <label>, never inside it. The section has no card of its own: its Sources (N) <SectionEyebrow> header row sits on the page like the event page's, and a missing file's red line sits in that row, so no editor moves down. It lays the editors out in a row <HorizontalScroller> like the event page's sources, a lone editor at full width with its file beside its title, level and kind once the card is 42rem wide (like <DetailCard leadBeside>), the links and More details under both, and two or more side by side with the row's peek, every editor mounted, with Add a source (capped at 10) in its header; Add a source scrolls the new editor into view, the red trash icon (per editor, from two) arms on the first click and removes on the second, then shows the neighbour, and a publish attempt shows the first editor with a gap. `variant` site-image is a site's satellite image (SiteImageEditor): no level or kind (fixed to context and satellite), a required Captured under the title, and the caller's `extra` (the note) in place of More details.">
@@ -2097,7 +2113,7 @@ export default function PalettePage() {
               <li><span className="font-mono text-neutral-400">BetaBanner</span>: a {"<Pill tone=\"accent\">"} in a <code>position: fixed</code> wrapper, already visible bottom-right from <code>sm</code> up; below <code>sm</code> the same pill rides the nav drawer via {"<BetaBanner inline>"}</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span>: the primary nav, auth/route-driven, always on screen. Two shapes: a fixed rail on the left edge from <code>sm</code> up (glyphs, or glyphs plus labels once expanded), and below <code>sm</code> a floating chip in the top-left corner that opens the same rail as a drawer over the page</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span> chip and drawer: the rail&apos;s own phone shape, rendered by that component rather than a <code>components/ui/</code> primitive, so there is nothing here to reuse. The chip&apos;s open control is a deliberate one-off too: a 44px neutral thumb target, which {"<Button icon>"} does not offer (36px, accent or red)</li>
-              <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page (PAGE_TITLE_TEXT is the title&apos;s type, which a form&apos;s Title field takes in its place): one container on every app page, its left edge at one x and a max-w-6xl column centred on the screen from lg up, 53rem reading width without a rail and max-w-6xl with one (PageShell&apos;s <code>rail</code>); PageShell&apos;s <code>controls</code> slot puts a view&apos;s segmented control under the title, left-aligned (the feed scope, the Requests sort),  PageShell&apos;s <code>titleField</code> puts a form&apos;s Title field in the title&apos;s place and keeps the title as a visually hidden h1 (set by EventShell alone); PageShell&apos;s <code>stickyActions</code> puts the page&apos;s actions at the top right of the header, in the aside named Actions it renders, the header keeping their room, and pins them at the top right of the column once the title scrolls away, on a surface (set by EventShell, the profile and organization edit modes and the collection forms); PageShell&apos;s <code>onBack</code> replaces Back&apos;s history walk (on a /submit path, back to the chooser); PageShell&apos;s <code>headerInColumn</code> puts the header (back, title, byline) at the top of the main column beside the rail, so the rail opens top right (the organization page); PageShell&apos;s <code>headerSide</code> lays the header out in <code>PageColumns</code>, a 65:35 main and side column from lg up, its side heading the side column under the sticky actions, and the body continues in <code>EventLayout</code> on the same split (<code>PAGE_COLUMNS_SPLIT</code>) (set by EventShell alone, see its entry); PageShell&apos;s <code>back</code> arrow parks in the gutter left of the title from lg up and sticks there at the top of the viewport while the page scrolls, level with the rail; <span className="font-mono text-neutral-400">PageCenter</span> (from PageFrame) is the one centred full-screen block, on the same rail inset</li>
+              <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page (PAGE_TITLE_TEXT is the title&apos;s type, which a form&apos;s Title field takes in its place): one container on every app page, its left edge at one x and a max-w-6xl column centred on the screen from lg up, 53rem reading width without a rail and max-w-6xl with one (PageShell&apos;s <code>rail</code>); PageShell&apos;s <code>controls</code> slot puts a view&apos;s segmented control under the title, left-aligned (the feed scope, the Requests sort),  PageShell&apos;s <code>titleField</code> puts a form&apos;s Title field in the title&apos;s place and keeps the title as a visually hidden h1 (set by EventShell alone); PageShell&apos;s <code>stickyActions</code> puts the page&apos;s actions at the top right of the header, in the aside named Actions it renders, the header keeping their room, and pins them at the top right of the column once the title scrolls away, on a surface (set by EventShell, the profile and organization edit modes, the collection forms and the search page&apos;s Add to collection); <code>stickyActionsIdle</code> keeps their room but hides them (invisible, inert, no surface) for actions that come and go with a page state, so the header never moves when they return; PageShell&apos;s <code>onBack</code> replaces Back&apos;s history walk (on a /submit path, back to the chooser); PageShell&apos;s <code>headerInColumn</code> puts the header (back, title, byline) at the top of the main column beside the rail, so the rail opens top right (the organization page); PageShell&apos;s <code>headerSide</code> lays the header out in <code>PageColumns</code>, a 65:35 main and side column from lg up, its side heading the side column under the sticky actions, and the body continues in <code>EventLayout</code> on the same split (<code>PAGE_COLUMNS_SPLIT</code>) (set by EventShell alone, see its entry); PageShell&apos;s <code>back</code> arrow parks in the gutter left of the title from lg up and sticks there at the top of the viewport while the page scrolls, level with the rail; <span className="font-mono text-neutral-400">PageCenter</span> (from PageFrame) is the one centred full-screen block, on the same rail inset</li>
             </ul>
           </Item>
         </section>
@@ -2494,19 +2510,19 @@ function PaletteToggleRow() {
       </div>
       <div className="bg-neutral-900 rounded-lg border border-neutral-700 p-3">
         <ToggleRow
-          label="Show help tooltips"
-          description="The small ? icons that explain each field and section."
-          on={described}
-          onToggle={() => setDescribed((v) => !v)}
+          label="Also file source 1 in the imagery history"
+          description="Satellite image: a site image needs a file and a capture time, and this source lacks one."
+          on={false}
+          disabled
+          onToggle={() => {}}
         />
       </div>
       <div className="bg-neutral-900 rounded-lg border border-neutral-700 p-3">
         <ToggleRow
-          label="Show detections"
-          description="Applies while no kind is selected."
-          on
-          disabled
-          onToggle={() => {}}
+          label="Show help tooltips"
+          description="The small ? icons that explain each field and section."
+          on={described}
+          onToggle={() => setDescribed((v) => !v)}
         />
       </div>
     </div>

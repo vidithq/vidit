@@ -151,5 +151,11 @@ describe("RequestsPage", () => {
       expect(lastQuery().getAll("conflict")).toEqual(["Russian invasion of Ukraine"])
     );
     expect(screen.getByRole("button", { name: "Filters (1)" })).toBeInTheDocument();
+    // The applied filter heads the rail as a pill, as it does the narrow row.
+    expect(
+      within(screen.getByRole("complementary", { name: "Filters" })).getByTitle(
+        "Remove filter: Russian invasion of Ukraine",
+      ),
+    ).toBeInTheDocument();
   });
 });

@@ -181,6 +181,10 @@ const APPROVED_ONLY = "approved";
 
 /** The removable-pill entries for the common values, one per value; surfaces append their
  * date-window entries. */
+/** The key of the author pill `buildActiveFilterPills` emits. The filter rail leaves that pill
+ *  out: the Author section already names the analyst, in its summary and its picker. */
+export const AUTHOR_PILL_KEY = "author";
+
 export function buildActiveFilterPills(
   values: EventFilterValues,
   onPatch: EventFilterPatch
@@ -215,7 +219,7 @@ export function buildActiveFilterPills(
       onRemove: () => drop("tags", n),
     })),
     ...(author
-      ? [{ key: "author", label: `By ${author}`, onRemove: () => onPatch({ author: "" }) }]
+      ? [{ key: AUTHOR_PILL_KEY, label: `By ${author}`, onRemove: () => onPatch({ author: "" }) }]
       : []),
     ...values.mediaTypes.map((n) => ({
       key: `media:${n}`,

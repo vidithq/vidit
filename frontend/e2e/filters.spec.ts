@@ -127,6 +127,10 @@ test("picks and removes a tag through the search field, in the URL", async ({ pa
   await list.getByRole("option", { name: TAGS[0].name }).click();
   await expect(page).toHaveURL(new RegExp(`[?&]tag=${TAGS[0].name}(&|$)`));
 
+  // The list stays open for the next pick, and with the active pills heading the rail it can open
+  // above the field, over the chips.
+  await page.keyboard.press("Escape");
+  await expect(list).toBeHidden();
   await rail.getByRole("button", { name: `Remove ${TAGS[0].name}` }).click();
   await expect(page).not.toHaveURL(/[?&]tag=/);
 });

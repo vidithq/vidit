@@ -4,7 +4,7 @@ import { apiFetch, apiFetchPage } from "./api";
 import type { components } from "./api-types";
 import { EVENT_TITLE_MAX_LEN, eventListPath, type ContentReport } from "./events";
 import { countLabel, formatDate } from "./format";
-import { search } from "./search";
+import { eventFilterFields, search, type EventFilterParams } from "./search";
 import type {
   EventDetail,
   EventListItem,
@@ -175,7 +175,7 @@ export function pickableFromDetail(event: EventDetail): PickableEvent {
 }
 
 /** A search hit as a picker row (the hit's thumbnail list of at most one is the `media`). */
-function pickableFromHit(hit: SearchEventHit): PickableEvent {
+export function pickableFromHit(hit: SearchEventHit): PickableEvent {
   return {
     id: hit.id,
     title: hit.title,
@@ -259,6 +259,143 @@ export function addEventToCollection(
     `/collections/${encodeURIComponent(collectionId)}/events/${encodeURIComponent(eventId)}`,
     { method: "PUT" },
   );
+}
+
+export type BulkAddResult = components["schemas"]["CollectionBulkAddResult"];
+
+/** Events one bulk add (or one create) may shelve; past it the server answers 422
+ *  `too_many_events`. Mirrors `schemas/collection.MAX_CREATE_EVENTS`; change both. */
+export const BULK_ADD_MAX_EVENTS = 500;
+
+/** One search as the server resolves it: the query and the search page's filters. */
+export type SearchMatchParams = { q: string } & EventFilterParams;
+
+/** What a bulk add shelves: explicit event ids, or every collectable event a search matches
+ *  less `excludeEventIds`. */
+export type BulkTarget =
+  | { eventIds: string[] }
+  | { match: SearchMatchParams; excludeEventIds?: string[] };
+
+/** A selection handed from the search page to `/collections/new`: what to add, how many
+ *  geolocations that is, the page to return to on Cancel, and, for checked rows, the rows
+ *  themselves (loaded search hits as picker rows), so the create page reads no event. A match
+ *  carries none. About a kilobyte a row, so the 500-event cap keeps an entry well under the few
+ *  megabytes `sessionStorage` holds. */
+export interface SelectionHandoff {
+  target: BulkTarget;
+  count: number;
+  from: string;
+  rows: PickableEvent[];
+}
+
+export const NEW_COLLECTION_SELECTION_PARAM = "selection";
+
+const HANDOFF_PREFIX = "vidit:collection-selection:";
+
+/** A handoff older than this reads as missing: the create page opens an empty form. */
+const HANDOFF_TTL_MS = 30 * 60 * 1000;
+
+/** Park a selection in `sessionStorage` under a fresh token and return the create page's URL
+ *  carrying the token, so no id list rides the URL. Storage that throws (a private window,
+ *  blocked site data) yields the plain create page. */
+export function newCollectionFromSelectionHref(handoff: SelectionHandoff): string {
+  const token = crypto.randomUUID();
+  try {
+    window.sessionStorage.setItem(
+      HANDOFF_PREFIX + token,
+      JSON.stringify({ ...handoff, at: Date.now() }),
+    );
+  } catch {
+    return newCollectionHref();
+  }
+  return `/collections/new?${NEW_COLLECTION_SELECTION_PARAM}=${encodeURIComponent(token)}`;
+}
+
+/** The handoff a token names, or `null` when it is missing, malformed or past its TTL. */
+export function readSelectionHandoff(token: string): SelectionHandoff | null {
+  try {
+    const raw = window.sessionStorage.getItem(HANDOFF_PREFIX + token);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as SelectionHandoff & { at?: number };
+    const target = parsed.target as Partial<{ eventIds: unknown; match: unknown }> | undefined;
+    const shaped =
+      !!target &&
+      (Array.isArray(target.eventIds) || (typeof target.match === "object" && target.match !== null));
+    if (!shaped || typeof parsed.count !== "number" || typeof parsed.at !== "number") return null;
+    if (!Array.isArray(parsed.rows)) return null;
+    const rows = parsed.rows.filter(
+      (row): row is PickableEvent =>
+        typeof row === "object" && row !== null && typeof row.id === "string" && typeof row.title === "string",
+    );
+    if (Date.now() - parsed.at > HANDOFF_TTL_MS) return null;
+    // An in-app path only, so a planted entry cannot send Cancel off the site.
+    const from =
+      typeof parsed.from === "string" && /^\/(?!\/)/.test(parsed.from) ? parsed.from : "/search";
+    return { target: parsed.target, count: parsed.count, from, rows };
+  } catch {
+    return null;
+  }
+}
+
+/** Drop a handoff once its collection exists, so Back to the create page cannot add it twice. */
+export function clearSelectionHandoff(token: string): void {
+  try {
+    window.sessionStorage.removeItem(HANDOFF_PREFIX + token);
+  } catch {
+    // Nothing to clear when storage is unavailable.
+  }
+}
+
+function searchMatchBody({ q, ...filters }: SearchMatchParams) {
+  return { q, filters: eventFilterFields(filters) };
+}
+
+/** Rows a page of a match's events holds on the create page, one **Show more** at a time. */
+const MATCH_PAGE_SIZE = 20;
+
+/** One page of the caller's collectable events a match names, newest first:
+ *  `POST /collections/collectable-events`, the set the bulk add shelves. Pair with
+ *  `collectableEventsBody` as `useCursorList`'s body. */
+export function collectableEventsPath(cursor: string | null): string {
+  const params = new URLSearchParams({ limit: String(MATCH_PAGE_SIZE) });
+  if (cursor) params.set("cursor", cursor);
+  return `/collections/collectable-events?${params}`;
+}
+
+export function collectableEventsBody(match: SearchMatchParams): string {
+  return JSON.stringify(searchMatchBody(match));
+}
+
+/** `POST /collections/{id}/events`: many events in one write, by id or by the search that
+ *  lists them. Idempotent; at most 500 events, else a 422 `too_many_events`. */
+export function addEventsToCollection(
+  collectionId: string,
+  target: BulkTarget,
+): Promise<BulkAddResult> {
+  const body =
+    "eventIds" in target
+      ? { event_ids: target.eventIds }
+      : {
+          match: searchMatchBody(target.match),
+          exclude_event_ids: target.excludeEventIds ?? [],
+        };
+  return apiFetch<BulkAddResult>(
+    `/collections/${encodeURIComponent(collectionId)}/events`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+/** How many of the caller's events `match` lists in the Geolocations group that a collection
+ *  can hold: the set `addEventsToCollection` shelves for the same match. */
+export async function countCollectableMatches(
+  match: SearchMatchParams,
+  signal?: AbortSignal,
+): Promise<number> {
+  const res = await apiFetch<components["schemas"]["CollectableCount"]>(
+    "/collections/collectable-count",
+    { method: "POST", body: JSON.stringify(searchMatchBody(match)), signal },
+  );
+  return res.total;
 }
 
 /** Idempotent; never re-checks the event's state, so a membership whose event has since

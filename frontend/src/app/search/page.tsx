@@ -12,6 +12,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Building2, MapPin, Search as SearchIcon, Users } from "lucide-react";
 import { CollectionCard } from "@/components/collections/CollectionCard";
+import {
+  SearchSelectionActions,
+  SelectAllRow,
+  SelectableHit,
+  useSearchSelection,
+  type SearchSelection,
+} from "@/components/collections/SearchSelection";
 import { CollectionIcon } from "@/lib/collections";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import {
@@ -55,6 +62,7 @@ import {
   type EventFilterValues,
 } from "@/components/filters/EventFilterSections";
 import { FilterBar } from "@/components/filters/FilterBar";
+import { FilterRail } from "@/components/filters/FilterRail";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 
 import { META_LINE, TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
@@ -315,6 +323,10 @@ function SearchPageBody() {
   }, [committed, typeFilter]);
 
   const activeQuery = committed.q;
+  const selection = useSearchSelection(
+    { q: committed.q, ...committed.values, ...committed.dates },
+    results?.geolocations ?? [],
+  );
 
   // Appends the next geolocations page. A page that lands after a new search started is dropped,
   // like a stale first page.
@@ -384,12 +396,33 @@ function SearchPageBody() {
     return typeFilter === group;
   };
 
+  // Group headers only tell groups apart; a lone group's size is the head row's total.
+  const titled =
+    !!results &&
+    [
+      showGroup("geolocation") && results.geolocations.length > 0,
+      showGroup("request") && results.requests.length > 0,
+      showGroup("collection") && results.collections.length > 0,
+      showGroup("user") && results.users.length > 0,
+      showGroup("organization") && results.organizations.length > 0,
+    ].filter(Boolean).length > 1;
+
   return (
     <PageShell
       title="Search"
-      rail={renderPanel({ values, dates }, applyFilters)}
+      rail={
+        filterSections ? (
+          <FilterRail pills={activeFilters} onClearAll={clearFilters} sections={filterSections}>
+            {renderPanel({ values, dates }, applyFilters)}
+          </FilterRail>
+        ) : null
+      }
       railLabel="Filters"
       narrowRail="hidden"
+      stickyActions={
+        selection.gutter ? <SearchSelectionActions selection={selection} /> : undefined
+      }
+      stickyActionsIdle={selection.count === 0}
       controls={
         <SegmentedControl
           options={TYPE_OPTIONS}
@@ -422,22 +455,17 @@ function SearchPageBody() {
           <ActiveFilterPills filters={activeFilters} onClearAll={clearFilters} />
         )}
 
+        {/* Select all heads a lone Geolocations group here; once several groups show it moves
+            under that group's header, beside the rows it selects. */}
         {(activeQuery.trim() || hasActiveFilters) && (
-          <div className="flex items-center justify-between text-[11px] text-neutral-500 min-h-[16px]">
-            <span>
-              {loading
-                ? "Searching…"
-                : results
-                  ? `${countLabel(totalHits, "result")}${activeQuery.trim() ? " for " : ""}`
-                  : null}
-              {!loading && results && activeQuery.trim() && (
-                <span className="text-neutral-300 font-medium">
-                  &ldquo;{activeQuery.trim()}&rdquo;
-                </span>
-              )}
-              {!loading && results && values.author.trim() && (
-                <span> by <span className="text-neutral-300 font-medium">{values.author.trim()}</span></span>
-              )}
+          <div className="flex items-center justify-between gap-3">
+            {!titled && showGroup("geolocation") && results && results.geolocations.length > 0 ? (
+              <SelectAllRow selection={selection} />
+            ) : (
+              <span />
+            )}
+            <span className="shrink-0 text-[11px] text-neutral-500">
+              {loading ? "Searching…" : results ? countLabel(totalHits, "result") : null}
             </span>
           </div>
         )}
@@ -484,11 +512,13 @@ function SearchPageBody() {
           <>
             {showGroup("geolocation") && results.geolocations.length > 0 && (
               <ResultGroup
+                titled={titled}
                 title="Geolocations"
                 count={results.total.geolocations}
               >
+                {titled && <SelectAllRow selection={selection} />}
                 {results.geolocations.map((g) => (
-                  <EventResult key={g.id} hit={g} />
+                  <EventResult key={g.id} hit={g} selection={selection} />
                 ))}
                 <LoadMoreRow
                   walk={{
@@ -502,7 +532,7 @@ function SearchPageBody() {
             )}
 
             {showGroup("request") && results.requests.length > 0 && (
-              <ResultGroup title="Requests" count={results.total.requests}>
+              <ResultGroup titled={titled} title="Requests" count={results.total.requests}>
                 {results.requests.map((r) => (
                   <RequestResult key={r.id} hit={r} />
                 ))}
@@ -511,6 +541,7 @@ function SearchPageBody() {
 
             {showGroup("collection") && results.collections.length > 0 && (
               <ResultGroup
+                titled={titled}
                 title="Collections"
                 count={results.total.collections}
               >
@@ -530,7 +561,7 @@ function SearchPageBody() {
             )}
 
             {showGroup("user") && results.users.length > 0 && (
-              <ResultGroup title="Analysts" count={results.total.users}>
+              <ResultGroup titled={titled} title="Analysts" count={results.total.users}>
                 {results.users.map((u) => (
                   <UserResult key={u.id} hit={u} />
                 ))}
@@ -538,7 +569,7 @@ function SearchPageBody() {
             )}
 
             {showGroup("organization") && results.organizations.length > 0 && (
-              <ResultGroup title="Organizations" count={results.total.organizations}>
+              <ResultGroup titled={titled} title="Organizations" count={results.total.organizations}>
                 {results.organizations.map((o) => (
                   <OrganizationResult key={o.id} hit={o} />
                 ))}
@@ -608,39 +639,45 @@ function Highlighted({ value }: { value: string }) {
 }
 
 function ResultGroup({
+  titled,
   title,
   count,
   children,
 }: {
+  titled: boolean;
   title: string;
   count: number;
   children: React.ReactNode;
 }) {
   return (
-    <section className="space-y-2">
-      <div className={LABEL_TEXT}>
-        {title} · <span className="text-neutral-300 font-medium">{count}</span>
-      </div>
+    <section className="space-y-2" aria-label={titled ? undefined : title}>
+      {titled && (
+        <div className={LABEL_TEXT}>
+          {title} · <span className="text-neutral-300 font-medium">{count}</span>
+        </div>
+      )}
       <div className="space-y-3">{children}</div>
     </section>
   );
 }
 
-function EventResult({ hit }: { hit: SearchEventHit }) {
+function EventResult({ hit, selection }: { hit: SearchEventHit; selection: SearchSelection }) {
   return (
-    <EntityCard
-      variant="compact"
-      detailHref={eventHref(hit.id)}
-      title={<Highlighted value={hit.title_highlight} />}
-      titleText={hit.title}
-      badge={<StatusBadge status={hit.status} />}
-      media={hit.media[0]}
-      isGraphic={hit.is_graphic}
-      {...creditProps(hit)}
-      date={hit.occurred_date ?? undefined}
-      coords={{ lat: hit.lat, lng: hit.lng }}
-      tags={hit.tags}
-    />
+    <SelectableHit hit={hit} selection={selection}>
+      <EntityCard
+        variant="compact"
+        detailHref={eventHref(hit.id)}
+        title={<Highlighted value={hit.title_highlight} />}
+        titleText={hit.title}
+        badge={<StatusBadge status={hit.status} />}
+        media={hit.media[0]}
+        isGraphic={hit.is_graphic}
+        {...creditProps(hit)}
+        date={hit.occurred_date ?? undefined}
+        coords={{ lat: hit.lat, lng: hit.lng }}
+        tags={hit.tags}
+      />
+    </SelectableHit>
   );
 }
 

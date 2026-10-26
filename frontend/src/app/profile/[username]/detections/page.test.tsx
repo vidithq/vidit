@@ -135,7 +135,7 @@ describe("DetectionsPage queue filter", () => {
     }));
     render(<DetectionsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
     expect(useApiResource).toHaveBeenLastCalledWith(
       "/events/detections?page=2&per_page=10&readiness=all"
     );
@@ -163,12 +163,12 @@ describe("DetectionsPage queue filter", () => {
     }));
     render(<DetectionsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
 
     expect(screen.getByText("Strike near Bakhmut")).toBeInTheDocument();
     expect(screen.getByText("Strike near Avdiivka")).toBeInTheDocument();
     // The walk ends with the last row.
-    expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
   });
 
   it("keeps the loaded rows when a later page fails, and retries it", () => {
@@ -180,7 +180,7 @@ describe("DetectionsPage queue filter", () => {
     );
     render(<DetectionsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
 
     expect(screen.getByText("Strike near Bakhmut")).toBeInTheDocument();
     expect(screen.getByText("Server error")).toBeInTheDocument();

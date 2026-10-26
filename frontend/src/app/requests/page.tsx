@@ -20,6 +20,7 @@ import {
   type EventFilterValues,
 } from "@/components/filters/EventFilterSections";
 import { FilterBar } from "@/components/filters/FilterBar";
+import { FilterRail } from "@/components/filters/FilterRail";
 import { EntityCard } from "@/components/ui/EntityCard";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { PageShell } from "@/components/ui/PageShell";
@@ -84,12 +85,17 @@ export default function RequestsPage() {
     [values, sort]
   );
   const walk = useCursorList<EventListItem>(buildPath);
+  const pills = buildActiveFilterPills(values, onPatch);
   const { items: requests, error, loading } = walk;
 
   return (
     <PageShell
       title="Requests"
-      rail={renderPanel(values, setValues)}
+      rail={
+        <FilterRail pills={pills} onClearAll={clearFilters} sections={BOARD_SECTIONS}>
+          {renderPanel(values, setValues)}
+        </FilterRail>
+      }
       railLabel="Filters"
       narrowRail="hidden"
       controls={
@@ -114,7 +120,7 @@ export default function RequestsPage() {
         value={values}
         empty={EMPTY_EVENT_FILTERS}
         count={activeCount}
-        pills={buildActiveFilterPills(values, onPatch)}
+        pills={pills}
         onClearAll={clearFilters}
         onApply={setValues}
         renderPanel={renderPanel}
