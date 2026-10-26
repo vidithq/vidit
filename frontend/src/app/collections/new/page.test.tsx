@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { textHtml } from "@/test/proofEditorStub";
@@ -24,6 +24,7 @@ vi.mock("@/hooks/useApiResource", () => ({
 
 const createCollection = vi.fn();
 const addEventsToCollection = vi.fn();
+const fetchPickableEvents = vi.fn();
 const searchPickableEvents = vi.fn();
 vi.mock("@/lib/collections", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/collections")>()),
@@ -33,6 +34,7 @@ vi.mock("@/lib/collections", async (importOriginal) => ({
     ids: string[],
   ) => createCollection(title, description, ids),
   addEventsToCollection: (id: string, target: unknown) => addEventsToCollection(id, target),
+  fetchPickableEvents: (ids: string[]) => fetchPickableEvents(ids),
   searchPickableEvents: (username: string, q: string) =>
     searchPickableEvents(username, q),
 }));
@@ -121,6 +123,7 @@ beforeEach(() => {
   searchParams.delete("selection");
   window.sessionStorage.clear();
   addEventsToCollection.mockReset();
+  fetchPickableEvents.mockReset();
   useAuth.mockReturnValue({ user: USER, loading: false });
   // The hook reads nothing while the path is null (every render without `?event=`).
   useApiResource.mockImplementation((path: string | null) => ({
@@ -289,22 +292,38 @@ describe("NewCollectionPage with a search selection", () => {
     searchParams.set("selection", token as string);
   }
 
-  it("says what it will add and carries explicit ids on the create", async () => {
-    handOff({ target: { eventIds: ["e7", "e8"] }, count: 2, from: "/search?q=dam" });
+  it("loads checked rows into the held card, removable, and the create sends what is left", async () => {
+    const row = (id: string, title: string) => ({ ...EVENT, id, title, media: null });
+    let resolve: (value: unknown) => void = () => {};
+    fetchPickableEvents.mockReturnValue(new Promise((r) => (resolve = r)));
+    handOff({ target: { eventIds: ["e7", "e8", "gone"] }, count: 3, from: "/search?q=dam" });
     render(<NewCollectionPage />);
 
-    expect(screen.getByText("2 geolocations will be added.")).toBeInTheDocument();
-    // No empty "Events in this collection" card contradicting the selection.
-    expect(screen.queryByText("Nothing on this collection yet.")).not.toBeInTheDocument();
+    expect(fetchPickableEvents).toHaveBeenCalledWith(["e7", "e8", "gone"]);
+    expect(screen.getByText("Loading the selected geolocations…")).toBeInTheDocument();
+    expect(screen.queryByText(/will be added/)).not.toBeInTheDocument();
+
+    await act(async () =>
+      resolve({ rows: [row("e7", "Depot fire"), row("e8", "Bridge strike")], dropped: 1 }),
+    );
+
+    expect(screen.getByText("Depot fire")).toBeInTheDocument();
+    expect(screen.getByText("Bridge strike")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "1 selected geolocation could not be added: deleted, or no longer one a collection can hold.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("The collection opens with 2 geolocations.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove Depot fire from this collection" }));
+    expect(screen.getByText("The collection opens with 1 geolocation.")).toBeInTheDocument();
+
     await fillForm();
     fireEvent.click(screen.getByRole("button", { name: "Create and add" }));
 
     await waitFor(() => expect(push).toHaveBeenCalledWith("/collections/c9"));
-    expect(createCollection).toHaveBeenCalledWith(
-      "March strikes",
-      expect.any(String),
-      ["e7", "e8"],
-    );
+    expect(createCollection).toHaveBeenCalledWith("March strikes", expect.any(String), ["e8"]);
     expect(addEventsToCollection).not.toHaveBeenCalled();
     // Spent: Back to this page opens the plain form.
     expect(window.sessionStorage.length).toBe(0);
@@ -320,6 +339,9 @@ describe("NewCollectionPage with a search selection", () => {
     render(<NewCollectionPage />);
 
     expect(screen.getByText("44 geolocations will be added.")).toBeInTheDocument();
+    // No empty held card contradicting the selection, and nothing to load.
+    expect(screen.queryByText("Nothing on this collection yet.")).not.toBeInTheDocument();
+    expect(fetchPickableEvents).not.toHaveBeenCalled();
     await fillForm();
     fireEvent.click(screen.getByRole("button", { name: "Create and add" }));
 
@@ -353,6 +375,7 @@ describe("NewCollectionPage with a search selection", () => {
 
   it("cancels back to the search the selection came from", () => {
     handOff({ target: { eventIds: ["e7"] }, count: 1, from: "/search?q=dam" });
+    fetchPickableEvents.mockResolvedValue({ rows: [], dropped: 1 });
     render(<NewCollectionPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));

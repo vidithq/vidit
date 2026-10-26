@@ -174,6 +174,39 @@ export function pickableFromDetail(event: EventDetail): PickableEvent {
   };
 }
 
+/** Event reads in flight at once while a selection loads: no read takes a list of ids, and the
+ *  event read is limited to 120 a minute per caller. */
+const HELD_READS_AT_ONCE = 4;
+
+/** A search selection's events as picker rows, in selection order, read one by one through
+ *  `GET /events/{id}`. An event that fails to load, or whose status a collection does not hold,
+ *  is left out and counted in `dropped`. */
+export async function fetchPickableEvents(
+  ids: string[],
+  signal?: AbortSignal,
+): Promise<{ rows: PickableEvent[]; dropped: number }> {
+  const rows: (PickableEvent | null)[] = ids.map(() => null);
+  let next = 0;
+  const reader = async () => {
+    while (next < ids.length) {
+      const index = next++;
+      try {
+        const event = await apiFetch<EventDetail>(`/events/${encodeURIComponent(ids[index])}`, {
+          signal,
+        });
+        if (COLLECTABLE_STATUSES.includes(event.status)) rows[index] = pickableFromDetail(event);
+      } catch (err) {
+        if (signal?.aborted) throw err;
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(HELD_READS_AT_ONCE, ids.length) }, reader),
+  );
+  const kept = rows.filter((row): row is PickableEvent => row !== null);
+  return { rows: kept, dropped: ids.length - kept.length };
+}
+
 /** A search hit as a picker row (the hit's thumbnail list of at most one is the `media`). */
 function pickableFromHit(hit: SearchEventHit): PickableEvent {
   return {

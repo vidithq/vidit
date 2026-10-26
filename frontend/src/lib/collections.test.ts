@@ -14,6 +14,7 @@ import {
   deleteCollection,
   eventCollectionsPath,
   fetchCollectionSequence,
+  fetchPickableEvents,
   newCollectionFromSelectionHref,
   PICKER_ROW_LIMIT,
   pickerBrowsePath,
@@ -510,5 +511,44 @@ describe("the selection handoff to /collections/new", () => {
       from: "//elsewhere.example/phish",
     });
     expect(readSelectionHandoff(token(href))?.from).toBe("/search");
+  });
+});
+
+describe("fetchPickableEvents", () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+  });
+
+  it("reads each id, keeps the selection's order, and drops what fails or cannot be held", async () => {
+    let inFlight = 0;
+    let peak = 0;
+    mockFetch.mockImplementation(async (path: string) => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 1));
+      inFlight -= 1;
+      const id = path.split("/").at(-1) as string;
+      if (id === "gone") throw new Error("Event not found");
+      return {
+        id,
+        title: `Event ${id}`,
+        status: id === "req" ? "requested" : "geolocated",
+        thumbnail: null,
+        is_graphic: false,
+        occurred_date: null,
+        coords: null,
+        tags: [],
+      };
+    });
+    const ids = ["e1", "gone", "e2", "req", "e3", "e4", "e5", "e6"];
+
+    const { rows, dropped } = await fetchPickableEvents(ids);
+    const paths = mockFetch.mock.calls.map((call) => call[0] as string);
+
+    expect(rows.map((r) => r.id)).toEqual(["e1", "e2", "e3", "e4", "e5", "e6"]);
+    expect(dropped).toBe(2);
+    expect(paths).toEqual(ids.map((id) => `/events/${id}`));
+    // A few at a time, never the whole selection at once.
+    expect(peak).toBeLessThanOrEqual(4);
   });
 });
