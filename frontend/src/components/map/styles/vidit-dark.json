@@ -1742,6 +1742,14 @@
             "has",
             "claimed_by"
           ]
+        ],
+        [
+          "!=",
+          [
+            "get",
+            "disputed"
+          ],
+          1
         ]
       ],
       "layout": {
@@ -1787,12 +1795,23 @@
       "source-layer": "boundary",
       "minzoom": 5,
       "filter": [
-        "==",
+        "all",
         [
-          "get",
-          "admin_level"
+          "==",
+          [
+            "get",
+            "admin_level"
+          ],
+          2
         ],
-        2
+        [
+          "!=",
+          [
+            "get",
+            "disputed"
+          ],
+          1
+        ]
       ],
       "layout": {
         "line-cap": "round",
@@ -1828,6 +1847,72 @@
           22,
           20
         ]
+      }
+    },
+    {
+      "id": "boundary_disputed",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "boundary",
+      "filter": [
+        "all",
+        [
+          "==",
+          [
+            "get",
+            "admin_level"
+          ],
+          2
+        ],
+        [
+          "==",
+          [
+            "get",
+            "disputed"
+          ],
+          1
+        ]
+      ],
+      "layout": {
+        "line-join": "round"
+      },
+      "paint": {
+        "line-blur": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          0,
+          0.4,
+          22,
+          4
+        ],
+        "line-color": "hsl(0,0%,23%)",
+        "line-opacity": 1,
+        "line-width": [
+          "interpolate",
+          [
+            "exponential",
+            1.1
+          ],
+          [
+            "zoom"
+          ],
+          3,
+          1,
+          22,
+          20
+        ],
+        "line-dasharray": [
+          3,
+          2
+        ]
+      },
+      "metadata": {
+        "vidit:role": "disputed-border"
       }
     },
     {

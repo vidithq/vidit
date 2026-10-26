@@ -23,6 +23,7 @@ import {
 type Layer = LayerSpecification & {
   filter?: unknown;
   layout?: Record<string, unknown>;
+  paint?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
   "source-layer"?: string;
 };
@@ -58,8 +59,8 @@ describe.each(BASES)("buildViditStyle on the %s style", (_, base) => {
   it("validates against the style spec with every option set", () => {
     for (const options of [
       DEFAULT_BASEMAP_OPTIONS,
-      { language: "both", density: "normal", regionBorders: true, roads: false, buildings: false },
-      { language: "local", density: "sparse", regionBorders: false, roads: true, buildings: true },
+      { language: "both", density: "normal", regionBorders: true, roads: false, buildings: false, disputedDashed: false },
+      { language: "local", density: "sparse", regionBorders: false, roads: true, buildings: true, disputedDashed: true },
     ] as BasemapOptions[]) {
       expect(validateStyleMin(buildViditStyle(base, options))).toEqual([]);
     }
@@ -86,7 +87,7 @@ describe.each(BASES)("buildViditStyle on the %s style", (_, base) => {
       if (sourceLayer === "place") expect(role, layer.id).toBe("place-label");
       if (sourceLayer === "transportation_name") expect(role, layer.id).toBe("road-label");
       if (sourceLayer === "boundary" && JSON.stringify(layer.filter).match(/admin_level"\],\s*2\]/)) {
-        expect(role, layer.id).toBeUndefined();
+        expect([undefined, "disputed-border"], layer.id).toContain(role);
       }
     }
     expect(withRole(base.layers as Layer[], "region-border")).not.toHaveLength(0);
@@ -161,6 +162,28 @@ describe.each(BASES)("buildViditStyle on the %s style", (_, base) => {
     expect(withRole(build(base, { buildings: false }), "building").every((layer) => !visible(layer))).toBe(
       true,
     );
+  });
+
+  it("dashes disputed country borders by default and leaves the settled ones solid", () => {
+    const layers = build(base);
+    const borders = layers.filter((layer) => layer["source-layer"] === "boundary");
+    const disputed = withRole(layers, "disputed-border");
+    const countries = borders.filter((layer) => !layer.metadata);
+    const crimea = { admin_level: 2, disputed: 1, maritime: 0, claimed_by: "RU" };
+    const settled = { admin_level: 2, disputed: 0, maritime: 0, adm0_l: "RUS", adm0_r: "UKR" };
+
+    expect(disputed).toHaveLength(1);
+    for (const zoom of [3, 6, 10]) {
+      expect(shows(disputed[0], zoom, crimea), `z${zoom}`).toBe(true);
+      expect(countries.some((layer) => shows(layer, zoom, crimea)), `z${zoom}`).toBe(false);
+      expect(countries.some((layer) => shows(layer, zoom, settled)), `z${zoom}`).toBe(true);
+    }
+    expect(disputed[0].paint).toHaveProperty("line-dasharray");
+    for (const layer of countries) expect(layer.paint, layer.id).not.toHaveProperty("line-dasharray");
+
+    const solid = withRole(build(base, { disputedDashed: false }), "disputed-border")[0];
+    expect(solid.paint).not.toHaveProperty("line-dasharray");
+    expect(visible(solid)).toBe(true);
   });
 
   it("writes one language per label, Latin by default", () => {

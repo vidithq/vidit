@@ -51,6 +51,11 @@ const LAYER_TOGGLES: SwitchSetting[] = [
   { key: "regionBorders", label: "Region borders", description: "Borders between a country's regions." },
   { key: "roads", label: "Roads", description: "Roads, railways and their names." },
   { key: "buildings", label: "Buildings", description: "Building footprints, from zoom 13." },
+  {
+    key: "disputedDashed",
+    label: "Dashed disputed borders",
+    description: "Off draws a disputed border solid, like a settled one.",
+  },
 ];
 
 /** The basemap picker: a map control beside the zoom buttons that opens the basemap settings. The

@@ -34,6 +34,7 @@ const FIELDS: { [K in keyof BasemapSettings]: readonly BasemapSettings[K][] } = 
   regionBorders: BOOLEAN,
   roads: BOOLEAN,
   buildings: BOOLEAN,
+  disputedDashed: BOOLEAN,
 };
 
 /** A stored value read field by field: a missing or invalid field takes its default. */

@@ -24,6 +24,7 @@ type LayerRole =
   | "minor-road"
   | "road-label"
   | "region-border"
+  | "disputed-border"
   | "building";
 
 const ROAD_ROLES: ReadonlySet<LayerRole> = new Set(["road", "minor-road", "road-label"]);
@@ -37,6 +38,8 @@ export interface BasemapOptions {
   regionBorders: boolean;
   roads: boolean;
   buildings: boolean;
+  /** Dashed, a disputed country border reads apart from a settled one; solid, it reads like one. */
+  disputedDashed: boolean;
 }
 
 export const DEFAULT_BASEMAP_OPTIONS: BasemapOptions = {
@@ -45,6 +48,7 @@ export const DEFAULT_BASEMAP_OPTIONS: BasemapOptions = {
   regionBorders: false,
   roads: true,
   buildings: true,
+  disputedDashed: true,
 };
 
 // Below zoom 5 a sparse map labels countries and capitals only. At 5 one country fills a laptop
@@ -109,6 +113,7 @@ function labelText(language: LabelLanguage, separator: string): ExpressionSpecif
 type AdjustableLayer = LayerSpecification & {
   filter?: FilterSpecification;
   layout?: Record<string, unknown>;
+  paint?: Record<string, unknown>;
   metadata?: unknown;
 };
 
@@ -128,6 +133,11 @@ function adjustLayer(layer: AdjustableLayer, options: BasemapOptions): LayerSpec
     (ROAD_ROLES.has(role) && !options.roads) ||
     (role === "building" && !options.buildings);
   if (hidden) layout.visibility = "none";
+
+  if (role === "disputed-border" && !options.disputedDashed) {
+    const { "line-dasharray": _dash, ...solid } = next.paint ?? {};
+    next.paint = solid;
+  }
 
   if (JSON.stringify(layout["text-field"] ?? null).includes('"name')) {
     const separator = layout["symbol-placement"] === "line" ? " " : "\n";
