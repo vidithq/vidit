@@ -2,6 +2,12 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- Search loads every matching geolocation: **Load more** under the Geolocations group appends the next page, and `GET /search` pages that group with `geolocations_cursor` ([#696](https://github.com/vidithq/vidit/pull/696)).
+
 ## v0.8.0, 2026-10-25
 
 ### Added
