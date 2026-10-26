@@ -98,6 +98,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/events/{id}` | 🌐 | Full event detail, any lifecycle state |
 | POST | `/events/{id}/report` | 🌐 | Report an event for moderation (anonymous allowed) |
 | POST | `/uploads` | 🔒 | Stage one source file for a later event write (multipart, one file) |
+| POST | `/uploads/from-link` | 🔒 | Stage the file of an X, public Telegram or TikTok post, by its link |
 | POST | `/events` | 🔒 | Create an event born `geolocated` (multipart) |
 | POST | `/events/requests` | 🔒 | Open a request (multipart); creates a `requested` event |
 | POST | `/events/{id}/request` | 🔒 | Correct an open request, owner only; overwrites it in place at version 0 |
@@ -240,6 +241,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST /events/import-archive` | 10/hour |
 | `GET /events/import-archive/{job_id}` | 60/min |
 | `POST /uploads` | 30/min |
+| `POST /uploads/from-link` | 30/min |
 | `POST /sources/check` | 120/min |
 | `POST /events`, `POST /events/requests`, `POST /events/{id}/request` | 30/min |
 | `POST /events/{id}/versions` | 30/min |
@@ -750,6 +752,22 @@ Stage one source file before the event write that uses it: the first layer of th
 | 400 | `invalid_file` | Disallowed type or size |
 | 400 | `evidence_processing_failed` | An image the server refuses (see [File limits](#file-limits)), or a failed upload |
 | 429 | `too_many_uploads` | You already hold 20 unexpired staged files no event uses. Submit the form that uses them, or wait for them to expire |
+
+### `POST /uploads/from-link` 🔒
+
+Stage the file of a post by its link. The server reads the post through the [chase](ingestion.md#the-chase), downloads the file you pick from the post's CDN, and stages it as [`POST /uploads`](#post-uploads) does: same limits, metadata strip, expiry and per-account cap. Any link no chaser reads is refused before any fetch.
+
+**Request body (JSON):** `url`, the post link (at most 2000 characters), and `index`, which of the post's files in post order (default `0`).
+
+**Response 201:** the `UploadRead` of [`POST /uploads`](#post-uploads) plus `post_media`, the kind of every file the post holds, in post order. To pick another file, post the same `url` with its `index`.
+
+**Errors:** those of [`POST /uploads`](#post-uploads), plus:
+| Status | Code | Case |
+|---|---|---|
+| 400 | `unsupported_link` | No chaser reads the link. Nothing is fetched |
+| 404 | `link_not_accessible` | The post or its file is gone, restricted, or unreadable without a login |
+| 404 | `link_has_no_file` | The post serves no file, or none at `index` |
+| 503 | `upstream_busy` | The post's host or its CDN throttled or did not answer once the [retries](ingestion.md#the-chase) were spent. Try again in a minute |
 
 ### `POST /sources/check` 🔒
 

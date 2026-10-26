@@ -13,6 +13,8 @@ import { isSnapshotUrl, SNAPSHOT_HINT } from "@/components/ui/ArchivedCopies";
 import type { MissingFieldKey } from "@/lib/events";
 import {
   draftUrls,
+  fileRunning,
+  importSourceFile,
   isEvidenceLevel,
   MAX_SOURCES_PER_EVENT,
   newSourceDraft,
@@ -21,9 +23,11 @@ import {
   uploadsRunning,
   uploadSourceFile,
   UPLOADS_RUNNING_MESSAGE,
+  type LinkPost,
   type SourceDraft,
   type SourceFile,
 } from "@/lib/sources";
+import { safeHostname } from "@/lib/format";
 import type { Tag } from "@/types";
 
 let uploadToken = 0;
@@ -36,7 +40,8 @@ let uploadToken = 0;
  * mounted, so one scrolled out of view keeps its upload.
  *
  * A picked file uploads at once, on its own request; the editor keeps the staged upload, and the
- * event write names it. A file picked again or removed while its upload runs drops the answer.
+ * event write names it. A file imported from a link stages the same way, through the link's post.
+ * A file picked, imported or removed while an upload runs drops that upload's answer.
  */
 export function SourcesField({
   sources,
@@ -63,7 +68,7 @@ export function SourcesField({
   const settle = (key: string, token: number, file: SourceFile) =>
     setSources((prev) =>
       prev.map((d) =>
-        d.key === key && d.file?.state === "uploading" && d.file.token === token
+        d.key === key && fileRunning(d.file) && d.file.token === token
           ? { ...d, file }
           : d
       )
@@ -75,7 +80,18 @@ export function SourcesField({
     try {
       settle(key, token, { state: "staged", upload: await uploadSourceFile(file) });
     } catch (err) {
-      settle(key, token, { state: "failed", file, error: uploadError(err) });
+      settle(key, token, { state: "failed", name: file.name, error: uploadError(err) });
+    }
+  };
+
+  const importLink = (key: string) => async (post: LinkPost) => {
+    const token = ++uploadToken;
+    update(key)({ file: { state: "importing", post, token } });
+    try {
+      const { post_media: kinds, ...upload } = await importSourceFile(post.url, post.index);
+      settle(key, token, { state: "staged", upload, post: { ...post, kinds } });
+    } catch (err) {
+      settle(key, token, { state: "failed", name: safeHostname(post.url), error: uploadError(err) });
     }
   };
 
@@ -137,6 +153,7 @@ export function SourcesField({
           index={index}
           update={update(draft.key)}
           onPickFile={(file) => void pickFile(draft.key)(file)}
+          onImportLink={(post) => void importLink(draft.key)(post)}
           tags={tags}
           setTags={setTags}
           invalid={sourceGaps(draft, invalidKeys)}

@@ -28,10 +28,11 @@ from .acquire import (
     read_pasted_post,
     record_by_id,
 )
-from .archive import archive_media_fetcher, fetch_cdn_media, read_tweets
-from .chase import chase_thread
+from .archive import archive_media_fetcher, download_cdn_media, fetch_cdn_media, read_tweets
+from .chase import chase_post, chase_thread
 from .errors import (
     InvalidTweetUrl,
+    MediaTooLarge,
     TweetFetchFailed,
     TweetImportError,
     TweetNotAccessible,
@@ -68,7 +69,7 @@ from .resolve import (
     sole_refusal,
 )
 from .stitch import stitch
-from .urls import is_trusted_media_url, normalise_tweet_url
+from .urls import is_importable_link, is_trusted_media_url, normalise_tweet_url
 
 __all__ = [
     "COORDS_INVALID",
@@ -89,6 +90,7 @@ __all__ = [
     "AcquiredThread",
     "Detection",
     "InvalidTweetUrl",
+    "MediaTooLarge",
     "ParsedCoord",
     "ParsedMedia",
     "RequestDraft",
@@ -102,11 +104,14 @@ __all__ = [
     "acquire_pasted_thread",
     "acquire_thread",
     "archive_media_fetcher",
+    "chase_post",
     "chase_thread",
     "clean_proof_text",
     "derive_title",
+    "download_cdn_media",
     "extract_coords",
     "fetch_cdn_media",
+    "is_importable_link",
     "is_trusted_media_url",
     "normalise_tweet_url",
     "read_pasted_post",

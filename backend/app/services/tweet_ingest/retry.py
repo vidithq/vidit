@@ -1,7 +1,7 @@
 """The retry policy every outgoing fetch of the ingestion shares.
 
 Callers: :func:`syndication.fetch_syndication`, the Telegram embed read in
-``chase/telegram.py``, and ``archive.fetch_cdn_media``. All three hit
+``chase/telegram.py``, and ``archive.download_cdn_media``. All three hit
 throttled public endpoints, and one attempt would turn a short outage into a
 detection with no footage.
 
