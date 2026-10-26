@@ -40,7 +40,7 @@ export const SiteZoneModule = forwardRef<HTMLDivElement, { site: Site; image: Si
     const legend = [
       reference &&
         `Dashed: ${contour ? "the contour before it" : "the first contour"}, from ${formatInstantDate(reference.captured_at)}`,
-      site.linked_events.some((e) => !e.inside_zone) && "Dotted: a linked event outside the zone",
+      site.linked_events.some((e) => !e.inside_zone) && "Dotted: a linked event outside the zone of its date",
       site.linked_events.some((e) => e.measured_contour_id !== contour?.id) &&
         "Dimmed: an event measured against another contour",
     ].filter((line): line is string => typeof line === "string");
@@ -62,6 +62,7 @@ export const SiteZoneModule = forwardRef<HTMLDivElement, { site: Site; image: Si
               zone={contour?.zone ?? null}
               previousZone={reference?.zone ?? null}
               contourId={contour?.id ?? null}
+              contours={site.contours}
               emphasis={zoneEmphasis(site)}
               events={site.linked_events}
               bounds={bounds}

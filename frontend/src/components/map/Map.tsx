@@ -661,7 +661,7 @@ const FLY_ZOOM = FIT_MAX_ZOOM;
 const FLY_MS = 900;
 
 // Opacity of a pin in `dimmedIds`: behind its neighbours, still on the map.
-const DIMMED_OPACITY = 0.35;
+export const DIMMED_OPACITY = 0.35;
 
 interface MapProps {
   points: MapPoint[];
@@ -725,20 +725,36 @@ function BoundsReporter({
   return null;
 }
 
-/** Frames the camera on a bounds box. Keys on the four numbers, so an equal box doesn't re-fit. */
+/** Frames the camera on a bounds box. Keys on the four numbers, so an equal box doesn't re-fit.
+ * A resize keeps the centre and zoom, so a container that changes size after the fit (a layout
+ * settling, a window crossing a breakpoint) would cut the box: each resize frames it again while
+ * the camera still holds the fitted frame, and never after a pan, a zoom or a flight. */
 function FitBoundsCamera({ bounds, maxZoom }: { bounds: MapBounds; maxZoom: number }) {
   const { current: map } = useMap();
   const { west, south, east, north } = bounds;
 
   useEffect(() => {
     if (!map) return;
-    map.fitBounds(
-      [
-        [west, south],
-        [east, north],
-      ],
-      { padding: FIT_PADDING, maxZoom, duration: 0 }
-    );
+    const camera = () => `${map.getCenter().toArray().join(",")} ${map.getZoom()}`;
+    let framed = "";
+    const fit = () => {
+      map.fitBounds(
+        [
+          [west, south],
+          [east, north],
+        ],
+        { padding: FIT_PADDING, maxZoom, duration: 0 }
+      );
+      framed = camera();
+    };
+    const refit = () => {
+      if (camera() === framed) fit();
+    };
+    fit();
+    map.on("resize", refit);
+    return () => {
+      map.off("resize", refit);
+    };
   }, [map, west, south, east, north, maxZoom]);
 
   return null;
